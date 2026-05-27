@@ -409,9 +409,18 @@ class Node:
 
             # Grace period to let the Raylet register with the GCS.
             # We retry in a loop in case it takes longer than expected.
+            # On pod-delete recovery with the RocksDB GCS backend, the
+            # raylet may take longer to register because GCS is replaying
+            # state from the persisted store. Allow operator override
+            # via RAY_raylet_start_wait_time_s.
             time.sleep(0.1)
             start_time = time.monotonic()
-            raylet_start_wait_time_s = 30
+            default_wait = (
+                "60" if os.environ.get("RAY_gcs_storage") == "rocksdb" else "30"
+            )
+            raylet_start_wait_time_s = int(
+                os.environ.get("RAY_raylet_start_wait_time_s", default_wait)
+            )
             while True:
                 try:
                     # Will raise a RuntimeError if the node info is not available.
@@ -458,6 +467,25 @@ class Node:
             self._record_stats()
 
     def check_persisted_session_name(self):
+        # When RAY_gcs_storage=rocksdb, read the session_name sidecar
+        # file written by the previous head process. GCS isn't up yet at
+        # this point in startup, so we can't query the rocksdb-backed
+        # internal_kv directly; the sidecar bridges that gap. Falls
+        # through to the Redis path below for non-rocksdb deployments.
+        if os.environ.get("RAY_gcs_storage") == "rocksdb":
+            rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
+            if rocksdb_storage_path:
+                session_name_file = os.path.join(
+                    rocksdb_storage_path, ".session_name"
+                )
+                try:
+                    with open(session_name_file, "rb") as f:
+                        persisted = f.read().strip()
+                        return persisted if persisted else None
+                except FileNotFoundError:
+                    return None
+            return None
+
         if self._ray_params.external_addresses is None:
             return None
         self._redis_address = self._ray_params.external_addresses[0]
@@ -1350,6 +1378,29 @@ class Node:
                 f"persisted value {curr_val}. Perhaps there was an "
                 f"error connecting to Redis."
             )
+
+        # Persist session_name to a sidecar file when using the RocksDB
+        # GCS backend, so check_persisted_session_name() can find it on
+        # head process restart. The rocksdb-backed internal_kv requires
+        # GCS to be up, but check_persisted_session_name() runs before
+        # GCS comes up on restart; the sidecar bridges that gap. Gated
+        # on RAY_gcs_storage=rocksdb so non-rocksdb deployments are
+        # unaffected.
+        if os.environ.get("RAY_gcs_storage") == "rocksdb":
+            rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
+            if rocksdb_storage_path:
+                session_name_file = os.path.join(
+                    rocksdb_storage_path, ".session_name"
+                )
+                try:
+                    os.makedirs(rocksdb_storage_path, exist_ok=True)
+                    with open(session_name_file, "wb") as f:
+                        f.write(self._session_name.encode("utf-8"))
+                except OSError as e:
+                    logger.warning(
+                        f"Failed to persist session_name sidecar to "
+                        f"{session_name_file}: {e}"
+                    )
 
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
