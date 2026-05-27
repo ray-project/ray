@@ -238,8 +238,10 @@ RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 /// will become eligible for removal in the autoscaler.
 RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
-// The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled/promoted to plasma.
+/// Maximum size in bytes of a task return value that may be returned inline
+/// in the task reply (and stored in the owner's in-memory store). Return
+/// values larger than this are stored in plasma instead. Applies to all task
+/// types (normal tasks, actor tasks, generators).
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
@@ -666,6 +668,12 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
+// The threshold of the memory usage in bytes for the idle worker
+// to be considered as a candidate for killing.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
+
 /// The soft limit of the number of workers to keep around.
 /// We apply this limit to the idle workers instead of total workers,
 /// because the total number of workers used depends on the
@@ -835,7 +843,9 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
+RAY_CONFIG(std::string,
+           custom_unit_instance_resources,
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -1117,10 +1127,3 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
-
-// The threshold of the memory usage in bytes for the idle worker to be considered as
-// a candidate for killing.
-// TODO: We should clean it up after the memory monitor is revamped.
-RAY_CONFIG(int64_t,
-           idle_worker_killing_memory_threshold_bytes,
-           1024 * 1024 * 1024)  // 1GB

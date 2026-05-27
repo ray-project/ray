@@ -63,5 +63,27 @@ def test_gpu_info_parsing(patch_mock_pynvml):
     assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "A100"
 
 
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        # Datacenter GPUs: unchanged behavior (uppercase product token after
+        # the first word).
+        ("Tesla V100-SXM2-16GB", "V100"),
+        ("Tesla K80", "K80"),
+        ("NVIDIA A100-SXM4-40GB", "A100"),
+        ("NVIDIA H100 80GB HBM3", "H100"),
+        # Consumer GPUs: the regex captures only "G" (stops at lowercase
+        # 'e' in "GeForce"), so we fall back to a hyphen-joined product name.
+        ("NVIDIA GeForce RTX 5090", "GeForce-RTX-5090"),
+        ("NVIDIA GeForce RTX 4090", "GeForce-RTX-4090"),
+        # Edge cases.
+        (None, None),
+        ("", None),
+    ],
+)
+def test_gpu_name_to_accelerator_type(name, expected):
+    assert NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(name) == expected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

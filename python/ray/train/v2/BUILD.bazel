@@ -268,9 +268,42 @@ py_test(
 )
 
 py_test(
+    name = "test_report_fault_tolerance",
+    size = "medium",
+    srcs = ["tests/test_report_fault_tolerance.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_data_resource_cleanup",
     size = "medium",
     srcs = ["tests/test_data_resource_cleanup.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_manager",
+    size = "medium",
+    srcs = ["tests/test_dataset_manager.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "data_integration",

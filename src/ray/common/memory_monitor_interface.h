@@ -18,7 +18,9 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <ostream>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/compat.h"
@@ -28,16 +30,36 @@ namespace ray {
 /**
  * @brief A snapshot of aggregated memory usage across the system.
  */
-struct SystemMemorySnapshot {
+struct MemoryUsageSnapshot {
+  /// The current memory usage.
   int64_t used_bytes;
 
-  /// The total memory available on the system. >= used_bytes.
+  /// The total memory available on the system.
   int64_t total_bytes;
 
   friend std::ostream &operator<<(std::ostream &os,
-                                  const SystemMemorySnapshot &memory_snapshot) {
+                                  const MemoryUsageSnapshot &memory_snapshot) {
     os << "Used bytes: " << memory_snapshot.used_bytes
        << ", Total bytes: " << memory_snapshot.total_bytes;
+    return os;
+  }
+};
+
+/**
+ * @brief A snapshot of memory usage within a cgroup.
+ */
+struct CgroupMemorySnapshot {
+  /// size of non-file-backed region mappings within the cgroup in bytes.
+  /// This is an approximation of heap usage for the cgroup.
+  int64_t anon_memory_bytes;
+
+  /// size of shared memory mappings within the cgroup in bytes.
+  int64_t shmem_memory_bytes;
+
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const CgroupMemorySnapshot &memory_snapshot) {
+    os << "Anon memory bytes: " << memory_snapshot.anon_memory_bytes
+       << ", Shmem memory bytes: " << memory_snapshot.shmem_memory_bytes;
     return os;
   }
 };
@@ -49,8 +71,10 @@ using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
 /**
  * @brief Callback to trigger worker oom killing when under memory pressure.
+ * @param trigger_reason A human-readable description of why the monitor triggered
+ *        the kill (e.g. threshold exceeded, cgroup event, PSI pressure).
  */
-using KillWorkersCallback = std::function<void()>;
+using KillWorkersCallback = std::function<void(std::string trigger_reason)>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node
