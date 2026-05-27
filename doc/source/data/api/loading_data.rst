@@ -297,7 +297,6 @@ TFRecords
    :toctree: doc/
 
    read_tfrecords
-   TFXReadOptions
 
 TensorFlow
 ^^^^^^^^^^

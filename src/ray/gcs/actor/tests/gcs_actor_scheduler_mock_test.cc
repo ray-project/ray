@@ -28,6 +28,8 @@
 #include "ray/gcs/actor/gcs_actor_scheduler.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -51,6 +53,8 @@ class GcsActorSchedulerMockTest : public Test {
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
+    fake_observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_node_manager =
         std::make_unique<GcsNodeManager>(nullptr,
                                          nullptr,
@@ -58,7 +62,9 @@ class GcsActorSchedulerMockTest : public Test {
                                          client_pool.get(),
                                          ClusterID::Nil(),
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
-                                         /*session_name=*/"");
+                                         /*session_name=*/"",
+                                         fake_observability_publisher_.get(),
+                                         clock_);
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         io_context,
@@ -81,7 +87,8 @@ class GcsActorSchedulerMockTest : public Test {
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
         *worker_client_pool_,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        clock_);
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();
@@ -94,6 +101,7 @@ class GcsActorSchedulerMockTest : public Test {
   instrumented_io_context io_context;
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
+  std::unique_ptr<pubsub::ObservabilityPublisher> fake_observability_publisher_;
   std::unique_ptr<GcsNodeManager> gcs_node_manager;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;

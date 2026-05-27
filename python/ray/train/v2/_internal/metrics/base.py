@@ -131,7 +131,7 @@ class EnumMetric(Metric, Generic[E]):
             base_tags=base_tags,
         )
 
-    def record(self, enum_value: E):
+    def record(self, enum_value: E) -> None:
         """Record a specific enum value.
 
         The metric will be reset to 0 for the previous value and set to 1 for the new value.

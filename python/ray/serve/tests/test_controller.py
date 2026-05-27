@@ -115,7 +115,6 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
-
     http_port, grpc_port = None, None
 
     for target_group in details["target_groups"]:
@@ -262,6 +261,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "route_prefix": "/",
                     "protocol": "HTTP",
                     "app_name": "",
+                    "ingress_request_router_targets": [],
                 },
                 {
                     "targets": [
@@ -275,11 +275,21 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "route_prefix": "/",
                     "protocol": "gRPC",
                     "app_name": "",
+                    "ingress_request_router_targets": [],
                 },
             ],
         }
     )
-    assert details_json == expected_json
+
+    # Health metrics contain timestamps that change between calls, so verify
+    # the keys match what get_health_metrics returns rather than exact values.
+    details_dict = json.loads(details_json)
+    actual_health_metrics = details_dict.pop("controller_health_metrics")
+    expected_dict = json.loads(expected_json)
+    assert details_dict == expected_dict
+
+    controller_health_metrics = ray.get(controller.get_health_metrics.remote())
+    assert set(actual_health_metrics.keys()) == set(controller_health_metrics.keys())
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]
