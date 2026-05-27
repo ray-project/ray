@@ -1374,19 +1374,20 @@ class Node:
         # prior value). The reverse ordering would leave a persisted
         # session_name in rocksdb with no sidecar, causing the next
         # head to generate a fresh name and trip the assertion below.
+        #
+        # A sidecar write failure here is fatal: skipping it and going
+        # on to internal_kv_put would persist the session_name in rocksdb
+        # with no companion sidecar, recreating the exact assertion-trip
+        # the ordering is meant to prevent. The storage path is also
+        # where rocksdb keeps its DB files, so an unwritable path means
+        # GCS can't function regardless.
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
             if rocksdb_storage_path:
                 session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
-                try:
-                    os.makedirs(rocksdb_storage_path, exist_ok=True)
-                    with open(session_name_file, "wb") as f:
-                        f.write(self._session_name.encode("utf-8"))
-                except OSError as e:
-                    logger.warning(
-                        f"Failed to persist session_name sidecar to "
-                        f"{session_name_file}: {e}"
-                    )
+                os.makedirs(rocksdb_storage_path, exist_ok=True)
+                with open(session_name_file, "wb") as f:
+                    f.write(self._session_name.encode("utf-8"))
 
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
