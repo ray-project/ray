@@ -501,6 +501,7 @@ class MockReplicaActorWrapper:
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
+        self._log_file_path = None
         self._actor_id = None
         self._internal_grpc_port = None
         self._http_port = None
@@ -580,7 +581,7 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
-        return None
+        return self._log_file_path
 
     @property
     def grpc_port(self) -> Optional[int]:
@@ -618,6 +619,9 @@ class MockReplicaActorWrapper:
 
     def set_ready(self, version: DeploymentVersion = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        # A started replica reports its (relative) log file path, mirroring the
+        # real actor's is_allocated() return.
+        self._log_file_path = "serve/replica.log"
         if version:
             self.version_to_be_fetched_from_actor = version
         else:

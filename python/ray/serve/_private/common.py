@@ -188,6 +188,10 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    # Terminal state for a replica that has fully stopped. Not tracked in the
+    # live replica state machine; only used to surface recently-dead replicas
+    # (and their logs) in the dashboard.
+    STOPPED = "STOPPED"
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
 

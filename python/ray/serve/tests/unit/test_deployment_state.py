@@ -954,6 +954,87 @@ def test_create_delete_single_replica(mock_deployment_state_manager):
     check_counts(ds, total=0)
 
 
+def test_dead_replica_details_retained(mock_deployment_state_manager):
+    """A stopped replica's details are retained so its logs stay accessible."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, _ = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+    dead_replica_id = ds._replicas.get()[0].replica_id.unique_id
+
+    # Stop the replica completely.
+    ds.delete()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # The live list stays empty (so counts/status are unaffected), but the
+    # stopped replica is surfaced separately via list_dead_replica_details()
+    # flagged as STOPPED, retaining its log file path.
+    assert ds.list_replica_details() == []
+    dead = ds.list_dead_replica_details()
+    assert len(dead) == 1
+    assert dead[0].replica_id == dead_replica_id
+    assert dead[0].state == ReplicaState.STOPPED
+    assert dead[0].log_file_path is not None
+
+
+def test_dead_replica_details_skips_unallocated(mock_deployment_state_manager):
+    """A replica that dies before allocating logs is not retained."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Bring up a replica but never mark it ready, so it has no log file path,
+    # then stop it.
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    ds.delete()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # Nothing to show logs for, so nothing is retained.
+    assert ds.list_dead_replica_details() == []
+
+
+@patch("ray.serve._private.deployment_state.RAY_SERVE_RETAINED_DEAD_REPLICAS", 2)
+def test_dead_replica_details_bounded(mock_deployment_state_manager):
+    """Only the most recent RAY_SERVE_RETAINED_DEAD_REPLICAS are retained."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=3)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert ds._dead_replica_details.maxlen == 2
+
+    # Bring up 3 replicas, then stop all of them at once.
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+
+    ds.delete()
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # Buffer is capped at 2 even though three replicas have stopped.
+    assert len(ds._dead_replica_details) == 2
+
+
 def test_force_kill(mock_deployment_state_manager):
     create_dsm, timer, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
