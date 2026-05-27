@@ -12,7 +12,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray._common.usage.usage_lib import (
@@ -179,19 +179,32 @@ def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
     """Collect anonymized plan tree, indented text rendering, and per-op
     config list."""
     dag = logical_plan.dag
+    plan, ops = _build_plan_and_ops(dag)
     return _Workload(
-        plan=_build_plan_tree(dag),
+        plan=plan,
         plan_str=_format_plan_str(dag),
-        ops=_walk_operators(dag),
+        ops=ops,
     )
 
 
-def _build_plan_tree(op: LogicalOperator) -> _PlanNode:
-    """Recursively build the anonymized plan tree from the logical DAG."""
-    return _PlanNode(
-        op=anonymize_op_name(op),
-        inputs=[_build_plan_tree(child) for child in op.input_dependencies],
-    )
+def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
+    """Build plan tree and flat op list in one post-order walk.
+    """
+    child_plans: List[_PlanNode] = []
+    ops: List[_Op] = []
+    for child in op.input_dependencies:
+        child_plan, child_ops = _build_plan_and_ops(child)
+        child_plans.append(child_plan)
+        ops.extend(child_ops)
+
+    name = anonymize_op_name(op)
+    config: Optional[_OpConfig] = None
+    if isinstance(op, AbstractUDFMap):
+        batch_format = getattr(op, "batch_format", None)
+        if batch_format is not None:
+            config = _OpConfig(batch_format=batch_format)
+    ops.append(_Op(name=name, config=config))
+    return _PlanNode(op=name, inputs=child_plans), ops
 
 
 def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
@@ -207,21 +220,6 @@ def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
     for child in op.input_dependencies:
         line += _format_plan_str(child, depth + 1)
     return line
-
-
-def _walk_operators(op: LogicalOperator) -> List[_Op]:
-    """Post-order walk producing a flat list of the anonymized operators, containing op names, per-op config."""
-    ops: List[_Op] = []
-    for child in op.input_dependencies:
-        ops.extend(_walk_operators(child))
-
-    config: Optional[_OpConfig] = None
-    if isinstance(op, AbstractUDFMap):
-        batch_format = getattr(op, "batch_format", None)
-        if batch_format is not None:
-            config = _OpConfig(batch_format=batch_format)
-    ops.append(_Op(name=anonymize_op_name(op), config=config))
-    return ops
 
 
 def _collect_pipeline_perf(
