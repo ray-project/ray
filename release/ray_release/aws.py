@@ -140,7 +140,7 @@ def _retry(f):
 @_retry
 def _get_s3_rayci_test_data_presigned():
     global S3_PRESIGNED_CACHE
-    if S3_PRESIGNED_CACHE is not None and S3_PRESIGNED_CACHE.status_code < 500:
+    if S3_PRESIGNED_CACHE is not None and S3_PRESIGNED_CACHE.status_code == 200:
         return S3_PRESIGNED_CACHE
     auth = BotoAWSRequestsAuth(
         aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
