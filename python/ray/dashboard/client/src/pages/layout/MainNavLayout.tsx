@@ -258,7 +258,7 @@ const DashboardDataFreshness = ({
   React.useEffect(() => {
     const interval = window.setInterval(() => {
       setNow(Date.now());
-    }, 30000);
+    }, 5000);
 
     return () => {
       window.clearInterval(interval);
@@ -338,12 +338,18 @@ export const formatFreshnessLabel = (
   }
 
   const ageMs = Math.max(0, now - lastDataLoadTime);
+  const fiveSecondsMs = 5 * 1000;
   const minuteMs = 60 * 1000;
   const hourMs = 60 * minuteMs;
   const dayMs = 24 * hourMs;
 
-  if (ageMs < minuteMs) {
+  if (ageMs < fiveSecondsMs) {
     return "Updated just now";
+  }
+
+  if (ageMs < minuteMs) {
+    const ageSeconds = Math.min(55, Math.round(ageMs / fiveSecondsMs) * 5);
+    return `Updated ${ageSeconds}s ago`;
   }
 
   if (ageMs < hourMs) {

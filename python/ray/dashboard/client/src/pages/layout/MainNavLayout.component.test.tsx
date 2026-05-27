@@ -111,7 +111,10 @@ const TestApp = ({ location = "/" }: { location?: string }) => {
 describe("MainNavLayout", () => {
   it("formats dashboard data freshness", () => {
     expect(formatFreshnessLabel(undefined, 1_000)).toBe("No data loaded");
-    expect(formatFreshnessLabel(1_000, 30_000)).toBe("Updated just now");
+    expect(formatFreshnessLabel(1_000, 5_999)).toBe("Updated just now");
+    expect(formatFreshnessLabel(1_000, 30_000)).toBe("Updated 30s ago");
+    expect(formatFreshnessLabel(1_000, 60_999)).toBe("Updated 55s ago");
+    expect(formatFreshnessLabel(1_000, 61_000)).toBe("Updated 1m ago");
     expect(formatFreshnessLabel(1_000, 121_000)).toBe("Updated 2m ago");
     expect(formatFreshnessLabel(1_000, 7_201_000)).toBe("Updated 2h ago");
     expect(formatFreshnessLabel(1_000, 172_801_000)).toBe("Updated 2d ago");
