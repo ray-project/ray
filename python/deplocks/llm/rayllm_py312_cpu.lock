@@ -2548,6 +2548,11 @@ ninja==1.13.0 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   flashinfer-python
     #   vllm
+nixl==1.1.0 \
+    --hash=sha256:f46f65768770fa508eb52921c41b5dc52b754478b0ebb606fff6d80f41375d8b
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
+    #   -r python/requirements/llm/llm-requirements.txt
 nixl-cu13==1.1.0 \
     --hash=sha256:1991d7899603907099f3e3ac3bf59f950de194bfe8d92c01ef9f06ce1639efa4 \
     --hash=sha256:1c4e8142eff7cabe6107b3b65bc7a09da27ed585efb7972e45b1faabe74726c7 \
@@ -2562,6 +2567,7 @@ nixl-cu13==1.1.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   -r python/requirements/llm/llm-requirements.txt
+    #   nixl
 numba==0.65.0 \
     --hash=sha256:032b0b8e879512cd424d79eed6d772a1399c6387ded184c2cf3cc22c08d750a6 \
     --hash=sha256:05c0a9fdf75d85f57dee47b719e8d6415707b80aae45d75f63f9dc1b935c29f7 \
@@ -2657,6 +2663,7 @@ numpy==2.2.6 \
     #   gymnasium
     #   mistral-common
     #   ml-dtypes
+    #   nixl-cu12
     #   nixl-cu13
     #   numba
     #   nvidia-cutlass-dsl-libs-base
@@ -5026,6 +5033,7 @@ torch==2.11.0+cpu \
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   compressed-tensors
     #   flashinfer-python
+    #   nixl-cu12
     #   nixl-cu13
     #   quack-kernels
     #   tilelang
@@ -5690,3 +5698,4 @@ zipp==3.23.1 \
 
 # The following packages were excluded from the output:
 # setuptools
+# nixl-cu12
