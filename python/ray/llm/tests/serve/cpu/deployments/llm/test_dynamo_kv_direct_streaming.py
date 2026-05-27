@@ -24,8 +24,9 @@ from ray.serve.llm import LLMConfig
 @dataclass
 class FakeReplica:
     replica_id: ReplicaID
-    dynamo_worker_id: int
+    dynamo_worker_id: int = None
     routing_stats: Dict[str, Any] = None
+    rank: int = None
 
 
 class FakeDynamoActor:
@@ -167,6 +168,28 @@ async def test_dynamo_router_discovers_deployment_scoped_actor(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_dynamo_router_uses_replica_rank_as_worker_id():
+    actor = FakeDynamoActor()
+    router = DynamoKVRequestRouter(
+        deployment_id=DeploymentID(name="llm"),
+        handle_source=DeploymentHandleSource.UNKNOWN,
+    )
+    router.initialize_state(actor=actor)
+
+    replica_a = FakeReplica(_replica_id("replica-a"), rank=10)
+    replica_b = FakeReplica(_replica_id("replica-b"), rank=20)
+    pending_request = _pending_request(b'{"prompt": "hello"}')
+
+    ranked = await router.choose_replicas(
+        [replica_a, replica_b],
+        pending_request=pending_request,
+    )
+
+    assert ranked == [[replica_b], [replica_a]]
+    assert actor.rank_calls[0]["candidate_worker_ids"] == [10, 20]
+
+
+@pytest.mark.asyncio
 async def test_dynamo_lifecycle_middleware_marks_start_prefill_and_finish(monkeypatch):
     actor = FakeDynamoActor()
     monkeypatch.setattr(
@@ -180,6 +203,13 @@ async def test_dynamo_lifecycle_middleware_marks_start_prefill_and_finish(monkey
             {
                 "type": "http.response.body",
                 "body": b"data: first\n\n",
+                "more_body": True,
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b"data: second\n\n",
                 "more_body": True,
             }
         )
@@ -208,7 +238,43 @@ async def test_dynamo_lifecycle_middleware_marks_start_prefill_and_finish(monkey
         "http.response.start",
         "http.response.body",
         "http.response.body",
+        "http.response.body",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [RuntimeError, asyncio.CancelledError])
+async def test_dynamo_lifecycle_middleware_finishes_on_error(
+    monkeypatch,
+    error_type,
+):
+    actor = FakeDynamoActor()
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.routing_policies.dynamo_kv.serve.get_deployment_actor",
+        lambda *args, **kwargs: actor,
+    )
+
+    async def app(scope, receive, send):
+        raise error_type()
+
+    middleware = DynamoDirectStreamingLifecycleMiddleware(app, "actor")
+    scope = {
+        "type": "http",
+        "headers": [(b"x-ray-serve-dynamo-route-token", b"route-token-20")],
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        pass
+
+    with pytest.raises(error_type):
+        await middleware(scope, receive, send)
+
+    assert actor.start_calls == ["route-token-20"]
+    assert actor.prefill_calls == []
+    assert actor.finish_calls == ["route-token-20"]
 
 
 def test_direct_streaming_options_attach_dynamo_deployment_actor():
