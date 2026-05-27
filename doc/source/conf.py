@@ -930,7 +930,7 @@ def setup(app):
     # Sphinx highlighting warnings.  Re-tag them as ``ipython3`` so the
     # python parts stay highlighted as python and ``!magic`` / ``%magic``
     # lines render as shell.
-    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n((?:#[^\n]*\n)*)(![a-z])")
+    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n((?:#[^\n]*\n)*)([!%]\S)")
 
     def fix_collections_code_blocks(app, docname, source):
         if docname.startswith("_collections/"):
