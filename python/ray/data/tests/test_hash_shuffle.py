@@ -627,6 +627,133 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
         assert "memory" in op._aggregator_pool._aggregator_ray_remote_args
 
 
+def test_aggregator_memory_capped_at_per_node_limit(ray_start_regular):
+    """Per-aggregator memory must fit on a single node.
+
+    Without the cap in
+    ``HashShufflingOperatorBase._get_default_aggregator_ray_remote_args``,
+    big-dataset shuffles produce per-aggregator memory requests larger
+    than any node can satisfy and the actor raises
+    ``ActorUnschedulableError`` — adding nodes doesn't help because each
+    new node is the same shape. With the cap, the actor schedules and
+    relies on the shuffle's existing spill paths for partitions that
+    exceed the cap.
+    """
+    from ray.data._internal.execution.operators import hash_shuffle
+
+    PER_NODE_MEMORY = 50 * GiB  # m5.4xlarge-ish Ray-visible memory
+    EXPECTED_CAP = int(PER_NODE_MEMORY * 0.8)
+
+    left_logical = MagicMock(LogicalOperator)
+    left_logical.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        # Big enough that ``_estimate_aggregator_memory_allocation``
+        # produces a per-aggregator memory > the per-node cap.
+        size_bytes=500 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    left_logical.estimated_num_outputs.return_value = 100
+    left_op = MagicMock(PhysicalOperator)
+    left_op._output_dependencies = []
+    left_op._logical_operators = [left_logical]
+    left_op.num_output_splits.return_value = 1
+
+    right_logical = MagicMock(LogicalOperator)
+    right_logical.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=10 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    right_logical.estimated_num_outputs.return_value = 10
+    right_op = MagicMock(PhysicalOperator)
+    right_op._output_dependencies = []
+    right_op._logical_operators = [right_logical]
+    right_op.num_output_splits.return_value = 1
+
+    with patch.object(
+        hash_shuffle,
+        "_get_max_per_node_memory",
+        return_value=PER_NODE_MEMORY,
+    ), patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 512.0, "memory": 32 * PER_NODE_MEMORY},
+    ):
+        op = JoinOperator(
+            left_input_op=left_op,
+            right_input_op=right_op,
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=16,
+        )
+
+    requested_memory = op._aggregator_pool._aggregator_ray_remote_args["memory"]
+    assert requested_memory == EXPECTED_CAP, (
+        f"Expected per-aggregator memory to be capped at {EXPECTED_CAP} "
+        f"(0.8 × {PER_NODE_MEMORY}), got {requested_memory}"
+    )
+
+
+def test_aggregator_memory_uncapped_when_estimate_fits(ray_start_regular):
+    """When the estimate already fits on a node, the cap is a no-op."""
+    from ray.data._internal.execution.operators import hash_shuffle
+
+    PER_NODE_MEMORY = 200 * GiB  # large enough that the cap doesn't bite
+
+    left_logical = MagicMock(LogicalOperator)
+    left_logical.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=8 * GiB,  # small dataset, small per-aggregator ask
+        exec_stats=None,
+        input_files=None,
+    )
+    left_logical.estimated_num_outputs.return_value = 8
+    left_op = MagicMock(PhysicalOperator)
+    left_op._output_dependencies = []
+    left_op._logical_operators = [left_logical]
+    left_op.num_output_splits.return_value = 1
+
+    right_logical = MagicMock(LogicalOperator)
+    right_logical.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=1 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    right_logical.estimated_num_outputs.return_value = 1
+    right_op = MagicMock(PhysicalOperator)
+    right_op._output_dependencies = []
+    right_op._logical_operators = [right_logical]
+    right_op.num_output_splits.return_value = 1
+
+    with patch.object(
+        hash_shuffle,
+        "_get_max_per_node_memory",
+        return_value=PER_NODE_MEMORY,
+    ), patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 64.0, "memory": 16 * PER_NODE_MEMORY},
+    ):
+        op = JoinOperator(
+            left_input_op=left_op,
+            right_input_op=right_op,
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=8,
+        )
+
+    requested_memory = op._aggregator_pool._aggregator_ray_remote_args["memory"]
+    cap = int(PER_NODE_MEMORY * 0.8)
+    assert (
+        requested_memory < cap
+    ), f"Per-aggregator memory {requested_memory} unexpectedly hit cap {cap}"
+
+
 def test_partial_aggregate_preserves_sort_after_builder_compaction(
     ray_start_regular,
     monkeypatch,

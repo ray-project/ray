@@ -1176,6 +1176,33 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
             )
 
+        # Cap per-aggregator memory at what fits on a single node. Without
+        # this, large-dataset shuffles (e.g. TPC-H Q9: 16-partition joins
+        # over ~400 GiB lineitem produce ~60 GiB per-aggregator requests)
+        # ask for more memory than any node in the cluster has, and the
+        # aggregator actor raises ``ActorUnschedulableError`` — the
+        # autoscaler can add more nodes but each new node is the same
+        # size, so the request can never be satisfied. Partitions that
+        # exceed the cap rely on the shuffle's existing spill / compaction
+        # paths instead of crashing the host.
+        per_node_max_memory = _get_max_per_node_memory()
+        if per_node_max_memory is not None:
+            # 0.8x leaves room for Ray system overhead (raylet, plasma,
+            # the worker process itself), which would otherwise push a
+            # full-budget actor past the node's usable memory and trigger
+            # OOM-kill.
+            per_node_cap = int(per_node_max_memory * 0.8)
+            if estimated_aggregator_memory_required > per_node_cap:
+                logger.info(
+                    f"Capping per-aggregator memory request from "
+                    f"{estimated_aggregator_memory_required / GiB:.1f}GiB "
+                    f"to {per_node_cap / GiB:.1f}GiB so the actor can "
+                    f"schedule on a single node (largest configured node "
+                    f"has {per_node_max_memory / GiB:.1f}GiB). Partitions "
+                    f"exceeding the cap rely on shuffle spill."
+                )
+                estimated_aggregator_memory_required = per_node_cap
+
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
                 total_available_cluster_resources,
@@ -1895,6 +1922,39 @@ def _get_total_cluster_resources() -> ExecutionResources:
         ray._private.state.state.get_max_resources_from_cluster_config()
         or ray.cluster_resources()
     )
+
+
+def _get_max_per_node_memory() -> Optional[int]:
+    """Largest single-node memory budget available in the cluster.
+
+    For autoscaler V2 clusters, walks the configured node groups and returns
+    the max ``memory`` resource across all groups with ``max_count > 0`` —
+    this reflects the *largest* node shape the autoscaler can provision,
+    even before any worker nodes have spun up. Falls back to the live
+    ``ray.nodes()`` view (max-over-alive-nodes) for non-autoscaler setups
+    or when the cluster config isn't published.
+
+    Used by :meth:`HashShufflingOperatorBase._get_default_aggregator_ray_remote_args`
+    to cap per-aggregator memory at what can actually schedule on a single
+    node, preventing ``ActorUnschedulableError`` on large shuffles.
+    """
+    config = ray._private.state.state.get_cluster_config()
+    if config is not None:
+        max_mem = 0
+        for ng in config.node_group_configs:
+            if ng.max_count == 0:
+                continue
+            mem = ng.resources.get("memory", 0)
+            if mem > 0:
+                max_mem = max(max_mem, mem)
+        if max_mem > 0:
+            return int(max_mem)
+    nodes = [n for n in ray.nodes() if n.get("Alive")]
+    if nodes:
+        per_node_mems = [n.get("Resources", {}).get("memory", 0) for n in nodes]
+        if any(m > 0 for m in per_node_mems):
+            return int(max(per_node_mems))
+    return None
 
 
 # TODO rebase on generic operator output estimation
