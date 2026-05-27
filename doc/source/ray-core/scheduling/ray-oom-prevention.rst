@@ -82,7 +82,7 @@ Worker killing policy
 
 Worker killing policy since Ray 2.56
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.. image:: ../images/time-based-worker-killing-policy.png
+.. image:: ../images/time-based-killing-policy.png
   :width: 1024
   :alt: Time based worker killing policy
 
