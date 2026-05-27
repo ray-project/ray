@@ -37,6 +37,25 @@ class TestScaleDownReplicaSelection:
         wait_for_condition(check_new_replica, timeout=timeout, retry_interval_ms=50)
 
     @staticmethod
+    def _wait_until_running_replicas(
+        app_name: str,
+        deployment_name: str,
+        expected_num_replicas: int,
+        timeout: int = 30,
+    ):
+        def check_running_replicas():
+            deployment_info = (
+                serve.status().applications[app_name].deployments[deployment_name]
+            )
+            return (
+                deployment_info.status == DeploymentStatus.HEALTHY
+                and deployment_info.replica_states[ReplicaState.RUNNING]
+                == expected_num_replicas
+            )
+
+        wait_for_condition(check_running_replicas, timeout=timeout)
+
+    @staticmethod
     def _wait_until_min_replica(
         app_name: str, deployment_name: str, min_replicas: int, timeout: int = 30
     ):
@@ -60,8 +79,13 @@ class TestScaleDownReplicaSelection:
         placement_group_bundles: list[dict] = None,
         placement_group_bundle_label_selector: list[dict] = None,
         autoscaling_config: dict = None,
+        prefer_local_node_routing: bool = None,
     ):
-        @serve.deployment(name=deployment_name)
+        deployment_kwargs = {"name": deployment_name}
+        if prefer_local_node_routing is not None:
+            deployment_kwargs["prefer_local_node_routing"] = prefer_local_node_routing
+
+        @serve.deployment(**deployment_kwargs)
         class TestDeployment:
             async def get_info(self):
                 return {
@@ -219,13 +243,19 @@ class TestScaleDownReplicaSelection:
         finally:
             serve.shutdown()
 
-    def test_downscale_prefers_not_head_node(self, ray_cluster):
+    @pytest.mark.parametrize("prefer_local_node_routing", [False, True])
+    def test_downscale_prefers_not_head_node(
+        self, ray_cluster, prefer_local_node_routing
+    ):
         """Head node is never relinquished, even when it would otherwise be removed first.
 
         The head node has only 1 replica, matches only the fallback label,
         and is older — so priorities #3, #4, and #5 all favor removing it.
         This test verifies that priority #2 (keep head node) overrides all
         of them.
+
+        Upscale is verified via serve.status() rather than handle routing so
+        the test remains valid when prefer_local_node_routing is enabled.
         """
         cluster = ray_cluster
         fallback_label = {"type": "fallback"}
@@ -254,6 +284,7 @@ class TestScaleDownReplicaSelection:
                     "max_replicas": 3,
                     **self._quick_upscale_config(),
                 },
+                prefer_local_node_routing=prefer_local_node_routing,
             )
             wait_for_condition(check_apps_running, apps=[app_name])
 
@@ -265,9 +296,10 @@ class TestScaleDownReplicaSelection:
             assert handle.get_info.remote().result()["node_id"] == head_node_id
 
             # Scale up to 3 replicas (1 head + 2 worker), then back down to 1.
-            self._wait_for_upscale(
+            self._wait_until_running_replicas(
+                app_name=app_name,
+                deployment_name=deployment_name,
                 expected_num_replicas=3,
-                handle=handle,
                 timeout=30,
             )
             self._wait_until_min_replica(
