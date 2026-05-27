@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
 from typing import (
@@ -829,11 +830,11 @@ def read_zarr(
     filesystem: Optional[
         Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
     ] = None,
-    chunk_shape: Optional[List[int]] = None,
+    chunk_shape: Optional[Sequence[int]] = None,
     array_paths: List[str] | None = None,
     allow_full_metadata_scan: bool = False,
-    align_axis_0: Optional[bool] = None,
-    overlap: Optional[int] = None,
+    align_axis_0: bool = False,
+    overlap: int = 0,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -846,7 +847,7 @@ def read_zarr(
 
     Two output schemas, selected by ``align_axis_0``:
 
-    Default (long-form, ``align_axis_0=None``) — one row per chunk of
+    Default (long-form, ``align_axis_0=False``) — one row per chunk of
     one array. Columns:
 
     * ``array``: the source array's path (e.g., ``"data/camera0_rgb"``, or
@@ -968,7 +969,9 @@ def read_zarr(
             paths it's usually fine to omit. If omitted, the datasource
             infers the filesystem from ``path``.
         chunk_shape: Optional override for the chunk geometry along the
-            leading axes. Applied as a prefix to every selected array,
+            leading axes. A sequence of positive integers (list or tuple,
+            matching ``zarr.create(chunks=...)`` / ``np.zeros((...))``
+            conventions), applied as a prefix to every selected array,
             overriding the leading axes and keeping trailing axes at each
             array's native chunking. ``chunk_shape=[16]`` re-tiles a 4-D
             array with native chunks ``(1, 224, 224, 3)`` into
@@ -991,7 +994,7 @@ def read_zarr(
             global axis-0 range. All selected arrays must share
             ``shape[0]`` and must end up with the same effective axis-0
             chunk size after ``chunk_shape`` resolution. The
-            default (``None``) uses the long-form chunk-per-row schema.
+            default (``False``) uses the long-form chunk-per-row schema.
         overlap: When set with ``align_axis_0``, extends each row's per-array
             data forward by ``overlap`` timesteps from the next row's owned
             range (clipped at the end of the store). Used for sliding-window
@@ -1001,8 +1004,8 @@ def read_zarr(
             ``flat_map`` doesn't need cross-row state. The row's ownership
             (the ``t_start``/``t_stop`` columns) is unchanged; only
             ``chunk.shape[0]`` of each per-array column grows by up to
-            ``overlap``. Requires ``align_axis_0``. ``None`` (default) and ``0`` are equivalent — no
-            overlap, each row's data exactly covers its owned range.
+            ``overlap``. Requires ``align_axis_0=True``. Defaults to ``0`` —
+            no overlap, each row's data exactly covers its owned range.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,

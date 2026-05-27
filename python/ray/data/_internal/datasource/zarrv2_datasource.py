@@ -380,7 +380,7 @@ class ZarrV2Datasource(Datasource):
 
     Two output schemas, selected at the call site via ``align_axis_0``:
 
-    Long-form (default, ``align_axis_0=None``) — one row per chunk per
+    Long-form (default, ``align_axis_0=False``) — one row per chunk per
     array. Columns:
 
     * ``array``: the source array's path within the store
@@ -415,11 +415,11 @@ class ZarrV2Datasource(Datasource):
         self,
         path: str,
         filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
-        chunk_shape: List[int] | None = None,
-        array_paths: List[str] | None = None,
+        chunk_shape: list[int] | None = None,
+        array_paths: list[str] | None = None,
         allow_full_metadata_scan: bool = False,
-        align_axis_0: bool | None = None,
-        overlap: int | None = None,
+        align_axis_0: bool = False,
+        overlap: int = 0,
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
@@ -429,8 +429,8 @@ class ZarrV2Datasource(Datasource):
 
         # Resolve filesystem + store path. The order of precedence:
         #   1. Explicit ``filesystem=`` always wins.
-        #   2. ``.zip`` URL/path → auto-wrap with fsspec's ZipFileSystem.
-        #   3. Otherwise delegate to Ray Data's standard URL→filesystem
+        #   2. ``.zip`` URL/path: auto-wrap with fsspec's ZipFileSystem.
+        #   3. Otherwise delegate to Ray Data's standard URL to filesystem
         #      helper (the same one every other ``read_*`` API uses).
         if filesystem is None and self.paths[0].endswith(".zip"):
             import fsspec
@@ -464,51 +464,52 @@ class ZarrV2Datasource(Datasource):
                 )
             self._store_path = self.paths[0].rstrip("/")
 
-        # Validate chunk_shape and canonicalize to a tuple. The tuple form
-        # is what ``ZarrArrayMeta.effective_chunks`` consumes.
-        if chunk_shape is not None:
-            if (
-                not isinstance(chunk_shape, list)
-                or not chunk_shape
-                or any(not isinstance(c, int) or c <= 0 for c in chunk_shape)
-            ):
-                raise ValueError(
-                    f"chunk_shape must be a non-empty list of positive "
-                    f"integers, got {chunk_shape!r}"
-                )
-        self.chunk_shape: tuple[int, ...] | None = (
-            tuple(chunk_shape) if chunk_shape is not None else None
-        )
+        if chunk_shape is not None and not isinstance(chunk_shape, (tuple, list)):
+            raise ValueError(
+                f"chunk_shape must be a non-empty sequence of positive "
+                f"integers (list or tuple), got {chunk_shape!r}"
+            )
 
-        self._selected_arrays = self._load_metadata(array_paths)
-        if not self._selected_arrays:
+        self.chunk_shape = tuple(chunk_shape) if chunk_shape is not None else None
+
+        self._metadata_by_path = self._load_metadata(array_paths)
+        if not self._metadata_by_path:
             raise ValueError(
                 f"No arrays discovered in Zarr store at {self.paths[0]!r}."
             )
 
-        # Aligned-mode setup: validate the alignment request and filter
-        # ``self._selected_arrays`` down to the aligned subset. The
-        # per-array effective-chunks loop below then validates that all
-        # aligned arrays have the same axis-0 chunk.
-        self._aligned_array_names: list[str] | None = self._resolve_align_axis_0(
-            align_axis_0
-        )
+        if align_axis_0 is False:
+            self._aligned_array_names: list[str] | None = None
+        elif align_axis_0 is True:
+            shape0_by_array = {
+                name: meta.shape[0] if meta.shape else 0
+                for name, meta in self._metadata_by_path.items()
+            }
+            if len(set(shape0_by_array.values())) > 1:
+                raise ValueError(
+                    f"All selected arrays must share shape[0] when "
+                    f"align_axis_0=True. Got: {shape0_by_array}. Pass a "
+                    f"shape-compatible subset via array_paths=[...]."
+                )
+            self._aligned_array_names = list(self._metadata_by_path.keys())
+        else:
+            raise TypeError(
+                f"align_axis_0 must be a bool, got " f"{type(align_axis_0).__name__}"
+            )
 
         # Validate overlap. Only meaningful when arrays are co-iterated as
         # wide rows, since the trailing lookahead is exposed via the
         # per-array column being longer than ``t_stop - t_start``.
-        if overlap is not None and (not isinstance(overlap, int) or overlap < 0):
-            raise ValueError(
-                f"overlap must be a non-negative integer or None, got " f"{overlap!r}"
-            )
+        if not isinstance(overlap, int) or overlap < 0:
+            raise ValueError(f"overlap must be a non-negative integer, got {overlap!r}")
         if overlap and self._aligned_array_names is None:
             raise ValueError(
-                "overlap requires align_axis_0 to be set. In the default "
-                "long-form (chunk-per-row) mode, there's no wide row to "
-                "extend forward — exposed via the ``chunk_slices`` column "
-                "on each chunk row instead."
+                "overlap requires align_axis_0=True. In the default long-form "
+                "(chunk-per-row) mode, there's no wide row to extend forward — "
+                "the ``chunk_slices`` column on each chunk row already exposes "
+                "the global axis-0 range."
             )
-        self.overlap: int = overlap or 0
+        self.overlap = overlap
 
         # Resolve per-array chunk geometry. ``effective_chunks`` raises a
         # ``ValueError`` if the user's ``chunk_shape`` is longer than any
@@ -516,7 +517,7 @@ class ZarrV2Datasource(Datasource):
         # happens.
         self._array_chunks: dict[str, tuple[int, ...]] = {}
         self._array_grids: dict[str, tuple[int, ...]] = {}
-        for name, meta in self._selected_arrays.items():
+        for name, meta in self._metadata_by_path.items():
             chunks = meta.effective_chunks(self.chunk_shape)
             self._array_chunks[name] = chunks
             self._array_grids[name] = meta.grid_shape(chunks)
@@ -543,52 +544,11 @@ class ZarrV2Datasource(Datasource):
 
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
-    def _resolve_align_axis_0(self, align_axis_0: bool | None) -> list[str] | None:
-        """Validate ``align_axis_0`` and return the aligned array names in order.
-
-        Returns ``None`` when alignment is off (long-form mode). Otherwise
-        returns the ordered list of selected array names after asserting
-        they all share ``shape[0]``.
-
-        ``align_axis_0`` does not filter ``_selected_arrays`` — the user
-        chooses which arrays to read via ``array_paths``, and this method
-        only validates that the resulting set is mutually aligned.
-        """
-        if not align_axis_0:
-            return None
-
-        if align_axis_0 is not True:
-            raise TypeError(
-                f"align_axis_0 must be a bool or None, got "
-                f"{type(align_axis_0).__name__}"
-            )
-
-        shape0_by_array = {
-            name: meta.shape[0] if meta.shape else 0
-            for name, meta in self._selected_arrays.items()
-        }
-        if len(set(shape0_by_array.values())) > 1:
-            from collections import Counter
-
-            most_common_size, _ = Counter(shape0_by_array.values()).most_common(1)[0]
-            aligned_subset = sorted(
-                n for n, s in shape0_by_array.items() if s == most_common_size
-            )
-            raise ValueError(
-                f"All selected arrays must share shape[0] when "
-                f"align_axis_0=True. Got: {shape0_by_array}. Largest aligned "
-                f"subset has shape[0]={most_common_size}: {aligned_subset}. "
-                f"Pass that subset via array_paths=[...] to read only those "
-                f"arrays."
-            )
-
-        return list(self._selected_arrays.keys())
-
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Total bytes = sum over selected arrays of ``prod(shape) * itemsize``."""
         return sum(
             math.prod(meta.shape) * meta.itemsize
-            for meta in self._selected_arrays.values()
+            for meta in self._metadata_by_path.values()
         )
 
     def get_read_tasks(
@@ -630,7 +590,7 @@ class ZarrV2Datasource(Datasource):
     ) -> List[ReadTask]:
         """Long-form read tasks. See :meth:`get_read_tasks` for semantics."""
         read_tasks: List[ReadTask] = []
-        for name, meta in self._selected_arrays.items():
+        for name, meta in self._metadata_by_path.items():
             chunks = self._array_chunks[name]
             grid = self._array_grids[name]
             descriptors = [
@@ -665,7 +625,7 @@ class ZarrV2Datasource(Datasource):
         """Sum in-memory bytes across all chunks in one long-form batch."""
         return sum(
             math.prod(stop - start for start, stop in desc.chunk_slices)
-            * self._selected_arrays[desc.array_name].itemsize
+            * self._metadata_by_path[desc.array_name].itemsize
             for desc in batch
         )
 
@@ -681,7 +641,7 @@ class ZarrV2Datasource(Datasource):
         # ``__init__``) and the same shape[0]. Read the geometry off the first.
         first_name = self._aligned_array_names[0]
         axis_0_chunk = self._array_chunks[first_name][0]
-        shape0 = self._selected_arrays[first_name].shape[0]
+        shape0 = self._metadata_by_path[first_name].shape[0]
 
         descriptors = [
             _AlignedChunkDescriptor(
@@ -720,7 +680,7 @@ class ZarrV2Datasource(Datasource):
     def _estimate_aligned_batch_mem_size(
         self, batch: list[_AlignedChunkDescriptor]
     ) -> int:
-        """Sum bytes across all (row × aligned-array) pairs in a wide-row batch.
+        """Sum bytes across all (row, aligned-array) pairs in a wide-row batch.
 
         Accounts for the trailing overlap data each row carries: the row's
         per-array slice covers ``[t_start, t_stop_data)``, not just
@@ -733,7 +693,7 @@ class ZarrV2Datasource(Datasource):
             * meta.itemsize
             for desc in batch
             for meta in (
-                self._selected_arrays[name] for name in self._aligned_array_names
+                self._metadata_by_path[name] for name in self._aligned_array_names
             )
         )
 

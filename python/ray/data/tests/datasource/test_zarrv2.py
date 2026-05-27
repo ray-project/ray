@@ -201,7 +201,7 @@ def test_normalizes_requested_root_array_path(zarrv2_root_store):
         str(zarrv2_root_store),
         array_paths=[""],
     )
-    assert list(datasource._selected_arrays) == [""]
+    assert list(datasource._metadata_by_path) == [""]
 
 
 def test_normalizes_requested_array_paths(zarrv2_group_store):
@@ -209,7 +209,7 @@ def test_normalizes_requested_array_paths(zarrv2_group_store):
         str(zarrv2_group_store),
         array_paths=["images/", "nested"],
     )
-    assert list(datasource._selected_arrays) == ["images", "nested"]
+    assert list(datasource._metadata_by_path) == ["images", "nested"]
 
 
 def test_rejects_missing_array_paths(zarrv2_group_store):
@@ -226,7 +226,7 @@ def test_rejects_missing_array_paths(zarrv2_group_store):
 def test_accepts_heterogeneous_arrays_in_one_read(heterogeneous_zarrv2_store):
     """No alignment required: arrays of any rank/shape coexist in one read."""
     datasource = zarrv2_datasource.ZarrV2Datasource(str(heterogeneous_zarrv2_store))
-    assert set(datasource._selected_arrays) == {
+    assert set(datasource._metadata_by_path) == {
         "data/camera0_rgb",
         "data/robot0_eef_pos",
         "meta/episode_ends",
@@ -268,7 +268,7 @@ def test_loads_per_array_zarray_without_zmetadata(unconsolidated_zarrv2_store):
         str(unconsolidated_zarrv2_store),
         array_paths=["images", "nested"],
     )
-    assert set(datasource._selected_arrays) == {"images", "nested"}
+    assert set(datasource._metadata_by_path) == {"images", "nested"}
 
 
 def test_full_scan_discovers_arrays_without_zmetadata(unconsolidated_zarrv2_store):
@@ -277,7 +277,7 @@ def test_full_scan_discovers_arrays_without_zmetadata(unconsolidated_zarrv2_stor
         str(unconsolidated_zarrv2_store),
         allow_full_metadata_scan=True,
     )
-    assert set(datasource._selected_arrays) == {"images", "nested"}
+    assert set(datasource._metadata_by_path) == {"images", "nested"}
 
 
 def test_full_scan_discovers_nested_arrays(tmp_path):
@@ -293,9 +293,9 @@ def test_full_scan_discovers_nested_arrays(tmp_path):
         str(store_path),
         allow_full_metadata_scan=True,
     )
-    assert set(datasource._selected_arrays) == {"top", "group/inner"}
+    assert set(datasource._metadata_by_path) == {"top", "group/inner"}
     # Keys must be in canonical form: no trailing slashes, no double slashes.
-    for key in datasource._selected_arrays:
+    for key in datasource._metadata_by_path:
         assert not key.endswith("/")
         assert "//" not in key
 
@@ -319,8 +319,8 @@ def test_full_scan_handles_trailing_slash_dirpaths(unconsolidated_zarrv2_store):
         filesystem=_TrailingSlashLocalFs(skip_instance_cache=True),
         allow_full_metadata_scan=True,
     )
-    assert set(datasource._selected_arrays) == {"images", "nested"}
-    for key in datasource._selected_arrays:
+    assert set(datasource._metadata_by_path) == {"images", "nested"}
+    for key in datasource._metadata_by_path:
         assert not key.endswith("/")
 
 
@@ -444,15 +444,29 @@ def test_effective_chunks_rejects_chunk_shape_longer_than_rank():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("chunk_shape", [[0], [-1], [1.5], ["five"], [1, 0], []])
+@pytest.mark.parametrize(
+    "chunk_shape",
+    ["invalid", 42, b"bytes", {"key": 1}, {1, 2}],
+)
 def test_rejects_invalid_chunk_shape(zarrv2_group_store, chunk_shape):
+    """Non-list/non-tuple inputs are rejected at construction time."""
     with pytest.raises(
-        ValueError, match="chunk_shape must be a non-empty list of positive integers"
+        ValueError,
+        match="chunk_shape must be a non-empty sequence of positive integers",
     ):
         zarrv2_datasource.ZarrV2Datasource(
             str(zarrv2_group_store),
             chunk_shape=chunk_shape,
         )
+
+
+@pytest.mark.parametrize("chunk_shape", [[4], (4,)])
+def test_accepts_list_or_tuple_chunk_shape(aligned_zarrv2_store, chunk_shape):
+    """Either list or tuple is accepted; both canonicalize to the same tuple."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store), chunk_shape=chunk_shape
+    )
+    assert datasource.chunk_shape == (4,)
 
 
 @pytest.mark.parametrize(
@@ -541,11 +555,10 @@ def test_align_axis_0_column_set(aligned_zarrv2_store, array_paths, extra_cols):
 
 
 def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
-    """Misalignment raises and suggests the largest aligned subset."""
+    """Misalignment raises with the per-array shape[0] breakdown."""
     with pytest.raises(
         ValueError,
-        match=r"Largest aligned subset has shape\[0\]=20: "
-        r"\['data/camera0_rgb', 'data/robot0_eef_pos'\]",
+        match=r"All selected arrays must share shape\[0\]",
     ):
         zarrv2_datasource.ZarrV2Datasource(
             str(heterogeneous_zarrv2_store),
@@ -555,8 +568,8 @@ def test_align_axis_0_rejects_misaligned_shape0(heterogeneous_zarrv2_store):
 
 
 def test_align_axis_0_rejects_non_bool(aligned_zarrv2_store):
-    """``align_axis_0`` must be a bool or None — no list form."""
-    with pytest.raises(TypeError, match=r"align_axis_0 must be a bool or None"):
+    """``align_axis_0`` must be a bool — no list form."""
+    with pytest.raises(TypeError, match=r"align_axis_0 must be a bool"):
         zarrv2_datasource.ZarrV2Datasource(
             str(aligned_zarrv2_store),
             align_axis_0=["img", "state"],
@@ -623,20 +636,17 @@ def test_overlap_clipped_at_store_end(aligned_zarrv2_store):
     assert rows[1]["img"].shape[0] == 4
 
 
-def test_overlap_zero_equivalent_to_none(aligned_zarrv2_store):
-    """``overlap=0`` is the same as not passing it: no lookahead."""
-    a = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store), align_axis_0=True, chunk_shape=[4], overlap=0
-    )
-    b = zarrv2_datasource.ZarrV2Datasource(
+def test_overlap_default_is_zero(aligned_zarrv2_store):
+    """``overlap=0`` (default) means no lookahead."""
+    datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store), align_axis_0=True, chunk_shape=[4]
     )
-    assert a.overlap == 0 and b.overlap == 0
+    assert datasource.overlap == 0
 
 
 def test_overlap_requires_align_axis_0(aligned_zarrv2_store):
     """``overlap`` in long-form (no ``align_axis_0``) is a clear error."""
-    with pytest.raises(ValueError, match="overlap requires align_axis_0 to be set"):
+    with pytest.raises(ValueError, match="overlap requires align_axis_0=True"):
         zarrv2_datasource.ZarrV2Datasource(
             str(aligned_zarrv2_store),
             overlap=2,
@@ -710,7 +720,7 @@ def test_accepts_pyarrow_fs_filesystem(zarrv2_group_store):
     from fsspec.spec import AbstractFileSystem
 
     assert isinstance(datasource._fs, AbstractFileSystem)
-    assert set(datasource._selected_arrays) == {"images", "nested"}
+    assert set(datasource._metadata_by_path) == {"images", "nested"}
 
 
 def test_rejects_unsupported_filesystem_type():
@@ -1014,8 +1024,8 @@ def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
         chunk_shape=[4],
         array_paths=["nested"],
         allow_full_metadata_scan=False,
-        align_axis_0=None,
-        overlap=None,
+        align_axis_0=False,
+        overlap=0,
     )
     mock_read_datasource.assert_called_once()
     args, kwargs = mock_read_datasource.call_args
