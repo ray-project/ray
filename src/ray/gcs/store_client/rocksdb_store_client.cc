@@ -14,13 +14,14 @@
 
 #include "ray/gcs/store_client/rocksdb_store_client.h"
 
+#include <sys/stat.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <limits>
 #include <optional>
 #include <stdexcept>
-#include <sys/stat.h>
 #include <utility>
 #include <vector>
 

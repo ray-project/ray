@@ -475,9 +475,7 @@ class Node:
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
             if rocksdb_storage_path:
-                session_name_file = os.path.join(
-                    rocksdb_storage_path, ".session_name"
-                )
+                session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
                 try:
                     with open(session_name_file, "rb") as f:
                         persisted = f.read().strip()
@@ -1379,9 +1377,7 @@ class Node:
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
             if rocksdb_storage_path:
-                session_name_file = os.path.join(
-                    rocksdb_storage_path, ".session_name"
-                )
+                session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
                 try:
                     os.makedirs(rocksdb_storage_path, exist_ok=True)
                     with open(session_name_file, "wb") as f:
