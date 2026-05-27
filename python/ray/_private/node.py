@@ -1403,8 +1403,34 @@ class Node:
                 )
             session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
             os.makedirs(rocksdb_storage_path, exist_ok=True)
-            with open(session_name_file, "wb") as f:
-                f.write(self._session_name.encode("utf-8"))
+            # Atomic, durable write: tmp + fsync + rename + dir fsync.
+            # The internal_kv_put below fsyncs through rocksdb's WAL, so
+            # the sidecar must also be on disk before that call returns
+            # -- otherwise a power-loss crash with the page cache still
+            # dirty would leave the rocksdb state durable but no
+            # sidecar, tripping the assert on next restart. Mirrors the
+            # write-fsync-rename-fsync_dir pattern rocksdb itself uses
+            # for MANIFEST writes.
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=rocksdb_storage_path,
+                prefix=".session_name.",
+                suffix=".tmp",
+            )
+            try:
+                with os.fdopen(tmp_fd, "wb") as f:
+                    f.write(self._session_name.encode("utf-8"))
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, session_name_file)
+                dir_fd = os.open(rocksdb_storage_path, os.O_DIRECTORY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except BaseException:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
 
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
