@@ -29,7 +29,6 @@ from ray.autoscaler._private.kuberay.node_provider import (
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
     KubeRayIPPRProvider,
 )
-from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -40,13 +39,13 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.autoscaler.v2.utils import is_head_node
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 
 logger = logging.getLogger(__name__)
 
-# Annotation written when the cluster-idle predicate fires; KubeRay operator
-# observes it and performs the terminal action.
+# Annotation patched on the CR when cluster-idle fires; KubeRay operator acts on it.
 IDLE_TTL_EXPIRED_ANNOTATION = "ray.io/idle-ttl-expired"
 
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
@@ -92,12 +91,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
-        # Monotonic timestamp of the first reconcile loop where the cluster
-        # currently looks idle. None means the signal is not held this loop.
+        # Monotonic anchor for when cluster-idle was first observed; None when not held.
         self._cluster_idle_observed_since: Optional[float] = None
-
-        # Cluster-idle threshold (seconds) read from the RayCluster CR. None
-        # means the feature is not configured. Refreshed each sync.
+        # Cluster-idle threshold (seconds) read from CR; None disables the feature.
         self._idle_termination_seconds: Optional[float] = None
 
         # Below are states that are fetched from the Kubernetes API server.
@@ -483,13 +479,14 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
+        self._evaluate_cluster_idle()
 
     def _refresh_idle_termination_seconds(self) -> None:
         """Reads idleTerminationSeconds from the cached RayCluster spec.
 
         Trusts the value as accepted by KubeRay's admission webhook
         """
-        opts = self._ray_cluster.get("spec", {}).get(AUTOSCALER_OPTIONS_KEY, {})
+        opts = self._ray_cluster["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
         secs = opts.get(IDLE_TERMINATION_SECONDS_KEY)
         self._idle_termination_seconds = float(secs) if secs is not None else None
 
@@ -662,11 +659,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
 
-    def evaluate_and_dispatch_cluster_idle(
-        self,
-        ray_state: ClusterResourceState,
-        node_type_configs: Dict[NodeType, NodeTypeConfig],
-    ) -> None:
+    def _evaluate_cluster_idle(self) -> None:
         """Drives the cluster-idle decision for this RayCluster.
 
         Checks observable conditions, masks the signal if any user driver is
@@ -678,7 +671,16 @@ class KubeRayProvider(ICloudInstanceProvider):
         if self._idle_termination_seconds is None:
             self._cluster_idle_observed_since = None
             return
-        if not self._is_cluster_idle_observable(ray_state, node_type_configs):
+
+        ray_state = get_cluster_resource_state(self._gcs_client)
+        # numOfHosts > 1 yields one raylet node per host,
+        # so min worker nodes is minReplicas * numOfHosts.
+        min_worker_nodes_by_type = {
+            wg["groupName"]: wg.get("minReplicas", 0) * wg.get("numOfHosts", 1)
+            for wg in self._ray_cluster["spec"].get("workerGroupSpecs", [])
+        }
+
+        if not self._is_cluster_idle_observable(ray_state, min_worker_nodes_by_type):
             self._cluster_idle_observed_since = None
             return
         if self._has_active_user_drivers():
@@ -695,7 +697,7 @@ class KubeRayProvider(ICloudInstanceProvider):
     @staticmethod
     def _is_cluster_idle_observable(
         ray_state: ClusterResourceState,
-        node_type_configs: Dict[NodeType, NodeTypeConfig],
+        min_worker_nodes_by_type: Dict[str, int],
     ) -> bool:
         """Returns True when the cluster currently looks idle.
 
@@ -704,7 +706,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         has no pending resource demand. Head is excluded because Ray-internal
         actors keep its NODE_WORKERS permanently busy.
         """
-        worker_count_by_type: Dict[NodeType, int] = defaultdict(int)
+        worker_count_by_type: Dict[str, int] = defaultdict(int)
         for node in ray_state.node_states:
             if node.status == NodeStatus.DEAD:
                 continue
@@ -712,8 +714,8 @@ class KubeRayProvider(ICloudInstanceProvider):
                 continue
             worker_count_by_type[node.ray_node_type_name] += 1
 
-        for type_name, cfg in node_type_configs.items():
-            if worker_count_by_type.get(type_name, 0) > cfg.min_worker_nodes:
+        for type_name, min_count in min_worker_nodes_by_type.items():
+            if worker_count_by_type.get(type_name, 0) > min_count:
                 return False
 
         for node in ray_state.node_states:
@@ -784,8 +786,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         if current == "true":
             return
 
-        # Merge patch covers both "annotations missing" and "annotations
-        # present" cases in one call.
+        # Merge patch covers missing and present annotations in one call.
         payload = {"metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}}
         try:
             self._k8s_api_client.patch(

@@ -1164,14 +1164,6 @@ class Reconciler:
         # Ask scheduler for updates to the cluster shape.
         reply = scheduler.schedule(sched_request)
 
-        # KubeRay only: evaluate cluster-idle and patch the idle annotation
-        # when the predicate has held for idleTerminationSeconds.
-        if isinstance(cloud_provider, KubeRayProvider):
-            cloud_provider.evaluate_and_dispatch_cluster_idle(
-                ray_state=ray_state,
-                node_type_configs=autoscaling_config.get_node_type_configs(),
-            )
-
         # Populate the autoscaling state.
         autoscaling_state.infeasible_resource_requests.extend(
             reply.infeasible_resource_requests
