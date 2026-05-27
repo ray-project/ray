@@ -827,11 +827,9 @@ def read_audio(
 @PublicAPI(stability="alpha")
 def read_zarr(
     path: str,
-    filesystem: Optional[
-        Union["pyarrow.fs.FileSystem", "fsspec.spec.AbstractFileSystem"]
-    ] = None,
-    chunk_shape: Optional[Sequence[int]] = None,
-    array_paths: List[str] | None = None,
+    filesystem: "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem | None" = None,
+    chunk_shape: Sequence[int] | None = None,
+    array_paths: list[str] | None = None,
     allow_full_metadata_scan: bool = False,
     align_axis_0: bool = False,
     overlap: int = 0,

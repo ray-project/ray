@@ -415,7 +415,7 @@ class ZarrV2Datasource(Datasource):
         self,
         path: str,
         filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
-        chunk_shape: list[int] | None = None,
+        chunk_shape: Sequence[int] | None = None,
         array_paths: list[str] | None = None,
         allow_full_metadata_scan: bool = False,
         align_axis_0: bool = False,
