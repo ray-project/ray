@@ -188,8 +188,7 @@ def _collect_workload(logical_plan: "LogicalPlan") -> _Workload:
 
 
 def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
-    """Build plan tree and flat op list in one post-order walk.
-    """
+    """Build plan tree and flat op list in one post-order walk."""
     child_plans: List[_PlanNode] = []
     ops: List[_Op] = []
     for child in op.input_dependencies:
