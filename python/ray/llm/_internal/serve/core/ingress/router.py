@@ -80,14 +80,17 @@ class LLMRouter:
             self._handle.options(session_id=session_id) if session_id else self._handle
         )
         try:
-            host, port, replica_id = await self._pick_replica(
+            host, port, replica_id, dynamo_route_token = await self._pick_replica(
                 handle=handle,
                 request_body=body,
                 body_truncated=body_truncated,
             )
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
-        return {"host": host, "port": port, "replica_id": replica_id}
+        response = {"host": host, "port": port, "replica_id": replica_id}
+        if dynamo_route_token:
+            response["dynamo_route_token"] = dynamo_route_token
+        return response
 
     @router_app.get("/health")
     async def health(self):
@@ -98,7 +101,7 @@ class LLMRouter:
         handle: DeploymentHandle,
         request_body: Optional[bytes] = None,
         body_truncated: bool = False,
-    ) -> Tuple[str, int, str]:
+    ) -> Tuple[str, int, str, Optional[str]]:
         """Pick a backend HTTP replica via the deployment's request router.
 
         ``handle`` is the LLMServer deployment handle, optionally configured
@@ -129,4 +132,9 @@ class LLMRouter:
                     f"replica {selection.replica_id} has no backend HTTP endpoint"
                 )
             host, port = endpoint
-            return host, port, replica.replica_id.to_full_id_str()
+            return (
+                host,
+                port,
+                replica.replica_id.to_full_id_str(),
+                selection.routing_metadata.get("dynamo_route_token"),
+            )

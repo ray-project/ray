@@ -182,11 +182,9 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     # HAProxy holding unread server-side FINs under a burst while worker
     # threads are still routing other requests.
     http-reuse always
-    # use-server falls through to LB if the pinned server is DOWN. Combined
-    # with `retry-on` below (when configured), this lets HAProxy redispatch
-    # a slow-first-byte request to a different replica instead of head-of-
-    # line-blocking on the original pick.
-    option redispatch
+    # Keep ingress-request-router pins fail-closed. A routed request may carry
+    # out-of-band lifecycle metadata for the selected replica, so HAProxy must
+    # not silently redispatch it to a different backend server.
     {%- if config.ingress_retry_on %}
     retry-on {{ config.ingress_retry_on }}
     {%- endif %}

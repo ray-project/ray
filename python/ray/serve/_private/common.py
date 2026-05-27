@@ -661,6 +661,7 @@ class RunningReplicaInfo:
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
     backend_http_port: Optional[int] = None
+    rank: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -682,6 +683,7 @@ class RunningReplicaInfo:
                     str(self.routing_stats),
                     str(self.port),
                     str(self.backend_http_port),
+                    str(self.rank),
                 ]
             )
         )

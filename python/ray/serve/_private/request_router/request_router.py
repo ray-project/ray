@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
     AsyncGenerator,
+    Any,
     Callable,
     DefaultDict,
     Deque,
@@ -1431,3 +1432,16 @@ class RequestRouter(ABC):
                 (from RequestMetadata.internal_request_id).
         """
         pass
+
+    def get_selection_metadata(
+        self,
+        pending_request: PendingRequest,
+        replica_id: ReplicaID,
+    ) -> Dict[str, Any]:
+        """Return metadata to attach to a `ReplicaSelection`.
+
+        This is used by pick-only request paths such as LLM direct streaming,
+        where the request router may need to pass an opaque routing token back
+        to an out-of-band dispatcher.
+        """
+        return {}

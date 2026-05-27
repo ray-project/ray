@@ -255,6 +255,16 @@ class RunningReplica:
         return self._replica_info.routing_stats
 
     @property
+    def rank(self) -> Optional[int]:
+        """Global Serve replica rank, if available."""
+        return self._replica_info.rank
+
+    @property
+    def dynamo_worker_id(self) -> Optional[int]:
+        """Dynamo worker id used by Ray Serve LLM's Dynamo KV routing POC."""
+        return self.rank
+
+    @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
         return self._replica_info.max_ongoing_requests
@@ -411,6 +421,7 @@ class ReplicaSelection:
     # Token to be used for replica reservation;
     # Can be None when created via the pick-only path
     _slot_token: Optional[str]
+    routing_metadata: Dict[str, Any] = field(default_factory=dict)
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
@@ -435,6 +446,7 @@ class ReplicaSelection:
             "port": self.port,
             "node_id": self.node_id,
             "availability_zone": self.availability_zone,
+            "routing_metadata": self.routing_metadata,
         }
 
     def _mark_dispatched(self) -> None:

@@ -74,11 +74,14 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
--- Router contract: response MUST be a flat JSON object with `replica_id` as a
--- plain string actor name (no escaped quotes, no nested objects). The regex
--- relies on this; broaden the parser if the contract grows.
+-- Router contract: response MUST be a flat JSON object. String values parsed
+-- here must not contain escaped quotes.
+local function extract_string_field(json_body, field)
+    return json_body:match('"' .. field .. '"%s*:%s*"([^"]+)"')
+end
+
 local function extract_replica_id(json_body)
-    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
+    return extract_string_field(json_body, "replica_id")
 end
 
 -- Returns the original Content-Length when `body` is shorter than the
@@ -151,7 +154,8 @@ local function _route_via_ingress_request_router(txn, router, replica_map)
         return
     end
 
-    local replica_id = extract_replica_id(http_response_body(response))
+    local response_body = http_response_body(response)
+    local replica_id = extract_replica_id(response_body)
     if not replica_id then
         txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
@@ -165,6 +169,12 @@ local function _route_via_ingress_request_router(txn, router, replica_map)
 
     txn:set_var("txn.ingress_request_router_target", server_name)
     txn:set_var("txn.via_ingress_request_router", true)
+
+    local dynamo_route_token = extract_string_field(response_body, "dynamo_route_token")
+    if dynamo_route_token then
+        txn.http:req_set_header("x-ray-serve-dynamo-route-token", dynamo_route_token)
+        txn:set_var("txn.ingress_request_router_pin_required", true)
+    end
 end
 
 -- Failure semantics: every path that reaches a router decision but cannot pin

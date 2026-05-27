@@ -1799,6 +1799,7 @@ class DeploymentReplica:
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
             backend_http_port=self._actor._http_port or None,
+            rank=self._actor.rank.rank if self._actor.rank is not None else None,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):

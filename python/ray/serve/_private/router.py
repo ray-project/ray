@@ -1305,6 +1305,9 @@ class AsyncioRouter:
                     )
                 slot_token = None
 
+            routing_metadata = self.request_router.get_selection_metadata(
+                pr, replica.replica_id
+            )
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
                 node_ip=replica._replica_info.node_ip,
@@ -1316,6 +1319,7 @@ class AsyncioRouter:
                 _request_metadata=request_meta,
                 _method_name=request_meta.call_method,
                 _slot_token=slot_token,
+                routing_metadata=routing_metadata,
             )
 
         if not reserve:
