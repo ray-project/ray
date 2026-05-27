@@ -101,7 +101,7 @@ Idle workers are prioritized for killing over active workers.
 1. For workers running tasks or actors (i.e., active workers), retriable tasks are first prioritized (to maximize retry opportunities)
 2. Among the active workers with the same retriability, most recent workers are selected next (newest granted lease time)
 
-The policy will continue to select workers until the ``current_memory_usage - total_selected_workers_memory_footprint + kill_buffer < available_memory_for_workload_processes``.
+The policy will continue to select workers until the ``current_memory_usage - total_selected_workers_memory_footprint + kill_buffer <= available_memory_for_workload_processes``.
 Where the ``kill_buffer`` defaults to 5% of the total system memory, capping at 3GiB (configurable via ``RAY_max_kill_memory_buffer_bytes``).
 
 To revert to the legacy worker killing policy, set the environment variable ``RAY_worker_killing_policy_by_group`` to true before starting Ray.

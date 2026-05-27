@@ -37,7 +37,7 @@ For Ray, the Linux out-of-memory (OOM) killer kills Ray processes without the co
 Detecting Out-of-Memory errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Out of memory errors can be monitored on the Ray Dashboard via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
+Out of memory errors can be monitored on Ray Dashboard's :ref:`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
 The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer.
 The Unexpected System Level Worker Failures panel shows the number of workers that unexpectedly failed. These are typically
 caused by the Linux out-of-memory killer (correlate with memory usage metrics to confirm).
@@ -47,6 +47,7 @@ caused by the Linux out-of-memory killer (correlate with memory usage metrics to
 
 .. image:: ../../images/unexpected-system-level-worker-failures.png
     :align: center
+
 
 If the Linux out-of-memory killer terminates Tasks or Actors, Ray Worker processes are unable to catch and display an exact root cause
 because SIGKILL cannot be handled by processes. If you call ``ray.get`` into the Tasks and Actors that were executed from the dead worker,
@@ -64,6 +65,7 @@ You can also use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%2
 
 .. image:: ../../images/dmsg.png
     :align: center
+
 
 Like mentioned above, the Linux OOM killer triggering before the Ray OOM killer is undesirable.
 For users in Ray 2.56 and above, we recommend enabling resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray 
@@ -141,10 +143,7 @@ Ray memory monitor also periodically prints the aggregated out-of-memory killer 
   (raylet) 
   (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
-Ray Dashboard's :ref:`metrics page <dash-metrics-view>` and :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
-
-.. image:: ../../images/oom-metrics.png
-    :align: center
+Ray Dashboard's :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
 
 .. image:: ../../images/oom-events.png
     :align: center
@@ -185,12 +184,12 @@ process memory usage by RSS - SHR because SHR is for Ray object store as explain
 
 .. _troubleshooting-out-of-memory-eliminate-worker-oom:
 
-Eliminating worker out-of-memory errors
+Eliminating worker Out-Of-Memory errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Most commonly, out-of-memory errors are caused by oversubscribing the memory resource on a node. 
 By default, each task or actor has no memory requirements. This means that the scheduler is unaware 
-of the memory footprint of the tasks and actors and may schedule too many memory-hungry tasks or actors onto a node.
+of the memory footprint of the tasks and actors and may schedule too many memory-hungry tasks or actors onto a single node.
 
 To prevent this oversubscription and eliminate OOM issues, you can pass in a `memory` resource request to tasks or actors 
 to reserve a certain amount of memory for them to use. See :ref:`resource requirements <resource-requirements>` for more details. 
