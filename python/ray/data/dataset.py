@@ -7682,6 +7682,8 @@ class Dataset:
         """
         cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
         if cached_bundle is not None:
+            if capture_executor:
+                self._current_executor = None
             return iter([cached_bundle]), self._cache.get_stats(), None
 
         executor = self._create_executor()
