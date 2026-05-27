@@ -27,7 +27,7 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
-    DeploymentMode,
+    ControllerOptions,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
@@ -643,13 +643,13 @@ def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
         {
             "proxy_location": None,
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": HTTPOptions(location=ProxyLocation.EveryNode),
         },
         {
             "proxy_location": None,
             "http_options": {"test": "test"},  # location is not specified
             "expected": HTTPOptions(
-                location=DeploymentMode.EveryNode
+                location=ProxyLocation.EveryNode
             ),  # using default proxy_location (to align with the case when `http_options` are None)
         },
         {
@@ -658,58 +658,58 @@ def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
                 "location": "NoServer"
             },  # `location` is specified, but `proxy_location` is not
             "expected": HTTPOptions(
-                location=DeploymentMode.NoServer
+                location=ProxyLocation.Disabled
             ),  # using `location` value
         },
         {
             "proxy_location": None,
             "http_options": HTTPOptions(location=None),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.HeadOnly),
         },  # using default location from HTTPOptions
         {
             "proxy_location": None,
             "http_options": HTTPOptions(location="NoServer"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": {"location": "NoServer"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": HTTPOptions(host="foobar"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": ProxyLocation.Disabled,
-            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "http_options": HTTPOptions(location=ProxyLocation.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
     ],
 )
@@ -718,6 +718,72 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     serve.start(**options)
     client = _get_global_client()
     assert ray.get(client._controller.get_http_config.remote()) == expected_options
+
+
+@pytest.mark.parametrize(
+    "controller_options",
+    [
+        ControllerOptions(
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        ),
+        # Same options passed as a plain dict -- the API coerces it
+        # through ``ControllerOptions.model_validate``.
+        {
+            "runtime_env": {
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        },
+    ],
+)
+def test_serve_start_controller_options(ray_shutdown, controller_options):
+    """``ControllerOptions.runtime_env.env_vars`` lands on the controller actor.
+
+    Uses a custom RAY_SERVE_TEST_CONTROLLER_ENV var (not a real Serve knob)
+    so the assertion is decoupled from whatever the Anyscale env hook
+    auto-injects. The merge semantics are the env_hook's contract; this
+    test only asserts that *our* requested env_vars made it through.
+    """
+    serve.start(controller_options=controller_options)
+    client = _get_global_client()
+
+    # Reach into the controller actor to read its own os.environ; the
+    # controller is a singleton named actor on the head node, so a remote
+    # task on the same handle runs in the same process.
+    def _read_env(self, *, keys):
+        import os as _os
+
+        return {k: _os.environ.get(k) for k in keys}
+
+    env_seen = ray.get(
+        client._controller.__ray_call__.remote(
+            _read_env,
+            keys=[
+                "RAY_SERVE_TEST_CONTROLLER_ENV",
+                "RAY_SERVE_TEST_CONTROLLER_ENV_2",
+            ],
+        )
+    )
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV"] == "from-model"
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV_2"] == "second"
+
+
+def test_serve_start_controller_options_rejects_disallowed_runtime_env(
+    ray_shutdown,
+):
+    """Bad runtime_env fails at the caller, not from a Ray task."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        serve.start(controller_options={"runtime_env": {"pip": ["numpy"]}})
+    assert "only supports ['env_vars']" in str(exc.value)
 
 
 if __name__ == "__main__":

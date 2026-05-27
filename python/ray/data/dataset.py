@@ -1669,7 +1669,11 @@ class Dataset:
                 # expr is an Expr object (predicate expression)
                 predicate_expr = expr
 
-            filter_compute = TaskPoolStrategy(size=concurrency)
+            filter_compute = get_compute_strategy(
+                fn=None,
+                compute=compute,
+                concurrency=concurrency,
+            )
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
@@ -6114,6 +6118,20 @@ class Dataset:
                 {'image': array([[[[...]]]], dtype=uint8)}
                 ...
                 {'image': array([[[[...]]]], dtype=uint8)}
+
+        .. note::
+
+            Breaking out of the for-loop above shuts the streaming executor
+            down so it stops producing blocks into the object store. If you
+            keep your own reference to the iterator (``it = iter(...)``),
+            cleanup is deferred until that reference is dropped — call
+            ``it.close()`` to release resources eagerly.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
 
         Time complexity: O(1)
 

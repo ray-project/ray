@@ -142,6 +142,75 @@ class MockVLLMEngine(LLMEngine):
         """
         return self._is_paused
 
+    async def build_asgi_app(self):
+        """Build a minimal ASGI app for direct-streaming tests."""
+        from fastapi import FastAPI, HTTPException, Request
+        from starlette.responses import JSONResponse, StreamingResponse
+
+        app = FastAPI()
+
+        def check_model(model: Optional[str]) -> None:
+            if model is not None and model != self.llm_config.model_id:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Could not find model {model}",
+                )
+
+        async def to_response(gen):
+            try:
+                first = await gen.__anext__()
+            except StopAsyncIteration:
+                return JSONResponse(content={})
+
+            if isinstance(first, ErrorResponse):
+                raise HTTPException(
+                    status_code=first.error.code,
+                    detail=first.error.message,
+                )
+
+            if isinstance(first, str):
+
+                async def stream():
+                    yield first
+                    async for item in gen:
+                        if isinstance(item, str):
+                            yield item
+                        else:
+                            yield f"data: {item.model_dump_json()}\n\n"
+
+                return StreamingResponse(stream(), media_type="text/event-stream")
+
+            return JSONResponse(content=first.model_dump())
+
+        @app.get("/v1/models")
+        async def models():
+            return {
+                "object": "list",
+                "data": [
+                    {
+                        "id": self.llm_config.model_id,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "mock",
+                        "metadata": {"input_modality": "text"},
+                    }
+                ],
+            }
+
+        @app.post("/v1/chat/completions")
+        async def chat_completions(request: Request):
+            body = ChatCompletionRequest.model_validate(await request.json())
+            check_model(body.model)
+            return await to_response(self.chat(body))
+
+        @app.post("/v1/completions")
+        async def completions(request: Request):
+            body = CompletionRequest.model_validate(await request.json())
+            check_model(body.model)
+            return await to_response(self.completions(body))
+
+        return app
+
     async def chat(
         self,
         request: ChatCompletionRequest,
