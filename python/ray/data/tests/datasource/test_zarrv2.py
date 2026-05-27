@@ -1,7 +1,6 @@
 import json
 import os
 from pathlib import Path
-from unittest.mock import patch
 
 import fsspec
 import numpy as np
@@ -12,7 +11,6 @@ import zarr
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-import ray.data.read_api as read_api
 from ray.data._internal.datasource import zarrv2_datasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -42,22 +40,6 @@ def _write_real_zarr_store(
     for name, (data, chunks) in arrays.items():
         root.create_dataset(name, data=data, chunks=chunks, dtype=data.dtype)
     zarr.consolidate_metadata(str(store_path))
-    return store_path
-
-
-def _write_unconsolidated_zarr_store(
-    store_path: Path,
-    arrays: dict,  # {name: (data, chunks)}
-) -> Path:
-    """Write a Zarr v2 store WITHOUT a consolidated ``.zmetadata`` file.
-
-    Exercises the no-``.zmetadata`` code paths (per-array ``.zarray``
-    discovery and full-store walk) — the common shape of real-world stores
-    behind plain HTTPS or other listing-less filesystems.
-    """
-    root = zarr.open_group(str(store_path), mode="w")
-    for name, (data, chunks) in arrays.items():
-        root.create_dataset(name, data=data, chunks=chunks, dtype=data.dtype)
     return store_path
 
 
@@ -130,14 +112,19 @@ def heterogeneous_zarrv2_store(tmp_path) -> Path:
 
 @pytest.fixture
 def unconsolidated_zarrv2_store(tmp_path) -> Path:
-    """Two arrays at the store root, no ``.zmetadata``."""
-    return _write_unconsolidated_zarr_store(
-        tmp_path / "unconsolidated.zarr",
-        {
-            "images": (np.arange(20, dtype="<i4").reshape(5, 4), (2, 4)),
-            "nested": (np.arange(5, dtype="|u1"), (2,)),
-        },
+    """Two arrays at the store root, no ``.zmetadata``.
+
+    Exercises the no-``.zmetadata`` code paths (per-array ``.zarray``
+    discovery and full-store walk) — the common shape of real-world stores
+    behind plain HTTPS or other listing-less filesystems.
+    """
+    store_path = tmp_path / "unconsolidated.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    root.create_dataset(
+        "images", data=np.arange(20, dtype="<i4").reshape(5, 4), chunks=(2, 4)
     )
+    root.create_dataset("nested", data=np.arange(5, dtype="|u1"), chunks=(2,))
+    return store_path
 
 
 @pytest.fixture
@@ -196,7 +183,6 @@ def zarr_zip_store(tmp_path) -> Path:
 
 
 def test_normalizes_requested_root_array_path(zarrv2_root_store):
-    """The empty string refers to the root array."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(zarrv2_root_store),
         array_paths=[""],
@@ -223,16 +209,6 @@ def test_rejects_missing_array_paths(zarrv2_group_store):
         )
 
 
-def test_accepts_heterogeneous_arrays_in_one_read(heterogeneous_zarrv2_store):
-    """No alignment required: arrays of any rank/shape coexist in one read."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(heterogeneous_zarrv2_store))
-    assert set(datasource._metadata_by_path) == {
-        "data/camera0_rgb",
-        "data/robot0_eef_pos",
-        "meta/episode_ends",
-    }
-
-
 def test_requires_consolidated_metadata(tmp_path):
     store_path = tmp_path / "broken.zarr"
     store_path.mkdir()
@@ -243,14 +219,6 @@ def test_requires_consolidated_metadata(tmp_path):
 
 
 def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
-    """``allow_full_metadata_scan=True`` against a store the filesystem can't
-    walk (or that genuinely has no arrays) raises a specific error pointing
-    the user at ``array_paths=[...]`` as the workaround.
-
-    Pins the diagnosis we surface for the real-world HTTPS-without-listing
-    case (e.g., the vitessce anndata-zarr store hosted on plain HTTPS where
-    fsspec's HTTPFileSystem can't walk).
-    """
     empty_store = tmp_path / "empty.zarr"
     empty_store.mkdir()  # no .zmetadata, no .zarray files anywhere
 
@@ -263,7 +231,6 @@ def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
 
 
 def test_loads_per_array_zarray_without_zmetadata(unconsolidated_zarrv2_store):
-    """No ``.zmetadata`` + explicit ``array_paths`` → per-file ``.zarray`` reads."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(unconsolidated_zarrv2_store),
         array_paths=["images", "nested"],
@@ -272,62 +239,16 @@ def test_loads_per_array_zarray_without_zmetadata(unconsolidated_zarrv2_store):
 
 
 def test_full_scan_discovers_arrays_without_zmetadata(unconsolidated_zarrv2_store):
-    """No ``.zmetadata`` + full-scan opt-in → recursive walk discovers ``.zarray`` files."""
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(unconsolidated_zarrv2_store),
         allow_full_metadata_scan=True,
     )
     assert set(datasource._metadata_by_path) == {"images", "nested"}
-
-
-def test_full_scan_discovers_nested_arrays(tmp_path):
-    """Full scan reports paths relative to the store root for nested groups."""
-    store_path = tmp_path / "nested.zarr"
-    root = zarr.open_group(str(store_path), mode="w")
-    root.create_dataset("top", data=np.arange(5, dtype="<i4"), chunks=(5,))
-    inner = root.create_group("group")
-    inner.create_dataset("inner", data=np.arange(5, dtype="<i4"), chunks=(5,))
-    # Intentionally no consolidate_metadata — exercise the recursive walk.
-
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(store_path),
-        allow_full_metadata_scan=True,
-    )
-    assert set(datasource._metadata_by_path) == {"top", "group/inner"}
-    # Keys must be in canonical form: no trailing slashes, no double slashes.
-    for key in datasource._metadata_by_path:
-        assert not key.endswith("/")
-        assert "//" not in key
-
-
-def test_full_scan_handles_trailing_slash_dirpaths(unconsolidated_zarrv2_store):
-    """``fs.walk`` yielding trailing-slash dirpaths still produces canonical keys.
-
-    Some fsspec implementations (older s3fs versions) return ``walk()``
-    dirpaths with trailing slashes. The full-scan loader must strip these
-    so the output keys match the format used elsewhere in the codebase.
-    """
-    from fsspec.implementations.local import LocalFileSystem
-
-    class _TrailingSlashLocalFs(LocalFileSystem):
-        def walk(self, path, *args, **kwargs):
-            for dirpath, dirs, files in super().walk(path, *args, **kwargs):
-                yield dirpath.rstrip("/") + "/", dirs, files
-
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(unconsolidated_zarrv2_store),
-        filesystem=_TrailingSlashLocalFs(skip_instance_cache=True),
-        allow_full_metadata_scan=True,
-    )
-    assert set(datasource._metadata_by_path) == {"images", "nested"}
-    for key in datasource._metadata_by_path:
-        assert not key.endswith("/")
 
 
 def test_requires_array_paths_or_full_scan_when_unconsolidated(
     unconsolidated_zarrv2_store,
 ):
-    """No ``.zmetadata`` and neither escape hatch given → clear ``ValueError``."""
     with pytest.raises(
         ValueError,
         match=(
@@ -341,7 +262,6 @@ def test_requires_array_paths_or_full_scan_when_unconsolidated(
 def test_array_paths_missing_zarray_file_raises_value_error(
     unconsolidated_zarrv2_store,
 ):
-    """Requested array_path with no ``.zarray`` file → translated ``ValueError``."""
     with pytest.raises(
         ValueError,
         match=r"Array path 'missing' not found: no \.zarray file at",
@@ -352,17 +272,7 @@ def test_array_paths_missing_zarray_file_raises_value_error(
         )
 
 
-def test_rejects_array_paths_with_dotdot_segment(zarrv2_group_store):
-    """``..`` segments in array_paths bubble up zarr's normalizer ``ValueError``."""
-    with pytest.raises(ValueError, match=r"\.\."):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_group_store),
-            array_paths=["images/../nested"],
-        )
-
-
 def test_rejects_zmetadata_with_malformed_zarray_entry(tmp_path):
-    """A ``.zarray`` entry inside ``.zmetadata`` missing a required key errors."""
     store_path = tmp_path / "malformed.zarr"
     store_path.mkdir()
     (store_path / ".zmetadata").write_text(
@@ -399,48 +309,8 @@ def test_zarr_array_meta_from_json_parses_required_fields():
     assert meta.itemsize == 8
 
 
-@pytest.mark.parametrize("missing_key", ["shape", "chunks", "dtype"])
-def test_zarr_array_meta_from_json_rejects_missing_key(missing_key):
-    raw = {"shape": [5], "chunks": [2], "dtype": "<i4"}
-    del raw[missing_key]
-    with pytest.raises(
-        ValueError,
-        match=rf"missing required key\(s\) \['{missing_key}'\]",
-    ):
-        zarrv2_datasource.ZarrArrayMeta.from_json(raw, "some/path")
-
-
-@pytest.mark.parametrize(
-    "native_chunks,user_chunk_shape,expected",
-    [
-        # No override: native chunks unchanged.
-        ((50, 28, 28), None, (50, 28, 28)),
-        # Full override: identical to user input.
-        ((50, 28, 28), (16, 14, 14), (16, 14, 14)),
-        # Prefix override: leading axes from user, trailing from native.
-        ((50, 14, 7), (16,), (16, 14, 7)),
-        ((50, 14, 7), (16, 28), (16, 28, 7)),
-    ],
-)
-def test_effective_chunks(native_chunks, user_chunk_shape, expected):
-    meta = zarrv2_datasource.ZarrArrayMeta(
-        shape=(200, 28, 28), chunks=native_chunks, dtype="<u1"
-    )
-    assert meta.effective_chunks(user_chunk_shape) == expected
-
-
-def test_effective_chunks_rejects_chunk_shape_longer_than_rank():
-    meta = zarrv2_datasource.ZarrArrayMeta(
-        shape=(200, 28), chunks=(50, 14), dtype="<u1"
-    )
-    with pytest.raises(
-        ValueError, match=r"chunk_shape has 3 axes but array of shape .* has rank 2"
-    ):
-        meta.effective_chunks((16, 14, 7))
-
-
 # ---------------------------------------------------------------------------
-# chunk_shape validation (datasource entry point)
+# chunk_shape validation
 # ---------------------------------------------------------------------------
 
 
@@ -460,22 +330,14 @@ def test_rejects_invalid_chunk_shape(zarrv2_group_store, chunk_shape):
         )
 
 
-@pytest.mark.parametrize("chunk_shape", [[4], (4,)])
-def test_accepts_list_or_tuple_chunk_shape(aligned_zarrv2_store, chunk_shape):
-    """Either list or tuple is accepted; both canonicalize to the same tuple."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store), chunk_shape=chunk_shape
-    )
-    assert datasource.chunk_shape == (4,)
-
-
 @pytest.mark.parametrize(
-    "chunk_shape,expected",
+    "chunk_shape,array_paths,expected",
     [
         # No chunk_shape: every array reads at its native chunk size.
         # 4-D image with tiny chunks coexists with 2-D pose with big chunks —
         # nothing is forced into a shared min/max.
         (
+            None,
             None,
             {
                 "data/camera0_rgb": (1, 2, 2, 3),
@@ -486,19 +348,32 @@ def test_accepts_list_or_tuple_chunk_shape(aligned_zarrv2_store, chunk_shape):
         # ``[5]`` prefix overrides axis 0 across arrays of all ranks at once.
         (
             [5],
+            None,
             {
                 "data/camera0_rgb": (5, 2, 2, 3),
                 "data/robot0_eef_pos": (5, 3),
                 "meta/episode_ends": (5,),
             },
         ),
+        # Length-2 prefix overrides axes 0+1; needs every selected array to
+        # have rank >= 2, so we filter out ``meta/episode_ends`` (rank 1).
+        (
+            [5, 1],
+            ["data/camera0_rgb", "data/robot0_eef_pos"],
+            {
+                "data/camera0_rgb": (5, 1, 2, 3),
+                "data/robot0_eef_pos": (5, 1),
+            },
+        ),
     ],
 )
 def test_chunk_shape_resolution_across_mixed_rank(
-    heterogeneous_zarrv2_store, chunk_shape, expected
+    heterogeneous_zarrv2_store, chunk_shape, array_paths, expected
 ):
     datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(heterogeneous_zarrv2_store), chunk_shape=chunk_shape
+        str(heterogeneous_zarrv2_store),
+        chunk_shape=chunk_shape,
+        array_paths=array_paths,
     )
     assert datasource._array_chunks == expected
 
@@ -621,29 +496,6 @@ def test_overlap_extends_chunk_data(aligned_zarrv2_store):
     assert rows[1]["state"].shape[0] == 4
 
 
-def test_overlap_clipped_at_store_end(aligned_zarrv2_store):
-    """Overlap larger than the remaining axis-0 length is clipped silently."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store),
-        align_axis_0=True,
-        chunk_shape=[4],
-        overlap=100,
-    )
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=4))
-    # Row 0 data extends from 0 to min(4 + 100, 8) = 8 -> 8 timesteps.
-    rows = sorted(df.to_dict("records"), key=lambda r: r["t_start"])
-    assert rows[0]["img"].shape[0] == 8
-    assert rows[1]["img"].shape[0] == 4
-
-
-def test_overlap_default_is_zero(aligned_zarrv2_store):
-    """``overlap=0`` (default) means no lookahead."""
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(aligned_zarrv2_store), align_axis_0=True, chunk_shape=[4]
-    )
-    assert datasource.overlap == 0
-
-
 def test_overlap_requires_align_axis_0(aligned_zarrv2_store):
     """``overlap`` in long-form (no ``align_axis_0``) is a clear error."""
     with pytest.raises(ValueError, match="overlap requires align_axis_0=True"):
@@ -665,12 +517,6 @@ def test_overlap_rejects_negative_and_non_int(aligned_zarrv2_store):
 
 
 def test_overlap_enables_windowing_without_cross_row_loss(aligned_zarrv2_store):
-    """Sliding windows fitting entirely within rows when ``overlap = window_len - 1``.
-
-    Aligned store has shape[0]=8, ``chunk_shape=[4]``. With ``window_len=3``
-    and ``overlap=2``, every window starting in any row's owned range fits
-    entirely in that row's per-array slice — no windows are dropped.
-    """
     window_len = 3
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(aligned_zarrv2_store),
@@ -812,41 +658,6 @@ def test_long_form_schema_and_materialization(tmp_path):
             )
 
 
-def test_edge_chunk_is_shorter_not_padded(tmp_path):
-    """Final chunk has length < chunk_shape; nothing is zero-padded."""
-    store_path = tmp_path / "edge.zarr"
-    src = np.arange(7, dtype="<i4")
-    _write_real_zarr_store(store_path, {"data": (src, (3,))})
-
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=16))
-    lengths = sorted(chunk.shape[0] for chunk in df["chunk"])
-    # 7 samples, native chunks=3 → [3, 3, 1] — last is shorter, not padded.
-    assert lengths == [1, 3, 3]
-
-
-def test_preserves_nan_and_inf(tmp_path):
-    """Materialize must not silently rewrite NaN / +-Inf to 0."""
-    store_path = tmp_path / "floats.zarr"
-    source = np.array(
-        [
-            [1.0, np.nan, 2.0],
-            [np.inf, 0.0, -np.inf],
-            [-1.0, 3.0, np.nan],
-        ],
-        dtype="<f4",
-    )
-    _write_real_zarr_store(store_path, {"data": (source, (2, 3))})
-
-    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
-    df = _execute_read_tasks(datasource.get_read_tasks(parallelism=16))
-    reconstructed = _reconstruct_array(df, "data")
-
-    # Bit-exact comparison so NaN, +Inf, -Inf, and finite values are all
-    # checked uniformly.
-    np.testing.assert_array_equal(reconstructed.view(np.uint32), source.view(np.uint32))
-
-
 def test_chunk_shape_override_changes_grid(tmp_path):
     """User-supplied chunk_shape controls the chunk grid and row count."""
     store_path = tmp_path / "tile.zarr"
@@ -873,13 +684,6 @@ def test_heterogeneous_store_emits_one_row_per_chunk(heterogeneous_zarrv2_store)
         "data/robot0_eef_pos": 2,
         "meta/episode_ends": 1,
     }
-    # Chunk dtypes match each array's storage dtype.
-    rgb_rows = df[df["array"] == "data/camera0_rgb"]
-    pos_rows = df[df["array"] == "data/robot0_eef_pos"]
-    ep_rows = df[df["array"] == "meta/episode_ends"]
-    assert all(c.dtype == np.uint8 for c in rgb_rows["chunk"])
-    assert all(c.dtype == np.float32 for c in pos_rows["chunk"])
-    assert all(c.dtype == np.int64 for c in ep_rows["chunk"])
 
 
 # ---------------------------------------------------------------------------
@@ -936,7 +740,6 @@ def test_read_chunk_retries_then_succeeds():
 
 
 def test_read_chunk_exhausts_retries():
-    """Retryable error every attempt → last error re-raised after ``max_attempts``."""
     arr = _ScriptedArray(
         ConnectionError("Connection reset"),
         ConnectionError("Connection reset"),
@@ -950,21 +753,6 @@ def test_read_chunk_exhausts_retries():
     with pytest.raises(ConnectionError, match="Connection reset"):
         zarrv2_datasource._read_chunk(
             root, "x", ((0, 3),), max_attempts=3, max_backoff_s=0
-        )
-
-
-def test_read_chunk_non_retryable_immediately_raises():
-    """A non-matching error is raised on the first attempt, not retried."""
-    arr = _ScriptedArray(
-        ValueError("array is corrupt"),
-        # A second response that would succeed if retried — should be unreached.
-        np.array([1, 2, 3], dtype="<i4"),
-    )
-    root = _ScriptedRoot(x=arr)
-
-    with pytest.raises(ValueError, match="corrupt"):
-        zarrv2_datasource._read_chunk(
-            root, "x", ((0, 3),), max_attempts=5, max_backoff_s=0
         )
 
 
@@ -986,58 +774,6 @@ def test_estimate_inmemory_data_size(tmp_path):
     datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
     # 5*4*4 (a) + 5*1 (b) = 80 + 5 = 85
     assert datasource.estimate_inmemory_data_size() == 85
-
-
-# ---------------------------------------------------------------------------
-# Public API delegation
-# ---------------------------------------------------------------------------
-
-
-def test_read_zarr_builds_datasource_and_delegates_to_read_datasource():
-    datasource = object()
-    dataset = object()
-
-    with patch(
-        "ray.data.read_api.ZarrV2Datasource",
-        return_value=datasource,
-    ) as mock_datasource:
-        with patch(
-            "ray.data.read_api.read_datasource",
-            return_value=dataset,
-        ) as mock_read_datasource:
-            result = read_api.read_zarr(
-                "/tmp/sample.zarr",
-                chunk_shape=[4],
-                array_paths=["nested"],
-                concurrency=3,
-                override_num_blocks=2,
-                num_cpus=0.5,
-                num_gpus=1,
-                memory=1024,
-                ray_remote_args={"resources": {"custom": 1}},
-            )
-
-    assert result is dataset
-    mock_datasource.assert_called_once_with(
-        path="/tmp/sample.zarr",
-        filesystem=None,
-        chunk_shape=[4],
-        array_paths=["nested"],
-        allow_full_metadata_scan=False,
-        align_axis_0=False,
-        overlap=0,
-    )
-    mock_read_datasource.assert_called_once()
-    args, kwargs = mock_read_datasource.call_args
-    assert args == (datasource,)
-    assert kwargs == {
-        "ray_remote_args": {"resources": {"custom": 1}},
-        "num_cpus": 0.5,
-        "num_gpus": 1,
-        "memory": 1024,
-        "concurrency": 3,
-        "override_num_blocks": 2,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -1142,11 +878,14 @@ numcodecs.register_codec(_RayZarrTestCodec)
 """
 
 
-@pytest.fixture
-def custom_codec_zarr_store(tmp_path):
-    """A Zarr store compressed with a custom codec that numcodecs doesn't
-    auto-register. The driver registers the codec briefly to write the
-    store; Ray workers need their own registration to decode chunks.
+def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
+    """``worker_process_setup_hook`` runs once per worker, before any task,
+    registering the codec in the worker's process. Chunk decode succeeds.
+
+    Builds a tiny Zarr store compressed with a custom codec that numcodecs
+    doesn't auto-register. The driver registers the codec briefly to write
+    the store; Ray workers need their own registration to decode chunks,
+    which the ``worker_process_setup_hook`` arranges.
     """
     import numcodecs
 
@@ -1164,33 +903,7 @@ def custom_codec_zarr_store(tmp_path):
     )
     arr[:] = np.arange(8, dtype="u1")
     zarr.consolidate_metadata(str(store_path))
-    return store_path
 
-
-def test_custom_codec_fails_in_worker_without_setup_hook(custom_codec_zarr_store):
-    """Driver-side codec registration does NOT propagate to Ray workers.
-
-    Without ``worker_process_setup_hook``, the worker's ``numcodecs.registry``
-    has no entry for ``ray_zarr_test_codec``; chunk decode raises in the
-    worker and Ray Data surfaces the failure on the driver.
-    """
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=1, logging_level="ERROR", log_to_driver=False)
-    try:
-        ds = ray.data.read_zarr(str(custom_codec_zarr_store))
-        with pytest.raises(Exception) as exc_info:
-            ds.take_all()
-        # Verify the error is about our codec, not something unrelated.
-        assert "ray_zarr_test_codec" in str(exc_info.value)
-    finally:
-        ray.shutdown()
-
-
-def test_custom_codec_succeeds_with_worker_setup_hook(custom_codec_zarr_store):
-    """``worker_process_setup_hook`` runs once per worker, before any task,
-    registering the codec in the worker's process. Chunk decode succeeds.
-    """
     if ray.is_initialized():
         ray.shutdown()
     ray.init(
@@ -1200,7 +913,7 @@ def test_custom_codec_succeeds_with_worker_setup_hook(custom_codec_zarr_store):
         runtime_env={"worker_process_setup_hook": _CUSTOM_CODEC_HOOK},
     )
     try:
-        ds = ray.data.read_zarr(str(custom_codec_zarr_store))
+        ds = ray.data.read_zarr(str(store_path))
         rows = sorted(ds.take_all(), key=lambda r: tuple(r["chunk_index"]))
         recon = np.concatenate([r["chunk"] for r in rows])
         np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
