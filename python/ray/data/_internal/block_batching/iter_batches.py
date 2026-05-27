@@ -19,7 +19,6 @@ from ray.data._internal.block_batching.util import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, _StatsManager
-from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -344,11 +343,17 @@ def _format_in_threadpool(
         return formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        collated_iter = make_async_gen(
+        # Run format + collate across `num_threadpool_workers` threads sharing
+        # `batch_iter`, funneling results through a single bounded queue
+        # (maxsize=1). Ordering is not preserved here; it is restored downstream
+        # by `restore_original_order`. Unlike `make_async_gen`, this bounds the
+        # in-flight (and hence pinned) batches to ~num_workers + 1 rather than
+        # buffering ~2 * num_workers across per-worker input/output queues.
+        collated_iter = iter_threaded(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
-            preserve_ordering=False,
             num_workers=num_threadpool_workers,
+            output_buffer_size=1,
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
