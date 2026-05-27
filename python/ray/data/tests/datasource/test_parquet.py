@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.dataset as pds
+import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
@@ -24,6 +25,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
     ParquetDatasource,
     _coerce_pyarrow_fragment_batch_size,
+    _infer_schema,
     _read_batches_from,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -1748,20 +1750,19 @@ def test_read_null_data_in_first_file(
     ]
 
 
-def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
-    """Memory used by read_parquet should not grow linearly with file count.
+def test_read_parquet_memory_growth(tmp_path, monkeypatch):
+    """Schema inference should not inspect every fragment on PyArrow >= 22.
 
     Regression test for a bug where _infer_schema fell back to reading every
     fragment's physical_schema when the sampled fragment had a pa.null() column
     (PyArrow < 22.0), causing O(N) metadata reads and memory usage.
     """
-    import gc
-
-    import psutil
+    if get_pyarrow_version() < parse_version("22.0.0"):
+        pytest.skip("Bounded permissive schema inspection requires PyArrow >= 22.0.0")
 
     num_cols = 50
-    small_n = 100
-    large_n = 1000
+    num_files = 1000
+    inspect_num_fragments = 1
 
     def _write_files(directory, n_files):
         directory.mkdir(exist_ok=True)
@@ -1774,34 +1775,39 @@ def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
                 cols["null_col"] = [1]
             pq.write_table(pa.table(cols), directory / f"part_{i:05d}.parquet")
 
-    _write_files(tmp_path / "small", small_n)
-    _write_files(tmp_path / "large", large_n)
+    _write_files(tmp_path, num_files)
 
-    proc = psutil.Process()
+    inspect_calls = []
+    real_factory = pds.FileSystemDatasetFactory
 
-    rss_before_small = proc.memory_info().rss
-    ds = ray.data.read_parquet(str(tmp_path / "small"))
-    ds.schema()
-    rss_after_small = proc.memory_info().rss
-    del ds
-    gc.collect()
+    # RSS deltas for this code path are sub-MiB in CI, so check the bounded
+    # schema-inspection behavior directly instead of comparing process memory.
+    class TrackingFactory:
+        def __init__(self, *args, **kwargs):
+            self._factory = real_factory(*args, **kwargs)
 
-    rss_before_large = proc.memory_info().rss
-    ds = ray.data.read_parquet(str(tmp_path / "large"))
-    ds.schema()
-    rss_after_large = proc.memory_info().rss
-    del ds
-    gc.collect()
+        def inspect(self, **kwargs):
+            inspect_calls.append(kwargs)
+            return self._factory.inspect(**kwargs)
 
-    delta_small = max(rss_after_small - rss_before_small, 1)
-    delta_large = max(rss_after_large - rss_before_large, 0)
-    ratio = delta_large / delta_small
+        def finish(self, *args, **kwargs):
+            pytest.fail("Schema inference should not inspect every fragment")
 
-    assert ratio < 2, (
-        f"Memory grew too much with more files: ratio={ratio:.1f}\n"
-        f"delta_small={delta_small / 1024 / 1024:.1f} MiB, "
-        f"delta_large={delta_large / 1024 / 1024:.1f} MiB"
+    monkeypatch.setattr(pds, "FileSystemDatasetFactory", TrackingFactory)
+
+    schema = _infer_schema(
+        [str(path) for path in sorted(tmp_path.iterdir())],
+        inspect_num_fragments=inspect_num_fragments,
+        filesystem=pafs.LocalFileSystem(),
     )
+
+    assert inspect_calls == [
+        {
+            "fragments": inspect_num_fragments,
+            "promote_options": "permissive",
+        }
+    ]
+    assert "null_col" in schema.names
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
