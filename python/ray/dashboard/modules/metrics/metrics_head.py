@@ -41,12 +41,13 @@ DEFAULT_PROMETHEUS_HEADERS = "{}"
 PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 DEFAULT_PROMETHEUS_NAME = "Prometheus"
 PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
-PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
-# Fallback healthcheck path. Some managed Prometheus services (e.g. Tencent
-# Cloud TMP) disable the open-source `/-/healthy` and `/-/ready` endpoints,
-# but still serve the standard query API. We use a cheap query as a liveness
-# probe in that case.
-PROMETHEUS_HEALTHCHECK_FALLBACK_PATH = "api/v1/query?query=vector(1)"
+# Use a cheap query against the standard query API as the Prometheus liveness
+# probe. Every Prometheus-compatible service must support `api/v1/query`, and
+# some managed Prometheus services (e.g. Tencent Cloud TMP) disable the
+# open-source `/-/healthy` and `/-/ready` endpoints, so relying on the query
+# API gives us the broadest compatibility while also verifying that the query
+# engine is actually serving requests.
+PROMETHEUS_HEALTHCHECK_PATH = "api/v1/query?query=vector(1)"
 # Timeout (in seconds) for the Prometheus healthcheck HTTP requests. Without an
 # explicit timeout, `aiohttp` defaults to 5 minutes, which would cause the
 # dashboard API to hang when the Prometheus host is unreachable or slow.
@@ -194,49 +195,15 @@ class MetricsHead(SubprocessModule):
 
     @routes.get("/api/prometheus_health")
     async def prometheus_health(self, req):
-        # Try the standard `/-/healthy` endpoint first. Some managed
-        # Prometheus services (e.g. Tencent Cloud TMP) disable
-        # `/-/healthy` / `/-/ready` and return 404, in which case we
-        # fall back to a cheap query against `/api/v1/query` which every
-        # Prometheus-compatible service must support.
-        primary_path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
-        fallback_path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_FALLBACK_PATH}"
-
-        primary_status = None
-        primary_error = None
+        # A successful response from `api/v1/query` indicates the Prometheus
+        # service is reachable and its query engine is serving requests. We
+        # prefer this over `/-/healthy` because it is universally supported by
+        # all Prometheus-compatible backends, including managed services that
+        # disable the `/-/healthy` and `/-/ready` endpoints.
+        path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
         try:
             async with self.http_session.get(
-                primary_path,
-                headers=self.prometheus_headers,
-                timeout=aiohttp.ClientTimeout(total=PROMETHEUS_HEALTHCHECK_TIMEOUT_S),
-            ) as resp:
-                if resp.status == 200:
-                    return dashboard_optional_utils.rest_response(
-                        status_code=dashboard_utils.HTTPStatusCode.OK,
-                        message="prometheus running",
-                        used_path=PROMETHEUS_HEALTHCHECK_PATH,
-                    )
-                primary_status = resp.status
-                logger.info(
-                    "Prometheus primary healthcheck %s returned status %s, "
-                    "falling back to query API.",
-                    primary_path,
-                    primary_status,
-                )
-        except Exception as e:
-            primary_error = str(e)
-            logger.info(
-                "Error fetching prometheus primary healthcheck endpoint %s "
-                "(%s), falling back to query API.",
-                primary_path,
-                primary_error,
-            )
-
-        # Fallback: a successful query response indicates the Prometheus
-        # service is reachable and serving requests.
-        try:
-            async with self.http_session.get(
-                fallback_path,
+                path,
                 headers=self.prometheus_headers,
                 timeout=aiohttp.ClientTimeout(total=PROMETHEUS_HEALTHCHECK_TIMEOUT_S),
             ) as resp:
@@ -245,9 +212,6 @@ class MetricsHead(SubprocessModule):
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                         message="prometheus healthcheck failed.",
                         status=resp.status,
-                        primary_status=primary_status,
-                        primary_error=primary_error,
-                        used_path=PROMETHEUS_HEALTHCHECK_FALLBACK_PATH,
                     )
                 try:
                     body = await resp.json(content_type=None)
@@ -258,16 +222,10 @@ class MetricsHead(SubprocessModule):
                         status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                         message="prometheus healthcheck failed.",
                         status=resp.status,
-                        primary_status=primary_status,
-                        primary_error=primary_error,
-                        used_path=PROMETHEUS_HEALTHCHECK_FALLBACK_PATH,
                     )
                 return dashboard_optional_utils.rest_response(
                     status_code=dashboard_utils.HTTPStatusCode.OK,
                     message="prometheus running",
-                    used_path=PROMETHEUS_HEALTHCHECK_FALLBACK_PATH,
-                    primary_status=primary_status,
-                    primary_error=primary_error,
                 )
         except Exception as e:
             logger.debug(
@@ -277,8 +235,6 @@ class MetricsHead(SubprocessModule):
                 status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
                 message="prometheus healthcheck failed.",
                 reason=str(e),
-                primary_status=primary_status,
-                primary_error=primary_error,
             )
 
     def _create_default_grafana_configs(self):
