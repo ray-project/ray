@@ -24,6 +24,7 @@ from unittest.mock import MagicMock
 _HELPERS_PATH = os.path.join(
     os.path.dirname(__file__),
     os.pardir,
+    os.pardir,
     "autoscaler",
     "_private",
     "cli_output_helpers.py",
@@ -129,6 +130,7 @@ class TestHeadNodeContextGating(unittest.TestCase):
         # Parse commands.py to verify the gating logic without importing it
         filepath = os.path.join(
             os.path.dirname(__file__),
+            os.pardir,
             os.pardir,
             "autoscaler",
             "_private",
