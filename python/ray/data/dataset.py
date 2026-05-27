@@ -7961,7 +7961,7 @@ class _ExecutionCache:
          Valid only when _operator matches the current DAG.
       2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
          Populated when a streaming iterator is fully exhausted
-         (_CacheMetadataIterator, defined above).
+         (_CacheMetadataIterator).
 
     Getters check the bundle layer first, then the metadata layer.
     """
