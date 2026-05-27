@@ -10,7 +10,11 @@ import ray
 import ray.data
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightgbm import LightGBMTrainer, RayTrainReportCallback
+from ray.train.lightgbm import (
+    LightGBMTrainer,
+    RayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
+)
 from ray.train.v2._internal.constants import is_v2_enabled
 
 assert is_v2_enabled()
@@ -65,9 +69,11 @@ def test_fit_with_categoricals(ray_start_6_cpus):
     ):
         remaining_iters = num_boost_round
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-        train_df = train_ds_iter.materialize().to_pandas()
+        train_df = normalize_pandas_for_lightgbm(
+            train_ds_iter.materialize().to_pandas()
+        )
 
-        eval_df = valid_dataset.materialize().to_pandas()
+        eval_df = normalize_pandas_for_lightgbm(valid_dataset.materialize().to_pandas())
         eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
         valid_set = lightgbm.Dataset(eval_X, label=eval_y)
 
