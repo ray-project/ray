@@ -269,13 +269,12 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 # Expected configuration stub (matching the actual template output)
                 expected_config = f"""
 global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
     log 127.0.0.1:514 local0 debug
     stats socket {socket_path} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn 1000
     nbthread 2
+    tune.bufsize 16384
     server-state-base /tmp/haproxy-serve
     server-state-file /tmp/haproxy-serve/server-state
     hard-stop-after 120s
@@ -291,6 +290,8 @@ defaults
     log global
     option httplog
     option abortonclose
+    option splice-request
+    option splice-response
     # Set TCP_NODELAY on all connections
     option http-no-delay
     option idle-close-on-response
@@ -763,11 +764,9 @@ def test_ingress_request_router_forward_body_gate_renders(
             lua = f.read()
 
         if forward_body:
-            assert "tune.bufsize" in cfg, cfg
             assert "wait-for-body" in cfg, cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
-            assert "tune.bufsize" not in cfg, cfg
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
 

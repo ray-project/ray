@@ -92,6 +92,38 @@ def test_read_parquet_rejects_pickle_object_columns(
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
+def test_write_parquet_handles_per_block_column_reorder(
+    ray_start_regular_shared, tmp_path
+):
+    # When the Write task receives multiple blocks whose schemas share the same
+    # field names in a different order, `pa.unify_schemas` fixes the column
+    # order from the first block. Previously the per-block `Table.cast` was
+    # positional and rejected the second block; ParquetDatasink now reorders
+    # columns by name before casting.
+    from ray.data._internal.datasource.parquet_datasink import (
+        WRITE_UUID_KWARG_NAME,
+        ParquetDatasink,
+    )
+    from ray.data._internal.execution.interfaces import TaskContext
+
+    t1 = pa.table({"x": [1], "y": [2]})
+    t2 = pa.table({"y": [3], "x": [4]})
+    sink = ParquetDatasink(path=str(tmp_path))
+    ctx = TaskContext(task_idx=0, op_name="Write")
+    ctx.kwargs = {WRITE_UUID_KWARG_NAME: "wuid"}
+
+    sink.write([t1, t2], ctx)
+
+    out = pq.read_table(str(tmp_path))
+    assert sorted(out.column_names) == ["x", "y"]
+    assert out.num_rows == 2
+    # Pair each row's (x, y) regardless of the unified output order.
+    assert sorted(zip(out.column("x").to_pylist(), out.column("y").to_pylist())) == [
+        (1, 2),
+        (4, 3),
+    ]
+
+
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     ray.data.range(1).write_parquet(tmp_path, compression="gzip")
 
@@ -1748,60 +1780,28 @@ def test_read_null_data_in_first_file(
     ]
 
 
-def test_read_parquet_memory_growth(tmp_path, ray_start_regular_shared):
-    """Memory used by read_parquet should not grow linearly with file count.
+def test_read_parquet_does_not_call_infer_schema(
+    tmp_path, monkeypatch, ray_start_regular_shared
+):
+    """read_parquet should not call _infer_schema, which can cause O(N) metadata reads."""
 
-    Regression test for a bug where _infer_schema fell back to reading every
-    fragment's physical_schema when the sampled fragment had a pa.null() column
-    (PyArrow < 22.0), causing O(N) metadata reads and memory usage.
-    """
-    import gc
+    num_files = 10
+    for i in range(num_files):
+        cols = {"data": [0]}
+        if i == 0:
+            cols["null_col"] = pa.nulls(1)
+        else:
+            cols["null_col"] = [1]
+        pq.write_table(pa.table(cols), tmp_path / f"part_{i:05d}.parquet")
 
-    import psutil
-
-    num_cols = 50
-    small_n = 100
-    large_n = 1000
-
-    def _write_files(directory, n_files):
-        directory.mkdir(exist_ok=True)
-        for i in range(n_files):
-            cols = {f"col_{j}": [0] for j in range(num_cols)}
-            # First file has a column of all nulls, which triggers the schema inference fallback.
-            if i == 0:
-                cols["null_col"] = pa.nulls(1)
-            else:
-                cols["null_col"] = [1]
-            pq.write_table(pa.table(cols), directory / f"part_{i:05d}.parquet")
-
-    _write_files(tmp_path / "small", small_n)
-    _write_files(tmp_path / "large", large_n)
-
-    proc = psutil.Process()
-
-    rss_before_small = proc.memory_info().rss
-    ds = ray.data.read_parquet(str(tmp_path / "small"))
-    ds.schema()
-    rss_after_small = proc.memory_info().rss
-    del ds
-    gc.collect()
-
-    rss_before_large = proc.memory_info().rss
-    ds = ray.data.read_parquet(str(tmp_path / "large"))
-    ds.schema()
-    rss_after_large = proc.memory_info().rss
-    del ds
-    gc.collect()
-
-    delta_small = max(rss_after_small - rss_before_small, 1)
-    delta_large = max(rss_after_large - rss_before_large, 0)
-    ratio = delta_large / delta_small
-
-    assert ratio < 2, (
-        f"Memory grew too much with more files: ratio={ratio:.1f}\n"
-        f"delta_small={delta_small / 1024 / 1024:.1f} MiB, "
-        f"delta_large={delta_large / 1024 / 1024:.1f} MiB"
+    mock = MagicMock()
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.parquet_datasource._infer_schema",
+        mock,
     )
+    mock.return_value = pa.schema({"data": pa.int64()})
+    ray.data.read_parquet(str(tmp_path))
+    mock.assert_not_called()
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
@@ -3026,7 +3026,6 @@ class TestParquetFragmentBatchSizeCoercion:
                     fragment,
                     schema=schema,
                     data_columns=["x"],
-                    data_columns_rename_map=None,
                     partition_columns=None,
                     partitioning=Partitioning("hive"),
                     to_batches_kwargs=to_batches_kwargs,
