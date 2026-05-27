@@ -299,9 +299,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._output_blocks_stats}
 
-    def _extra_metrics(self) -> Dict[str, Any]:
-        return {self._name: self._metrics.as_dict()}
-
     # -----------------------------------------------------------------------
     # Resource accounting
     # -----------------------------------------------------------------------

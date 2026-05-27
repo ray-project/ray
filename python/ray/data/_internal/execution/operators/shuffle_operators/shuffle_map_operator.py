@@ -508,9 +508,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     def get_stats(self) -> Dict[str, List[BlockStats]]:
         return {self._name: self._map_blocks_stats}
 
-    def _extra_metrics(self) -> Dict[str, Any]:
-        return {self._name: self._metrics.as_dict()}
-
     # -----------------------------------------------------------------------
     # Resource accounting
     # -----------------------------------------------------------------------
