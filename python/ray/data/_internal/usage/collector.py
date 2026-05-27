@@ -24,6 +24,7 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import AbstractUDFMap
 from ray.data._internal.logical.util import anonymize_op_name
+from ray.data.block import VALID_BATCH_FORMATS
 
 if TYPE_CHECKING:
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -200,16 +201,18 @@ def _build_plan_and_ops(op: LogicalOperator) -> Tuple[_PlanNode, List[_Op]]:
     config: Optional[_OpConfig] = None
     if isinstance(op, AbstractUDFMap):
         batch_format = getattr(op, "batch_format", None)
-        if batch_format is not None:
+        if batch_format in VALID_BATCH_FORMATS:
             config = _OpConfig(batch_format=batch_format)
+        else:
+            batch_format = "unknown"
+            logger.debug(f"Unexpected batch format: {batch_format!r}")
     ops.append(_Op(name=name, config=config))
     return _PlanNode(op=name, inputs=child_plans), ops
 
 
 def _format_plan_str(op: LogicalOperator, depth: int = 0) -> str:
-    """Render the anonymized DAG as an indented tree, matching the layout
-    of :func:`ray.data._internal.dataset_repr._format_operator_dag` but
-    using ``anonymize_op_name`` to avoid leaking UDF / datasource details.
+    """Render the anonymized DAG as an indented tree, using ``anonymize_op_name`` to
+    avoid leaking UDF / datasource details.
     """
     name = anonymize_op_name(op)
     if depth == 0:
@@ -228,9 +231,8 @@ def _collect_pipeline_perf(
     """Pipeline-level perf metrics
 
     ``bytes_spilled`` is a cluster-wide delta sourced from Ray core's
-    ``store_stats.spilled_bytes_total`` (same path ``plan.py:259-265`` uses
-    for ``global_bytes_spilled``). ``spilled_now`` is computed by the caller
-    outside the lock — it's a synchronous gRPC.
+    ``store_stats.spilled_bytes_total``, ``spilled_now`` is computed by the caller
+    via a synchronous gRPC.
     """
     if spilled_at_start is None or spilled_now is None:
         bytes_spilled = None
