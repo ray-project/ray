@@ -40,6 +40,7 @@ HUAWEI_NPU_910B = "Ascend910B"
 HUAWEI_NPU_910B4 = "Ascend910B4"
 METAX_C500 = "MXC500"
 METAX_C550 = "MXC550"
+FURIOSA_RNGD = "FURIOSA_RNGD"
 
 # Use these instead of NVIDIA_A100 if you need a specific accelerator size. Note that
 # these labels are not auto-added to nodes, you'll have to add them manually in
