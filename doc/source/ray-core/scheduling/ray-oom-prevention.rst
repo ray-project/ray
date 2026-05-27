@@ -25,12 +25,12 @@ It's available on Linux and is tested with Ray running inside a container that i
 What to expect?
 ---------------
 
-The default memory monitoring system will work to protect the ray node from node death due to memory contention and OOM. 
+The default memory monitoring system will work to protect the Ray node from node death due to memory contention and OOM. 
 It also aims to preserve as much application progress as possible compared to the Linux OOM killer by killing workers 
 based on the time since the task started executing. However, the default memory monitoring system makes no promises.
 
 Starting from Ray 2.56, the memory monitoring system paired with resource isolation enabled will provide the following:
-- 0 kernel OOM kills (worker preserving) when resource isolation is enabled and system reserved memory is correctly configured to encompass the memory footprint of critical ray system processes and other system overheads.
+- 0 kernel OOM kills (worker preserving) when resource isolation is enabled and system reserved memory is correctly configured to encompass the memory footprint of critical Ray system processes and other system overheads.
 - 0 Ray OOM kills under the above configuration and when good logical memory request is provided for tasks and actors.
 - 0 Node deaths due to memory contention when resource isolation is enabled and system reserved memory is correctly configured.
 
@@ -39,9 +39,9 @@ To enable resource isolation, please see :ref:`How to Enable Cgroup v2 for Resou
 How do I disable the memory monitor?
 --------------------------------------
 
-Without resource isolation the memory monitor is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts (e.g., RAY_memory_monitor_refresh_ms=0 ray start ...).
+Without resource isolation, the memory monitor is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts (e.g., RAY_memory_monitor_refresh_ms=0 ray start ...).
 
-With resource isolation the memory monitor is always enabled.
+With resource isolation, the memory monitor is always enabled.
 
 How do I configure the memory monitor?
 --------------------------------------
@@ -57,9 +57,9 @@ The memory monitor is controlled by the following environment variables:
 
 **Resource isolation memory monitor configuration:**
 
-When resource isolation is enabled, the memory monitor is controlled by the following flag passed to ray start or ray.init:
+When resource isolation is enabled, the memory monitor is controlled by the following flag passed to ``ray start`` or ``ray.init``:
 
-- ``--system-reserved-memory`` determines the amount of memory reserved for critical ray system processes and other system processes outside of ray's userspace. 
+- ``--system-reserved-memory`` determines the amount of memory reserved for critical Ray system processes and other system processes outside of ray's userspace. 
   By default, the value is configured to 10% of the total memory available on the system bounded by a minimum of 500MB and a maximum of 10GB. The value is used to 
   determine the amount of system memory available for workload processes, and the memory monitor will enforce that the workload processes' memory footprint 
   does not exceed the ``total_memory - system_reserved_memory`` bytes.
@@ -89,13 +89,13 @@ As represented in the diagram above, the worker killing policy is as follows:
 Idle workers are prioritized for killing over active workers.
 
 **Idle Worker Policy:**
-1. Idle workers are prioritized for killing over workers with granted lease. Note that workers that have never executed any tasks or actors (i.e. cold start idle workers) are only considered for killing if their memory footprint exceeds the idle worker killing memory threshold. 
+1. Idle workers are prioritized for killing over workers running tasks or actors. Note that workers that have never executed any tasks or actors (i.e., cold start idle workers) are only considered for killing if their memory footprint exceeds the idle worker killing memory threshold. 
    Notice that we expect cold start idle workers to have a small memory footprint. If idle workers are observed to have a large per-worker memory footprint in the OOM logs, it likely indicates that the inherited dependencies from simply starting a new process within 
    Ray's userspace are too expensive. In this case, consider reducing the memory footprint of simply starting a new process within Ray's userspace.
 2. Finally, the worker with the largest memory footprint is prioritized for killing.
 
-**Workers with lease Policy:**
-1. For workers running tasks or actors (i.e. active workers), retriable tasks are first prioritized (to maximize retry opportunities)
+**Workers with Lease Policy:**
+1. For workers running tasks or actors (i.e., active workers), retriable tasks are first prioritized (to maximize retry opportunities)
 2. Among the active workers with the same retriability, most recent workers are selected next (newest granted lease time)
 
 Legacy worker killing policy
@@ -155,7 +155,7 @@ If, at this point, the node still runs out of memory, the process will repeat:
 
 .. dropdown:: Example: memory monitor prefers to kill a retriable task
 
-    Let's first start ray and specify the memory threshold.
+    Let's first start Ray and specify the memory threshold.
 
     .. code-block:: bash
 

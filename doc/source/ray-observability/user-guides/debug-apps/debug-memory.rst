@@ -24,7 +24,7 @@ What's the Out-of-Memory Error?
 Memory is a limited resource. When a process requests memory and the OS fails to allocate it, the OS executes a routine to free up memory
 by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. This routine is called the `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_.
 
-For Ray, the linux out-of-memory (OOM) killer kills Ray processes without the control plane noticing it. This can cause the following problems:
+For Ray, the Linux out-of-memory (OOM) killer kills Ray processes without the control plane noticing it. This can cause the following problems:
 1. The Linux OOM killer indiscriminately kills processes based on memory footprint.
    To Ray, this behavior can result in the significant loss of progress and in some scenarios, the death of critical 
    Ray components, leading to node deaths.
@@ -39,7 +39,7 @@ Detecting Out-of-Memory errors
 Out of memory errors can be monitored on the Ray Dashboard via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
 The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer.
 The Unexpected System Level Worker Failures panel shows the number of workers that unexpectedly failed. These are typically
-caused by the Linux out-of-memory killer (corrolate with memory usage metrics to confirm).
+caused by the Linux out-of-memory killer (correlate with memory usage metrics to confirm).
 .. image:: ../../images/ray-oom-kills.png
     :align: center
 .. image:: ../../images/unexpected-system-level-worker-failures.png
@@ -62,9 +62,9 @@ You can also use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%2
 .. image:: ../../images/dmsg.png
     :align: center
 
-Like mentioned above, the linux OOM killer triggering before the ray OOM killer is undesirable.
+Like mentioned above, the Linux OOM killer triggering before the Ray OOM killer is undesirable.
 For users in Ray 2.56 and above, we recommend enabling resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray 
-to enforce that the ray OOM killer triggers before the linux OOM killer. If resource isolation is already enabled, but Linux OOM kills are 
+to enforce that the Ray OOM killer triggers before the Linux OOM killer. If resource isolation is already enabled, but Linux OOM kills are 
 still happening, the system overhead is likely eating into the memory allocated for user processes. In this case, please increase the 
 memory reserved for system processes by setting a higher value for ``--system-reserved-memory`` option when starting Ray in resource isolation mode.
 
@@ -72,7 +72,7 @@ Note: If you would like to enable resource isolation, please make sure to comple
 
 If Ray's memory monitor kills the worker, it is automatically retried (see the :ref:`link <ray-oom-retry-policy>` for details).
 Ray's memory monitor will also log the details of the out-of-memory kill to the ``raylet.out`` log file. 
-Note that the log's new lines are delimiteed by ``;`` instead of ``\n`` to make grepping for the log easier. 
+Note that the log's new lines are delimited by ``;`` instead of ``\n`` to make grepping for the log easier. 
 The example log below has ``;`` replaced with ``\n`` for readability.
 
 .. code-block:: bash
@@ -119,11 +119,11 @@ The example log below has ``;`` replaced with ``\n`` for readability.
   3310155      21.85   ray::hungry_hippo
   3310153   21.64   ray::hungry_hippo
   3310147      21.53   ray::hungry_hippo
-  3108574      1.95    bazel(ray) --add-opens=java.base/java.lang=ALL-UNNAMED -Xverify:none -Djava.util.logging.config.file...
-  3180337     1.61    /home/ubuntu/.cursor-server/data/User/globalStorage/llvm-vs-code-extensions.vscode-clangd/install/21...
+  3108574      1.95    bazel
+  3180337     1.61    ray::foo_actor
   3310152        0.67    ray::hungry_hippo
-  2924839      0.53    /home/ubuntu/.cursor-server/bin/linux-x64/d5b2fc092e16007956c9e5047f76097b9e626ca0/node --dns-result...
-  3149737     0.47    /home/ubuntu/.cursor-server/bin/linux-x64/d5b2fc092e16007956c9e5047f76097b9e626ca0/node --dns-result...
+  2924839      0.53    ray::idle_worker
+  3149737     0.47    ray::idle_worker
   Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero. Since 2.56, Ray updated the oom killing policy to enabling killing multiple workers and selecting workers based on the time since the task start executing. To revert to the legacy policy of determining worker to oom kill based on owner group size or only selecting a single worker to kill at a time, set the environment variable `RAY_worker_killing_policy_by_group` to true before starting Ray. If the idle workers have a non-trivial memory footprint at the time of OOM (check OOM log for non-selected idle workers), consider setting the environment variable `RAY_idle_worker_killing_memory_threshold_bytes` to a lower value to consider idle workers with lower memory footprint for killing.
 
 If Tasks or Actors cannot be retried, they raise an exception with 
@@ -186,7 +186,7 @@ Eliminating worker out-of-memory errors
 
 Most commonly, out-of-memory errors are caused by oversubscribing the memory resource on a node. 
 By default, each task or actor has no memory requirements. This means that the scheduler is unaware 
-of the memory footprint of the tasks and actors and may schedule too many memory hungry tasks or actors onto a node.
+of the memory footprint of the tasks and actors and may schedule too many memory-hungry tasks or actors onto a node.
 
 To prevent this oversubscription and eliminate OOM issues, you can pass in a `memory` resource request to tasks or actors 
 to reserve a certain amount of memory for them to use. See :ref:`resource requirements <resource-requirements>` for more details. 
