@@ -140,17 +140,18 @@ def _retry(f):
 @_retry
 def _get_s3_rayci_test_data_presigned():
     global S3_PRESIGNED_CACHE
-    if not S3_PRESIGNED_CACHE:
-        auth = BotoAWSRequestsAuth(
-            aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
-            aws_region="us-west-2",
-            aws_service="execute-api",
-        )
-        S3_PRESIGNED_CACHE = requests.get(
-            "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
-            auth=auth,
-            params={"job_id": os.environ["BUILDKITE_JOB_ID"]},
-        )
+    if S3_PRESIGNED_CACHE is not None and S3_PRESIGNED_CACHE.status_code < 500:
+        return S3_PRESIGNED_CACHE
+    auth = BotoAWSRequestsAuth(
+        aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+        aws_region="us-west-2",
+        aws_service="execute-api",
+    )
+    S3_PRESIGNED_CACHE = requests.get(
+        "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+        auth=auth,
+        params={"job_id": os.environ["BUILDKITE_JOB_ID"]},
+    )
     return S3_PRESIGNED_CACHE
 
 
