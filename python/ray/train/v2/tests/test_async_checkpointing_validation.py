@@ -1241,6 +1241,7 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
             checkpoint=Checkpoint.from_directory(in_band_ckpt),
             checkpoint_upload_mode=checkpoint_upload_mode,
             checkpoint_upload_fn=upload_fn,
+            delete_local_checkpoint_after_upload=False,
         )
 
         # out of band: outside experiment dir, should raise
@@ -1256,6 +1257,7 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
             checkpoint=Checkpoint.from_directory(out_of_band_ckpt),
             checkpoint_upload_mode=checkpoint_upload_mode,
             checkpoint_upload_fn=upload_fn,
+            delete_local_checkpoint_after_upload=False,
         )
 
     with pytest.raises(
