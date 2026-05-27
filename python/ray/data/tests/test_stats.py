@@ -2447,13 +2447,19 @@ def test_streaming_exec_schedule_percentiles_populated(
     # Smoke test: with the env var set, percentile fields on the summary
     # are populated end-to-end via the streaming executor.
     monkeypatch.setenv("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", "1")
-    ds = ray.data.range(100).map(lambda r: r)
-    ds.materialize()
-    summary = ds.get_stats_summary(detail=True)
+    # ``Dataset.materialize`` runs the streaming executor on a deep copy
+    # of the dataset, so stats land on the MaterializedDataset it
+    # returns. The original ``ds`` keeps an empty cache; reading stats
+    # from it would yield a fresh, never-added-to Timer.
+    mds = ray.data.range(100).map(lambda r: r).materialize()
+    summary = mds.get_stats_summary(detail=True)
     p50 = summary.streaming_exec_schedule_p50_s
     p90 = summary.streaming_exec_schedule_p90_s
     schedule_max = summary.streaming_exec_schedule_max_s
-    # Monotonic + bounded by max — guaranteed by exact percentiles.
+    # Percentile fields are actually populated (non-zero) and bounded
+    # by max — checking only the ordering would be vacuously true when
+    # the Timer is empty.
+    assert p90 > 0
     assert 0 <= p50 <= p90 <= schedule_max
 
 
@@ -2463,9 +2469,9 @@ def test_streaming_exec_schedule_percentiles_off_by_default(
     # Without the env var, sample tracking stays off and the percentile
     # fields read 0. The other timing fields (avg/max) still work.
     monkeypatch.delenv("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", raising=False)
-    ds = ray.data.range(100).map(lambda r: r)
-    ds.materialize()
-    summary = ds.get_stats_summary(detail=True)
+    # See the populated variant — stats live on the materialize return value.
+    mds = ray.data.range(100).map(lambda r: r).materialize()
+    summary = mds.get_stats_summary(detail=True)
     assert summary.streaming_exec_schedule_p50_s == 0
     assert summary.streaming_exec_schedule_p90_s == 0
     # ...but avg/max are still populated.
