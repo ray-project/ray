@@ -618,7 +618,7 @@
 # 200 float32[32]) modeled after production reference data. Stresses
 # per-block BlockMetadataWithSchema propagation on the driver, which
 # dominates large-schema production workloads.
-- name: worker_scaling_{{num_workers}}_{{worker_type}}_{{num_operators}}ops
+- name: worker_scaling_{{num_workers}}_{{worker_type}}_{{num_operators}}_ops
   python: "3.10"
   frequency: weekly
   cluster:
