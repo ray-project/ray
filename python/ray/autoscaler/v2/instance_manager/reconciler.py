@@ -1169,9 +1169,6 @@ class Reconciler:
         if isinstance(cloud_provider, KubeRayProvider):
             cloud_provider.evaluate_and_dispatch_cluster_idle(
                 ray_state=ray_state,
-                idle_termination_seconds=autoscaling_config.get_config(
-                    "idle_termination_seconds", None
-                ),
                 node_type_configs=autoscaling_config.get_node_type_configs(),
             )
 

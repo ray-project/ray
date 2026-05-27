@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
-IDLE_TERMINATION_SECONDS_KEY = "idleTerminationSeconds"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
@@ -111,26 +110,6 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     else:
         idle_timeout_minutes = 1.0
 
-    if IDLE_TERMINATION_SECONDS_KEY in autoscaler_options:
-        idle_termination_seconds = float(
-            autoscaler_options[IDLE_TERMINATION_SECONDS_KEY]
-        )
-        # Cluster-level termination must not run before per-node idle has had a
-        # chance to drain workers. Reject configs that would otherwise mislead
-        # users about when the cluster actually suspends.
-        idle_timeout_seconds = autoscaler_options.get(IDLE_SECONDS_KEY, 60)
-        if idle_termination_seconds < idle_timeout_seconds:
-            logger.error(
-                "%s=%s must be >= %s=%s; disabling cluster idle termination.",
-                IDLE_TERMINATION_SECONDS_KEY,
-                idle_termination_seconds,
-                IDLE_SECONDS_KEY,
-                idle_timeout_seconds,
-            )
-            idle_termination_seconds = None
-    else:
-        idle_termination_seconds = None
-
     if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_CONSERVATIVE:
         upscaling_speed = 1  # Rate-limit upscaling if "Conservative" is set by user.
     # This elif is redudant but included for clarity.
@@ -151,8 +130,6 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
         # Should consider exposing `idleTimeoutMinutes` in the RayCluster CRD,
         # under an `autoscaling` field.
         "idle_timeout_minutes": idle_timeout_minutes,
-        # Cluster-level idle termination threshold (seconds). V2 only.
-        "idle_termination_seconds": idle_termination_seconds,
         # Should consider exposing `upscalingSpeed` in the RayCluster CRD,
         # under an `autoscaling` field.
         "upscaling_speed": upscaling_speed,

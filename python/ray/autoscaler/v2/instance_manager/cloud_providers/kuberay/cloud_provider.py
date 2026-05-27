@@ -49,6 +49,9 @@ logger = logging.getLogger(__name__)
 # observes it and performs the terminal action.
 IDLE_TTL_EXPIRED_ANNOTATION = "ray.io/idle-ttl-expired"
 
+AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
+IDLE_TERMINATION_SECONDS_KEY = "idleTerminationSeconds"
+
 
 class KubeRayProvider(ICloudInstanceProvider):
     """
@@ -92,6 +95,10 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Monotonic timestamp of the first reconcile loop where the cluster
         # currently looks idle. None means the signal is not held this loop.
         self._cluster_idle_observed_since: Optional[float] = None
+
+        # Cluster-idle threshold (seconds) read from the RayCluster CR. None
+        # means the feature is not configured. Refreshed each sync.
+        self._idle_termination_seconds: Optional[float] = None
 
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
@@ -472,9 +479,19 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._refresh_idle_termination_seconds()
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
+
+    def _refresh_idle_termination_seconds(self) -> None:
+        """Reads idleTerminationSeconds from the cached RayCluster spec.
+
+        Trusts the value as accepted by KubeRay's admission webhook
+        """
+        opts = self._ray_cluster.get("spec", {}).get(AUTOSCALER_OPTIONS_KEY, {})
+        secs = opts.get(IDLE_TERMINATION_SECONDS_KEY)
+        self._idle_termination_seconds = float(secs) if secs is not None else None
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -648,18 +665,17 @@ class KubeRayProvider(ICloudInstanceProvider):
     def evaluate_and_dispatch_cluster_idle(
         self,
         ray_state: ClusterResourceState,
-        idle_termination_seconds: Optional[float],
         node_type_configs: Dict[NodeType, NodeTypeConfig],
     ) -> None:
         """Drives the cluster-idle decision for this RayCluster.
 
         Checks observable conditions, masks the signal if any user driver is
         attached, and then promotes the signal once it has held for
-        idle_termination_seconds. When promoted, patches the RayCluster CR
-        with the idle-TTL-expired annotation; the KubeRay operator performs
-        the terminal action.
+        ``self._idle_termination_seconds``. When promoted, patches the
+        RayCluster CR with the idle-TTL-expired annotation; the KubeRay
+        operator performs the terminal action.
         """
-        if idle_termination_seconds is None:
+        if self._idle_termination_seconds is None:
             self._cluster_idle_observed_since = None
             return
         if not self._is_cluster_idle_observable(ray_state, node_type_configs):
@@ -672,8 +688,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         now = time.monotonic()
         if self._cluster_idle_observed_since is None:
             self._cluster_idle_observed_since = now
-            return
-        if now - self._cluster_idle_observed_since < idle_termination_seconds:
+        if now - self._cluster_idle_observed_since < self._idle_termination_seconds:
             return
         self.set_cluster_idle_annotation()
 

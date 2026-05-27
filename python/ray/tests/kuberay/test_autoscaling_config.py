@@ -137,7 +137,6 @@ def _get_basic_autoscaling_config() -> dict:
         "head_setup_commands": [],
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
-        "idle_termination_seconds": None,
         "initialization_commands": [],
         "max_workers": 508,
         "setup_commands": [],
@@ -200,35 +199,6 @@ def _get_ray_cr_with_autoscaler_options() -> dict:
         "idleTimeoutSeconds": 300,
     }
     return cr
-
-
-def _get_ray_cr_with_idle_termination_seconds() -> dict:
-    cr = get_basic_ray_cr()
-    cr["spec"]["autoscalerOptions"] = {
-        "idleTimeoutSeconds": 60,
-        "idleTerminationSeconds": 1800,
-    }
-    return cr
-
-
-def _get_autoscaling_config_with_idle_termination_seconds() -> dict:
-    config = _get_basic_autoscaling_config()
-    config["idle_termination_seconds"] = 1800.0
-    return config
-
-
-def _get_ray_cr_with_idle_termination_less_than_timeout() -> dict:
-    cr = get_basic_ray_cr()
-    cr["spec"]["autoscalerOptions"] = {
-        "idleTimeoutSeconds": 60,
-        "idleTerminationSeconds": 10,
-    }
-    return cr
-
-
-def _get_autoscaling_config_with_idle_termination_rejected() -> dict:
-    # idleTerminationSeconds < idleTimeoutSeconds → parser rejects, stays None.
-    return _get_basic_autoscaling_config()
 
 
 def _get_ray_cr_with_tpu_custom_resource() -> dict:
@@ -517,22 +487,6 @@ TEST_DATA = (
             None,
             None,
             id="autoscaler-options",
-        ),
-        pytest.param(
-            _get_ray_cr_with_idle_termination_seconds(),
-            _get_autoscaling_config_with_idle_termination_seconds(),
-            None,
-            None,
-            None,
-            id="idle-termination-seconds-valid",
-        ),
-        pytest.param(
-            _get_ray_cr_with_idle_termination_less_than_timeout(),
-            _get_autoscaling_config_with_idle_termination_rejected(),
-            None,
-            None,
-            None,
-            id="idle-termination-seconds-below-timeout-rejected",
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),

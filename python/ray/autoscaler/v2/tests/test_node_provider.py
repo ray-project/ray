@@ -957,9 +957,9 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
     def test_evaluate_and_dispatch_disabled_when_threshold_none(self):
         path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._idle_termination_seconds = None
         self.provider.evaluate_and_dispatch_cluster_idle(
             ray_state=self._ray_state(),
-            idle_termination_seconds=None,
             node_type_configs=self._node_type_configs(),
         )
         assert path not in self.mock_client._patches
@@ -967,12 +967,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
     def test_evaluate_and_dispatch_waits_for_threshold(self):
         self.provider._gcs_client = self._make_gcs()  # no drivers
+        self.provider._idle_termination_seconds = 100.0
 
         def evaluate_at(t):
             with mock.patch("time.monotonic", return_value=t):
                 self.provider.evaluate_and_dispatch_cluster_idle(
                     ray_state=self._ray_state(),
-                    idle_termination_seconds=100.0,
                     node_type_configs=self._node_type_configs(),
                 )
 
@@ -988,12 +988,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
     def test_evaluate_and_dispatch_resets_when_driver_attaches(self):
         path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._idle_termination_seconds = 100.0
 
         with mock.patch("time.monotonic", return_value=0.0):
             self.provider._gcs_client = self._make_gcs()  # no drivers
             self.provider.evaluate_and_dispatch_cluster_idle(
                 ray_state=self._ray_state(),
-                idle_termination_seconds=100.0,
                 node_type_configs=self._node_type_configs(),
             )
         assert self.provider._cluster_idle_observed_since == 0.0
@@ -1003,11 +1003,27 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             self.provider._gcs_client = self._make_gcs((False, "python a.py"))
             self.provider.evaluate_and_dispatch_cluster_idle(
                 ray_state=self._ray_state(),
-                idle_termination_seconds=100.0,
                 node_type_configs=self._node_type_configs(),
             )
         assert self.provider._cluster_idle_observed_since is None
         assert path not in self.mock_client._patches
+
+    def test_refresh_idle_termination_seconds_reads_value(self):
+        self.provider._ray_cluster = {
+            "spec": {"autoscalerOptions": {"idleTerminationSeconds": 1800}}
+        }
+        self.provider._refresh_idle_termination_seconds()
+        assert self.provider._idle_termination_seconds == 1800.0
+
+    def test_refresh_idle_termination_seconds_unset(self):
+        self.provider._ray_cluster = {"spec": {"autoscalerOptions": {}}}
+        self.provider._refresh_idle_termination_seconds()
+        assert self.provider._idle_termination_seconds is None
+
+    def test_refresh_idle_termination_seconds_no_autoscaler_options(self):
+        self.provider._ray_cluster = {"spec": {}}
+        self.provider._refresh_idle_termination_seconds()
+        assert self.provider._idle_termination_seconds is None
 
     def test_scale_down_with_multi_host_group(self):
         """
