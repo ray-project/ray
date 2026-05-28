@@ -347,11 +347,18 @@ class TestPDOrchestratorMixin:
         """
         from fastapi.testclient import TestClient
 
+        from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+
         server = PDDecodeServer.__new__(PDDecodeServer)
         server._prefill_handle = _FakePrefillHandle()
         server._llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model")
         )
+        # The direct-streaming app starts from the engine-native ASGI app, so
+        # the decode server needs a (mock) engine. PD only re-points the
+        # chat/completions routes at the orchestrator, patched below.
+        server.engine = MockVLLMEngine(server._llm_config)
+        await server.engine.start()
 
         decode_calls = []
 

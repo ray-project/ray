@@ -19,7 +19,6 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
-    to_model_metadata,
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
@@ -48,70 +47,53 @@ _PREWARM_MAX_RETRIES = 60
 
 
 # ---------------------------------------------------------------------------
-# Direct-streaming ingress shim
+# Direct-streaming route helpers
 # ---------------------------------------------------------------------------
 #
-# HTTP direct streaming on a PDDecodeServer must route through PD
-# orchestration. ``LLMServer.__serve_build_asgi_app__`` returns the engine's
-# native ASGI app, which sends chat/completions straight to the local engine
-# and bypasses ``PDDecodeServer.chat`` / ``.completions``. To keep PD
-# orchestration on the HTTP path, ``PDOrchestratorMixin`` overrides
-# ``__serve_build_asgi_app__`` to build an ``OpenAiIngress`` whose
-# ``_get_response`` calls back into the local server instead of a remote
-# handle. Non-PD ``LLMServer`` deployments continue to use vLLM's native ASGI
-# app unchanged.
+# Direct streaming exposes the engine-native ASGI app directly on the LLM
+# server replica (see ``LLMServer.__serve_build_asgi_app__``), eliminating the
+# separate ``OpenAiIngress`` deployment. For P/D, the engine-native
+# chat/completions routes would send traffic straight to the local decode
+# engine and bypass remote prefill, so ``PDOrchestratorMixin`` re-points just
+# those two routes at its own ``chat`` / ``completions`` (which orchestrate
+# prefill then decode). Every other route stays engine-native, identical to
+# non-P/D direct streaming.
 
 
-def _build_pd_lora_paths(llm_config) -> Dict[str, str]:
-    lora_config = llm_config.lora_config
-    if lora_config is None:
-        return {}
-    return {llm_config.model_id: lora_config.dynamic_lora_loading_path}
+def _strip_routes(app, path: str) -> None:
+    """Remove the engine-native APIRoute(s) registered at ``path``."""
+    from fastapi.routing import APIRoute
+
+    app.routes[:] = [
+        r for r in app.routes if not (isinstance(r, APIRoute) and r.path == path)
+    ]
 
 
-def _make_pd_direct_streaming_ingress_cls():
-    """Build the ``_PDDirectStreamingIngress`` class lazily to keep
-    ``OpenAiIngress`` (and its FastAPI deps) out of module import time."""
+async def _pd_http_response(gen):
+    """Shape a P/D orchestration generator into an OpenAI HTTP response.
+
+    Returns a JSON response when the first chunk is an error or a complete
+    (non-streaming) response, otherwise an SSE stream. Uses the same response
+    helpers as ``OpenAiIngress`` so the wire format matches the standard path.
+    """
+    from starlette.responses import JSONResponse, StreamingResponse
+
     from ray.llm._internal.serve.core.ingress.ingress import (
-        OpenAiIngress,
-        _sanitize_chat_completion_request,
+        NON_STREAMING_RESPONSE_TYPES,
+        _openai_json_wrapper,
+        _peek_at_generator,
     )
 
-    class _PDDirectStreamingIngress(OpenAiIngress):
-        """``OpenAiIngress`` whose ``_get_response`` calls a local server's
-        ``chat`` / ``completions`` directly instead of dispatching through a
-        Ray Serve handle. Used by PDDecodeServer's direct-streaming app so
-        PD orchestration runs on the HTTP path."""
-
-        def __init__(self, server: "PDOrchestratorMixin"):
-            model_id = server._llm_config.model_id
-            super().__init__(
-                llm_deployments={model_id: None},
-                model_cards={model_id: to_model_metadata(model_id, server._llm_config)},
-                lora_paths=_build_pd_lora_paths(server._llm_config),
-            )
-            self._server = server
-
-        async def _get_response(
-            self,
-            *,
-            body,
-            call_method: str,
-            raw_request=None,
-        ):
-            body.model = await self._get_model_id(body.model)
-            if isinstance(body, ChatCompletionRequest):
-                body = _sanitize_chat_completion_request(body)
-            raw_request_info = (
-                RawRequestInfo.from_starlette_request(raw_request)
-                if raw_request is not None
-                else None
-            )
-            gen = await getattr(self._server, call_method)(body, raw_request_info)
-            async for response in gen:
-                yield response
-
-    return _PDDirectStreamingIngress
+    first, gen = await _peek_at_generator(gen)
+    if isinstance(first, list):
+        first = first[0]
+    if isinstance(first, ErrorResponse):
+        return JSONResponse(
+            content=first.model_dump(), status_code=first.error.code or 400
+        )
+    if isinstance(first, NON_STREAMING_RESPONSE_TYPES):
+        return JSONResponse(content=first.model_dump())
+    return StreamingResponse(_openai_json_wrapper(gen), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
@@ -212,27 +194,33 @@ class PDOrchestratorMixin:
     # ---- Direct-streaming ASGI app ----
 
     async def __serve_build_asgi_app__(self):
-        """Build an OpenAI ASGI app that routes HTTP through PD orchestration.
+        """Serve direct-streaming HTTP through P/D orchestration.
 
-        See module-level note on ``_PDDirectStreamingIngress`` for why this
-        override exists. The ingress's ``chat`` / ``completions`` route
-        handlers call this server's ``chat`` / ``completions``, which run
-        through ``_pd_handle_request`` (remote prefill, then local decode).
+        Start from the engine-native app (same as non-P/D direct streaming)
+        and re-point only ``/v1/chat/completions`` and ``/v1/completions`` at
+        this server's ``chat`` / ``completions``, which run remote prefill
+        then local decode. All other routes stay engine-native.
         """
+        from starlette.requests import Request
+
         from ray.llm._internal.serve.core.ingress.ingress import (
-            DEFAULT_ENDPOINTS,
-            init,
+            _sanitize_chat_completion_request,
         )
 
-        app = init()
-        ingress = _make_pd_direct_streaming_ingress_cls()(self)
-        for method_name, route_factory in DEFAULT_ENDPOINTS.items():
-            route_factory(app)(getattr(ingress, method_name))
+        app = await super().__serve_build_asgi_app__()
+        _strip_routes(app, "/v1/chat/completions")
+        _strip_routes(app, "/v1/completions")
 
-        @app.get("/health")
-        async def _health():
-            await self.check_health()
-            return {"status": "ok"}
+        @app.post("/v1/chat/completions")
+        async def _pd_chat(body: ChatCompletionRequest, request: Request):
+            body = _sanitize_chat_completion_request(body)
+            raw_info = RawRequestInfo.from_starlette_request(request)
+            return await _pd_http_response(await self.chat(body, raw_info))
+
+        @app.post("/v1/completions")
+        async def _pd_completions(body: CompletionRequest, request: Request):
+            raw_info = RawRequestInfo.from_starlette_request(request)
+            return await _pd_http_response(await self.completions(body, raw_info))
 
         return app
 
