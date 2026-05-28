@@ -18,7 +18,6 @@ depsets:
       - python/requirements/ml/py313/data-requirements.txt
       - python/requirements/ml/py313/data-test-requirements.txt
       - python/requirements/ml/py313/dl-cpu-requirements.txt
-      - python/requirements/ml/py313/dl-gpu-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/data-base-ci_depset_py${PYTHON_VERSION}.lock
