@@ -916,21 +916,21 @@ def read_zarr(
         (long-form, 4 ``images`` chunks + 1 ``labels`` chunk).
 
         >>> import ray
-        >>> ds = ray.data.read_zarr(
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ... )
-        >>> ds.count()
+        >>> ds.count()  # doctest: +SKIP
         5
 
         Aligned read: paired ``(images, labels)`` per row. ``align_axis_0``
         validates that all selected arrays share ``shape[0]``.
 
-        >>> ds = ray.data.read_zarr(
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
         ...     align_axis_0=True,
         ...     chunk_shape=[50],
         ... )
-        >>> ds.count()
+        >>> ds.count()  # doctest: +SKIP
         4
 
     Custom codecs:
