@@ -1175,10 +1175,23 @@ class Node:
         ]
 
         if self._ray_params.gcs_server_port == 0:
+            # GCS startup is slower with the RocksDB backend (opens two
+            # DB instances at /tables and /kv, replays WAL, validates
+            # cluster-id marker), so the default 30s wait for the port
+            # file can elapse before GCS has finished initializing.
+            # Bump to 120s when RAY_gcs_storage=rocksdb; operator
+            # override via RAY_gcs_server_port_wait_time_s.
+            default_wait = (
+                "120" if os.environ.get("RAY_gcs_storage") == "rocksdb" else "30"
+            )
+            gcs_port_wait_s = int(
+                os.environ.get("RAY_gcs_server_port_wait_time_s", default_wait)
+            )
             self._ray_params.gcs_server_port = wait_for_persisted_port(
                 self._session_dir,
                 self._node_id,
                 GCS_SERVER_PORT_NAME,
+                timeout_ms=gcs_port_wait_s * 1000,
             )
 
         # Connecting via non-localhost address may be blocked by firewall rule,
