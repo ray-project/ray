@@ -2,6 +2,7 @@ import copy
 import json
 import math
 import os
+import re
 from dataclasses import asdict
 from typing import List, Tuple
 
@@ -502,11 +503,15 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
         template = copy.deepcopy(target.template.value)
+        global_filters_str = ",".join(panel_global_filters)
+        expr = target.expr.format(global_filters=global_filters_str)
+        # Clean up empty global_filters: ", ," → "," and ", }" → "}"
+        expr = re.sub(r",\s*,", ",", expr)
+        expr = re.sub(r",\s*}", "}", expr)
+        expr = re.sub(r"{\s*,", "{", expr)
         template.update(
             {
-                "expr": target.expr.format(
-                    global_filters=",".join(panel_global_filters)
-                ),
+                "expr": expr,
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }
