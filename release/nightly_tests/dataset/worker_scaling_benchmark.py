@@ -84,29 +84,10 @@ def parse_args() -> argparse.Namespace:
         default=42,
         help="Seed used to pre-roll template values once per UDF instance.",
     )
-    parser.add_argument(
-        "--num-operators",
-        type=int,
-        default=1,
-        help=(
-            "Number of chained map_batches operators in the pipeline. "
-            "The total worker pool (--num-workers) is split evenly across "
-            "operators (each gets num_workers // num_operators workers). "
-            "Useful for stressing the per-iteration update_usages / "
-            "_update_allocated_budgets work that scales with N_ops."
-        ),
-    )
     args = parser.parse_args()
     if args.num_scalar_cols + args.num_array_cols <= 0:
         parser.error(
             "At least one of --num-scalar-cols / --num-array-cols must be > 0."
-        )
-    if args.num_operators < 1:
-        parser.error("--num-operators must be >= 1.")
-    if args.num_workers < args.num_operators:
-        parser.error(
-            f"--num-workers ({args.num_workers}) must be >= --num-operators "
-            f"({args.num_operators}) so each operator gets at least one worker."
         )
     return args
 
@@ -134,11 +115,7 @@ class RealisticSchemaUDF:
         ).astype(np.float32)
 
     def __call__(self, batch) -> Dict[str, object]:
-        # Derive row count from any column. The first operator in the
-        # chain reads from ``ray.data.range`` (column ``id``); subsequent
-        # operators see this UDF's own output schema (``scalar_col_*`` /
-        # ``array_col_*``), so we can't hard-code ``batch["id"]``.
-        n_rows = len(next(iter(batch.values())))
+        n_rows = len(batch["id"])
         out: Dict[str, object] = {}
 
         for i, col in enumerate(self._scalar_cols):
@@ -176,19 +153,9 @@ def main(args: argparse.Namespace):
         num_rows = num_blocks * rows_per_block
         ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
-        # Split the total worker pool evenly across the chained operators
-        # so the cluster footprint stays the same regardless of
-        # --num-operators. With 5000 workers and 15 operators each
-        # operator gets ~333 workers, which mirrors production pipelines
-        # that pay the per-iteration cost of many ops with a moderately
-        # sized pool per op.
-        workers_per_operator = args.num_workers // args.num_operators
-
         map_kwargs = {"num_cpus": 0.5}
         if args.worker_type == "actors":
-            map_kwargs["compute"] = ray.data.ActorPoolStrategy(
-                size=workers_per_operator
-            )
+            map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=args.num_workers)
             udf = RealisticSchemaUDF
             map_kwargs["fn_constructor_kwargs"] = {
                 "seed": args.seed,
@@ -196,20 +163,13 @@ def main(args: argparse.Namespace):
                 "num_array_cols": args.num_array_cols,
             }
         else:
-            # ``concurrency`` caps in-flight tasks per operator. Without
-            # this cap, all tasks of a single operator can fan out across
-            # the entire cluster and the next operator in the chain
-            # starves — but the goal here is N_operators sharing the
-            # pool, so each gets ``workers_per_operator`` task slots.
-            map_kwargs["concurrency"] = workers_per_operator
             udf = make_realistic_schema_udf(
                 args.seed,
                 args.num_scalar_cols,
                 args.num_array_cols,
             )
 
-        for _ in range(args.num_operators):
-            ds = ds.map_batches(udf, **map_kwargs)
+        ds = ds.map_batches(udf, **map_kwargs)
 
         ds = ds.materialize()
         metrics = collect_dataset_stats(ds)
@@ -224,8 +184,6 @@ def main(args: argparse.Namespace):
             args.num_array_cols,
         )
         metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
-        metrics["num_operators"] = args.num_operators
-        metrics["workers_per_operator"] = workers_per_operator
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
