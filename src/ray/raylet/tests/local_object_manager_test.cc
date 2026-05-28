@@ -232,8 +232,9 @@ class MockIOWorker : public MockWorker {
  public:
   MockIOWorker(WorkerID worker_id,
                int port,
+               ClockInterface &clock,
                std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
-      : MockWorker(worker_id, port), io_worker_(io_worker) {}
+      : MockWorker(worker_id, port, clock), io_worker_(io_worker) {}
 
   rpc::CoreWorkerClientInterface *rpc_client() { return io_worker_.get(); }
 
@@ -288,8 +289,9 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
   std::list<std::function<void(std::shared_ptr<WorkerInterface>)>> restoration_callbacks;
   std::shared_ptr<MockIOWorkerClient> io_worker_client =
       std::make_shared<MockIOWorkerClient>();
-  std::shared_ptr<WorkerInterface> io_worker =
-      std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
+  FakeClock clock_;
+  std::shared_ptr<WorkerInterface> io_worker = std::make_shared<MockIOWorker>(
+      WorkerID::FromRandom(), 1234, clock_, io_worker_client);
 };
 
 class MockObjectBuffer : public Buffer {

@@ -68,19 +68,19 @@ class FakeClock final : public ClockInterface {
     return SteadyTimePoint(std::chrono::nanoseconds(absl::ToUnixNanos(Now())));
   }
 
-    void AdvanceTime(absl::Duration duration) {
-      absl::MutexLock lock(&mu_);
-      now_ += duration;
-    }
+  void AdvanceTime(absl::Duration duration) {
+    absl::MutexLock lock(&mu_);
+    now_ += duration;
+  }
 
-    void SetTime(absl::Time time) {
-      absl::MutexLock lock(&mu_);
-      now_ = time;
-    }
+  void SetTime(absl::Time time) {
+    absl::MutexLock lock(&mu_);
+    now_ = time;
+  }
 
-   private:
-    mutable absl::Mutex mu_;
-    absl::Time now_ ABSL_GUARDED_BY(mu_);
+ private:
+  mutable absl::Mutex mu_;
+  absl::Time now_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace ray
