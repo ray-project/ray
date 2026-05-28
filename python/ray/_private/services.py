@@ -745,7 +745,7 @@ def extract_ip_port(bootstrap_address: str):
     ip_port = parse_address(bootstrap_address)
     if ip_port is None:
         raise ValueError(
-            f"Malformed address {bootstrap_address}. " f"Expected '<host>:<port>'."
+            f"Malformed address {bootstrap_address}. Expected '<host>:<port>'."
         )
     ip, port = ip_port
     try:
@@ -754,8 +754,7 @@ def extract_ip_port(bootstrap_address: str):
         raise ValueError(f"Malformed address port {port}. Must be an integer.")
     if port < 1024 or port > 65535:
         raise ValueError(
-            f"Invalid address port {port}. Must be between 1024 "
-            "and 65535 (inclusive)."
+            f"Invalid address port {port}. Must be between 1024 and 65535 (inclusive)."
         )
     return ip, port
 
@@ -1040,8 +1039,7 @@ def start_ray_process(
         total_chrs = sum([len(x) for x in command])
         if total_chrs > 31766:
             raise ValueError(
-                f"command is limited to a total of 31767 characters, "
-                f"got {total_chrs}"
+                f"command is limited to a total of 31767 characters, got {total_chrs}"
             )
 
     process = ConsolePopen(
