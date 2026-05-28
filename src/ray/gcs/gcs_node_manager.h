@@ -60,7 +60,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                  observability::RayEventRecorderInterface &ray_event_recorder,
                  const std::string &session_name,
                  pubsub::ObservabilityPublisher *observability_publisher,
-                 ClockInterface &clock);
+                 ClockInterface &clock,
+                 std::function<bool()> is_leader_fn = []() { return true; });
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -405,6 +406,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
   ClockInterface &clock_;
+  const std::function<bool()> is_leader_fn_;
 
   // Debug info.
   enum CountType {

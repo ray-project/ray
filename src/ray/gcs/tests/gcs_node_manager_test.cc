@@ -756,4 +756,63 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
   }
 }
 
+TEST_F(GcsNodeManagerTest, TestCheckAliveLeadership) {
+  // 1. When constructed without is_leader_fn (or default), it must return is_leader = true.
+  {
+    gcs::GcsNodeManager node_manager(
+        gcs_publisher_.get(),
+        gcs_table_storage_.get(),
+        *io_context_,
+        client_pool_.get(),
+        ClusterID::FromRandom(),
+        *fake_ray_event_recorder_,
+        "session_name",
+        observability_publisher_.get(),
+        clock_);
+
+    rpc::CheckAliveRequest request;
+    rpc::CheckAliveReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called, &reply](
+                                   Status status,
+                                   std::function<void()> f1,
+                                   std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      EXPECT_TRUE(reply.is_leader());
+      callback_called = true;
+    };
+    node_manager.HandleCheckAlive(request, &reply, send_reply_callback);
+    EXPECT_TRUE(callback_called);
+  }
+
+  // 2. When constructed with is_leader_fn returning false, it must return is_leader = false.
+  {
+    gcs::GcsNodeManager node_manager(
+        gcs_publisher_.get(),
+        gcs_table_storage_.get(),
+        *io_context_,
+        client_pool_.get(),
+        ClusterID::FromRandom(),
+        *fake_ray_event_recorder_,
+        "session_name",
+        observability_publisher_.get(),
+        clock_,
+        []() { return false; });
+
+    rpc::CheckAliveRequest request;
+    rpc::CheckAliveReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called, &reply](
+                                   Status status,
+                                   std::function<void()> f1,
+                                   std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      EXPECT_FALSE(reply.is_leader());
+      callback_called = true;
+    };
+    node_manager.HandleCheckAlive(request, &reply, send_reply_callback);
+    EXPECT_TRUE(callback_called);
+  }
+}
+
 }  // namespace ray
