@@ -1449,65 +1449,95 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
-    def test_peek_pending_pair_returns_block_and_meta(self, ray_start_regular_shared):
-        """``peek_pending_pair`` returns the next (block_ref, meta_ref)
-        pair without consuming it; a subsequent ``on_data_ready`` still
-        emits the bundle (proving the pending state survives across
-        the peek)."""
-        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
-        outputs = []
-        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
-
-        ray.wait([streaming_gen], fetch_local=False)
-        pair = task.peek_pending_pair()
-        assert pair is not None
-        block_ref, meta_ref = pair
-        assert not block_ref.is_nil()
-        assert not meta_ref.is_nil()
-        # The pending slots are populated; on_data_ready should now
-        # consume them without re-pulling from the gen.
-        assert task._pending_block_ref == block_ref
-        assert task._pending_meta_ref == meta_ref
-
-        task.on_data_ready(None)
-        assert len(outputs) == 1
-        assert outputs[0].size_bytes() == 1024
-
-    def test_on_data_ready_uses_prefetched_meta(self, ray_start_regular_shared):
-        """When ``prefetched_meta`` contains the pending meta_ref,
-        ``on_data_ready`` consumes it from the dict instead of issuing
-        a per-ref ``ray.get``."""
-        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
-        outputs = []
-        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
-
-        ray.wait([streaming_gen], fetch_local=False)
-        pair = task.peek_pending_pair()
-        assert pair is not None
-        _, meta_ref = pair
-        meta_bytes = ray.get(meta_ref)
-
-        task.on_data_ready(None, prefetched_meta={meta_ref: meta_bytes})
-
-        assert len(outputs) == 1
-        assert outputs[0].size_bytes() == 1024
-
-    def test_on_data_ready_falls_back_when_prefetched_meta_misses(
+    def test_on_data_ready_legacy_mode_emits_immediately(
         self, ray_start_regular_shared
     ):
-        """Empty ``prefetched_meta`` dict still works — on_data_ready
-        falls back to the per-ref ``ray.get`` path with the existing
-        timeout semantics, preserving error visibility for unmocked
-        meta_refs."""
+        """Without ``deferred_emits``, on_data_ready behaves like the
+        original: ray.get per-ref, emit the RefBundle and update
+        ``_last_block_meta`` during the loop."""
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
         outputs = []
         task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
 
         ray.wait([streaming_gen], fetch_local=False)
-        task.on_data_ready(None, prefetched_meta={})
+        bytes_read = task.on_data_ready(None)
 
         assert len(outputs) == 1
         assert outputs[0].size_bytes() == 1024
+        assert bytes_read == 1024
+        assert task._last_block_meta is not None
+
+    def test_on_data_ready_deferred_does_not_emit_inline(
+        self, ray_start_regular_shared
+    ):
+        """In deferred mode, on_data_ready appends to the deferred list
+        without emitting RefBundles or updating ``_last_block_meta``.
+        Emission happens later in ``_replay_deferred_emits``."""
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            DeferredEmit,
+        )
+        from ray.data._internal.execution.streaming_executor_state import (
+            _replay_deferred_emits,
+        )
+
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+        outputs = []
+        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
+
+        ray.wait([streaming_gen], fetch_local=False)
+        deferred: list[DeferredEmit] = []
+        task.on_data_ready(None, deferred_emits=deferred)
+
+        # No emit yet, _last_block_meta still None.
+        assert outputs == []
+        assert task._last_block_meta is None
+        assert len(deferred) >= 1
+
+        # Replay drains the batched fetch (or uses stashed bytes) and
+        # fires the callback in deferred order.
+        _replay_deferred_emits(deferred, [task])
+        assert len(outputs) == len(deferred)
+        assert task._last_block_meta is not None
+
+    def test_deferred_preserves_emission_order_across_tasks(
+        self, ray_start_regular_shared
+    ):
+        """If two tasks produce pairs in interleaved order
+        (task_a's first, task_b's first, then task_a's second, etc.),
+        the deferred replay emits in the original append order — same
+        as today's per-op, per-task, per-pair sequence."""
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            DeferredEmit,
+        )
+        from ray.data._internal.execution.streaming_executor_state import (
+            _replay_deferred_emits,
+        )
+
+        gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
+        gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
+
+        outputs: list[tuple[int, int]] = []  # (task_idx, bytes)
+        task_a = DataOpTask(
+            0,
+            gen_a,
+            output_ready_callback=lambda b: outputs.append((0, b.size_bytes())),
+        )
+        task_b = DataOpTask(
+            1,
+            gen_b,
+            output_ready_callback=lambda b: outputs.append((1, b.size_bytes())),
+        )
+
+        ray.wait([gen_a, gen_b], fetch_local=False)
+
+        deferred: list[DeferredEmit] = []
+        # Today's order: task_a fully drained, then task_b fully drained.
+        task_a.on_data_ready(None, deferred_emits=deferred)
+        task_b.on_data_ready(None, deferred_emits=deferred)
+        _replay_deferred_emits(deferred, [task_a, task_b])
+
+        # Expect: task_a's two bundles in size order, then task_b's two.
+        assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]

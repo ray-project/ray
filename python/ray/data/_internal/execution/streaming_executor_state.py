@@ -5,6 +5,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import dataclasses
 import logging
+import pickle
 import threading
 import time
 from collections import defaultdict
@@ -25,8 +26,10 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
+    DeferredEmit,
     MetadataOpTask,
     OpTask,
+    TaskExecDriverStats,
     Waitable,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -42,7 +45,6 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
-from ray.experimental.locations import get_local_object_locations
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -50,122 +52,131 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# How often (in scheduler-loop iterations) to log the meta-ref
-# prefetch hit-rate. ~1× per minute at typical iteration cadence.
+# How often (in scheduler-loop iterations) to log the size-known rate
+# for deferred meta fetches. ~1× per minute at typical iteration cadence.
 _METADATA_PREFETCH_LOG_EVERY_N_ITERS = 100
 
-# Module-level counters for the meta-ref prefetch (size-known) rate
+# Module-level counters for the deferred meta-fetch (size-known) rate
 # across all scheduler-loop iterations of the process. Logged
 # periodically by ``_log_metadata_prefetch_rate_if_due``.
-_metadata_prefetch_meta_refs_seen = 0
-_metadata_prefetch_meta_refs_size_known = 0
+_metadata_prefetch_pairs_seen = 0
+_metadata_prefetch_pairs_size_known = 0
 _metadata_prefetch_iters_since_log = 0
-
-
-def _batched_fetch_meta(
-    ready_tasks: List["OpTask"],
-) -> Dict["ray.ObjectRef", bytes]:
-    """Peek the next pending ``(block_ref, meta_ref)`` pair on each
-    ready DataOpTask, ask the local CoreWorker which **blocks** have a
-    known size (no RPC), and batch the corresponding ``meta_refs`` into
-    one ``ray.get`` call.
-
-    Why query the block_ref's size, not the meta_ref's: the block_ref's
-    ``object_size`` is the budget-relevant size — it maps to
-    ``meta.size_bytes`` used by the budget loop in ``on_data_ready``.
-    The meta_ref's ``object_size`` is just the size of the pickled
-    metadata blob (a few KB) and isn't useful for budget tracking.
-
-    A known block size also implies the worker has finished producing
-    the block AND yielded the matching meta_ref (the streaming gen
-    yields block-then-meta), so the batched ``ray.get(meta_refs)`` is
-    safe — none of its members should block.
-
-    Refs whose block size isn't yet known (the owner hasn't processed
-    the task return) are NOT included in the batched fetch; their
-    ``on_data_ready`` calls fall through to the existing per-ref
-    ``ray.get(meta_ref, timeout=…)`` path, which both retrieves the
-    metadata AND surfaces its ``meta.size_bytes`` for the budget loop.
-
-    Returns a dict mapping ``meta_ref`` to its serialized
-    ``BlockMetadataWithSchema`` bytes. Callers pass this dict to
-    ``DataOpTask.on_data_ready(prefetched_meta=…)``.
-
-    Counters for the size-known rate update on every call; the rate is
-    logged periodically by ``_log_metadata_prefetch_rate_if_due``.
-    """
-    global _metadata_prefetch_meta_refs_seen
-    global _metadata_prefetch_meta_refs_size_known
-    _log_metadata_prefetch_rate_if_due()
-
-    peeked: List[Tuple["ray.ObjectRef", "ray.ObjectRef"]] = []
-    for task in ready_tasks:
-        if not isinstance(task, DataOpTask):
-            continue
-        pair = task.peek_pending_pair()
-        if pair is not None:
-            peeked.append(pair)
-
-    if not peeked:
-        return {}
-
-    # No-RPC local lookup: returns {ref: {object_size: int|None, ...}}.
-    # Refs whose owner hasn't yet processed the task return show up
-    # with object_size=None (or are absent from the dict if the
-    # CoreWorker has no reference to them — shouldn't happen for our
-    # owned refs, but defensive).
-    block_refs = [block_ref for block_ref, _ in peeked]
-    locations = get_local_object_locations(block_refs)
-
-    ready_meta_refs: List["ray.ObjectRef"] = []
-    for block_ref, meta_ref in peeked:
-        info = locations.get(block_ref)
-        if info is not None and info.get("object_size") is not None:
-            ready_meta_refs.append(meta_ref)
-
-    _metadata_prefetch_meta_refs_seen += len(peeked)
-    _metadata_prefetch_meta_refs_size_known += len(ready_meta_refs)
-
-    if not ready_meta_refs:
-        return {}
-
-    # One batched ray.get covering only refs guaranteed retrievable.
-    # We deliberately don't pass timeout — if anything goes wrong here
-    # the per-ref fallback in on_data_ready (with its own timeout and
-    # warning) will handle it on the same iteration's pass.
-    try:
-        values = ray.get(ready_meta_refs)
-    except Exception:
-        # Any failure in the batched fetch (rare; the size-known check
-        # was supposed to guarantee retrievability) falls through to
-        # the per-ref path which has the existing error handling.
-        return {}
-    return dict(zip(ready_meta_refs, values))
 
 
 def _log_metadata_prefetch_rate_if_due() -> None:
     """Emit a debug log every ``_METADATA_PREFETCH_LOG_EVERY_N_ITERS``
-    scheduler iterations summarizing the fraction of meta_refs whose
-    size was locally known (and therefore fetchable in a batched
-    ``ray.get``).
+    scheduler iterations summarizing the fraction of pairs whose
+    block size was locally known (and therefore eligible for the
+    batched ``ray.get`` instead of per-ref).
     """
     global _metadata_prefetch_iters_since_log
     _metadata_prefetch_iters_since_log += 1
     if _metadata_prefetch_iters_since_log < _METADATA_PREFETCH_LOG_EVERY_N_ITERS:
         return
     _metadata_prefetch_iters_since_log = 0
-    seen = _metadata_prefetch_meta_refs_seen
-    known = _metadata_prefetch_meta_refs_size_known
+    seen = _metadata_prefetch_pairs_seen
+    known = _metadata_prefetch_pairs_size_known
     if seen == 0:
         return
     logger.debug(
-        "process_completed_tasks meta-ref prefetch: "
-        "%d / %d (%.1f%%) had known size and were batched; "
-        "remainder fell back to per-ref ray.get.",
+        "process_completed_tasks deferred meta-fetch: "
+        "%d / %d (%.1f%%) pairs had known block size and went into the "
+        "batched ray.get; remainder used per-ref ray.get inside on_data_ready.",
         known,
         seen,
         100.0 * known / seen,
     )
+
+
+def _replay_deferred_emits(
+    deferred: List[DeferredEmit],
+    tasks_for_done_check: List[DataOpTask],
+) -> None:
+    """Step 3-5 of ``process_completed_tasks``'s deferred pipeline.
+
+    Issues ONE batched ``ray.get`` covering the deferred entries whose
+    ``meta_bytes`` is still ``None`` (known-size pairs that
+    ``on_data_ready`` deliberately didn't fetch). Then replays the
+    deferred list in append order, calling each task's
+    ``_output_ready_callback`` so emission order matches today's
+    behavior exactly. Finally fires any postponed
+    ``task_done_callback`` whose task was marked
+    ``_task_done_pending`` during ``on_data_ready``.
+    """
+    global _metadata_prefetch_pairs_seen
+    global _metadata_prefetch_pairs_size_known
+    _log_metadata_prefetch_rate_if_due()
+
+    # Imports kept lazy to avoid a streaming_executor_state ↔
+    # block.py import cycle at module load.
+    from ray.data.block import BlockMetadataWithSchema
+
+    if deferred:
+        # Track size-known rate for telemetry.
+        n_known = sum(1 for d in deferred if d.meta_bytes is None)
+        _metadata_prefetch_pairs_seen += len(deferred)
+        _metadata_prefetch_pairs_size_known += n_known
+
+        # Batched fetch for the known-size subset.
+        to_fetch = [d.meta_ref for d in deferred if d.meta_bytes is None]
+        if to_fetch:
+            try:
+                fetched = ray.get(to_fetch)
+                bytes_by_ref = dict(zip(to_fetch, fetched))
+            except Exception:
+                logger.warning(
+                    "Batched ray.get of %d deferred meta_refs failed; "
+                    "falling back to per-ref ray.get for each.",
+                    len(to_fetch),
+                )
+                bytes_by_ref = {}
+                for ref in to_fetch:
+                    try:
+                        bytes_by_ref[ref] = ray.get(ref)
+                    except Exception:
+                        logger.warning(
+                            "Per-ref ray.get retry also failed for meta_ref %s; "
+                            "this RefBundle will be skipped.",
+                            ref.hex(),
+                        )
+            for d in deferred:
+                if d.meta_bytes is None:
+                    d.meta_bytes = bytes_by_ref.get(d.meta_ref)
+
+        # Replay in append order — preserves per-op, per-task,
+        # per-pair emission order from on_data_ready.
+        for d in deferred:
+            if d.meta_bytes is None:
+                # The fetch failed for this ref; skip emit.
+                continue
+            meta_with_schema: BlockMetadataWithSchema = pickle.loads(d.meta_bytes)
+            meta = meta_with_schema.metadata
+            d.task._output_ready_callback(
+                RefBundle(
+                    [(d.block_ref, meta)],
+                    owns_blocks=True,
+                    schema=meta_with_schema.schema,
+                ),
+            )
+            d.task._last_block_meta = meta
+
+    # Fire any postponed ``task_done_callback`` now that
+    # ``_last_block_meta`` reflects the deferred-replay state.
+    for task in tasks_for_done_check:
+        if not task._task_done_pending:
+            continue
+        task._task_done_callback(
+            None,  # exception
+            task._last_block_meta.task_exec_stats
+            if task._last_block_meta is not None
+            else None,
+            TaskExecDriverStats(
+                task_output_backpressure_s=task._total_output_backpressure_s,
+            ),
+        )
+        task._has_finished = True
+        task._task_done_pending = False
 
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
@@ -777,19 +788,27 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
-        # Batched ray.get of block metadata across all ready DataOpTasks.
-        # For each ready task, peek its next pending pair (block_ref,
-        # meta_ref) without consuming. Then ask the local CoreWorker
-        # (no RPC) which meta_refs already have a known object size —
-        # those are guaranteed to be retrievable. ray.get all of them in
-        # one batched call and hand the dict to each task's
-        # on_data_ready. Refs whose size isn't yet known (the owner
-        # hasn't processed the task return) fall through to the
-        # per-ref ray.get + timeout path inside on_data_ready, which
-        # preserves the existing error semantics.
-        prefetched_meta = _batched_fetch_meta(
-            [t for tasks in ready_tasks_by_op.values() for t in tasks]
-        )
+        # Deferred-emit pipeline:
+        #
+        # 1. Iterate per-op (existing order: topology order, tasks
+        #    sorted by index, per-op budget shared across tasks).
+        # 2. Each ``DataOpTask.on_data_ready`` is invoked with the
+        #    shared ``deferred`` list. Inside it, every pulled pair is
+        #    appended to ``deferred`` instead of being emitted; budget
+        #    arithmetic uses block_ref's local ``object_size`` when
+        #    known, or a synchronous per-ref ``ray.get`` for the
+        #    metadata when not. NO ``RefBundle`` is emitted during the
+        #    on_data_ready loop in deferred mode.
+        # 3. After all on_data_ready calls finish, issue ONE batched
+        #    ``ray.get`` covering the deferred entries whose
+        #    ``meta_bytes`` is still ``None`` (the known-size ones).
+        # 4. Replay ``deferred`` in append order — preserving today's
+        #    per-op, per-task, per-pair emission order exactly.
+        # 5. Fire ``task_done_callback`` for any task whose
+        #    ``_task_done_pending`` flag is set, using its now-final
+        #    ``_last_block_meta`` from the replay.
+        deferred: List[DeferredEmit] = []
+        tasks_for_done_check: List[DataOpTask] = []
 
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
@@ -799,8 +818,9 @@ def process_completed_tasks(
                     try:
                         bytes_read = task.on_data_ready(
                             remaining_output_budget.get(state, None),
-                            prefetched_meta=prefetched_meta,
+                            deferred_emits=deferred,
                         )
+                        tasks_for_done_check.append(task)
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
                             remaining_output_budget[state] = max(
@@ -838,6 +858,9 @@ def process_completed_tasks(
                 else:
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
+
+        # Steps 3–5: batched fetch + replay + postponed done callbacks.
+        _replay_deferred_emits(deferred, tasks_for_done_check)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
