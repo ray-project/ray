@@ -28,6 +28,7 @@
 #include "ray/gcs/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/gcs_leader_gated_handlers.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_table_storage.h"
@@ -36,7 +37,6 @@
 #include "ray/gcs/postable/postable.h"
 #include "ray/gcs/pubsub_handler.h"
 #include "ray/gcs/runtime_env_handler.h"
-#include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
@@ -285,6 +285,15 @@ class GcsServer {
   rpc::ClientCallManager event_aggregator_client_call_manager_;
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
+
+  // Leader-gated proxy handlers for passive mode write gating.
+  std::unique_ptr<LeaderGatedNodeInfoHandler> gated_node_info_handler_;
+  std::unique_ptr<LeaderGatedActorInfoHandler> gated_actor_info_handler_;
+  std::unique_ptr<LeaderGatedJobInfoHandler> gated_job_info_handler_;
+  std::unique_ptr<LeaderGatedPlacementGroupInfoHandler>
+      gated_placement_group_info_handler_;
+  std::unique_ptr<LeaderGatedAutoscalerStateHandler> gated_autoscaler_state_handler_;
+  std::unique_ptr<LeaderGatedInternalKVHandler> gated_internal_kv_handler_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

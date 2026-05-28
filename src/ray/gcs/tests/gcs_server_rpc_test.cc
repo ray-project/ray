@@ -710,7 +710,22 @@ TEST_F(GcsServerTest, TestPassivePromotion) {
     ASSERT_EQ(nodes.size(), 0);
   }
 
-  // 3. Trigger promotion!
+  // Before promotion, verify that mutating requests are blocked on passive GCS server!
+  {
+    std::promise<bool> promise;
+    rpc::RegisterNodeRequest register_request;
+    register_request.mutable_node_info()->CopyFrom(
+        *GenNodeInfo(10, "127.0.0.10", "passive_node"));
+    passive_client->RegisterNode(
+        std::move(register_request),
+        [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+          EXPECT_TRUE(status.IsGcsPassive());
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+  }
+
+  // 3. Trigger promotion
   passive_server->TriggerPromotion();
 
   // Wait 200ms for async load from Redis to finish.
@@ -743,6 +758,22 @@ TEST_F(GcsServerTest, TestPassivePromotion) {
       }
     }
     ASSERT_TRUE(found_node);
+  }
+
+  // 5. After promotion, verify that mutating requests can now be handled successfully!
+  {
+    std::promise<bool> promise;
+    rpc::RegisterNodeRequest register_request;
+    register_request.mutable_node_info()->CopyFrom(
+        *GenNodeInfo(10, "127.0.0.10", "passive_node"));
+    passive_client->RegisterNode(
+        std::move(register_request),
+        [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+          EXPECT_TRUE(status.ok());
+          EXPECT_EQ(reply.status().code(), static_cast<int>(StatusCode::OK));
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
   }
 
   passive_server->Stop();

@@ -437,3 +437,15 @@ ray_cc_test(
         "//src/ray/gcs:gcs_ray_event_converter",
     ],
 )
+
+ray_cc_test(
+    name = "gcs_leader_gated_handlers_test",
+    size = "small",
+    srcs = ["gcs_leader_gated_handlers_test.cc"],
+    tags = ["team:core"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_server_lib",
+    ],
+)

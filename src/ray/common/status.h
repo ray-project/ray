@@ -381,6 +381,11 @@ class RAY_EXPORT Status {
     return Status(StatusCode::NotFound, msg);
   }
 
+  static Status GcsPassive(
+      const std::string &msg = "GCS server is in passive (read-only) mode.") {
+    return Status(StatusCode::NotFound, msg);
+  }
+
   static Status Disconnected(const std::string &msg) {
     return Status(StatusCode::Disconnected, msg);
   }
@@ -473,6 +478,10 @@ class RAY_EXPORT Status {
     return code() == StatusCode::UnexpectedSystemExit;
   }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsGcsPassive() const {
+    return code() == StatusCode::NotFound &&
+           message() == "GCS server is in passive (read-only) mode.";
+  }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
   bool IsAlreadyExists() const { return code() == StatusCode::AlreadyExists; }

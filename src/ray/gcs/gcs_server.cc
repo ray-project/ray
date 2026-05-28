@@ -490,12 +490,15 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       *ray_event_recorder_,
       config_.session_name,
       observability_publisher_.get(),
-      clock_);
+      clock_,
+      [this]() { return IsLeader(); });
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
+  gated_node_info_handler_ = std::make_unique<LeaderGatedNodeInfoHandler>(
+      *gcs_node_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
       io_context_provider_.GetIOContext<GcsNodeManager>(),
-      *gcs_node_manager_,
+      *gated_node_info_handler_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -637,10 +640,11 @@ void GcsServer::InitGcsJobManager(
                                       job_duration_in_seconds_gauge,
                                       clock_);
   gcs_job_manager_->Initialize(gcs_init_data);
-
+  gated_job_info_handler_ = std::make_unique<LeaderGatedJobInfoHandler>(
+      *gcs_job_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gcs_job_manager_,
+      *gated_job_info_handler_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -697,9 +701,11 @@ void GcsServer::InitGcsActorManager(
       clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
+  gated_actor_info_handler_ = std::make_unique<LeaderGatedActorInfoHandler>(
+      *gcs_actor_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gcs_actor_manager_,
+      *gated_actor_info_handler_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -733,9 +739,12 @@ void GcsServer::InitGcsPlacementGroupManager(
       clock_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
+  gated_placement_group_info_handler_ =
+      std::make_unique<LeaderGatedPlacementGroupInfoHandler>(
+          *gcs_placement_group_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
-      *gcs_placement_group_manager_,
+      *gated_placement_group_info_handler_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
@@ -843,10 +852,12 @@ void GcsServer::InitKVManager() {
 
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
+  gated_internal_kv_handler_ = std::make_unique<LeaderGatedInternalKVHandler>(
+      *kv_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(
       std::make_unique<rpc::InternalKVGrpcService>(
           io_context_provider_.GetIOContext<GcsInternalKVManager>(),
-          *kv_manager_,
+          *gated_internal_kv_handler_,
           /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
 }
@@ -965,10 +976,12 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       observability_publisher_.get(),
       clock_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
+  gated_autoscaler_state_handler_ = std::make_unique<LeaderGatedAutoscalerStateHandler>(
+      *gcs_autoscaler_state_manager_, [this]() { return IsLeader(); });
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
           io_context_provider_.GetDefaultIOContext(),
-          *gcs_autoscaler_state_manager_,
+          *gated_autoscaler_state_handler_,
           RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 

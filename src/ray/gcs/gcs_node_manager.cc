@@ -40,7 +40,8 @@ GcsNodeManager::GcsNodeManager(
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name,
     pubsub::ObservabilityPublisher *observability_publisher,
-    ClockInterface &clock)
+    ClockInterface &clock,
+    std::function<bool()> is_leader_fn)
     : gcs_publisher_(gcs_publisher),
       observability_publisher_(observability_publisher),
       gcs_table_storage_(gcs_table_storage),
@@ -50,6 +51,7 @@ GcsNodeManager::GcsNodeManager(
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
       clock_(clock),
+      is_leader_fn_(std::move(is_leader_fn)),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
@@ -159,6 +161,7 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   absl::ReaderMutexLock lock(&mutex_);
+  reply->set_is_leader(is_leader_fn_());
   reply->set_ray_version(kRayVersion);
   for (const auto &id : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(id);

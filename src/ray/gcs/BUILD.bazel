@@ -406,6 +406,7 @@ ray_cc_library(
     ],
     hdrs = [
         "gcs_server.h",
+        "gcs_leader_gated_handlers.h",
     ],
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
