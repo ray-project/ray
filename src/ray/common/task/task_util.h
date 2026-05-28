@@ -305,7 +305,8 @@ class TaskSpecBuilder {
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
       uint64_t concurrency_group_sequence_number,
-      const std::optional<std::string> &tensor_transport) {
+      const std::optional<std::string> &tensor_transport,
+      bool is_detached_actor) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
@@ -316,6 +317,7 @@ class TaskSpecBuilder {
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
     actor_spec->set_concurrency_group_sequence_number(concurrency_group_sequence_number);
+    actor_spec->set_is_detached_actor(is_detached_actor);
     if (tensor_transport.has_value()) {
       message_->set_tensor_transport(*tensor_transport);
     }

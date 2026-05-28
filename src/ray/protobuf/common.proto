@@ -838,6 +838,9 @@ message ActorTaskSpec {
   bytes actor_creation_dummy_object_id = 4;
   // Per-concurrency-group sequence number for ordering tasks within each group.
   uint64 concurrency_group_sequence_number = 5;
+  // True if the target actor was created with lifetime="detached". Set by the
+  // caller from its ActorHandle at task submission time.
+  bool is_detached_actor = 6;
 }
 
 // Represents a task, including task spec.

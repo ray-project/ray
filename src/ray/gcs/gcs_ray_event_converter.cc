@@ -188,6 +188,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
   }
+  if (event.is_detached_actor()) {
+    task_info->set_is_detached_actor(true);
+  }
   if (event.has_call_site()) {
     task_info->set_call_site(event.call_site());
   }
