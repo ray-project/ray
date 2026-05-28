@@ -33,7 +33,7 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     # rooted at /private/var/folders/... which is already long enough that
     # appending the socket filename exceeds the limit, so use a short directory
     # under /tmp for the socket files specifically.
-    socket_dir = tempfile.mkdtemp(prefix="ray_e2e_", dir="/tmp")
+    socket_dir = tempfile.mkdtemp(prefix="ray_e2e_", dir="/tmp" if sys.platform != "win32" else None)
     try:
         yield SubprocessModuleConfig(
             cluster_id_hex="test_cluster_id",
