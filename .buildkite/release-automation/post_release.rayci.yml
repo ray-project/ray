@@ -1,4 +1,6 @@
 group: Post-release
+depends_on:
+  - forge
 steps:
   - block: "Trigger Cursor template upgrade workflow"
     key: block-trigger-cursor-template-upgrade
@@ -22,4 +24,4 @@ steps:
       - export TEMPLATE_NAME="$(buildkite-agent meta-data get template-name)"
       - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
       - export CURSOR_WEBHOOK_URL=$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-webhook-url --query SecretString --output text)
-      - curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"template_name\":\"$$TEMPLATE_NAME\",\"ray_version\":\"$$RAY_VERSION\"}"
+      - 'curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"template_name\":\"$$TEMPLATE_NAME\",\"ray_version\":\"$$RAY_VERSION\"}"'
