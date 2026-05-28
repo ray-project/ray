@@ -410,7 +410,7 @@ RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
            std::max(1U,
                     static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit(
-                        ray::CpuMonitorUtils::kRootCgroupPath)) /
+                        std::string(ray::CpuMonitorUtils::kRootCgroupPath))) /
                         4U))
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
@@ -419,7 +419,7 @@ RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
            std::max(1U,
                     static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit(
-                        ray::CpuMonitorUtils::kRootCgroupPath)) /
+                        std::string(ray::CpuMonitorUtils::kRootCgroupPath))) /
                         4U))
 
 /// The interval at which the gcs server will health check the connection to the
@@ -983,17 +983,18 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1,
-                    (int64_t)(ray::CpuMonitorUtils::GetCpuLimit(
-                                  ray::CpuMonitorUtils::kRootCgroupPath) /
-                              4U)))
+           std::max(1L,
+                    ray::CpuMonitorUtils::GetCpuLimit(
+                        std::string(ray::CpuMonitorUtils::kRootCgroupPath)) /
+                        4L))
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           ray::CpuMonitorUtils::GetCpuLimit(ray::CpuMonitorUtils::kRootCgroupPath) >= 8
+           ray::CpuMonitorUtils::GetCpuLimit(
+               std::string(ray::CpuMonitorUtils::kRootCgroupPath)) >= 8
                ? 2
                : 1);
 

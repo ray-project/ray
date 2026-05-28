@@ -19,8 +19,11 @@
 #include <thread>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/cgroup_test_utils.h"
+#include "ray/common/status_or.h"
 
 namespace ray {
 
@@ -28,7 +31,10 @@ class CpuMonitorUtilsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     StatusOr<std::unique_ptr<TempDirectory>> root_or = TempDirectory::Create();
-    ASSERT_TRUE(root_or.ok()) << root_or.ToString();
+    RAY_CHECK(root_or.ok()) << absl::StrFormat(
+        "Failed to create temp directory due to error: %s. "
+        "CPU monitor tests expect tmpfs to be mounted.",
+        root_or.status().ToString());
     root_ = std::move(root_or.value());
   }
 
@@ -40,27 +46,30 @@ class CpuMonitorUtilsTest : public ::testing::Test {
    * @param contents The "<quota> <period>" string in microseconds to write to the file.
    */
   void WriteCpuMax(const std::string &contents) {
-    cpu_max_ = std::make_unique<TempFile>(RootPath() + "/" +
-                                          CpuMonitorUtils::kCgroupsV2CpuMaxPath);
+    cpu_max_ = std::make_unique<TempFile>(
+        absl::StrCat(RootPath(), "/", CpuMonitorUtils::kCgroupsV2CpuMaxPath));
     cpu_max_->AppendLine(contents);
   }
 
   /**
-   * @brief Writes a fake cgroup v1 "cpu.cfs_quota_us" and "cpu.cfs_period_us" files,
-   *        creating the intermediate "cpu" subdirectory they live in.
+   * @brief Writes a fake cgroup v1 "cpu.cfs_quota_us" and "cpu.cfs_period_us" files
+   *        with the given values.
    *
    * @param quota The quota value to write to the "cpu.cfs_quota_us" file.
    * @param period The period value to write to the "cpu.cfs_period_us" file.
    */
   void WriteCpuV1(const std::string &quota, const std::string &period) {
     StatusOr<std::unique_ptr<TempDirectory>> cpu_dir_or =
-        TempDirectory::Create(RootPath() + "/cpu");
-    ASSERT_TRUE(cpu_dir_or.ok()) << cpu_dir_or.ToString();
+        TempDirectory::Create(absl::StrCat(RootPath(), "/cpu"));
+    RAY_CHECK(cpu_dir_or.ok()) << absl::StrFormat(
+        "Failed to create temp directory due to error: %s. "
+        "CPU monitor tests expect tmpfs to be mounted.",
+        cpu_dir_or.status().ToString());
     cpu_dir_ = std::move(cpu_dir_or.value());
-    cpu_quota_ = std::make_unique<TempFile>(RootPath() + "/" +
-                                            CpuMonitorUtils::kCgroupsV1CpuQuotaPath);
-    cpu_period_ = std::make_unique<TempFile>(RootPath() + "/" +
-                                             CpuMonitorUtils::kCgroupsV1CpuPeriodPath);
+    cpu_quota_ = std::make_unique<TempFile>(
+        absl::StrCat(RootPath(), "/", CpuMonitorUtils::kCgroupsV1CpuQuotaPath));
+    cpu_period_ = std::make_unique<TempFile>(
+        absl::StrCat(RootPath(), "/", CpuMonitorUtils::kCgroupsV1CpuPeriodPath));
     cpu_quota_->AppendLine(quota);
     cpu_period_->AppendLine(period);
   }
@@ -77,9 +86,9 @@ TEST_F(CpuMonitorUtilsTest, V2QuotaAndPeriodReturnsCpuCount) {
   ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 2);
 }
 
-TEST_F(CpuMonitorUtilsTest, V2FractionalQuotaRoundsUp) {
+TEST_F(CpuMonitorUtilsTest, V2FractionalQuotaRoundsDown) {
   WriteCpuMax("250000 100000");
-  ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 3);
+  ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 2);
 }
 
 TEST_F(CpuMonitorUtilsTest, V2MaxQuotaFallsBackToPhysicalCores) {
@@ -97,6 +106,11 @@ TEST_F(CpuMonitorUtilsTest, V2MalformedFileFallsBackToPhysicalCores) {
 TEST_F(CpuMonitorUtilsTest, V1QuotaAndPeriodReturnsCpuCount) {
   WriteCpuV1("300000", "100000");
   ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 3);
+}
+
+TEST_F(CpuMonitorUtilsTest, V1FractionalQuotaRoundsDown) {
+  WriteCpuV1("250000", "100000");
+  ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 2);
 }
 
 TEST_F(CpuMonitorUtilsTest, V1UnlimitedQuotaFallsBackToPhysicalCores) {

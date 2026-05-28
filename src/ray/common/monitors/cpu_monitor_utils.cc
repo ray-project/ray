@@ -22,40 +22,42 @@
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
-int64_t CpuMonitorUtils::GetCpuLimit(const std::string root_cgroup_path) {
-  std::string cgroupV2CpuMaxPath = root_cgroup_path + "/" + kCgroupsV2CpuMaxPath;
-  std::string cgroupV1CpuQuotaPath = root_cgroup_path + "/" + kCgroupsV1CpuQuotaPath;
-  std::string cgroupV1CpuPeriodPath = root_cgroup_path + "/" + kCgroupsV1CpuPeriodPath;
+int64_t CpuMonitorUtils::GetCpuLimit(const std::string &root_cgroup_path) {
+  std::string cgroupV2CpuMaxPath =
+      absl::StrCat(root_cgroup_path, "/", kCgroupsV2CpuMaxPath);
+  std::string cgroupV1CpuQuotaPath =
+      absl::StrCat(root_cgroup_path, "/", kCgroupsV1CpuQuotaPath);
+  std::string cgroupV1CpuPeriodPath =
+      absl::StrCat(root_cgroup_path, "/", kCgroupsV1CpuPeriodPath);
 
-  if (std::filesystem::exists(cgroupV2CpuMaxPath)) {
-    CpuCountOr cpu_count = GetCpuCountV2(cgroupV2CpuMaxPath);
-    if (cpu_count.has_value()) {
-      return cpu_count.value();
-    } else {
-      RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
-                                     cgroupV2CpuMaxPath,
-                                     ", error: ",
-                                     cpu_count.message(),
-                                     ". Is the cgroupv2 cpu limit expected to be set?");
-    }
-  } else if (std::filesystem::exists(cgroupV1CpuQuotaPath) &&
-             std::filesystem::exists(cgroupV1CpuPeriodPath)) {
-    CpuCountOr cpu_count = GetCpuCountV1(cgroupV1CpuQuotaPath, cgroupV1CpuPeriodPath);
-    if (cpu_count.has_value()) {
-      return cpu_count.value();
-    } else {
-      RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
-                                     cgroupV1CpuQuotaPath,
-                                     ", ",
-                                     cgroupV1CpuPeriodPath,
-                                     ", error: ",
-                                     cpu_count.message(),
-                                     ". Is the cgroupv1 cpu limit expected to be set?");
-    }
+  CpuCountOr cpu_count = GetCpuCountV2(cgroupV2CpuMaxPath);
+  if (cpu_count.has_value()) {
+    return cpu_count.value();
   }
+  RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
+                                 cgroupV2CpuMaxPath,
+                                 ", error: ",
+                                 cpu_count.message(),
+                                 ". Is the cgroupv2 cpu limit expected to be set? "
+                                 "Falling back to cgroupv1.");
+
+  cpu_count = GetCpuCountV1(cgroupV1CpuQuotaPath, cgroupV1CpuPeriodPath);
+  if (cpu_count.has_value()) {
+    return cpu_count.value();
+  }
+  RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
+                                 cgroupV1CpuQuotaPath,
+                                 ", ",
+                                 cgroupV1CpuPeriodPath,
+                                 ", error: ",
+                                 cpu_count.message(),
+                                 ". Is the cgroupv1 cpu limit expected to be set? "
+                                 "Falling back to physical cores.");
+
   return std::thread::hardware_concurrency();
 }
 
@@ -85,7 +87,7 @@ CpuMonitorUtils::CpuCountOr CpuMonitorUtils::GetCpuCountV2(
 
   if (quota > 0 && period > 0) {
     return static_cast<int64_t>(
-        std::ceil(static_cast<double>(quota) / static_cast<double>(period)));
+        std::floor(static_cast<double>(quota) / static_cast<double>(period)));
   }
   return StatusT::Invalid(
       absl::StrCat("Invalid cpu.max values (quota=", quota, ", period=", period, ")"));
@@ -112,7 +114,7 @@ CpuMonitorUtils::CpuCountOr CpuMonitorUtils::GetCpuCountV1(
   }
   if (quota > 0 && period > 0) {
     return static_cast<int64_t>(
-        std::ceil(static_cast<double>(quota) / static_cast<double>(period)));
+        std::floor(static_cast<double>(quota) / static_cast<double>(period)));
   }
   return StatusT::Invalid(
       absl::StrCat("Invalid cfs quota/period (quota=", quota, ", period=", period, ")"));

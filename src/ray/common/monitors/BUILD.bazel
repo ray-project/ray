@@ -10,12 +10,10 @@ ray_cc_library(
     ],
     visibility = [
         "//src/ray/common:__subpackages__",
-        "//src/ray/gcs:__subpackages__",
-        "//src/ray/raylet:__subpackages__",
-        "//src/ray/rpc:__subpackages__",
     ],
     deps = [
         "//src/ray/common:status",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/strings",
     ],
 )
