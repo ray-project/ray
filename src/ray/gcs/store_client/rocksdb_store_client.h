@@ -205,8 +205,11 @@ class RocksDbStoreClient : public StoreClient {
   static constexpr char kJobCounterKey[] = "__ray_job_counter__";
 
   // Holds a ref so Postable's default-IO-context resolution still works,
-  // matching how RedisStoreClient stores its io_service_.
-  instrumented_io_context &io_service_;
+  // matching how RedisStoreClient stores its io_service_. Not directly
+  // read in this class (clang's -Wunused-private-field would otherwise
+  // promote to error in the -Werror builds, even though gcc-on-wheels
+  // does not flag reference members).
+  [[maybe_unused]] instrumented_io_context &io_service_;
 
   /// Offload pool for RocksDB I/O. Null when offload_io was false in
   /// the ctor. Joined and destroyed BEFORE `db_` so any in-flight RocksDB
