@@ -208,6 +208,16 @@ class GcsActor {
   void UpdateAddress(const rpc::Address &address);
   /// Get the `Address` of this actor.
   const rpc::Address &GetAddress() const;
+  /// Set the borrowed references of this actor at the time of creation.
+  void SetBorrowedRefsAtCreation(
+      const google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount> &refs) {
+    borrowed_refs_at_creation_ = refs;
+  }
+  /// Get the borrowed references of this actor at the time of creation.
+  const google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>
+      &GetBorrowedRefsAtCreation() const {
+    return borrowed_refs_at_creation_;
+  }
 
   /// Update the state of this actor and refreshes metrics. Do not update the
   /// state of the underlying proto directly via set_state(), otherwise metrics
@@ -335,6 +345,12 @@ class GcsActor {
   std::string session_name_;
   /// Address of the local raylet of the worker where this actor is running
   std::optional<rpc::Address> local_raylet_address_;
+  /// The borrowed references at the time of successful creation.
+  /// These are saved so that if the actor restarts and there is a pending
+  /// creation callback, we can correctly invoke the callback early with the
+  /// valid borrowed_refs.
+  google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>
+      borrowed_refs_at_creation_;
 };
 
 using RestartActorForLineageReconstructionCallback =

@@ -193,22 +193,15 @@ class PredicatePushdown(Rule):
         input_op = filter_op.input_dependencies[0]
         predicate_expr = filter_op.predicate_expr
 
-        # Case 1: Check if operator supports predicate pushdown (e.g., Read)
+        # Case 1: Check if operator supports predicate pushdown (e.g., Read).
+        # The read stage never renames columns (renaming is always carried
+        # by an ``AliasExpr`` in a ``Project`` operator above the read), so
+        # the predicate above the read is already in the same column
+        # namespace the scanner sees — no rebinding is required here.
         if (
             isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
             and input_op.supports_predicate_pushdown()
         ):
-            # Check if the operator has column renames that need rebinding
-            # This happens when projection pushdown has been applied
-            rename_map = input_op.get_column_renames()
-            if rename_map:
-                # Substitute the predicate to use original column names
-                # This is needed to ensure that the predicate expression can be pushed into the input operator.
-                predicate_expr = cls._substitute_predicate_columns(
-                    predicate_expr, rename_map
-                )
-
-            # Push the predicate down
             result_op = input_op.apply_predicate(predicate_expr)
 
             # If the operator is unchanged (e.g., predicate references partition columns
@@ -216,7 +209,6 @@ class PredicatePushdown(Rule):
             if result_op is input_op:
                 return filter_op
 
-            # Otherwise, return the result without the filter (predicate was pushed down)
             return result_op
 
         # Case 2: Check if operator allows predicates to pass through

@@ -239,17 +239,20 @@ class NAryOperator(PhysicalOperator):
         self,
         data_context: DataContext,
         *input_ops: PhysicalOperator,
+        name: Optional[str] = None,
     ):
         """Create a NAryOperator.
 
         Args:
             data_context: The DataContext instance containing configuration settings.
             *input_ops: Operators generating input data for this op.
+            name: Optional override for the operator display name.
         """
-        input_names = ", ".join([op._name for op in input_ops])
-        op_name = f"{self.__class__.__name__}({input_names})"
+        if name is None:
+            input_names = ", ".join([op._name for op in input_ops])
+            name = f"{self.__class__.__name__}({input_names})"
         super().__init__(
-            op_name,
+            name,
             list(input_ops),
             data_context,
         )
