@@ -159,9 +159,6 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 error = f"Object {ref.hex()} does not exist."
                 raise ValueError(error)
             buf_len = 0 if buf is None else len(buf)
-            # Write the small fixed header (lengths + owner address + metadata)
-            # and the object buffer as two separate writes. Concatenating them
-            # into one bytes object would memcpy the entire object payload.
             header = (
                 address_len.to_bytes(8, byteorder="little")
                 + metadata_len.to_bytes(8, byteorder="little")
