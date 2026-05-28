@@ -40,9 +40,7 @@ To enable resource isolation, please see :ref:`How to Enable Cgroup v2 for Resou
 How do I disable the memory monitor?
 --------------------------------------
 
-Without resource isolation, the memory monitor is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts (e.g., RAY_memory_monitor_refresh_ms=0 ray start ...).
-
-With resource isolation, the memory monitor is always enabled.
+The memory monitor is always enabled by default and can only be disabled when resource isolation is disabled by setting the environment variable ``RAY_enable_resource_isolation`` to false when Ray starts (e.g., RAY_enable_resource_isolation=false ray start ...).
 
 How do I configure the memory monitor?
 --------------------------------------
