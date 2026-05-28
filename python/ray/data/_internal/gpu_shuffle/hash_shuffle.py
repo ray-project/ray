@@ -4,6 +4,8 @@ import pickle
 import time
 import typing
 from typing import (
+    Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -38,6 +40,7 @@ from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
 
+    from ray.data._internal.execution.interfaces.physical_operator import ActorPoolInfo
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -205,41 +208,6 @@ class GPUShuffleActor:
             yield pickle.dumps(bm)
 
 
-def _wait_for_refs_with_timeout(
-    refs: List[ray.ObjectRef],
-    timeout_s: float,
-    task_name: str,
-) -> None:
-    """Poll ``refs`` in a loop, raising on timeout or task failure.
-
-    Logs incremental progress as tasks complete and raises any exceptions
-    from completed tasks eagerly (via ``ray.get``).
-    """
-    total = len(refs)
-    pending = list(refs)
-    t_start = time.perf_counter()
-
-    while pending:
-        elapsed = time.perf_counter() - t_start
-        if elapsed >= timeout_s:
-            pending_indices = [i for i, ref in enumerate(refs) if ref in pending]
-            raise TimeoutError(
-                f"{task_name} did not complete on {len(pending)}/{total} "
-                f"rank(s) within {timeout_s}s "
-                f"(pending ranks: {pending_indices}). "
-                f"Check GPU/network health."
-            )
-        ready, pending = ray.wait(pending, num_returns=len(pending), timeout=1)
-        if ready:
-            ray.get(ready)
-            logger.info(
-                "GPURankPool: %d/%d rank(s) completed %s.",
-                total - len(pending),
-                total,
-                task_name,
-            )
-
-
 # ---------------------------------------------------------------------------
 # GPURankPool — lifecycle manager for a set of GPUShuffleActors
 # ---------------------------------------------------------------------------
@@ -254,23 +222,20 @@ class GPURankPool:
 
     def __init__(
         self,
+        *,
         nranks: int,
         total_nparts: int,
-        key_columns: List[str],
-        columns: Optional[List[str]],
-        rmm_pool_size: Union[int, str, None],
-        spill_memory_limit: Union[int, str, None],
         setup_timeout_s: float,
-        should_sort: bool = False,
-    ):
+        actor_cls_factory: Callable[[], Any],
+        actor_kwargs: Dict[str, Any],
+        log_label: str,
+    ) -> None:
         self._nranks = nranks
         self._total_nparts = total_nparts
-        self._key_columns = key_columns
-        self._columns = columns
-        self._rmm_pool_size = rmm_pool_size
-        self._spill_memory_limit = spill_memory_limit
         self._setup_timeout_s = setup_timeout_s
-        self._should_sort = should_sort
+        self._actor_cls_factory = actor_cls_factory
+        self._actor_kwargs = actor_kwargs
+        self._log_label = log_label
         self._actors: List[ActorHandle] = []
         self._shutdown: bool = False
 
@@ -287,61 +252,48 @@ class GPURankPool:
         return self._actors
 
     def start(self) -> None:
-        """Create actors and coordinate UCXX setup.
-
-        This call *blocks* until all actors have finished UCXX initialisation.
-        It is invoked once from ``GPUShuffleOperator.start()`` before any data
-        flows through the pipeline.
-
-        Raises:
-            TimeoutError: If UCXX setup does not complete within
-                ``gpu_shuffle_setup_timeout_s`` seconds.
-        """
         timeout = self._setup_timeout_s
         t_start = time.perf_counter()
 
         logger.info(
-            "GPURankPool: creating %d GPUShuffleActor(s) "
-            "(total_nparts=%d, key_columns=%s).",
+            "%s: creating %d actor(s) (total_nparts=%d).",
+            self._log_label,
             self._nranks,
             self._total_nparts,
-            self._key_columns,
         )
+        actor_cls = self._actor_cls_factory()
         self._actors = [
-            GPUShuffleActor.options(num_gpus=1, scheduling_strategy="SPREAD",).remote(
+            actor_cls.options(num_gpus=1, scheduling_strategy="SPREAD",).remote(
                 nranks=self._nranks,
                 total_nparts=self._total_nparts,
-                key_columns=self._key_columns,
-                columns=self._columns,
-                rmm_pool_size=self._rmm_pool_size,
-                spill_memory_limit=self._spill_memory_limit,
-                should_sort=self._should_sort,
+                **self._actor_kwargs,
             )
             for _ in range(self._nranks)
         ]
         t_actors = time.perf_counter()
         logger.info(
-            "GPURankPool: %d actor(s) created in %.2fs.",
+            "%s: %d actor(s) created in %.2fs.",
+            self._log_label,
             self._nranks,
             t_actors - t_start,
         )
 
-        # Rank 0 establishes the root communicator; all ranks connect to it.
         remaining = max(0, timeout - (time.perf_counter() - t_start))
-        logger.info("GPURankPool: calling setup_root on rank 0.")
+        logger.info("%s: calling setup_root on rank 0.", self._log_label)
         try:
             _, root_address_bytes = ray.get(
                 self._actors[0].setup_root.remote(), timeout=remaining
             )
         except ray.exceptions.GetTimeoutError:
             raise TimeoutError(
-                f"UCXX setup_root on rank 0 did not complete within "
-                f"{timeout}s. Check GPU/network health."
+                f"UCXX setup_root on {self._log_label} rank 0 did not complete "
+                f"within {timeout}s. Check GPU/network health."
             )
         t_root = time.perf_counter()
         logger.info(
-            "GPURankPool: setup_root completed in %.2fs, "
+            "%s: setup_root completed in %.2fs, "
             "broadcasting root address (%d bytes) to %d worker(s).",
+            self._log_label,
             t_root - t_actors,
             len(root_address_bytes),
             self._nranks,
@@ -351,11 +303,12 @@ class GPURankPool:
         worker_refs = [
             actor.setup_worker.remote(root_address_bytes) for actor in self._actors
         ]
-        _wait_for_refs_with_timeout(worker_refs, remaining, "setup_worker")
+        self._wait_for_refs_with_timeout(worker_refs, remaining, "setup_worker")
         t_done = time.perf_counter()
         logger.info(
-            "GPURankPool: all %d worker(s) setup completed in %.2fs "
+            "%s: all %d worker(s) setup completed in %.2fs "
             "(total UCXX init: %.2fs).",
+            self._log_label,
             self._nranks,
             t_done - t_root,
             t_done - t_start,
@@ -371,6 +324,38 @@ class GPURankPool:
                 ray.kill(actor)
         self._actors.clear()
         self._shutdown = True
+
+    def _wait_for_refs_with_timeout(
+        self,
+        refs: List[ray.ObjectRef],
+        timeout_s: float,
+        task_name: str,
+    ) -> None:
+        """Poll ``refs`` in a loop, raising on timeout or task failure."""
+        total = len(refs)
+        pending = list(refs)
+        t_start = time.perf_counter()
+
+        while pending:
+            elapsed = time.perf_counter() - t_start
+            if elapsed >= timeout_s:
+                pending_indices = [i for i, ref in enumerate(refs) if ref in pending]
+                raise TimeoutError(
+                    f"{task_name} did not complete on {len(pending)}/{total} "
+                    f"rank(s) within {timeout_s}s "
+                    f"(pending ranks: {pending_indices}). "
+                    f"Check GPU/network health."
+                )
+            ready, pending = ray.wait(pending, num_returns=len(pending), timeout=1)
+            if ready:
+                ray.get(ready)
+                logger.info(
+                    "%s: %d/%d rank(s) completed %s.",
+                    self._log_label,
+                    total - len(pending),
+                    total,
+                    task_name,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -430,8 +415,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         columns: Optional[List[str]] = None,
         num_partitions: Optional[int] = None,
         should_sort: bool = False,
-    ):
-        nranks = _derive_num_gpu_ranks(data_context)
+        name: Optional[str] = None,
+        nranks: Optional[int] = None,
+        rank_pool: Optional[GPURankPool] = None,
+    ) -> None:
+        nranks = nranks or _derive_num_gpu_ranks(data_context)
         target_num_partitions = (
             num_partitions or data_context.default_hash_shuffle_parallelism
         )
@@ -440,9 +428,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         super().__init__(
             name=(
-                f"GPUShuffle("
-                f"key_columns={key_columns}, "
-                f"num_partitions={target_num_partitions})"
+                name
+                or (
+                    f"GPUShuffle("
+                    f"key_columns={key_columns}, "
+                    f"num_partitions={target_num_partitions})"
+                )
             ),
             input_dependencies=[input_op],
             data_context=data_context,
@@ -450,15 +441,21 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         self._key_columns = key_columns
         self._num_partitions = target_num_partitions
-        self._rank_pool = GPURankPool(
+        self._columns = columns
+        self._should_sort = should_sort
+        self._rank_pool = rank_pool or GPURankPool(
             nranks=nranks,
             total_nparts=target_num_partitions,
-            key_columns=list(key_columns),
-            columns=columns,
-            rmm_pool_size=data_context.gpu_shuffle_rmm_pool_size,
-            spill_memory_limit=data_context.gpu_shuffle_spill_memory_limit,
             setup_timeout_s=data_context.gpu_shuffle_setup_timeout_s,
-            should_sort=should_sort,
+            actor_cls_factory=lambda: GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": list(key_columns),
+                "columns": columns,
+                "rmm_pool_size": data_context.gpu_shuffle_rmm_pool_size,
+                "spill_memory_limit": data_context.gpu_shuffle_spill_memory_limit,
+                "should_sort": should_sort,
+            },
+            log_label="GPUShufflePool",
         )
 
         self._next_block_idx: int = 0
@@ -676,7 +673,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(gpu=1)
 
-    def get_actor_info(self):
+    def get_actor_info(self) -> "ActorPoolInfo":
         from ray.data._internal.execution.interfaces.physical_operator import (
             ActorPoolInfo,
         )
@@ -709,7 +706,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self):
+    def get_stats(self) -> Dict[str, List[BlockStats]]:
         shuffle_name = f"{self._name}_shuffle"
         reduce_name = f"{self._name}_finalize"
         return {

@@ -105,15 +105,20 @@ def _plan_gpu_shuffle_aggregate(
     normalized_key_columns = SortKey(logical_op.key).get_columns()
     key_columns = tuple(normalized_key_columns)
     aggregation_fns = tuple(logical_op.aggs)
+    input_schema = logical_op.input_dependencies[0].infer_schema()
 
-    if build_gpu_aggregation_plan(key_columns, aggregation_fns) is None:
+    aggregation_plan = build_gpu_aggregation_plan(
+        key_columns, aggregation_fns, input_schema=input_schema
+    )
+    if aggregation_plan is None:
+        # Fall back to CPU hash aggregate if GPU aggregation plan is not supported.
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
 
     return GPUHashAggregateOperator(
         data_context,
         input_physical_op,
         key_columns=key_columns,  # noqa: type
-        aggregation_fns=aggregation_fns,  # noqa: type
+        aggregation_plan=aggregation_plan,
         num_partitions=logical_op.num_partitions,
     )
 
