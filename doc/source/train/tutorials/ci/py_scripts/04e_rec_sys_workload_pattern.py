@@ -53,16 +53,20 @@ os.makedirs("/mnt/cluster_storage/rec_sys_tutorial/raw", exist_ok=True)
 
 # Download only if not already done
 if not os.path.exists(LOCAL_ZIP):
+    print(f"[debug] downloading {DATA_URL}", flush=True)
     subprocess.run(
         ["wget", "-q", DATA_URL, "-O", LOCAL_ZIP],
         check=True,
     )
+    print(f"[debug] download complete: {LOCAL_ZIP}", flush=True)
 
 # Extract cleanly
 if not os.path.exists(EXTRACT_DIR):
+    print(f"[debug] extracting {LOCAL_ZIP}", flush=True)
     import zipfile
     with zipfile.ZipFile(LOCAL_ZIP, 'r') as zip_ref:
         zip_ref.extractall("/mnt/cluster_storage/rec_sys_tutorial")
+    print(f"[debug] extraction complete: {EXTRACT_DIR}", flush=True)
 
 # Load raw file
 raw_path = os.path.join(EXTRACT_DIR, "u.data")
