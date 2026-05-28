@@ -939,11 +939,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._gcs_client = _FailingGcs()
         assert self.provider._has_active_user_drivers() is True
 
-    _CRS_PATH = (
-        "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay."
-        "cloud_provider.get_cluster_resource_state"
-    )
-
     def _set_ray_cluster_spec(self, small_min: int = 0) -> None:
         self.provider._ray_cluster = {
             "spec": {
@@ -956,7 +951,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
     def test_evaluate_cluster_idle_disabled_when_threshold_none(self):
         path = f"rayclusters/{self.provider._cluster_name}"
         self.provider._idle_termination_seconds = None
-        self.provider._evaluate_cluster_idle()
+        self.provider.evaluate_cluster_idle(self._ray_state())
         assert path not in self.mock_client._patches
         assert self.provider._cluster_idle_observed_since is None
 
@@ -966,10 +961,8 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self._set_ray_cluster_spec()
 
         def evaluate_at(t):
-            with mock.patch("time.monotonic", return_value=t), mock.patch(
-                self._CRS_PATH, return_value=self._ray_state()
-            ):
-                self.provider._evaluate_cluster_idle()
+            with mock.patch("time.monotonic", return_value=t):
+                self.provider.evaluate_cluster_idle(self._ray_state())
 
         path = f"rayclusters/{self.provider._cluster_name}"
         evaluate_at(0.0)
@@ -986,19 +979,15 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._idle_termination_seconds = 100.0
         self._set_ray_cluster_spec()
 
-        with mock.patch("time.monotonic", return_value=0.0), mock.patch(
-            self._CRS_PATH, return_value=self._ray_state()
-        ):
+        with mock.patch("time.monotonic", return_value=0.0):
             self.provider._gcs_client = self._make_gcs()  # no drivers
-            self.provider._evaluate_cluster_idle()
+            self.provider.evaluate_cluster_idle(self._ray_state())
         assert self.provider._cluster_idle_observed_since == 0.0
 
         # Driver attaches → anchor cleared, no patch.
-        with mock.patch("time.monotonic", return_value=50.0), mock.patch(
-            self._CRS_PATH, return_value=self._ray_state()
-        ):
+        with mock.patch("time.monotonic", return_value=50.0):
             self.provider._gcs_client = self._make_gcs((False, "python a.py"))
-            self.provider._evaluate_cluster_idle()
+            self.provider.evaluate_cluster_idle(self._ray_state())
         assert self.provider._cluster_idle_observed_since is None
         assert path not in self.mock_client._patches
 
@@ -1036,10 +1025,8 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         }
 
         path = f"rayclusters/{self.provider._cluster_name}"
-        with mock.patch("time.monotonic", return_value=0.0), mock.patch(
-            self._CRS_PATH, return_value=self._ray_state(worker_count=2)
-        ):
-            self.provider._evaluate_cluster_idle()
+        with mock.patch("time.monotonic", return_value=0.0):
+            self.provider.evaluate_cluster_idle(self._ray_state(worker_count=2))
         # Two workers at min (1 replica * 2 hosts) — anchor set, not yet patched.
         assert self.provider._cluster_idle_observed_since == 0.0
         assert path not in self.mock_client._patches

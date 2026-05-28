@@ -39,7 +39,6 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
-from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.autoscaler.v2.utils import is_head_node
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 
@@ -479,7 +478,6 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
-        self._evaluate_cluster_idle()
 
     def _refresh_idle_termination_seconds(self) -> None:
         """Reads idleTerminationSeconds from the cached RayCluster spec.
@@ -659,7 +657,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
 
-    def _evaluate_cluster_idle(self) -> None:
+    def evaluate_cluster_idle(self, ray_state: ClusterResourceState) -> None:
         """Drives the cluster-idle decision for this RayCluster.
 
         Checks observable conditions, masks the signal if any user driver is
@@ -667,12 +665,15 @@ class KubeRayProvider(ICloudInstanceProvider):
         ``self._idle_termination_seconds``. When promoted, patches the
         RayCluster CR with the idle-TTL-expired annotation; the KubeRay
         operator performs the terminal action.
+
+        Args:
+            ray_state: The current ``ClusterResourceState`` snapshot from GCS,
+                passed in by the reconciler to avoid a duplicate RPC.
         """
         if self._idle_termination_seconds is None:
             self._cluster_idle_observed_since = None
             return
 
-        ray_state = get_cluster_resource_state(self._gcs_client)
         # numOfHosts > 1 yields one raylet node per host,
         # so min worker nodes is minReplicas * numOfHosts.
         min_worker_nodes_by_type = {

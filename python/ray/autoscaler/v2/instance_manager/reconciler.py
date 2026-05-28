@@ -1242,6 +1242,7 @@ class Reconciler:
 
         if isinstance(cloud_provider, KubeRayProvider):
             cloud_provider.do_ippr_requests(reply.to_ippr)
+            cloud_provider.evaluate_cluster_idle(ray_state)
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
