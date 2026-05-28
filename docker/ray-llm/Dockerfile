@@ -35,9 +35,6 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
-# Export installed packages
-$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
-
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
 # Fetch and run vLLM install scripts at pinned commit
@@ -56,6 +53,47 @@ curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
 
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
+
+# nixl-cu12 and nixl-cu13 both install the top-level nixl_ep package. Run this
+# after the vLLM helper scripts so vLLM's eager nixl_ep import cannot load a
+# cu12 binary from a prior layer or package install.
+uv pip uninstall --system nixl-cu12 nixl-cu13 || true
+uv pip install --system --no-cache-dir --no-deps --reinstall nixl-cu13==1.1.0
+
+python - <<'PY'
+import importlib.metadata
+import importlib.util
+from pathlib import Path
+
+installed = {
+    dist.metadata.get("Name", "").lower()
+    for dist in importlib.metadata.distributions()
+}
+if "nixl-cu12" in installed:
+    raise SystemExit("nixl-cu12 must not be installed in the CUDA 13 LLM image")
+if "nixl" not in installed:
+    raise SystemExit("nixl must be installed for vLLM KV connector tests")
+if "nixl-cu13" not in installed:
+    raise SystemExit("nixl-cu13 must be installed in the CUDA 13 LLM image")
+
+spec = importlib.util.find_spec("nixl_ep")
+if spec is None or not spec.submodule_search_locations:
+    raise SystemExit("nixl_ep is missing after installing nixl-cu13")
+
+nixl_ep_dir = Path(next(iter(spec.submodule_search_locations)))
+candidates = sorted(nixl_ep_dir.glob("nixl_ep_cpp*.so"))
+if not candidates:
+    raise SystemExit(f"nixl_ep_cpp binary is missing from {nixl_ep_dir}")
+so = candidates[0]
+payload = so.read_bytes()
+if b"libcudart.so.12" in payload or b"libcudart.so.13" not in payload:
+    raise SystemExit(f"{so} is not the CUDA 13 NIXL EP binary")
+
+print(f"Verified CUDA 13 NIXL EP binary: {so}")
+PY
+
+# Export installed packages
+$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
