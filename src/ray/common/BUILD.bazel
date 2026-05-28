@@ -457,6 +457,7 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
+        "//src/ray/common/monitors:cpu_monitor_utils",
         "//src/ray/util:logging",
         "@boost//:algorithm",
         "@com_google_absl//absl/strings",

@@ -1,0 +1,21 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "cpu_monitor_utils",
+    srcs = [
+        "cpu_monitor_utils.cc",
+    ],
+    hdrs = [
+        "cpu_monitor_utils.h",
+    ],
+    visibility = [
+        "//src/ray/common:__subpackages__",
+        "//src/ray/gcs:__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+        "//src/ray/rpc:__subpackages__",
+    ],
+    deps = [
+        "//src/ray/common:status",
+        "@com_google_absl//absl/strings",
+    ],
+)

@@ -23,6 +23,7 @@
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
+#include "ray/common/monitors/cpu_monitor_utils.h"
 #include "ray/util/logging.h"
 
 template <typename T>

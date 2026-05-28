@@ -1,0 +1,20 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "cpu_monitor_utils_test",
+    size = "small",
+    srcs = [
+        "cpu_monitor_utils_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/common/monitors:cpu_monitor_utils",
+    ],
+)
