@@ -73,6 +73,9 @@ struct GcsServerConfig {
   // This includes the config list of raylet.
   std::string raylet_config_list;
   std::string session_name;
+  // Whether GCS active-passive leader election is enabled. If true, GCS server boots
+  // in passive mode and waits for leadership promotion.
+  bool ray_leader_elect_enabled = false;
 };
 
 class GcsNodeManager;
@@ -123,6 +126,9 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
+  /// Check if this GCS server instance is currently the active leader.
+  bool IsLeader() const { return is_leader_.load(); }
+
   /// Retrieve cluster ID
   const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
@@ -145,6 +151,8 @@ class GcsServer {
 
  protected:
   void DoStart(const GcsInitData &gcs_init_data);
+
+  void DoStartLoadingDeferred();
 
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
@@ -302,6 +310,8 @@ class GcsServer {
   /// GCS service state flag, which is used for unit tests.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  /// Flag to track GCS leadership status.
+  std::atomic<bool> is_leader_;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
   // Invoked when the RPC server has bound to a port.

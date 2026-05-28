@@ -602,4 +602,150 @@ TEST_F(GcsServerTest, HealthCheckReflectsMainIOContextHealth) {
                                   std::chrono::seconds(30)));
 }
 
+class GcsServerTestFixture : public gcs::GcsServer {
+ public:
+  using gcs::GcsServer::GcsServer;
+  void TriggerPromotion() { DoStartLoadingDeferred(); }
+};
+
+TEST_F(GcsServerTest, TestPassiveServerReadiness) {
+  gcs::GcsServerConfig passive_config;
+  passive_config.grpc_server_port = 0;
+  passive_config.grpc_server_name = "PassiveGcsServer";
+  passive_config.grpc_server_thread_num = 1;
+  passive_config.redis_address = "127.0.0.1";
+  passive_config.node_ip_address = "127.0.0.1";
+  passive_config.enable_sharding_conn = false;
+  passive_config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+  // Enable leader election to boot in passive.
+  passive_config.ray_leader_elect_enabled = true;
+
+  auto passive_server =
+      std::make_unique<gcs::GcsServer>(passive_config, fake_metrics_, io_service_);
+  passive_server->Start();
+
+  // Wait until server starts listening.
+  while (passive_server->GetPort() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Create health check stub pointing to the passive GCS server.
+  auto channel =
+      grpc::CreateChannel("localhost:" + std::to_string(passive_server->GetPort()),
+                          grpc::InsecureChannelCredentials());
+  auto passive_health_check_stub = grpc::health::v1::Health::NewStub(channel);
+
+  // Check health of the passive server.
+  grpc::health::v1::HealthCheckRequest request;
+  grpc::health::v1::HealthCheckResponse response;
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  auto status = passive_health_check_stub->Check(&context, request, &response);
+
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse::SERVING);
+
+  passive_server->Stop();
+}
+
+TEST_F(GcsServerTest, TestPassivePromotion) {
+  // 1. Pre-populate a node in Redis using the active GCS server/client.
+  auto gcs_node_info = GenNodeInfo(9, "127.0.0.9", "promoted_node");
+  rpc::RegisterNodeRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+
+  gcs::GcsServerConfig passive_config;
+  passive_config.grpc_server_port = 0;
+  passive_config.grpc_server_name = "PassiveGcsServerForPromotion";
+  passive_config.grpc_server_thread_num = 1;
+  passive_config.redis_address = "127.0.0.1";
+  passive_config.node_ip_address = "127.0.0.1";
+  passive_config.enable_sharding_conn = false;
+  passive_config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+  // Enable leader election to boot in passive.
+  passive_config.ray_leader_elect_enabled = true;
+
+  auto passive_server =
+      std::make_unique<GcsServerTestFixture>(passive_config, fake_metrics_, io_service_);
+  passive_server->Start();
+
+  // Wait until server starts listening.
+  while (passive_server->GetPort() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Create client pointing to the passive GCS server.
+  auto passive_client = std::make_unique<rpc::GcsRpcClient>(
+      "0.0.0.0", passive_server->GetPort(), *client_call_manager_);
+
+  // Verify it is responsive to healthcheck.
+  auto channel =
+      grpc::CreateChannel("localhost:" + std::to_string(passive_server->GetPort()),
+                          grpc::InsecureChannelCredentials());
+  auto passive_health_check_stub = grpc::health::v1::Health::NewStub(channel);
+  grpc::health::v1::HealthCheckRequest request;
+  grpc::health::v1::HealthCheckResponse response;
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  auto status = passive_health_check_stub->Check(&context, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // 2. Before promotion, verify that the passive GCS has an empty node cache.
+  {
+    std::vector<rpc::GcsNodeInfo> nodes;
+    std::promise<bool> promise;
+    rpc::GetAllNodeInfoRequest get_all_request;
+    passive_client->GetAllNodeInfo(
+        std::move(get_all_request),
+        [&nodes, &promise](const Status &status, const rpc::GetAllNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.node_info_list_size(); ++index) {
+            nodes.push_back(reply.node_info_list(index));
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+    // It must return 0 nodes because GCS has not been promoted and has not loaded Redis.
+    ASSERT_EQ(nodes.size(), 0);
+  }
+
+  // 3. Trigger promotion!
+  passive_server->TriggerPromotion();
+
+  // Wait 200ms for async load from Redis to finish.
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // 4. After promotion, verify that the pre-populated node is now loaded inside GCS
+  // cache!
+  {
+    std::vector<rpc::GcsNodeInfo> nodes;
+    std::promise<bool> promise;
+    rpc::GetAllNodeInfoRequest get_all_request;
+    passive_client->GetAllNodeInfo(
+        std::move(get_all_request),
+        [&nodes, &promise](const Status &status, const rpc::GetAllNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.node_info_list_size(); ++index) {
+            nodes.push_back(reply.node_info_list(index));
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+    // The pre-populated node must be successfully resolved and returned!
+    ASSERT_GE(nodes.size(), 1);
+    bool found_node = false;
+    for (const auto &node : nodes) {
+      if (node.node_id() == gcs_node_info->node_id()) {
+        found_node = true;
+        EXPECT_EQ(node.state(), rpc::GcsNodeInfo::ALIVE);
+        EXPECT_EQ(node.node_manager_address(), "127.0.0.9");
+      }
+    }
+    ASSERT_TRUE(found_node);
+  }
+
+  passive_server->Stop();
+}
+
 }  // namespace ray
