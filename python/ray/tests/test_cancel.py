@@ -702,7 +702,7 @@ def test_double_cancel_does_not_crash_worker(shutdown_only):
         Without the fix: ``Check failed: objects_valid`` appears in
         ``python-core-worker-*.log`` (the ``RAY_CHECK`` in ``task_receiver.cc``
         fires and SIGABRTs the worker).
-        With the fix: no ``Check failed`` line. No ``RAY_CHECK`` fails. 
+        With the fix: no ``Check failed`` line. No ``RAY_CHECK`` fails.
         To validate it, inspect the worker logs manually after running this test.
 
     """
