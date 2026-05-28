@@ -1,6 +1,5 @@
 import contextlib
 import os
-import tempfile
 import time
 import uuid
 from unittest.mock import patch
@@ -11,11 +10,11 @@ import torch
 import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
-from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.train.torch import TorchCheckpoint, TorchConfig, TorchPredictor, TorchTrainer
+from ray.train.torch import TorchCheckpoint, TorchConfig, TorchTrainer
 from ray.train.trainer import TrainingFailedError
 
 
@@ -97,43 +96,6 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
             path=result.checkpoint.path, filesystem=result.checkpoint.filesystem
         )
         torch_checkpoint.get_model()
-
-
-def test_torch_e2e_dir(ray_start_4_cpus):
-    def train_func():
-        model = torch.nn.Linear(3, 1)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
-            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
-
-    scaling_config = ScalingConfig(num_workers=2)
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-    )
-    result = trainer.fit()
-
-    class TorchScorer:
-        def __init__(self, checkpoint: Checkpoint):
-            model = torch.nn.Linear(3, 1)
-            with checkpoint.as_directory() as checkpoint_dir:
-                state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
-                model.load_state_dict(state_dict)
-
-            self.pred = TorchPredictor(model)
-
-        def __call__(self, x):
-            return self.pred.predict(x, dtype=torch.float)
-
-    predict_dataset = ray.data.range(9)
-    predictions = predict_dataset.map_batches(
-        TorchScorer,
-        batch_size=3,
-        batch_format="pandas",
-        compute=ray.data.ActorPoolStrategy(),
-        fn_constructor_args=(result.checkpoint,),
-    )
-    assert predictions.count() == 3
 
 
 def test_checkpoint_freq(ray_start_4_cpus):

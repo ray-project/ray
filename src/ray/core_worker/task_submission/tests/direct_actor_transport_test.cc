@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <memory>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -54,10 +55,12 @@ class DirectTaskTransportTest : public ::testing::Test {
         rpc::Address(),
         publisher.get(),
         subscriber.get(),
+        /*is_node_dead=*/[](const NodeID &) { return false; },
+        /*spread_free_local_objects=*/
+        [](const ObjectID &, const std::vector<NodeID> &) {},
         fake_owned_object_count_gauge,
         fake_owned_object_size_gauge,
-        /*lineage_pinning_enabled=*/false,
-        /*is_node_dead=*/[](const NodeID &) { return false; });
+        /*lineage_pinning_enabled=*/false);
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool,
         *raylet_client_pool,

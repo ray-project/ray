@@ -203,7 +203,7 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
-  if (idx == objects_pending_spill_.size() && bytes_to_spill < min_spilling_size_ &&
+  if (idx == pinned_objects_.size() && bytes_to_spill < min_spilling_size_ &&
       !objects_pending_spill_.empty()) {
     // 1. We've gone through all objects and it didn't hit max_fused_object_count_.
     // 2. The total size of the current objects is less than min_spilling_size.
