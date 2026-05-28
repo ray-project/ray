@@ -2,7 +2,7 @@
 
 # KubeRay In-Place Pod Resizing (IPPR)
 
-This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.35+.
+This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.35+ with Ray 2.56 or later.
 IPPR allows the Ray Autoscaler to vertically resize running Pods (CPU and memory) to change the cluster capacity.
 
 ```{admonition} Alpha feature
@@ -99,6 +99,9 @@ spec:
   autoscalerOptions:
     # IPPR requires Autoscaler V2.
     version: v2
+    env:
+    - name: AUTOSCALER_UPDATE_INTERVAL_S
+      value: "1"
   headGroupSpec:
     rayStartParams:
       num-cpus: "0"
@@ -106,8 +109,7 @@ spec:
       spec:
         containers:
         - name: ray-head
-          # IPPR isn't in a stable Ray release yet; use a nightly image.
-          image: rayproject/ray:nightly
+          image: rayproject/ray:2.56.0
           resources:
             requests:
               cpu: "1"
@@ -126,7 +128,7 @@ spec:
       spec:
         containers:
         - name: ray-worker
-          image: rayproject/ray:nightly
+          image: rayproject/ray:2.56.0
           # CPU and memory requests are required for IPPR.
           resources:
             requests:
