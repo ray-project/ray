@@ -159,20 +159,18 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 error = f"Object {ref.hex()} does not exist."
                 raise ValueError(error)
             buf_len = 0 if buf is None else len(buf)
-            payload = (
+            header = (
                 address_len.to_bytes(8, byteorder="little")
                 + metadata_len.to_bytes(8, byteorder="little")
                 + buf_len.to_bytes(8, byteorder="little")
                 + owner_address
                 + metadata
-                + (memoryview(buf) if buf_len else b"")
             )
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            payload_len = len(payload)
-            assert (
-                self.HEADER_LENGTH + address_len + metadata_len + buf_len == payload_len
-            )
-            written_bytes = f.write(payload)
+            payload_len = self.HEADER_LENGTH + address_len + metadata_len + buf_len
+            written_bytes = f.write(header)
+            if buf_len:
+                written_bytes += f.write(memoryview(buf))
             assert written_bytes == payload_len
             url_with_offset = create_url_with_offset(
                 url=url, offset=offset, size=written_bytes
