@@ -420,7 +420,87 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
     ASSERT_TRUE(worker_client_->Reply());
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   }
+
+  // drain every handler posted on the io_context when actor is destroyed to assert final
+  // state
+  drain_io_context();
+
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 20);
+
+  // The observability cache must hold exactly the configured maximum.
+  ASSERT_EQ(gcs_actor_manager_->destroyed_actor_observability_data_.size(), 10u);
+}
+
+TEST_F(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter) {
+  ///
+  /// Verify that when a non-DEAD entry is evicted from the observability cache,
+  /// the counter for that state is decremented. This mirrors
+  /// `GcsActor::~GcsActor`'s carve-out: DEAD counts are intentionally cumulative,
+  /// but non-DEAD counts must be balanced. Only Initialize-rehydrated orphans
+  /// (e.g., ALIVE actor whose owning job died) ever land in the cache with a
+  /// non-DEAD state; the normal `DestroyActor` path always transitions to DEAD
+  /// before insertion, so `TestDeadCount` doesn't exercise this path.
+  ///
+  ASSERT_EQ(RayConfig::instance().maximum_gcs_destroyed_actor_cached_count(), 10);
+
+  // Seed the cache with an orphaned ALIVE entry, simulating what Initialize
+  // would produce for an actor whose owner job died while it was still alive.
+  const std::string orphan_class = "OrphanClass";
+  auto orphan_job_id = JobID::FromInt(99);
+  ActorID orphan_id =
+      ActorID::Of(orphan_job_id, TaskID::FromRandom(orphan_job_id), /*counter=*/0);
+  rpc::ActorTableData orphan_data;
+  orphan_data.set_actor_id(orphan_id.Binary());
+  orphan_data.set_state(rpc::ActorTableData::ALIVE);
+  orphan_data.set_class_name(orphan_class);
+  // timestamp=0 ensures the orphan stays at the head of the sorted list so it's
+  // the first thing evicted when the cache fills.
+  orphan_data.set_timestamp(0);
+
+  gcs_actor_manager_->destroyed_actor_observability_data_.emplace(orphan_id, orphan_data);
+  gcs_actor_manager_->sorted_destroyed_actor_observability_list_.emplace_back(orphan_id,
+                                                                              0);
+  gcs_actor_manager_->actor_state_counter_->Increment(
+      {rpc::ActorTableData::ALIVE, orphan_class});
+
+  ASSERT_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, orphan_class), 1);
+  ASSERT_EQ(gcs_actor_manager_->destroyed_actor_observability_data_.size(), 1u);
+
+  // Now drive 10 actor deaths through the normal flow. Cache cap is 10; starting
+  // size is 1; the 10th destroy finds size>=10 and triggers eviction of the
+  // orphan (oldest by timestamp).
+  auto job_id = JobID::FromInt(1);
+  for (int i = 0; i < 10; i++) {
+    auto registered_actor = RegisterActor(job_id);
+    rpc::CreateActorRequest create_actor_request;
+    create_actor_request.mutable_task_spec()->CopyFrom(
+        registered_actor->GetCreationTaskSpecification().GetMessage());
+
+    Status status =
+        gcs_actor_manager_->CreateActor(create_actor_request,
+                                        [](const std::shared_ptr<gcs::GcsActor> &actor,
+                                           const rpc::PushTaskReply &reply,
+                                           const Status &) {});
+    RAY_CHECK_OK(status);
+    auto actor = mock_actor_scheduler_->actors.back();
+    mock_actor_scheduler_->actors.pop_back();
+    // Check that the actor is in state `ALIVE`.
+    actor->UpdateAddress(RandomAddress());
+    gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+    io_service_.run_one();
+    // Actor is killed.
+    ASSERT_TRUE(worker_client_->Reply());
+    ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  }
+  drain_io_context();
+
+  // The orphan should have been evicted and its ALIVE count decremented.
+  ASSERT_FALSE(
+      gcs_actor_manager_->destroyed_actor_observability_data_.contains(orphan_id));
+  ASSERT_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, orphan_class), 0);
+
+  // Cache is still at the configured cap.
+  ASSERT_EQ(gcs_actor_manager_->destroyed_actor_observability_data_.size(), 10u);
 }
 
 TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {
