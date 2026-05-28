@@ -990,10 +990,10 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max(1L,
-                    ray::CpuMonitorUtils::GetCpuLimit(
-                        std::string(ray::CpuMonitorUtils::kRootCgroupPath)) /
-                        4L))
+           std::max<int64_t>(1,
+                             ray::CpuMonitorUtils::GetCpuLimit(
+                                 std::string(ray::CpuMonitorUtils::kRootCgroupPath)) /
+                                 4))
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the

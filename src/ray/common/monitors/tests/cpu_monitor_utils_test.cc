@@ -91,6 +91,11 @@ TEST_F(CpuMonitorUtilsTest, V2FractionalQuotaRoundsDown) {
   ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 2);
 }
 
+TEST_F(CpuMonitorUtilsTest, V2FractionalQuotaCannotBeZero) {
+  WriteCpuMax("100 100000");
+  ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 1);
+}
+
 TEST_F(CpuMonitorUtilsTest, V2MaxQuotaFallsBackToPhysicalCores) {
   WriteCpuMax("max 100000");
   ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()),
@@ -111,6 +116,11 @@ TEST_F(CpuMonitorUtilsTest, V1QuotaAndPeriodReturnsCpuCount) {
 TEST_F(CpuMonitorUtilsTest, V1FractionalQuotaRoundsDown) {
   WriteCpuV1("250000", "100000");
   ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 2);
+}
+
+TEST_F(CpuMonitorUtilsTest, V1FractionalQuotaCannotBeZero) {
+  WriteCpuV1("100", "100000");
+  ASSERT_EQ(CpuMonitorUtils::GetCpuLimit(RootPath()), 1);
 }
 
 TEST_F(CpuMonitorUtilsTest, V1UnlimitedQuotaFallsBackToPhysicalCores) {
