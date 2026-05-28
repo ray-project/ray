@@ -234,7 +234,8 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     /// failed time.
     void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
 
-    /// Mark the whole tree of child tasks FAILED for each task on the dead worker.
+    /// Mark tasks FAILED when a worker dies. Behavior depends on worker and exit type.
+    /// More explanations in the function definition.
     ///
     /// \param worker_id Worker ID
     /// \param worker_failure_data Worker failure data.

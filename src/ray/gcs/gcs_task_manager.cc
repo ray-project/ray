@@ -112,35 +112,104 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkChildTasksFailedOnWorkerDead(
     return;
   }
 
+  bool is_graceful =
+      worker_failure_data.exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      worker_failure_data.exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+
+  // A worker is either dedicated to running a single actor, or it runs normal tasks —
+  // never both. So any task on this worker carrying is_detached_actor identifies it as
+  // a detached actor worker.
+  bool is_detached_actor_worker = false;
+  for (const auto &loc : task_attempts_itr->second) {
+    const auto &events = loc->GetTaskEventsMutable();
+    if (events.has_task_info() && events.task_info().is_detached_actor()) {
+      is_detached_actor_worker = true;
+      break;
+    }
+  }
+
+  // Normal workers/non-detached actors + graceful exit -- do nothing. The worker flushes
+  // its task event buffer on graceful exit, so the actual states of the task will arrive
+  // at GCS.
+  if (!is_detached_actor_worker && is_graceful) {
+    return;
+  }
+
   rpc::RayErrorInfo error_info;
-  error_info.set_error_type(rpc::ErrorType::OWNER_DIED);
   int64_t failed_ts_ns = worker_failure_data.end_time_ms() * 1000 * 1000;
 
-  // DFS over the subtree rooted at a given task, marking all descendants failed.
-  // The root task itself is skipped — its owner is responsible for marking it failed.
+  // Detached actor worker + graceful exit — mark only the root tasks on this worker
+  // (the ACTOR_CREATION_TASK and any running ACTOR_TASKs) as FAILED. Don't DFS into
+  // children since the graceful exit flushes the task event buffer for them. For detached
+  // actors, we skip marking them in DFS of its parent, so we mark them now.
+
+  // TODO(karticam): there is an edge case here - if the detached actor task was
+  // successful, but the parent hasn't relayed it back to the GCS yet, we might mark a
+  // finished task as failed. Fixing this would require maintaining the owner death data
+  // for a detached actor and This can be fixed for detached actors if we see these
+  // instances happening for customers in future.
+  if (is_detached_actor_worker && is_graceful) {
+    error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+    for (const auto &task_locator : task_attempts_itr->second) {
+      TaskID task_id = TaskID::FromBinary(task_locator->GetTaskEventsMutable().task_id());
+      std::stringstream error_message;
+      error_message << "Worker running the task (" << task_id.Hex()
+                    << ") died with exit_type: " << worker_failure_data.exit_type()
+                    << " with error_message: " << worker_failure_data.exit_detail();
+      error_info.set_error_message(error_message.str());
+      MarkTaskAttemptFailedIfNeeded(task_locator, failed_ts_ns, error_info);
+    }
+    return;
+  }
+
+  // Ungraceful exit — DFS the subtree, skipping any task on a detached actor along
+  // with their subtrees. Detached actors outlive their owners by design, so a child
+  // detached actor (or a method call on one) must not be marked FAILED when the owner
+  // dies. The detached actor's own worker death is handled by its own OnWorkerDead
+  // invocation.
   std::function<void(const TaskID &)> dfs_mark_failed = [&](const TaskID &task_id) {
     auto children_itr = parent_to_child_index_.find(task_id);
     if (children_itr == parent_to_child_index_.end()) {
       return;
     }
     for (const auto &child_locator : children_itr->second) {
-      TaskID child_task_id =
-          TaskID::FromBinary(child_locator->GetTaskEventsMutable().task_id());
+      const auto &child_events = child_locator->GetTaskEventsMutable();
+      if (child_events.has_task_info() && child_events.task_info().is_detached_actor()) {
+        continue;
+      }
+      TaskID child_task_id = TaskID::FromBinary(child_events.task_id());
+      error_info.set_error_type(rpc::ErrorType::OWNER_DIED);
       std::stringstream error_message;
       error_message << "Task (" << child_task_id.Hex() << ") failed because owner ("
                     << worker_id.Hex()
                     << ") died with exit_type: " << worker_failure_data.exit_type()
                     << " with error_message: " << worker_failure_data.exit_detail();
       error_info.set_error_message(error_message.str());
-      // This marking failure could be overwritten if a task event for the task comes up.
-      // But currently, final state is determined by the highest numbered state present in
-      // the state_ts map. Therefore, FAILED will persist over FINISHED.
       MarkTaskAttemptFailedIfNeeded(child_locator, failed_ts_ns, error_info);
       dfs_mark_failed(child_task_id);
     }
   };
 
   for (const auto &parent_task_locator : task_attempts_itr->second) {
+    // For detached actor workers with ungraceful exit, also mark the root tasks as
+    // FAILED. Unlike normal tasks where the root's owner reports its status, a
+    // detached actor might have no surviving owner. Also since we skip marking detached
+    // actors failed when any of its parents died, we should mark them dead now.
+
+    // TODO(karticam): Same edge as mentioned above in the detached actor + graceful case.
+    if (is_detached_actor_worker) {
+      TaskID task_id =
+          TaskID::FromBinary(parent_task_locator->GetTaskEventsMutable().task_id());
+      error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
+      std::stringstream error_message;
+      error_message << "Task (" << task_id.Hex()
+                    << ") failed because detached actor worker (" << worker_id.Hex()
+                    << ") died with exit_type: " << worker_failure_data.exit_type()
+                    << " with error_message: " << worker_failure_data.exit_detail();
+      error_info.set_error_message(error_message.str());
+      MarkTaskAttemptFailedIfNeeded(parent_task_locator, failed_ts_ns, error_info);
+    }
+
     TaskID parent_task_id =
         TaskID::FromBinary(parent_task_locator->GetTaskEventsMutable().task_id());
     RAY_CHECK(!parent_task_id.IsNil());
@@ -776,20 +845,9 @@ void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
 
 void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
-  // Only mark child tasks as failed on ungraceful death. On graceful death, the owner
-  // will flush the task buffer and the events would receive GCS eventually. If owner dies
-  // ungracefully, the events for child tasks will never reach GCS, so mark them
-  // explicitly.
-  if (worker_data->exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
-      worker_data->exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
-    RAY_LOG(DEBUG) << "Worker " << worker_id
-                   << " died gracefully (exit_type=" << worker_data->exit_type()
-                   << "), not marking child tasks as failed.";
-    return;
-  }
-
-  RAY_LOG(DEBUG) << "Marking all running tasks owned by the worker " << worker_id
-                 << " as failed (exit_type=" << worker_data->exit_type() << ").";
+  RAY_LOG(DEBUG) << "Worker " << worker_id
+                 << " died (exit_type=" << worker_data->exit_type()
+                 << "), scheduling task failure marking.";
 
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       io_service_,
