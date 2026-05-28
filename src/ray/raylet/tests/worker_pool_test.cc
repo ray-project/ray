@@ -1598,7 +1598,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
         /*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id, {}, LeaseID::FromRandom());
     std::shared_ptr<WorkerInterface> worker =
         worker_pool_->PopWorkerSync(lease_spec, false);
-    // Simulate granting the lease and finish. This is to set lease_grant_time_.
+    // Simulate granting the lease and finish. This is to set last_lease_grant_time_.
     RayLease lease(lease_spec);
     worker->GrantLease(lease);
     popped_workers.push_back(worker);

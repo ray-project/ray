@@ -185,7 +185,7 @@ void Worker::GrantLeaseId(const LeaseID &lease_id) {
   lease_id_ = lease_id;
   if (!lease_id.IsNil()) {
     RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
-    lease_grant_time_ = clock_.Now();
+    last_lease_grant_time_ = clock_.Now();
   }
 };
 

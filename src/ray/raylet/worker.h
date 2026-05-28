@@ -149,7 +149,9 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
         granted_lease_->GetLeaseSpecification().RootDetachedActorId();
   }
 
-  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return last_lease_grant_time_;
+  };
 
   bool IsRegistered() override { return rpc_client_ != nullptr; }
 
@@ -229,9 +231,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayLease being assigned to this worker.
   std::optional<RayLease> granted_lease_;
-  /// Time when the last lease was granted to this worker.
-  absl::Time lease_grant_time_;
-  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU lease
+  /// Time when the last lease was granted to this worker, or std::nullopt if
+  /// no lease has ever been granted.
+  std::optional<absl::Time> last_lease_grant_time_;
+  /// Whether this worker ever held a GPU resource. Once it holds a GPU or non-GPU lease
   /// it can't switch to the other type.
   std::optional<bool> is_gpu_ = std::nullopt;
   /// Whether this worker can hold an actor. Once it holds an actor or a normal lease, it

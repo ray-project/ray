@@ -1143,7 +1143,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     absl::Time keep_alive_until =
         now +
         absl::Milliseconds(RayConfig::instance().idle_worker_killing_time_threshold_ms());
-    if (worker->GetGrantedLeaseTime() == absl::Time()) {
+    if (!worker->GetLastGrantedLeaseTime().has_value()) {
       // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
       auto it = state.worker_processes.find(worker->WorkerId());
       if (it != state.worker_processes.end()) {

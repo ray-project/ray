@@ -52,7 +52,7 @@ struct Group {
 
   /// Gets the assigned lease time of the earliest lease of this group, to be
   /// used for group priority.
-  const absl::Time GetGrantedLeaseTime() const;
+  absl::Time GetGrantedLeaseTime() const;
 
   /// Returns the worker to be killed in this group, in LIFO order.
   const std::shared_ptr<WorkerInterface> SelectWorkerToKill() const;
@@ -67,7 +67,7 @@ struct Group {
   /// Leases belonging to this group.
   std::vector<std::shared_ptr<WorkerInterface>> workers_;
 
-  /// The earliest creation time of the leases.
+  /// The earliest granted-lease time across leases in this group.
   absl::Time earliest_granted_lease_time_ = absl::InfiniteFuture();
 
   /// The owner id shared by leases of this group.
@@ -102,7 +102,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot,
-      const SystemMemorySnapshot &system_memory_snapshot) override;
+      const MemoryUsageSnapshot &system_memory_snapshot) override;
 
  private:
   /**

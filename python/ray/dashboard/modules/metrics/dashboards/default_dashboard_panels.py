@@ -78,7 +78,7 @@ OVERVIEW_AND_HEALTH_PANELS = [
             ),
             # Memory
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})) * 100',
+                expr='sum(ray_node_mem_used_host{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}})) * 100',
                 legend="Memory (RAM)",
             ),
             # GRAM
@@ -415,7 +415,7 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
                 legend="shared_memory",
             ),
             Target(
-                expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+                expr='min(label_replace(sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}}), "mem_cap_source", "host", "", "") or label_replace(sum(ray_node_cgroup_mem_total{{instance=~"$Instance",{global_filters}}}), "mem_cap_source", "cgroup", "", ""))',
                 legend="MAX",
             ),
         ],
@@ -484,28 +484,45 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=4,
         title="Node Memory Usage (heap + object store)",
-        description="The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
+        description="The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. "
+        "Node memory is a sum of object store memory (shared memory) and heap memory.\n\n"
+        "Host targets reflect memory as reported by the host machine. "
+        "Container targets reflect cgroup-limited memory and are only emitted when the ray node reside within a cgroup.",
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
-                legend="Memory Used: {{instance}} ({{RayNodeType}})",
+                expr='sum(ray_node_mem_used_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Host): {{instance}} ({{RayNodeType}})",
             ),
             Target(
-                expr='sum(ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
+                expr='sum(ray_node_mem_total_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
                 legend="MAX",
+            ),
+            Target(
+                expr='sum(ray_node_cgroup_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Container): {{instance}} ({{RayNodeType}})",
+            ),
+            Target(
+                expr='sum(ray_node_cgroup_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
+                legend="Container MAX",
             ),
         ],
     ),
     Panel(
         id=48,
         title="Node Memory Usage % (heap + object store)",
-        description="The percentage of physical (hardware) memory usage for each node.",
+        description="The percentage of physical (hardware) memory usage for each node.\n\n"
+        "Host targets reflect memory as reported by the host machine. "
+        "Container targets reflect cgroup-limited memory and are only emitted when the ray node reside within a cgroup.",
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / sum(ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
-                legend="Memory Used: {{instance}} ({{RayNodeType}})",
+                expr='sum(ray_node_mem_used_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / sum(ray_node_mem_total_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Host): {{instance}} ({{RayNodeType}})",
+            ),
+            Target(
+                expr='sum(ray_node_cgroup_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / sum(ray_node_cgroup_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Container): {{instance}} ({{RayNodeType}})",
             ),
         ],
         fill=0,
