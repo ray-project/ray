@@ -954,6 +954,13 @@ def read_zarr(
         instead, pass ``filesystem=pyarrow.fs.GcsFileSystem(anonymous=True)``
         explicitly.
 
+    Array attributes (``.zattrs``):
+        ``read_zarr`` does not surface each array's ``.zattrs`` (the
+        user-attribute store from the Zarr v2 spec) in the row schema —
+        attrs are invariant per array, so duplicating them on every row
+        would just bloat the output. Read them once (for example with the
+        ``zarr`` python package) if you require them in your job.
+
     Args:
         path: Path to the Zarr v2 store.
         filesystem: Optional preconfigured filesystem. Accepts either a
