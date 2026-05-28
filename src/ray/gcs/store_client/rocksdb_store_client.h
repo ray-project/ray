@@ -205,9 +205,24 @@ class RocksDbStoreClient : public StoreClient {
   static constexpr char kJobCounterKey[] = "__ray_job_counter__";
 
   /// Offload pool for RocksDB I/O. Null when offload_io was false in
-  /// the ctor. Joined and destroyed BEFORE `db_` so any in-flight RocksDB
-  /// op completes against a still-live DB handle. (Hence declared after
-  /// `db_` here — destructor walks members in reverse.)
+  /// the ctor.
+  ///
+  /// Safety on destruction depends on TWO things, not just declaration
+  /// order:
+  ///   1. The explicit destructor drains the pool via `io_pool_->wait()`
+  ///      BEFORE any cf_handles_ / db_ teardown. `wait()` lets every
+  ///      queued and running handler complete; `~thread_pool` would
+  ///      instead call `stop()`, which cancels pending handlers and
+  ///      silently drops their captured Postable callbacks (a caller
+  ///      awaiting the ack would hang). The explicit drain is the
+  ///      load-bearing piece — see the destructor body for the full
+  ///      rationale.
+  ///   2. Declaration order keeps `io_pool_` after `db_` so even in the
+  ///      event of an exception during destruction or a future refactor
+  ///      that loses the explicit drain, implicit member destruction
+  ///      still tears down the pool before the DB. This is a defense-
+  ///      in-depth fallback; it does NOT by itself prevent the
+  ///      stop()-cancels-handlers problem above.
   std::unique_ptr<rocksdb::DB> db_;
   std::unique_ptr<boost::asio::thread_pool> io_pool_;
 
