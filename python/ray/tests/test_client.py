@@ -471,7 +471,7 @@ def test_basic_log_stream(call_ray_start_shared):
 
         ray.worker.log_client.log = test_log
         ray.worker.log_client.set_logstream_level(logging.DEBUG)
-        # Allow some time to propogate
+        # Allow some time to propagate
         time.sleep(1)
         x = ray.put("Foo")
         assert ray.get(x) == "Foo"
