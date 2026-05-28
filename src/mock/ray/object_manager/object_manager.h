@@ -28,6 +28,10 @@ class MockObjectManager : public ObjectManagerInterface {
                const TaskMetricsKey &task_key),
               (override));
   MOCK_METHOD(void, CancelPull, (uint64_t request_id), (override));
+  MOCK_METHOD(void,
+              MarkObjectFailed,
+              (const ObjectID &object_id, rpc::ErrorType error_type),
+              (override));
   MOCK_METHOD(bool,
               PullRequestActiveOrWaitingForMetadata,
               (uint64_t request_id),
