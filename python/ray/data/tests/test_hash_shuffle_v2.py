@@ -37,32 +37,6 @@ from ray.tests.conftest import *  # noqa: F401, F403
 # ---------------------------------------------------------------------------
 
 
-def _make_input_op_mock(num_blocks=None, size_bytes=None):
-    """Minimal PhysicalOperator mock that satisfies ShuffleMapOp init."""
-    logical_mock = MagicMock(LogicalOperator)
-    logical_mock.infer_metadata.return_value = BlockMetadata(
-        num_rows=None,
-        size_bytes=size_bytes,
-        exec_stats=None,
-        input_files=None,
-    )
-    logical_mock.estimated_num_outputs.return_value = num_blocks
-
-    op_mock = MagicMock(PhysicalOperator)
-    op_mock._output_dependencies = []
-    op_mock._logical_operators = [logical_mock]
-    op_mock.num_output_splits.return_value = 1
-    return op_mock
-
-
-def _make_bundle(num_blocks: int = 1, size_bytes: int = 100) -> RefBundle:
-    meta = BlockMetadata(
-        num_rows=10, size_bytes=size_bytes, exec_stats=None, input_files=None
-    )
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
-    return RefBundle(blocks, schema=None, owns_blocks=False)
-
-
 def _make_shard_bundle(ref: ray.ObjectRef, num_rows: int, size_bytes: int) -> RefBundle:
     """Build a single-block bundle representing one mapper's shard for one
     partition — what ShuffleMapOp pushes into a partition staging queue."""
@@ -90,19 +64,23 @@ def _empty_table() -> pa.Table:
     )
 
 
-def _ipc_opts() -> pa.ipc.IpcWriteOptions:
-    return pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
-
-
 def _make_map_op(
     *,
     num_partitions: int = 4,
     pre_map_merge_threshold: int = ShuffleMapOp._DEFAULT_PRE_MAP_MERGE_THRESHOLD,  # noqa: SLF001
 ) -> ShuffleMapOp:
-    ctx = DataContext()
+    logical_mock = MagicMock(LogicalOperator)
+    logical_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None, size_bytes=None, exec_stats=None, input_files=None
+    )
+    logical_mock.estimated_num_outputs.return_value = 4
+    input_op_mock = MagicMock(PhysicalOperator)
+    input_op_mock._output_dependencies = []
+    input_op_mock._logical_operators = [logical_mock]
+    input_op_mock.num_output_splits.return_value = 1
     return ShuffleMapOp(
-        _make_input_op_mock(num_blocks=4),
-        ctx,
+        input_op_mock,
+        DataContext(),
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(["id"], num_partitions),
         pre_map_merge_threshold=pre_map_merge_threshold,
@@ -161,7 +139,8 @@ def test_partition_blocks_to_shards_combines_chunked_columns():
     ],
 )
 def test_ipc_encode_decode_roundtrip(table_fn, expected_rows):
-    buf = _encode_partition_ipc(table_fn(), _ipc_opts())
+    ipc_opts = pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
+    buf = _encode_partition_ipc(table_fn(), ipc_opts)
     decoded = _read_partition_ipc(buf)
     if expected_rows == 0:
         assert decoded is None
@@ -177,7 +156,7 @@ def test_ipc_encode_does_not_mutate_upstream_schema_metadata():
         [("id", pa.int64()), ("val", pa.float64())], metadata=original_meta
     )
     table = pa.table({"id": [1, 2, 3], "val": [1.0, 2.0, 3.0]}, schema=schema)
-    _encode_partition_ipc(table, _ipc_opts())
+    _encode_partition_ipc(table, pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd")))
     assert table.schema.metadata == original_meta
 
 
@@ -259,8 +238,14 @@ def test_pre_map_merge_buffer(
         lambda block_refs, _bundles, **kw: submitted.append(len(block_refs)),
     )
     for num_blocks, size_bytes in bundles:
+        meta = BlockMetadata(
+            num_rows=10, size_bytes=size_bytes, exec_stats=None, input_files=None
+        )
+        blocks_list = [
+            (ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)
+        ]
         op._add_input_inner(
-            _make_bundle(num_blocks=num_blocks, size_bytes=size_bytes),
+            RefBundle(blocks_list, schema=None, owns_blocks=False),
             input_index=0,
         )
     if finalize:
@@ -398,30 +383,14 @@ def test_map_op_waits_for_barrier_before_emitting():
 # ===========================================================================
 
 
-def _make_partition_bundle(
-    pid: int, num_shards: int, size_bytes_per_shard: int = 100
-) -> RefBundle:
-    """Build a fake post-transpose bundle representing one partition.
-
-    Mirrors what `ShuffleMapOp._maybe_emit_partition_bundles` produces:
-    `num_shards` shard refs for one partition, with the partition_id
-    sentinel stamped onto the FIRST block's `BlockMetadata.input_files`.
-    """
-    blocks = []
-    for i in range(num_shards):
-        meta = BlockMetadata(
-            num_rows=10,
-            size_bytes=size_bytes_per_shard,
-            exec_stats=None,
-            input_files=make_partition_sentinel(pid) if i == 0 else None,
-        )
-        blocks.append((ray.ObjectRef(bytes([(pid * 31 + i) % 256]) * 28), meta))
-    return RefBundle(blocks, schema=None, owns_blocks=False)
-
-
 def test_reduce_op_submits_one_task_per_partition_bundle(monkeypatch):
     """Every non-empty input bundle becomes exactly one reducer task,
-    sized by the per-bundle byte total (memory = 2 × bundle size)."""
+    sized by the per-bundle byte total (memory = 2 × bundle size).
+
+    Each input bundle mirrors what `ShuffleMapOp._maybe_emit_partition_bundles`
+    produces: `num_shards` shard refs for one partition, with the partition_id
+    sentinel stamped onto the FIRST block's `BlockMetadata.input_files`.
+    """
     op = _make_reduce_op(num_partitions=4)
 
     submitted: List[int] = []
@@ -443,8 +412,20 @@ def test_reduce_op_submits_one_task_per_partition_bundle(monkeypatch):
     )
 
     for pid in (0, 1, 2, 3):
+        blocks = [
+            (
+                ray.ObjectRef(bytes([(pid * 31 + i) % 256]) * 28),
+                BlockMetadata(
+                    num_rows=10,
+                    size_bytes=100,
+                    exec_stats=None,
+                    input_files=make_partition_sentinel(pid) if i == 0 else None,
+                ),
+            )
+            for i in range(3)
+        ]
         op._add_input_inner(
-            _make_partition_bundle(pid, num_shards=3, size_bytes_per_shard=100),
+            RefBundle(blocks, schema=None, owns_blocks=False),
             input_index=0,
         )
 
