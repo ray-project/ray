@@ -647,16 +647,28 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._health_monitoring_start_time: float = 0.0
         self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
 
-        # Aggregator pool startup is deferred until the operator actually has
-        # input to process — see :meth:`_ensure_aggregator_pool_started`.
-        # Pre-reserving 96 aggregators (5 joins + 1 hash-aggregate × 16 each)
-        # at dataset-execution start fills the resource manager's pending-demand
-        # budget with reservations for actors whose upstream operator hasn't
-        # produced output yet, starving the active operator's shuffle-block
-        # tasks of admission budget. Lazy startup recycles cluster memory
-        # between sequential shuffles in a chain (Q9: 5 chained joins +
-        # group-by + sort).
+        # Aggregator pool startup is deferred until input has been
+        # received from *every* input sequence — see
+        # :meth:`_ensure_aggregator_pool_started`. Triggering on the
+        # first bundle from any single sequence isn't enough for chained
+        # shuffles: in TPC-H Q9, each Join's right-side read finishes
+        # within seconds of dataset start, so a "first-input-from-any"
+        # rule starts every Join's pool nearly simultaneously and
+        # over-commits cluster memory. Waiting for input from *all*
+        # input sequences (the right-side read AND the upstream-Join's
+        # output) serializes pool startup by the operator's data
+        # dependency: Join#2's pool can't start until Join#1 produces
+        # its first output. Generalizes to N-ary ops (Zip, Mix, multi-way
+        # joins): pool starts only when every input has produced
+        # something to consume.
         self._aggregator_pool_started: bool = False
+        self._inputs_seen: Set[int] = set()
+        self._num_input_seqs: int = num_input_seqs
+        # Bundles received before all input sequences have produced are
+        # buffered here so we can drain them once the pool starts. The
+        # streaming executor doesn't re-deliver dropped bundles, so we
+        # can't simply ignore early inputs.
+        self._pending_pre_pool_inputs: List[Tuple[RefBundle, int]] = []
 
         # sub-progress bar initializations
         self._shuffle_bar = None
@@ -669,18 +681,59 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # Pool start is deferred to first input arrival — see
         # :meth:`_ensure_aggregator_pool_started`.
 
-    def _ensure_aggregator_pool_started(self) -> None:
-        """Lazy-start the aggregator pool on first input.
+    def _ensure_aggregator_pool_started(self, input_index: int) -> None:
+        """Lazy-start the aggregator pool once every input sequence has
+        produced at least one bundle.
 
-        Called from :meth:`_add_input_inner` before the first
-        ``_shuffle_block`` task is submitted (the task captures the pool
-        by reference, so aggregators must exist before submission).
-        Idempotent — subsequent calls are no-ops.
+        Tracks each ``input_index`` as it arrives in
+        :meth:`_add_input_inner`. The pool starts only after every input
+        sequence (``range(num_input_seqs)``) has shown up. For Q9-style
+        chained joins this serializes pool startup along the data
+        dependency: Join#2's pool waits for Join#1 to produce its first
+        output, even if Join#2's right-side read finished long before.
+
+        Returns early once started — subsequent inputs don't re-trigger.
+        The shuffle map task captures the pool by reference, so
+        aggregators must exist before any ``_shuffle_block`` task is
+        submitted; this method is called *before* the per-bundle
+        submission loop inside :meth:`_add_input_inner`.
         """
         if self._aggregator_pool_started:
             return
+        self._inputs_seen.add(input_index)
+        self._start_pool_if_ready()
+
+    def _start_pool_if_ready(self) -> None:
+        """Start the aggregator pool if every input sequence has been seen.
+
+        Called from :meth:`_ensure_aggregator_pool_started` (bundle path)
+        and :meth:`input_done` (empty-sequence path). On a successful
+        start, drains any bundles buffered while waiting on other
+        sequences in arrival order so they reach
+        :meth:`_do_add_input_inner` exactly once.
+        """
+        if self._aggregator_pool_started:
+            return
+        if len(self._inputs_seen) < self._num_input_seqs:
+            return
         self._aggregator_pool.start()
         self._aggregator_pool_started = True
+        if self._pending_pre_pool_inputs:
+            pending = self._pending_pre_pool_inputs
+            self._pending_pre_pool_inputs = []
+            for pending_bundle, pending_index in pending:
+                self._do_add_input_inner(pending_bundle, pending_index)
+
+    def input_done(self, input_index: int) -> None:
+        super().input_done(input_index)
+        # If this input sequence completes without producing any bundles
+        # (e.g., a Filter that drops all rows), we still need to count it
+        # as "seen" — otherwise the all-inputs-seen check in
+        # :meth:`_start_pool_if_ready` never fires and the pool stays
+        # asleep, blocking the dataset.
+        if input_index not in self._inputs_seen:
+            self._inputs_seen.add(input_index)
+            self._start_pool_if_ready()
 
     @property
     def shuffle_name(self) -> str:
@@ -694,11 +747,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         # TODO move to base class
         self._shuffle_metrics.on_input_received(input_bundle)
-        # Lazy pool startup — actors materialize only once this operator
-        # actually has work to do, so downstream shuffle ops in a chain
-        # don't preemptively reserve cluster memory before their upstream
-        # has produced output.
-        self._ensure_aggregator_pool_started()
+        # Lazy pool startup — actors materialize only once *every* input
+        # sequence has produced at least one bundle, so downstream shuffle
+        # ops in a chain don't preemptively reserve cluster memory before
+        # their full input set has arrived. ``_ensure_aggregator_pool_started``
+        # may trigger ``_start_pool_if_ready`` which drains any buffered
+        # bundles from sequences that arrived before this one.
+        if not self._aggregator_pool_started:
+            # Buffer the current bundle *before* checking startup so the
+            # drain inside ``_start_pool_if_ready`` sees it in arrival
+            # order; the executor doesn't re-deliver dropped bundles.
+            self._pending_pre_pool_inputs.append((input_bundle, input_index))
+            self._ensure_aggregator_pool_started(input_index)
+            return
         self._do_add_input_inner(input_bundle, input_index)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
@@ -1474,6 +1535,15 @@ class AggregatorPool:
         self._min_max_shards_compaction_thresholds = (
             min_max_shards_compaction_thresholds
         )
+
+        # Health-monitoring state. Initialized here so
+        # :meth:`check_aggregator_health` can run safely before
+        # :meth:`start` — the operator's lazy pool startup
+        # (``HashShufflingOperatorBase._ensure_aggregator_pool_started``)
+        # may delay ``start()`` past the first issue-detector pass.
+        self._health_monitoring_started: bool = False
+        self._health_monitoring_start_time: float = 0.0
+        self._pending_aggregators_refs: Optional[List[ObjectRef]] = None
 
     def start(self):
         # Check cluster resources before starting aggregators
