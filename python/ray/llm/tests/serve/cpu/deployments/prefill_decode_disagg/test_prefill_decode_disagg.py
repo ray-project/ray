@@ -29,18 +29,9 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
 from ray.serve._private.http_util import SERVE_SESSION_ID
 
 
-class _AsyncIterator:
-    def __init__(self, items):
-        self._items = iter(items)
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        try:
-            return next(self._items)
-        except StopIteration as exc:
-            raise StopAsyncIteration from exc
+async def _aiter(items):
+    for item in items:
+        yield item
 
 
 class _FakePrefillHandle:
@@ -59,26 +50,15 @@ class _FakePrefillHandle:
         )
 
     def _method(self, name):
-        handle = self
+        def remote(request, raw_request_info):
+            self.calls.append(
+                {"method": name, "request": request, "session_id": self.session_id}
+            )
+            return _aiter(
+                [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-1"})]
+            )
 
-        class _M:
-            def remote(self, request, raw_request_info):
-                handle.calls.append(
-                    {
-                        "method": name,
-                        "request": request,
-                        "session_id": handle.session_id,
-                    }
-                )
-                return _AsyncIterator(
-                    [
-                        SimpleNamespace(
-                            kv_transfer_params={"remote_engine_id": "prefill-1"}
-                        )
-                    ]
-                )
-
-        return _M()
+        return SimpleNamespace(remote=remote)
 
     @property
     def chat(self):
@@ -364,7 +344,7 @@ class TestPDOrchestratorMixin:
 
         async def _fake_decode(self, req, raw_info):
             decode_calls.append(req)
-            return _AsyncIterator([['data: {"ok":true}\n\n']])
+            return _aiter([['data: {"ok":true}\n\n']])
 
         app = await server.__serve_build_asgi_app__()
         with patch.object(LLMServer, method, _fake_decode):
