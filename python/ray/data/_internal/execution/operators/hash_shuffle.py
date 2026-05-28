@@ -647,6 +647,17 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._health_monitoring_start_time: float = 0.0
         self._pending_aggregators_refs: Optional[List[ObjectRef[ActorHandle]]] = None
 
+        # Aggregator pool startup is deferred until the operator actually has
+        # input to process — see :meth:`_ensure_aggregator_pool_started`.
+        # Pre-reserving 96 aggregators (5 joins + 1 hash-aggregate × 16 each)
+        # at dataset-execution start fills the resource manager's pending-demand
+        # budget with reservations for actors whose upstream operator hasn't
+        # produced output yet, starving the active operator's shuffle-block
+        # tasks of admission budget. Lazy startup recycles cluster memory
+        # between sequential shuffles in a chain (Q9: 5 chained joins +
+        # group-by + sort).
+        self._aggregator_pool_started: bool = False
+
         # sub-progress bar initializations
         self._shuffle_bar = None
         self._shuffle_metrics = OpRuntimeMetrics(self)
@@ -655,8 +666,21 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
+        # Pool start is deferred to first input arrival — see
+        # :meth:`_ensure_aggregator_pool_started`.
 
+    def _ensure_aggregator_pool_started(self) -> None:
+        """Lazy-start the aggregator pool on first input.
+
+        Called from :meth:`_add_input_inner` before the first
+        ``_shuffle_block`` task is submitted (the task captures the pool
+        by reference, so aggregators must exist before submission).
+        Idempotent — subsequent calls are no-ops.
+        """
+        if self._aggregator_pool_started:
+            return
         self._aggregator_pool.start()
+        self._aggregator_pool_started = True
 
     @property
     def shuffle_name(self) -> str:
@@ -670,6 +694,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         # TODO move to base class
         self._shuffle_metrics.on_input_received(input_bundle)
+        # Lazy pool startup — actors materialize only once this operator
+        # actually has work to do, so downstream shuffle ops in a chain
+        # don't preemptively reserve cluster memory before their upstream
+        # has produced output.
+        self._ensure_aggregator_pool_started()
         self._do_add_input_inner(input_bundle, input_index)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
@@ -1055,6 +1084,14 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
+        # Reserve aggregator-pool resources only after the pool has actually
+        # started. Reporting the pool's reservation pre-startup fills the
+        # streaming executor's pending-demand budget with actors that aren't
+        # yet doing anything (their upstream operator hasn't produced
+        # output), which starves the currently-active shuffle's map tasks
+        # of admission budget. See :meth:`_ensure_aggregator_pool_started`.
+        if not self._aggregator_pool_started:
+            return ExecutionResources.zero()
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
