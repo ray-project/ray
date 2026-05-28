@@ -153,10 +153,12 @@ class TaskManagerTest : public ::testing::Test {
             addr_,
             publisher_.get(),
             subscriber_.get(),
+            /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            /*spread_free_local_objects=*/
+            [](const ObjectID &, const std::vector<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
-            lineage_pinning_enabled,
-            /*is_node_dead=*/[this](const NodeID &) { return node_died_; })),
+            lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         manager_(
@@ -1484,10 +1486,11 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       addr_,
       publisher_.get(),
       subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*spread_free_local_objects=*/[](const ObjectID &, const std::vector<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
-      lineage_pinning_enabled_,
-      /*is_node_dead=*/[this](const NodeID &) { return node_died_; });
+      lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
   TaskManager failing_mgr(
@@ -1547,10 +1550,11 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       addr_,
       publisher_.get(),
       subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*spread_free_local_objects=*/[](const ObjectID &, const std::vector<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
-      lineage_pinning_enabled_,
-      /*is_node_dead=*/[this](const NodeID &) { return node_died_; });
+      lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager retry_mgr(
       *local_store,
@@ -1611,10 +1615,11 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       addr_,
       publisher_.get(),
       subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*spread_free_local_objects=*/[](const ObjectID &, const std::vector<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
-      lineage_pinning_enabled_,
-      /*is_node_dead=*/[this](const NodeID &) { return node_died_; });
+      lineage_pinning_enabled_);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
   TaskManager dyn_mgr(
       *local_store,
@@ -3108,10 +3113,11 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       addr_,
       publisher_.get(),
       subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*spread_free_local_objects=*/[](const ObjectID &, const std::vector<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
-      false,
-      /*is_node_dead=*/[this](const NodeID &) { return node_died_; });
+      false);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
   TaskManager test_manager(
@@ -3191,10 +3197,11 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       addr_,
       publisher_.get(),
       subscriber_.get(),
+      /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*spread_free_local_objects=*/[](const ObjectID &, const std::vector<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
-      false,
-      /*is_node_dead=*/[this](const NodeID &) { return node_died_; });
+      false);
   auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
 
   TaskManager test_manager(

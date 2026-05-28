@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Uni
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ray.llm._internal.common.utils.import_utils import raise_llm_engine_import_error
+
 try:
     from vllm.entrypoints.openai.chat_completion.protocol import (
         ChatCompletionRequest as _ChatCompletionRequest,
@@ -47,7 +49,7 @@ try:
         TokenizeResponse as _TokenizeResponse,
     )
 
-except ImportError:
+except ImportError as _vllm_import_error:
     try:
         from sglang.srt.entrypoints.openai.protocol import (
             ChatCompletionRequest as _ChatCompletionRequest,
@@ -65,12 +67,8 @@ except ImportError:
             TokenizeRequest as _TokenizeCompletionRequest,
             TokenizeResponse as _TokenizeResponse,
         )
-    except ImportError:
-        raise ImportError(
-            "Neither vLLM nor SGLang is installed. At least one is required "
-            "for Ray Serve LLM protocol models. Install with: "
-            "`pip install ray[llm]` or `pip install sglang[all]`"
-        )
+    except ImportError as _sglang_import_error:
+        raise_llm_engine_import_error(_vllm_import_error, _sglang_import_error)
 
     def _unsupported_model(name: str, feature: str = ""):
         """Create a BaseModel stub that raises NotImplementedError on instantiation."""
