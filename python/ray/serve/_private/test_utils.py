@@ -1609,7 +1609,9 @@ def get_metric_dictionaries(
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
-        assert name in prom_timeseries, f"Metric {name} not found in prom_timeseries {prom_timeseries}"
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found in prom_timeseries {prom_timeseries}"
         return True
 
     if wait:
