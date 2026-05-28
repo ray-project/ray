@@ -82,9 +82,6 @@ def start(outdir):
         str(PYSPY_RATE),
         "--nonblocking",
         "--subprocesses",
-        # Include native (C / C++ / Cython) stack frames so the speedscope
-        # surfaces raylet RPC / cloudpickle / arrow leaves alongside Python.
-        "--native",
     ]
 
     _log_file = open(log_path, "w")
@@ -251,9 +248,6 @@ def _attach_worker_pyspy(pid, name, outdir, name_counts):
         "-r",
         str(PYSPY_RATE),
         "--nonblocking",
-        # Include native (C / C++ / Cython) stack frames so worker UDF
-        # speedscopes surface arrow / serialization leaves alongside Python.
-        "--native",
     ]
 
     log_file = open(log_path, "w")
