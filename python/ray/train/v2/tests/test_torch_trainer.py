@@ -60,19 +60,18 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     [
         (TorchConfig(backend="gloo", init_method="env"), 2),
         (TorchConfig(backend="gloo", init_method="tcp"), 2),
-        # TODO(tseah): enable this after CI has torchft dependencies
-        # (
-        #     TorchftConfig(
-        #         backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
-        #     ),
-        #     1,
-        # ),
-        # (
-        #     TorchftConfig(
-        #         backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
-        #     ),
-        #     1,
-        # ),
+        (
+            TorchftConfig(
+                backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
+            ),
+            1,
+        ),
+        (
+            TorchftConfig(
+                backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
+            ),
+            1,
+        ),
     ],
 )
 def test_torch_start_shutdown(ray_start_4_cpus, torch_config, expected_world_size):
@@ -107,7 +106,6 @@ def test_torch_process_group_shutdown_timeout(ray_start_4_cpus, monkeypatch, tim
     trainer.fit()
 
 
-@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 def test_torchft_linear(ray_start_4_cpus):
     """Test torchft linear training: loss goes down and models are equal across workers."""
 
@@ -159,7 +157,6 @@ def test_torchft_linear(ray_start_4_cpus):
 # TODO(tseah): Add test for lighthouse failures (e.g. lighthouse unreachable).
 
 
-@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 @pytest.mark.parametrize(
     "min_replicas,max_failures,expect_error,expected_train_fn_calls,expected_reports",
     [

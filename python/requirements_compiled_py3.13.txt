@@ -1,5 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
 
 about-time==4.2.1
     # via alive-progress
@@ -1362,7 +1362,7 @@ numpy==2.2.6
     #   webdataset
     #   xgboost
     #   zoopt
-nvidia-nccl-cu12==2.26.2 ; platform_system == "Linux" and platform_machine != "aarch64"
+nvidia-nccl-cu12==2.27.5 ; platform_system == "Linux" and platform_machine != "aarch64"
     # via
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   xgboost
@@ -2397,7 +2397,7 @@ toolz==1.1.0
     #   dask
     #   distributed
     #   partd
-torch==2.7.0
+torch==2.9.0
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
@@ -2439,7 +2439,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0
     # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
-torchvision==0.22.0
+torchvision==0.24.0
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
