@@ -175,15 +175,10 @@ class ObjectRefGenerator:
 
     # Private APIs
 
-    def _get_next_ref(self) -> "ray.ObjectRef":
-        """Return the next reference from a generator.
-
-        Note that the ObjectID generated from a generator
-        is always deterministic.
-        """
+    def _get_next_object_id_binary(self) -> bytes:
+        """Return the binary id of the next object in the stream."""
         self.worker.check_connected()
-        core_worker = self.worker.core_worker
-        return core_worker.peek_object_ref_stream(self._generator_ref)[0]
+        return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
     def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
         """Return the next num_refs references from a generator.

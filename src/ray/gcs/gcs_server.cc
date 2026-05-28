@@ -167,11 +167,12 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     store_client = std::make_shared<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),
         metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter);
+        metrics_.storage_operation_count_counter,
+        clock_);
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_store_client =
-        std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions());
+        std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
@@ -203,7 +204,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*get_time_ms=*/[this]() { return clock_.NowUnixNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
@@ -380,7 +381,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       rpc_server_.GetClusterId(),
       *ray_event_recorder_,
       config_.session_name,
-      observability_publisher_.get());
+      observability_publisher_.get(),
+      clock_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -400,7 +402,8 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   gcs_healthcheck_manager_ =
       GcsHealthCheckManager::Create(io_context_provider_.GetDefaultIOContext(),
                                     node_death_callback,
-                                    metrics_.health_check_rpc_latency_ms_histogram);
+                                    metrics_.health_check_rpc_latency_ms_histogram,
+                                    clock_);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -491,7 +494,8 @@ void GcsServer::InitGcsJobManager(
                                       config_.session_name,
                                       running_job_gauge,
                                       finished_job_counter,
-                                      job_duration_in_seconds_gauge);
+                                      job_duration_in_seconds_gauge,
+                                      clock_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
@@ -531,7 +535,8 @@ void GcsServer::InitGcsActorManager(
                                           schedule_success_handler,
                                           raylet_client_pool_,
                                           worker_client_pool_,
-                                          metrics_.scheduler_placement_time_ms_histogram);
+                                          metrics_.scheduler_placement_time_ms_histogram,
+                                          clock_);
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
@@ -548,7 +553,8 @@ void GcsServer::InitGcsActorManager(
       config_.session_name,
       actor_by_state_gauge,
       gcs_actor_by_state_gauge,
-      observability_publisher_.get());
+      observability_publisher_.get(),
+      clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
@@ -583,7 +589,8 @@ void GcsServer::InitGcsPlacementGroupManager(
       placement_group_gauge,
       placement_group_creation_latency_in_ms_histogram,
       placement_group_scheduling_latency_in_ms_histogram,
-      placement_group_count_gauge);
+      placement_group_count_gauge,
+      clock_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
@@ -660,13 +667,14 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     store_client =
-        std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions());
+        std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
     break;
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),
         metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter);
+        metrics_.storage_operation_count_counter,
+        clock_);
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -813,7 +821,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       kv_manager_->GetInstance(),
       io_context_provider_.GetDefaultIOContext(),
       gcs_publisher_.get(),
-      observability_publisher_.get());
+      observability_publisher_.get(),
+      clock_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(

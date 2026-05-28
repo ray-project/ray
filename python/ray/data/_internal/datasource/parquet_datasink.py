@@ -3,6 +3,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    reorder_columns_by_schema,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
@@ -259,9 +262,11 @@ class ParquetDatasink(_FileDatasink):
     ) -> None:
         import pyarrow.dataset as ds
 
-        # Make every incoming batch conform to the final schema *before* writing
+        # Make every incoming batch conform to the final schema *before* writing.
+        # `pa.unify_schemas` above fixed column order from the first block.
         for idx, table in enumerate(tables):
             if output_schema and not table.schema.equals(output_schema):
+                table = reorder_columns_by_schema(table, output_schema)
                 table = table.cast(output_schema)
             tables[idx] = table
 
@@ -298,6 +303,7 @@ class ParquetDatasink(_FileDatasink):
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
+            create_dir=self.try_create_dir,
         )
 
     @property
