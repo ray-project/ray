@@ -42,11 +42,112 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
+from ray.experimental.locations import get_local_object_locations
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
+
+
+# How often (in scheduler-loop iterations) to log the meta-ref
+# prefetch hit-rate. ~1× per minute at typical iteration cadence.
+_METADATA_PREFETCH_LOG_EVERY_N_ITERS = 100
+
+# Module-level counters for the meta-ref prefetch (size-known) rate
+# across all scheduler-loop iterations of the process. Logged
+# periodically by ``_log_metadata_prefetch_rate_if_due``.
+_metadata_prefetch_meta_refs_seen = 0
+_metadata_prefetch_meta_refs_size_known = 0
+_metadata_prefetch_iters_since_log = 0
+
+
+def _batched_fetch_meta(
+    ready_tasks: List["OpTask"],
+) -> Dict["ray.ObjectRef", bytes]:
+    """Peek the next pending meta_ref on each ready DataOpTask, ask the
+    local CoreWorker which ones have a known size (no RPC), and batch
+    those into one ``ray.get`` call.
+
+    Returns a dict mapping meta_ref to its serialized bytes. Callers
+    pass this dict to ``DataOpTask.on_data_ready(prefetched_meta=…)``,
+    which uses it in lieu of per-ref ``ray.get`` and falls back to the
+    per-ref path on cache miss.
+
+    Counters for the size-known rate update on every call; the rate is
+    logged periodically by ``_log_metadata_prefetch_rate_if_due``.
+    """
+    global _metadata_prefetch_meta_refs_seen
+    global _metadata_prefetch_meta_refs_size_known
+    _log_metadata_prefetch_rate_if_due()
+
+    peeked: List["ray.ObjectRef"] = []
+    for task in ready_tasks:
+        if not isinstance(task, DataOpTask):
+            continue
+        meta_ref = task.peek_pending_meta_ref()
+        if meta_ref is not None:
+            peeked.append(meta_ref)
+
+    if not peeked:
+        return {}
+
+    # No-RPC local lookup: returns {ref: {object_size: int|None, ...}}.
+    # Refs whose owner hasn't yet processed the task return show up
+    # with object_size=None (or are absent from the dict if the
+    # CoreWorker has no reference to them — shouldn't happen for our
+    # owned refs, but defensive).
+    locations = get_local_object_locations(peeked)
+    ready_refs: List["ray.ObjectRef"] = []
+    for ref in peeked:
+        info = locations.get(ref)
+        if info is not None and info.get("object_size") is not None:
+            ready_refs.append(ref)
+
+    _metadata_prefetch_meta_refs_seen += len(peeked)
+    _metadata_prefetch_meta_refs_size_known += len(ready_refs)
+
+    if not ready_refs:
+        return {}
+
+    # One batched ray.get covering only refs guaranteed retrievable.
+    # We deliberately don't pass timeout — if anything goes wrong here
+    # the per-ref fallback in on_data_ready (with its own timeout and
+    # warning) will handle it on the same iteration's pass.
+    try:
+        values = ray.get(ready_refs)
+    except Exception:
+        # Any failure in the batched fetch (rare; the size-known check
+        # was supposed to guarantee retrievability) falls through to
+        # the per-ref path which has the existing error handling.
+        return {}
+    return dict(zip(ready_refs, values))
+
+
+def _log_metadata_prefetch_rate_if_due() -> None:
+    """Emit a debug log every ``_METADATA_PREFETCH_LOG_EVERY_N_ITERS``
+    scheduler iterations summarizing the fraction of meta_refs whose
+    size was locally known (and therefore fetchable in a batched
+    ``ray.get``).
+    """
+    global _metadata_prefetch_iters_since_log
+    _metadata_prefetch_iters_since_log += 1
+    if _metadata_prefetch_iters_since_log < _METADATA_PREFETCH_LOG_EVERY_N_ITERS:
+        return
+    _metadata_prefetch_iters_since_log = 0
+    seen = _metadata_prefetch_meta_refs_seen
+    known = _metadata_prefetch_meta_refs_size_known
+    if seen == 0:
+        return
+    logger.debug(
+        "process_completed_tasks meta-ref prefetch: "
+        "%d / %d (%.1f%%) had known size and were batched; "
+        "remainder fell back to per-ref ray.get.",
+        known,
+        seen,
+        100.0 * known / seen,
+    )
+
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -657,6 +758,20 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
+        # Batched ray.get of block metadata across all ready DataOpTasks.
+        # For each ready task, peek its next pending pair (block_ref,
+        # meta_ref) without consuming. Then ask the local CoreWorker
+        # (no RPC) which meta_refs already have a known object size —
+        # those are guaranteed to be retrievable. ray.get all of them in
+        # one batched call and hand the dict to each task's
+        # on_data_ready. Refs whose size isn't yet known (the owner
+        # hasn't processed the task return) fall through to the
+        # per-ref ray.get + timeout path inside on_data_ready, which
+        # preserves the existing error semantics.
+        prefetched_meta = _batched_fetch_meta(
+            [t for tasks in ready_tasks_by_op.values() for t in tasks]
+        )
+
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
@@ -664,7 +779,8 @@ def process_completed_tasks(
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
+                            remaining_output_budget.get(state, None),
+                            prefetched_meta=prefetched_meta,
                         )
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0

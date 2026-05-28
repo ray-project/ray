@@ -1449,6 +1449,61 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
+    def test_peek_pending_meta_ref_returns_meta_ref(self, ray_start_regular_shared):
+        """``peek_pending_meta_ref`` returns the next meta_ref without
+        consuming it; a subsequent ``on_data_ready`` still emits the
+        bundle (proving the pending state survives across the peek)."""
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+        outputs = []
+        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
+
+        ray.wait([streaming_gen], fetch_local=False)
+        meta_ref = task.peek_pending_meta_ref()
+        assert meta_ref is not None
+        # The pending slots are populated; on_data_ready should now
+        # consume them without re-pulling from the gen.
+        assert not task._pending_block_ref.is_nil()
+        assert not task._pending_meta_ref.is_nil()
+
+        task.on_data_ready(None)
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == 1024
+
+    def test_on_data_ready_uses_prefetched_meta(self, ray_start_regular_shared):
+        """When ``prefetched_meta`` contains the pending meta_ref,
+        ``on_data_ready`` consumes it from the dict instead of issuing
+        a per-ref ``ray.get``."""
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+        outputs = []
+        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
+
+        ray.wait([streaming_gen], fetch_local=False)
+        meta_ref = task.peek_pending_meta_ref()
+        assert meta_ref is not None
+        meta_bytes = ray.get(meta_ref)
+
+        task.on_data_ready(None, prefetched_meta={meta_ref: meta_bytes})
+
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == 1024
+
+    def test_on_data_ready_falls_back_when_prefetched_meta_misses(
+        self, ray_start_regular_shared
+    ):
+        """Empty ``prefetched_meta`` dict still works — on_data_ready
+        falls back to the per-ref ``ray.get`` path with the existing
+        timeout semantics, preserving error visibility for unmocked
+        meta_refs."""
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+        outputs = []
+        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
+
+        ray.wait([streaming_gen], fetch_local=False)
+        task.on_data_ready(None, prefetched_meta={})
+
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == 1024
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )
