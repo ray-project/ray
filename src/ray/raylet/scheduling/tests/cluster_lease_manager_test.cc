@@ -738,8 +738,11 @@ TEST_F(ClusterLeaseManagerTest, GrantQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  std::shared_ptr<MockWorker> worker_A = std::make_shared<MockWorker>(
-      WorkerID::FromRandom(), 1234, clock_, CalculateRuntimeEnvHash(serialized_runtime_env_A));
+  std::shared_ptr<MockWorker> worker_A =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(),
+                                   1234,
+                                   clock_,
+                                   CalculateRuntimeEnvHash(serialized_runtime_env_A));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
   pool_.TriggerCallbacks();
 
@@ -2796,8 +2799,8 @@ TEST_F(ClusterLeaseManagerTest, PopWorkerExactlyOnce) {
   // Popworker has been called once, don't call it repeatedly.
   ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
   // Push a worker and try to call back.
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.TriggerCallbacks();
   // Make sure callback has occurred.
@@ -2834,8 +2837,8 @@ TEST_F(ClusterLeaseManagerTest, CapRunningOnDispatchQueue) {
   auto runtime_env_hash = lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -2894,8 +2897,8 @@ TEST_F(ClusterLeaseManagerTest, ZeroCPULeases) {
   auto runtime_env_hash = lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -2940,8 +2943,8 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
   auto runtime_env_hash = lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -3056,8 +3059,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -3112,8 +3115,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
-  std::shared_ptr<MockWorker> new_worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+  std::shared_ptr<MockWorker> new_worker = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(new_worker));
   pool_.TriggerCallbacks();
   workers.push_back(new_worker);
@@ -3160,8 +3163,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
 
   auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
 
-  std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker1 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.TriggerCallbacks();
   lease_manager_.ScheduleAndGrantLeases();
@@ -3169,8 +3172,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
   current_time_ms_ += UNIT;
 
-  std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker2 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -3193,8 +3196,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   }
 
-  std::shared_ptr<MockWorker> worker3 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker3 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
   pool_.TriggerCallbacks();
   lease_manager_.ScheduleAndGrantLeases();
@@ -3203,8 +3206,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker3));
   current_time_ms_ += UNIT;
 
-  std::shared_ptr<MockWorker> worker4 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker4 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker4));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -3221,8 +3224,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
         false,
         false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
-    std::shared_ptr<MockWorker> worker5 =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker5 = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
     lease_manager_.ScheduleAndGrantLeases();
     pool_.TriggerCallbacks();
@@ -3258,8 +3261,8 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   auto runtime_env_hash = first_lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);

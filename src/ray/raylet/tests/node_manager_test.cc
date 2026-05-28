@@ -220,7 +220,8 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    std::shared_ptr<MockWorker> driver = std::make_shared<MockWorker>(worker_id, 10, clock);
+    std::shared_ptr<MockWorker> driver =
+        std::make_shared<MockWorker>(worker_id, 10, clock);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -255,7 +256,8 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(worker_id, 10, clock);
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(worker_id, 10, clock);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -975,7 +977,8 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
   bool worker_exiting = std::get<1>(params);
 
   LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  leased_workers_[lease_id] =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
   rpc::ReturnWorkerLeaseRequest request;
   rpc::ReturnWorkerLeaseReply reply1;
   rpc::ReturnWorkerLeaseReply reply2;
