@@ -50,7 +50,10 @@ class ReferenceCountTest : public ::testing::Test {
   instrumented_io_context callback_service_{/*enable_lag_probe=*/false,
                                             /*running_on_single_thread=*/true};
 
-  void DrainCallbacks() { callback_service_.poll(); }
+  void DrainCallbacks() {
+    callback_service_.poll();
+    callback_service_.reset();
+  }
 
   virtual void SetUp() {
     rpc::Address addr;
@@ -89,7 +92,10 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   instrumented_io_context callback_service_{/*enable_lag_probe=*/false,
                                             /*running_on_single_thread=*/true};
 
-  void DrainCallbacks() { callback_service_.poll(); }
+  void DrainCallbacks() {
+    callback_service_.poll();
+    callback_service_.reset();
+  }
 
   virtual void SetUp() {
     rpc::Address addr;
@@ -2768,6 +2774,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ASSERT_TRUE(rc->GetObjectLocations(id)->empty());
 
   rc->RemoveLocalReference(id, nullptr);
+  DrainCallbacks();
   ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_GT(deleted->count(id), 0);
   deleted->clear();

@@ -94,6 +94,7 @@ class ActorManagerTest : public ::testing::Test {
             [](const NodeID &node_id) { return true; },
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
+            callback_service_,
             /*lineage_pinning_enabled=*/true)) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
@@ -147,6 +148,8 @@ class ActorManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
+  instrumented_io_context callback_service_{/*emit_metrics=*/false,
+                                            /*running_on_single_thread=*/true};
   std::unique_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };
