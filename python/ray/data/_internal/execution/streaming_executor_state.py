@@ -65,14 +65,31 @@ _metadata_prefetch_iters_since_log = 0
 def _batched_fetch_meta(
     ready_tasks: List["OpTask"],
 ) -> Dict["ray.ObjectRef", bytes]:
-    """Peek the next pending meta_ref on each ready DataOpTask, ask the
-    local CoreWorker which ones have a known size (no RPC), and batch
-    those into one ``ray.get`` call.
+    """Peek the next pending ``(block_ref, meta_ref)`` pair on each
+    ready DataOpTask, ask the local CoreWorker which **blocks** have a
+    known size (no RPC), and batch the corresponding ``meta_refs`` into
+    one ``ray.get`` call.
 
-    Returns a dict mapping meta_ref to its serialized bytes. Callers
-    pass this dict to ``DataOpTask.on_data_ready(prefetched_meta=…)``,
-    which uses it in lieu of per-ref ``ray.get`` and falls back to the
-    per-ref path on cache miss.
+    Why query the block_ref's size, not the meta_ref's: the block_ref's
+    ``object_size`` is the budget-relevant size — it maps to
+    ``meta.size_bytes`` used by the budget loop in ``on_data_ready``.
+    The meta_ref's ``object_size`` is just the size of the pickled
+    metadata blob (a few KB) and isn't useful for budget tracking.
+
+    A known block size also implies the worker has finished producing
+    the block AND yielded the matching meta_ref (the streaming gen
+    yields block-then-meta), so the batched ``ray.get(meta_refs)`` is
+    safe — none of its members should block.
+
+    Refs whose block size isn't yet known (the owner hasn't processed
+    the task return) are NOT included in the batched fetch; their
+    ``on_data_ready`` calls fall through to the existing per-ref
+    ``ray.get(meta_ref, timeout=…)`` path, which both retrieves the
+    metadata AND surfaces its ``meta.size_bytes`` for the budget loop.
+
+    Returns a dict mapping ``meta_ref`` to its serialized
+    ``BlockMetadataWithSchema`` bytes. Callers pass this dict to
+    ``DataOpTask.on_data_ready(prefetched_meta=…)``.
 
     Counters for the size-known rate update on every call; the rate is
     logged periodically by ``_log_metadata_prefetch_rate_if_due``.
@@ -81,13 +98,13 @@ def _batched_fetch_meta(
     global _metadata_prefetch_meta_refs_size_known
     _log_metadata_prefetch_rate_if_due()
 
-    peeked: List["ray.ObjectRef"] = []
+    peeked: List[Tuple["ray.ObjectRef", "ray.ObjectRef"]] = []
     for task in ready_tasks:
         if not isinstance(task, DataOpTask):
             continue
-        meta_ref = task.peek_pending_meta_ref()
-        if meta_ref is not None:
-            peeked.append(meta_ref)
+        pair = task.peek_pending_pair()
+        if pair is not None:
+            peeked.append(pair)
 
     if not peeked:
         return {}
@@ -97,17 +114,19 @@ def _batched_fetch_meta(
     # with object_size=None (or are absent from the dict if the
     # CoreWorker has no reference to them — shouldn't happen for our
     # owned refs, but defensive).
-    locations = get_local_object_locations(peeked)
-    ready_refs: List["ray.ObjectRef"] = []
-    for ref in peeked:
-        info = locations.get(ref)
+    block_refs = [block_ref for block_ref, _ in peeked]
+    locations = get_local_object_locations(block_refs)
+
+    ready_meta_refs: List["ray.ObjectRef"] = []
+    for block_ref, meta_ref in peeked:
+        info = locations.get(block_ref)
         if info is not None and info.get("object_size") is not None:
-            ready_refs.append(ref)
+            ready_meta_refs.append(meta_ref)
 
     _metadata_prefetch_meta_refs_seen += len(peeked)
-    _metadata_prefetch_meta_refs_size_known += len(ready_refs)
+    _metadata_prefetch_meta_refs_size_known += len(ready_meta_refs)
 
-    if not ready_refs:
+    if not ready_meta_refs:
         return {}
 
     # One batched ray.get covering only refs guaranteed retrievable.
@@ -115,13 +134,13 @@ def _batched_fetch_meta(
     # the per-ref fallback in on_data_ready (with its own timeout and
     # warning) will handle it on the same iteration's pass.
     try:
-        values = ray.get(ready_refs)
+        values = ray.get(ready_meta_refs)
     except Exception:
         # Any failure in the batched fetch (rare; the size-known check
         # was supposed to guarantee retrievability) falls through to
         # the per-ref path which has the existing error handling.
         return {}
-    return dict(zip(ready_refs, values))
+    return dict(zip(ready_meta_refs, values))
 
 
 def _log_metadata_prefetch_rate_if_due() -> None:

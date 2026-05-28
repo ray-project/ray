@@ -1449,21 +1449,25 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
-    def test_peek_pending_meta_ref_returns_meta_ref(self, ray_start_regular_shared):
-        """``peek_pending_meta_ref`` returns the next meta_ref without
-        consuming it; a subsequent ``on_data_ready`` still emits the
-        bundle (proving the pending state survives across the peek)."""
+    def test_peek_pending_pair_returns_block_and_meta(self, ray_start_regular_shared):
+        """``peek_pending_pair`` returns the next (block_ref, meta_ref)
+        pair without consuming it; a subsequent ``on_data_ready`` still
+        emits the bundle (proving the pending state survives across
+        the peek)."""
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
         outputs = []
         task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
 
         ray.wait([streaming_gen], fetch_local=False)
-        meta_ref = task.peek_pending_meta_ref()
-        assert meta_ref is not None
+        pair = task.peek_pending_pair()
+        assert pair is not None
+        block_ref, meta_ref = pair
+        assert not block_ref.is_nil()
+        assert not meta_ref.is_nil()
         # The pending slots are populated; on_data_ready should now
         # consume them without re-pulling from the gen.
-        assert not task._pending_block_ref.is_nil()
-        assert not task._pending_meta_ref.is_nil()
+        assert task._pending_block_ref == block_ref
+        assert task._pending_meta_ref == meta_ref
 
         task.on_data_ready(None)
         assert len(outputs) == 1
@@ -1478,8 +1482,9 @@ class TestDataOpTask:
         task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
 
         ray.wait([streaming_gen], fetch_local=False)
-        meta_ref = task.peek_pending_meta_ref()
-        assert meta_ref is not None
+        pair = task.peek_pending_pair()
+        assert pair is not None
+        _, meta_ref = pair
         meta_bytes = ray.get(meta_ref)
 
         task.on_data_ready(None, prefetched_meta={meta_ref: meta_bytes})

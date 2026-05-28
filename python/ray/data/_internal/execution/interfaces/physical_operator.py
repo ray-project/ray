@@ -170,13 +170,21 @@ class DataOpTask(OpTask):
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def peek_pending_meta_ref(
+    def peek_pending_pair(
         self,
-    ) -> Optional["ray.ObjectRef[BlockMetadata]"]:
+    ) -> Optional[Tuple["ray.ObjectRef[Block]", "ray.ObjectRef[BlockMetadata]"]]:
         """Pull the next ``(block_ref, meta_ref)`` pair from the streaming
         generator into the pending slots *without* fetching the metadata
-        object. Returns the ``meta_ref`` so the caller can group it into
-        a batched ``ray.get(meta_refs)`` covering many tasks.
+        object. Returns the pair so the caller can:
+
+        - Look up the **block's** size via
+          ``ray.experimental.get_local_object_locations(block_refs)`` —
+          the block's ``object_size`` is the size that maps to
+          ``meta.size_bytes`` used by the budget loop in
+          ``on_data_ready``.
+        - Group ``meta_refs`` into a batched ``ray.get(meta_refs)``
+          covering many tasks, ONLY for refs whose block size is known
+          (which implies both the block and its metadata are ready).
 
         Subsequent ``on_data_ready`` reads from the same pending slots,
         so the work done here is not lost.
@@ -221,7 +229,7 @@ class DataOpTask(OpTask):
             return None
 
         self._metadata_ready_callback(self._pending_meta_ref)
-        return self._pending_meta_ref
+        return self._pending_block_ref, self._pending_meta_ref
 
     def on_data_ready(
         self,
