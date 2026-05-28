@@ -5,7 +5,6 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import dataclasses
 import logging
-import pickle
 import threading
 import time
 from collections import defaultdict
@@ -29,8 +28,8 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DeferredEmit,
     MetadataOpTask,
     OpTask,
-    TaskExecDriverStats,
     Waitable,
+    replay_deferred_emits,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -87,96 +86,6 @@ def _log_metadata_prefetch_rate_if_due() -> None:
         seen,
         100.0 * known / seen,
     )
-
-
-def _replay_deferred_emits(
-    deferred: List[DeferredEmit],
-    tasks_for_done_check: List[DataOpTask],
-) -> None:
-    """Step 3-5 of ``process_completed_tasks``'s deferred pipeline.
-
-    Issues ONE batched ``ray.get`` covering the deferred entries whose
-    ``meta_bytes`` is still ``None`` (known-size pairs that
-    ``on_data_ready`` deliberately didn't fetch). Then replays the
-    deferred list in append order, calling each task's
-    ``_output_ready_callback`` so emission order matches today's
-    behavior exactly. Finally fires any postponed
-    ``task_done_callback`` whose task was marked
-    ``_task_done_pending`` during ``on_data_ready``.
-    """
-    global _metadata_prefetch_pairs_seen
-    global _metadata_prefetch_pairs_size_known
-    _log_metadata_prefetch_rate_if_due()
-
-    # Imports kept lazy to avoid a streaming_executor_state ↔
-    # block.py import cycle at module load.
-    from ray.data.block import BlockMetadataWithSchema
-
-    if deferred:
-        # Track size-known rate for telemetry.
-        n_known = sum(1 for d in deferred if d.meta_bytes is None)
-        _metadata_prefetch_pairs_seen += len(deferred)
-        _metadata_prefetch_pairs_size_known += n_known
-
-        # Batched fetch for the known-size subset.
-        to_fetch = [d.meta_ref for d in deferred if d.meta_bytes is None]
-        if to_fetch:
-            try:
-                fetched = ray.get(to_fetch)
-                bytes_by_ref = dict(zip(to_fetch, fetched))
-            except Exception:
-                logger.warning(
-                    "Batched ray.get of %d deferred meta_refs failed; "
-                    "falling back to per-ref ray.get for each.",
-                    len(to_fetch),
-                )
-                bytes_by_ref = {}
-                for ref in to_fetch:
-                    try:
-                        bytes_by_ref[ref] = ray.get(ref)
-                    except Exception:
-                        logger.warning(
-                            "Per-ref ray.get retry also failed for meta_ref %s; "
-                            "this RefBundle will be skipped.",
-                            ref.hex(),
-                        )
-            for d in deferred:
-                if d.meta_bytes is None:
-                    d.meta_bytes = bytes_by_ref.get(d.meta_ref)
-
-        # Replay in append order — preserves per-op, per-task,
-        # per-pair emission order from on_data_ready.
-        for d in deferred:
-            if d.meta_bytes is None:
-                # The fetch failed for this ref; skip emit.
-                continue
-            meta_with_schema: BlockMetadataWithSchema = pickle.loads(d.meta_bytes)
-            meta = meta_with_schema.metadata
-            d.task._output_ready_callback(
-                RefBundle(
-                    [(d.block_ref, meta)],
-                    owns_blocks=True,
-                    schema=meta_with_schema.schema,
-                ),
-            )
-            d.task._last_block_meta = meta
-
-    # Fire any postponed ``task_done_callback`` now that
-    # ``_last_block_meta`` reflects the deferred-replay state.
-    for task in tasks_for_done_check:
-        if not task._task_done_pending:
-            continue
-        task._task_done_callback(
-            None,  # exception
-            task._last_block_meta.task_exec_stats
-            if task._last_block_meta is not None
-            else None,
-            TaskExecDriverStats(
-                task_output_backpressure_s=task._total_output_backpressure_s,
-            ),
-        )
-        task._has_finished = True
-        task._task_done_pending = False
 
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
@@ -860,7 +769,15 @@ def process_completed_tasks(
                     task.on_task_finished()
 
         # Steps 3–5: batched fetch + replay + postponed done callbacks.
-        _replay_deferred_emits(deferred, tasks_for_done_check)
+        # Track size-known rate before replay clears ``meta_bytes is None``.
+        global _metadata_prefetch_pairs_seen
+        global _metadata_prefetch_pairs_size_known
+        _metadata_prefetch_pairs_seen += len(deferred)
+        _metadata_prefetch_pairs_size_known += sum(
+            1 for d in deferred if d.meta_bytes is None
+        )
+        _log_metadata_prefetch_rate_if_due()
+        replay_deferred_emits(deferred, tasks_for_done_check)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

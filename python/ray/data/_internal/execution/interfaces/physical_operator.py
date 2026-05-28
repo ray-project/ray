@@ -6,7 +6,6 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -35,10 +34,6 @@ from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.experimental.locations import get_local_object_locations
-
-if TYPE_CHECKING:
-
-    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -206,45 +201,41 @@ class DataOpTask(OpTask):
     def on_data_ready(
         self,
         max_bytes_to_read: Optional[int],
-        deferred_emits: Optional[List[DeferredEmit]] = None,
+        deferred_emits: List[DeferredEmit],
     ) -> int:
-        """Callback when data is ready to be read from the streaming generator.
+        """Pull ready pairs from the streaming generator and append them
+        to ``deferred_emits`` for the caller to batch-fetch and replay.
 
-        Two modes:
+        Per pulled ``(block_ref, meta_ref)`` pair, the block's
+        ``object_size`` is looked up via
+        ``ray.experimental.get_local_object_locations`` — local-only,
+        no RPC.
 
-        - **Legacy** (``deferred_emits is None``): identical to the
-          original behavior — for each pulled ``(block_ref, meta_ref)``
-          pair, fetch the metadata via per-ref ``ray.get`` and emit the
-          ``RefBundle`` via ``_output_ready_callback`` immediately.
+        - **Known size**: append the pair to ``deferred_emits`` with
+          ``meta_bytes=None``. The caller will issue one batched
+          ``ray.get(meta_refs)`` across the deferred entries.
+          The budget loop uses the local ``object_size`` directly.
+        - **Unknown size**: synchronously issue
+          ``ray.get(meta_ref, timeout=METADATA_GET_TIMEOUT_S)`` to
+          obtain ``meta.size_bytes`` for the budget loop, then append
+          the pair with the fetched bytes stashed on the entry so the
+          caller doesn't refetch.
 
-        - **Deferred** (``deferred_emits is not None``): for each pulled
-          pair, look up the block's ``object_size`` from the local
-          CoreWorker (no RPC). If known, append the pair to
-          ``deferred_emits`` with ``meta_bytes=None`` — the caller
-          performs one batched ``ray.get(meta_refs)`` across all
-          deferred entries from every task. If the size is *not* known,
-          fall back to the existing per-ref ``ray.get(meta_ref,
-          timeout=…)`` to obtain ``meta.size_bytes`` for the budget
-          loop, and stash the resulting bytes on the deferred entry so
-          the caller doesn't refetch.
-
-          In deferred mode, no ``RefBundle`` is emitted and
-          ``_last_block_meta`` is not updated inside this call. Both
-          happen in the caller's deferred-replay pass, which iterates
-          ``deferred_emits`` in append order — preserving the
-          gen-yield emission order across the whole iteration. The
-          terminal ``task_done_callback`` for end-of-stream is
-          *postponed* (``_task_done_pending`` set to True) so it fires
-          after ``_last_block_meta`` reflects the deferred-replay
-          state.
+        No ``RefBundle`` is emitted and ``_last_block_meta`` is not
+        updated inside this call — both happen in
+        :func:`replay_deferred_emits`, which iterates the deferred list
+        in append order to preserve gen-yield emission order. The
+        terminal ``task_done_callback`` for end-of-stream is postponed
+        (``_task_done_pending`` set to True) so it fires after
+        ``_last_block_meta`` reflects the replayed state.
 
         Args:
-            max_bytes_to_read: Max bytes of blocks to read. If None, all available
-                will be read.
-            deferred_emits: Optional list to which deferred-emit entries
-                are appended. See above.
+            max_bytes_to_read: Max bytes of blocks to read. If None, all
+                currently available pairs are drained.
+            deferred_emits: List to which :class:`DeferredEmit` entries
+                are appended.
 
-        Returns: The number of blocks read (in bytes for the budget loop).
+        Returns: The number of bytes accounted for (for the budget loop).
         """
         bytes_read = 0
 
@@ -263,22 +254,10 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    if deferred_emits is not None:
-                        # Defer firing until after the caller's deferred
-                        # replay updates ``_last_block_meta`` with the
-                        # final processed meta.
-                        self._task_done_pending = True
-                    else:
-                        self._task_done_callback(
-                            None,  # exception
-                            self._last_block_meta.task_exec_stats
-                            if self._last_block_meta is not None
-                            else None,
-                            TaskExecDriverStats(
-                                task_output_backpressure_s=self._total_output_backpressure_s,
-                            ),
-                        )
-                        self._has_finished = True
+                    # Defer firing ``task_done_callback`` until after the
+                    # caller's deferred-replay updates
+                    # ``_last_block_meta`` with the final processed meta.
+                    self._task_done_pending = True
                     break
 
                 if self._pending_block_ref.is_nil():
@@ -333,7 +312,7 @@ class DataOpTask(OpTask):
             if info is not None:
                 size_known_locally = info.get("object_size")
 
-            if size_known_locally is not None and deferred_emits is not None:
+            if size_known_locally is not None:
                 # Defer everything: no ray.get inside the loop, no emit,
                 # no _last_block_meta update. Caller will batch ray.get
                 # and replay emits in deferred-list order.
@@ -350,9 +329,8 @@ class DataOpTask(OpTask):
                 self._pending_meta_ref = ray.ObjectRef.nil()
                 continue
 
-            # Either: (1) size not known locally — need ray.get for size
-            # before we can drive the budget loop, or (2) caller didn't
-            # opt into deferred mode (legacy path, tests).
+            # Size not known locally — need ray.get for size before we
+            # can drive the budget loop.
             try:
                 # The timeout for `ray.get` includes the time required to ship the
                 # block metadata to this node. So, if we set the timeout to 0,
@@ -376,33 +354,17 @@ class DataOpTask(OpTask):
                 )
                 break
 
-            meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
-                meta_with_schema_bytes
+            # Unknown-size pair: stash the bytes we already fetched on
+            # the deferred entry so the caller doesn't refetch.
+            meta = pickle.loads(meta_with_schema_bytes).metadata
+            deferred_emits.append(
+                DeferredEmit(
+                    task=self,
+                    block_ref=self._pending_block_ref,
+                    meta_ref=self._pending_meta_ref,
+                    meta_bytes=meta_with_schema_bytes,
+                )
             )
-            meta = meta_with_schema.metadata
-
-            if deferred_emits is not None:
-                # Deferred mode + unknown-size pair: stash the bytes we
-                # already fetched so the caller doesn't refetch.
-                deferred_emits.append(
-                    DeferredEmit(
-                        task=self,
-                        block_ref=self._pending_block_ref,
-                        meta_ref=self._pending_meta_ref,
-                        meta_bytes=meta_with_schema_bytes,
-                    )
-                )
-            else:
-                # Legacy mode: emit + update _last_block_meta now.
-                self._output_ready_callback(
-                    RefBundle(
-                        [(self._pending_block_ref, meta)],
-                        owns_blocks=True,
-                        schema=meta_with_schema.schema,
-                    ),
-                )
-                self._last_block_meta = meta
-
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
             bytes_read += meta.size_bytes
@@ -430,6 +392,106 @@ class DataOpTask(OpTask):
     @property
     def has_finished(self) -> bool:
         return self._has_finished
+
+    def drain_and_emit(self, max_bytes_to_read: Optional[int]) -> int:
+        """Convenience: run ``on_data_ready`` + synchronous replay in one
+        call. For tests and one-off callers that aren't participating in
+        :func:`process_completed_tasks`'s cross-task batching. Production
+        code calls :meth:`on_data_ready` directly with a shared deferred
+        list, then runs :func:`replay_deferred_emits` once after all
+        tasks have been drained — that's where the batched-fetch win
+        comes from."""
+        deferred: List[DeferredEmit] = []
+        bytes_read = self.on_data_ready(max_bytes_to_read, deferred)
+        replay_deferred_emits(deferred, [self])
+        return bytes_read
+
+
+def replay_deferred_emits(
+    deferred: List[DeferredEmit],
+    tasks_for_done_check: List[DataOpTask],
+) -> None:
+    """Run the batched-fetch + emit + done-callback phase that pairs
+    with :meth:`DataOpTask.on_data_ready` in deferred mode.
+
+    1. Issues ONE batched ``ray.get`` covering the deferred entries
+       whose ``meta_bytes`` is still ``None`` (the known-size pairs
+       that ``on_data_ready`` deliberately didn't fetch). On batched
+       failure: per-ref ``ray.get`` retry fallback, then skip any refs
+       that still fail (logged).
+    2. Replays ``deferred`` in append order — calling each task's
+       ``_output_ready_callback`` and updating ``_last_block_meta``.
+       Append order matches today's per-op, per-task, per-pair
+       traversal because every ``on_data_ready`` invocation appends
+       sequentially.
+    3. Fires postponed ``task_done_callback`` for any task in
+       ``tasks_for_done_check`` whose ``_task_done_pending`` flag is
+       set, using its now-final ``_last_block_meta``.
+    """
+    # Imports kept lazy to avoid a physical_operator ↔ block.py
+    # import cycle at module load.
+    from ray.data.block import BlockMetadataWithSchema
+
+    if deferred:
+        # Batched fetch for the known-size subset.
+        to_fetch = [d.meta_ref for d in deferred if d.meta_bytes is None]
+        if to_fetch:
+            try:
+                fetched = ray.get(to_fetch)
+                bytes_by_ref = dict(zip(to_fetch, fetched))
+            except Exception:
+                logger.warning(
+                    "Batched ray.get of %d deferred meta_refs failed; "
+                    "falling back to per-ref ray.get for each.",
+                    len(to_fetch),
+                )
+                bytes_by_ref = {}
+                for ref in to_fetch:
+                    try:
+                        bytes_by_ref[ref] = ray.get(ref)
+                    except Exception:
+                        logger.warning(
+                            "Per-ref ray.get retry also failed for meta_ref %s; "
+                            "this RefBundle will be skipped.",
+                            ref.hex(),
+                        )
+            for d in deferred:
+                if d.meta_bytes is None:
+                    d.meta_bytes = bytes_by_ref.get(d.meta_ref)
+
+        # Replay in append order — preserves per-op, per-task,
+        # per-pair emission order from on_data_ready.
+        for d in deferred:
+            if d.meta_bytes is None:
+                # The fetch failed for this ref; skip emit.
+                continue
+            meta_with_schema: BlockMetadataWithSchema = pickle.loads(d.meta_bytes)
+            meta = meta_with_schema.metadata
+            d.task._output_ready_callback(
+                RefBundle(
+                    [(d.block_ref, meta)],
+                    owns_blocks=True,
+                    schema=meta_with_schema.schema,
+                ),
+            )
+            d.task._last_block_meta = meta
+
+    # Fire any postponed ``task_done_callback`` now that
+    # ``_last_block_meta`` reflects the deferred-replay state.
+    for task in tasks_for_done_check:
+        if not task._task_done_pending:
+            continue
+        task._task_done_callback(
+            None,  # exception
+            task._last_block_meta.task_exec_stats
+            if task._last_block_meta is not None
+            else None,
+            TaskExecDriverStats(
+                task_output_backpressure_s=task._total_output_backpressure_s,
+            ),
+        )
+        task._has_finished = True
+        task._task_done_pending = False
 
 
 class MetadataOpTask(OpTask):

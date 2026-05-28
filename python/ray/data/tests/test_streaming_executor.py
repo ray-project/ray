@@ -1397,7 +1397,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.on_data_ready(None)
+            nbytes_read = data_op_task.drain_and_emit(None)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1413,7 +1413,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.on_data_ready(None)
+            nbytes_read = data_op_task.drain_and_emit(None)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(256 * MiB)
@@ -1438,7 +1438,7 @@ class TestDataOpTask:
         with pytest.raises(AssertionError, match="Block generation failed"):
             while not data_op_task.has_finished:
                 ray.wait([streaming_gen], fetch_local=False)
-                data_op_task.on_data_ready(None)
+                data_op_task.drain_and_emit(None)
 
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
@@ -1449,35 +1449,15 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
-    def test_on_data_ready_legacy_mode_emits_immediately(
-        self, ray_start_regular_shared
-    ):
-        """Without ``deferred_emits``, on_data_ready behaves like the
-        original: ray.get per-ref, emit the RefBundle and update
-        ``_last_block_meta`` during the loop."""
-        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
-        outputs = []
-        task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
-
-        ray.wait([streaming_gen], fetch_local=False)
-        bytes_read = task.on_data_ready(None)
-
-        assert len(outputs) == 1
-        assert outputs[0].size_bytes() == 1024
-        assert bytes_read == 1024
-        assert task._last_block_meta is not None
-
     def test_on_data_ready_deferred_does_not_emit_inline(
         self, ray_start_regular_shared
     ):
-        """In deferred mode, on_data_ready appends to the deferred list
-        without emitting RefBundles or updating ``_last_block_meta``.
-        Emission happens later in ``_replay_deferred_emits``."""
+        """on_data_ready appends to the deferred list without emitting
+        RefBundles or updating ``_last_block_meta``. Emission happens
+        later in ``replay_deferred_emits``."""
         from ray.data._internal.execution.interfaces.physical_operator import (
             DeferredEmit,
-        )
-        from ray.data._internal.execution.streaming_executor_state import (
-            _replay_deferred_emits,
+            replay_deferred_emits,
         )
 
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
@@ -1486,7 +1466,7 @@ class TestDataOpTask:
 
         ray.wait([streaming_gen], fetch_local=False)
         deferred: list[DeferredEmit] = []
-        task.on_data_ready(None, deferred_emits=deferred)
+        task.on_data_ready(None, deferred)
 
         # No emit yet, _last_block_meta still None.
         assert outputs == []
@@ -1495,7 +1475,7 @@ class TestDataOpTask:
 
         # Replay drains the batched fetch (or uses stashed bytes) and
         # fires the callback in deferred order.
-        _replay_deferred_emits(deferred, [task])
+        replay_deferred_emits(deferred, [task])
         assert len(outputs) == len(deferred)
         assert task._last_block_meta is not None
 
@@ -1508,9 +1488,7 @@ class TestDataOpTask:
         as today's per-op, per-task, per-pair sequence."""
         from ray.data._internal.execution.interfaces.physical_operator import (
             DeferredEmit,
-        )
-        from ray.data._internal.execution.streaming_executor_state import (
-            _replay_deferred_emits,
+            replay_deferred_emits,
         )
 
         gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
@@ -1532,9 +1510,9 @@ class TestDataOpTask:
 
         deferred: list[DeferredEmit] = []
         # Today's order: task_a fully drained, then task_b fully drained.
-        task_a.on_data_ready(None, deferred_emits=deferred)
-        task_b.on_data_ready(None, deferred_emits=deferred)
-        _replay_deferred_emits(deferred, [task_a, task_b])
+        task_a.on_data_ready(None, deferred)
+        task_b.on_data_ready(None, deferred)
+        replay_deferred_emits(deferred, [task_a, task_b])
 
         # Expect: task_a's two bundles in size order, then task_b's two.
         assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
@@ -1581,7 +1559,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += data_op_task.drain_and_emit(None)
 
         # Ensure that we read the expected amount of data. Since the streaming generator
         # yields a single 128 MiB block, we should read 128 MiB.
@@ -1611,7 +1589,7 @@ class TestDataOpTask:
         cluster.remove_node(worker_node)
 
         # The block shouldn't be available anymore, so we shouldn't read any data.
-        bytes_read = data_op_task.on_data_ready(None)
+        bytes_read = data_op_task.drain_and_emit(None)
         assert bytes_read == 0
 
         # Re-add the worker node, and run the task to completion.
@@ -1619,7 +1597,7 @@ class TestDataOpTask:
         cluster.wait_for_nodes()
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.on_data_ready(None)
+            bytes_read += data_op_task.drain_and_emit(None)
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1659,20 +1637,20 @@ class TestDataOpTask:
         # 1st backpressure period: 2.5s
         clock = 1.0
         mock_perf_counter.return_value = clock
-        assert data_op_task.on_data_ready(0) == 0
+        assert data_op_task.drain_and_emit(0) == 0
 
         clock = 3.5
         mock_perf_counter.return_value = clock
 
         # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
         # so it reads exactly one block and stops)
-        data_op_task.on_data_ready(None)
+        data_op_task.drain_and_emit(None)
         assert not data_op_task.has_finished
 
         # 2nd backpressure period: 1.5s
         clock = 5.0
         mock_perf_counter.return_value = clock
-        data_op_task.on_data_ready(0)
+        data_op_task.drain_and_emit(0)
 
         clock = 6.5
         mock_perf_counter.return_value = clock
@@ -1680,7 +1658,7 @@ class TestDataOpTask:
         # Drain to completion
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            data_op_task.on_data_ready(None)
+            data_op_task.drain_and_emit(None)
 
         # Verify stats were captured
         assert captured_stats["exc"] is None

@@ -103,7 +103,7 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 # Read all currently available output from the streaming generator
-                task.on_data_ready(max_bytes_to_read=None)
+                task.drain_and_emit(max_bytes_to_read=None)
                 # Only remove the task when the generator has been fully exhausted
                 if task.has_finished:
                     tasks.remove(task)
@@ -137,7 +137,7 @@ def run_one_op_task(op):
         tasks = [task]
 
         if isinstance(task, DataOpTask):
-            task.on_data_ready(None)
+            task.drain_and_emit(None)
             if task.has_finished:
                 tasks.remove(task)
         else:
