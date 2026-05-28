@@ -35,8 +35,7 @@ namespace {
 fs::path UniqueTempDir() {
   std::random_device rd;
   std::mt19937_64 rng(rd());
-  auto p =
-      fs::temp_directory_path() / ("ray-rocksdb-smoke-" + std::to_string(rng()));
+  auto p = fs::temp_directory_path() / ("ray-rocksdb-smoke-" + std::to_string(rng()));
   fs::create_directories(p);
   return p;
 }

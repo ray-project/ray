@@ -34,7 +34,9 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#if defined(__linux__)
 #include "ray/gcs/store_client/rocksdb_store_client.h"
+#endif
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/metric_constants.h"
@@ -192,6 +194,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     store_client = redis_store_client;
     break;
   }
+#if defined(__linux__)
   case StorageType::ROCKSDB_PERSIST:
     // Empty expected_cluster_id: at the moment InitKVManager runs (before
     // GetOrGenerateClusterId), the rpc server's cluster_id is still Nil()
@@ -217,6 +220,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         metrics_.storage_operation_count_counter,
         clock_);
     break;
+#endif
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
@@ -641,10 +645,15 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
     return StorageType::REDIS_PERSIST;
   }
   if (RayConfig::instance().gcs_storage() == kRocksDbStorage) {
+#if defined(__linux__)
     RAY_CHECK(!RayConfig::instance().gcs_storage_path().empty())
         << "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path to be set to "
            "a directory on a persistent volume.";
     return StorageType::ROCKSDB_PERSIST;
+#else
+    RAY_LOG(FATAL) << "RAY_gcs_storage=rocksdb is only supported on Linux. Set "
+                      "RAY_gcs_storage to 'memory' or 'redis' on this platform.";
+#endif
   }
   RAY_LOG(FATAL) << "Unsupported GCS storage type: "
                  << RayConfig::instance().gcs_storage();
@@ -710,6 +719,7 @@ void GcsServer::InitKVManager() {
         metrics_.storage_operation_count_counter,
         clock_);
     break;
+#if defined(__linux__)
   case (StorageType::ROCKSDB_PERSIST):
     // See ROCKSDB_PERSIST case in InitClusterStorageBackend for the
     // cluster_id deferral rationale. Use a "kv" subdirectory so this
@@ -727,6 +737,7 @@ void GcsServer::InitKVManager() {
         metrics_.storage_operation_count_counter,
         clock_);
     break;
+#endif
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }

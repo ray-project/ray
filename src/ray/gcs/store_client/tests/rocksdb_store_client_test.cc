@@ -43,7 +43,7 @@
 #include <thread>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 
 namespace fs = std::filesystem;
 
@@ -55,7 +55,8 @@ namespace {
 fs::path UniqueTempDir(const std::string &tag) {
   std::random_device rd;
   std::mt19937_64 rng(rd());
-  auto p = fs::temp_directory_path() / ("ray-rocksdb-test-" + tag + "-" + std::to_string(rng()));
+  auto p = fs::temp_directory_path() /
+           ("ray-rocksdb-test-" + tag + "-" + std::to_string(rng()));
   fs::create_directories(p);
   return p;
 }

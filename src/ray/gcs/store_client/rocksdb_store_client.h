@@ -24,7 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "boost/asio/strand.hpp"
 #include "boost/asio/thread_pool.hpp"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/postable/postable.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "rocksdb/db.h"
