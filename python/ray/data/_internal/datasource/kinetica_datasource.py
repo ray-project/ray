@@ -214,7 +214,15 @@ class KineticaDatasource(Datasource):
         self._password = password
         self._filter_expression = filter_expression
         self._sort_by = sort_by
+
+        # Validate limit - None means no limit, positive integer means specific limit
+        if limit is not None and limit <= 0:
+            raise ValueError(
+                f"limit must be a positive integer or None, got {limit}. "
+                "Use None for no limit."
+            )
         self._limit = limit
+
         if batch_size is not None:
             if batch_size <= 0:
                 raise ValueError(
