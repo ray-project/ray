@@ -1611,7 +1611,7 @@ def get_metric_dictionaries(
         )
         assert (
             name in prom_timeseries
-        ), f"Metric {name} not found in prom_timeseries {prom_timeseries}"
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:
