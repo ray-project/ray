@@ -193,12 +193,8 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
         definition = variable["definition"].format(global_filters=global_filters_str)
         query = variable["query"]["query"].format(global_filters=global_filters_str)
         if not global_filters_str:
-            definition = re.sub(r",\s*,", ",", definition)
-            definition = re.sub(r",\s*}", "}", definition)
-            definition = re.sub(r"{\s*,", "{", definition)
-            query = re.sub(r",\s*,", ",", query)
-            query = re.sub(r",\s*}", "}", query)
-            query = re.sub(r"{\s*,", "{", query)
+            definition = _clean_empty_filters(definition)
+            query = _clean_empty_filters(query)
         variable["definition"] = definition
         variable["query"]["query"] = query
 
@@ -496,6 +492,20 @@ def _generate_grafana_panels(
     return panels
 
 
+def _clean_empty_filters(expr: str) -> str:
+    """Clean up malformed PromQL when global_filters is empty.
+
+    Removes artifacts like trailing/leading commas in label matchers:
+      ", ," → ","
+      ", }" → "}"
+      "{ ," → "{"
+    """
+    expr = re.sub(r",\s*,", ",", expr)
+    expr = re.sub(r",\s*}", "}", expr)
+    expr = re.sub(r"{\s*,", "{", expr)
+    return expr
+
+
 def gen_incrementing_alphabets(length):
     assert 65 + length < 96, "we only support up to 26 targets at a time."
     # 65: ascii code of 'A'.
@@ -511,10 +521,7 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         global_filters_str = ",".join(panel_global_filters)
         expr = target.expr.format(global_filters=global_filters_str)
         if not global_filters_str:
-            # Clean up empty global_filters: ", ," → "," and ", }" → "}"
-            expr = re.sub(r",\s*,", ",", expr)
-            expr = re.sub(r",\s*}", "}", expr)
-            expr = re.sub(r"{\s*,", "{", expr)
+            expr = _clean_empty_filters(expr)
         template.update(
             {
                 "expr": expr,
