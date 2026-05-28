@@ -190,12 +190,17 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     for variable in variables:
         if "definition" not in variable:
             continue
-        variable["definition"] = variable["definition"].format(
-            global_filters=global_filters_str
-        )
-        variable["query"]["query"] = variable["query"]["query"].format(
-            global_filters=global_filters_str
-        )
+        definition = variable["definition"].format(global_filters=global_filters_str)
+        query = variable["query"]["query"].format(global_filters=global_filters_str)
+        if not global_filters_str:
+            definition = re.sub(r",\s*,", ",", definition)
+            definition = re.sub(r",\s*}", "}", definition)
+            definition = re.sub(r"{\s*,", "{", definition)
+            query = re.sub(r",\s*,", ",", query)
+            query = re.sub(r",\s*}", "}", query)
+            query = re.sub(r"{\s*,", "{", query)
+        variable["definition"] = definition
+        variable["query"]["query"] = query
 
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
@@ -505,10 +510,11 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         template = copy.deepcopy(target.template.value)
         global_filters_str = ",".join(panel_global_filters)
         expr = target.expr.format(global_filters=global_filters_str)
-        # Clean up empty global_filters: ", ," → "," and ", }" → "}"
-        expr = re.sub(r",\s*,", ",", expr)
-        expr = re.sub(r",\s*}", "}", expr)
-        expr = re.sub(r"{\s*,", "{", expr)
+        if not global_filters_str:
+            # Clean up empty global_filters: ", ," → "," and ", }" → "}"
+            expr = re.sub(r",\s*,", ",", expr)
+            expr = re.sub(r",\s*}", "}", expr)
+            expr = re.sub(r"{\s*,", "{", expr)
         template.update(
             {
                 "expr": expr,
