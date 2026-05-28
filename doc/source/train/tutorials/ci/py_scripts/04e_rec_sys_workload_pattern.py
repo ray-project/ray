@@ -40,7 +40,7 @@ from ray.train.torch import TorchTrainer, prepare_model
 
 import subprocess
 
-print("Imports complete.", flush=True)
+print("✅ Imports complete.", flush=True)
 
 # 02. Load MovieLens 100K Dataset and store in /mnt/cluster_storage/ as CSV + Parquet
 
