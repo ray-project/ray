@@ -1,7 +1,5 @@
-import os
 import socket
 import pytest
-import ray
 from ray.util import get_node_ip_address
 
 
