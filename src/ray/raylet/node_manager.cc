@@ -2283,49 +2283,6 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::MarkObjectsAsFailed(
-    const ErrorType &error_type,
-    const std::vector<rpc::ObjectReference> &objects_to_fail,
-    const JobID &job_id) {
-  // TODO(swang): Ideally we should return the error directly to the client
-  // that needs this object instead of storing the object in plasma, which is
-  // not guaranteed to succeed. This avoids hanging the client if plasma is not
-  // reachable.
-  const std::string meta = std::to_string(static_cast<int>(error_type));
-  for (const auto &ref : objects_to_fail) {
-    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Mark the object as failed due to " << error_type;
-    std::shared_ptr<Buffer> data;
-    Status status;
-    status = store_client_->TryCreateImmediately(
-        object_id,
-        ref.owner_address(),
-        0,
-        reinterpret_cast<const uint8_t *>(meta.c_str()),
-        meta.length(),
-        &data,
-        plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
-    if (status.ok()) {
-      status = store_client_->Seal(object_id);
-    }
-    if (!status.ok() && !status.IsObjectExists()) {
-      RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
-      // If we failed to save the error code, log a warning and push an error message
-      // to the driver.
-      std::ostringstream stream;
-      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
-             << " error code to object " << object_id << ". Anyone who's getting this"
-             << " object may hang forever.";
-      std::string error_message = stream.str();
-      RAY_LOG(ERROR) << error_message;
-      auto error_data = gcs::CreateErrorTableData(
-          "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
-      gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
-    }
-  }
-}
-
 void NodeManager::HandleNotifyWorkerBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->IsBlocked() || worker->GetGrantedLeaseId().IsNil()) {
