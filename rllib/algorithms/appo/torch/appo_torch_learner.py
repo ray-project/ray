@@ -184,7 +184,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         # restricted to valid timesteps via the loss mask.
         mean_is_ratio = torch.sum(is_ratio * loss_mask_time_major) / size_loss_mask
         var_is_ratio = (
-            torch.sum(torch.pow(is_ratio - mean_is_ratio, 2.0) * loss_mask_time_major)
+            torch.sum(torch.square(is_ratio - mean_is_ratio) * loss_mask_time_major)
             / size_loss_mask
         )
 
