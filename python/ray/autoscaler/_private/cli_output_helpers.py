@@ -35,5 +35,11 @@ def print_head_node_context_separator(cli_logger, cf):
     cli_logger.newline()
 
 
+def print_head_node_context_separator_if_needed(ray_start_commands, cli_logger, cf):
+    """Print the head-node separator when ``ray start`` output was shown."""
+    if ray_start_commands:
+        print_head_node_context_separator(cli_logger, cf)
+
+
 # Group heading used by ``ray up`` for the local commands section.
 USEFUL_COMMANDS_HEADING = "Useful commands for your local machine:"

@@ -5,8 +5,8 @@ import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
 
-from ray._common.utils import get_pyarrow_version
 from ray.data._internal.datasource.parquet_datasource import _infer_schema
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 
 def test_read_parquet_memory_growth(tmp_path, monkeypatch):
@@ -36,6 +36,7 @@ def test_read_parquet_memory_growth(tmp_path, monkeypatch):
 
     _write_files(tmp_path, num_files)
 
+    finish_calls = []
     inspect_calls = []
     real_factory = pds.FileSystemDatasetFactory
 
@@ -50,7 +51,8 @@ def test_read_parquet_memory_growth(tmp_path, monkeypatch):
             return self._factory.inspect(**kwargs)
 
         def finish(self, *args, **kwargs):
-            pytest.fail("Schema inference should not inspect every fragment")
+            finish_calls.append((args, kwargs))
+            return self._factory.finish(*args, **kwargs)
 
     monkeypatch.setattr(pds, "FileSystemDatasetFactory", TrackingFactory)
 
@@ -66,6 +68,7 @@ def test_read_parquet_memory_growth(tmp_path, monkeypatch):
             "promote_options": "permissive",
         }
     ]
+    assert not finish_calls
     assert "null_col" in schema.names
 
 

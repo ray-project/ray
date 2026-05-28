@@ -10,7 +10,8 @@ Validates that:
 1. ``print_next_steps_context_note`` emits "head node" and "cluster network".
 2. ``print_head_node_context_separator`` emits "head node" and "cluster network".
 3. ``USEFUL_COMMANDS_HEADING`` contains "local machine".
-4. Neither helper references ``ray up`` (valid for direct ``ray start`` use).
+4. The head-node separator is skipped when ``ray start`` did not run.
+5. Neither helper references ``ray up`` (valid for direct ``ray start`` use).
 """
 
 import importlib.util
@@ -37,6 +38,9 @@ _spec.loader.exec_module(_helpers)
 
 print_next_steps_context_note = _helpers.print_next_steps_context_note
 print_head_node_context_separator = _helpers.print_head_node_context_separator
+print_head_node_context_separator_if_needed = (
+    _helpers.print_head_node_context_separator_if_needed
+)
 USEFUL_COMMANDS_HEADING = _helpers.USEFUL_COMMANDS_HEADING
 
 
@@ -120,48 +124,26 @@ class TestUsefulCommandsHeading(unittest.TestCase):
 
 
 class TestHeadNodeContextGating(unittest.TestCase):
-    """Verify that the head node context separator is only printed when
-    `ray start` commands are actually executed.
-    """
+    """Tests for gating the head-node context separator."""
 
-    def test_separator_gated_by_ray_start_commands(self):
-        import ast
+    def test_skips_separator_when_ray_start_commands_are_empty(self):
+        mock_logger = MagicMock()
+        mock_cf = MagicMock()
+        mock_cf.dimmed = lambda x: x
 
-        # Parse commands.py to verify the gating logic without importing it
-        filepath = os.path.join(
-            os.path.dirname(__file__),
-            os.pardir,
-            os.pardir,
-            "autoscaler",
-            "_private",
-            "commands.py",
+        print_head_node_context_separator_if_needed([], mock_logger, mock_cf)
+
+        mock_logger.print.assert_not_called()
+        mock_logger.newline.assert_not_called()
+
+    def test_prints_separator_when_ray_start_commands_exist(self):
+        text = _capture_printed_text(
+            lambda cli_logger, cf: print_head_node_context_separator_if_needed(
+                ["ray start --head"], cli_logger, cf
+            )
         )
-        with open(filepath, "r", encoding="utf-8") as f:
-            source = f.read()
 
-        tree = ast.parse(source)
-
-        call_found = False
-        # Find the call to print_head_node_context_separator
-        for node in ast.walk(tree):
-            if isinstance(node, ast.If):
-                # Check if this If block contains our call
-                for child in ast.walk(node):
-                    if (
-                        isinstance(child, ast.Call)
-                        and getattr(child.func, "id", None)
-                        == "print_head_node_context_separator"
-                    ):
-                        # Verify the condition of the If statement is ray_start_commands
-                        test_node = node.test
-                        self.assertIsInstance(test_node, ast.Name)
-                        self.assertEqual(test_node.id, "ray_start_commands")
-                        call_found = True
-
-        self.assertTrue(
-            call_found,
-            "Could not find conditional call to print_head_node_context_separator",
-        )
+        self.assertIn("head node", text)
 
 
 if __name__ == "__main__":
