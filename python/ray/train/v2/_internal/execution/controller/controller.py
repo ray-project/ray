@@ -51,7 +51,6 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
-from ray.train.v2._internal.metrics.base import EventMetric
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -63,6 +62,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
 )
 from ray.train.v2._internal.logging import LoggingManager
+from ray.train.v2._internal.metrics.base import EventMetric
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
