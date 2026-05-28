@@ -3307,7 +3307,6 @@ cdef class CoreWorker:
                 f"got {type(object_ref_or_generator_to_fetch_local)}"
             )
 
-        object_refs = []
         for i, pair in enumerate(object_ref_or_generator_to_fetch_local):
             if not isinstance(pair, tuple) or len(pair) != 2:
                 raise TypeError(
@@ -3329,12 +3328,13 @@ cdef class CoreWorker:
                     f"got {type(fetch_local)} at index {i}"
                 )
             if isinstance(ref_or_generator, ObjectRefGenerator):
-                object_refs.append(ref_or_generator._get_next_ref())
+                wait_ids.push_back(
+                    CObjectID.FromBinary(
+                        ref_or_generator._get_next_object_id_binary()))
             else:
-                object_refs.append(ref_or_generator)
+                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
             fetch_locals.push_back(<c_bool>fetch_local)
 
-        wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().WaitAndFetch(
                 wait_ids, fetch_locals, num_returns, timeout_ms, &results)
