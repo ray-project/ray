@@ -149,36 +149,33 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         """
         keys = []
         offset = 0
-        ray_object_pairs = self._get_objects_from_store(object_refs)
-        for ref, (buf, metadata, _), owner_address in zip(
-            object_refs, ray_object_pairs, owner_addresses
-        ):
+        for ref, owner_address in zip(object_refs, owner_addresses):
+            [(buf, metadata, _)] = self._get_objects_from_store([ref])
             address_len = len(owner_address)
             metadata_len = len(metadata)
             if buf is None and len(metadata) == 0:
                 error = f"Object {ref.hex()} does not exist."
                 raise ValueError(error)
             buf_len = 0 if buf is None else len(buf)
-            payload = (
+            header = (
                 address_len.to_bytes(8, byteorder="little")
                 + metadata_len.to_bytes(8, byteorder="little")
                 + buf_len.to_bytes(8, byteorder="little")
                 + owner_address
                 + metadata
-                + (memoryview(buf) if buf_len else b"")
             )
-            # 24 bytes to store owner address, metadata, and buffer lengths.
-            payload_len = len(payload)
-            assert (
-                self.HEADER_LENGTH + address_len + metadata_len + buf_len == payload_len
-            )
-            written_bytes = f.write(payload)
+            # 24 bytes for the three length-prefix fields + variable-length tail.
+            payload_len = self.HEADER_LENGTH + address_len + metadata_len + buf_len
+            written_bytes = f.write(header)
+            if buf_len:
+                written_bytes += f.write(memoryview(buf))
             assert written_bytes == payload_len
             url_with_offset = create_url_with_offset(
                 url=url, offset=offset, size=written_bytes
             )
             keys.append(url_with_offset.encode())
             offset += written_bytes
+            del buf, metadata
         # Necessary because pyarrow.io.NativeFile does not flush() on close().
         f.flush()
         return keys
