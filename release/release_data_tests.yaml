@@ -672,8 +672,17 @@
 
   run:
     timeout: 3600
-    script: >
-      python backpressure_benchmark.py --case training-prefetch
+
+  variations:
+    - __suffix__: multi_node
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch
+
+    - __suffix__: single_node
+      cluster:
+        cluster_compute: fixed_size_1_cpu_compute.yaml
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
 
 
 ########################
