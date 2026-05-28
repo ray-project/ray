@@ -80,8 +80,15 @@ def start(outdir):
         PYSPY_FORMAT,
         "-r",
         str(PYSPY_RATE),
-        "--nonblocking",
         "--subprocesses",
+        # --native walks C/C++/Cython frames so the speedscope surfaces
+        # raylet RPC / cloudpickle / arrow leaves alongside Python.
+        # py-spy hard-rejects --native + --nonblocking ("Can't get native
+        # stack traces with the --nonblocking option."), so we run in
+        # the blocking mode: a brief ptrace-stop per sample. At
+        # PYSPY_RATE=100 the overhead is small but measurable; if a
+        # release-test run shows throughput regression, halve PYSPY_RATE.
+        "--native",
     ]
 
     _log_file = open(log_path, "w")
@@ -247,7 +254,11 @@ def _attach_worker_pyspy(pid, name, outdir, name_counts):
         PYSPY_FORMAT,
         "-r",
         str(PYSPY_RATE),
-        "--nonblocking",
+        # --native walks C/C++/Cython frames; py-spy hard-rejects
+        # --native + --nonblocking, so we run in blocking mode (one
+        # brief ptrace-stop per sample). See the matching note on the
+        # driver-side cmd.
+        "--native",
     ]
 
     log_file = open(log_path, "w")
