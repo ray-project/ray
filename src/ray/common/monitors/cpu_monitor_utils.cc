@@ -87,7 +87,7 @@ CpuMonitorUtils::CpuCountOr CpuMonitorUtils::GetCpuCountV2(
 
   if (quota > 0 && period > 0) {
     return static_cast<int64_t>(
-        std::floor(static_cast<double>(quota) / static_cast<double>(period)));
+        std::ceil(static_cast<double>(quota) / static_cast<double>(period)));
   }
   return StatusT::Invalid(
       absl::StrCat("Invalid cpu.max values (quota=", quota, ", period=", period, ")"));
@@ -114,7 +114,7 @@ CpuMonitorUtils::CpuCountOr CpuMonitorUtils::GetCpuCountV1(
   }
   if (quota > 0 && period > 0) {
     return static_cast<int64_t>(
-        std::floor(static_cast<double>(quota) / static_cast<double>(period)));
+        std::ceil(static_cast<double>(quota) / static_cast<double>(period)));
   }
   return StatusT::Invalid(
       absl::StrCat("Invalid cfs quota/period (quota=", quota, ", period=", period, ")"));

@@ -49,7 +49,7 @@ class CpuMonitorUtils {
    *        CPU limit for the cgroup.
    *        https://docs.kernel.org/scheduler/sched-bwc.html
    * @return The number of CPUs the cgroup is limited to. If the cpu is fractional,
-   *         it is rounded down to the nearest integer. Returns StatusT::NotFound if the
+   *         it is rounded up to the nearest integer. Returns StatusT::NotFound if the
    *         file cannot be read, or StatusT::Invalid if it contains invalid values.
    */
   static CpuCountOr GetCpuCountV2(const std::string &cpu_max_path);
@@ -61,7 +61,7 @@ class CpuMonitorUtils {
    *        means no cpu limit is set.
    * @param cfs_period_path File path to the cpu.cfs_period_us file.
    * @return The number of CPUs the cgroup is limited to. If the cpu is fractional,
-   *         it is rounded down to the nearest integer. Returns StatusT::NotFound if the
+   *         it is rounded up to the nearest integer. Returns StatusT::NotFound if the
    *         either file cannot be read, or StatusT::Invalid if a file contains
    *         invalid values.
    */
