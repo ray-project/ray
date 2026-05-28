@@ -270,16 +270,14 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
-    # Driver-time estimate of the total in-memory dataset size, in bytes.
-    # Populated by ``_read_datasource_v2`` from the planning-time file
-    # sample (no per-path listing — extrapolated as
-    # ``avg_in_memory_per_sampled_file * num_buckets``). Surfaced via
-    # :meth:`infer_metadata` so hash-shuffle aggregator memory sizing
-    # (``HashShufflingOperatorBase._get_default_aggregator_ray_remote_args``)
-    # sees a non-None ``size_bytes`` and avoids its conservative
-    # ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` (1 GiB)
-    # fallback that OOMs big joins.
-    estimated_size_bytes: Optional[int] = None
+    # Planning-time sample data used by :meth:`infer_metadata` to derive
+    # a projection-aware in-memory ``size_bytes`` estimate after
+    # projection-pushdown has settled on the scanner's column list.
+    # See :func:`ray.data.read_api._read_datasource_v2` for how these
+    # are populated (footer-only read of one sampled file).
+    sample_avg_file_size: Optional[int] = None
+    sample_per_column_bytes: Optional[Dict[str, int]] = None
+    num_buckets: Optional[int] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -328,10 +326,60 @@ class ReadFiles(
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=None,
-            size_bytes=self.estimated_size_bytes,
+            size_bytes=self._estimate_size_bytes(),
             input_files=None,
             exec_stats=None,
         )
+
+    def _estimate_size_bytes(self) -> Optional[int]:
+        """Projection-aware in-memory size estimate.
+
+        Combines planning-time sample data
+        (``sample_avg_file_size`` and ``sample_per_column_bytes``) with
+        the *current* scanner column list (post projection-pushdown) to
+        produce an upper-bound estimate that scales correctly when the
+        query projects a narrow subset of columns. Formula:
+
+            projection_mass = sum(per_col_bytes[c] for c in projected)
+                              / sum(per_col_bytes[*])
+            est_per_file    = avg_file_size * 5 * projection_mass
+            estimated_total = est_per_file * num_buckets
+
+        ``5`` is ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` — a coarse
+        but workable in-memory-vs-on-disk multiplier. The mass term
+        prevents narrow projections from inheriting the full file's
+        weight (e.g. TPC-H Q9 reads 6 of lineitem's 16 columns, mass
+        ≈ 0.3). When mass info is unavailable, falls back to
+        ``projection_mass = 1.0``.
+        """
+        from ray.data._internal.datasource.parquet_datasource import (
+            PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        )
+
+        if (
+            self.sample_avg_file_size is None
+            or self.sample_avg_file_size <= 0
+            or self.num_buckets is None
+        ):
+            return None
+
+        projection_mass = 1.0
+        if self.sample_per_column_bytes:
+            total_col_bytes = sum(self.sample_per_column_bytes.values())
+            if total_col_bytes > 0:
+                projected = self.scanner.pruned_column_names()
+                if projected:
+                    projected_bytes = sum(
+                        self.sample_per_column_bytes.get(c, 0) for c in projected
+                    )
+                    projection_mass = projected_bytes / total_col_bytes
+
+        est_per_file = (
+            self.sample_avg_file_size
+            * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+            * projection_mass
+        )
+        return int(est_per_file * self.num_buckets)
 
     def supports_projection_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (

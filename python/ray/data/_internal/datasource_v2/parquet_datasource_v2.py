@@ -156,31 +156,16 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         )
 
     @override
-    def get_size_estimator(
-        self, encoding_ratio: Optional[float] = None
-    ) -> InMemorySizeEstimator:
+    def get_size_estimator(self) -> InMemorySizeEstimator:
         """Return the in-memory size estimator for this Parquet source.
 
-        The caller (``_read_datasource_v2``) samples the encoding ratio
-        once at the driver (via
-        :class:`ParquetSamplingInMemorySizeEstimator`) when the
-        ``enable_parquet_sampling_size_estimator`` flag is on, then passes
-        the measured ratio in. The estimator returned here is the simple
-        fixed-ratio :class:`ParquetInMemorySizeEstimator` parameterized by
-        that ratio — pickle-safe and I/O-free at the worker, which is
-        important because it's captured in the ``ListFiles`` partitioner
-        closure.
-
-        When ``encoding_ratio`` is ``None`` (sampling disabled, sampling
-        failed, or no files to sample), the estimator falls back to
-        ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` (5). That multiplier
-        can severely undercount in-memory size on workloads with
-        dictionary-encoded columns (e.g. TPC-H lineitem), because
-        Parquet's ``total_uncompressed_size`` reports dict-index bytes
-        rather than the expanded Arrow representation.
+        Uses :class:`ParquetInMemorySizeEstimator` with the static
+        ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` (5x) — pickle-safe
+        and I/O-free, since it's captured in the ``ListFiles``
+        partitioner closure. Projection-aware sizing happens later in
+        :meth:`ReadFiles.infer_metadata` using per-column footer bytes
+        captured at planning time.
         """
-        if encoding_ratio is not None:
-            return ParquetInMemorySizeEstimator(encoding_ratio=encoding_ratio)
         return ParquetInMemorySizeEstimator()
 
     @override

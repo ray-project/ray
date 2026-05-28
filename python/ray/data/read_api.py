@@ -132,9 +132,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
     from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 
 T = TypeVar("T")
 
@@ -426,39 +424,41 @@ def _resolve_read_remote_args(
     )
 
 
-def _maybe_sample_encoding_ratio(
-    datasource: "DataSourceV2",
-    scanner: "Scanner",
+def _read_parquet_sample_column_bytes(
     sample: "FileManifest",
-) -> Optional[float]:
-    """Sample the in-memory encoding ratio at the driver, if supported.
+    *,
+    filesystem: Any = None,
+) -> Optional[Dict[str, int]]:
+    """Read the first sampled Parquet file's footer to get per-column on-disk bytes.
 
-    Returns ``None`` when:
-      - the datasource isn't ``ParquetDatasourceV2`` (only Parquet sampling
-        is wired in today),
-      - the ``enable_parquet_sampling_size_estimator`` context flag is off,
-      - or the sample read fails (e.g. an empty file) — the caller then
-        falls back to the static ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT``.
+    Used by :func:`_read_datasource_v2` to capture column-mass info at
+    planning time so :meth:`ReadFiles.infer_metadata` can produce a
+    projection-aware in-memory size estimate after projection-pushdown
+    has settled on the actual scanner column list.
+
+    Footer-only read — no row data is fetched. Returns ``None`` on any
+    I/O error or when the file has no row groups; callers then fall
+    back to a uniform (non-projection-aware) estimate.
     """
-    from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
-        ParquetDatasourceV2,
-    )
-    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-        ParquetSamplingInMemorySizeEstimator,
+    from ray.data._internal.datasource.parquet_datasource import (
+        _per_column_uncompressed_bytes,
     )
 
-    if not isinstance(datasource, ParquetDatasourceV2):
-        return None
-    if not DataContext.get_current().enable_parquet_sampling_size_estimator:
-        return None
     if len(sample) == 0:
         return None
+    first_path = sample.paths.tolist()[0]
+    try:
+        import pyarrow.dataset as pds
 
-    sampler = ParquetSamplingInMemorySizeEstimator.from_reader(scanner.create_reader())
-    # Triggers a single row-group sample. The result is cached on the
-    # sampler; we read it back via the private attribute below.
-    sampler.estimate_in_memory_sizes(sample)
-    return sampler._encoding_ratio
+        ds = pds.dataset(first_path, format="parquet", filesystem=filesystem)
+        fragments = list(ds.get_fragments())
+        if not fragments:
+            return None
+        per_column = _per_column_uncompressed_bytes(fragments[0].metadata)
+        return per_column or None
+    except Exception as e:
+        logger.debug("Skipping per-column footer read for %s: %s", first_path, e)
+        return None
 
 
 @wrap_auto_init
@@ -554,31 +554,16 @@ def _read_datasource_v2(
         partitioning=resolved_partitioning,
     )
 
-    # Driver-side sample of the encoding ratio (in-memory bytes / on-disk
-    # bytes), when supported. The resulting ratio is threaded into:
-    #  1. the partitioner's ``ParquetInMemorySizeEstimator`` so
-    #     ``BlockMetadata.size_bytes`` matches the actual block size, and
-    #  2. the scanner -> reader pipeline so per-fragment
-    #     ``_estimate_batch_size_from_metadata`` uses the same measured
-    #     ratio when sizing batches.
-    # Sampling once at the driver beats per-worker sampling: one file read
-    # (~10 ms) replaces N ListFiles tasks each doing their own.
-    encoding_ratio = _maybe_sample_encoding_ratio(datasource, scanner, sample)
-    if encoding_ratio is not None:
-        import dataclasses
-
-        scanner = dataclasses.replace(scanner, encoding_ratio=encoding_ratio)
-
     # Size-balanced bucketing for the listing output. The partitioner is
     # captured in a pickled closure and runs inside worker tasks, so its
     # estimator must be I/O-free and pickle-safe — the fixed-ratio
-    # ``ParquetInMemorySizeEstimator`` (with the sampled ratio when
-    # available) satisfies that. ``num_buckets`` is a hint;
-    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
-    # first, so the actual bucket count scales with total data size.
-    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
-    # back to sentinel bounds so the partitioner just rolls every file
-    # into a single bucket.
+    # ``ParquetInMemorySizeEstimator`` (static
+    # ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5``) satisfies that.
+    # ``num_buckets`` is a hint; ``RoundRobinPartitioner`` honors
+    # ``[min, max]`` block-size limits first, so the actual bucket count
+    # scales with total data size. ``target_*_block_size`` can be ``None``
+    # (block sizing disabled); fall back to sentinel bounds so the
+    # partitioner just rolls every file into a single bucket.
     import sys
 
     # Each read task fills a bucket up to
@@ -599,9 +584,7 @@ def _read_datasource_v2(
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
     partitioner = RoundRobinPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(
-            encoding_ratio=encoding_ratio,
-        ),
+        in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
         num_buckets=num_buckets,
@@ -618,34 +601,38 @@ def _read_datasource_v2(
             else shuffle
         )
 
-    # Sample-based dataset-size estimate. Surfaced via
-    # ``ReadFiles.infer_metadata`` so downstream consumers
-    # (notably ``HashShufflingOperatorBase._get_default_aggregator_ray_remote_args``,
-    # which currently caps aggregator memory at 1 GiB when ``size_bytes`` is
-    # missing) can budget for actual data volume instead of falling through
-    # to the "no estimate" path and OOMing on big joins.
+    # Projection-aware dataset-size estimate. We pass the planning-time
+    # sample's average per-file on-disk bytes plus per-column uncompressed
+    # bytes (from one sample file's Parquet footer) to ``ReadFiles``, which
+    # combines them lazily in :meth:`ReadFiles.infer_metadata` once
+    # projection-pushdown has settled on the final scanner column list.
+    # The estimate is:
     #
-    # The estimate avoids per-path stat()s on huge datasets: we extrapolate
-    # from the already-collected ``sample`` (up to 16 files) using
+    #     projection_mass  = sum(uncompressed[col] for col in projected_cols)
+    #                        / sum(uncompressed[*])
+    #     est_per_file     = avg_on_disk_per_file * 5 * projection_mass
+    #     estimated_size_bytes
+    #                      = est_per_file * num_buckets
     #
-    #     avg_in_memory_per_file = (sum(sample.file_sizes) / len(sample))
-    #                              * encoding_ratio
-    #     estimated_size_bytes   = avg_in_memory_per_file * num_buckets
-    #
-    # ``num_buckets`` is the framework's target output parallelism
-    # (``override_num_blocks`` if set, else ``read_op_min_num_blocks``).
-    # It serves as a proxy for the number of read tasks the partitioner
-    # will create, so the formula reads as "typical file in-memory size
-    # × expected number of read tasks". Coarse, but an order-of-magnitude
-    # estimate is enough to unblock the shuffle path.
-    estimated_size_bytes: Optional[int] = None
-    if encoding_ratio is not None and len(sample) > 0:
-        sample_on_disk_total = int(sample.file_sizes.sum())
-        if sample_on_disk_total > 0:
-            avg_in_memory_per_file = (
-                sample_on_disk_total / len(sample)
-            ) * encoding_ratio
-            estimated_size_bytes = int(avg_in_memory_per_file * num_buckets)
+    # The ``5`` is ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` — a coarse
+    # but workable in-memory-vs-on-disk multiplier. The projection mass
+    # term keeps narrow projections from inheriting the full file's
+    # weight; e.g. TPC-H Q9 reads only 6 of lineitem's 16 columns, so
+    # we scale by ~0.3 instead of 1.0.
+    sample_avg_file_size: Optional[int] = None
+    sample_per_column_bytes: Optional[Dict[str, int]] = None
+    if len(sample) > 0:
+        on_disk_total = int(sample.file_sizes.sum())
+        if on_disk_total > 0:
+            sample_avg_file_size = on_disk_total // len(sample)
+        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+            ParquetDatasourceV2,
+        )
+
+        if isinstance(datasource, ParquetDatasourceV2):
+            sample_per_column_bytes = _read_parquet_sample_column_bytes(
+                sample, filesystem=datasource.filesystem
+            )
 
     list_files_op = ListFiles(
         paths=list(datasource.paths),
@@ -668,7 +655,9 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
-        estimated_size_bytes=estimated_size_bytes,
+        sample_avg_file_size=sample_avg_file_size,
+        sample_per_column_bytes=sample_per_column_bytes,
+        num_buckets=num_buckets,
         input_dependencies=[list_files_op],
     )
 

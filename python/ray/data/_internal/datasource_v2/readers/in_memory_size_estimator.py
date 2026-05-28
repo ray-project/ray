@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -9,10 +9,6 @@ from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockAccessor
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    import pyarrow as pa
-    import pyarrow.fs
 
 logger = logging.getLogger(__name__)
 
@@ -135,9 +131,9 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
 # representation is significantly larger than the on-disk format.
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 
-# Rows per row group to read when sampling the encoding ratio. Matches V1's
-# ``PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS``. Capped against the actual row
-# group size — see ``ParquetSamplingInMemorySizeEstimator``.
+# Rows per row group to read when measuring the per-batch encoding ratio
+# inside ``ParquetFileReader._estimate_batch_size_from_metadata``. Matches
+# V1's ``PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS``.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
 
@@ -156,149 +152,3 @@ class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         return self._encoding_ratio * manifest.file_sizes
-
-
-@DeveloperAPI
-class ParquetSamplingInMemorySizeEstimator(InMemorySizeEstimator):
-    """Samples one row group to measure the actual Parquet encoding ratio.
-
-    Mirrors V1's ``_estimate_files_encoding_ratio``: open the first manifest
-    file, read up to ``PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS`` rows from
-    its first row group, compute ``nbytes / num_rows`` on the resulting
-    batch, multiply by the file's total row count to estimate the file's
-    full in-memory footprint, and divide by on-disk size to get the
-    encoding ratio. The ratio is cached on the estimator and applied to
-    every file in subsequent calls.
-
-    Why this and not :class:`SamplingInMemorySizeEstimator`?
-
-    - **Cheap.** The sample is one row group of one file — typically
-      milliseconds — not a full-file scan.
-    - **Multi-batch-correct.** The generic
-      :class:`SamplingInMemorySizeEstimator` falls back to a 1:1 ratio
-      when a file yields more than one batch (which Parquet files with
-      multiple row groups always do), defeating the point on most real
-      datasets. Row-group sampling is invariant to row-group count.
-    - **Accurate for dictionary-encoded columns.** Parquet's
-      ``total_uncompressed_size`` reports dict-index bytes, not the
-      expanded Arrow representation — a single sampled batch's actual
-      ``nbytes`` does include the expansion.
-    """
-
-    def __init__(
-        self,
-        filesystem: "Optional[pyarrow.fs.FileSystem]" = None,
-        columns: Optional[List[str]] = None,
-        schema: "Optional[pa.Schema]" = None,
-        parquet_format_kwargs: Optional[Dict[str, Any]] = None,
-    ):
-        """Initialize the sampler.
-
-        Args:
-            filesystem: Filesystem the sampled file lives on.
-            columns: Projected columns. If ``None``, all columns are
-                measured (matches ``read_parquet`` without ``columns=``).
-                Sampling only what's read keeps the ratio honest when the
-                caller projects a small subset of a wide schema.
-            schema: Optional unified schema. Forwarded to
-                ``pyarrow.dataset.dataset`` so per-fragment null-fill /
-                cast matches the eventual scan.
-            parquet_format_kwargs: Extra kwargs threaded into
-                ``pyarrow.dataset.ParquetFileFormat`` (e.g.
-                ``coerce_int96_timestamp_unit``).
-        """
-        self._filesystem = filesystem
-        self._columns = columns
-        self._schema = schema
-        self._parquet_format_kwargs = parquet_format_kwargs or {}
-        self._encoding_ratio: Optional[float] = None
-
-    @classmethod
-    def from_reader(
-        cls, reader: "ParquetFileReader"
-    ) -> "ParquetSamplingInMemorySizeEstimator":
-        """Build a sampler from a configured :class:`ParquetFileReader`.
-
-        The reader already knows the filesystem, projection, unified schema,
-        and ``ParquetFileFormat`` overrides used by the read path, so we
-        sample with the same configuration that will eventually be applied
-        — anything else can produce a ratio that doesn't match real reads.
-        """
-        return cls(
-            filesystem=reader._filesystem,
-            columns=reader._columns,
-            schema=reader._schema,
-            parquet_format_kwargs=reader._parquet_format_kwargs,
-        )
-
-    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
-        if self._encoding_ratio is None:
-            for path, file_size in zip(manifest.paths, manifest.file_sizes):
-                if file_size <= 0:
-                    continue
-                ratio = self._sample_one_row_group(path, file_size)
-                if ratio is not None:
-                    self._encoding_ratio = ratio
-                    logger.debug(
-                        "Sampled Parquet encoding ratio %.2fx from %s",
-                        ratio,
-                        path,
-                    )
-                    break
-        ratio = (
-            self._encoding_ratio
-            if self._encoding_ratio is not None
-            else PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-        )
-        return manifest.file_sizes * ratio
-
-    def _sample_one_row_group(self, path: str, file_size: int) -> Optional[float]:
-        """Sample one row group from ``path`` and return its encoding ratio,
-        or ``None`` if the file can't be sampled (empty file, no row groups,
-        per-row size collapses to zero, or any I/O error).
-
-        Delegates the actual row-group read to V1's
-        :func:`_fetch_parquet_file_info`, which already handles the
-        ARROW-5030 nested-type fallback path. We wrap the pyarrow fragment
-        in V1's :class:`_ParquetFragment` to satisfy that API.
-        """
-        import pyarrow.dataset as pds
-
-        from ray.data._internal.datasource.parquet_datasource import (
-            _fetch_parquet_file_info,
-            _ParquetFragment,
-        )
-
-        try:
-            fmt = pds.ParquetFileFormat(**self._parquet_format_kwargs)
-            dataset = pds.dataset(
-                path,
-                format=fmt,
-                filesystem=self._filesystem,
-                schema=self._schema,
-            )
-            fragments = list(dataset.get_fragments())
-            if not fragments:
-                return None
-            file_info = _fetch_parquet_file_info(
-                _ParquetFragment(fragments[0], file_size),
-                columns=self._columns,
-                schema=self._schema,
-            )
-            if file_info is None or file_info.avg_row_in_mem_bytes is None:
-                return None
-            in_memory_size = file_info.estimate_in_memory_bytes()
-            if in_memory_size is None or in_memory_size == 0:
-                return None
-            return in_memory_size / file_size
-        except Exception as e:
-            # Sampling is best-effort; any failure falls back to the fixed
-            # 5x default so a malformed sample can't break the read.
-            logger.debug("Parquet encoding-ratio sampling failed for %s: %s", path, e)
-            return None
-
-
-if TYPE_CHECKING:
-    from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
-        ParquetFileReader,
-    )

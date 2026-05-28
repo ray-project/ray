@@ -151,15 +151,14 @@ def test_read_parquet_v2_max_bucket_size_scales_with_num_blocks_per_read_task(
 
 
 def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
-    """``ReadFiles.estimated_size_bytes`` is the sample-extrapolated total
-    in-memory size, and ``ReadFiles.infer_metadata().size_bytes`` surfaces
-    it so the hash-shuffle aggregator-memory path
+    """``ReadFiles.infer_metadata().size_bytes`` is the projection-aware
+    in-memory size estimate built from planning-time sample data (average
+    per-file on-disk bytes × ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` ×
+    column-mass ratio × ``num_buckets``). Surfaces a non-None value so
+    the hash-shuffle aggregator-memory path
     (``_try_estimate_output_bytes`` -> ``_get_default_aggregator_ray_remote_args``)
-    sees a non-None ``size_bytes`` and skips the 1 GiB-per-aggregator fallback.
+    skips the 1 GiB-per-aggregator fallback.
     """
-    # A row count large enough that the Parquet encoding ratio sample
-    # returns a real ratio (not the default fallback). One file is enough —
-    # the estimator extrapolates via ``num_buckets``.
     _write(tmp_path / "data.parquet", pa.table({"a": list(range(1024))}))
 
     restore_ctx.use_datasource_v2 = True
@@ -167,11 +166,58 @@ def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
 
     read_files_op = ds._logical_plan.dag
     assert isinstance(read_files_op, ReadFiles)
-    assert read_files_op.estimated_size_bytes is not None
-    assert read_files_op.estimated_size_bytes > 0
-    assert (
-        read_files_op.infer_metadata().size_bytes == read_files_op.estimated_size_bytes
+    # Planning-time sample data is captured on the op.
+    assert read_files_op.sample_avg_file_size is not None
+    assert read_files_op.sample_avg_file_size > 0
+    assert read_files_op.sample_per_column_bytes is not None
+    assert read_files_op.num_buckets == 4
+    # The size estimate is materialized via infer_metadata.
+    size = read_files_op.infer_metadata().size_bytes
+    assert size is not None
+    assert size > 0
+
+
+def test_read_parquet_v2_infer_metadata_projection_aware(tmp_path, restore_ctx):
+    """When projection-pushdown trims the scanner column list, the size
+    estimate scales down by the projected columns' mass-fraction of the
+    file. Two columns with very different sizes; projecting only the
+    narrow one should yield a meaningfully smaller estimate than reading
+    both.
+
+    Simulates the post-projection-pushdown state via
+    ``ReadFiles.apply_projection`` (the optimizer rule that fires at
+    execution time).
+    """
+    # Wide string column dominates file mass; narrow int column is tiny.
+    # Strings are made unique so dict-encoding can't compress them away
+    # — keeps ``total_uncompressed_size`` reflective of real data size.
+    n = 4096
+    wide_values = [f"unique-{i}-" + ("x" * 256) for i in range(n)]
+    narrow_values = list(range(n))
+    _write(
+        tmp_path / "data.parquet",
+        pa.table({"narrow": narrow_values, "wide": wide_values}),
     )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=4)
+    full_read = ds._logical_plan.dag
+    assert isinstance(full_read, ReadFiles)
+    full_size = full_read.infer_metadata().size_bytes
+
+    # Simulate projection-pushdown applying the ``select_columns(["narrow"])``
+    # rewrite into the scanner.
+    narrow_read = full_read.apply_projection({"narrow": "narrow"})
+    narrow_size = narrow_read.infer_metadata().size_bytes
+
+    assert full_size is not None and full_size > 0
+    assert narrow_size is not None and narrow_size > 0
+    # Projecting only the narrow column should shrink the estimate
+    # substantially — the wide string column dominates the file's
+    # uncompressed bytes.
+    assert (
+        narrow_size < full_size / 2
+    ), f"Expected projection-aware shrink: narrow={narrow_size}, full={full_size}"
 
 
 def test_read_parquet_v2_size_bytes_propagates_through_chain(tmp_path, restore_ctx):
