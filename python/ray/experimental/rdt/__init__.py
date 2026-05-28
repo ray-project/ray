@@ -14,6 +14,7 @@ from ray.experimental.rdt.util import (
     register_nixl_memory_pool,
     register_tensor_transport,
 )
+from ray.experimental.rdt.weight_sync import WeightSyncManager
 
 __all__ = [
     "RDTManager",
@@ -26,4 +27,5 @@ __all__ = [
     "TensorTransportMetadata",
     "CommunicatorMetadata",
     "set_target_for_ref",
+    "WeightSyncManager",
 ]
