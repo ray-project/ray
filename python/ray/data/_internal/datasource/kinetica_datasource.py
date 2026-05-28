@@ -623,6 +623,10 @@ class KineticaDatasource(Datasource):
         # This handles the case where parallelism > total_count
         effective_parallelism = min(effective_parallelism, self._total_count)
 
+        # Recompute records_per_task after capping parallelism to ensure
+        # even distribution of work across tasks
+        records_per_task = max(1, self._total_count // effective_parallelism)
+
         read_tasks = []
         offset = 0
 

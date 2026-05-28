@@ -604,19 +604,22 @@ def convert_arrow_batch_to_records(
                 elif isinstance(value, date):
                     record[col_name] = value.isoformat()
                 else:
-                    record[col_name] = str(value) if value is not None else None
+                    # value is not None here (handled by if block at line 569)
+                    record[col_name] = str(value)
             elif col_type == "time":
                 # Convert time to ISO format string (HH:MM:SS.ffffff)
                 if isinstance(value, time):
                     record[col_name] = value.isoformat()
                 else:
-                    record[col_name] = str(value) if value is not None else None
+                    # value is not None here (handled by if block at line 569)
+                    record[col_name] = str(value)
             elif col_type in ("datetime", "timestamp"):
                 # Convert datetime to ISO format string (YYYY-MM-DDTHH:MM:SS.ffffff)
                 if isinstance(value, datetime):
                     record[col_name] = value.isoformat()
                 else:
-                    record[col_name] = str(value) if value is not None else None
+                    # value is not None here (handled by if block at line 569)
+                    record[col_name] = str(value)
             else:
                 # Handle any remaining date/time types that weren't detected
                 # by column properties

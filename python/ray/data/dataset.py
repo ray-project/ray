@@ -5273,13 +5273,20 @@ class Dataset:
         """
         from ray.data._internal.datasource.kinetica_datasink import KineticaDatasink
 
+        # Extract the underlying PyArrow schema from Ray Data Schema.
+        # KineticaDatasink expects pa.Schema, not ray.data.Schema.
+        ray_schema = self.schema()
+        pa_schema = (
+            ray_schema.base_schema if hasattr(ray_schema, "base_schema") else ray_schema
+        )
+
         datasink = KineticaDatasink(
             url=url,
             table_name=table_name,
             username=username,
             password=password,
             mode=mode,
-            schema=self.schema(),
+            schema=pa_schema,
             table_settings=table_settings,
             batch_size=batch_size,
             use_multihead=use_multihead,
