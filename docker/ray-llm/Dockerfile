@@ -54,16 +54,31 @@ curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
 
-# nixl-cu12 and nixl-cu13 both install the top-level nixl_ep package. Run this
-# after the vLLM helper scripts so vLLM's eager nixl_ep import cannot load a
-# cu12 binary from a prior layer or package install.
+# Keep the release image capable of running NIXL EP kernels.
 uv pip uninstall --system nixl-cu12 nixl-cu13 || true
 uv pip install --system --no-cache-dir --no-deps --reinstall nixl-cu13==1.1.0
 
 python - <<'PY'
 import importlib.metadata
 import importlib.util
+import shutil
+import site
 from pathlib import Path
+
+for site_dir in map(Path, site.getsitepackages()):
+    for pattern in (
+        "nixl_cu12",
+        "nixl_cu12-*",
+        "nixl_cu12.libs",
+        ".nixl_cu12.*",
+    ):
+        for path in site_dir.glob(pattern):
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+
+importlib.invalidate_caches()
 
 installed = {
     dist.metadata.get("Name", "").lower()
@@ -76,20 +91,37 @@ if "nixl" not in installed:
 if "nixl-cu13" not in installed:
     raise SystemExit("nixl-cu13 must be installed in the CUDA 13 LLM image")
 
-spec = importlib.util.find_spec("nixl_ep")
-if spec is None or not spec.submodule_search_locations:
-    raise SystemExit("nixl_ep is missing after installing nixl-cu13")
+if importlib.util.find_spec("nixl") is None:
+    raise SystemExit("nixl import spec is missing")
+if importlib.util.find_spec("nixl_cu13") is None:
+    raise SystemExit("nixl_cu13 import spec is missing")
+if importlib.util.find_spec("nixl_ep") is None:
+    raise SystemExit("nixl_ep import spec is missing")
 
-nixl_ep_dir = Path(next(iter(spec.submodule_search_locations)))
-candidates = sorted(nixl_ep_dir.glob("nixl_ep_cpp*.so"))
-if not candidates:
-    raise SystemExit(f"nixl_ep_cpp binary is missing from {nixl_ep_dir}")
-so = candidates[0]
-payload = so.read_bytes()
-if b"libcudart.so.12" in payload or b"libcudart.so.13" not in payload:
-    raise SystemExit(f"{so} is not the CUDA 13 NIXL EP binary")
+nixl_paths = []
+for site_dir in map(Path, site.getsitepackages()):
+    for pattern in ("nixl_ep", "nixl_cu13", "nixl_cu13.libs", ".nixl_cu13.*"):
+        nixl_paths.extend(site_dir.glob(pattern))
 
-print(f"Verified CUDA 13 NIXL EP binary: {so}")
+bad_paths = []
+good_paths = []
+for path in nixl_paths:
+    files = path.rglob("*") if path.is_dir() else [path]
+    for file in files:
+        if not file.is_file():
+            continue
+        payload = file.read_bytes()
+        if b"libcudart.so.12" in payload:
+            bad_paths.append(str(file))
+        if b"libcudart.so.13" in payload:
+            good_paths.append(str(file))
+
+if bad_paths:
+    raise SystemExit(f"CUDA 12 NIXL files found in CUDA 13 LLM image: {bad_paths}")
+if not good_paths:
+    raise SystemExit("No CUDA 13 NIXL binaries found in the CUDA 13 LLM image")
+
+print("Verified CUDA 13 NIXL backend with nixl_ep enabled")
 PY
 
 # Export installed packages
