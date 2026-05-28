@@ -132,6 +132,10 @@ bool PressureMemoryMonitor::IsEnabled() const {
   return !worker_killing_in_progress_.load();
 }
 
+bool PressureMemoryMonitor::IsUsageAboveThreshold() const {
+  return worker_killing_in_progress_.load();
+}
+
 void PressureMemoryMonitor::MonitoringThreadMain() {
   struct pollfd fds[2];
   fds[0].fd = pressure_fd_;

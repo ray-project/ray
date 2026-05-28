@@ -30,6 +30,7 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
                                                const std::string &system_cgroup_path)
     : kill_workers_callback_(std::move(kill_workers_callback)),
       worker_killing_in_progress_(false),
+      usage_above_threshold_(false),
       memory_usage_threshold_bytes_(memory_usage_threshold_bytes),
       resource_isolation_enabled_(resource_isolation_enabled),
       root_cgroup_path_(root_cgroup_path),
@@ -104,6 +105,10 @@ bool ThresholdMemoryMonitor::IsEnabled() const {
   return !worker_killing_in_progress_.load();
 }
 
+bool ThresholdMemoryMonitor::IsUsageAboveThreshold() const {
+  return usage_above_threshold_.load();
+}
+
 std::optional<MemoryUsageSnapshot>
 ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
   MemoryUsageSnapshot cur_memory_snapshot =
@@ -115,9 +120,11 @@ ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
+    usage_above_threshold_.store(false);
     return std::nullopt;
   }
   bool is_usage_above_threshold = used_memory_bytes > memory_usage_threshold_bytes_;
+  usage_above_threshold_.store(is_usage_above_threshold);
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "Node memory usage above threshold, used: %d, threshold_bytes: %d, "
@@ -144,11 +151,13 @@ ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
         "The threshold memory monitor will not be able to provide resource isolation "
         "protection.",
         user_slice_memory_snapshot_or.message());
+    usage_above_threshold_.store(false);
     return std::nullopt;
   }
   MemoryUsageSnapshot user_slice_memory_snapshot = user_slice_memory_snapshot_or.value();
   bool is_usage_above_threshold =
       user_slice_memory_snapshot.used_bytes > memory_usage_threshold_bytes_;
+  usage_above_threshold_.store(is_usage_above_threshold);
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "User slice memory usage above threshold, used: %d, threshold_bytes: %d, "

@@ -78,6 +78,13 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    */
   bool IsEnabled() const override;
 
+  /**
+   * @return True if the most recent periodic check observed memory usage
+   *         above the configured threshold. At most one monitor interval
+   *         stale.
+   */
+  bool IsUsageAboveThreshold() const override;
+
  private:
   /**
    * @brief Checks if the memory usage on the host exceeds the threshold.
@@ -103,6 +110,11 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
 
   /// Flag to indicate that the worker killing event is in progress.
   std::atomic<bool> worker_killing_in_progress_;
+
+  /// Result of the most recent periodic check. Read by callers via
+  /// IsUsageAboveThreshold() to back off from allocating more memory while
+  /// usage is over the threshold.
+  std::atomic<bool> usage_above_threshold_;
 
   /// The threshold in bytes that triggers the callback.
   int64_t memory_usage_threshold_bytes_;

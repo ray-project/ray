@@ -72,6 +72,13 @@ class EventMemoryMonitor : public MemoryMonitorInterface {
    */
   bool IsEnabled() const override;
 
+  /**
+   * cgroup memory events are edge-triggered with no continuous "above"
+   * state, so this reports pressure only while a kill triggered by this
+   * monitor is in flight.
+   */
+  bool IsUsageAboveThreshold() const override;
+
  private:
   enum class DrainResult { kDrained, kInterrupted, kError };
 

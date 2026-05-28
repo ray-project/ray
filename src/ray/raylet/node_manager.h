@@ -782,6 +782,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ReleaseKillWorkerInProgress();
 
   /**
+   * @return True if any memory monitor reports usage above its threshold.
+   *         Used to gate speculative worker prestart while the node is
+   *         under memory pressure.
+   */
+  bool IsAnyMemoryMonitorAboveThreshold() const;
+
+  /**
    * @param process_memory_snapshot The snapshot of per-process memory usage
    * for fetching the memory usage of the worker.
    * @param worker The worker to create the kill details for.

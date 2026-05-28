@@ -128,6 +128,13 @@ class PressureMemoryMonitor : public MemoryMonitorInterface {
    */
   bool IsEnabled() const override;
 
+  /**
+   * PSI is event-driven and has no continuous "above" state, so this
+   * reports pressure only while a kill triggered by this monitor is in
+   * flight.
+   */
+  bool IsUsageAboveThreshold() const override;
+
   /// The default monitoring mode for cgroup pressure monitor trigger.
   /// Possible values are:
   /// - some: At least one task is stalled for a specified duration

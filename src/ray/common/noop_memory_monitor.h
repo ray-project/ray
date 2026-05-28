@@ -34,6 +34,7 @@ class NoopMemoryMonitor : public MemoryMonitorInterface {
   void Enable() override {}
   void Disable() override {}
   bool IsEnabled() const override { return true; }
+  bool IsUsageAboveThreshold() const override { return false; }
 };
 
 }  // namespace ray

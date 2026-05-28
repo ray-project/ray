@@ -102,6 +102,20 @@ class MemoryMonitorInterface {
    */
   virtual bool IsEnabled() const = 0;
 
+  /**
+   * @return True if the monitor's most recent observation indicates memory
+   *         usage is above its trigger threshold. Used by callers (e.g. the
+   *         worker prestart path) to back off from allocating more memory
+   *         while the node is under pressure.
+   *
+   * Threshold-style monitors return the cached result of their last
+   * periodic check (at most one monitor interval stale). Event-driven
+   * monitors (PSI, cgroup events) have no continuous "above" state and
+   * fall back to reporting pressure only while a kill they triggered is
+   * in flight.
+   */
+  virtual bool IsUsageAboveThreshold() const = 0;
+
   static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
   static constexpr int64_t kNull = -1;
   /// The logging frequency. Decoupled from how often the monitor runs.

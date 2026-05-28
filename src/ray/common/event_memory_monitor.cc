@@ -119,6 +119,10 @@ void EventMemoryMonitor::Disable() { worker_killing_in_progress_.store(true); }
 
 bool EventMemoryMonitor::IsEnabled() const { return !worker_killing_in_progress_.load(); }
 
+bool EventMemoryMonitor::IsUsageAboveThreshold() const {
+  return worker_killing_in_progress_.load();
+}
+
 void EventMemoryMonitor::MonitoringThreadMain() {
   struct pollfd fds[2];
   fds[0].fd = inotify_fd_;

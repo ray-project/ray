@@ -1885,7 +1885,13 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   }
 
   const auto &lease_spec = lease.GetLeaseSpecification();
-  worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
+  if (!IsAnyMemoryMonitorAboveThreshold()) {
+    worker_pool_.PrestartWorkers(lease_spec, request.backlog_size());
+  } else {
+    RAY_LOG(DEBUG) << "Skipping speculative PrestartWorkers; memory usage is "
+                      "above a monitor threshold. backlog_size="
+                   << request.backlog_size();
+  }
 
   cluster_lease_manager_.QueueAndScheduleLease(
       std::move(lease),
@@ -1897,6 +1903,14 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                                         rpc::PrestartWorkersReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  if (IsAnyMemoryMonitorAboveThreshold()) {
+    RAY_LOG(DEBUG) << "Skipping PrestartWorkers RPC; memory usage is above a "
+                      "monitor threshold. num_workers="
+                   << request.num_workers();
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
       request.language(),
       rpc::WorkerType::WORKER,
@@ -3072,6 +3086,15 @@ bool NodeManager::MarkKillWorkerInProgress() {
     monitor->Disable();
   }
   return true;
+}
+
+bool NodeManager::IsAnyMemoryMonitorAboveThreshold() const {
+  for (const auto &monitor : memory_monitors_) {
+    if (monitor->IsUsageAboveThreshold()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void NodeManager::ReleaseKillWorkerInProgress() {
