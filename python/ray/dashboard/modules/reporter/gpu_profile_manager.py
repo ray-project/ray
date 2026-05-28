@@ -107,7 +107,7 @@ class GpuProfilingManager:
             subprocess.check_output(
                 ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                 stderr=subprocess.DEVNULL,
-                timeout=2,
+                timeout=10,
             )
             return True
         except Exception:
