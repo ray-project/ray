@@ -162,7 +162,12 @@ enum TagKey {
   // Data
   // Logical operators, stored in JSON format with operator name and count.
   // Example: {"MapBatches": 2, "Filter": 1}
+  // Retained for backwards compatibility. New usage data goes in DATA_USAGE (401)
   DATA_LOGICAL_OPS = 400;
+  // Ray Data usage payload (JSON). Captures per-execution environment,
+  // workload description, and performance data. See
+  // python/ray/data/_internal/usage/collector.py for the schema.
+  DATA_USAGE = 401;
 
   // AIR
   // Name of AIR trainer, or "Custom" if user-defined.
