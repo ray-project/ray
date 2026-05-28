@@ -744,17 +744,10 @@ class AlgorithmConfig(_Config):
             if config.get(dep_k) == DEPRECATED_VALUE:
                 config.pop(dep_k, None)
 
-        # If the user is using the New API Stack
+        # If using the New API Stack, overwrite the stale legacy train_batch_size
+        # with the true computed total so to_dict() is not misleading.
         if self.enable_rl_module_and_learner:
-            # 1. Overwrite the stale legacy value with the true calculated total
             config["train_batch_size"] = self.total_train_batch_size
-
-            # 2. Expose the new API variables explicitly so they don't return "Not found"
-            config["train_batch_size_per_learner"] = self.train_batch_size_per_learner
-
-            # Note: We intentionally DO NOT inject "total_train_batch_size" as a distinct key
-            # to prevent AttributeError crashes during update_from_dict() round-tripping,
-            # because it is a read-only property.
 
         return config
 
