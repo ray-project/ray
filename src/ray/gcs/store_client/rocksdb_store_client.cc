@@ -59,13 +59,13 @@ rocksdb::WriteOptions RocksDbStoreClient::SyncWriteOptions() const {
   return wo;
 }
 
-RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
-                                       const std::string &db_path,
-                                       const std::string &expected_cluster_id,
-                                       bool offload_io,
-                                       std::size_t io_pool_size,
-                                       std::size_t strand_buckets)
-    : io_service_(io_service) {
+RocksDbStoreClient::RocksDbStoreClient(
+    [[maybe_unused]] instrumented_io_context &io_service,
+    const std::string &db_path,
+    const std::string &expected_cluster_id,
+    bool offload_io,
+    std::size_t io_pool_size,
+    std::size_t strand_buckets) {
   if (offload_io) {
     // Boost requires >=1 thread; clamp here so pool_size=0 from a bad
     // config can't crash the GCS at startup.

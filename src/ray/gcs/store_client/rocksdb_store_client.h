@@ -49,7 +49,7 @@ namespace gcs {
 ///
 /// - *Offloaded* (`gcs_rocksdb_async_offload = true`). Each call posts
 ///   its RocksDB work to a small `boost::asio::thread_pool`; the
-///   user-supplied callback still runs on `io_service_` via
+///   user-supplied callback still runs on the caller's executor via
 ///   `Postable::Post`. RocksDB's group-commit aggregates concurrent
 ///   in-flight writers into one fsync, so aggregate write throughput
 ///   scales with pool size while the event loop stays responsive.
@@ -114,7 +114,7 @@ class RocksDbStoreClient : public StoreClient {
   ///   gives ~16x headroom over the typical pool size (4) so collision-
   ///   induced serialization is rare. See class docstring for the
   ///   ordering guarantees this controls.
-  RocksDbStoreClient(instrumented_io_context &io_service,
+  RocksDbStoreClient([[maybe_unused]] instrumented_io_context &io_service,
                      const std::string &db_path,
                      const std::string &expected_cluster_id,
                      bool offload_io = false,
@@ -203,13 +203,6 @@ class RocksDbStoreClient : public StoreClient {
 
   static constexpr char kClusterIdKey[] = "__ray_cluster_id__";
   static constexpr char kJobCounterKey[] = "__ray_job_counter__";
-
-  // Holds a ref so Postable's default-IO-context resolution still works,
-  // matching how RedisStoreClient stores its io_service_. Not directly
-  // read in this class (clang's -Wunused-private-field would otherwise
-  // promote to error in the -Werror builds, even though gcc-on-wheels
-  // does not flag reference members).
-  [[maybe_unused]] instrumented_io_context &io_service_;
 
   /// Offload pool for RocksDB I/O. Null when offload_io was false in
   /// the ctor. Joined and destroyed BEFORE `db_` so any in-flight RocksDB
