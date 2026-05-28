@@ -134,7 +134,11 @@ class RealisticSchemaUDF:
         ).astype(np.float32)
 
     def __call__(self, batch) -> Dict[str, object]:
-        n_rows = len(batch["id"])
+        # Derive row count from any column. The first operator in the
+        # chain reads from ``ray.data.range`` (column ``id``); subsequent
+        # operators see this UDF's own output schema (``scalar_col_*`` /
+        # ``array_col_*``), so we can't hard-code ``batch["id"]``.
+        n_rows = len(next(iter(batch.values())))
         out: Dict[str, object] = {}
 
         for i, col in enumerate(self._scalar_cols):
@@ -229,7 +233,16 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    # ``Profiling.start()`` spawns ``_UDFPySpyProfiler`` actors on worker
+    # nodes. To deserialize that actor class, the worker has to import
+    # ``profiling.pyspy`` — which lives at this script's ``profiling/``
+    # sibling and isn't on the worker's Python path by default. Ship the
+    # directory alongside ``benchmark.py`` so workers can resolve the
+    # import.
+    import profiling as _profiling_pkg
+
+    _profiling_dir = os.path.dirname(os.path.abspath(_profiling_pkg.__file__))
+    ray.init(runtime_env={"py_modules": benchmark_py_modules() + [_profiling_dir]})
     args = parse_args()
 
     profiling = Profiling(outdir=SHARED_OUTDIR, num_gpu_nodes=0)
