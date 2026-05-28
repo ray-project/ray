@@ -1,6 +1,7 @@
 import collections
 import os
 import time
+from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -654,13 +655,18 @@ def test_local_rank_assignment():
             for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
         ]
 
-    def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):
+    def setup_and_check_worker_group(
+        pids: List[int],
+        node_ids: List[str],
+        gpu_ids: List[Optional[str]],
+        expected_local_ranks: Dict[int, int],
+    ):
         """
         Create a worker group, group workers by IP, and check local ranks assignment.
 
         Args:
             pids: List of unique process IDs.
-            ids: List of node ids corresponding to each PID.
+            node_ids: List of node ids corresponding to each PID.
             gpu_ids: List of GPU IDs or None for each PID.
             expected_local_ranks: Dictionary mapping PID to the
                 expected local rank.

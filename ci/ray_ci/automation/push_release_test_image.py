@@ -1,9 +1,10 @@
 """
-Push Wanda-cached release test images to ECR, GCP, and Azure registries used for
+Push Wanda-cached release test images to ECR and GCP registries used for
 release tests:
 - AWS ECR: anyscale/{image_type}:{tag}
 - GCP Artifact Registry: anyscale/{image_type}:{tag}
-- Azure Container Registry: anyscale/{image_type}:{tag}
+- Azure Container Registry: anyscale/{image_type}:{tag} (temporarily disabled
+  due to CI issues — see the Azure-disabled blocks below)
 
 Example:
     bazel run //ci/ray_ci/automation:push_release_test_image -- \\
@@ -55,11 +56,12 @@ def _annotate_pushed_image(image_uri: str, image_type: str) -> None:
     if os.environ.get("BUILDKITE") != "true":
         return
     step_key = os.environ.get("BUILDKITE_STEP_KEY")
-    rayci_select = os.environ.get("RAYCI_SELECT")
-    selected_step_keys = (
-        {key.strip() for key in rayci_select.split(",")} if rayci_select else set()
-    )
-    if step_key and selected_step_keys and step_key not in selected_step_keys:
+    selected_step_keys = {
+        key.strip()
+        for key in os.environ.get("RAYCI_SELECT", "").split(",")
+        if key.strip()
+    }
+    if step_key not in selected_step_keys:
         return
     subprocess.run(
         [
@@ -273,9 +275,10 @@ def main(
     pull_request: str,
 ) -> None:
     """
-    Push a Wanda-cached release test image to ECR, GCP, and Azure registries.
+    Push a Wanda-cached release test image to ECR and GCP registries.
 
-    Handles authentication for all three registries internally.
+    Handles authentication for both registries internally. Azure ACR push is
+    temporarily disabled due to CI issues.
     """
     ci_init()
 
@@ -312,8 +315,13 @@ def main(
     registries = [
         (ecr_registry, "ECR"),
         (global_config["byod_gcp_cr"], "GCP"),
-        (global_config["byod_azure_cr"], "Azure"),
+        # Azure image push temporarily disabled due to CI issues.
+        # (global_config["byod_azure_cr"], "Azure"),
     ]
+    logger.info(
+        "Azure image push is temporarily disabled due to CI issues; "
+        "skipping Azure Container Registry destination."
+    )
 
     if dry_run:
         for tag in tags:
@@ -325,7 +333,13 @@ def main(
     # Authenticate with all registries
     ecr_docker_login(ecr_registry)
     _run_gcloud_docker_login()
-    _run_azure_docker_login()
+    # Azure image push temporarily disabled due to CI issues; skipping
+    # Azure ACR authentication prerequisite.
+    logger.info(
+        "Skipping Azure ACR authentication: Azure image push is temporarily "
+        "disabled due to CI issues."
+    )
+    # _run_azure_docker_login()
 
     # Verify source image exists
     logger.info("Verifying source image in Wanda cache...")

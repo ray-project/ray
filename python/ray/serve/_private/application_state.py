@@ -427,6 +427,16 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
+        if (
+            ingress_request_router_deployment_name is not None
+            and ingress_request_router_deployment_name
+            != self._ingress_request_router_deployment_name
+        ):
+            logger.info(
+                f"Application '{self._name}' has ingress request router "
+                f"deployment '{ingress_request_router_deployment_name}' configured."
+            )
+
         self._ingress_deployment_name = ingress_deployment_name
         self._ingress_request_router_deployment_name = (
             ingress_request_router_deployment_name
@@ -1839,10 +1849,14 @@ def override_deployment_info(
         ):
             ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
-        merged_env = override_runtime_envs_except_env_vars(
-            app_runtime_env, override_actor_options.get("runtime_env", {})
-        )
-        override_actor_options.update({"runtime_env": merged_env})
+        child_runtime_env = override_actor_options.get("runtime_env", {})
+        # Avoid materializing an empty runtime_env; it changes the actor options
+        # hash and causes an unnecessary rolling update.
+        if app_runtime_env or child_runtime_env:
+            merged_env = override_runtime_envs_except_env_vars(
+                app_runtime_env, child_runtime_env
+            )
+            override_actor_options.update({"runtime_env": merged_env})
 
         replica_config.update(
             ray_actor_options=override_actor_options,

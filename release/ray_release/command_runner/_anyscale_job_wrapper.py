@@ -273,6 +273,35 @@ def run_oom_check():
     return return_code
 
 
+def run_spilling_check():
+    return_code = 0
+    try:
+        metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+        if metrics_path and Path(metrics_path).exists():
+            with open(metrics_path, "r") as f:
+                metrics = json.load(f)
+            spilled_bytes = metrics.get("spilled_bytes")
+            if spilled_bytes is None:
+                logger.error("Could not retrieve 'spilled_bytes' from metrics file")
+                return_code = 1
+            elif spilled_bytes:
+                logger.error(
+                    "Test failed: unexpected object-store spilling detected. "
+                    f"Details: {spilled_bytes}"
+                )
+                return_code = 1
+        else:
+            logger.error(
+                "RAYTEST_FAIL_ON_SPILLING is set to 1, but no metrics file "
+                f"found at path: {metrics_path}"
+            )
+            return_code = 1
+    except (OSError, json.JSONDecodeError, AttributeError) as e:
+        logger.exception(f"Error during spilling check: {e}")
+        return_code = 1
+    return return_code
+
+
 def run_dead_node_check():
     # Connect to the cluster and check for dead nodes
     import ray
@@ -392,6 +421,12 @@ def main(
         # Fail if any OOM kills occurred
         if return_code == 0 and test_fail_on_worker_oom:
             return_code = run_oom_check()
+
+        test_fail_on_spilling = os.environ.get("RAYTEST_FAIL_ON_SPILLING") == "1"
+
+        # Fail if any object-store spilling occurred
+        if return_code == 0 and test_fail_on_spilling:
+            return_code = run_spilling_check()
 
         uploaded_artifact = run_storage_cp(
             artifact_path,
