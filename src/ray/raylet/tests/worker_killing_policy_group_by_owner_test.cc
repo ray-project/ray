@@ -58,8 +58,8 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
-  std::shared_ptr<WorkerInterface> first_submitted =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> first_submitted = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> second_submitted =
       CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_);
@@ -92,8 +92,8 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroupAndLIF
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::shared_ptr<WorkerInterface> first_submitted =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> first_submitted = CreateTaskWorker(
+      owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> second_submitted =
       CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_);
@@ -119,17 +119,29 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
   TaskID second_group_owner_id = TaskID::FromRandom(job_id_);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::shared_ptr<WorkerInterface> first_submitted = CreateTaskWorker(
-      first_group_owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> first_submitted =
+      CreateTaskWorker(first_group_owner_id,
+                       has_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> second_submitted = CreateTaskWorker(
       second_group_owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
-  std::shared_ptr<WorkerInterface> third_submitted = CreateTaskWorker(
-      second_group_owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> third_submitted =
+      CreateTaskWorker(second_group_owner_id,
+                       has_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
-  std::shared_ptr<WorkerInterface> fourth_submitted = CreateTaskWorker(
-      second_group_owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> fourth_submitted =
+      CreateTaskWorker(second_group_owner_id,
+                       has_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> fifth_submitted = CreateTaskWorker(
       first_group_owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_);
@@ -170,14 +182,26 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::shared_ptr<WorkerInterface> first_submitted = CreateTaskWorker(
-      TaskID::FromRandom(job_id_), has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> first_submitted =
+      CreateTaskWorker(TaskID::FromRandom(job_id_),
+                       has_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
-  std::shared_ptr<WorkerInterface> second_submitted = CreateTaskWorker(
-      TaskID::FromRandom(job_id_), has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> second_submitted =
+      CreateTaskWorker(TaskID::FromRandom(job_id_),
+                       has_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
-  std::shared_ptr<WorkerInterface> third_submitted = CreateTaskWorker(
-      TaskID::FromRandom(job_id_), no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> third_submitted =
+      CreateTaskWorker(TaskID::FromRandom(job_id_),
+                       no_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
   workers.push_back(third_submitted);
@@ -207,8 +231,12 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
 TEST_F(WorkerKillingGroupByOwnerTest,
        TestMultipleNonRetriableTaskSameGroupAndNotRetried) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::shared_ptr<WorkerInterface> first_submitted = CreateTaskWorker(
-      TaskID::FromRandom(job_id_), no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, clock_);
+  std::shared_ptr<WorkerInterface> first_submitted =
+      CreateTaskWorker(TaskID::FromRandom(job_id_),
+                       no_retry_,
+                       port_,
+                       rpc::TaskType::ACTOR_CREATION_TASK,
+                       clock_);
   clock_.AdvanceTime(absl::Milliseconds(1));
   std::shared_ptr<WorkerInterface> second_submitted = CreateTaskWorker(
       TaskID::FromRandom(job_id_), no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_);
