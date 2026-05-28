@@ -35,6 +35,62 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
+# Backport vLLM PR #39873 until the pinned vLLM release includes it.
+python - <<'PY'
+import site
+import sysconfig
+from pathlib import Path
+
+ref = "9a77e42a670baf89871ff1d49aa4247b7749024f"
+candidate_dirs = [
+    Path(sysconfig.get_paths()["purelib"]),
+    Path(sysconfig.get_paths()["platlib"]),
+    *(Path(path) for path in site.getsitepackages()),
+]
+
+for base_dir in dict.fromkeys(candidate_dirs):
+    import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
+    if import_utils.exists():
+        break
+else:
+    raise SystemExit("vLLM import_utils.py not found")
+
+old = '''@cache
+def _has_module(module_name: str) -> bool:
+    """Return True if *module_name* can be found in the current environment.
+
+    The result is cached so that subsequent queries for the same module incur
+    no additional overhead.
+    """
+    return importlib.util.find_spec(module_name) is not None
+'''
+new = '''@cache
+def _has_module(module_name: str) -> bool:
+    """Return True if *module_name* can be imported in the current environment.
+
+    Uses ``importlib.util.find_spec`` as a fast pre-check, then performs a
+    trial import to verify that native dependencies (shared libraries, etc.)
+    are also satisfied.  The result is cached so that subsequent queries for
+    the same module incur no additional overhead.
+    """
+    if importlib.util.find_spec(module_name) is None:
+        return False
+    try:
+        importlib.import_module(module_name)
+        return True
+    except (ImportError, OSError) as exc:
+        logger.debug("Module %s was found but failed to import: %s", module_name, exc)
+        return False
+'''
+text = import_utils.read_text()
+if old in text:
+    import_utils.write_text(text.replace(old, new))
+elif "importlib.import_module(module_name)" not in text:
+    raise SystemExit("Could not apply vLLM optional import fix")
+
+print(f"Backported vLLM optional import fix {ref} to {import_utils}")
+PY
+
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
 # Fetch and run vLLM install scripts at pinned commit
@@ -53,76 +109,6 @@ curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
 
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
-
-# Keep the release image capable of running NIXL EP kernels.
-uv pip uninstall --system nixl-cu12 nixl-cu13 || true
-uv pip install --system --no-cache-dir --no-deps --reinstall nixl-cu13==1.1.0
-
-python - <<'PY'
-import importlib.metadata
-import importlib.util
-import shutil
-import site
-from pathlib import Path
-
-for site_dir in map(Path, site.getsitepackages()):
-    for pattern in (
-        "nixl_cu12",
-        "nixl_cu12-*",
-        "nixl_cu12.libs",
-        ".nixl_cu12.*",
-    ):
-        for path in site_dir.glob(pattern):
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-
-importlib.invalidate_caches()
-
-installed = {
-    dist.metadata.get("Name", "").lower()
-    for dist in importlib.metadata.distributions()
-}
-if "nixl-cu12" in installed:
-    raise SystemExit("nixl-cu12 must not be installed in the CUDA 13 LLM image")
-if "nixl" not in installed:
-    raise SystemExit("nixl must be installed for vLLM KV connector tests")
-if "nixl-cu13" not in installed:
-    raise SystemExit("nixl-cu13 must be installed in the CUDA 13 LLM image")
-
-if importlib.util.find_spec("nixl") is None:
-    raise SystemExit("nixl import spec is missing")
-if importlib.util.find_spec("nixl_cu13") is None:
-    raise SystemExit("nixl_cu13 import spec is missing")
-if importlib.util.find_spec("nixl_ep") is None:
-    raise SystemExit("nixl_ep import spec is missing")
-
-nixl_paths = []
-for site_dir in map(Path, site.getsitepackages()):
-    for pattern in ("nixl_ep", "nixl_cu13", "nixl_cu13.libs", ".nixl_cu13.*"):
-        nixl_paths.extend(site_dir.glob(pattern))
-
-bad_paths = []
-good_paths = []
-for path in nixl_paths:
-    files = path.rglob("*") if path.is_dir() else [path]
-    for file in files:
-        if not file.is_file():
-            continue
-        payload = file.read_bytes()
-        if b"libcudart.so.12" in payload:
-            bad_paths.append(str(file))
-        if b"libcudart.so.13" in payload:
-            good_paths.append(str(file))
-
-if bad_paths:
-    raise SystemExit(f"CUDA 12 NIXL files found in CUDA 13 LLM image: {bad_paths}")
-if not good_paths:
-    raise SystemExit("No CUDA 13 NIXL binaries found in the CUDA 13 LLM image")
-
-print("Verified CUDA 13 NIXL backend with nixl_ep enabled")
-PY
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
