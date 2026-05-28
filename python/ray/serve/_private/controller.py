@@ -15,7 +15,7 @@ from typing import (
 )
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -202,12 +202,20 @@ class ServeController:
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
                 "with HAProxy."
             )
+            all_interfaces = get_all_interfaces_ip()
+            if http_options.host != all_interfaces:
+                logger.warning(
+                    f"HTTPOptions.host={http_options.host!r} won't accept "
+                    "connections from HAProxy on other nodes; cross-node "
+                    "routing will fail with connection refused. Set host to "
+                    f"{all_interfaces!r} or omit it to use the HAProxy-mode "
+                    "default."
+                )
         elif self._direct_ingress_enabled:
             logger.info(
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
             )
-
             http_options.location = ProxyLocation.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
@@ -537,6 +545,7 @@ class ServeController:
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
             self._health_metrics_tracker.num_control_loops = num_loops
+            self._health_metrics_tracker.last_control_loop_time = time.time()
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
@@ -1348,6 +1357,7 @@ class ServeController:
             ),
             applications=applications,
             target_groups=self.get_target_groups(),
+            controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:

@@ -120,3 +120,25 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
+
+py_test_module_list(
+    size = "large",
+    data = glob(["serve/**/*.yaml"]),
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        # Direct streaming wires LLMRouter as the ingress_request_router,
+        # which build_app.py rejects unless HAProxy is enabled.
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    files = ["serve/gpu/integration/test_openai_compatibility.py"],
+    name_suffix = "_direct_streaming",
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
