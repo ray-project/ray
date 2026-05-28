@@ -1,7 +1,6 @@
 import collections
 import copy
 import logging
-import os
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -27,6 +26,9 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
@@ -161,28 +163,27 @@ class _StatsAccumulator:
 class Timer:
     """Helper class for tracking accumulated time (in seconds).
 
-    When ``track_distribution=True``, :meth:`add` also appends every
-    value to an internal list so :meth:`percentile` can compute exact
-    percentiles.
+    Every value passed to :meth:`add` is also fed into an internal
+    :class:`DistributionTracker` (a KLL sketch with bounded memory) so
+    :meth:`percentile` can return an approximate p-th percentile at any
+    time. The sketch uses O(k log(n/k)) memory (k=200 by default), so it
+    stays a few kilobytes regardless of how many samples are added —
+    safe for long-running production jobs.
 
-    .. warning::
-
-        ``track_distribution=True`` accumulates memory proportional to
-        the number of ``add()`` calls and is intended for short-lived
-        tests and benchmarks only — never for long-running production
-        workloads. The list is unbounded; a Ray Data job that runs for
-        hours can amass millions of entries (tens of MB).
+    Percentile accuracy is the KLL guarantee — roughly 1.65% rank error
+    at the default k=200. When the optional ``datasketches`` dependency
+    is not installed, :meth:`percentile` returns 0 (the other stats are
+    unaffected).
     """
 
-    def __init__(self, track_distribution: bool = False):
+    def __init__(self):
         self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
-        # When tracking is enabled, retain every sample so
-        # ``percentile`` can compute an exact value. Memory grows
-        # linearly with ``add()`` calls — see class-level warning.
-        self._samples: Optional[List[float]] = [] if track_distribution else None
+        # Bounded-memory percentile backend. add() forwards every value
+        # to ``add_sample`` and ``percentile`` reads from it.
+        self._distribution: DistributionTracker = DistributionTracker()
 
     @contextmanager
     def timer(self) -> None:
@@ -199,8 +200,7 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
-        if self._samples is not None:
-            self._samples.append(value)
+        self._distribution.add_sample(value)
 
     def get(self) -> float:
         return self._total
@@ -215,16 +215,11 @@ class Timer:
         return self._total / self._total_count if self._total_count else float("inf")
 
     def percentile(self, p: float) -> float:
-        """Exact ``p``-th percentile in seconds, with linear interpolation.
+        """Approximate ``p``-th percentile in seconds.
 
-        Requires ``track_distribution=True`` at construction so that
-        :meth:`add` retains every sample. Returns 0 when tracking is
-        disabled or no samples have been added.
-
-        Uses the linear-interpolation method (matches
-        ``numpy.percentile`` default and ``statistics.quantiles``
-        rank-based interpretation): rank ``k = p * (n - 1)``, then
-        interpolate between ``sorted[floor(k)]`` and ``sorted[floor(k)+1]``.
+        Backed by the internal :class:`DistributionTracker`'s KLL
+        sketch. Returns 0 when no samples have been added or the
+        optional ``datasketches`` package is unavailable.
 
         Args:
             p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
@@ -232,9 +227,8 @@ class Timer:
                 ``ValueError``.
 
         Returns:
-            The interpolated p-th percentile of all samples seen.
-            Returns 0 if tracking is disabled or no samples have been
-            added.
+            The approximate p-th percentile of all samples seen, or 0
+            when the sketch has no data / no backend.
 
         Raises:
             ValueError: If ``p`` is outside ``[0.0, 1.0]``.
@@ -244,16 +238,8 @@ class Timer:
                 f"p must be in [0.0, 1.0], got {p!r}. "
                 "Pass a fraction like 0.9, not a percent like 90."
             )
-        if not self._samples:
-            return 0
-        sorted_samples = sorted(self._samples)
-        n = len(sorted_samples)
-        k = p * (n - 1)
-        lo = int(k)
-        if lo >= n - 1:
-            return sorted_samples[-1]
-        frac = k - lo
-        return sorted_samples[lo] * (1 - frac) + sorted_samples[lo + 1] * frac
+        q = self._distribution._quantile(p)
+        return q if q is not None else 0
 
 
 class _DatasetStatsBuilder:
@@ -1098,17 +1084,10 @@ class DatasetStats:
         self.dataset_uuid: str = UNKNOWN_UUID
         self.time_total_s: float = 0
 
-        # Streaming executor stats. The scheduling-loop step Timer
-        # *can* retain every sample so we can report exact p50/p90,
-        # but doing so grows memory linearly with the job's lifetime —
-        # so it's opt-in via ``RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES``
-        # and intended for release-test runs, not production. When the
-        # env var is unset, percentile fields on the summary read 0.
-        self.streaming_exec_schedule_s: Timer = Timer(
-            track_distribution=(
-                os.environ.get("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", "0") == "1"
-            )
-        )
+        # Streaming executor stats. Timer's KLL-sketch percentile
+        # backend has bounded memory, so p50/p90 tracking is always on
+        # — no opt-in needed.
+        self.streaming_exec_schedule_s: Timer = Timer()
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -1291,8 +1270,9 @@ class DatasetStatsSummary:
     streaming_exec_schedule_s: float
     streaming_exec_schedule_avg_s: float
     streaming_exec_schedule_max_s: float
-    # Exact percentiles when sample tracking is enabled via
-    # ``RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES=1``; 0 otherwise.
+    # KLL-sketch-approximate percentiles (k=200, ~1.65% rank error).
+    # 0 when no samples have been added, or when the optional
+    # ``datasketches`` dependency is unavailable.
     streaming_exec_schedule_p50_s: float
     streaming_exec_schedule_p90_s: float
 

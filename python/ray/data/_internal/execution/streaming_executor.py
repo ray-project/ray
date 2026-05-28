@@ -449,10 +449,8 @@ class StreamingExecutor(Executor, threading.Thread):
         # Always assign a ``Timer`` so downstream consumers can call
         # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``
         # unconditionally. When ``_initial_stats`` is absent we hand
-        # back an empty (no-tracking) Timer; zero-sample semantics yield
-        # 0 across all four. Sample tracking is configured by
-        # ``DatasetStats.__init__`` based on an env var, so a default
-        # ``Timer()`` here matches the "not enabled" path.
+        # back an empty Timer; zero-sample semantics yield 0 across all
+        # four.
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats

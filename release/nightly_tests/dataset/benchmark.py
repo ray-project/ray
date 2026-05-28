@@ -98,9 +98,11 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     This is a subset from `get_stats_summary`, because we are only adding the ones
     we care about for the release tests."""
     summary = ds.get_stats_summary(detail=True)
-    out: Dict[str, Any] = {
+    return {
         "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
         "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
+        "p50_scheduling_loop_duration_s": summary.streaming_exec_schedule_p50_s,
+        "p90_scheduling_loop_duration_s": summary.streaming_exec_schedule_p90_s,
         "operators": [
             {
                 "operator_name": op.operator_name,
@@ -115,15 +117,6 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
             for op in summary.operators_stats
         ],
     }
-    # Only emit percentile keys when sample tracking was enabled — when
-    # it's off, ``summary.streaming_exec_schedule_p*_s`` is 0, and an
-    # explicit 0 in the output is indistinguishable from "the actual
-    # p50 happens to be 0s", which would mislead dashboards. Skipping
-    # the keys makes "tracking was off" unambiguous.
-    if os.environ.get("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", "0") == "1":
-        out["p50_scheduling_loop_duration_s"] = summary.streaming_exec_schedule_p50_s
-        out["p90_scheduling_loop_duration_s"] = summary.streaming_exec_schedule_p90_s
-    return out
 
 
 class RuntimeEnvSetupTracker:

@@ -2309,173 +2309,129 @@ ray.shutdown()
 
 
 class TestTimerPercentile:
-    """Tests for Timer's opt-in sample retention + percentile().
+    """Tests for Timer's KLL-sketch-backed percentile().
 
-    ``track_distribution=True`` retains every sample so ``percentile``
-    can compute exact values via linear interpolation between sorted
-    samples (same method as ``numpy.percentile`` default).
+    Every ``Timer.add(v)`` feeds the internal ``DistributionTracker``
+    sketch, so ``percentile`` returns an approximate quantile bounded
+    by the KLL accuracy guarantee (~1.65% rank error at k=200). For
+    sample counts at or below k the sketch keeps every item and
+    returns exact values; the relaxed tolerances below cover both
+    regimes.
     """
 
-    def test_disabled_by_default(self):
-        t = Timer()
-        for v in [0.001, 0.01, 0.1, 1.0]:
-            t.add(v)
-        # Existing min/max/sum/count behavior preserved.
-        assert t.get() == pytest.approx(1.111)
-        assert t.max() == pytest.approx(1.0)
-        assert t.avg() == pytest.approx(0.27775)
-        # percentile returns 0 when tracking is off (no samples retained).
-        assert t.percentile(0.5) == 0
-        assert t.percentile(0.9) == 0
-
     def test_zero_samples(self):
-        t = Timer(track_distribution=True)
+        t = Timer()
         assert t.percentile(0.0) == 0
         assert t.percentile(0.5) == 0
         assert t.percentile(0.9) == 0
         assert t.percentile(1.0) == 0
 
+    def test_existing_aggregate_stats_unchanged(self):
+        # Sanity: wiring DistributionTracker into add() must not perturb
+        # Timer's pre-existing sum/min/max/avg semantics.
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        assert t.get() == pytest.approx(1.111)
+        assert t.max() == pytest.approx(1.0)
+        assert t.min() == pytest.approx(0.001)
+        assert t.avg() == pytest.approx(0.27775)
+
     def test_single_sample(self):
-        t = Timer(track_distribution=True)
+        t = Timer()
         t.add(0.042)
-        # Every percentile of a one-sample distribution is that sample.
         for p in [0.0, 0.5, 0.9, 1.0]:
             assert t.percentile(p) == pytest.approx(0.042)
 
-    @pytest.mark.parametrize(
-        "p, expected",
-        [
-            # 100 samples all at 5ms → every percentile is exactly 5ms.
-            (0.5, 0.005),
-            (0.9, 0.005),
-            (0.99, 0.005),
-        ],
-    )
-    def test_uniform_samples(self, p, expected):
-        t = Timer(track_distribution=True)
+    @pytest.mark.parametrize("p", [0.5, 0.9, 0.99])
+    def test_uniform_samples(self, p):
+        # All samples identical — every quantile must equal the sample.
+        t = Timer()
         for _ in range(100):
             t.add(0.005)
-        assert t.percentile(p) == pytest.approx(expected)
+        assert t.percentile(p) == pytest.approx(0.005)
 
-    def test_linearly_spaced_samples(self):
-        # 11 samples spaced 0.0, 0.1, 0.2, ..., 1.0. With linear
-        # interpolation between sorted values:
-        #   p=0.0 → sorted[0]   = 0.0
-        #   p=0.5 → sorted[5]   = 0.5  (rank 0.5 * 10 = 5 exactly)
-        #   p=0.9 → sorted[9]   = 0.9  (rank 9)
-        #   p=1.0 → sorted[-1]  = 1.0
-        t = Timer(track_distribution=True)
+    def test_linearly_spaced_samples_within_kll_tolerance(self):
+        # 11 samples in [0.0, 1.0]. With k=200 the sketch is exact at
+        # this size; allow a small abs tolerance for safety.
+        t = Timer()
         for v in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
             t.add(v)
-        assert t.percentile(0.0) == pytest.approx(0.0)
-        assert t.percentile(0.5) == pytest.approx(0.5)
-        assert t.percentile(0.9) == pytest.approx(0.9)
-        assert t.percentile(1.0) == pytest.approx(1.0)
+        assert t.percentile(0.0) == pytest.approx(0.0, abs=0.05)
+        assert t.percentile(0.5) == pytest.approx(0.5, abs=0.1)
+        assert t.percentile(0.9) == pytest.approx(0.9, abs=0.1)
+        assert t.percentile(1.0) == pytest.approx(1.0, abs=0.05)
 
-    def test_interpolates_between_ranks(self):
-        # Non-integer rank — verify linear interpolation. 10 samples
-        # at integer values 1..10. p=0.55 → rank = 0.55 * 9 = 4.95 →
-        # interpolate 95% of the way between sorted[4]=5 and sorted[5]=6
-        # → 5.95.
-        t = Timer(track_distribution=True)
-        for v in range(1, 11):  # 10 samples: 1, 2, ..., 10
+    def test_percentiles_are_monotonic(self):
+        # Across arbitrary quantiles, the sketch must return a
+        # monotonically non-decreasing sequence.
+        t = Timer()
+        for v in range(1, 1001):
             t.add(float(v))
-        assert t.percentile(0.55) == pytest.approx(5.95)
+        ps = [t.percentile(q) for q in [0.1, 0.25, 0.5, 0.75, 0.9, 0.99]]
+        assert ps == sorted(ps)
 
     def test_bimodal_distribution(self):
-        # 80 samples at 5ms, 20 samples at 200ms. Sorted: [5ms]*80 then
-        # [200ms]*20. Indices 0..79 are 5ms, 80..99 are 200ms.
-        #   p=0.5 → rank 0.5*99 = 49.5 → interp(5ms, 5ms) = 5ms
-        #   p=0.9 → rank 0.9*99 = 89.1 → interp(200ms, 200ms) = 200ms
-        t = Timer(track_distribution=True)
+        # 80 samples at 5ms, 20 samples at 200ms.
+        #   true p50 = 5ms (50% of mass is at 5ms)
+        #   true p90 ≈ 200ms (top 20% of mass is at 200ms)
+        t = Timer()
         for _ in range(80):
             t.add(0.005)
         for _ in range(20):
             t.add(0.2)
-        assert t.percentile(0.5) == pytest.approx(0.005)
-        assert t.percentile(0.9) == pytest.approx(0.2)
+        assert t.percentile(0.5) == pytest.approx(0.005, abs=0.01)
+        assert t.percentile(0.9) == pytest.approx(0.2, abs=0.05)
 
     def test_worker_scaling_regression_case(self):
         # Regression test for the worker_scaling-scale workload that
-        # motivated the switch to exact percentiles. With raw sample
-        # retention, p50/p90 sit close to the actual distribution
-        # and are distinguishable (no histogram bin quantization).
-        t = Timer(track_distribution=True)
-        # 80 samples in 8-12s
-        for v in [8.0, 9.0, 10.0, 11.0, 12.0] * 16:
+        # motivated proper percentile tracking. KLL-backed percentiles
+        # land close to the true distribution and stay monotonic.
+        t = Timer()
+        for v in [8.0, 9.0, 10.0, 11.0, 12.0] * 16:  # 80 in 8-12s
             t.add(v)
-        # 16 samples in 15-28s
-        for v in [15.0, 18.0, 22.0, 28.0] * 4:
+        for v in [15.0, 18.0, 22.0, 28.0] * 4:  # 16 in 15-28s
             t.add(v)
         for v in [35.0, 37.0]:
             t.add(v)
         max_v = t.max()
         p50 = t.percentile(0.5)
         p90 = t.percentile(0.9)
-        # Monotonic and bounded by max — guaranteed by exact percentiles.
-        assert 0 < p50 < p90 <= max_v
+        assert 0 < p50 <= p90 <= max_v
         # p50 in the bulk (8-12s); p90 well into the tail.
         assert 8.0 <= p50 <= 12.0
-        assert p90 >= 18.0
+        assert p90 >= 15.0
 
     @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
     def test_rejects_out_of_range_p(self, bad_p):
         # Catch the common ``percentile(90)`` typo (instead of 0.9).
-        t = Timer(track_distribution=True)
+        t = Timer()
         t.add(0.005)
         with pytest.raises(ValueError, match="p must be in"):
             t.percentile(bad_p)
 
     @pytest.mark.parametrize("ok_p", [0.0, 1.0])
     def test_accepts_boundary_p(self, ok_p):
-        t = Timer(track_distribution=True)
+        t = Timer()
         t.add(0.005)
         # Should not raise.
         t.percentile(ok_p)
 
-    def test_track_distribution_warning_in_docstring(self):
-        # The class docstring must warn callers that this flag is for
-        # tests/benchmarks only — memory grows linearly with add() calls.
-        assert "track_distribution" in Timer.__doc__
-        assert "warning" in Timer.__doc__.lower()
-        assert "test" in Timer.__doc__.lower()
 
-
-def test_streaming_exec_schedule_percentiles_populated(
-    ray_start_regular_shared, monkeypatch
-):
-    # Smoke test: with the env var set, percentile fields on the summary
-    # are populated end-to-end via the streaming executor.
-    monkeypatch.setenv("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", "1")
-    # ``Dataset.materialize`` runs the streaming executor on a deep copy
-    # of the dataset, so stats land on the MaterializedDataset it
-    # returns. The original ``ds`` keeps an empty cache; reading stats
-    # from it would yield a fresh, never-added-to Timer.
+def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
+    # KLL-sketch percentile tracking is always on (bounded memory), so
+    # the percentile fields are populated end-to-end with no env-var
+    # gating. ``Dataset.materialize`` runs the streaming executor on a
+    # deep copy of the dataset, so stats land on the
+    # ``MaterializedDataset`` it returns — read stats from there.
     mds = ray.data.range(100).map(lambda r: r).materialize()
     summary = mds.get_stats_summary(detail=True)
     p50 = summary.streaming_exec_schedule_p50_s
     p90 = summary.streaming_exec_schedule_p90_s
     schedule_max = summary.streaming_exec_schedule_max_s
-    # Percentile fields are actually populated (non-zero) and bounded
-    # by max — checking only the ordering would be vacuously true when
-    # the Timer is empty.
+    # Percentiles are populated, monotonic, and bounded by max.
     assert p90 > 0
     assert 0 <= p50 <= p90 <= schedule_max
-
-
-def test_streaming_exec_schedule_percentiles_off_by_default(
-    ray_start_regular_shared, monkeypatch
-):
-    # Without the env var, sample tracking stays off and the percentile
-    # fields read 0. The other timing fields (avg/max) still work.
-    monkeypatch.delenv("RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES", raising=False)
-    # See the populated variant — stats live on the materialize return value.
-    mds = ray.data.range(100).map(lambda r: r).materialize()
-    summary = mds.get_stats_summary(detail=True)
-    assert summary.streaming_exec_schedule_p50_s == 0
-    assert summary.streaming_exec_schedule_p90_s == 0
-    # ...but avg/max are still populated.
-    assert summary.streaming_exec_schedule_max_s > 0
 
 
 if __name__ == "__main__":

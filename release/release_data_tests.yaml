@@ -629,11 +629,6 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
-        # Retain every scheduling-loop-step duration so we can report
-        # exact p50/p70/p90 in collect_dataset_stats. Off by default
-        # (memory grows linearly with loop iterations) — only safe here
-        # because the benchmark runs are short and bounded.
-        - RAY_DATA_TRACK_SCHEDULING_LOOP_SAMPLES=1
     cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
 
   matrix:
