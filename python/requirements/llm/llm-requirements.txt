@@ -1,7 +1,7 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
-vllm[audio]==0.21.0
+vllm[audio]==0.22.0
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
-# https://github.com/vllm-project/vllm/blob/v0.21.0/requirements/kv_connectors.txt#L2
+# https://github.com/vllm-project/vllm/blob/v0.22.0/requirements/kv_connectors.txt#L2
 nixl==1.1.0
 nixl-cu13==1.1.0
 anyio>=4.5.0
