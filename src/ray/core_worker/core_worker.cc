@@ -34,6 +34,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
@@ -1044,7 +1045,6 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     const std::vector<ObjectID> &contained_object_ids,
     ObjectID *object_id,
     std::shared_ptr<Buffer> *data,
-    const std::unique_ptr<rpc::Address> &owner_address,
     bool inline_small_object,
     const std::optional<std::string> &tensor_transport) {
   auto status = WaitForActorRegistered(contained_object_ids);
@@ -1053,74 +1053,30 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
   }
   *object_id = ObjectID::FromIndex(worker_context_->GetCurrentInternalTaskId(),
                                    worker_context_->GetNextPutIndex());
-  rpc::Address real_owner_address =
-      owner_address != nullptr ? *owner_address : rpc_address_;
-  bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
-  if (owned_by_us) {
-    SubscribeToNodeChanges();
-    reference_counter_->AddOwnedObject(*object_id,
-                                       contained_object_ids,
-                                       rpc_address_,
-                                       CurrentCallSite(),
-                                       data_size + metadata->Size(),
-                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
-                                       /*add_local_ref=*/true,
-                                       NodeID::FromBinary(rpc_address_.node_id()),
-                                       /*tensor_transport=*/tensor_transport);
+  SubscribeToNodeChanges();
+  reference_counter_->AddOwnedObject(*object_id,
+                                     contained_object_ids,
+                                     rpc_address_,
+                                     CurrentCallSite(),
+                                     data_size + metadata->Size(),
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true,
+                                     NodeID::FromBinary(rpc_address_.node_id()),
+                                     /*tensor_transport=*/tensor_transport);
 
-    // Register the callback to free the RDT object when it is out of scope.
-    if (tensor_transport.has_value()) {
-      reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
-                                                             free_actor_object_callback_);
-    }
-  } else {
-    // Because in the remote worker's `HandleAssignObjectOwner`,
-    // a `WaitForRefRemoved` RPC request will be sent back to
-    // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first. Note that in worker.py we set
-    // skip_adding_local_ref=True to avoid double referencing the object.
-    AddLocalReference(*object_id);
-    RAY_UNUSED(
-        reference_counter_->AddBorrowedObject(*object_id,
-                                              ObjectID::Nil(),
-                                              real_owner_address,
-                                              /*foreign_owner_already_monitoring=*/true));
-
-    // Remote call `AssignObjectOwner()`.
-    rpc::AssignObjectOwnerRequest request;
-    request.set_object_id(object_id->Binary());
-    request.mutable_borrower_address()->CopyFrom(rpc_address_);
-    request.set_call_site(CurrentCallSite());
-
-    for (auto &contained_object_id : contained_object_ids) {
-      request.add_contained_object_ids(contained_object_id.Binary());
-    }
-    request.set_object_size(data_size + metadata->Size());
-    auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
-    std::promise<Status> status_promise;
-    conn->AssignObjectOwner(request,
-                            [&status_promise](const Status &returned_status,
-                                              const rpc::AssignObjectOwnerReply &reply) {
-                              status_promise.set_value(returned_status);
-                            });
-    // Block until the remote call `AssignObjectOwner` returns.
-    status = status_promise.get_future().get();
-    // Must call `AddNestedObjectIds` after finished assign owner.
-    // Otherwise, it will cause the reference count of those contained objects
-    // to be less than expected. Details: https://github.com/ray-project/ray/issues/30341
-    reference_counter_->AddNestedObjectIds(
-        *object_id, contained_object_ids, real_owner_address);
+  // Register the callback to free the RDT object when it is out of scope.
+  if (tensor_transport.has_value()) {
+    reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
+                                                           free_actor_object_callback_);
   }
 
-  if (status.ok()) {
-    status = plasma_store_provider_->Create(metadata,
-                                            data_size,
-                                            *object_id,
-                                            /*owner_address=*/real_owner_address,
-                                            data,
-                                            /*created_by_worker=*/true,
-                                            is_experimental_mutable_object);
-  }
+  status = plasma_store_provider_->Create(metadata,
+                                          data_size,
+                                          *object_id,
+                                          /*owner_address=*/rpc_address_,
+                                          data,
+                                          /*created_by_worker=*/true,
+                                          is_experimental_mutable_object);
   if (!status.ok()) {
     RemoveLocalReference(*object_id);
     return status;
@@ -1173,11 +1129,8 @@ Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
   return experimental_mutable_object_provider_->SetError(object_id);
 }
 
-Status CoreWorker::SealOwned(const ObjectID &object_id,
-                             bool pin_object,
-                             const std::unique_ptr<rpc::Address> &owner_address) {
-  auto status =
-      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address));
+Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object) {
+  auto status = SealExisting(object_id, pin_object, ObjectID::Nil());
   if (status.ok()) {
     return status;
   }
@@ -3083,6 +3036,10 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   return {object_ref, ready};
 }
 
+ObjectID CoreWorker::PeekObjectIdStream(const ObjectID &generator_id) {
+  return task_manager_->PeekObjectRefStream(generator_id).first;
+}
+
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
                                          const ObjectID &generator_id,
@@ -4325,35 +4282,6 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
             ShutdownReason::kIdleTimeout,
             "Worker exited due to RPC failure during idle exit");
       });
-}
-
-void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
-                                         rpc::AssignObjectOwnerReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
-  SubscribeToNodeChanges();
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  const auto &borrower_address = request.borrower_address();
-  const std::string &call_site = request.call_site();
-  // Get a list of contained object ids.
-  std::vector<ObjectID> contained_object_ids;
-  contained_object_ids.reserve(request.contained_object_ids_size());
-  for (const auto &id_binary : request.contained_object_ids()) {
-    contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
-  }
-  reference_counter_->AddOwnedObject(
-      object_id,
-      contained_object_ids,
-      rpc_address_,
-      call_site,
-      request.object_size(),
-      LineageReconstructionEligibility::INELIGIBLE_PUT,
-      /*add_local_ref=*/false,
-      /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
-  reference_counter_->AddBorrowerAddress(object_id, borrower_address);
-  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                     object_id,
-                     reference_counter_->HasReference(object_id));
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 // Handle RPC for TaskManager::NumPendingTasks().

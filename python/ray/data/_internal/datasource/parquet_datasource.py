@@ -27,6 +27,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
 )
 from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -132,6 +133,11 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 _ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
 
 _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
+
+# Opt-in env var to allow reading Parquet files that contain
+# ray.data.arrow_pickled_object columns. Disabled by default because
+# pickle.load on attacker-controlled data enables arbitrary code execution.
+AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
 
 class _ParquetFragment:
@@ -560,6 +566,9 @@ class ParquetDatasource(Datasource):
         and ``from_state`` (used by alternate constructors like
         ``from_pyarrow_dataset``).
         """
+        self._allow_pickle_object_columns = env_bool(
+            AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False
+        )
         self._supports_distributed_reads = supports_distributed_reads
         self._local_scheduling = local_scheduling
         self._source_paths_ref = source_paths_ref
@@ -818,7 +827,6 @@ class ParquetDatasource(Datasource):
                 block_udf,
                 to_batches_kwargs,
                 data_columns,
-                data_columns_rename_map,
                 partition_columns,
                 read_schema,
                 include_paths,
@@ -828,7 +836,6 @@ class ParquetDatasource(Datasource):
                 self._block_udf,
                 self._scanner_kwargs,
                 self._get_data_columns(),
-                self.get_column_renames(),
                 self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
@@ -836,13 +843,13 @@ class ParquetDatasource(Datasource):
                 self._partitioning,
             )
 
+            allow_pickle = self._allow_pickle_object_columns
             read_tasks.append(
                 ReadTask(
                     lambda f=fragments: read_fragments(
                         block_udf,
                         to_batches_kwargs,
                         data_columns,
-                        data_columns_rename_map,
                         partition_columns,
                         read_schema,
                         f,
@@ -851,6 +858,7 @@ class ParquetDatasource(Datasource):
                         partitioning,
                         filter_expr,
                         filter_columns,
+                        allow_pickle,
                     ),
                     meta,
                     schema=target_schema,
@@ -1117,11 +1125,29 @@ class ParquetDatasource(Datasource):
         return target_schema
 
 
+def _check_for_pickle_object_columns(table: "pyarrow.Table") -> None:
+    pickle_cols = [
+        field.name
+        for field in table.schema
+        if isinstance(field.type, ArrowPythonObjectType)
+    ]
+    if pickle_cols:
+        raise ValueError(
+            f"This Parquet file contains columns stored as "
+            f"'ray.data.arrow_pickled_object': {pickle_cols}. Reading these "
+            f"columns requires unpickling, which can execute arbitrary code "
+            f"and is unsafe with untrusted files.\n\n"
+            f"If you trust the source of this data, set the environment "
+            f"variable {AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
+            f"reading these columns. In a Ray cluster, this variable must "
+            f"be set on all worker nodes (e.g. via 'runtime_env')."
+        )
+
+
 def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
     data_columns: Optional[List[str]],
-    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
@@ -1130,6 +1156,7 @@ def read_fragments(
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
+    allow_pickle: bool = False,
 ) -> Iterator["pyarrow.Table"]:
     """Yield Arrow tables from Parquet fragments via ``to_batches_kwargs``."""
     # This import is necessary to load the tensor extension type.
@@ -1148,7 +1175,6 @@ def read_fragments(
                 fragment.original,
                 schema=schema,
                 data_columns=data_columns,
-                data_columns_rename_map=data_columns_rename_map,
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
@@ -1162,6 +1188,8 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
+                if not allow_pickle:
+                    _check_for_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:
@@ -1510,7 +1538,6 @@ def _read_batches_from(
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
-    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -1527,8 +1554,6 @@ def _read_batches_from(
     """
 
     import pyarrow as pa
-
-    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})
@@ -1560,7 +1585,6 @@ def _read_batches_from(
     row_offset = 0
 
     def _generate_tables() -> "pa.Table":
-        """Inner generator that yields tables without renaming."""
         nonlocal row_offset
 
         def _postprocess_table(table):
@@ -1628,10 +1652,7 @@ def _read_batches_from(
                 )
             raise
 
-    # Apply renames to all tables from the generator
-    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
-        _generate_tables(), data_columns_rename_map
-    )
+    yield from _generate_tables()
 
 
 def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:

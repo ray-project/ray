@@ -204,6 +204,41 @@ class TestSessionIdHeader:
         )
 
 
+class TestMatchesSessionIdHeader:
+    """Unit tests for the case/separator-tolerant comparison used by the
+    proxy + Lua forwarder. Without this helper, an intermediate proxy that
+    rewrites ``_``↔``-`` (nginx, AWS API Gateway, ...) would silently drop
+    session affinity for half of all clients.
+    """
+
+    @pytest.mark.parametrize(
+        "stored,incoming,expected",
+        [
+            # Default hyphenated form.
+            ("x-session-id", "x-session-id", True),
+            ("x-session-id", "X-Session-Id", True),
+            ("x-session-id", "x_session_id", True),
+            ("x-session-id", "x-Other-Id", False),
+            # Operator stored the underscored form (e.g. legacy).
+            ("x_session_id", "x-session-id", True),
+            ("x_session_id", "x_session_id", True),
+            # Custom configured value via env var (e.g. aiperf's correlation id).
+            ("x-correlation-id", "x-correlation-id", True),
+            ("x-correlation-id", "x_correlation_id", True),
+            ("x-correlation-id", "X-Correlation-Id", True),
+            ("x-correlation-id", "x-session-id", False),
+        ],
+    )
+    def test_match(self, monkeypatch, stored, incoming, expected):
+        # SERVE_SESSION_ID is module-level constant; monkey-patch it on the
+        # two modules that import it for the duration of this test.
+        from ray.serve._private import constants, http_util
+
+        monkeypatch.setattr(constants, "SERVE_SESSION_ID", stored)
+        monkeypatch.setattr(http_util, "SERVE_SESSION_ID", stored)
+        assert http_util._matches_session_id_header(incoming) is expected
+
+
 if __name__ == "__main__":
     import sys
 

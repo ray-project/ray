@@ -531,11 +531,15 @@ def _read_datasource_v2(
         if ctx.target_max_block_size is not None
         else sys.maxsize
     )
+    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
+    # (``-1`` when unset). Honoring it here per-read avoids mutating the
+    # process-global ``DataContext.read_op_min_num_blocks``.
+    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
     partitioner = RoundRobinPartitioner(
         in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
-        num_buckets=ctx.read_op_min_num_blocks,
+        num_buckets=num_buckets,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -563,7 +567,6 @@ def _read_datasource_v2(
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
 
     read_op = ReadFiles(
-        input_op=list_files_op,
         datasource_name=datasource.name,
         scanner=scanner,
         schema=schema,
@@ -571,9 +574,10 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        input_dependencies=[list_files_op],
     )
 
-    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    stats = DatasetStats(metadata={"ReadFiles": []}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(read_op, context)
 
@@ -1192,14 +1196,17 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col, lit
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and
-            # row filtering down to the file scan.
-            ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            ).select_columns(["sepal.length", "variety"])
+            # Create a Dataset by reading a Parquet file, with column selection and
+            # row filtering pushed down to the file scan.
+            ds = (
+                ray.data.read_parquet(
+                    "s3://anonymous@ray-example-data/iris.parquet",
+                )
+                .filter(expr=col("sepal.length") > lit(5.0))
+                .select_columns(["sepal.length", "variety"])
+            )
 
             ds.show(2)
 
@@ -1224,7 +1231,12 @@ def read_parquet(
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
-            read during the file scan.
+            read during the file scan. Deprecated — use
+            :meth:`~ray.data.Dataset.select_columns` on the returned dataset
+            instead. To downselect when ``include_paths`` and/or
+            ``include_row_hash`` are ``True``, list the synthetic ``'path'``
+            / ``'row_hash'`` columns explicitly in your
+            ``select_columns([...])`` call to retain them.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -1247,13 +1259,19 @@ def read_parquet(
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
-            stored in the ``'path'`` column.
+            stored in the ``'path'`` column. To downselect to fewer columns,
+            use :meth:`~ray.data.Dataset.select_columns` on the returned
+            dataset and include ``'path'`` explicitly in the list to retain
+            it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
             The hash is a uint64 computed from the source file path and the row's
             output position, making it reproducible across repeated reads of the
             same data with the same pipeline configuration. Stored in the
             ``'row_hash'`` column. If a column named ``'row_hash'`` already
-            exists in the file, it will be overwritten.
+            exists in the file, it will be overwritten. To downselect to fewer
+            columns, use :meth:`~ray.data.Dataset.select_columns` on the
+            returned dataset and include ``'row_hash'`` explicitly in the list
+            to retain it.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1297,33 +1315,66 @@ def read_parquet(
         # ``tensor_column_schema`` is folded into ``_block_udf`` by
         # ``_resolve_parquet_args`` above; passing that transform through
         # ``ReadFiles.block_udf`` covers both features.
+        parquet_format_kwargs: dict = {}
         if dataset_kwargs:
-            raise NotImplementedError(
-                "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
+            # V1 spread ``dataset_kwargs`` into ``pq.ParquetDataset(...)``;
+            # V2 reads via ``pds.dataset`` per worker, so route the same
+            # options through ``pds.ParquetFileFormat`` in
+            # ``ParquetFileReader``. ``partitioning`` is set by Ray. Row
+            # predicates belong in Ray (``Dataset.filter``): PyArrow's
+            # ``pq.ParquetDataset`` uses ``filters``; ``pds.Scanner`` uses
+            # ``filter`` — neither is accepted via ``dataset_kwargs``.
+            warnings.warn(
+                "`dataset_kwargs` on `read_parquet` is deprecated. Pass "
+                "PyArrow Parquet options as top-level keyword arguments "
+                "to `read_parquet` instead.",
+                DeprecationWarning,
+                stacklevel=2,
             )
+            parquet_format_kwargs = dict(dataset_kwargs)
+            if "partitioning" in parquet_format_kwargs:
+                raise ValueError(
+                    "The 'partitioning' parameter isn't supported in "
+                    "'dataset_kwargs'. Use the top-level 'partitioning' "
+                    "parameter instead."
+                )
+            if "filters" in parquet_format_kwargs or "filter" in parquet_format_kwargs:
+                raise ValueError(
+                    "Row filtering via 'filters' (pyarrow.parquet.ParquetDataset) "
+                    "or 'filter' (pyarrow.dataset.Scanner) isn't supported in "
+                    "'dataset_kwargs'. Use `.filter(expr=...)` on the returned "
+                    "dataset instead."
+                )
+            # ``pq.ParquetDataset(read_dictionary=[...])`` maps to
+            # ``pds.ParquetFileFormat(dictionary_columns=[...])``.
+            if "read_dictionary" in parquet_format_kwargs:
+                parquet_format_kwargs["dictionary_columns"] = parquet_format_kwargs.pop(
+                    "read_dictionary"
+                )
+        select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
-            # TODO(datasource-v2): remove `columns=` from `read_parquet` once
-            # the projection-pushdown rule dispatches to `ReadFiles`. Callers
-            # should use `ray.data.read_parquet(path).select_columns([...])`.
-            #
-            # Caveat for the ``include_paths=True`` migration: V1
-            # ``columns=[...]`` implicitly retained the synthetic ``"path"``
-            # column (see ``ParquetDatasource.read_fragments`` /
-            # ``get_current_projection``), but ``select_columns([...])`` is
-            # literal and will drop ``"path"`` unless it's listed explicitly.
-            # Callers passing both must add ``"path"`` to their projection
-            # when migrating; the message below flags that case.
-            hint = (
-                " Note: when combined with `include_paths=True`, V1 implicitly"
-                " retained the `path` column — add `'path'` to your"
-                " `select_columns([...])` list to preserve it."
-                if include_paths
-                else ""
+            # V1 ``columns=[...]`` implicitly retained the synthetic
+            # ``"path"`` / ``"row_hash"`` columns when ``include_paths``
+            # / ``include_row_hash`` were set (see
+            # ``ParquetDatasource.get_current_projection``).
+            # ``select_columns([...])`` is literal, so preserve V1's
+            # behavior by appending those columns when applying the
+            # projection on the caller's behalf.
+            select_columns_after_read = list(columns)
+            if include_paths and "path" not in select_columns_after_read:
+                select_columns_after_read.append("path")
+            if include_row_hash and "row_hash" not in select_columns_after_read:
+                select_columns_after_read.append("row_hash")
+            warnings.warn(
+                "`columns=` on `read_parquet` is deprecated. Use "
+                "`ray.data.read_parquet(path).select_columns([...])` instead.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-            raise NotImplementedError(
-                "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
-                "path. Use `ray.data.read_parquet(path).select_columns([...])` "
-                "instead." + hint
+        if "filter" in arrow_parquet_args:
+            raise ValueError(
+                "`filter=` on `read_parquet` is not supported. "
+                "Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
 
         from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
@@ -1340,8 +1391,9 @@ def read_parquet(
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
+            parquet_format_kwargs=parquet_format_kwargs,
         )
-        return _read_datasource_v2(
+        ds = _read_datasource_v2(
             datasource_v2,
             parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
             num_cpus=num_cpus,
@@ -1352,6 +1404,9 @@ def read_parquet(
             partition_filter=partition_filter,
             block_udf=_block_udf,
         )
+        if select_columns_after_read is not None:
+            ds = ds.select_columns(select_columns_after_read)
+        return ds
 
     datasource = ParquetDatasource(
         paths,

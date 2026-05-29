@@ -18,6 +18,7 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
     _log_fallback_warning,
+    _plan_obstore_routing,
     download_bytes_async,
 )
 from ray.data._internal.planner.download_partition_actor import (
@@ -68,9 +69,18 @@ def plan_download_op(
     # at the start of the chain. This is primarily done to prevent partition actors from bottlenecking
     # the chain becuase the interleaved operators would be a single actor. As a result, the
     # URIDownloader physical operator is responsible for outputting appropriately sized blocks.
+    # Decide obstore vs threaded upfront. For fsspec-S3 filesystems backed by
+    # a session we can't statically introspect (Okta / STS / profile-based),
+    # _plan_obstore_routing emits a warning and returns use_obstore=False so
+    # we fall back to the threaded PyArrow path — which uses the user's
+    # filesystem directly and resolves credentials correctly.
+    use_obstore_path = False
+    if OBSTORE_AVAILABLE:
+        use_obstore_path, _ = _plan_obstore_routing(filesystem)
+
     partition_map_operator = None
     if not upstream_op_is_download:
-        partition_cls = AsyncPartitionActor if OBSTORE_AVAILABLE else PartitionActor
+        partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
         # PartitionActor / AsyncPartitionActor are callable classes, so we need
         # ActorPoolStrategy.
         partition_compute = ActorPoolStrategy(
@@ -117,12 +127,17 @@ def plan_download_op(
             ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
-    if OBSTORE_AVAILABLE:
+    if use_obstore_path:
         download_fn = download_bytes_async
         logger.debug("Using obstore async download path.")
     else:
         download_fn = download_bytes_threaded
-        _log_fallback_warning()
+        # The "obstore not installed" warning is only relevant when obstore is
+        # missing entirely. When obstore is available but the filesystem can't
+        # be routed through it, _plan_obstore_routing already logged the reason
+        # (a WARNING for fsspec-S3-unextractable, DEBUG otherwise).
+        if not OBSTORE_AVAILABLE:
+            _log_fallback_warning()
 
     fn, init_fn = _get_udf(
         download_fn,

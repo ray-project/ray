@@ -15,7 +15,6 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.util import (
-    _op_name_white_list,
     _recorded_operators,
     _recorded_operators_lock,
 )
@@ -42,7 +41,7 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     If `clear_after_check` is True, we clear the list of recorded operators
     (so that subsequent checks do not use existing records of operator usage)."""
     for op_name in op_names:
-        assert op_name in _op_name_white_list
+        assert op_name not in ("Unknown", "ReadCustom", "WriteCustom"), op_name
         with _recorded_operators_lock:
             assert _recorded_operators.get(op_name, 0) > 0, (
                 op_name,

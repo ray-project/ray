@@ -760,7 +760,6 @@ def _map_task(
                     ),
                     udf_time_s=map_transformer.udf_time_s(reset=True),
                     task_idx=ctx.task_idx,
-                    max_uss_bytes=profiler.estimate_max_uss(),
                 )
 
                 # NOTE: This tracks task duration up to this point, though we're primarily
@@ -773,7 +772,8 @@ def _map_task(
                         block_meta,
                         exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
-                            task_wall_time_s=task_dur_s
+                            task_wall_time_s=task_dur_s,
+                            max_uss_bytes=profiler.estimate_max_uss(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,
@@ -783,7 +783,6 @@ def _map_task(
                 # Reset trackers
                 yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
-                profiler.reset()
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
