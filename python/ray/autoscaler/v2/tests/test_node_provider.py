@@ -395,6 +395,9 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
+        # In production _sync_with_api_server caches the CR before
+        # evaluate_cluster_idle reads it; mirror that for the idle tests.
+        self.provider._ray_cluster = raycluster_cr
 
     def test_get_nodes(self):
         nodes = self.provider.get_non_terminated()
@@ -786,7 +789,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
     def test_set_cluster_idle_annotation_adds_when_absent(self):
-        self.provider.set_cluster_idle_annotation()
+        self.provider._set_cluster_idle_annotation()
         path = f"rayclusters/{self.provider._cluster_name}"
         patch = self.mock_client.get_patches(path)
         assert patch == {
@@ -794,27 +797,23 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         }
 
     def test_set_cluster_idle_annotation_idempotent(self):
-        self.mock_client._ray_cluster.setdefault("metadata", {}).setdefault(
+        self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
             "annotations", {}
         )[IDLE_TTL_EXPIRED_ANNOTATION] = "true"
 
-        self.provider.set_cluster_idle_annotation()
+        self.provider._set_cluster_idle_annotation()
         path = f"rayclusters/{self.provider._cluster_name}"
         assert path not in self.mock_client._patches
 
-    def test_set_cluster_idle_annotation_swallows_get_failure(self):
+    def test_set_cluster_idle_annotation_swallows_patch_failure(self):
         path = f"rayclusters/{self.provider._cluster_name}"
 
-        original_get = self.mock_client.get
+        def failing_patch(*args, **kwargs):
+            raise RuntimeError("k8s unreachable")
 
-        def failing_get(p):
-            if "rayclusters" in p:
-                raise RuntimeError("k8s unreachable")
-            return original_get(p)
-
-        self.mock_client.get = failing_get
+        self.mock_client.patch = failing_patch
         # Should not raise.
-        self.provider.set_cluster_idle_annotation()
+        self.provider._set_cluster_idle_annotation()
         assert path not in self.mock_client._patches
 
     # --- Cluster-idle predicate + dispatch ---

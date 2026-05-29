@@ -686,7 +686,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._cluster_idle_observed_since = now
         if now - self._cluster_idle_observed_since < self._idle_termination_seconds:
             return
-        self.set_cluster_idle_annotation()
+        self._set_cluster_idle_annotation()
 
     @staticmethod
     def _is_cluster_idle_observable(ray_state: ClusterResourceState) -> bool:
@@ -739,30 +739,18 @@ class KubeRayProvider(ICloudInstanceProvider):
             return True
         return False
 
-    def set_cluster_idle_annotation(self) -> None:
+    def _set_cluster_idle_annotation(self) -> None:
         """Sets `ray.io/idle-ttl-expired=true` on the RayCluster CR.
 
-        Idempotent: skips PATCH when annotation already set. Failures are
-        logged and swallowed; the next reconcile retries.
+        Idempotent: skips PATCH when annotation already set, reading the CR
+        cached by ``_sync_with_api_server`` earlier in this reconcile loop.
+        Failures are logged and swallowed; the next reconcile retries.
         """
+        annotations = self._ray_cluster.get("metadata", {}).get("annotations", {})
+        if annotations.get(IDLE_TTL_EXPIRED_ANNOTATION) == "true":
+            return
+
         path = f"rayclusters/{self._cluster_name}"
-        try:
-            cr = self._get(path)
-        except Exception:
-            logger.exception(
-                "Failed to fetch RayCluster %s while setting idle annotation",
-                self._cluster_name,
-            )
-            return
-
-        current = (
-            cr.get("metadata", {})
-            .get("annotations", {})
-            .get(IDLE_TTL_EXPIRED_ANNOTATION)
-        )
-        if current == "true":
-            return
-
         # Merge patch covers missing and present annotations in one call.
         payload = {"metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}}
         try:
