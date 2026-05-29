@@ -3,6 +3,7 @@ import sys
 import types
 
 import pytest
+
 from ray._private.accelerators.mblt import (
     MBLT_RT_VISIBLE_DEVICES_ENV_VAR,
     NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR,
