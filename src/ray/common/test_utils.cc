@@ -24,6 +24,8 @@
 #endif
 
 #include "absl/strings/escaping.h"
+#include "gtest/gtest.h"
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_util.h"

@@ -45,6 +45,7 @@ ray_cc_library(
         "//src/ray/util:process",
         "//src/ray/util:time",
         "@boost//:optional",
+        "@com_google_googletest//:gtest",
     ],
 )
 
