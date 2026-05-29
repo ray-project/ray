@@ -3,6 +3,7 @@ froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
 dockerfile: docker/ray-llm/Dockerfile
 srcs:
   - python/requirements.txt
+  - python/requirements/llm/patches/vllm-trial-import-patch
   - python/deplocks/llm/rayllm_py312_cu130.lock
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
