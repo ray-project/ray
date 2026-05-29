@@ -562,6 +562,37 @@ def test_k8s_cpu(use_cgroups_v2: bool):
         assert 50 < k8s_utils.cpu_percent() < 60
 
 
+def test_k8s_cpu_percent_zero_num_cpus():
+    """Regression test for #63729.
+
+    A node can be registered with 0 CPUs (the recommended ``num-cpus: "0"`` for
+    KubeRay head nodes). ``cpu_percent()`` divides by ``get_num_cpus()``, so with
+    0 CPUs it used to raise ``ZeroDivisionError`` on every poll. The error was
+    caught (so 0.0 was still returned), but a full traceback was logged each
+    cycle. The fix returns 0.0 without raising/logging, so we assert that
+    ``logger.exception`` is never called.
+    """
+    with mock.patch(
+        "ray.dashboard.k8s_utils.get_num_cpus", mock.Mock(return_value=0)
+    ), mock.patch(
+        "ray.dashboard.k8s_utils._cpu_usage", mock.Mock(side_effect=[100, 200])
+    ), mock.patch(
+        "ray.dashboard.k8s_utils._system_usage", mock.Mock(side_effect=[1000, 2000])
+    ), mock.patch(
+        "ray.dashboard.k8s_utils._host_num_cpus", mock.Mock(return_value=8)
+    ), mock.patch(
+        "ray.dashboard.k8s_utils.last_system_usage", None
+    ), mock.patch(
+        "ray.dashboard.k8s_utils.last_cpu_usage", None
+    ), mock.patch.object(k8s_utils, "logger") as mock_logger:
+        # First call has no delta yet and returns 0.0.
+        assert k8s_utils.cpu_percent() == 0.0
+        # Second call hits the division path; with 0 CPUs it must still return
+        # 0.0 without raising or logging an exception.
+        assert k8s_utils.cpu_percent() == 0.0
+        mock_logger.exception.assert_not_called()
+
+
 def test_sync_job_config(shutdown_only):
     runtime_env = {"env_vars": {"key": "value"}}
 
