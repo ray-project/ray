@@ -26,14 +26,8 @@ from ray._raylet import (
     METRICS_AGENT_PORT_NAME,
     METRICS_EXPORT_PORT_NAME,
     GcsClient,
-    init_setproctitle,
     persist_port,
 )
-
-# Eagerly initialize setproctitle so the environ walk runs before agent
-# startup mutates the environment. Required for setproctitle() calls below
-# (and downstream) to land reliably. See python/ray/includes/setproctitle.pxi.
-init_setproctitle()
 
 logger = logging.getLogger(__name__)
 
