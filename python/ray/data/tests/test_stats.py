@@ -2417,6 +2417,25 @@ class TestTimerPercentile:
         # Should not raise.
         t.percentile(ok_p)
 
+    def test_cloudpickle_roundtrip(self):
+        # Regression: Timer is embedded in DatasetStats, which is
+        # cloudpickled when Datasets cross actor / process boundaries.
+        # The KLL sketch under DistributionTracker is C++-backed; an
+        # earlier version of this PR broke ``cloudpickle.dumps(ds)``
+        # with ``cannot pickle 'kll_doubles_sketch' object``.
+        import cloudpickle
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        t2 = cloudpickle.loads(cloudpickle.dumps(t))
+        assert t2.get() == pytest.approx(t.get())
+        assert t2.max() == pytest.approx(t.max())
+        assert t2.avg() == pytest.approx(t.avg())
+        # Percentiles must survive the round-trip.
+        assert t2.percentile(0.5) == pytest.approx(t.percentile(0.5))
+        assert t2.percentile(0.9) == pytest.approx(t.percentile(0.9))
+
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
     # KLL-sketch percentile tracking is always on (bounded memory), so
