@@ -9,6 +9,7 @@ from typing import Dict, List
 from numpy import ndarray
 
 import ray
+from ray.data._internal.util import KiB, MiB
 import torch
 from sentence_transformers import SentenceTransformer
 from langchain_text_splitters import (
@@ -132,6 +133,11 @@ class Embedder:
 
 
 def main(args):
+    ctx = ray.data.DataContext.get_current()
+    ctx.partitioner_max_bucket_size = 1 * MiB
+    ctx.partitioner_min_bucket_size = 1 * KiB
+    ctx.read_op_min_num_blocks = 1200
+
     start_time = time.time()
     ds = ray.data.read_parquet(
         args.source_directory,

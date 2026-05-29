@@ -83,6 +83,11 @@ DEFAULT_USE_DATASOURCE_V2 = True
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
+# Default min/max bucket size in bytes for ``RoundRobinPartitioner`` (V2 reads).
+# ``None`` means fall back to ``target_min_block_size`` / ``target_max_block_size``.
+DEFAULT_PARTITIONER_MIN_BUCKET_SIZE: Optional[int] = None
+DEFAULT_PARTITIONER_MAX_BUCKET_SIZE: Optional[int] = None
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -523,6 +528,14 @@ class DataContext:
             ``ParquetFileChunker`` when splitting large Parquet files into
             multiple read tasks. When ``None``, the chunker's built-in default
             (currently 1 GiB) is used.
+        partitioner_min_bucket_size: Minimum bucket size in bytes for the V2
+            ``RoundRobinPartitioner``. The partitioner avoids emitting blocks
+            smaller than this. When ``None``, falls back to
+            ``target_min_block_size``.
+        partitioner_max_bucket_size: Maximum bucket size in bytes for the V2
+            ``RoundRobinPartitioner``. The partitioner emits a block once a
+            bucket reaches this size. When ``None``, falls back to
+            ``target_max_block_size`` (or unbounded if that is also ``None``).
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -760,6 +773,8 @@ class DataContext:
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
+    partitioner_min_bucket_size: Optional[int] = DEFAULT_PARTITIONER_MIN_BUCKET_SIZE
+    partitioner_max_bucket_size: Optional[int] = DEFAULT_PARTITIONER_MAX_BUCKET_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

@@ -520,17 +520,23 @@ def _read_datasource_v2(
     # encoding-ratio multiplier). ``num_buckets`` is a hint;
     # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
     # first, so the actual bucket count scales with total data size.
-    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
-    # back to sentinel bounds so the partitioner just rolls every file
-    # into a single bucket.
+    # Bucket bounds default to ``partitioner_{min,max}_bucket_size`` when set,
+    # otherwise fall back to the read block-size targets. ``target_*_block_size``
+    # can be ``None`` (block sizing disabled); fall back to sentinel bounds so the
+    # partitioner just rolls every file into a single bucket.
     import sys
 
-    min_bucket_size = ctx.target_min_block_size or 0
-    max_bucket_size = (
-        ctx.target_max_block_size
-        if ctx.target_max_block_size is not None
-        else sys.maxsize
-    )
+    min_bucket_size = ctx.partitioner_min_bucket_size
+    if min_bucket_size is None:
+        min_bucket_size = ctx.target_min_block_size or 0
+
+    max_bucket_size = ctx.partitioner_max_bucket_size
+    if max_bucket_size is None:
+        max_bucket_size = (
+            ctx.target_max_block_size
+            if ctx.target_max_block_size is not None
+            else sys.maxsize
+        )
     # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
