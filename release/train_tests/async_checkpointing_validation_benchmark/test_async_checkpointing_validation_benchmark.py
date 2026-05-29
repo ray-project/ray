@@ -175,7 +175,7 @@ def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
         run_config=ray.train.RunConfig(
             name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
         ),
-        data_config=ray.train.DataConfig(
+        dataset_config=ray.train.DataConfig(
             execution_options={
                 "test": ExecutionOptions(label_selector={"subcluster": "validation"}),
             },
@@ -407,7 +407,7 @@ def run_training_with_validation(
         datasets["test"] = validation_dataset
         # Sync validation: train workers iterate both datasets, so split each
         # across the train subcluster and the validation subcluster respectively.
-        data_config = ray.train.DataConfig(
+        dataset_config = ray.train.DataConfig(
             datasets_to_split=["train", "test"],
             execution_options={
                 "train": ExecutionOptions(label_selector={"subcluster": "train"}),
@@ -418,7 +418,7 @@ def run_training_with_validation(
         # Async validation: the validation dataset is consumed by a separate
         # driver (validate_with_torch_trainer / validate_with_map_batches),
         # which sets its own subcluster label.
-        data_config = ray.train.DataConfig(
+        dataset_config = ray.train.DataConfig(
             datasets_to_split=["train"],
             execution_options={
                 "train": ExecutionOptions(label_selector={"subcluster": "train"}),
@@ -440,7 +440,7 @@ def run_training_with_validation(
         datasets=datasets,
         torch_config=torch_config,
         run_config=ray.train.RunConfig(storage_path="/mnt/cluster_storage"),
-        data_config=data_config,
+        dataset_config=dataset_config,
     )
     result = trainer.fit()
     end_time = time.time()
