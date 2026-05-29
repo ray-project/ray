@@ -17,7 +17,9 @@
 
 #include "ray/object_manager/plasma/stats_collector.h"
 
-#include "ray/stats/metric_defs.h"
+#include <string>
+
+#include "ray/stats/tag_defs.h"
 
 namespace plasma {
 
@@ -27,7 +29,7 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto &kAllocation = obj.GetAllocation();
 
   bytes_by_loc_seal_.Increment(
-      {/*fallback_allocated*/ kAllocation.fallback_allocated, /*sealed*/ false},
+      {/*fallback_allocated*/ kAllocation.fallback_allocated_, /*sealed*/ false},
       kObjectSize);
 
   num_objects_created_total_ += 1;
@@ -36,23 +38,23 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
     num_bytes_created_by_worker_ += kObjectSize;
-    ray::stats::STATS_object_store_dist.Record(
-        kObjectSize, {{ray::stats::SourceKey, "CreatedByWorker"}});
+    object_store_dist_histogram_.Record(kObjectSize,
+                                        {{ray::stats::SourceKey, "CreatedByWorker"}});
   } else if (kSource == plasma::flatbuf::ObjectSource::RestoredFromStorage) {
     num_objects_restored_++;
     num_bytes_restored_ += kObjectSize;
-    ray::stats::STATS_object_store_dist.Record(
-        kObjectSize, {{ray::stats::SourceKey, "RestoredFromStorage"}});
+    object_store_dist_histogram_.Record(kObjectSize,
+                                        {{ray::stats::SourceKey, "RestoredFromStorage"}});
   } else if (kSource == plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet) {
     num_objects_received_++;
     num_bytes_received_ += kObjectSize;
-    ray::stats::STATS_object_store_dist.Record(
+    object_store_dist_histogram_.Record(
         kObjectSize, {{ray::stats::SourceKey, "ReceivedFromRemoteRaylet"}});
   } else if (kSource == plasma::flatbuf::ObjectSource::ErrorStoredByRaylet) {
     num_objects_errored_++;
     num_bytes_errored_ += kObjectSize;
-    ray::stats::STATS_object_store_dist.Record(
-        kObjectSize, {{ray::stats::SourceKey, "ErrorStoredByRaylet"}});
+    object_store_dist_histogram_.Record(kObjectSize,
+                                        {{ray::stats::SourceKey, "ErrorStoredByRaylet"}});
   }
 
   RAY_CHECK(!obj.Sealed());
@@ -65,8 +67,8 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
 
   const auto &kAllocation = obj.GetAllocation();
-  bytes_by_loc_seal_.Swap({kAllocation.fallback_allocated, /* sealed */ false},
-                          {kAllocation.fallback_allocated, /* sealed */ true},
+  bytes_by_loc_seal_.Swap({kAllocation.fallback_allocated_, /* sealed */ false},
+                          {kAllocation.fallback_allocated_, /* sealed */ true},
                           kObjectSize);
 
   num_objects_unsealed_--;
@@ -91,7 +93,7 @@ void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kSource = obj.GetSource();
   const auto &kAllocation = obj.GetAllocation();
 
-  bytes_by_loc_seal_.Decrement({kAllocation.fallback_allocated, obj.Sealed()},
+  bytes_by_loc_seal_.Decrement({kAllocation.fallback_allocated_, obj.Sealed()},
                                kObjectSize);
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
@@ -197,29 +199,34 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
+  static std::string kObjectSealed = "SEALED";
+  static std::string kObjectUnsealed = "UNSEALED";
+  static std::string kObjectLocMmapShm = "MMAP_SHM";
+  static std::string kObjectLocMmapDisk = "MMAP_DISK";
+
   // Shared memory sealed
-  ray::stats::STATS_object_store_memory.Record(
+  object_store_memory_gauge_.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ true}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapShm},
+       {ray::stats::ObjectStateKey, kObjectSealed}});
 
   // Shared memory unsealed
-  ray::stats::STATS_object_store_memory.Record(
+  object_store_memory_gauge_.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ false, /* sealed */ false}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapShm},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapShm},
+       {ray::stats::ObjectStateKey, kObjectUnsealed}});
 
   // Fallback memory sealed
-  ray::stats::STATS_object_store_memory.Record(
+  object_store_memory_gauge_.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ true}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectSealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapDisk},
+       {ray::stats::ObjectStateKey, kObjectSealed}});
 
   // Fallback memory unsealed
-  ray::stats::STATS_object_store_memory.Record(
+  object_store_memory_gauge_.Record(
       bytes_by_loc_seal_.Get({/* fallback_allocated */ true, /* sealed */ false}),
-      {{ray::stats::LocationKey, ray::stats::kObjectLocMmapDisk},
-       {ray::stats::ObjectStateKey, ray::stats::kObjectUnsealed}});
+      {{ray::stats::LocationKey, kObjectLocMmapDisk},
+       {ray::stats::ObjectStateKey, kObjectUnsealed}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

@@ -14,21 +14,27 @@
 
 #include "ray/util/exponential_backoff.h"
 
-#include <math.h>
-
-#include "ray/util/logging.h"
+#include <algorithm>
+#include <cmath>
 
 namespace ray {
 
 uint64_t ExponentialBackoff::GetBackoffMs(uint64_t attempt,
                                           uint64_t base_ms,
                                           uint64_t max_backoff_ms) {
-  uint64_t delay = static_cast<uint64_t>(pow(2, attempt));
-  // Use max_backoff_ms if there is an overflow.
-  if (delay == 0) {
+  // Avoid overflowing (2 ^ attempt).
+  if (attempt > 63) {
     return max_backoff_ms;
   }
-  return std::min(base_ms * delay, max_backoff_ms);
+
+  // Equivalent to (2 ^ attempt).
+  uint64_t multiple = 1ULL << attempt;
+
+  // Avoid overflowing the multiplication.
+  if (multiple > 0 && base_ms > max_backoff_ms / multiple) {
+    return max_backoff_ms;
+  }
+  return std::min(base_ms * multiple, max_backoff_ms);
 };
 
 }  // namespace ray

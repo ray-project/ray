@@ -3,17 +3,16 @@ import unittest
 import numpy as np
 
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
-    MultiAgentBatch,
     DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    SampleBatch,
     concat_samples,
 )
-
-from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
+from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedReplayBuffer,
 )
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
+from ray.rllib.utils.test_utils import check
 
 
 class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
@@ -186,7 +185,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Fetch records, their indices and weights.
         mabatch = buffer.sample(3)
-        assert type(mabatch) == MultiAgentBatch
+        assert type(mabatch) is MultiAgentBatch
         samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
 
         weights = samplebatch["weights"]
@@ -211,9 +210,9 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # (which still has a weight of 1.0).
         for _ in range(10):
             mabatch = buffer.sample(1000)
-            assert type(mabatch) == MultiAgentBatch
+            assert type(mabatch) is MultiAgentBatch
             samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
-            assert type(mabatch) == MultiAgentBatch
+            assert type(mabatch) is MultiAgentBatch
             indices = samplebatch["batch_indexes"]
             self.assertTrue(1900 < np.sum(indices) < 2200)
         # Test get_state/set_state.
@@ -232,7 +231,8 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

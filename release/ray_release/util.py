@@ -2,15 +2,14 @@ import collections
 import hashlib
 import json
 import os
-import random
-import string
 import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
-from ray_release.logger import logger
+
 from ray_release.configs.global_config import get_global_config
+from ray_release.logger import logger
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -28,11 +27,18 @@ class DeferredEnvVar:
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
 S3_CLOUD_STORAGE = "s3"
 GS_CLOUD_STORAGE = "gs"
+AZURE_CLOUD_STORAGE = "abfss"
+AZURE_STORAGE_CONTAINER = "working-dirs"
+AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 GS_BUCKET = "anyscale-oss-dev-bucket"
+AZURE_REGISTRY_NAME = "rayreleasetest"
+ANYSCALE_RAY_IMAGE_PREFIX = "anyscale/ray"
 ERROR_LOG_PATTERNS = [
     "ERROR",
     "Traceback (most recent call last)",
 ]
+KUBERAY_SERVER_URL = "https://kuberaytest.anyscale.dev"
+DEFAULT_KUBERAY_NAMESPACE = "kuberayportal-kevin"
 
 
 def get_read_state_machine_aws_bucket(allow_pr_bucket: bool = False) -> str:
@@ -76,14 +82,6 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
     return sha.hexdigest()
 
 
-def url_exists(url: str) -> bool:
-    try:
-        return requests.head(url, allow_redirects=True).status_code == 200
-    except requests.exceptions.RequestException:
-        logger.exception(f"Failed to check url exists: {url}")
-        return False
-
-
 def resolve_url(url: str) -> str:
     return requests.head(url, allow_redirects=True).url
 
@@ -103,22 +101,6 @@ def anyscale_project_url(project_id: str) -> str:
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/projects/{project_id}"
         f"/?tab=session-list"
-    )
-
-
-def anyscale_cluster_url(project_id: str, cluster_id: str) -> str:
-    return (
-        f"{ANYSCALE_HOST}"
-        f"/o/anyscale-internal/projects/{project_id}"
-        f"/clusters/{cluster_id}"
-    )
-
-
-def anyscale_cluster_compute_url(compute_tpl_id: str) -> str:
-    return (
-        f"{ANYSCALE_HOST}"
-        f"/o/anyscale-internal/configurations/cluster-computes"
-        f"/{compute_tpl_id}"
     )
 
 
@@ -190,19 +172,3 @@ def get_pip_packages() -> List[str]:
 def python_version_str(python_version: Tuple[int, int]) -> str:
     """From (X, Y) to XY"""
     return "".join([str(x) for x in python_version])
-
-
-def generate_tmp_cloud_storage_path() -> str:
-    return "".join(random.choice(string.ascii_lowercase) for i in range(10))
-
-
-def join_cloud_storage_paths(*paths: str):
-    paths = list(paths)
-    if len(paths) > 1:
-        for i in range(1, len(paths)):
-            while paths[i][0] == "/":
-                paths[i] = paths[i][1:]
-    joined_path = os.path.join(*paths)
-    while joined_path[-1] == "/":
-        joined_path = joined_path[:-1]
-    return joined_path

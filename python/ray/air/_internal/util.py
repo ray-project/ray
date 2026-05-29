@@ -2,9 +2,7 @@ import copy
 import logging
 import os
 import queue
-import socket
 import threading
-from contextlib import closing
 from typing import Optional
 
 import numpy as np
@@ -12,13 +10,6 @@ import numpy as np
 from ray.air.constants import _ERROR_REPORT_TIMEOUT
 
 logger = logging.getLogger(__name__)
-
-
-def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
 
 
 def is_nan(value):
@@ -33,6 +24,15 @@ class StartTraceback(Exception):
     """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
 
     pass
+
+
+class StartTracebackWithWorkerRank(StartTraceback):
+    def __init__(self, worker_rank: int) -> None:
+        super().__init__()
+        self.worker_rank = worker_rank
+
+    def __reduce__(self):
+        return (self.__class__, (self.worker_rank,))
 
 
 def skip_exceptions(exc: Optional[Exception]) -> Exception:

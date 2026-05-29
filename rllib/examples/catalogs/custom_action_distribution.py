@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack (w/ EnvRunners).
+# @HybridAPIStack
 
 """
 This example shows two modifications:
@@ -6,14 +6,14 @@ This example shows two modifications:
 2. How to inject a custom action distribution into a Catalog
 """
 # __sphinx_doc_begin__
-import torch
 import gymnasium as gym
+import torch
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.models.distributions import Distribution
-from ray.rllib.models.torch.torch_distributions import TorchDeterministic
+from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.core.distribution.torch.torch_distribution import TorchDeterministic
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 
 # Define a simple categorical distribution that can be used for PPO
@@ -48,7 +48,7 @@ class CustomTorchCategorical(Distribution):
         return CustomTorchCategorical(logits=logits)
 
     # This method is used to create a deterministic distribution for the
-    # PPORLModule.forward_inference.
+    # DefaultPPORLModule.forward_inference.
     def to_deterministic(self):
         return TorchDeterministic(loc=torch.argmax(self.logits, dim=-1))
 
@@ -77,7 +77,7 @@ class CustomPPOCatalog(PPOCatalog):
 algo = (
     PPOConfig()
     .environment("CartPole-v1")
-    .rl_module(rl_module_spec=SingleAgentRLModuleSpec(catalog_class=CustomPPOCatalog))
+    .rl_module(rl_module_spec=RLModuleSpec(catalog_class=CustomPPOCatalog))
     .build()
 )
 results = algo.train()

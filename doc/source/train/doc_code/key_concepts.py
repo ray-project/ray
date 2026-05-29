@@ -4,22 +4,24 @@
 from pathlib import Path
 import tempfile
 
-from ray import train
-from ray.train import Checkpoint
-from ray.train.data_parallel_trainer import DataParallelTrainer
+import ray.train
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
     for i in range(3):
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             Path(temp_checkpoint_dir).joinpath("model.pt").touch()
-            train.report(
-                {"loss": i}, checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
+            ray.train.report(
+                {"loss": i},
+                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
+
+    return {"total loss": 3}
 
 
 trainer = DataParallelTrainer(
-    train_fn, scaling_config=train.ScalingConfig(num_workers=2)
+    train_fn, scaling_config=ray.train.ScalingConfig(num_workers=2)
 )
 
 
@@ -34,21 +36,8 @@ run_config = RunConfig(
     # The experiment results will be saved to: storage_path/name
     storage_path=os.path.expanduser("~/ray_results"),
     # storage_path="s3://my_bucket/tune_results",
-    # Stopping criteria
-    stop={"training_iteration": 10},
 )
 # __run_config_end__
-
-# __failure_config_start__
-from ray.train import RunConfig, FailureConfig
-
-
-# Tries to recover a run up to this many times.
-run_config = RunConfig(failure_config=FailureConfig(max_failures=2))
-
-# No limit on the number of retries.
-run_config = RunConfig(failure_config=FailureConfig(max_failures=-1))
-# __failure_config_end__
 
 # __checkpoint_config_start__
 from ray.train import RunConfig, CheckpointConfig
@@ -70,22 +59,6 @@ run_config = RunConfig(
 )
 # __checkpoint_config_end__
 
-# __checkpoint_config_ckpt_freq_start__
-from ray.train import RunConfig, CheckpointConfig
-
-run_config = RunConfig(
-    checkpoint_config=CheckpointConfig(
-        # Checkpoint every iteration.
-        checkpoint_frequency=1,
-        # Only keep the latest checkpoint and delete the others.
-        num_to_keep=1,
-    )
-)
-
-# from ray.train.xgboost import XGBoostTrainer
-# trainer = XGBoostTrainer(..., run_config=run_config)
-# __checkpoint_config_ckpt_freq_end__
-
 
 # __result_metrics_start__
 result = trainer.fit()
@@ -98,6 +71,11 @@ print("Observed metrics:", result.metrics)
 df = result.metrics_dataframe
 print("Minimum loss", min(df["loss"]))
 # __result_dataframe_end__
+
+
+# __result_return_value_start__
+print("Returned data", result.return_value)
+# __result_return_value_end__
 
 
 # __result_checkpoint_start__
@@ -137,13 +115,22 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 from ray.train import Result
 
 restored_result = Result.from_path(result_path)
-print("Restored loss", result.metrics["loss"])
+print("Restored loss", restored_result.metrics["loss"])
 # __result_restore_end__
 
 
-# __result_error_start__
-if result.error:
-    assert isinstance(result.error, Exception)
+def error_train_fn(config):
+    raise RuntimeError("Simulated training error")
 
-    print("Got exception:", result.error)
+
+trainer = DataParallelTrainer(
+    error_train_fn, scaling_config=ray.train.ScalingConfig(num_workers=1)
+)
+
+# __result_error_start__
+try:
+    result = trainer.fit()
+except ray.train.TrainingFailedError as e:
+    if isinstance(e, ray.train.WorkerGroupError):
+        print(e.worker_failures)
 # __result_error_end__

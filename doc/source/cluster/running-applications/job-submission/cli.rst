@@ -3,7 +3,7 @@
 Ray Jobs CLI API Reference
 ==========================
 
-This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.    
+This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.
 
 .. _ray-job-submit-doc:
 
@@ -12,7 +12,7 @@ This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.
 
 .. warning::
 
-    When using the CLI, do not wrap the entrypoint command in quotes.  For example, use 
+    When using the CLI, do not wrap the entrypoint command in quotes.  For example, use
     ``ray job submit --working-dir="." -- python script.py`` instead of ``ray job submit --working-dir="." -- "python script.py"``.
     Otherwise you may encounter the error ``/bin/sh: 1: python script.py: not found``.
 

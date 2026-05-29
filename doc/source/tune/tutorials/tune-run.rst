@@ -1,3 +1,5 @@
+.. _tune-parallel-experiments-guide:
+
 Running Basic Tune Experiments
 ==============================
 

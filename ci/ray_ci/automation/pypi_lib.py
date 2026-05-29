@@ -1,7 +1,7 @@
-import subprocess
 import os
-from typing import List
+import subprocess
 import sys
+from typing import Dict, List
 
 from ray_release.aws import get_secret_token
 
@@ -32,18 +32,17 @@ def _get_pypi_token(pypi_env: str) -> str:
     return get_secret_token(AWS_SECRET_PYPI)
 
 
-def _call_subprocess(command: List[str]):
-    subprocess.run(
-        command,
-        check=True,
-    )
+def _call_subprocess(command: List[str], add_env: Dict[str, str]):
+    env = os.environ.copy()
+    env.update(add_env)
+    subprocess.run(command, env=env, check=True)
 
 
 def upload_wheels_to_pypi(pypi_env: str, directory_path: str) -> None:
     directory_path = os.path.join(bazel_workspace_dir, directory_path)
     pypi_url = _get_pypi_url(pypi_env)
     pypi_token = _get_pypi_token(pypi_env)
-    wheels = os.listdir(directory_path)
+    wheels = sorted(os.listdir(directory_path))
     for wheel in wheels:
         wheel_path = os.path.join(directory_path, wheel)
         cmd = [
@@ -55,8 +54,6 @@ def upload_wheels_to_pypi(pypi_env: str, directory_path: str) -> None:
             pypi_url,
             "--username",
             "__token__",
-            "--password",
-            pypi_token,
             wheel_path,
         ]
-        _call_subprocess(cmd)
+        _call_subprocess(cmd, add_env={"TWINE_PASSWORD": pypi_token})

@@ -6,16 +6,17 @@ import signal
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -58,26 +59,6 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
 
     ray.get([f.remote() for _ in range(100)])
     ray.get([g.remote() for _ in range(100)])
-
-
-def test_local_mode_gpus(save_gpu_ids_shutdown_only):
-    allowed_gpu_ids = [4, 5, 6, 7, 8]
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
-
-    from importlib import reload
-
-    reload(ray._private.worker)
-
-    ray.init(num_gpus=3, local_mode=True)
-
-    @ray.remote
-    def f():
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 3
-        for gpu in gpu_ids:
-            assert int(gpu) in allowed_gpu_ids
-
-    ray.get([f.remote() for _ in range(100)])
 
 
 def test_blocking_tasks(ray_start_regular):
@@ -244,9 +225,4 @@ def test_worker_niceness(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

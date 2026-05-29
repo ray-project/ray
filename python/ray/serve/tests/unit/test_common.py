@@ -1,27 +1,33 @@
-import time
-
 import pytest
 
 from ray.serve._private.common import (
     REPLICA_ID_FULL_ID_STR_PREFIX,
-    ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
     ReplicaID,
     RunningReplicaInfo,
-    StatusOverview,
 )
-from ray.serve._private.utils import get_random_string
-from ray.serve.generated.serve_pb2 import (
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+from ray.serve._private.utils import get_deployment_actor_name, get_random_string
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
+
+
+def test_get_deployment_actor_name():
+    """Test deterministic actor name for deployment-scoped actors."""
+    dep_id = DeploymentID(name="MyDeployment", app_name="my_app")
+    assert get_deployment_actor_name(dep_id, "prefix_tree", "v1") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}my_app::MyDeployment::v1::prefix_tree"
+    )
+
+    dep_id_default_app = DeploymentID(name="Other")  # app_name="default"
+    assert get_deployment_actor_name(dep_id_default_app, "x", "abc") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}default::Other::abc::x"
+    )
 
 
 def test_replica_id_formatting():
@@ -117,155 +123,132 @@ class TestDeploymentStatusInfo:
 
         assert deployment_status_info == reconstructed_info
 
+    def test_handle_transition_deployment_actor_failed_when_already_deploy_failed(
+        self,
+    ):
+        """DEPLOYMENT_ACTOR_FAILED must be handled in DEPLOY_FAILED block.
 
-class TestApplicationStatusInfo:
-    def test_application_status_required(self):
-        with pytest.raises(TypeError):
-            ApplicationStatusInfo(
-                message="context about status", deployment_timestamp=time.time()
-            )
-
-    @pytest.mark.parametrize("status", list(ApplicationStatus))
-    def test_proto(self, status):
-        serve_application_status_info = ApplicationStatusInfo(
-            status=status,
-            message="context about status",
-            deployment_timestamp=time.time(),
+        When status is already DEPLOY_FAILED, repeated ticks call handle_transition
+        with DEPLOYMENT_ACTOR_FAILED. Without handling, the trigger falls through
+        and returns self (old message). With handling, returns updated copy.
+        """
+        info = DeploymentStatusInfo(
+            name="test",
+            status=DeploymentStatus.DEPLOY_FAILED,
+            status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message="original error message",
         )
-        serialized_proto = serve_application_status_info.to_proto().SerializeToString()
-        deserialized_proto = ApplicationStatusInfoProto.FromString(serialized_proto)
-        reconstructed_info = ApplicationStatusInfo.from_proto(deserialized_proto)
-
-        assert serve_application_status_info == reconstructed_info
-
-
-class TestStatusOverview:
-    def get_valid_serve_application_status_info(self):
-        return ApplicationStatusInfo(
-            status=ApplicationStatus.RUNNING,
-            message="",
-            deployment_timestamp=time.time(),
+        new_message = (
+            "The deployment failed to start deployment actors 2 times in a row."
         )
-
-    def test_app_status_required(self):
-        with pytest.raises(TypeError):
-            StatusOverview(deployment_statuses=[])
-
-    def test_empty_list_valid(self):
-        """Should be able to create StatusOverview with no deployment statuses."""
-
-        # Check default is empty list
-        status_info = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info()
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message=new_message,
         )
-        status_info.deployment_statuses == []
-
-        # Ensure empty list can be passed in explicitly
-        status_info = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info(),
-            deployment_statuses=[],
-        )
-        status_info.deployment_statuses == []
-
-    def test_equality_mismatched_deployment_statuses(self):
-        """Check that StatusOverviews with different numbers of statuses are unequal."""
-
-        status_info_few_deployments = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info(),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="1",
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="2",
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-            ],
-        )
-
-        status_info_many_deployments = StatusOverview(
-            app_status=self.get_valid_serve_application_status_info(),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="1",
-                    status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="2",
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="3",
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="4",
-                    status=DeploymentStatus.UPDATING,
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-            ],
-        )
-
-        assert status_info_few_deployments != status_info_many_deployments
-
-    @pytest.mark.parametrize("application_status", list(ApplicationStatus))
-    def test_proto(self, application_status):
-        status_info = StatusOverview(
-            app_status=ApplicationStatusInfo(
-                status=application_status,
-                message="context about this status",
-                deployment_timestamp=time.time(),
-            ),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name="name1",
-                    status=DeploymentStatus.UPDATING,
-                    message="deployment updating",
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="name2",
-                    status=DeploymentStatus.HEALTHY,
-                    message="",
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-                DeploymentStatusInfo(
-                    name="name3",
-                    status=DeploymentStatus.UNHEALTHY,
-                    message="this deployment is unhealthy",
-                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-                ),
-            ],
-        )
-        serialized_proto = status_info.to_proto().SerializeToString()
-        deserialized_proto = StatusOverviewProto.FromString(serialized_proto)
-        reconstructed_info = StatusOverview.from_proto(deserialized_proto)
-
-        assert status_info == reconstructed_info
+        assert result is not None
+        assert result.status == DeploymentStatus.DEPLOY_FAILED
+        assert result.status_trigger == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        assert result.message == new_message
 
 
 def test_running_replica_info():
     """Test hash value of RunningReplicaInfo"""
 
-    class FakeActorHandler:
-        def __init__(self, actor_id):
-            self._actor_id = actor_id
-
-    fake_h1 = FakeActorHandler("1")
-    fake_h2 = FakeActorHandler("1")
     replica_id = ReplicaID("asdf123", deployment_id=DeploymentID(name="my_deployment"))
-    assert fake_h1 != fake_h2
-    replica1 = RunningReplicaInfo(replica_id, "node_id", "some-az", fake_h1, 1, False)
-    replica2 = RunningReplicaInfo(replica_id, "node_id", "some-az", fake_h2, 1, False)
-    replica3 = RunningReplicaInfo(replica_id, "node_id", "some-az", fake_h2, 1, True)
+    actor_name = replica_id.to_full_id_str()
+
+    # Test that replicas with same attributes have same hash
+    replica1 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+    )
+    replica2 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+    )
+    # Test that cross-language setting affects hash
+    replica3 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=True,
+    )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
+
+    # Test that backend_http_port affects hash so long-poll updates
+    # propagate when the backend HTTP port changes.
+    replica4 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8001,
+    )
+    replica5 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8002,
+    )
+    assert replica4._hash != replica1._hash
+    assert replica4._hash != replica5._hash
+
+    # Test that network endpoint changes affect hash so wrappers and
+    # long-poll consumers refresh when the replica moves or its gRPC
+    # port changes.
+    replica6 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica7 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_b",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica8 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9001,
+    )
+    assert replica6._hash != replica7._hash
+    assert replica6._hash != replica8._hash
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/file_system_monitor.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -80,37 +80,34 @@ class PlasmaStore {
   /// before the object is pinned by raylet for the first time.
   bool IsObjectSpillable(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Return the plasma object bytes that are consumed by core workers.
-  int64_t GetConsumedBytes();
-
   /// Return the number of plasma objects that have been created.
   int64_t GetCumulativeCreatedObjects() const {
     absl::MutexLock lock(&mutex_);
-    return object_lifecycle_mgr_.GetNumObjectsCreatedTotal();
+    return object_lifecycle_manager_.GetNumObjectsCreatedTotal();
   }
 
   /// Return the plasma object bytes that have been created.
   int64_t GetCumulativeCreatedBytes() const {
     absl::MutexLock lock(&mutex_);
-    return object_lifecycle_mgr_.GetNumBytesCreatedTotal();
+    return object_lifecycle_manager_.GetNumBytesCreatedTotal();
   }
 
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   size_t GetAvailableMemory() const ABSL_LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
-    RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
-               object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
-              (object_lifecycle_mgr_.GetNumBytesUnsealed() == 0 &&
-               object_lifecycle_mgr_.GetNumObjectsUnsealed() == 0))
+    RAY_CHECK((object_lifecycle_manager_.GetNumBytesUnsealed() > 0 &&
+               object_lifecycle_manager_.GetNumObjectsUnsealed() > 0) ||
+              (object_lifecycle_manager_.GetNumBytesUnsealed() == 0 &&
+               object_lifecycle_manager_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(object_lifecycle_mgr_.GetNumBytesInUse() >=
-              object_lifecycle_mgr_.GetNumBytesUnsealed());
+    RAY_CHECK(object_lifecycle_manager_.GetNumBytesInUse() >=
+              object_lifecycle_manager_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
-    int64_t num_bytes_in_use = object_lifecycle_mgr_.GetNumBytesInUse() -
-                               object_lifecycle_mgr_.GetNumBytesUnsealed();
+    int64_t num_bytes_in_use = object_lifecycle_manager_.GetNumBytesInUse() -
+                               object_lifecycle_manager_.GetNumBytesUnsealed();
     size_t available = 0;
     if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
       available = allocator_.GetFootprintLimit() - num_bytes_in_use;
@@ -172,8 +169,7 @@ class PlasmaStore {
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
                          const std::vector<ObjectID> &object_ids,
-                         int64_t timeout_ms,
-                         bool is_from_worker) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                         int64_t timeout_ms) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Process queued requests to create an object.
   void ProcessCreateRequests() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -206,9 +202,24 @@ class PlasmaStore {
   void DisconnectClient(const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status ProcessMessage(const std::shared_ptr<Client> &client,
-                        plasma::flatbuf::MessageType type,
-                        const std::vector<uint8_t> &message) ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Handle an unexpected connection error from the client.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(const std::shared_ptr<Client> &client,
+                                   const boost::system::error_code &error)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Process a message from the client.
+  ///
+  /// \param client The client that the message is from.
+  /// \param type The message type.
+  /// \param message The message data.
+  Status ProcessClientMessage(const std::shared_ptr<Client> &client,
+                              plasma::flatbuf::MessageType type,
+                              const std::vector<uint8_t> &message)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
@@ -277,7 +288,7 @@ class PlasmaStore {
   /// shared with the main raylet thread.
   const ray::DeleteObjectCallback delete_object_callback_;
 
-  ObjectLifecycleManager object_lifecycle_mgr_ ABSL_GUARDED_BY(mutex_);
+  ObjectLifecycleManager object_lifecycle_manager_ ABSL_GUARDED_BY(mutex_);
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
@@ -298,9 +309,6 @@ class PlasmaStore {
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_ ABSL_GUARDED_BY(mutex_);
-
-  /// Total plasma object bytes that are consumed by core workers.
-  std::atomic<int64_t> total_consumed_bytes_;
 
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.

@@ -1,0 +1,19 @@
+name: asynchronous-inference-service
+image_uri: anyscale/ray:2.52.0-py311
+applications:
+  - name: async-inference
+    route_prefix: /
+    import_path: server:app
+    runtime_env:
+      working_dir: "."
+      pip: "requirements.txt"
+    deployments:
+      - name: PDFProcessor
+        num_replicas: 2
+        max_ongoing_requests: 5
+        ray_actor_options:
+          num_cpus: 1
+      - name: AsyncPDFAPI
+        num_replicas: 1
+        ray_actor_options:
+          num_cpus: 0.5

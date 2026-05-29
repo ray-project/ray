@@ -2,6 +2,7 @@ import unittest
 
 import gymnasium as gym
 import numpy as np
+import pytest
 
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.utils.spaces.space_utils import batch, get_dummy_batch_for_space
@@ -12,11 +13,11 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
     space = gym.spaces.Dict(
         {
             "a": gym.spaces.Discrete(4),
-            "b": gym.spaces.Box(-1.0, 1.0, (2, 3), np.float32),
+            "b": gym.spaces.Box(0.0, 3.0, (2, 3), np.float32),
             "c": gym.spaces.Tuple(
                 [
-                    gym.spaces.MultiDiscrete([2, 3]),
-                    gym.spaces.Box(-1.0, 1.0, (1,), np.float32),
+                    gym.spaces.MultiDiscrete([4, 4]),
+                    gym.spaces.Box(0.0, 3.0, (1,), np.float32),
                 ]
             ),
         }
@@ -30,7 +31,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
     buffer_0_one_hot = {
         "a": np.array([0.0, 0.0, 0.0, 0.0], np.float32),
         "b": np.array([[0, 0, 0], [0, 0, 0]], np.float32),
-        "c": (np.array([0, 0, 0, 0, 0]), np.array([0], np.float32)),
+        "c": (np.array([0, 0, 0, 0, 0, 0, 0, 0]), np.array([0], np.float32)),
     }
     buffer_1 = {
         "a": 1,
@@ -313,101 +314,97 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
 
             # Lokback buffer is [0, 1, 2, 3]
             # Individual indices with negative indices into lookback buffer.
-            check(buffer.get(-1, neg_indices_left_of_zero=True), 3)
-            check(buffer.get(-2, neg_indices_left_of_zero=True), 2)
-            check(buffer.get(-3, neg_indices_left_of_zero=True), 1)
-            check(buffer.get(-4, neg_indices_left_of_zero=True), 0)
-            check(buffer.get([-1, -3], neg_indices_left_of_zero=True), [3, 1])
+            check(buffer.get(-1, neg_index_as_lookback=True), 3)
+            check(buffer.get(-2, neg_index_as_lookback=True), 2)
+            check(buffer.get(-3, neg_index_as_lookback=True), 1)
+            check(buffer.get(-4, neg_index_as_lookback=True), 0)
+            check(buffer.get([-1, -3], neg_index_as_lookback=True), [3, 1])
             # Slices with negative indices into lookback buffer.
-            check(buffer.get(slice(-2, -1), neg_indices_left_of_zero=True), [2])
-            check(buffer.get(slice(-2, 0), neg_indices_left_of_zero=True), [2, 3])
+            check(buffer.get(slice(-2, -1), neg_index_as_lookback=True), [2])
+            check(buffer.get(slice(-2, 0), neg_index_as_lookback=True), [2, 3])
             check(
-                buffer.get(slice(-2, 4), neg_indices_left_of_zero=True),
+                buffer.get(slice(-2, 4), neg_index_as_lookback=True),
                 [2, 3, 4, 5, 6, 7],
             )
             check(
-                buffer.get(slice(-2, None), neg_indices_left_of_zero=True),
+                buffer.get(slice(-2, None), neg_index_as_lookback=True),
                 [2, 3, 4, 5, 6, 7, 8, 9, 10],
             )
             # With left fill.
-            check(buffer.get(-8, fill=10, neg_indices_left_of_zero=True), 10)
-            check(buffer.get(-800, fill=10, neg_indices_left_of_zero=True), 10)
-            check(buffer.get([-8, -1], fill=9, neg_indices_left_of_zero=True), [9, 3])
+            check(buffer.get(-8, fill=10, neg_index_as_lookback=True), 10)
+            check(buffer.get(-800, fill=10, neg_index_as_lookback=True), 10)
+            check(buffer.get([-8, -1], fill=9, neg_index_as_lookback=True), [9, 3])
             check(
-                buffer.get(slice(-8, 0), fill=10, neg_indices_left_of_zero=True),
+                buffer.get(slice(-8, 0), fill=10, neg_index_as_lookback=True),
                 [10, 10, 10, 10, 0, 1, 2, 3],
             )
             check(
-                buffer.get(slice(-7, 1), fill=10, neg_indices_left_of_zero=True),
+                buffer.get(slice(-7, 1), fill=10, neg_index_as_lookback=True),
                 [10, 10, 10, 0, 1, 2, 3, 4],
             )
             check(
-                buffer.get(slice(-6, None), fill=11, neg_indices_left_of_zero=True),
+                buffer.get(slice(-6, None), fill=11, neg_index_as_lookback=True),
                 [11, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             )
             check(
-                buffer.get(slice(-10, -4), fill=11, neg_indices_left_of_zero=True),
+                buffer.get(slice(-10, -4), fill=11, neg_index_as_lookback=True),
                 [11, 11, 11, 11, 11, 11],
             )
             # Both start stop on left side.
+            check(buffer.get(slice(-10, -9), fill=0, neg_index_as_lookback=True), [0])
             check(
-                buffer.get(slice(-10, -9), fill=0, neg_indices_left_of_zero=True), [0]
-            )
-            check(
-                buffer.get(slice(-20, -15), fill=0, neg_indices_left_of_zero=True),
+                buffer.get(slice(-20, -15), fill=0, neg_index_as_lookback=True),
                 [0, 0, 0, 0, 0],
             )
             check(
-                buffer.get(slice(-1001, -1000), fill=6, neg_indices_left_of_zero=True),
+                buffer.get(slice(-1001, -1000), fill=6, neg_index_as_lookback=True),
                 [6],
             )
             # Both start stop on right side.
             check(
-                buffer.get(slice(10, 15), fill=0, neg_indices_left_of_zero=True),
+                buffer.get(slice(10, 15), fill=0, neg_index_as_lookback=True),
                 [0, 0, 0, 0, 0],
             )
+            check(buffer.get(slice(15, 17), fill=0, neg_index_as_lookback=True), [0, 0])
             check(
-                buffer.get(slice(15, 17), fill=0, neg_indices_left_of_zero=True), [0, 0]
-            )
-            check(
-                buffer.get(slice(1000, 1001), fill=6, neg_indices_left_of_zero=True),
+                buffer.get(slice(1000, 1001), fill=6, neg_index_as_lookback=True),
                 [6],
             )
             # Right fill.
-            check(buffer.get(8, fill=10, neg_indices_left_of_zero=True), 10)
-            check(buffer.get(800, fill=10, neg_indices_left_of_zero=True), 10)
-            check(buffer.get([8, 1], fill=9, neg_indices_left_of_zero=True), [9, 5])
+            check(buffer.get(8, fill=10, neg_index_as_lookback=True), 10)
+            check(buffer.get(800, fill=10, neg_index_as_lookback=True), 10)
+            check(buffer.get([8, 1], fill=9, neg_index_as_lookback=True), [9, 5])
             check(
-                buffer.get(slice(-2, 8), fill=12, neg_indices_left_of_zero=True),
+                buffer.get(slice(-2, 8), fill=12, neg_index_as_lookback=True),
                 [2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
             )
             check(
-                buffer.get(slice(-1, 9), fill=13, neg_indices_left_of_zero=True),
+                buffer.get(slice(-1, 9), fill=13, neg_index_as_lookback=True),
                 [3, 4, 5, 6, 7, 8, 9, 10, 13, 13],
             )
             check(
-                buffer.get(slice(-1, 5), fill=-14, neg_indices_left_of_zero=True),
+                buffer.get(slice(-1, 5), fill=-14, neg_index_as_lookback=True),
                 [3, 4, 5, 6, 7, 8],
             )
             # No fill necessary (even though requested).
             check(
-                buffer.get(slice(-1, None), fill=999, neg_indices_left_of_zero=True),
+                buffer.get(slice(-1, None), fill=999, neg_index_as_lookback=True),
                 [3, 4, 5, 6, 7, 8, 9, 10],
             )
             check(
-                buffer.get(slice(-4, -1), fill=999, neg_indices_left_of_zero=True),
+                buffer.get(slice(-4, -1), fill=999, neg_index_as_lookback=True),
                 [0, 1, 2],
             )
             check(
-                buffer.get(slice(-1, 2), fill=999, neg_indices_left_of_zero=True),
+                buffer.get(slice(-1, 2), fill=999, neg_index_as_lookback=True),
                 [3, 4, 5],
             )
 
         # Check the type on the finalized buffer (numpy arrays).
-        data = buffer.get(slice(-17, -15), fill=0, neg_indices_left_of_zero=True)
+        data = buffer.get(slice(-17, -15), fill=0, neg_index_as_lookback=True)
         self.assertTrue(isinstance(data, np.ndarray))
         check(data, [0, 0])
-        data = buffer.get([-3, -1], fill=0, neg_indices_left_of_zero=True)
+        data = buffer.get([-3, -1], fill=0, neg_index_as_lookback=True)
         self.assertTrue(isinstance(data, np.ndarray))
         check(data, [1, 3])
 
@@ -431,7 +428,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
             check(
                 buffer.get(
                     -1,
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                     fill=0,
                     one_hot_discrete=True,
                 ),
@@ -493,11 +490,11 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
                 batch_([self.buffer_0, self.buffer_0]),
             )
             check(
-                buffer.get(slice(-10, -12), fill=0.0, neg_indices_left_of_zero=True),
+                buffer.get(slice(-10, -12), fill=0.0, neg_index_as_lookback=True),
                 batch_([self.buffer_0, self.buffer_0]),
             )
             check(
-                buffer.get(slice(100, 98), fill=0.0, neg_indices_left_of_zero=True),
+                buffer.get(slice(100, 98), fill=0.0, neg_index_as_lookback=True),
                 batch_([self.buffer_0, self.buffer_0]),
             )
             check(
@@ -545,11 +542,11 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=-100))
         self.assertRaises(
             IndexError,
-            lambda: buffer.set(100, at_indices=-3, neg_indices_left_of_zero=True),
+            lambda: buffer.set(100, at_indices=-3, neg_index_as_lookback=True),
         )
         self.assertRaises(
             IndexError,
-            lambda: buffer.set(100, at_indices=-9, neg_indices_left_of_zero=False),
+            lambda: buffer.set(100, at_indices=-9, neg_index_as_lookback=False),
         )
         self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=6))
         self.assertRaises(IndexError, lambda: buffer.set(100, at_indices=100))
@@ -559,18 +556,16 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
 
         # Via the `set` method with going into the lookback buffer.
-        buffer.set(
-            [100, 200, 300], at_indices=slice(-1, 2), neg_indices_left_of_zero=True
-        )
+        buffer.set([100, 200, 300], at_indices=slice(-1, 2), neg_index_as_lookback=True)
         check(buffer.data, [0, 100, 200, 300, 4, 5, 6, 7])
-        buffer.set(-999, at_indices=-2, neg_indices_left_of_zero=True)
+        buffer.set(-999, at_indices=-2, neg_index_as_lookback=True)
         check(buffer.data, [-999, 100, 200, 300, 4, 5, 6, 7])
-        buffer.set([-998, 1000], at_indices=slice(-2, 0), neg_indices_left_of_zero=True)
+        buffer.set([-998, 1000], at_indices=slice(-2, 0), neg_index_as_lookback=True)
         check(buffer.data, [-998, 1000, 200, 300, 4, 5, 6, 7])
-        buffer.set(2000, at_indices=0, neg_indices_left_of_zero=True)
+        buffer.set(2000, at_indices=0, neg_index_as_lookback=True)
         check(buffer.data, [-998, 1000, 2000, 300, 4, 5, 6, 7])
         # Negative steps.
-        buffer.set([-1, -4], at_indices=slice(3, 1, -1), neg_indices_left_of_zero=True)
+        buffer.set([-1, -4], at_indices=slice(3, 1, -1), neg_index_as_lookback=True)
         check(buffer.data, [-998, 1000, 2000, 300, -4, -1, 6, 7])
         buffer.set([-10, -40, -30], at_indices=slice(3, 0, -1))
         check(buffer.data, [-998, 1000, 2000, -30, -40, -10, 6, 7])
@@ -604,8 +599,56 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         check(buffer.data[3], self.buffer_3)
 
 
+@pytest.mark.parametrize(
+    "space",
+    [
+        gym.spaces.Discrete(5),
+        gym.spaces.Box(0, 1, shape=()),
+        gym.spaces.Box(0, 1, shape=(2, 2)),
+        gym.spaces.MultiDiscrete([2, 3]),
+        gym.spaces.MultiDiscrete(np.array([[2, 3], [4, 5]])),
+        gym.spaces.Dict(a=gym.spaces.Discrete(4), b=gym.spaces.Box(0, 1, shape=(2, 2))),
+        gym.spaces.Dict(
+            a=gym.spaces.MultiDiscrete(np.array([2, 3])),
+            b=gym.spaces.Dict(
+                b=gym.spaces.Discrete(4), c=gym.spaces.Box(0, 1, shape=(2, 2))
+            ),
+        ),
+        gym.spaces.Tuple([gym.spaces.Discrete(4), gym.spaces.Box(0, 1, shape=(2, 2))]),
+        gym.spaces.Tuple(
+            [
+                gym.spaces.Discrete(4),
+                gym.spaces.Tuple(
+                    [gym.spaces.Discrete(4), gym.spaces.Box(0, 1, shape=(2, 2))]
+                ),
+            ]
+        ),
+    ],
+)
+def test_get_set_state(space):
+    buffer = InfiniteLookbackBuffer(
+        data=[space.sample() for _ in range(5)],
+    )
+    state = buffer.get_state()
+    roundtrip_buffer = InfiniteLookbackBuffer.from_state(state)
+    assert buffer == roundtrip_buffer
+
+    for _ in range(3):
+        buffer.append(space.sample())
+
+    # finalize
+    buffer.finalize()
+    state = buffer.get_state()
+    roundtrip_buffer = InfiniteLookbackBuffer.from_state(state)
+    assert buffer == roundtrip_buffer
+
+    for _ in range(3):
+        buffer.append(space.sample())
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

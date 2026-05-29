@@ -1,14 +1,14 @@
-from typing import Any, Dict, List, Optional, Tuple
 import logging
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray._private.client_mode_hook import (
     _explicitly_enable_client_mode,
     _set_client_hook_status,
 )
+from ray._private.utils import get_ray_doc_version
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated
 from ray.util.client import ray
-from ray._private.utils import get_ray_doc_version
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,13 @@ def connect(
     _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    # Check if Ray is already connected (any type of connection)
     if ray.is_connected():
-        ignore_reinit_error = ray_init_kwargs.get("ignore_reinit_error", False)
+        ignore_reinit_error = (
+            ray_init_kwargs.get("ignore_reinit_error", False)
+            if ray_init_kwargs is not None
+            else False
+        )
         if ignore_reinit_error:
             logger.info(
                 "Calling ray.init() again after it has already been called. "

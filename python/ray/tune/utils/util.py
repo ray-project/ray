@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from collections import defaultdict
 from datetime import datetime
 from numbers import Number
@@ -81,7 +82,7 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None))
                 )
                 self.values["ram_util_percent"].append(
-                    float(getattr(psutil.virtual_memory(), "percent"))
+                    float(psutil.virtual_memory().percent)
                 )
             if self.GPUtil is not None:
                 gpu_list = []
@@ -181,6 +182,16 @@ class warn_if_slow:
         message: Optional[str] = None,
         disable: bool = False,
     ):
+        """Initialize the context manager.
+
+        Args:
+            name: Identifier for the operation, used in the warning message.
+            threshold: Duration in seconds above which to warn. Defaults to
+                ``DEFAULT_THRESHOLD``.
+            message: Optional override for the warning message format. Receives
+                ``name`` and ``duration`` as format kwargs.
+            disable: If True, suppress warnings entirely.
+        """
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
@@ -404,11 +415,13 @@ def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name
         state: Object state to be serialized.
         checkpoint_dir: Directory location for the checkpoint.
         file_name: Final name of file.
-        tmp_file_name: Temporary name of file.
+        tmp_file_name: Temporary name of file. We prepend a .uuid- prefix.
     """
     import ray.cloudpickle as cloudpickle
 
-    tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
+    tmp_search_ckpt_path = os.path.join(
+        checkpoint_dir, f".{str(uuid.uuid4())}-{tmp_file_name}"
+    )
     with open(tmp_search_ckpt_path, "wb") as f:
         cloudpickle.dump(state, f)
 
@@ -447,7 +460,7 @@ def wait_for_gpu(
     retry: int = 20,
     delay_s: int = 5,
     gpu_memory_limit: Optional[float] = None,
-):
+) -> bool:
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
@@ -461,6 +474,7 @@ def wait_for_gpu(
         retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
         delay_s: Seconds to wait before check.
+        gpu_memory_limit: Deprecated. No longer used.
 
     Returns:
         bool: True if free.
@@ -546,16 +560,16 @@ def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
     num_gpus: int = 0,
-):
+) -> bool:
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
         config: Config to pass to Trainable when testing.
         num_gpus: GPU resources to allocate when testing.
-        use_object_store: Whether to save and restore to Ray's object
-            store. Recommended to set this to True if planning to use
-            algorithms that pause training (i.e., PBT, HyperBand).
+
+    Returns:
+        True if the save/restore round-trip succeeded.
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
 

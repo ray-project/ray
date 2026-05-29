@@ -14,81 +14,6 @@
 
 #include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
 
-namespace {
-
-/// Return true if scheduling this bundle (with resource_request) will exceed the
-/// max cpu fraction for placement groups. This is per node.
-///
-/// \param node_resources The resource of the current node.
-/// \param bundle_resource_request The requested resources for the current bundle.
-/// \param max_cpu_fraction_per_node Highest CPU fraction the bundles can take up.
-/// \param available_cpus_before_curernt_pg_request Available CPUs on this node before
-///   scheduling the current pg request. It is used to calculate how many CPUs are
-///   allocated by the current bundles so far. It will help us figuring out
-///   the total CPU allocation from the current bundles for this node.
-bool AllocationWillExceedMaxCpuFraction(
-    const ray::NodeResources &node_resources,
-    const ray::ResourceRequest &bundle_resource_request,
-    double max_cpu_fraction_per_node,
-    double available_cpus_before_curernt_pg_request) {
-  if (max_cpu_fraction_per_node == 1.0) {
-    // Allocation will never exceed the threshold if the fraction == 1.0.
-    return false;
-  }
-
-  auto cpu_id = ray::ResourceID::CPU();
-  auto total_cpus = node_resources.total.Get(cpu_id).Double();
-
-  // Calculate max_reservable_cpus
-  auto max_reservable_cpus =
-      max_cpu_fraction_per_node * node_resources.total.Get(cpu_id).Double();
-
-  // If the max reservable cpu < 1, we allow at least 1 CPU.
-  if (max_reservable_cpus < 1) {
-    max_reservable_cpus = 1;
-  }
-
-  // We guarantee at least 1 CPU is excluded from the placement group
-  // when max_cpu_fraction_per_node is specified.
-  if (max_reservable_cpus > total_cpus - 1) {
-    max_reservable_cpus = total_cpus - 1;
-  }
-
-  /*
-    To calculate if allocating a new bundle will exceed the pg max_fraction,
-    we need a sum of
-
-    - CPUs used by placement groups before.
-    - CPUs that will be allocated by the current pg request.
-  */
-
-  // Get the sum of all cpu allocated by placement group on this node.
-  FixedPoint cpus_used_by_pg_before(0);
-  for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
-    if (ray::GetOriginalResourceNameFromWildcardResource(resource_id.Binary()) == "CPU") {
-      cpus_used_by_pg_before += node_resources.total.Get(resource_id);
-    }
-  }
-
-  // Get the CPUs allocated by current pg request so far.
-  // Note that when we schedule the current pg, we allocate resources
-  // temporarily meaning `node_resources.available` will contain
-  // available CPUs after allocating CPUs for the current pg request.
-  auto cpus_allocated_by_current_pg_request =
-      (available_cpus_before_curernt_pg_request -
-       node_resources.available.Get(cpu_id).Double());
-
-  auto cpus_to_allocate_by_current_pg_request =
-      (cpus_allocated_by_current_pg_request +
-       bundle_resource_request.Get(cpu_id).Double());
-
-  auto cpus_used_by_pg_after =
-      cpus_used_by_pg_before.Double() + cpus_to_allocate_by_current_pg_request;
-  return cpus_used_by_pg_after > max_reservable_cpus;
-}
-
-}  // namespace
-
 namespace ray {
 namespace raylet_scheduling_policy {
 
@@ -105,29 +30,20 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
   }
 }
 
-absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) const {
-  RAY_UNUSED(context);
-  absl::flat_hash_map<scheduling::NodeID, const Node *> result;
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    if (is_node_available_ == nullptr || is_node_available_(entry.first)) {
-      result.emplace(entry.first, &entry.second);
+bool BundleSchedulingPolicy::IsRequestFeasible(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const {
+  for (const auto &request : resource_request_list) {
+    bool bundle_feasible = std::any_of(
+        candidate_nodes.begin(), candidate_nodes.end(), [&](const auto &node_id) {
+          // Validates both resource and label constraints are feasible.
+          return cluster_resource_manager_.HasFeasibleResources(node_id, *request);
+        });
+    if (!bundle_feasible) {
+      return false;
     }
   }
-  return result;
-}
-
-/// Return the map of node id -> available cpus before the current bundle scheduling.
-/// It is used to calculate how many CPUs have been allocated for the current bundles.
-const absl::flat_hash_map<scheduling::NodeID, double>
-BundleSchedulingPolicy::GetAvailableCpusBeforeBundleScheduling() const {
-  absl::flat_hash_map<scheduling::NodeID, double> result;
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    result.emplace(
-        entry.first,
-        entry.second.GetLocalView().available.Get(ray::ResourceID::CPU()).Double());
-  }
-  return result;
+  return true;
 }
 
 std::pair<std::vector<int>, std::vector<const ResourceRequest *>>
@@ -200,60 +116,49 @@ BundleSchedulingPolicy::SortRequiredResources(
   return {std::move(sorted_index), std::move(sorted_resource_request_list)};
 }
 
-std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
+scheduling::NodeID BundleSchedulingPolicy::GetBestNode(
     const ResourceRequest &required_resources,
-    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
-    const SchedulingOptions &options,
-    const absl::flat_hash_map<scheduling::NodeID, double>
-        &available_cpus_before_bundle_scheduling) const {
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
+    const SchedulingOptions &options) const {
   double best_node_score = -1;
   auto best_node_id = scheduling::NodeID::Nil();
-  const Node *best_node = nullptr;
 
   // Score the nodes.
-  for (const auto &[node_id, node] : candidate_nodes) {
-    const auto &node_resources = node->GetLocalView();
-    if (AllocationWillExceedMaxCpuFraction(
-            node_resources,
-            required_resources,
-            options.max_cpu_fraction_per_node,
-            available_cpus_before_bundle_scheduling.at(node_id))) {
-      continue;
-    }
-
+  for (const auto &node_id : candidate_nodes) {
+    const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
     double node_score = node_scorer_->Score(required_resources, node_resources);
     if (best_node_id.IsNil() || best_node_score < node_score) {
       best_node_id = node_id;
       best_node_score = node_score;
-      best_node = node;
     }
   }
   if (!best_node_id.IsNil() && best_node_score >= 0) {
-    return {best_node_id, best_node};
+    return best_node_id;
   }
-  return {scheduling::NodeID::Nil(), nullptr};
+  return scheduling::NodeID::Nil();
 }
 
 ////////////////////  BundlePackSchedulingPolicy  ///////////////////////////////
 SchedulingResult BundlePackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
-
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
   }
-
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
   auto sorted_result = SortRequiredResources(resource_request_list);
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
+
+  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+    RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
+    return SchedulingResult::Infeasible();
+  }
 
   std::vector<scheduling::NodeID> result_nodes;
   result_nodes.resize(sorted_resource_request_list.size());
@@ -266,51 +171,42 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   while (!required_resources_list_copy.empty()) {
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
-    auto best_node = GetBestNode(*required_resources,
-                                 candidate_nodes,
-                                 options,
-                                 available_cpus_before_bundle_scheduling);
-    if (best_node.first.IsNil()) {
+    auto best_node_id = GetBestNode(*required_resources, candidate_nodes, options);
+    if (best_node_id.IsNil()) {
       // There is no node to meet the scheduling requirements.
       break;
     }
 
-    const auto &node_resources = best_node.second->GetLocalView();
-
     RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-        best_node.first, *required_resources));
-    result_nodes[required_resources_index] = best_node.first;
+        best_node_id, *required_resources));
+    result_nodes[required_resources_index] = best_node_id;
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
-      if (node_resources.IsAvailable(*iter->second)  // If the node has enough resources.
-          && !AllocationWillExceedMaxCpuFraction(    // and allocating resources won't
-                                                     // exceed max cpu fraction.
-                 node_resources,
-                 *iter->second,
-                 options.max_cpu_fraction_per_node,
-                 available_cpus_before_bundle_scheduling.at(best_node.first))) {
-        // Then allocate it.
+      // If the node has sufficient resources, allocate it.
+      if (cluster_resource_manager_.HasAvailableResources(
+              best_node_id, *iter->second, false)) {
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-            best_node.first, *iter->second));
-        result_nodes[iter->first] = best_node.first;
+            best_node_id, *iter->second));
+        result_nodes[iter->first] = best_node_id;
         required_resources_list_copy.erase(iter++);
       } else {
         // Otherwise try other node.
         ++iter;
       }
     }
-    candidate_nodes.erase(best_node.first);
+    candidate_nodes.erase(best_node_id);
   }
 
   // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
-  for (size_t index = 0; index < result_nodes.size(); index++) {
+  for (size_t res_node_idx = 0; res_node_idx < result_nodes.size(); res_node_idx++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
-    if (!result_nodes[index].IsNil()) {
+    if (!result_nodes[res_node_idx].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
+          result_nodes[res_node_idx],
+          (*sorted_resource_request_list[res_node_idx]).GetResourceSet()));
     }
   }
 
@@ -325,17 +221,13 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
 //////////////////////  BundleSpreadSchedulingPolicy  ///////////////////////////
 SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
-
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
   }
-
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
@@ -343,32 +235,31 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
 
+  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+    RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
+    return SchedulingResult::Infeasible();
+  }
+
   std::vector<scheduling::NodeID> result_nodes;
-  absl::flat_hash_map<scheduling::NodeID, const Node *> selected_nodes;
+  absl::flat_hash_set<scheduling::NodeID> selected_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
-    auto best_node = GetBestNode(*resource_request,
-                                 candidate_nodes,
-                                 options,
-                                 available_cpus_before_bundle_scheduling);
+    auto best_node_id = GetBestNode(*resource_request, candidate_nodes, options);
 
     // There are nodes to meet the scheduling requirements.
-    if (!best_node.first.IsNil()) {
-      result_nodes.emplace_back(best_node.first);
+    if (!best_node_id.IsNil()) {
+      result_nodes.emplace_back(best_node_id);
       RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-          best_node.first, *resource_request));
-      candidate_nodes.erase(result_nodes.back());
-      selected_nodes.emplace(best_node);
+          best_node_id, *resource_request));
+      candidate_nodes.erase(best_node_id);
+      selected_nodes.insert(best_node_id);
     } else {
       // Scheduling from selected nodes.
-      auto best_node = GetBestNode(*resource_request,
-                                   selected_nodes,
-                                   options,
-                                   available_cpus_before_bundle_scheduling);
-      if (!best_node.first.IsNil()) {
-        result_nodes.emplace_back(best_node.first);
+      best_node_id = GetBestNode(*resource_request, selected_nodes, options);
+      if (!best_node_id.IsNil()) {
+        result_nodes.emplace_back(best_node_id);
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-            best_node.first, *resource_request));
+            best_node_id, *resource_request));
       } else {
         break;
       }
@@ -395,79 +286,69 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
 /////////////////////  BundleStrictPackSchedulingPolicy  //////////////////////////
 SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
-
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
   }
 
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
-
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
+  LabelSelector aggregated_label_selector;
   for (const auto &resource_request : resource_request_list) {
     for (auto &resource_id : resource_request->ResourceIds()) {
       auto value = aggregated_resource_request.Get(resource_id) +
                    resource_request->Get(resource_id);
       aggregated_resource_request.Set(resource_id, value);
     }
+    // Aggregate label constraints from all requests. The selected node
+    // must satisfy the union of all label constraints.
+    const auto &label_selector = resource_request->GetLabelSelector();
+    for (const auto &constraint : label_selector.GetConstraints()) {
+      aggregated_label_selector.AddConstraint(constraint);
+    }
   }
+  aggregated_resource_request.SetLabelSelector(std::move(aggregated_label_selector));
 
-  const auto &right_node_it = std::find_if(
-      candidate_nodes.begin(),
-      candidate_nodes.end(),
-      [&aggregated_resource_request, &options, &available_cpus_before_bundle_scheduling](
-          const auto &entry) {
-        const auto &node_resources = entry.second->GetLocalView();
-        auto allocatable =
-            (node_resources.IsFeasible(
-                 aggregated_resource_request)         // If the resource is available
-             && !AllocationWillExceedMaxCpuFraction(  // and allocating resources won't
-                                                      // exceed max cpu fraction.
-                    node_resources,
-                    aggregated_resource_request,
-                    options.max_cpu_fraction_per_node,
-                    available_cpus_before_bundle_scheduling.at(entry.first)));
-        return allocatable;
-      });
-
-  if (right_node_it == candidate_nodes.end()) {
-    RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
-                      "whole cluster, schedule failed.";
-    return SchedulingResult::Infeasible();
-  }
-
-  std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
-                                                        nullptr);
-  if (!options.bundle_strict_pack_soft_target_node_id.IsNil()) {
-    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id)) {
-      best_node = GetBestNode(
-          aggregated_resource_request,
-          absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
-              {options.bundle_strict_pack_soft_target_node_id,
-               candidate_nodes[options.bundle_strict_pack_soft_target_node_id]}},
-          options,
-          available_cpus_before_bundle_scheduling);
+  // Remove any node that does not satisfy the aggregated request.
+  for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
+    if (!cluster_resource_manager_.HasFeasibleResources(*it,
+                                                        aggregated_resource_request)) {
+      candidate_nodes.erase(it++);
+    } else {
+      ++it;
     }
   }
 
-  if (best_node.first.IsNil()) {
-    best_node = GetBestNode(aggregated_resource_request,
-                            candidate_nodes,
-                            options,
-                            available_cpus_before_bundle_scheduling);
+  if (candidate_nodes.empty()) {
+    RAY_LOG(DEBUG) << "The required resource is bigger than the maximum resource in the "
+                      "whole cluster or no node satisfies the label constraints, "
+                      "schedule failed.";
+    return SchedulingResult::Infeasible();
+  }
+
+  auto best_node_id = scheduling::NodeID::Nil();
+  if (!options.bundle_strict_pack_soft_target_node_id_.IsNil()) {
+    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id_)) {
+      best_node_id = GetBestNode(aggregated_resource_request,
+                                 absl::flat_hash_set<scheduling::NodeID>{
+                                     options.bundle_strict_pack_soft_target_node_id_},
+                                 options);
+    }
+  }
+
+  if (best_node_id.IsNil()) {
+    best_node_id = GetBestNode(aggregated_resource_request, candidate_nodes, options);
   }
 
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it
   // only schedules to a node and triggers rescheduling when node dead.
   std::vector<scheduling::NodeID> result_nodes;
-  if (!best_node.first.IsNil()) {
-    result_nodes.resize(resource_request_list.size(), best_node.first);
+  if (!best_node_id.IsNil()) {
+    result_nodes.resize(resource_request_list.size(), best_node_id);
   }
   if (result_nodes.empty()) {
     // Can't meet the scheduling requirements temporarily.
@@ -478,20 +359,36 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 }
 
 /////////////////////  BundleStrictSpreadSchedulingPolicy  //////////////////////////
+void BundleStrictSpreadSchedulingPolicy::ExcludeNodesAlreadyContainingBundles(
+    absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
+    const SchedulingContext *context) {
+  const BundleSchedulingContext *bundle_scheduling_context =
+      dynamic_cast<const BundleSchedulingContext *>(context);
+  if (bundle_scheduling_context &&
+      bundle_scheduling_context->bundle_locations_.has_value()) {
+    const std::shared_ptr<BundleLocations> &bundle_locations =
+        bundle_scheduling_context->bundle_locations_.value();
+    if (bundle_locations != nullptr) {
+      for (auto &bundle : *bundle_locations) {
+        candidate_nodes.erase(scheduling::NodeID(bundle.second.first.Binary()));
+      }
+    }
+  }
+}
+
 SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
 
-  // Filter candidate nodes.
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
+  ExcludeNodesAlreadyContainingBundles(candidate_nodes,
+                                       options.scheduling_context_.get());
+
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
   }
-
-  const auto available_cpus_before_bundle_scheduling =
-      GetAvailableCpusBeforeBundleScheduling();
 
   if (resource_request_list.size() > candidate_nodes.size()) {
     RAY_LOG(DEBUG) << "The number of required resources " << resource_request_list.size()
@@ -506,18 +403,20 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
 
+  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+    RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
+    return SchedulingResult::Infeasible();
+  }
+
   std::vector<scheduling::NodeID> result_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
-    auto best_node = GetBestNode(*resource_request,
-                                 candidate_nodes,
-                                 options,
-                                 available_cpus_before_bundle_scheduling);
+    auto best_node_id = GetBestNode(*resource_request, candidate_nodes, options);
 
     // There are nodes to meet the scheduling requirements.
-    if (!best_node.first.IsNil()) {
-      candidate_nodes.erase(best_node.first);
-      result_nodes.emplace_back(best_node.first);
+    if (!best_node_id.IsNil()) {
+      candidate_nodes.erase(best_node_id);
+      result_nodes.emplace_back(best_node_id);
     } else {
       // There is no node to meet the scheduling requirements.
       break;
@@ -530,37 +429,6 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   }
   return SortSchedulingResult(SchedulingResult::Success(std::move(result_nodes)),
                               sorted_index);
-}
-
-absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleStrictSpreadSchedulingPolicy::SelectCandidateNodes(
-    const SchedulingContext *context) const {
-  auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
-
-  absl::flat_hash_set<scheduling::NodeID> nodes_in_use;
-  if (bundle_scheduling_context &&
-      bundle_scheduling_context->bundle_locations_.has_value()) {
-    const auto &bundle_locations = bundle_scheduling_context->bundle_locations_.value();
-    if (bundle_locations != nullptr) {
-      for (auto &bundle : *bundle_locations) {
-        nodes_in_use.insert(scheduling::NodeID(bundle.second.first.Binary()));
-      }
-    }
-  }
-
-  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    if (is_node_available_ && !is_node_available_(entry.first)) {
-      continue;
-    }
-
-    if (nodes_in_use.contains(entry.first)) {
-      continue;
-    }
-
-    candidate_nodes.emplace(entry.first, &entry.second);
-  }
-  return candidate_nodes;
 }
 
 }  // namespace raylet_scheduling_policy

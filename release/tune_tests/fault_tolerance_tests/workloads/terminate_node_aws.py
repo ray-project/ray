@@ -5,8 +5,8 @@ import time
 import logging
 
 import ray
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.test_utils import safe_write_to_results_json
+
+# from ray._private.test_utils import safe_write_to_results_json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def terminate_current_instance():
 def terminate_node(node_id: str):
     killer_task = ray.remote(terminate_current_instance).options(
         num_cpus=0,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
     )
     ray.get(killer_task.remote())
 
@@ -101,15 +101,15 @@ class InstanceKillerActor:
         failures = 0
         max_failures = 3
         node = None
-        terminated_succesfully = False
-        while not terminated_succesfully and failures < max_failures:
+        terminated_successfully = False
+        while not terminated_successfully and failures < max_failures:
             try:
                 node = get_random_node()
                 if not node:
                     logger.info("No alive worker nodes")
                     continue
                 terminate_node(node["NodeID"])
-                terminated_succesfully = True
+                terminated_successfully = True
                 logger.info(
                     f"Killed node {node['NodeID']} with IP {node['NodeManagerAddress']}"
                 )
@@ -124,10 +124,10 @@ class InstanceKillerActor:
             {
                 "timestamp": time.time(),
                 "node": node,
-                "terminated_succesfully": terminated_succesfully,
+                "terminated_successfully": terminated_successfully,
             }
         )
-        safe_write_to_results_json(self.history)
+        # safe_write_to_results_json(self.history)
 
 
 def create_instance_killer(
@@ -136,9 +136,9 @@ def create_instance_killer(
     warmup_time_s: float = 0,
 ):
     killer_actor_cls = InstanceKillerActor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(), soft=False
-        ),
+        label_selector={
+            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+        },
     )
     actor = killer_actor_cls.remote(
         probability=probability,

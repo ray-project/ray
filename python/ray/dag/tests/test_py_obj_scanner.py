@@ -1,7 +1,8 @@
-import pytest
 from typing import Any
 
-from ray.dag.py_obj_scanner import _PyObjScanner, _instances
+import pytest
+
+from ray.dag.py_obj_scanner import _instances, _PyObjScanner
 
 
 class Source:

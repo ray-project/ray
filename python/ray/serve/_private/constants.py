@@ -1,13 +1,44 @@
+import logging
 import os
+from typing import List
 
-#: Used for debugging to turn on DEBUG-level logs
-DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
+from ray._common.network_utils import get_all_interfaces_ip
+from ray.serve._private.constants_utils import (
+    get_env_bool,
+    get_env_float,
+    get_env_float_non_negative,
+    get_env_float_positive,
+    get_env_int,
+    get_env_int_non_negative,
+    get_env_int_positive,
+    get_env_str,
+    parse_latency_buckets,
+    str_to_list,
+)
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
+SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
+
+# Reserved runtime_env keys used to hydrate deployment actor context.
+# Unlike replicas which use _set_internal_replica_context() during init,
+# deployment actors are user-defined Ray actors. Serve controller can't
+# inject constructor params. Env vars via runtime_env are the reasonable
+# injection point that doesn't require modifying the user's class.
+RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR = "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME"
+RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION"
+)
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
@@ -15,20 +46,26 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Address
-DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
-
-#: HTTP Host
-DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Fallback proxy HTTP port
+RAY_SERVE_FALLBACK_PROXY_HTTP_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_HTTP_PORT", 8500
+)
+
 #: Uvicorn timeout_keep_alive Config
-DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
+
+#: Fallback proxy gRPC port
+RAY_SERVE_FALLBACK_PROXY_GRPC_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_GRPC_PORT", 9500
+)
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -36,17 +73,37 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+# How long to sleep between control loop cycles on the controller.
+CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1
+)
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
-#: Max retry count for allowing failures in replica constructor.
-#: If no replicas at target version is running by the time we're at
-#: max construtor retry count, deploy() is considered failed.
-#: By default we set threshold as min(num_replicas * 3, this value)
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
+# Max retry on deployment constructor is
+# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
+MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
+
+#: Max processing latency metric configuration.
+#: Rolling window duration for calculating max processing latency (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S", "60")
+)
+#: Interval for reporting max processing latency metric (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS", "6")
+)
+
+
+# If you are wondering why we are using histogram buckets, please refer to
+# https://prometheus.io/docs/practices/histograms/
+# short answer is that its cheaper to calculate percentiles on the histogram
+# than to calculate them on raw data, both in terms of time and space.
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -77,38 +134,152 @@ DEFAULT_LATENCY_BUCKET_MS = [
     600000,
 ]
 
+# Example usage:
+# RAY_SERVE_REQUEST_LATENCY_BUCKET_MS="1,2,3,4"
+# RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
+#: Histogram buckets for request latency.
+REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS",
+        get_env_str("REQUEST_LATENCY_BUCKETS_MS", ""),
+    ),
+    DEFAULT_LATENCY_BUCKET_MS,
+)
+#: Histogram buckets for model load/unload latency.
+MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS",
+        get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""),
+    ),
+    DEFAULT_LATENCY_BUCKET_MS,
+)
+
+#: Histogram buckets for replica startup and reconfigure latency.
+#: These are longer operations (constructor, model loading) so buckets start higher.
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    5,
+    20,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    60000,
+    120000,
+    240000,
+]
+REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str("RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS", ""),
+    DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+)
+
+#: Histogram buckets for batch execution time in milliseconds.
+BATCH_EXECUTION_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
+
+#: Histogram buckets for batch wait time in milliseconds.
+BATCH_WAIT_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
+
+#: Histogram buckets for batch utilization percentage.
+DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT = [
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99,
+    100,
+]
+BATCH_UTILIZATION_BUCKETS_PERCENT = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_BATCH_UTILIZATION_BUCKETS_PERCENT",
+        "",
+    ),
+    DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT,
+)
+
+#: Replica utilization metric configuration.
+#: Rolling window duration for calculating replica utilization (in seconds).
+RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S", "600")
+)
+#: Interval for reporting replica utilization metric (in seconds).
+RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS", "60")
+)
+
+#: Histogram buckets for actual batch size.
+DEFAULT_BATCH_SIZE_BUCKETS = [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+]
+BATCH_SIZE_BUCKETS = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_BATCH_SIZE_BUCKETS",
+        "",
+    ),
+    DEFAULT_BATCH_SIZE_BUCKETS,
+)
+
 #: Name of deployment health check method implemented by user.
 HEALTH_CHECK_METHOD = "check_health"
 
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
-SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = 100
+MAX_CACHED_HANDLES = get_env_int_positive("RAY_SERVE_MAX_CACHED_HANDLES", 100)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 15000
+CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
+)
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
-DEFAULT_MAX_ONGOING_REQUESTS = 100
-NEW_DEFAULT_MAX_ONGOING_REQUESTS = 5
+DEFAULT_MAX_ONGOING_REQUESTS = 5
+DEFAULT_TARGET_ONGOING_REQUESTS = 2
+DEFAULT_CONSUMER_CONCURRENCY = DEFAULT_MAX_ONGOING_REQUESTS
+DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
+DEFAULT_ROLLING_UPDATE_PERCENTAGE = 0.2
 
 # HTTP Proxy health check configs
-PROXY_HEALTH_CHECK_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", "10")) or 10
+PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S", 10.0
 )
-PROXY_HEALTH_CHECK_PERIOD_S = (
-    float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", "10")) or 10
+
+PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
+    "RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", 10.0
 )
-PROXY_READY_CHECK_TIMEOUT_S = (
-    float(os.environ.get("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", "5")) or 5
+PROXY_READY_CHECK_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0
 )
 
 # Number of times in a row that a HTTP proxy must fail the health check before
@@ -116,8 +287,8 @@ PROXY_READY_CHECK_TIMEOUT_S = (
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 # The minimum drain period for a HTTP proxy.
-PROXY_MIN_DRAINING_PERIOD_S = (
-    float(os.environ.get("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "30")) or 30
+PROXY_MIN_DRAINING_PERIOD_S = get_env_float_positive(
+    "RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", 30.0
 )
 # The time in seconds that the http proxy state waits before
 # rechecking whether the proxy actor is drained or not.
@@ -127,18 +298,49 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+# Watchdog that detects a wedged user code event loop when user code runs in a
+# separate thread (RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1) and no user-defined
+# check_health is present. The main loop periodically schedules asyncio.sleep(0) on
+# the user loop; if the probe times out MAX_FAIL times consecutively, check_health
+# raises immediately so the replica is restarted without waiting for the controller's
+# RPC timeout. Set MAX_FAIL=0 to disable.
+USER_HEALTH_CHECK_PROBE_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S",
+    60.0,
+)
+USER_HEALTH_CHECK_PROBE_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S",
+    300.0,
+)
+USER_HEALTH_CHECK_PROBE_MAX_FAIL = get_env_int_non_negative(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL",
+    3,
+)
+
+# Controller polls deployment-scoped actors with ``__ray_ready__`` (same idea as
+# replica health checks). Defaults match deployment replica timing; override via env.
+DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
+    "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S",
+    float(DEFAULT_HEALTH_CHECK_PERIOD_S),
+)
+DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S",
+    float(DEFAULT_HEALTH_CHECK_TIMEOUT_S),
+)
+DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD = get_env_int_positive(
+    "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+)
+
 # The time in seconds that the Serve client waits before rechecking deployment state
-CLIENT_POLLING_INTERVAL_S: float = 1
+CLIENT_POLLING_INTERVAL_S = 1.0
 
 # The time in seconds that the Serve client waits before checking if
 # deployment has been created
-CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
-
-# Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = 10
+CLIENT_CHECK_CREATION_POLLING_INTERVAL_S = 0.1
 
 # Timeout for GCS internal KV service
-RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
+RAY_SERVE_KV_TIMEOUT_S = get_env_float_positive("RAY_SERVE_KV_TIMEOUT_S", None)
 
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
@@ -150,27 +352,18 @@ RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 # Minimum duration to wait until broadcasting model IDs.
 PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 0.1
 
-
 # Deprecation message for V1 migrations.
 MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-DAG_DEPRECATION_MESSAGE = (
-    "The DAG API is deprecated. Please use the recommended model composition pattern "
-    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
-)
-
 # Environment variable name for to specify the encoding of the log messages
-RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
+RAY_SERVE_LOG_ENCODING = "TEXT"
 
-# Jsonify the log messages. This constant is deprecated and will be removed in the
-# future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
-RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
 
 # Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
 # Also, redirect them to serve's log files.
-RAY_SERVE_LOG_TO_STDERR = os.environ.get("RAY_SERVE_LOG_TO_STDERR", "1") == "1"
+RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "1")
 
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
@@ -181,8 +374,6 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
-SERVE_LOG_ACTOR_ID = "actor_id"
-SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"
@@ -190,58 +381,102 @@ SERVE_LOG_TIME = "asctime"
 # Logging format with record key to format string dict
 SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_REQUEST_ID: "%(request_id)s",
-    SERVE_LOG_ROUTE: "%(route)s",
     SERVE_LOG_APPLICATION: "%(application)s",
-    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_MESSAGE: "-- %(message)s",
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
 }
+
+# There are some attributes that we only use internally or don't provide values to the
+# users. Adding to this set will remove them from structured logs.
+SERVE_LOG_UNWANTED_ATTRS = {
+    "serve_access_log",
+    "task_id",
+    "job_id",
+    "skip_context_filter",
+}
+
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
+    "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
+)
+
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
+# Serve HTTP request header key for session-stickiness routing.
+# Stored as the operator wrote it (no ``-``/``_`` mangling); set via
+# ``RAY_SERVE_SESSION_ID_HEADER_KEY`` (default ``x-session-id``). Compare
+# against incoming header names with ``_matches_session_id_header`` from
+# ``http_util`` -- that helper tolerates intermediate proxies that swap
+# ``-`` and ``_`` (nginx, AWS API Gateway, ...).
+SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id")
+
+# HTTP request ID
+SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
+
 # Feature flag to turn on node locality routing for proxies. On by default.
-RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = (
-    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1") == "1"
+RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
+    "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
 )
 
 # Feature flag to turn on AZ locality routing for proxies. On by default.
-RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING = (
-    os.environ.get("RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING", "1") == "1"
+RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING = get_env_bool(
+    "RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING", "1"
 )
 
 # Serve HTTP proxy callback import path.
-RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
+RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
 )
 # Serve controller callback import path.
-RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
+RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = get_env_str(
     "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )
 
-# How often autoscaling metrics are recorded on Serve replicas.
-RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+# Maximum timeout allowed for record_autoscaling_stats to run.
+RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
+    "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
+)
+
+# Factor of look_back_period_s for autoscaling metric record interval.
+# Record interval = look_back_period_s * factor. Used by both router and replica.
+RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
+    "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
+)
+
+# Replica autoscaling metrics push interval.
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
+)
+
+# Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
+RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
+    10.0,
+)
+
+# Async inference task queue metrics push interval.
+RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
+)
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
-# thundering herd problem, the timeout value will be randomed between this value
+# thundering herd problem, the timeout value will be randomized between this value
 # and this value * 2. The unit is second.
 # If the matching process takes longer than the timeout, the request will be
 # fallen to the default routing strategy.
-RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
-    os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "1")
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = get_env_float_non_negative(
+    "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", 1.0
 )
 
 # Enable memray in all Serve actors.
-RAY_SERVE_ENABLE_MEMORY_PROFILING = (
-    os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
-)
-
-# Enable cProfile in all Serve actors.
-RAY_SERVE_ENABLE_CPU_PROFILING = (
-    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
+RAY_SERVE_ENABLE_MEMORY_PROFILING = get_env_bool(
+    "RAY_SERVE_ENABLE_MEMORY_PROFILING", "0"
 )
 
 # Max value allowed for max_replicas_per_node option.
@@ -255,83 +490,523 @@ MAX_REPLICAS_PER_NODE_MAX_VALUE = 100
 GRPC_CONTEXT_ARG_NAME = "grpc_context"
 
 # Whether or not to forcefully kill replicas that fail health checks.
-RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = (
-    os.environ.get("RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0") == "1"
+RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = get_env_bool(
+    "RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0"
+)
+
+# How often (in seconds) the controller re-records an unchanged status gauge
+# value for replicas and applications. Setting this to 0 disables caching
+# (every control loop iteration records the gauge, matching pre-optimization
+# behavior).
+RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S", 10.0
 )
 
 # Initial deadline for queue length responses in the router.
-RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
-    os.environ.get("RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1)
+RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = get_env_float(
+    "RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1
 )
 
 # Maximum deadline for queue length responses in the router (in backoff).
-RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
-    os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
+RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = get_env_float(
+    "RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0
 )
 
-# Feature flag for caching queue lengths for faster routing in each handle.
-RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
-    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
+# Length of time to respect entries in the queue length cache when routing requests.
+RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = get_env_float_non_negative(
+    "RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0
 )
 
-# Feature flag for strictly enforcing max_ongoing_requests (replicas will reject
-# requests).
-RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS = (
-    os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS", "0") == "1"
-    # Strict enforcement path must be enabled for the queue length cache.
-    or RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
+# Minimum interval between router queue length gauge updates per replica.
+# Throttling reduces metrics overhead on the hot path. Set to 0 to disable throttling.
+RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S = get_env_float_non_negative(
+    "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S", 0.1
 )
 
-# Length of time to respect entries in the queue length cache when scheduling requests.
-RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
-    os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)
+# Backoff seconds when choosing router failed, backoff time is calculated as
+# initial_backoff_s * backoff_multiplier ** attempt.
+# The default backoff time is [0, 0.025, 0.05, 0.1, 0.2, 0.4, 0.5, 0.5 ... ].
+RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S = get_env_float(
+    "RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S", 0.025
+)
+RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER = get_env_int(
+    "RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER", 2
+)
+RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = get_env_float(
+    "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5
 )
 
 # The default autoscaling policy to use if none is specified.
-DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
+DEFAULT_AUTOSCALING_POLICY_NAME = (
+    "ray.serve.autoscaling_policy:default_autoscaling_policy"
+)
 
 # Feature flag to enable collecting all queued and ongoing request
 # metrics at handles instead of replicas. ON by default.
-RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
-    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
+RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(
+    "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
 )
 
-RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = float(
-    os.environ.get("RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0)
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = get_env_float_non_negative(
+    "RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0
 )
-
-# Feature flag to always run a proxy on the head node even if it has no replicas.
-RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE = (
-    os.environ.get("RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE", "1") == "1"
-)
-
 
 # Default is 2GiB, the max for a signed int.
-RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = int(
-    os.environ.get("RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1)
+RAY_SERVE_GRPC_MAX_MESSAGE_SIZE = get_env_int(
+    "RAY_SERVE_GRPC_MAX_MESSAGE_SIZE", (2 * 1024 * 1024 * 1024) - 1
 )
 
-# Serve's gRPC server options.
-SERVE_GRPC_OPTIONS = [
+RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = get_env_int(
+    # Default max message length in gRPC is 4MB, we keep that default
+    "RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH",
+    4 * 1024 * 1024,
+)
+
+# Default options passed when constructing gRPC servers.
+DEFAULT_GRPC_SERVER_OPTIONS = [
     ("grpc.max_send_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", RAY_SERVE_GRPC_MAX_MESSAGE_SIZE),
 ]
-
-# Feature flag to eagerly start replacement replicas. This means new
-# replicas will start before waiting for old replicas to fully stop.
-RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS = (
-    os.environ.get("RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS", "1") == "1"
-)
 
 # Timeout for gracefully shutting down metrics pusher, e.g. in routers or replicas
 METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
 
 # Feature flag to set `enable_task_events=True` on Serve-managed actors.
-RAY_SERVE_ENABLE_TASK_EVENTS = (
-    os.environ.get("RAY_SERVE_ENABLE_TASK_EVENTS", "0") == "1"
+RAY_SERVE_ENABLE_TASK_EVENTS = get_env_bool("RAY_SERVE_ENABLE_TASK_EVENTS", "0")
+
+# This is deprecated and will be removed in the future.
+RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = get_env_bool(
+    "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"
 )
 
-# Use compact instead of spread scheduling strategy
-RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
-    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
+# Use pack instead of spread scheduling strategy.
+RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
+    "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
+
+# Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
+# Example: "customx,customy"
+RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
+    get_env_str("RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES", "")
+)
+
+# Feature flag to always override local_testing_mode to True in serve.run.
+# This is used for internal testing to avoid passing the flag to every invocation.
+RAY_SERVE_FORCE_LOCAL_TESTING_MODE = get_env_bool(
+    "RAY_SERVE_FORCE_LOCAL_TESTING_MODE", "0"
+)
+
+# Run sync methods defined in the replica in a thread pool by default.
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0")
+
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
+    "Calling sync method '{method_name}' directly on the "
+    "asyncio loop. In a future version, sync methods will be run in a "
+    "threadpool by default. Ensure your sync methods are thread safe "
+    "or keep the existing behavior by making them `async def`. Opt "
+    "into the new behavior by setting "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
+
+# Feature flag to turn off GC optimizations in the proxy (in case there is a
+# memory leak or negative performance impact).
+RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
+    "RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS", "1"
+)
+
+# Used for gc.set_threshold() when proxy GC optimizations are enabled.
+RAY_SERVE_PROXY_GC_THRESHOLD = get_env_int("RAY_SERVE_PROXY_GC_THRESHOLD", 700)
+
+# Interval at which cached metrics will be exported using the Ray metric API.
+# Set to `0` to disable caching entirely.
+RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = get_env_int(
+    "RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", 100
+)
+
+# The default request router class to use if none is specified.
+DEFAULT_REQUEST_ROUTER_PATH = (
+    "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter"
+)
+
+# The default request routing period to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S = 10
+
+# The default request routing timeout to use if none is specified.
+DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
+
+# Name of deployment request routing stats method implemented by user.
+REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
+
+# By default, we run user code in a separate event loop.
+# This flag can be set to 0 to run user code in the same event loop as the
+# replica's main event loop.
+RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = get_env_bool(
+    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1"
+)
+
+# By default, we run the router in a separate event loop.
+# This flag can be set to 0 to run the router in the same event loop as the
+# replica's main event loop.
+RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
+    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1"
+)
+
+# For now, this is used only for testing. In the suite of tests that
+# use gRPC to send requests, we flip this flag on.
+RAY_SERVE_USE_GRPC_BY_DEFAULT = (
+    os.environ.get("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1"
+)
+
+RAY_SERVE_PROXY_USE_GRPC = os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "1" or (
+    not os.environ.get("RAY_SERVE_PROXY_USE_GRPC") == "0"
+    and RAY_SERVE_USE_GRPC_BY_DEFAULT
+)
+
+# The default buffer size for request path logs. Setting to 1 will ensure
+# logs are flushed to file handler immediately, otherwise it will be buffered
+# and flushed to file handler when the buffer is full or when there is a log
+# line with level ERROR.
+RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
+    "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1
+)
+
+# Feature flag to fail the deployment if the rank is not set.
+# TODO (abrar): Remove this flag after the feature is stable.
+RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
+
+# The message to return when the replica is healthy.
+HEALTHY_MESSAGE = "success"
+NO_ROUTES_MESSAGE = "Route table is not populated yet."
+NO_REPLICAS_MESSAGE = "No replicas are available yet."
+DRAINING_MESSAGE = "This node is being drained."
+
+# Feature flag to enable a limited form of direct ingress where ingress applications
+# listen on port 8000 (HTTP) and 9000 (gRPC). No proxies will be started.
+RAY_SERVE_ENABLE_DIRECT_INGRESS = (
+    os.environ.get("RAY_SERVE_ENABLE_DIRECT_INGRESS", "0") == "1"
+)
+
+# Feature flag to use HAProxy.
+RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
+
+# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
+# of a system-installed binary. When enabled, get_haproxy_binary() resolves
+# the binary from the ray_haproxy package (pip install ray-haproxy).
+RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
+    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
+)
+
+# Feature flag to include client IP address in HTTP access logs.
+# Off by default for privacy; set to "1" to enable.
+RAY_SERVE_LOG_CLIENT_ADDRESS = (
+    os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
+)
+
+# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
+# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
+
+# HAProxy configuration defaults
+# Maximum number of concurrent connections
+RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
+
+# Number of threads for HAProxy
+RAY_SERVE_HAPROXY_NBTHREAD = int(os.environ.get("RAY_SERVE_HAPROXY_NBTHREAD", "4"))
+
+# HAProxy configuration file location
+RAY_SERVE_HAPROXY_CONFIG_FILE_LOC = os.environ.get(
+    "RAY_SERVE_HAPROXY_CONFIG_FILE_LOC", "/tmp/haproxy-serve/haproxy.cfg"
+)
+
+# HAProxy admin socket path
+RAY_SERVE_HAPROXY_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_SOCKET_PATH", "/tmp/haproxy-serve/admin.sock"
+)
+
+# Enable HAProxy optimized configuration (server state persistence, etc.)
+# Disabled by default to prevent test suite interference
+RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG = (
+    os.environ.get("RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG", "1") == "1"
+)
+
+# HAProxy server state path
+RAY_SERVE_HAPROXY_SERVER_STATE_BASE = os.environ.get(
+    "RAY_SERVE_HAPROXY_SERVER_STATE_BASE", "/tmp/haproxy-serve"
+)
+
+# HAProxy server state path
+RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
+    "RAY_SERVE_HAPROXY_SERVER_STATE_FILE", "/tmp/haproxy-serve/server-state"
+)
+
+# HAProxy hard stop after timeout
+RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
+)
+
+# HAProxy metrics export port
+RAY_SERVE_HAPROXY_METRICS_PORT = int(
+    os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
+)
+
+# HAProxy stats UI port
+RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
+
+# HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
+# supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
+RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
+    "RAY_SERVE_HAPROXY_LOG_TARGET", "127.0.0.1:514"
+)
+
+# HAProxy timeout configurations (in seconds, None = no timeout)
+RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S")
+    else None
+)
+
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
+    else None
+)
+
+# When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
+# setting TCP_NODELAY on both client and server connections.
+#
+# Default is ON. The streaming serving case (the dominant Ray Serve workload
+# today -- streaming LLM completions, SSE, gRPC streaming) is hostile to
+# Nagle's algorithm: when the upstream emits a small first chunk (e.g. the
+# first SSE event), Nagle holds it in the kernel buffer waiting for either
+# more data or the delayed-ACK timer, which lands as added TTFT. Set to "0"
+# only if you have a non-streaming HAProxy workload that benefits from
+# packet coalescing.
+RAY_SERVE_HAPROXY_TCP_NODELAY = get_env_bool("RAY_SERVE_HAPROXY_TCP_NODELAY", "1")
+
+# HAProxy timeout client
+RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
+)
+
+# Number of consecutive failed server health checks that must occur
+# before haproxy marks the server as down.
+RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(
+    os.environ.get("RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL", "2")
+)
+
+# Number of consecutive successful server health checks that must occur
+# before haproxy marks the server as up.
+RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE = int(
+    os.environ.get("RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE", "2")
+)
+
+# Time interval between each haproxy health check attempt. Also the
+# timeout of each health check before being considered as failed.
+RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER = os.environ.get(
+    "RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER", "5s"
+)
+
+# Time interval between each haproxy health check attempt when the server is in any of the transition states: UP - transitionally DOWN or DOWN - transitionally UP
+RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER = os.environ.get(
+    "RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER", "250ms"
+)
+
+# Time interval between each haproxy health check attempt when the server is in the DOWN state
+RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
+    "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
+)
+
+# The balancing algorithm to use in HAProxy backends. Default is leastconn.
+RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
+    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
+)
+
+# Timeout shared by the ingress-request-router Lua call and the frontend
+# `wait-for-body` directive. Bounds head-of-line blocking on POSTs when a
+# router replica is unhealthy.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
+)
+
+# Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
+# `retry-on` token reference:
+# https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
+    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
+)
+RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
+)
+RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
+)
+
+# Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
+# active. Bodies longer than this are truncated; the Lua forwards what it has
+# with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
+# do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
+# Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
+RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+)
+
+RAY_SERVE_HAPROXY_TUNE_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384  # 16KB
+)
+
+# Escape hatch: when true, HAProxy forwards the (possibly truncated) request
+# body to /internal/route and the router reads it. Off by default because for
+# large payloads the body buffering / re-emit cost adds noticeable time-to-
+# first-response. Skipping the forward is fine for any policy whose decision
+# does not depend on the request body: round-robin and power-of-two ignore
+# the body entirely, and session-aware policies key on the ``x-session-id``
+# header (forwarded with the request line) rather than the body.
+#
+# Flip this to true if the configured request router needs the body for its
+# decision, e.g. prefix-aware / prefix-cache routing.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
+)
+
+# Emit per-request metrics from the ingress-request-router data path:
+# - truncated body counter
+# - router consultation latency histogram
+# - replica-id mismatch counter (router pinned X, HAProxy used Y after fallthrough)
+#
+# When enabled, HAProxy logs an RFC 5424 line with metric fields in the
+# structured-data section to RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH, and the
+# HAProxy proxy actor parses each datagram into ray.serve.metrics Counter /
+# Histogram objects. When disabled, neither the log target nor the Lua timing
+# calls are rendered into the generated config -- there is no runtime cost.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "0"
+)
+
+# Unix dgram socket that HAProxy writes the structured metric log lines to.
+# Bound by the proxy actor before HAProxy is started. Only consulted when
+# RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED is true.
+RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
+)
+
+RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
+)
+RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+)
+RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
+)
+RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+)
+RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
+)
+# The minimum drain period for a HTTP proxy.
+# If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
+# then the minimum draining period is 0.
+RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
+)
+
+# HTTP request timeout
+SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
+
+# HTTP request disconnect disabled
+SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
+
+# Path to tracing exporter function
+# If empty string (default), then tracing is disabled
+RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH", ""
+)
+DEFAULT_TRACING_EXPORTER_IMPORT_PATH = (
+    "ray.serve._private.tracing_utils:default_tracing_exporter"
+)
+RAY_SERVE_TRACING_SAMPLING_RATIO = float(
+    os.environ.get("RAY_SERVE_TRACING_SAMPLING_RATIO", 0.01)
+)
+
+# If throughput optimized Ray Serve is enabled, set the following constants.
+# This should be at the end.
+RAY_SERVE_THROUGHPUT_OPTIMIZED = get_env_bool("RAY_SERVE_THROUGHPUT_OPTIMIZED", "0")
+if RAY_SERVE_THROUGHPUT_OPTIMIZED:
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = get_env_bool(
+        "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "0"
+    )
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
+        "RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE", 1000
+    )
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
+        "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "0"
+    )
+    RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
+    RAY_SERVE_USE_GRPC_BY_DEFAULT = get_env_bool("RAY_SERVE_USE_GRPC_BY_DEFAULT", "1")
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
+        "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
+    )
+
+if RAY_SERVE_ENABLE_HA_PROXY:
+    # Direct ingress must be enabled if HAProxy is enabled.
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
+
+    # Replica HTTP ports must be reachable from HAProxy on remote nodes, so
+    # the effective default binds to all interfaces regardless of
+    # RAY_SERVE_DEFAULT_HTTP_HOST.
+    if DEFAULT_HTTP_HOST not in (None, get_all_interfaces_ip()):
+        logger.warning(
+            f"RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r} is ignored "
+            "because RAY_SERVE_ENABLE_HA_PROXY=1 forces host to all interfaces "
+            "so HAProxy on other nodes can reach Serve HTTP ports."
+        )
+    DEFAULT_HTTP_HOST = get_all_interfaces_ip()
+
+# Feature flag to aggregate metrics at the controller instead of the replicas or handles.
+RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
+    "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
+)
+# Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
+# When enabled, metric tags use only the LongPollNamespace enum name
+# (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes
+# per-deployment identifiers. This bounds metric cardinality to ~6 namespace types
+# instead of scaling with the number of deployments.
+# Recommended for workloads with a large number (>1000) of deployments.
+RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = get_env_bool(
+    "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", "0"
+)
+# Key for the decision counters in default autoscaling policy state
+SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
+# Key for the wall-clock timestamp when a scaling decision was first observed
+SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY = "__decision_timestamp"
+
+# Event loop monitoring interval in seconds.
+# This is how often the event loop lag is measured.
+RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S", 5.0
+)
+
+# Histogram buckets for event loop scheduling latency in milliseconds.
+# These are tuned for detecting event loop blocking:
+# - < 10ms: healthy
+# - 10-50ms: acceptable under load
+# - 50-100ms: concerning, investigate
+# - 100-500ms: problematic, likely blocking code
+# - > 500ms: severe, definitely blocking
+# - > 5s: catastrophic
+SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS = [
+    1,  # 1ms
+    5,  # 5ms
+    10,  # 10ms
+    25,  # 25ms
+    50,  # 50ms
+    100,  # 100ms
+    250,  # 250ms
+    500,  # 500ms
+    1000,  # 1s
+    2500,  # 2.5s
+    5000,  # 5s
+    10000,  # 10s
+]

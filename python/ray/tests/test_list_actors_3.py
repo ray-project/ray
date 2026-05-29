@@ -1,8 +1,9 @@
-import pytest
 import sys
 
+import pytest
+
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 
 
 def test_list_named_actors_ray_kill(ray_start_regular):
@@ -49,10 +50,6 @@ assert "sad" in ray.util.list_named_actors()
 
 
 if __name__ == "__main__":
-    import os
 
     # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

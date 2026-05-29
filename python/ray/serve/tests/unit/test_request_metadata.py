@@ -13,16 +13,19 @@ def test_request_metadata():
     is_grpc_request should return True.
     """
     request_id = "request-id"
-    endpoint = "endpoint"
-    request_metadata = RequestMetadata(request_id=request_id, endpoint=endpoint)
+    internal_request_id = "internal-request-id"
+    request_metadata = RequestMetadata(
+        request_id=request_id,
+        internal_request_id=internal_request_id,
+    )
 
     # Ensure the default values are set correctly.
     assert request_metadata.request_id == request_id
-    assert request_metadata.endpoint == endpoint
     assert request_metadata.call_method == "__call__"
     assert request_metadata.route == ""
     assert request_metadata.app_name == ""
     assert request_metadata.multiplexed_model_id == ""
+    assert request_metadata.session_id == ""
     assert request_metadata.is_streaming is False
     assert request_metadata._request_protocol == RequestProtocol.UNDEFINED
     assert request_metadata.is_http_request is False

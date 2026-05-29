@@ -16,22 +16,32 @@
 
 #include <jni.h>
 
+#include <string>
+
 #include "boost/algorithm/string.hpp"
-#include "jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/common.h"
-#include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "ray/gcs_rpc_client/global_state_accessor.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 JNIEXPORT jlong JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
-    JNIEnv *env, jobject o, jstring j_bootstrap_address, jstring j_redis_passowrd) {
+    JNIEnv *env,
+    jobject o,
+    jstring j_bootstrap_address,
+    jstring j_redis_username,
+    jstring j_redis_password) {
   std::string bootstrap_address = JavaStringToNativeString(env, j_bootstrap_address);
-  std::string redis_password = JavaStringToNativeString(env, j_redis_passowrd);
+  std::string redis_username = JavaStringToNativeString(env, j_redis_username);
+  std::string redis_password = JavaStringToNativeString(env, j_redis_password);
   gcs::GlobalStateAccessor *gcs_accessor = nullptr;
-  ray::gcs::GcsClientOptions client_options(bootstrap_address);
+  ray::gcs::GcsClientOptions client_options(bootstrap_address,
+                                            ray::ClusterID::Nil(),
+                                            /*allow_cluster_id_nil=*/true,
+                                            /*fetch_cluster_id_if_nil=*/false);
   gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   return reinterpret_cast<jlong>(gcs_accessor);
 }
@@ -54,8 +64,8 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto job_info_list = gcs_accessor->GetAllJobInfo();
   return NativeVectorToJavaList<std::string>(
-      env, job_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, job_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 
@@ -75,8 +85,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env,
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto node_info_list = gcs_accessor->GetAllNodeInfo();
   return NativeVectorToJavaList<std::string>(
-      env, node_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, node_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 
@@ -100,8 +110,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
   auto actor_info_list =
       gcs_accessor->GetAllActorInfo(std::nullopt, job_id, actor_state_name);
   return NativeVectorToJavaList<std::string>(
-      env, actor_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, actor_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 
@@ -151,8 +161,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto placement_group_info_list = gcs_accessor->GetAllPlacementGroupInfo();
   return NativeVectorToJavaList<std::string>(
-      env, placement_group_info_list, [](JNIEnv *env, const std::string &str) {
-        return NativeStringToJavaByteArray(env, str);
+      env, placement_group_info_list, [](JNIEnv *inner_env, const std::string &str) {
+        return NativeStringToJavaByteArray(inner_env, str);
       });
 }
 

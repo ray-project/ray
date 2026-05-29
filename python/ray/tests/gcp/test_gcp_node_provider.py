@@ -1,31 +1,32 @@
-from typing import Dict
-from threading import RLock
-import pytest
-from unittest.mock import MagicMock, patch, call
 import logging
+import sys
+from threading import RLock
+from typing import Dict
+from unittest.mock import MagicMock, call, patch
 
+import pytest
+
+from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
+from ray.autoscaler._private.gcp.config import (
+    _get_num_tpu_chips,
+    _has_tpus_in_node_configs,
+    _is_single_host_tpu,
+    get_node_type,
+    tpu_accelerator_config_to_type,
+)
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
     GCPNode,
     GCPNodeType,
     GCPResource,
 )
-
-from ray.tests.test_autoscaler import MockProcessRunner
 from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
-from ray.autoscaler._private.gcp.config import (
-    get_node_type,
-    _get_num_tpu_chips,
-    _is_single_host_tpu,
-    _has_tpus_in_node_configs,
-    tpu_accelerator_config_to_type,
-)
 from ray.autoscaler._private.gcp.tpu_command_runner import (
     TPUCommandRunner,
-    TPUVMSSHCommandRunner,
     TPUVMDockerCommandRunner,
+    TPUVMSSHCommandRunner,
 )
-from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
+from ray.tests.test_autoscaler import MockProcessRunner
 
 _PROJECT_NAME = "project-one"
 _AZ = "us-west1-b"
@@ -233,6 +234,14 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
         ({"acceleratorType": "v3-8"}, "TPU-v3-8-head"),
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, "TPU-v4-16-head"),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128-head"),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            "TPU-v5litepod-8-head",
+        ),
+        (
+            {"acceleratorConfig": {"type": "V6E", "topology": "2x4"}},
+            "TPU-v6e-8-head",
+        ),
     ],
 )
 def test_tpu_node_fillout(test_case):
@@ -248,6 +257,7 @@ def test_tpu_node_fillout(test_case):
             },
         },
     }
+
     cluster_config["available_node_types"]["ray_tpu"]["node_config"].update(
         accelerator_config
     )
@@ -310,6 +320,8 @@ def test_invalid_accelerator_configs(node_config):
         ({"acceleratorType": "v4-4096"}, 2048, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x8"}}, 32, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, 64, False),
+        ({"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}}, 8, True),
+        ({"acceleratorConfig": {"type": "V6E", "topology": "2x4"}}, 8, True),
     ],
 )
 def test_tpu_chip_calculation_single_host_logic(test_case):
@@ -356,6 +368,16 @@ def test_tpu_chip_calculation_single_host_logic(test_case):
             GCPNodeType.TPU,
             True,
         ),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
+        (
+            {"acceleratorConfig": {"type": "V6E", "topology": "2x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
     ],
 )
 def test_get_node_type_and_has_tpu(test_case):
@@ -398,16 +420,18 @@ def test_tpu_pod_emits_warning(propagate_logs, caplog, accelerator_pod_tuple):
 @pytest.mark.parametrize(
     "test_case",
     [
-        ("v4-8", "2x2x1"),
-        ("v4-16", "2x2x2"),
-        ("v4-128", "4x4x4"),
-        ("v4-256", "4x4x8"),
+        ("v4-8", "V4", "2x2x1"),
+        ("v4-16", "V4", "2x2x2"),
+        ("v4-128", "V4", "4x4x4"),
+        ("v4-256", "V4", "4x4x8"),
+        ("v5litepod-8", "V5LITE_POD", "2x4"),
+        ("v6e-8", "V6E", "2x4"),
     ],
 )
 def test_tpu_accelerator_config_to_type(test_case):
-    expected, topology = test_case
+    expected, accel_type, topology = test_case
     accelerator_config = {
-        "type": "V4",
+        "type": accel_type,
         "topology": topology,
     }
     accelerator_type = tpu_accelerator_config_to_type(
@@ -417,6 +441,4 @@ def test_tpu_accelerator_config_to_type(test_case):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

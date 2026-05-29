@@ -37,7 +37,7 @@ import subprocess
 import threading
 import time
 from numbers import Number
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 import boto3
 import click
@@ -520,9 +520,7 @@ class ReproSession:
 
     def print_buildkite_command(self, skipped: bool = False):
         print("-" * 80)
-        print(
-            "These are the commands you need to execute to fully reproduce " "the run"
-        )
+        print("These are the commands you need to execute to fully reproduce the run")
         print("-" * 80)
         print(self.env["BUILDKITE_COMMAND"])
         print("-" * 80)
@@ -597,7 +595,7 @@ def main(
     handler = logging.StreamHandler()
     handler.setFormatter(
         logging.Formatter(
-            "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+            "[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
         )
     )
     logger.addHandler(handler)

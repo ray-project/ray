@@ -141,7 +141,7 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(input_space == deserialized_space)
 
     def test_simplex_space(self):
-        space = Simplex(shape=(3, 4), concentration=np.array((1, 2, 1)))
+        space = Simplex(shape=(3, 4), concentration=np.array((1, 2, 1, 2)))
 
         d = gym_space_to_dict(space)
         sp = gym_space_from_dict(d)
@@ -212,6 +212,18 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp.original_space, gym.spaces.Dict))
         self.assertTrue(isinstance(sp.original_space["obs1"], gym.spaces.Box))
         self.assertTrue(isinstance(sp.original_space["obs2"], gym.spaces.Box))
+
+    def test_unknown_space_type_error_message(self):
+        with self.assertRaisesRegex(
+            ValueError, "Unknown space type for serialization:"
+        ):
+            gym_space_to_dict(object())
+
+    def test_unknown_serialized_space_type_error_message(self):
+        with self.assertRaisesRegex(
+            ValueError, "Unknown space type for de-serialization: made-up-space"
+        ):
+            gym_space_from_dict({"space": "made-up-space"})
 
 
 class TestConvertNumpyToPythonPrimitives(unittest.TestCase):

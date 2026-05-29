@@ -12,3 +12,4 @@ Ray Core API
     cli.rst
     ../../ray-observability/reference/cli.rst
     ../../ray-observability/reference/api.rst
+    direct-transport.rst

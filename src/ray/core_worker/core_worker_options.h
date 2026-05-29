@@ -14,18 +14,27 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/util/process.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 namespace core {
+
+using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
+using SetDirectTransportMetadata = std::function<void(
+    const ObjectID &object_id, const std::string &direct_transport_metadata)>;
 
 // If you change this options's definition, you must change the options used in
 // other files. Please take a global search and modify them !!!
@@ -47,6 +56,9 @@ struct CoreWorkerOptions {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
+      // Human-readable name for the actor class.
+      // Only expected to be populated by actor creation tasks.
+      std::string *actor_repr_name,
       // Application error string, empty if no error.
       std::string *application_error,
       // The following 2 parameters `defined_concurrency_groups` and
@@ -65,23 +77,19 @@ struct CoreWorkerOptions {
       bool retry_exception,
       // The max number of unconsumed objects where a generator
       // can run without a pause.
-      int64_t generator_backpressure_num_objects)>;
+      int64_t generator_backpressure_num_objects,
+      const std::optional<std::string> &tensor_transport)>;
 
   CoreWorkerOptions()
-      : store_socket(""),
-        raylet_socket(""),
-        enable_logging(false),
-        log_dir(""),
+      : enable_logging(false),
         install_failure_signal_handler(false),
         interactive(false),
-        node_ip_address(""),
         node_manager_port(0),
-        raylet_ip_address(""),
-        driver_name(""),
-        stdout_file(""),
-        stderr_file(""),
         task_execution_callback(nullptr),
+        free_actor_object_callback(nullptr),
+        set_direct_transport_metadata(nullptr),
         check_signals(nullptr),
+        initialize_thread_callback(nullptr),
         gc_collect(nullptr),
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
@@ -89,16 +97,11 @@ struct CoreWorkerOptions {
         unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
-        cancel_async_task(nullptr),
-        is_local_mode(false),
-        terminate_asyncio_thread(nullptr),
-        serialized_job_config(""),
+        cancel_async_actor_task(nullptr),
+        actor_shutdown_callback(nullptr),
         metrics_agent_port(-1),
-        connect_on_start(true),
         runtime_env_hash(0),
         cluster_id(ClusterID::Nil()),
-        session_name(""),
-        entrypoint(""),
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1) {}
 
@@ -127,28 +130,27 @@ struct CoreWorkerOptions {
   std::string node_ip_address;
   /// Port of the local raylet.
   int node_manager_port;
-  /// IP address of the raylet.
-  std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
-  /// The stdout file of this process.
-  std::string stdout_file;
-  /// The stderr file of this process.
-  std::string stderr_file;
-  /// Language worker callback to execute tasks.
+  /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// The callback to be called when shutting down a `CoreWorker` instance.
-  std::function<void(const WorkerID &)> on_worker_shutdown;
+  /// Callback to free RDT object from the in-actor RDT store.
+  FreeActorObjectCallback free_actor_object_callback;
+  /// Callback to set the direct transport metadata for an RDT object.
+  SetDirectTransportMetadata set_direct_transport_metadata;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
   /// any long-running operations in the core worker will short circuit and return that
   /// status.
   std::function<Status()> check_signals;
+  /// Application-language callback that initializes a thread and returns a function to
+  /// be called when the thread is destroyed.
+  std::function<std::function<void()>()> initialize_thread_callback;
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
-  std::function<void(bool triggered_by_global_gc)> gc_collect;
+  std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
       spill_objects;
@@ -166,31 +168,23 @@ struct CoreWorkerOptions {
   // Function that tries to interrupt the currently running Python thread if its
   // task ID matches the one given.
   std::function<bool(const TaskID &task_id)> kill_main;
-  std::function<void(const TaskID &task_id,
-                     const RayFunction &ray_function,
-                     const std::string name_of_concurrency_group_to_execute)>
-      cancel_async_task;
-  /// Is local mode being used.
-  bool is_local_mode;
-  /// The function to destroy asyncio event and loops.
-  std::function<void()> terminate_asyncio_thread;
+  // Function to cancel a running asyncio actor task.
+  // Should return a boolean indicating if the task was successfully cancelled or not.
+  // If not, the client will retry.
+  std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
+  /// Callback to shutdown actor instance before shutdown.
+  std::function<void()> actor_shutdown_callback;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
   /// The port number of a metrics agent that imports metrics from core workers.
   /// -1 means there's no such agent.
   int metrics_agent_port;
-  /// If false, the constructor won't connect and notify raylets that it is
-  /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
-  /// TODO(sang): Use this method for Java and cpp frontend too.
-  bool connect_on_start;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
-  /// The startup token of the process assigned to it
-  /// during startup via command line arguments.
-  /// This is needed because the actual core worker process
-  /// may not have the same pid as the process the worker pool
-  /// starts (due to shim processes).
-  StartupToken startup_token{0};
+  /// The worker ID assigned by raylet when starting the worker process.
+  /// This is set for non-driver workers started by raylet. For drivers,
+  /// this should be Nil and the worker ID will be computed from the job ID.
+  WorkerID worker_id;
   /// Cluster ID associated with the core worker.
   ClusterID cluster_id;
   /// The function to allocate a new object for the memory store.
@@ -200,11 +194,15 @@ struct CoreWorkerOptions {
   std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
                                                 const ObjectID &object_id)>
       object_allocator;
-  /// Session name (Cluster ID) of the cluster.
+  /// The current Ray session name.
   std::string session_name;
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;
+
+  // Source information for `CoreWorker`, used for debugging and informational purpose,
+  // rather than functional purpose.
+  std::string debug_source;
 };
 }  // namespace core
 }  // namespace ray

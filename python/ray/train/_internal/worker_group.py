@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import socket
@@ -8,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 import ray
 from ray.actor import ActorHandle
 from ray.air._internal.util import exception_cause, skip_exceptions
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 
@@ -24,7 +26,11 @@ class RayTrainWorker:
 
         Args:
             func: The function to execute.
-            args, kwargs: The arguments to pass into func.
+            *args: Positional arguments to pass into ``func``.
+            **kwargs: Keyword arguments to pass into ``func``.
+
+        Returns:
+            The result of calling ``func`` with the provided arguments.
         """
         try:
             return func(*args, **kwargs)
@@ -45,7 +51,7 @@ class WorkerMetadata:
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
         resource_ids: Map of accelerator resources
-        ("GPU", "neuron_cores", ..) to their IDs.
+            ("GPU", "neuron_cores", ..) to their IDs.
         pid: Process ID of this worker.
     """
 
@@ -99,7 +105,7 @@ def construct_metadata() -> WorkerMetadata:
     )
 
 
-class WorkerGroup:
+class WorkerGroup(BaseWorkerGroup):
     """Group of Ray Actors that can execute arbitrary functions.
 
     ``WorkerGroup`` launches Ray actors according to the given
@@ -112,14 +118,14 @@ class WorkerGroup:
     Args:
         num_workers: The number of workers (Ray actors) to launch.
             Defaults to 1.
-        resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_worker: Dictionary specifying the resources that will be
             requested for each worker. Defaults to {"CPU": 1}.
-        actor_cls (Optional[Type]): If specified use this class as the
-            remote actors.
-        remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
-            these args will be used for the worker initialization.
-        placement_group (PlacementGroup|str): The placement group that workers
+        actor_cls: If specified use this class as the remote actors.
+        actor_cls_args: If ``actor_cls`` is provided, these positional args will
+            be used for the worker initialization.
+        actor_cls_kwargs: If ``actor_cls`` is provided, these keyword args will
+            be used for the worker initialization.
+        placement_group: The placement group that workers
             should be created in. Defaults to "default" which will inherit the
             parent placement group (if child tasks should be captured).
 
@@ -168,9 +174,12 @@ class WorkerGroup:
             )
 
         self.num_workers = num_workers
-        self.num_cpus_per_worker = resources_per_worker.pop("CPU", 0)
-        self.num_gpus_per_worker = resources_per_worker.pop("GPU", 0)
-        self.memory_per_worker = resources_per_worker.pop("memory", 0)
+        self.resources_per_worker = resources_per_worker
+
+        _resources_per_worker = copy.deepcopy(resources_per_worker)
+        self.num_cpus_per_worker = _resources_per_worker.pop("CPU", 0)
+        self.num_gpus_per_worker = _resources_per_worker.pop("GPU", 0)
+        self.memory_per_worker = _resources_per_worker.pop("memory", 0)
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
         assert issubclass(self._base_cls, RayTrainWorker)
@@ -186,7 +195,7 @@ class WorkerGroup:
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
             memory=self.memory_per_worker,
-            resources=resources_per_worker,
+            resources=_resources_per_worker,
         )(self._base_cls)
         self.start()
 
@@ -235,7 +244,8 @@ class WorkerGroup:
 
         Args:
             func: A function to call on each worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (List[ObjectRef]) A list of ``ObjectRef`` representing the
@@ -262,13 +272,16 @@ class WorkerGroup:
 
         Args:
             func: A function to call on each worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (List[T]) A list containing the output of ``func`` from each
                 worker. The order is the same as ``self.workers``.
 
         """
+        # TODO: Add a timeout in the case of a hang, particularly
+        # relevant when func is TorchConfig.on_shutdown
         return ray.get(self.execute_async(func, *args, **kwargs))
 
     def execute_single_async(
@@ -279,7 +292,8 @@ class WorkerGroup:
         Args:
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (ObjectRef) An ObjectRef representing the output of func.
@@ -306,7 +320,8 @@ class WorkerGroup:
         Args:
             worker_index: The index to execute func on.
             func: A function to call on the first worker.
-            args, kwargs: Passed directly into func.
+            *args: Positional arguments passed directly into ``func``.
+            **kwargs: Keyword arguments passed directly into ``func``.
 
         Returns:
             (T) The output of func.
@@ -322,7 +337,7 @@ class WorkerGroup:
         will be terminated.
 
         Args:
-            worker_indexes (List[int]): The indexes of the workers to remove.
+            worker_indexes: The indexes of the workers to remove.
         """
         new_workers = []
         for i in range(len(self.workers)):
@@ -360,43 +375,43 @@ class WorkerGroup:
         for i in range(len(new_actors)):
             self.workers.append(Worker(actor=new_actors[i], metadata=metadata[i]))
 
-    def sort_workers_by_ip_and_gpu_id(self, _first_ip: Optional[str] = None):
-        """Reorder the workers by their node ip and the lowest GPU id.
+    def sort_workers_by_node_id_and_gpu_id(self, _first_node_id: Optional[str] = None):
+        """Reorder the workers by their node id and the lowest GPU id.
 
         This is useful for collocating workers on the same node.
 
         Example:
             Given workers with the following attributes:
-                worker_0: ip=1, gpu_ids=[1]
-                worker_1: ip=0, gpu_ids=[0]
-                worker_2: ip=1, gpu_ids=[0]
-                worker_3: ip=0, gpu_ids=[1]
+                worker_0: node_id=1, gpu_ids=[1]
+                worker_1: node_id=0, gpu_ids=[0]
+                worker_2: node_id=1, gpu_ids=[0]
+                worker_3: node_id=0, gpu_ids=[1]
 
             The function will perform the following steps:
-                1. Group by node IP:
-                    ip=0: worker_1, worker_3
-                    ip=1: worker_0, worker_2
+                1. Group by node ID:
+                    node_id=0: worker_1, worker_3
+                    node_id=1: worker_0, worker_2
 
                 2. Sort each group by GPU ID:
-                    ip=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
-                    ip=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+                    node_id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
+                    node_id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
 
             Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
 
         Args:
-            _first_ip: The first IP to group by.
-                Set this to the node IP of the trainer coordinator to ensure that the
+            _first_node_id: The first ID to group by.
+                Set this to the node ID of the trainer coordinator to ensure that the
                 rank 0 worker is on the same node, allowing additional resources to
                 be specified for rank 0 workers via
                 `ScalingConfig(trainer_resources=)`.
         """
-        ip_to_workers = defaultdict(list)
+        node_id_to_workers = defaultdict(list)
 
-        if _first_ip is not None:
-            ip_to_workers[_first_ip] = []
+        if _first_node_id is not None:
+            node_id_to_workers[_first_node_id] = []
 
         for worker in self.workers:
-            ip_to_workers[worker.metadata.node_ip].append(worker)
+            node_id_to_workers[worker.metadata.node_id].append(worker)
 
         # Sort workers on the same node by the lowest GPU id
         # More details: https://github.com/ray-project/ray/issues/40803
@@ -413,14 +428,18 @@ class WorkerGroup:
             except ValueError:
                 return min(gpu_ids)
 
-        for node_ip in ip_to_workers:
-            ip_to_workers[node_ip].sort(key=get_lowest_gpu_id)
+        for node_id in node_id_to_workers:
+            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
 
         sorted_workers = []
-        for workers in ip_to_workers.values():
+        for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
 
         self.workers = sorted_workers
 
     def __len__(self):
         return len(self.workers)
+
+    def get_resources_per_worker(self) -> dict:
+        """Get the resources allocated per worker."""
+        return copy.deepcopy(self.resources_per_worker)

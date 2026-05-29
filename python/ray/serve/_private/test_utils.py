@@ -1,28 +1,81 @@
 import asyncio
+import datetime
+import os
+import random
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from unittest.mock import Mock
 
 import grpc
-import pytest
+import httpx
 import requests
 from starlette.requests import Request
 
 import ray
-import ray.util.state as state_api
 from ray import serve
+from ray._common.network_utils import build_address
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    fetch_prometheus_metric_timeseries,
+    wait_for_condition,
+)
+from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
-from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
+from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.common import (
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    DeploymentStatus,
+    ReplicaID,
+    RequestProtocol,
+    RunningReplicaInfo,
+)
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
+from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
+from ray.serve._private.deployment_state import (
+    ALL_REPLICA_STATES,
+    DeploymentVersion,
+    ReplicaStartupStatus,
+    ReplicaState,
+)
 from ray.serve._private.proxy import DRAINING_MESSAGE
+from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.request_router import (
+    PendingRequest,
+    RunningReplica,
+)
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import TimerBase
+from ray.serve.context import _get_global_client
+from ray.serve.gang import GangContext
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.schema import ApplicationStatus, ReplicaRank, TargetGroup
+from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+# Global variable that is fetched during controller recovery that
+# marks (simulates) which replicas have died since controller first
+# recovered a list of live replica names.
+# NOTE(zcin): This is necessary because the replica's `recover()` method
+# is called in the controller's init function, instead of in the control
+# loop, so we can't "mark" a replica dead through a method. This global
+# state is cleared after each test that uses the fixtures in this file.
+dead_replicas_context = set()
+# Replicas registered in this set will report `was_initialized() == False` to
+# the controller during recovery, simulating the case where a previous
+# controller crashed before the actor finished its initial setup.
+uninitialized_replicas_context = set()
+replica_rank_context: Dict[str, ReplicaRank] = {}
 
 
 class MockTimer(TimerBase):
@@ -136,6 +189,120 @@ class MockClusterNodeInfoCache:
     def set_available_resources_per_node(self, node_id: str, resources: Dict):
         self.available_resources_per_node[node_id] = deepcopy(resources)
 
+    def get_node_labels(self, node_id: str):
+        return self.node_labels.get(node_id, {})
+
+
+# Default value used by FakeRunningReplica when the test doesn't override.
+FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS = 10
+# Every FakeRunningReplica is stamped with this deployment id. Router
+# tests never care about app/name specifically; cross-test consistency
+# matters more than differentiation.
+FAKE_REPLICA_DEPLOYMENT_ID = DeploymentID(name="TEST_DEPLOYMENT")
+
+
+class FakeRunningReplica(RunningReplica):
+    """In-memory ``RunningReplica`` stand-in for request-router unit tests.
+
+    Shared between ``test_pow_2_request_router.py`` and
+    ``test_consistent_hash_router.py``. Supports enough knobs for pow-2's
+    locality / cancellation / re-probe tests; consistent-hash only uses
+    the queue-length response hooks.
+    """
+
+    def __init__(
+        self,
+        replica_unique_id: str,
+        *,
+        node_id: str = "",
+        availability_zone: Optional[str] = None,
+        reset_after_response: bool = False,
+        model_ids: Optional[Set[str]] = None,
+        sleep_time_s: float = 0.0,
+        max_ongoing_requests: int = FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS,
+    ):
+        self._replica_id = ReplicaID(
+            unique_id=replica_unique_id,
+            deployment_id=FAKE_REPLICA_DEPLOYMENT_ID,
+        )
+        self._node_id = node_id
+        self._availability_zone = availability_zone
+        self._queue_len = 0
+        self._max_ongoing_requests = max_ongoing_requests
+        self._has_queue_len_response = asyncio.Event()
+        self._reset_after_response = reset_after_response
+        self._model_ids = model_ids or set()
+        self._sleep_time_s = sleep_time_s
+        self._exception: Optional[Exception] = None
+
+        self.get_queue_len_was_cancelled = False
+        self.queue_len_deadline_history = list()
+        self.num_get_queue_len_calls = 0
+
+    @property
+    def replica_id(self) -> ReplicaID:
+        return self._replica_id
+
+    @property
+    def node_id(self) -> str:
+        return self._node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._availability_zone
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        return self._model_ids
+
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        self._model_ids = set(replica_info.multiplexed_model_ids)
+
+    @property
+    def max_ongoing_requests(self) -> int:
+        return self._max_ongoing_requests
+
+    def set_queue_len_response(
+        self,
+        queue_len: int,
+        exception: Optional[Exception] = None,
+    ):
+        self._queue_len = queue_len
+        self._exception = exception
+        self._has_queue_len_response.set()
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        pass
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        self.num_get_queue_len_calls += 1
+        self.queue_len_deadline_history.append(deadline_s)
+        try:
+            while not self._has_queue_len_response.is_set():
+                await self._has_queue_len_response.wait()
+
+            if self._sleep_time_s > 0:
+                await asyncio.sleep(self._sleep_time_s)
+
+            if self._reset_after_response:
+                self._has_queue_len_response.clear()
+
+            if self._exception is not None:
+                raise self._exception
+
+            return self._queue_len
+        except asyncio.CancelledError:
+            self.get_queue_len_was_cancelled = True
+            raise
+
+    def try_send_request(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> ReplicaResult:
+        raise NotImplementedError()
+
+    def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
+        raise NotImplementedError()
+
 
 class FakeRemoteFunction:
     def remote(self):
@@ -179,31 +346,453 @@ class MockActorClass:
 
 
 class MockPlacementGroup:
+    def __init__(self, request: CreatePlacementGroupRequest):
+        self._bundles = request.bundles
+        self._strategy = request.strategy
+        self._soft_target_node_id = request.target_node_id
+        self._name = request.name
+        self._lifetime = "detached"
+
+
+class MockDeploymentHandle:
+    def __init__(self, deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME):
+        self._deployment_name = deployment_name
+        self._app_name = app_name
+        self._protocol = RequestProtocol.UNDEFINED
+        self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def _init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def __eq__(self, dep: Tuple[str]):
+        other_deployment_name, other_app_name = dep
+        return (
+            self._deployment_name == other_deployment_name
+            and self._app_name == other_app_name
+        )
+
+    def _set_request_protocol(self, protocol: RequestProtocol):
+        self._protocol = protocol
+
+    def _get_or_create_router(self):
+        pass
+
+    def running_replicas_populated(self) -> bool:
+        return self._running_replicas_populated
+
+    def set_running_replicas_populated(self, val: bool):
+        self._running_replicas_populated = val
+
+
+class MockDeploymentActorWrapper:
+    """Mock for DeploymentActorWrapper with per-instance setters."""
+
     def __init__(
         self,
-        bundles: List[Dict[str, float]],
-        strategy: str = "PACK",
-        name: str = "",
-        lifetime: Optional[str] = None,
-        _soft_target_node_id: Optional[str] = None,
+        deployment_id: DeploymentID,
+        config,
+        code_version: str,
+        recovered_handle=None,
     ):
-        self._bundles = bundles
-        self._strategy = strategy
-        self._name = name
-        self._lifetime = lifetime
-        self._soft_target_node_id = _soft_target_node_id
+        self._deployment_id = deployment_id
+        self._config = config
+        self._code_version = code_version
+        self._handle = recovered_handle
+        self._ready = False  # Recovered starts pending until set_ready()
+        self._start_error_msg: Optional[str] = None
+        self._check_ready_error_msg: Optional[str] = None
+        self.killed = False
+        self.pending_killed = False
+        self._start_fail_count = 0
+        self._start_fail_msg = None
+        self._health_ok = True
+        self.reset_health_state_after_running_count = 0
+
+    @property
+    def actor_logical_name(self) -> str:
+        return self._config.name
+
+    @property
+    def code_version(self) -> str:
+        return self._code_version
+
+    def set_ready(self):
+        self._ready = True
+
+    def set_start_error(self, error_msg: str):
+        """Make start() fail with this error (persists until cleared)."""
+        self._start_error_msg = error_msg
+
+    def set_check_ready_error(self, error_msg: str):
+        self._check_ready_error_msg = error_msg
+
+    def set_failed_to_start(self, error_msg: str = "constructor failed"):
+        """Simulate start failure (like replica's set_failed_to_start). check_ready will return this error."""
+        self._check_ready_error_msg = error_msg
+
+    def start(self, deployment_runtime_env=None):
+        if self._start_error_msg is not None:
+            return False, self._start_error_msg
+        # Match real behavior: created actor starts as pending until ready.
+        return True, None
+
+    def check_ready(self):
+        if self._check_ready_error_msg is not None:
+            return False, self._check_ready_error_msg
+        if self._ready:
+            return True, None
+        return False, None
+
+    def set_health_ok(self, ok: bool) -> None:
+        """If False, ``check_health`` returns False (failed health reconciliation)."""
+        self._health_ok = ok
+
+    def reset_health_state_after_running(self) -> None:
+        """Match DeploymentActorWrapper; increments counter for unit tests."""
+        self.reset_health_state_after_running_count += 1
+
+    def check_health(self) -> bool:
+        """Match DeploymentActorWrapper; controlled via ``set_health_ok``."""
+        return self._health_ok
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+class MockReplicaActorWrapper:
+    def __init__(
+        self,
+        replica_id: ReplicaID,
+        version: DeploymentVersion,
+    ):
+        self._replica_id = replica_id
+        self._actor_name = replica_id.to_full_id_str()
+        # Will be set when `start()` is called.
+        self.started = False
+        # Will be set when `recover()` is called.
+        self.recovering = False
+        # Will be set when `start()` is called.
+        self.version = version
+        # Initial state for a replica is PENDING_ALLOCATION.
+        self.status = ReplicaStartupStatus.PENDING_ALLOCATION
+        # Will be set when `graceful_stop()` is called.
+        self.stopped = False
+        # Expected to be set in the test.
+        self.done_stopping = False
+        # Will be set when `force_stop()` is called.
+        self.force_stopped_counter = 0
+        # Will be set when `check_health()` is called.
+        self.health_check_called = False
+        # Returned by the health check.
+        self.healthy = True
+        self._is_cross_language = False
+        self._actor_handle = MockActorHandle()
+        self._node_id = None
+        self._node_ip = None
+        self._node_instance_id = None
+        self._node_id_is_set = False
+        self._actor_id = None
+        self._internal_grpc_port = None
+        self._http_port = None
+        self._pg_bundles = None
+        self._initialization_latency_s = -1
+        self._docs_path = None
+        self._rank = replica_rank_context.get(replica_id.unique_id, None)
+        self._assign_rank_callback = None
+        self._ingress = False
+        self._gang_context = None
+        self._gang_pg_index = None
+        self._unrecoverable = False
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
+
+    @property
+    def replica_id(self) -> ReplicaID:
+        return self._replica_id
+
+    @property
+    def deployment_name(self) -> str:
+        return self._replica_id.deployment_id.name
+
+    @property
+    def actor_handle(self) -> MockActorHandle:
+        return self._actor_handle
+
+    @property
+    def max_ongoing_requests(self) -> int:
+        return self.version.deployment_config.max_ongoing_requests
+
+    @property
+    def graceful_shutdown_timeout_s(self) -> float:
+        return self.version.deployment_config.graceful_shutdown_timeout_s
+
+    @property
+    def health_check_period_s(self) -> float:
+        return self.version.deployment_config.health_check_period_s
+
+    @property
+    def health_check_timeout_s(self) -> float:
+        return self.version.deployment_config.health_check_timeout_s
+
+    @property
+    def pid(self) -> Optional[int]:
+        return None
+
+    @property
+    def actor_id(self) -> Optional[str]:
+        return self._actor_id
+
+    @property
+    def worker_id(self) -> Optional[str]:
+        return None
+
+    @property
+    def node_id(self) -> Optional[str]:
+        if self._node_id_is_set:
+            return self._node_id
+        if self.status == ReplicaStartupStatus.SUCCEEDED or self.started:
+            return "node-id"
+        return None
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return None
+
+    @property
+    def node_ip(self) -> Optional[str]:
+        return None
+
+    @property
+    def node_instance_id(self) -> Optional[str]:
+        return None
+
+    @property
+    def log_file_path(self) -> Optional[str]:
+        return None
+
+    @property
+    def grpc_port(self) -> Optional[int]:
+        return None
+
+    @property
+    def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
+        return None
+
+    @property
+    def initialization_latency_s(self) -> float:
+        return self._initialization_latency_s
+
+    @property
+    def reconfigure_start_time(self) -> Optional[float]:
+        return None
+
+    @property
+    def last_health_check_latency_ms(self) -> Optional[float]:
+        return None
+
+    @property
+    def last_health_check_failed(self) -> bool:
+        return False
+
+    def set_docs_path(self, docs_path: str):
+        self._docs_path = docs_path
+
+    @property
+    def docs_path(self) -> Optional[str]:
+        return self._docs_path
+
+    def set_status(self, status: ReplicaStartupStatus):
+        self.status = status
+
+    def set_ready(self, version: DeploymentVersion = None):
+        self.status = ReplicaStartupStatus.SUCCEEDED
+        if version:
+            self.version_to_be_fetched_from_actor = version
+        else:
+            self.version_to_be_fetched_from_actor = self.version
+
+    def set_failed_to_start(self):
+        self.status = ReplicaStartupStatus.FAILED
+
+    def set_done_stopping(self):
+        self.done_stopping = True
+
+    def set_unhealthy(self):
+        self.healthy = False
+
+    def set_starting_version(self, version: DeploymentVersion):
+        """Mocked deployment_worker return version from reconfigure()"""
+        self.starting_version = version
+
+    def set_node_id(self, node_id: str):
+        self._node_id = node_id
+        self._node_id_is_set = True
+
+    def set_actor_id(self, actor_id: str):
+        self._actor_id = actor_id
+
+    def start(
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        gang_placement_group=None,
+        gang_pg_index=None,
+        gang_context=None,
+    ):
+        self.started = True
+        self._gang_context = gang_context
+        self._gang_pg_index = gang_pg_index
+        self._assign_rank_callback = assign_rank_callback
+        self._rank = assign_rank_callback(self._replica_id.unique_id, node_id=-1)
+        replica_rank_context[self._replica_id.unique_id] = self._rank
+
+        def _on_scheduled_stub(*args, **kwargs):
+            pass
+
+        return ReplicaSchedulingRequest(
+            replica_id=self._replica_id,
+            actor_def=Mock(),
+            actor_resources={},
+            actor_options={"name": "placeholder"},
+            actor_init_args=(),
+            placement_group_bundles=(
+                deployment_info.replica_config.placement_group_bundles
+            ),
+            on_scheduled=_on_scheduled_stub,
+            gang_placement_group=gang_placement_group,
+            gang_pg_index=gang_pg_index,
+        )
+
+    @property
+    def rank(self) -> Optional[ReplicaRank]:
+        return self._rank
+
+    def reconfigure(
+        self,
+        version: DeploymentVersion,
+        rank: ReplicaRank = None,
+    ):
+        self.started = True
+        updating = self.version.requires_actor_reconfigure(version)
+        self.version = version
+        self._rank = rank
+        replica_rank_context[self._replica_id.unique_id] = rank
+        return updating
+
+    def recover(self, ingress: bool = False):
+        if self.replica_id in dead_replicas_context:
+            return False
+
+        self._ingress = ingress
+        self.recovering = True
+        self.started = False
+        self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
+        # Mirror production: the `was_initialized` probe is fired here and
+        # observed asynchronously in `check_ready()`. Tests register
+        # uninitialized replicas via `uninitialized_replicas_context`.
+        self._unrecoverable = self.replica_id in uninitialized_replicas_context
+        return True
+
+    def check_ready(self) -> ReplicaStartupStatus:
+        # If the controller's async `was_initialized` probe came back False,
+        # report a failed-but-unrecoverable startup so the reconciler drops
+        # and replaces the replica without recording a deploy failure.
+        if self.recovering and self._unrecoverable:
+            return (
+                ReplicaStartupStatus.FAILED,
+                f"{self._replica_id} was found alive but never finished "
+                "its initial setup.",
+            )
+
+        ready = self.status
+        self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
+        if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
+            self.recovering = False
+            self.started = True
+            self.version = self.version_to_be_fetched_from_actor
+        return ready, None
+
+    def resource_requirements(self) -> Tuple[str, str]:
+        assert self.started
+        return str({"REQUIRED_RESOURCE": 1.0}), str({"AVAILABLE_RESOURCE": 1.0})
+
+    @property
+    def actor_resources(self) -> Dict[str, float]:
+        return {"CPU": 0.1}
+
+    @property
+    def available_resources(self) -> Dict[str, float]:
+        # Only used to print a warning.
+        return {}
+
+    def graceful_stop(self) -> None:
+        # `started` is only set after a successful `check_ready` transition
+        # to RUNNING. A replica force-stopped while still RECOVERING (e.g.,
+        # because the `was_initialized` probe failed) is a legitimate stop.
+        assert self.started or self.recovering
+        self.stopped = True
+        return self.graceful_shutdown_timeout_s
+
+    def check_stopped(self) -> bool:
+        return self.done_stopping
+
+    def force_stop(self, log_shutdown_message: bool = False):
+        self.force_stopped_counter += 1
+
+    def check_health(self):
+        self.health_check_called = True
+        return self.healthy
+
+    def get_routing_stats(self) -> Dict[str, Any]:
+        return {}
+
+    def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return getattr(self, "_outbound_deployments", None)
+
+    @property
+    def route_patterns(self) -> Optional[List[str]]:
+        return None
+
+    @property
+    def gang_context(self) -> Optional[GangContext]:
+        return self._gang_context
+
+    @property
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
+
+
+@serve.deployment
+class GetPID:
+    def __call__(self):
+        return os.getpid()
+
+
+get_pid_entrypoint = GetPID.bind()
 
 
 def check_ray_stopped():
     try:
-        requests.get("http://localhost:52365/api/ray/version")
+        requests.get("http://localhost:8265/api/ray/version")
         return False
     except Exception:
         return True
 
 
 def check_ray_started():
-    return requests.get("http://localhost:52365/api/ray/version").status_code == 200
+    return requests.get("http://localhost:8265/api/ray/version").status_code == 200
 
 
 def check_deployment_status(
@@ -220,7 +809,7 @@ def get_num_alive_replicas(
     """Get the replicas currently running for the given deployment."""
 
     dep_id = DeploymentID(name=deployment_name, app_name=app_name)
-    actors = state_api.list_actors(
+    actors = list_actors(
         filters=[
             ("class_name", "=", dep_id.to_replica_actor_class_name()),
             ("state", "=", "ALIVE"),
@@ -239,11 +828,20 @@ def check_num_replicas_gte(
 
 
 def check_num_replicas_eq(
-    name: str, target: int, app_name: str = SERVE_DEFAULT_APP_NAME
-) -> int:
+    name: str,
+    target: int,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_controller: bool = False,
+) -> bool:
     """Check if num replicas is == target."""
 
-    assert get_num_alive_replicas(name, app_name) == target
+    if use_controller:
+        dep = serve.status().applications[app_name].deployments[name]
+        num_running_replicas = dep.replica_states.get(ReplicaState.RUNNING, 0)
+        assert num_running_replicas == target
+    else:
+        assert get_num_alive_replicas(name, app_name) == target
+
     return True
 
 
@@ -369,6 +967,8 @@ def check_telemetry(
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
     if test_draining:
@@ -385,6 +985,8 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
 
 
 def ping_grpc_healthz(channel, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
     if test_draining:
@@ -400,6 +1002,8 @@ def ping_grpc_healthz(channel, test_draining=False):
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
+    import pytest
+
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
@@ -455,13 +1059,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:
@@ -599,3 +1212,420 @@ def check_num_alive_nodes(target: int):
     alive_nodes = [node for node in ray.nodes() if node["Alive"]]
     assert len(alive_nodes) == target
     return True
+
+
+def get_deployment_details(
+    deployment_name: str,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    _client: ServeControllerClient = None,
+):
+    client = _client or _get_global_client()
+    details = client.get_serve_details()
+    return details["applications"][app_name]["deployments"][deployment_name]
+
+
+@ray.remote(num_cpus=0)
+class Barrier:
+    """Block until n participants have called wait()."""
+
+    def __init__(self, n: int):
+        self.n = n
+        self.count = 0
+        self.event = asyncio.Event()
+
+    async def wait(self):
+        self.count += 1
+        if self.count >= self.n:
+            self.event.set()
+        else:
+            await self.event.wait()
+
+    def get_count(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
+class Accumulator:
+    """Collect items from multiple actors/replicas."""
+
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self) -> list:
+        return list(self.items)
+
+    def count(self) -> int:
+        return len(self.items)
+
+
+@ray.remote(num_cpus=0)
+class FailedReplicaStore:
+    """Controls replica constructor failure behavior for constructor failure tests.
+
+    Behavior is determined by ``fail_first``:
+      - ``fail_first=True``  (transient): first caller fails, rest succeed.
+      - ``fail_first=False`` (partial):   first caller succeeds, rest fail.
+
+    All decisions are made in a single atomic actor call to avoid races
+    between concurrent replicas.
+    """
+
+    def __init__(self, fail_first: bool = False):
+        self._fail_first = fail_first
+        self._first_caller = False
+        self._fail_count = 0
+
+    def get_fail_count(self) -> int:
+        """Returns the number replica startup failures"""
+        return self._fail_count
+
+    def should_fail(self) -> bool:
+        """Returns whether this replica should raise in its constructor."""
+        if not self._first_caller:
+            self._first_caller = True
+            result = self._fail_first
+        else:
+            result = not self._fail_first
+        if result:
+            self._fail_count += 1
+        return result
+
+
+@ray.remote(num_cpus=0)
+class FailedGangReplicaStore:
+    """
+    Controls replica constructor failure behavior for gang scheduling tests.
+        - The first gang seen is allowed to run.
+        - The next gang has first replica flagged to fail.
+        - Retry gangs after the first failed gang have first replica flagged.
+    """
+
+    def __init__(self):
+        self._good_gang_chosen = False
+        self._successful_gang_id = None
+        self._failed_gang_ids = set()
+
+    def mark_first_failing_gang(self, gang_id: str) -> bool:
+        """Picks the good gang on the first call and flags the first replica of the next gang to fail."""
+        if not self._good_gang_chosen:
+            self._good_gang_chosen = True
+            self._successful_gang_id = gang_id
+            return False
+        if gang_id == self._successful_gang_id:
+            return False
+        if len(self._failed_gang_ids) == 0:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
+
+    def mark_retry_failing_gang(self, gang_id: str) -> bool:
+        """Flags the first replica of each new retry gang.
+        This is called after ``mark_first_failing_gang``."""
+        if gang_id == self._successful_gang_id:
+            return False
+        if gang_id not in self._failed_gang_ids:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
+
+    def get_failed_gang_count(self) -> int:
+        """Returns the number of distinct gangs that failed."""
+        return len(self._failed_gang_ids)
+
+
+@ray.remote(num_cpus=0)
+class SharedFlag:
+    """Non-blocking boolean flag shared across actors."""
+
+    def __init__(self):
+        self.value = False
+
+    def set(self):
+        self.value = True
+
+    def clear(self):
+        self.value = False
+
+    def is_set(self) -> bool:
+        return self.value
+
+
+@ray.remote(num_cpus=0)
+class SharedCounter:
+    """Simple shared counter for cross-actor coordination."""
+
+    def __init__(self):
+        self.count = 0
+
+    def inc(self) -> int:
+        self.count += 1
+        return self.count
+
+    def get(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
+class Counter:
+    def __init__(self, target: int):
+        self.count = 0
+        self.target = target
+        self.ready_event = asyncio.Event()
+
+    def inc(self):
+        self.count += 1
+        if self.count == self.target:
+            self.ready_event.set()
+
+    async def wait(self):
+        await self.ready_event.wait()
+
+
+def tlog(s: str, level: str = "INFO"):
+    """Convenient logging method for testing."""
+
+    now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{level}] {now} {s}")
+
+
+def check_target_groups_ready(
+    client: ServeControllerClient,
+    app_name: str,
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+):
+    """Wait for target groups to be ready for the given app and protocol.
+
+    Target groups are ready when there are at least one target for the given protocol. And it's
+    possible that target groups are not ready immediately. An example is when the controller
+    is recovering from a crash.
+    """
+    target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
+    all_targets = [
+        target for target_group in target_groups for target in target_group.targets
+    ]
+    return len(all_targets) > 0
+
+
+def get_application_urls(
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_localhost: bool = True,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
+    from_proxy_manager: bool = False,
+) -> List[str]:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+        use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
+        from_proxy_manager: Whether the caller is a proxy manager.
+    Returns:
+        The URLs of the application.
+    """
+    client = _get_global_client()
+    serve_details = client.get_serve_details()
+    assert (
+        app_name in serve_details["applications"]
+    ), f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
+    route_prefix = serve_details["applications"][app_name]["route_prefix"]
+    # route_prefix is set to None when route_prefix value is specifically set to None
+    # in the config used to deploy the app.
+    if exclude_route_prefix or route_prefix is None:
+        route_prefix = ""
+    if isinstance(protocol, str):
+        protocol = RequestProtocol(protocol)
+    target_groups: List[TargetGroup] = ray.get(
+        client._controller.get_target_groups.remote(app_name, from_proxy_manager)
+    )
+    target_groups = [
+        target_group
+        for target_group in target_groups
+        if target_group.protocol == protocol
+    ]
+    if len(target_groups) == 0:
+        raise ValueError(
+            f"No target group found for app {app_name} with protocol {protocol} and route prefix {route_prefix}"
+        )
+    urls = []
+    for target_group in target_groups:
+        for target in target_group.targets:
+            ip = "localhost" if use_localhost else target.ip
+            if protocol == RequestProtocol.HTTP:
+                scheme = "ws" if is_websocket else "http"
+                url = f"{scheme}://{build_address(ip, target.port)}{route_prefix}"
+            elif protocol == RequestProtocol.GRPC:
+                if is_websocket:
+                    raise ValueError(
+                        "is_websocket=True is not supported with gRPC protocol."
+                    )
+                url = build_address(ip, target.port)
+            else:
+                raise ValueError(f"Unsupported protocol: {protocol}")
+            url = url.rstrip("/")
+            urls.append(url)
+    return urls
+
+
+def get_application_url(
+    protocol: Union[str, RequestProtocol] = RequestProtocol.HTTP,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    use_localhost: bool = True,
+    is_websocket: bool = False,
+    exclude_route_prefix: bool = False,
+    from_proxy_manager: bool = False,
+) -> str:
+    """Get the URL of the application.
+
+    Args:
+        protocol: The protocol to use for the application.
+        app_name: The name of the application.
+        use_localhost: Whether to use localhost instead of the IP address.
+            Set to True if Serve deployments are not exposed publicly or
+            for low latency benchmarking.
+        is_websocket: Whether the url should be served as a websocket.
+        exclude_route_prefix: The route prefix to exclude from the application.
+        from_proxy_manager: Whether the caller is a proxy manager.
+    Returns:
+        The URL of the application. If there are multiple URLs, a random one is returned.
+    """
+    return random.choice(
+        get_application_urls(
+            protocol,
+            app_name,
+            use_localhost,
+            is_websocket,
+            exclude_route_prefix,
+            from_proxy_manager,
+        )
+    )
+
+
+def check_running(app_name: str = SERVE_DEFAULT_APP_NAME):
+    assert serve.status().applications[app_name].status == ApplicationStatus.RUNNING
+    return True
+
+
+def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
+    result_holder = {"resp": None}
+
+    def _attempt() -> bool:
+        try:
+            url = get_application_url("HTTP", app_name=app_name)
+            result_holder["resp"] = httpx.get(url, timeout=timeout)
+            return True
+        except (httpx.RequestError, IndexError):
+            return False
+
+    try:
+        wait_for_condition(_attempt, timeout=timeout)
+        return result_holder["resp"]
+    except RuntimeError as e:
+        # Preserve previous API by raising TimeoutError on expiry
+        raise TimeoutError from e
+
+
+# Metrics test utilities
+TEST_METRICS_EXPORT_PORT = 9999
+
+
+def get_metric_float(
+    metric: str,
+    expected_tags: Optional[Dict[str, str]],
+    timeseries: Optional[PrometheusTimeseries] = None,
+    timeout: float = 20,
+) -> float:
+    """Gets the float value of metric.
+
+    If tags is specified, searched for metric with matching tags.
+
+    Returns -1 if the metric isn't available.
+    """
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+    samples = fetch_prometheus_metric_timeseries(
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=timeout,
+    ).get(metric, [])
+    for sample in samples:
+        if expected_tags.items() <= sample.labels.items():
+            return sample.value
+    return -1
+
+
+def check_metric_float_eq(
+    metric: str,
+    expected: float,
+    expected_tags: Optional[Dict[str, str]],
+    timeseries: Optional[PrometheusTimeseries] = None,
+    timeout: float = 20,
+) -> bool:
+    """Check if a metric's float value equals the expected value."""
+    metric_value = get_metric_float(metric, expected_tags, timeseries, timeout=timeout)
+    assert float(metric_value) == expected
+    return True
+
+
+def get_metric_dictionaries(
+    name: str,
+    timeout: float = 20,
+    timeseries: Optional[PrometheusTimeseries] = None,
+    wait: bool = True,
+) -> List[Dict]:
+    """Get metric samples as list of label dicts.
+
+    Args:
+        name: Metric name to fetch.
+        timeout: Timeout for each fetch attempt.
+        timeseries: Optional shared timeseries to populate.
+        wait: If True (default), wait for metric to appear before returning.
+            If False, fetch once and return immediately (possibly empty).
+
+    Returns:
+        List of metric samples as label dicts.
+    """
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+
+    def metric_available() -> bool:
+        assert name in fetch_prometheus_metric_timeseries(
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            # pass timeout to fetch_prometheus_metric_timeseries
+            # so the test doesn't hang on requests.get
+            timeout=timeout,
+        )
+        return True
+
+    if wait:
+        wait_for_condition(
+            metric_available, retry_interval_ms=1000, timeout=timeout * 4
+        )
+    else:
+        # Fetch once without asserting - allows outer wait_for_condition to retry
+        fetch_prometheus_metric_timeseries(
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
+    metric_dicts = []
+    for sample in timeseries.metric_samples.values():
+        if sample.name == name:
+            metric_dicts.append(sample.labels)
+
+    return metric_dicts

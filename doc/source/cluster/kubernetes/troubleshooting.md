@@ -9,5 +9,5 @@ troubleshooting/troubleshooting
 troubleshooting/rayservice-troubleshooting
 ```
 
-- {ref}`kuberay-troubleshootin-guides`
+- {ref}`kuberay-troubleshooting-guides`
 - {ref}`kuberay-raysvc-troubleshoot`

@@ -14,7 +14,7 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray._private.test_utils import simulate_storage
+from ray._common.test_utils import simulate_s3_bucket
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._checkpoint import Checkpoint
@@ -40,7 +40,7 @@ class TestConstants:
 def mock_s3_bucket_uri():
     port = 5002
     region = "us-west-2"
-    with simulate_storage("s3", port=port, region=region) as s3_uri:
+    with simulate_s3_bucket(port=port, region=region) as s3_uri:
         import boto3
 
         s3 = boto3.client(
@@ -113,6 +113,13 @@ def _get_local_inspect_dir(
 ) -> Tuple[Path, str]:
     """Downloads the storage path -> local dir for inspecting contents.
 
+    Args:
+        root_local_path: Local directory to use as the inspect root.
+        storage_path: The storage path or URI to download from.
+        storage_filesystem: Optional custom filesystem to use.
+        storage_local_path: Local path that ``storage_path`` mirrors on disk
+            when no remote storage is configured.
+
     Returns:
         Tuple: (local_inspect_dir, storage_fs_path), where storage_fs_path
             is the path to the storage path on the filesystem (e.g., prefix stripped).
@@ -155,10 +162,9 @@ def _get_checkpoint_shard_rank(checkpoint_shard_filename: str) -> int:
 def train_fn(config):
     in_trainer = config.get("in_trainer", False)
     if in_trainer:
-        from ray.air._internal.session import _get_session
-        from ray.train._internal.session import _TrainSession
+        from ray.train._internal.session import _TrainSession, get_session
 
-        train_session = _get_session()
+        train_session = get_session()
 
         assert isinstance(train_session, _TrainSession)
         assert train_session.storage

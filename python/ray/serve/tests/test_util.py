@@ -9,9 +9,13 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray._common.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import (
+    Semaphore,
     calculate_remaining_timeout,
+    get_active_placement_group_ids,
     get_all_live_placement_group_names,
     get_current_actor_id,
     get_head_node_id,
@@ -447,7 +451,90 @@ def test_get_all_live_placement_group_names(ray_instance):
     pg8 = ray.util.placement_group([{"CPU": 0.1}], lifetime="detached")
     assert pg8.wait()
 
-    assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
+    # Use wait_for_condition to allow GCS state to propagate after
+    # remove_placement_group(). Removal is async — the scheduling state may not
+    # have flipped to REMOVED by the time we query.
+    def check_live_placement_group_names():
+        assert set(get_all_live_placement_group_names()) == {
+            "pg3",
+            "pg4",
+            "pg5",
+            "pg6",
+        }
+        return True
+
+    wait_for_condition(check_live_placement_group_names, timeout=10)
+
+
+def test_get_active_placement_group_ids(ray_instance):
+    """Test that get_active_placement_group_ids returns PG IDs for alive actors only.
+
+    Cases covered:
+    - A PG with a live Serve actor scheduled on it (should be returned).
+    - A PG with no actors (should NOT be returned).
+    - An actor without a PG (should NOT cause its absence to break anything).
+    - A PG whose actor has been killed (should NOT be returned).
+    - A PG with a live non-Serve actor (should NOT be returned).
+    """
+
+    # PG with a live actor scheduled on it
+    pg_with_actor = ray.util.placement_group([{"CPU": 0.1}], name="pg_with_actor")
+    assert pg_with_actor.wait()
+
+    @ray.remote(num_cpus=0.1)
+    class DummyActor:
+        def ready(self):
+            return True
+
+    actor_on_pg = DummyActor.options(
+        namespace=SERVE_NAMESPACE,
+        placement_group=pg_with_actor,
+    ).remote()
+    ray.get(actor_on_pg.ready.remote())
+
+    # PG with no actors scheduled on it
+    pg_no_actor = ray.util.placement_group([{"CPU": 0.1}], name="pg_no_actor")
+    assert pg_no_actor.wait()
+
+    # Actor without any PG
+    actor_no_pg = DummyActor.options(namespace=SERVE_NAMESPACE).remote()
+    ray.get(actor_no_pg.ready.remote())
+
+    # PG whose actor will be killed
+    pg_killed = ray.util.placement_group([{"CPU": 0.1}], name="pg_killed")
+    assert pg_killed.wait()
+    actor_killed = DummyActor.options(
+        namespace=SERVE_NAMESPACE,
+        placement_group=pg_killed,
+    ).remote()
+    ray.get(actor_killed.ready.remote())
+    ray.kill(actor_killed)
+
+    # PG with a live actor in a non-Serve namespace (should be excluded)
+    pg_non_serve = ray.util.placement_group([{"CPU": 0.1}], name="pg_non_serve")
+    assert pg_non_serve.wait()
+    actor_non_serve = DummyActor.options(
+        namespace="non_serve",
+        placement_group=pg_non_serve,
+    ).remote()
+    ray.get(actor_non_serve.ready.remote())
+
+    pg_with_actor_id = pg_with_actor.id.hex()
+    pg_no_actor_id = pg_no_actor.id.hex()
+    pg_killed_id = pg_killed.id.hex()
+    pg_non_serve_id = pg_non_serve.id.hex()
+
+    # Use wait_for_condition to allow GCS state to propagate after ray.kill().
+    # ray.kill() is async — the actor's ALIVE -> DEAD transition in GCS may lag.
+    def check_active_placement_group_ids():
+        active_ids = get_active_placement_group_ids()
+        assert pg_with_actor_id in active_ids
+        assert pg_no_actor_id not in active_ids
+        assert pg_killed_id not in active_ids
+        assert pg_non_serve_id not in active_ids
+        return True
+
+    wait_for_condition(check_active_placement_group_ids, timeout=10)
 
 
 def test_is_running_in_asyncio_loop_false():
@@ -477,6 +564,136 @@ def test_get_current_actor_id(ray_instance):
     assert actor_id != "DRIVER"
 
     assert get_current_actor_id() == "DRIVER"
+
+
+@pytest.mark.asyncio
+async def test_semaphore():
+    """Test core Semaphore functionality."""
+    max_value = 2
+    sema = Semaphore(get_value_fn=lambda: max_value)
+
+    # Test get_max_value functionality
+    assert sema.get_max_value() == max_value
+
+    # Initially, semaphore should not be locked and should allow acquisitions
+    assert not sema.locked()
+
+    # Acquire one
+    await sema.acquire()
+    assert not sema.locked()
+    assert sema._value == 1
+
+    # Acquire one
+    await sema.acquire()
+    assert sema.locked()  # Should now be locked (2 out of 2)
+    assert sema._value == 2
+
+    # Release one
+    sema.release()
+    assert not sema.locked()  # Should not be locked anymore (1 out of 2)
+    assert sema._value == 1
+
+    # Acquire one
+    await sema.acquire()
+    assert sema.locked()
+    assert sema._value == 2
+
+
+@pytest.mark.asyncio
+async def test_semaphore_waiters_and_single_release():
+    """Test that release() wakes up exactly one waiter."""
+    max_value = 1
+    sema = Semaphore(get_value_fn=lambda: max_value)
+
+    # Fill the semaphore to capacity
+    await sema.acquire()
+    assert sema.locked()
+    assert sema._value == 1
+
+    # Create multiple waiters
+    waiters_completed = []
+
+    async def waiter(waiter_id):
+        await sema.acquire()
+        waiters_completed.append(waiter_id)
+
+    # Start 2 waiters that will all block
+    waiter_tasks = [
+        asyncio.create_task(waiter(1)),
+        asyncio.create_task(waiter(2)),
+    ]
+
+    # Yield the event loop
+    await asyncio.sleep(0.01)
+
+    # Verify they are all waiting
+    assert len(waiters_completed) == 0
+    assert sema.locked()
+    assert len(sema._waiters) == 2
+
+    # Release once - this should wake up exactly ONE waiter
+    sema.release()
+    await asyncio.sleep(0.01)
+
+    # Verify exactly one waiter was woken up and completed
+    assert len(waiters_completed) == 1
+    assert sema._value == 1
+    assert sema.locked()
+    assert len(sema._waiters) == 1
+
+    # Release again - should wake up exactly one more waiter
+    sema.release()
+    await asyncio.sleep(0.01)
+
+    # Verify exactly one more waiter was woken up
+    assert len(waiters_completed) == 2
+    assert sema._value == 1
+    assert sema.locked()
+    assert len(sema._waiters) == 0
+
+    assert len(await asyncio.gather(*waiter_tasks)) == 2
+
+
+@pytest.mark.asyncio
+async def test_semaphore_dynamic_max_value():
+    """Test that Semaphore respects dynamic changes to max_value."""
+    current_max = 2
+
+    def get_dynamic_max():
+        return current_max
+
+    sema = Semaphore(get_value_fn=get_dynamic_max)
+
+    # Initially max is 2
+    assert sema.get_max_value() == 2
+
+    # Acquire up to the limit
+    await sema.acquire()
+    await sema.acquire()
+    assert sema.locked()
+
+    # Increase the max value dynamically
+    current_max = 3
+    assert sema.get_max_value() == 3
+    assert not sema.locked()
+
+    # Should be able to acquire one more
+    await sema.acquire()
+    assert sema.locked()
+    assert sema._value == 3
+
+    # Decrease the max value
+    current_max = 1
+    assert sema.get_max_value() == 1
+    assert sema.locked()
+
+    # Release to get back within limits
+    sema.release()
+    sema.release()
+    assert sema.locked()
+    sema.release()
+    assert not sema.locked()
+    assert sema._value == 0
 
 
 if __name__ == "__main__":

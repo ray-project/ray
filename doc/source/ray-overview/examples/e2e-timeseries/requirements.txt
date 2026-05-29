@@ -1,0 +1,9 @@
+--find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+aiohttp==3.11.16
+nbformat==5.9.2
+numpy==1.26.4
+pandas==2.3.0
+pyyaml==6.0.1
+s3fs==2023.5.0
+scikit-learn==1.3.2
+torch==2.3.0

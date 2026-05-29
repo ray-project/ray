@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import Mock
+
 from ray.autoscaler._private.util import get_per_node_breakdown_as_dict
 
 

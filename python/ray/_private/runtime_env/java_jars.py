@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Dict, List, Optional
 
-from ray._private.gcs_utils import GcsAioClient
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     delete_package,
@@ -11,7 +11,8 @@ from ray._private.runtime_env.packaging import (
     is_jar_uri,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray._private.utils import get_directory_size_bytes
+from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
@@ -21,9 +22,9 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
 
     name = "java_jars"
 
-    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
+    def __init__(self, resources_dir: str, gcs_client: GcsClient):
         self._resources_dir = os.path.join(resources_dir, "java_jars_files")
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
@@ -52,7 +53,7 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         """Download a jar URI."""
         try:
             jar_file = await download_and_unpack_package(
-                uri, self._resources_dir, self._gcs_aio_client, logger=logger
+                uri, self._resources_dir, self._gcs_client, logger=logger
             )
         except Exception as e:
             raise RuntimeEnvSetupError(
@@ -76,7 +77,7 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         else:
             try:
                 module_dir = await download_and_unpack_package(
-                    uri, self._resources_dir, self._gcs_aio_client, logger=logger
+                    uri, self._resources_dir, self._gcs_client, logger=logger
                 )
             except Exception as e:
                 raise RuntimeEnvSetupError(

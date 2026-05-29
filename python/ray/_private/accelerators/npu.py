@@ -1,9 +1,10 @@
-import os
 import glob
 import logging
-from typing import Optional, List, Tuple
+import os
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class NPUAcceleratorManager(AcceleratorManager):
             logger.debug("Could not import AscendCL: %s", e)
 
         try:
-            npu_files = glob.glob("/dev/davinci?")
+            npu_files = glob.glob("/dev/davinci[0-9]*")
             return len(npu_files)
         except Exception as e:
             logger.debug("Failed to detect number of NPUs: %s", e)
@@ -91,7 +92,7 @@ class NPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_npu_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR):
+        if env_bool(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
         os.environ[

@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data.preprocessors import FeatureHasher, HashingVectorizer
+from ray.data.preprocessors import FeatureHasher
 
 
 def test_feature_hasher():
@@ -13,57 +13,65 @@ def test_feature_hasher():
         {"I": [1, 1], "like": [1, 0], "dislike": [0, 1], "Python": [1, 1]}
     )
 
-    hasher = FeatureHasher(["I", "like", "dislike", "Python"], num_features=256)
+    hasher = FeatureHasher(
+        ["I", "like", "dislike", "Python"],
+        num_features=256,
+        output_column="hashed_features",
+    )
     document_term_matrix = hasher.fit_transform(
         ray.data.from_pandas(token_counts)
     ).to_pandas()
 
+    hashed_features = document_term_matrix["hashed_features"]
     # Document-term matrix should have shape (# documents, # features)
-    assert document_term_matrix.shape == (2, 256)
+    assert hashed_features.shape == (2,)
 
     # The tokens tokens "I", "like", and "Python" should be hashed to distinct indices
     # for adequately large `num_features`.
-    assert document_term_matrix.iloc[0].sum() == 3
-    assert all(document_term_matrix.iloc[0] <= 1)
+    assert len(hashed_features.iloc[0]) == 256
+    assert hashed_features.iloc[0].sum() == 3
+    assert all(hashed_features.iloc[0] <= 1)
 
     # The tokens tokens "I", "dislike", and "Python" should be hashed to distinct
     # indices for adequately large `num_features`.
-    assert document_term_matrix.iloc[1].sum() == 3
-    assert all(document_term_matrix.iloc[1] <= 1)
+    assert len(hashed_features.iloc[1]) == 256
+    assert hashed_features.iloc[1].sum() == 3
+    assert all(hashed_features.iloc[1] <= 1)
 
 
-def test_hashing_vectorizer():
-    """Tests basic HashingVectorizer functionality."""
+def test_feature_hasher_serialization():
+    """Test FeatureHasher serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
 
-    col_a = ["a b b c c c", "a a a a c"]
-    col_b = ["apple", "banana banana banana"]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
-    ds = ray.data.from_pandas(in_df)
-
-    vectorizer = HashingVectorizer(["A", "B"], num_features=3)
-
-    transformed = vectorizer.transform(ds)
-    out_df = transformed.to_pandas()
-
-    processed_col_a_0 = [2, 0]
-    processed_col_a_1 = [1, 4]
-    processed_col_a_2 = [3, 1]
-    processed_col_b_0 = [1, 0]
-    processed_col_b_1 = [0, 3]
-    processed_col_b_2 = [0, 0]
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "hash_A_0": processed_col_a_0,
-            "hash_A_1": processed_col_a_1,
-            "hash_A_2": processed_col_a_2,
-            "hash_B_0": processed_col_b_0,
-            "hash_B_1": processed_col_b_1,
-            "hash_B_2": processed_col_b_2,
-        }
+    # Create hasher
+    hasher = FeatureHasher(
+        columns=["I", "like", "Python"], num_features=8, output_column="hashed"
     )
 
-    assert out_df.equals(expected_df)
+    # Serialize using CloudPickle
+    serialized = hasher.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = FeatureHasher.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, FeatureHasher)
+    assert deserialized.columns == ["I", "like", "Python"]
+    assert deserialized.num_features == 8
+    assert deserialized.output_column == "hashed"
+
+    # Verify it works correctly
+    df = pd.DataFrame({"I": [1, 1], "like": [1, 0], "Python": [1, 1]})
+    result = deserialized.transform_batch(df)
+
+    # Verify hashing was applied correctly
+    assert "hashed" in result.columns
+    assert len(result["hashed"][0]) == 8
+    assert len(result["hashed"][1]) == 8
 
 
 if __name__ == "__main__":

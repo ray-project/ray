@@ -1,0 +1,37 @@
+# @OldAPIStack
+pong-deterministic-rainbow:
+    env: ale_py:ALE/Pong-v5
+    run: DQN
+    stop:
+        env_runners/episode_return_mean: 20
+    config:
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
+        num_atoms: 51
+        noisy: True
+        gamma: 0.99
+        lr: .0001
+        hiddens: [512]
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        exploration_config:
+          epsilon_timesteps: 2
+          final_epsilon: 0.0
+        target_network_update_freq: 500
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          prioritized_replay_alpha: 0.5
+          capacity: 50000
+        num_steps_sampled_before_learning_starts: 10000
+        n_step: 3
+        gpu: True
+        model:
+          grayscale: True
+          zero_mean: False
+          dim: 42
+        # we should set compress_observations to True because few machines
+        # would be able to contain the replay buffers in memory otherwise
+        compress_observations: True

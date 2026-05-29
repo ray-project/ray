@@ -1,0 +1,6 @@
+group: forge
+sort_key: "_forge"
+steps:
+  - name: forge
+    instance_type: builder-x86_64
+    wanda: ci/docker/forge.wanda.yaml

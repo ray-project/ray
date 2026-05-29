@@ -1,17 +1,165 @@
 import gc
 import json
+import logging
+import math
 import os
+import threading
 import time
-from typing import Callable, Dict
-
-from ray.data.dataset import Dataset
-from typing import Any
-
-
 from enum import Enum
+from typing import Any, Callable, Dict, List, Union
+import dataclasses
+import ray
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.util.state import list_runtime_envs
 
-import pyarrow as pa
-import pandas as pd
+logger = logging.getLogger(__name__)
+
+
+def _get_spilled_bytes_total(state) -> float:
+    """Get the total number of spilled bytes across the cluster."""
+    return get_memory_info_reply(state).store_stats.spilled_bytes_total
+
+
+def _bytes_to_gb(b: float) -> float:
+    return round(b / (1024**3), 4)
+
+
+class ObjectStoreMemorySampler:
+    """Samples aggregate object store usage and tracks the peak value.
+
+    Object store usage is an instantaneous gauge, so checking only at the
+    beginning and end of a benchmark can miss short-lived memory spikes.
+    """
+
+    def __init__(self, state, interval_s: float = 1.0):
+        self._state = state
+        self._interval_s = interval_s
+        self._stop_event = threading.Event()
+        self._thread = None
+
+        self._peak_used_bytes = 0
+        self._peak_utilization = 0.0
+
+    @property
+    def peak_used_bytes(self) -> int:
+        return self._peak_used_bytes
+
+    @property
+    def peak_utilization(self) -> float:
+        return self._peak_utilization
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop()
+
+    def start(self):
+        self._sample_once()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="object-store-memory-sampler",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+        self._sample_once()
+
+    def _run(self):
+        while not self._stop_event.wait(self._interval_s):
+            self._sample_once()
+
+    def _sample_once(self):
+        try:
+            store_stats = get_memory_info_reply(self._state).store_stats
+        except Exception:
+            logger.warning("Failed to sample object store memory.", exc_info=True)
+            return
+
+        used_bytes = store_stats.object_store_bytes_used
+        capacity_bytes = store_stats.object_store_bytes_avail
+
+        self._peak_used_bytes = max(self._peak_used_bytes, used_bytes)
+
+        if capacity_bytes > 0:
+            self._peak_utilization = max(
+                self._peak_utilization,
+                used_bytes / capacity_bytes,
+            )
+
+
+def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
+    """Collect execution stats from a Dataset as a JSON-serializable dict.
+    This is a subset from `get_stats_summary`, because we are only adding the ones
+    we care about for the release tests."""
+    summary = ds.get_stats_summary(detail=True)
+    return {
+        "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
+        "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
+        "operators": [
+            {
+                "operator_name": op.operator_name,
+                "earliest_start_time": op.earliest_start_time,
+                "latest_end_time": op.latest_end_time,
+                "scheduling_overhead": (
+                    [dataclasses.asdict(bucket) for bucket in op.scheduling_overhead]
+                    if op.scheduling_overhead
+                    else []
+                ),
+            }
+            for op in summary.operators_stats
+        ],
+    }
+
+
+class RuntimeEnvSetupTracker:
+    """Collects runtime environment creation times across the cluster.
+
+    Queries the Ray State API for all runtime environments and reports
+    aggregate statistics (mean, stdev) for creation time.
+
+    Usage::
+
+        # After a pipeline or job completes:
+        stats = RuntimeEnvSetupTracker.collect()
+    """
+
+    @staticmethod
+    def collect() -> List[Dict[str, Any]]:
+        try:
+            groups: Dict[str, List[float]] = {}
+            for env in list_runtime_envs(limit=1000):
+                if env.creation_time_ms is None:
+                    continue
+                label = "+".join(sorted(env.runtime_env.keys()))
+                groups.setdefault(label, []).append(env.creation_time_ms)
+        except Exception:
+            logger.warning("Failed to query runtime env creation times.", exc_info=True)
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for label, times in groups.items():
+            mean = sum(times) / len(times)
+            variance = sum((t - mean) ** 2 for t in times) / len(times)
+            results.append(
+                {
+                    "runtime_env_type": label,
+                    "count": len(times),
+                    "mean_creation_time_ms": round(mean, 2),
+                    "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+                }
+            )
+        return results
+
+
+def benchmark_py_modules() -> List[str]:
+    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
+    return [os.path.abspath(__file__)]
 
 
 class BenchmarkMetric(Enum):
@@ -19,164 +167,110 @@ class BenchmarkMetric(Enum):
     NUM_ROWS = "num_rows"
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
-
-    # Extra metrics not matching the above categories/keys, stored as a Dict[str, Any].
-    EXTRA_METRICS = "extra_metrics"
+    OBJECT_STORE_SPILLED_TOTAL_GB = "object_store_spilled_total_gb"
+    OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
+    OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
 
 
 class Benchmark:
-    """Utility class used for Ray Data release tests and benchmarks, which works
-    for both local and distributed benchmarking. When run on the nightly release
-    test pipeline, the results are written to our internal database, which
-    can then be rendered on the dashboard. Usage tips:
+    """Runs benchmarks in a way that's compatible with our release test infrastructure.
 
-    A typical workflow would be:
+    Here's an example of typical usage:
 
-    benchmark = Benchmark("benchmark-name")
+    .. testcode::
 
-    # set up (such as input read or generation)
-    ...
+        import time
+        from benchmark import Benchmark
 
-    benchmark.run_materialize_ds("case-1", fn_1)
-    # Could be Ray Data iterator, Torch DataLoader, TF Dataset...
-    benchmark.run_iterate_ds("case-2", dataset)
-    benchmark.run_fn("case-3", fn_3)
+        def sleep(sleep_s)
+            time.sleep(sleep_s)
+            # Return any extra metrics you want to record. This can include
+            # configuration parameters, accuracy, etc.
+            return {"sleep_s": sleep_s}
 
-    # Writes a JSON with metrics of the form:
-    # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
-    benchmark.write_result()
+        benchmark = Benchmark()
+        benchmark.run_fn("short", sleep, 1)
+        benchmark.run_fn("long", sleep, 10)
+        benchmark.write_result()
 
-    See example usage in ``aggregate_benchmark.py``.
+    This code outputs a JSON file with contents like this:
+
+    .. code-block:: json
+
+        {"short": {"time": 1.0, "sleep_s": 1}, "long": {"time": 10.0 "sleep_s": 10}}
     """
 
-    def __init__(self, name):
-        self.name = name
+    def __init__(self):
         self.result = {}
-        print(f"Running benchmark: {name}")
 
-    def run_materialize_ds(
+    def run_fn(
         self,
         name: str,
-        fn: Callable[..., Dataset],
+        fn: Callable[..., Dict[Union[str, BenchmarkMetric], Any]],
         *fn_args,
         **fn_kwargs,
     ):
-        """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
-        return the Dataset which is to be materialized. Runtime and throughput
-        are automatically calculated and reported."""
+        """Benchmark a function.
 
-        gc.collect()
+        This is the most general benchmark utility available. Use it if the other
+        methods are too specific.
 
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        output_ds = fn(*fn_args, **fn_kwargs)
-        output_ds.materialize()
-        duration = time.perf_counter() - start_time
-
-        # TODO(chengsu): Record more metrics based on dataset stats.
-        num_rows = output_ds.count()
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: num_rows,
-            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
-    def run_iterate_ds(
-        self,
-        name: str,
-        dataset: Any,
-    ):
-        """Run a benchmark iterating over a dataset. Runtime and throughput
-        are automatically calculated and reported. Supported dataset types are:
-        - Ray Dataset (`ray.data.Dataset`)
-        - iterator over Ray Dataset (`ray.data.iterator._IterableFromIterator` from
-            `.iter_batches()`,`.iter_torch_batches()`, `.iter_tf_batches()`)
-        - Torch DataLoader (`torch.utils.data.DataLoader`)
-        - TensorFlow Dataset (`tf.data.Dataset`)
+        ``run_fn`` automatically records the runtime of ``fn``. To report additional
+        metrics, return a ``Dict[str, Any]`` of metric labels to metric values from your
+        function.
         """
-        # Import TF/Torch within this method, as not all benchmarks
-        # will use/install these libraries.
-        import tensorflow as tf
-        import torch
-
         gc.collect()
 
         print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        record_count = 0
-        ds_iterator = iter(dataset)
-        for batch in ds_iterator:
-            # Unwrap list to get the underlying batch format.
-            if isinstance(batch, (list, tuple)) and len(batch) > 0:
-                batch = batch[0]
+        state = get_state_from_address(ray.get_runtime_context().gcs_address)
 
-            # Get the batch size for various batch formats.
-            if isinstance(batch, dict):
-                feature_lengths = {k: len(batch[k]) for k in batch}
-                batch_size = max(feature_lengths.values())
-            elif isinstance(batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(batch)
-            elif isinstance(batch, torch.Tensor):
-                batch_size = batch.size(dim=0)
-            elif isinstance(batch, tf.Tensor):
-                batch_size = batch.shape.as_list()[0]
-            else:
-                raise TypeError(f"Unexpected batch type: {type(batch)}")
-            record_count += batch_size
+        with ObjectStoreMemorySampler(state) as memory_sampler:
+            start_time = time.perf_counter()
+            start_spilled_bytes = _get_spilled_bytes_total(state)
 
-        duration = time.perf_counter() - start_time
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: record_count,
-            BenchmarkMetric.THROUGHPUT.value: record_count / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
+            try:
+                fn_output = fn(*fn_args, **fn_kwargs)
+            finally:
+                duration = time.perf_counter() - start_time
 
-    def run_fn(
-        self, name: str, fn: Callable[..., Dict[str, Any]], *fn_args, **fn_kwargs
-    ):
-        """Run a benchmark for a specific function; this is the most general
-        benchmark utility available and will work if the other benchmark methods
-        are too specific. However, ``fn`` is expected to return a
-        `Dict[str, Any]` of metric labels to metric values, which are reported
-        at the end of the benchmark. Runtime is automatically calculated and reported,
-        but all other metrics of interest must be calculated and returned by ``fn``."""
+        assert fn_output is None or isinstance(fn_output, dict), fn_output
 
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        # e.g. fn may output a dict of metrics
-        fn_output = fn(*fn_args, **fn_kwargs)
-        duration = time.perf_counter() - start_time
-
+        spilled_bytes_total = _get_spilled_bytes_total(state) - start_spilled_bytes
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
+            BenchmarkMetric.OBJECT_STORE_MEMORY_USED_PEAK_GB.value: _bytes_to_gb(
+                memory_sampler.peak_used_bytes
+            ),
+            BenchmarkMetric.OBJECT_STORE_MEMORY_UTILIZATION_PEAK.value: round(
+                memory_sampler.peak_utilization,
+                4,
+            ),
         }
         if isinstance(fn_output, dict):
-            extra_metrics = {}
-            for metric_key, metric_val in fn_output.items():
-                if isinstance(metric_key, BenchmarkMetric):
-                    curr_case_metrics[metric_key.value] = metric_val
+            for key, value in fn_output.items():
+                if isinstance(key, BenchmarkMetric):
+                    curr_case_metrics[key.value] = value
+                elif isinstance(key, str):
+                    curr_case_metrics[key] = value
                 else:
-                    extra_metrics[metric_key] = metric_val
-            curr_case_metrics[BenchmarkMetric.EXTRA_METRICS.value] = extra_metrics
+                    raise ValueError(f"Unexpected metric key type: {type(key)}")
 
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
 
-    def write_result(self, output_path="/tmp/result.json"):
-        """Write all collected benchmark results to `output_path`.
-        The result is a dict of the form:
-        ``{case_name: {metric_name: metric_value, ...}}``."""
+    def write_result(self):
+        """Write all results to the appropriate JSON file.
 
-        test_output_json = os.environ.get("TEST_OUTPUT_JSON", output_path)
+        Our release test infrastructure consumes the JSON file and uploads the results
+        to our internal dashboard.
+        """
+        # 'TEST_OUTPUT_JSON' is set in the release test environment.
+        test_output_json = os.environ.get("TEST_OUTPUT_JSON", "./result.json")
         with open(test_output_json, "w") as f:
-            self.result["name"] = self.name
             f.write(json.dumps(self.result))
 
-        print(
-            f"Finished benchmark {self.name}, metrics exported to {test_output_json}:"
-        )
-        print(self.result)
+        print(f"Finished benchmark, metrics exported to '{test_output_json}':")
+        print(json.dumps(self.result, indent=4))

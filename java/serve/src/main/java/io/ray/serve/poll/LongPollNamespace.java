@@ -4,7 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 
 /** The long poll namespace enum. */
 public enum LongPollNamespace {
-  RUNNING_REPLICAS,
+  DEPLOYMENT_TARGETS,
 
   ROUTE_TABLE;
 

@@ -28,7 +28,8 @@ data, target, target_names = (
     iris_dataset["target_names"],
 )
 
-np.random.shuffle(data), np.random.shuffle(target)
+np.random.shuffle(data)
+np.random.shuffle(target)
 train_x, train_y = data[:100], target[:100]
 val_x, val_y = data[100:], target[100:]
 # __doc_data_end__

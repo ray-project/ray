@@ -1,5 +1,6 @@
-import asyncio
 import argparse
+import asyncio
+
 import ray
 
 ray.init()
@@ -46,7 +47,7 @@ async def main():
     parser.add_argument(
         "--sleep-secs",
         type=float,
-        help="Sleep seconds before sending " "message to next actor",
+        help="Sleep seconds before sending message to next actor",
     )
     args = parser.parse_args()
 

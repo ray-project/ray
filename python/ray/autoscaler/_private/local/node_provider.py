@@ -216,6 +216,26 @@ class LocalNodeProvider(NodeProvider):
                 matching_ips.append(worker_ip)
         return matching_ips
 
+    def nodes_for_teardown(self, tag_filters):
+        """Return all known node ids matching tag_filters regardless of state.
+
+        The local state file on the machine invoking ``ray down`` may show
+        workers as terminated because only the head node's autoscaler updates
+        them to running.  During teardown we still need to reach these nodes
+        to stop their Docker containers.
+
+        Nodes that have already been fully torn down (i.e. terminate_node was
+        called, setting teardown_complete) are excluded so they are not
+        targeted again on subsequent teardown passes.
+        """
+        workers = self.state.get()
+        return [
+            worker_ip
+            for worker_ip, info in workers.items()
+            if all(info["tags"].get(k) == v for k, v in tag_filters.items())
+            and not info.get("teardown_complete", False)
+        ]
+
     def is_running(self, node_id):
         return self.state.get()[node_id]["state"] == "running"
 
@@ -246,31 +266,36 @@ class LocalNodeProvider(NodeProvider):
         return socket.gethostbyname(node_id)
 
     def set_node_tags(self, node_id, tags):
-        with self.state.file_lock:
-            info = self.state.get()[node_id]
-            info["tags"].update(tags)
-            self.state.put(node_id, info)
+        with self.state.lock:
+            with self.state.file_lock:
+                info = self.state.get()[node_id]
+                info["tags"].update(tags)
+                self.state.put(node_id, info)
 
     def create_node(self, node_config, tags, count):
         """Creates min(count, currently available) nodes."""
         node_type = tags[TAG_RAY_NODE_KIND]
-        with self.state.file_lock:
-            workers = self.state.get()
-            for node_id, info in workers.items():
-                if info["state"] == "terminated" and (
-                    self.use_coordinator or info["tags"][TAG_RAY_NODE_KIND] == node_type
-                ):
-                    info["tags"] = tags
-                    info["state"] = "running"
-                    self.state.put(node_id, info)
-                    count = count - 1
-                    if count == 0:
-                        return
+        with self.state.lock:
+            with self.state.file_lock:
+                workers = self.state.get()
+                for node_id, info in workers.items():
+                    if info["state"] == "terminated" and (
+                        self.use_coordinator
+                        or info["tags"][TAG_RAY_NODE_KIND] == node_type
+                    ):
+                        info["tags"] = tags
+                        info["state"] = "running"
+                        info.pop("teardown_complete", None)
+                        self.state.put(node_id, info)
+                        count = count - 1
+                        if count == 0:
+                            return
 
     def terminate_node(self, node_id):
         workers = self.state.get()
         info = workers[node_id]
         info["state"] = "terminated"
+        info["teardown_complete"] = True
         self.state.put(node_id, info)
 
     @staticmethod

@@ -4,16 +4,12 @@ import sys
 import time
 
 import numpy as np
-
 import pytest
 
 import ray
-from ray._private.async_compat import is_async_func
-from ray._private.test_utils import wait_for_condition
-from ray._private.utils import (
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import (
     get_or_create_event_loop,
-    run_background_task,
-    background_tasks,
 )
 
 
@@ -34,32 +30,13 @@ def gen_tasks(time_scale=0.1):
     return [f.remote(i) for i in range(5)]
 
 
-def test_is_async_func():
-    def f():
-        return 1
-
-    def f_gen():
-        yield 1
-
-    async def g():
-        return 1
-
-    async def g_gen():
-        yield 1
-
-    assert is_async_func(f) is False
-    assert is_async_func(f_gen) is False
-    assert is_async_func(g) is True
-    assert is_async_func(g_gen) is True
-
-
 def test_simple(init):
     @ray.remote
     def f():
         time.sleep(1)
         return np.zeros(1024 * 1024, dtype=np.uint8)
 
-    future = f.remote().as_future()
+    future = asyncio.ensure_future(f.remote())
     result = get_or_create_event_loop().run_until_complete(future)
     assert isinstance(result, np.ndarray)
 
@@ -67,15 +44,14 @@ def test_simple(init):
 def test_gather(init):
     loop = get_or_create_event_loop()
     tasks = gen_tasks()
-    futures = [obj_ref.as_future() for obj_ref in tasks]
-    results = loop.run_until_complete(asyncio.gather(*futures))
+    results = loop.run_until_complete(asyncio.gather(*tasks))
     assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
 
 
 def test_wait(init):
     loop = get_or_create_event_loop()
     tasks = gen_tasks()
-    futures = [obj_ref.as_future() for obj_ref in tasks]
+    futures = [asyncio.ensure_future(obj_ref) for obj_ref in tasks]
     results, _ = loop.run_until_complete(asyncio.wait(futures))
     assert set(results) == set(futures)
 
@@ -83,8 +59,8 @@ def test_wait(init):
 def test_wait_timeout(init):
     loop = get_or_create_event_loop()
     tasks = gen_tasks(10)
-    futures = [obj_ref.as_future() for obj_ref in tasks]
-    fut = asyncio.wait(futures, timeout=5)
+    futures = [asyncio.ensure_future(obj_ref) for obj_ref in tasks]
+    fut = asyncio.wait(futures, timeout=1)
     results, _ = loop.run_until_complete(fut)
     assert list(results)[0] == futures[0]
 
@@ -101,7 +77,12 @@ def test_gather_mixup(init):
         await asyncio.sleep(n * 0.1)
         return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
-    tasks = [f.remote(1).as_future(), g(2), f.remote(3).as_future(), g(4)]
+    tasks = [
+        f.remote(1),
+        g(2),
+        f.remote(3),
+        g(4),
+    ]
     results = loop.run_until_complete(asyncio.gather(*tasks))
     assert [result[0] for result in results] == [1, 2, 3, 4]
 
@@ -121,14 +102,19 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [f.remote(0.1).as_future(), g(7), f.remote(5).as_future(), g(2)]
+    tasks = [
+        asyncio.ensure_future(f.remote(0.1)),
+        g(7),
+        asyncio.ensure_future(f.remote(5)),
+        g(2),
+    ]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ray_start_regular_shared",
+    "ray_start_regular",
     [
         {
             "object_store_memory": 100 * 1024 * 1024,
@@ -136,7 +122,7 @@ def test_wait_mixup(init):
     ],
     indirect=True,
 )
-async def test_garbage_collection(ray_start_regular_shared):
+async def test_garbage_collection(ray_start_regular):
     # This is a regression test for
     # https://github.com/ray-project/ray/issues/9134
 
@@ -151,7 +137,7 @@ async def test_garbage_collection(ray_start_regular_shared):
         await put_id
 
 
-def test_concurrent_future(ray_start_regular_shared):
+def test_concurrent_future(init):
     ref = ray.put(1)
 
     fut = ref.future()
@@ -169,7 +155,7 @@ def test_concurrent_future(ray_start_regular_shared):
     assert fut.result() == 1
 
 
-def test_concurrent_future_many(ray_start_regular_shared):
+def test_concurrent_future_many(init):
     @ray.remote
     def task(i):
         return i
@@ -184,37 +170,6 @@ def test_concurrent_future_many(ray_start_regular_shared):
     assert result == set(range(100))
 
 
-@pytest.mark.asyncio
-async def test_run_backgroun_job():
-    """Test `run_backgroun_job` works as expected."""
-    result = {}
-
-    async def co():
-        result["start"] = 1
-        await asyncio.sleep(0)
-        result["end"] = 1
-
-    run_background_task(co())
-
-    # Backgroun job is registered.
-    assert len(background_tasks) == 1
-    # co executed.
-    await asyncio.sleep(0)
-    # await asyncio.sleep(0) from co is reached.
-    await asyncio.sleep(0)
-    # co finished and callback called.
-    await asyncio.sleep(0)
-    # The callback should be cleaned.
-    assert len(background_tasks) == 0
-
-    assert result.get("start") == 1
-    assert result.get("end") == 1
-
-
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

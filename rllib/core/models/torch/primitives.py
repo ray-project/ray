@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Union, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.core.models.torch.utils import Stride2D
 from ray.rllib.models.torch.misc import (
@@ -38,6 +38,7 @@ class TorchMLP(nn.Module):
         hidden_layer_bias_initializer_config: Optional[Dict] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
+        output_layer_use_layernorm: bool = False,
         output_activation: Union[str, Callable] = "linear",
         output_weights_initializer: Optional[Union[str, Callable]] = None,
         output_weights_initializer_config: Optional[Dict] = None,
@@ -75,6 +76,9 @@ class TorchMLP(nn.Module):
                 size=`hidden_layer_dims[-1]`.
             output_use_bias: Whether to use bias on the separate output layer,
                 if any.
+            output_layer_use_layernorm: Whether to insert a LayerNorm after the
+                output layer (before its activation). Only applies when
+                `output_dim` is set.
             output_activation: The activation function to use for the output layer
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
@@ -161,10 +165,15 @@ class TorchMLP(nn.Module):
                 # Insert a layer normalization in between layer's output and
                 # the activation.
                 if hidden_layer_use_layernorm:
-                    layers.append(nn.LayerNorm(dims[i + 1]))
+                    # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                    layers.append(nn.LayerNorm(dims[i + 1], eps=0.001))
                 # Add the activation function.
                 if hidden_activation is not None:
                     layers.append(hidden_activation())
+            else:
+                # Output layer: optionally add layernorm before activation.
+                if output_layer_use_layernorm:
+                    layers.append(nn.LayerNorm(dims[i + 1], eps=0.001))
 
         # Add output layer's (if any) activation.
         output_activation = get_activation_fn(output_activation, framework="torch")
@@ -173,10 +182,8 @@ class TorchMLP(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
-
     def forward(self, x):
-        return self.mlp(x.type(self.expected_input_dtype))
+        return self.mlp(x)
 
 
 class TorchCNN(nn.Module):
@@ -193,7 +200,7 @@ class TorchCNN(nn.Module):
     def __init__(
         self,
         *,
-        input_dims: Union[List[int], Tuple[int]],
+        input_dims: Union[List[int], Tuple[int, ...]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
@@ -294,7 +301,8 @@ class TorchCNN(nn.Module):
 
             # Layernorm.
             if cnn_use_layernorm:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                layers.append(LayerNorm1D(out_depth, eps=0.001))
             # Activation.
             if cnn_activation is not None:
                 layers.append(cnn_activation())
@@ -305,13 +313,11 @@ class TorchCNN(nn.Module):
         # Create the CNN.
         self.cnn = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
-
     def forward(self, inputs):
         # Permute b/c data comes in as channels_last ([B, dim, dim, channels]) ->
         # Convert to `channels_first` for torch:
         inputs = inputs.permute(0, 3, 1, 2)
-        out = self.cnn(inputs.type(self.expected_input_dtype))
+        out = self.cnn(inputs)
         # Permute back to `channels_last`.
         return out.permute(0, 2, 3, 1)
 
@@ -331,7 +337,7 @@ class TorchCNNTranspose(nn.Module):
     def __init__(
         self,
         *,
-        input_dims: Union[List[int], Tuple[int]],
+        input_dims: Union[List[int], Tuple[int, ...]],
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
         cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: str = "relu",
@@ -446,7 +452,7 @@ class TorchCNNTranspose(nn.Module):
             layers.append(layer)
             # Layernorm (never for final layer).
             if cnn_transpose_use_layernorm and not is_final_layer:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                layers.append(LayerNorm1D(out_depth, eps=0.001))
             # Last layer is never activated (regardless of config).
             if cnn_transpose_activation is not None and not is_final_layer:
                 layers.append(cnn_transpose_activation())
@@ -457,10 +463,25 @@ class TorchCNNTranspose(nn.Module):
         # Create the final CNNTranspose network.
         self.cnn_transpose = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
-
     def forward(self, inputs):
         # Permute b/c data comes in as [B, dim, dim, channels]:
         out = inputs.permute(0, 3, 1, 2)
-        out = self.cnn_transpose(out.type(self.expected_input_dtype))
+        out = self.cnn_transpose(out)
         return out.permute(0, 2, 3, 1)
+
+
+class LayerNorm1D(nn.Module):
+    def __init__(self, num_features, **kwargs):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(num_features, **kwargs)
+
+    def forward(self, x):
+        # x shape: (B, dim, dim, channels).
+        batch_size, channels, h, w = x.size()
+        # Reshape to (batch_size * height * width, channels) for LayerNorm
+        x = x.permute(0, 2, 3, 1).reshape(-1, channels)
+        # Apply LayerNorm
+        x = self.layer_norm(x)
+        # Reshape back to (batch_size, dim, dim, channels)
+        x = x.reshape(batch_size, h, w, channels).permute(0, 3, 1, 2)
+        return x

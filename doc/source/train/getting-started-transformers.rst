@@ -3,18 +3,29 @@
 Get Started with Distributed Training using Hugging Face Transformers
 =====================================================================
 
-This tutorial walks through the process of converting an existing Hugging Face Transformers script to use Ray Train.
+This tutorial shows you how to convert an existing Hugging Face Transformers script to use Ray Train for distributed training.
 
-Learn how to:
+In this guide, learn how to:
 
-1. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
-2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your training job.
-3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
+1. Configure a :ref:`training function <train-overview-training-function>` that properly reports metrics and saves checkpoints.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and resource requirements for CPUs or GPUs for your distributed training job.
+3. Launch a distributed training job with :class:`~ray.train.torch.TorchTrainer`.
+
+
+Requirements
+------------
+
+Install the necessary packages before you begin:
+
+.. code-block:: bash
+
+    pip install "ray[train]" torch "transformers[torch]" datasets evaluate numpy scikit-learn
+
 
 Quickstart
 ----------
 
-For reference, the final code follows:
+Here's a quick overview of the final code structure:
 
 .. testcode::
     :skipif: True
@@ -23,79 +34,25 @@ For reference, the final code follows:
     from ray.train import ScalingConfig
 
     def train_func():
-        # Your Transformers training code here.
+        # Your Transformers training code here
+        ...
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. `train_func` is the Python code that executes on each distributed training worker.
-2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
+The key components are:
 
-Compare a Hugging Face Transformers training script with and without Ray Train.
+1. `train_func`: Python code that runs on each distributed training worker.
+2. :class:`~ray.train.ScalingConfig`: Defines the number of distributed training workers and GPU usage.
+3. :class:`~ray.train.torch.TorchTrainer`: Launches and manages the distributed training job.
+
+Code Comparison: Hugging Face Transformers vs. Ray Train Integration
+--------------------------------------------------------------------
+
+Compare a standard Hugging Face Transformers script with its Ray Train equivalent:
 
 .. tab-set::
-
-    .. tab-item:: Hugging Face Transformers
-
-        .. This snippet isn't tested because it doesn't use any Ray code.
-
-        .. testcode::
-            :skipif: True
-
-            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
-
-            import numpy as np
-            import evaluate
-            from datasets import load_dataset
-            from transformers import (
-                Trainer,
-                TrainingArguments,
-                AutoTokenizer,
-                AutoModelForSequenceClassification,
-            )
-
-            # Datasets
-            dataset = load_dataset("yelp_review_full")
-            tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-
-            def tokenize_function(examples):
-                return tokenizer(examples["text"], padding="max_length", truncation=True)
-
-            small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
-            small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
-
-            # Model
-            model = AutoModelForSequenceClassification.from_pretrained(
-                "bert-base-cased", num_labels=5
-            )
-
-            # Metrics
-            metric = evaluate.load("accuracy")
-
-            def compute_metrics(eval_pred):
-                logits, labels = eval_pred
-                predictions = np.argmax(logits, axis=-1)
-                return metric.compute(predictions=predictions, references=labels)
-
-            # Hugging Face Trainer
-            training_args = TrainingArguments(
-                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
-            )
-
-            trainer = Trainer(
-                model=model,
-                args=training_args,
-                train_dataset=small_train_dataset,
-                eval_dataset=small_eval_dataset,
-                compute_metrics=compute_metrics,
-            )
-
-            # Start Training
-            trainer.train()
-
-
 
     .. tab-item:: Hugging Face Transformers + Ray Train
 
@@ -131,10 +88,10 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
                     return tokenizer(examples["text"], padding="max_length", truncation=True)
 
                 small_train_dataset = (
-                    dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+                    dataset["train"].select(range(100)).map(tokenize_function, batched=True)
                 )
                 small_eval_dataset = (
-                    dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
+                    dataset["test"].select(range(100)).map(tokenize_function, batched=True)
                 )
 
                 # Model
@@ -184,14 +141,13 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
             ray_trainer = TorchTrainer(
                 train_func,
                 scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
-                # [4a] If running in a multi-node cluster, this is where you
-                # should configure the run's persistent storage that is accessible
-                # across all worker nodes.
+                # [4a] For multi-node clusters, configure persistent storage that is
+                # accessible across all worker nodes
                 # run_config=ray.train.RunConfig(storage_path="s3://..."),
             )
             result: ray.train.Result = ray_trainer.fit()
 
-            # [5] Load the trained model.
+            # [5] Load the trained model
             with result.checkpoint.as_directory() as checkpoint_dir:
                 checkpoint_path = os.path.join(
                     checkpoint_dir,
@@ -200,27 +156,89 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
                 model = AutoModelForSequenceClassification.from_pretrained(checkpoint_path)
 
 
+    .. tab-item:: Hugging Face Transformers
+
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
+
+            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
+
+            import numpy as np
+            import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer,
+                AutoModelForSequenceClassification,
+            )
+
+            # Datasets
+            dataset = load_dataset("yelp_review_full")
+            tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+
+            def tokenize_function(examples):
+                return tokenizer(examples["text"], padding="max_length", truncation=True)
+
+            small_train_dataset = dataset["train"].select(range(100)).map(tokenize_function, batched=True)
+            small_eval_dataset = dataset["test"].select(range(100)).map(tokenize_function, batched=True)
+
+            # Model
+            model = AutoModelForSequenceClassification.from_pretrained(
+                "bert-base-cased", num_labels=5
+            )
+
+            # Metrics
+            metric = evaluate.load("accuracy")
+
+            def compute_metrics(eval_pred):
+                logits, labels = eval_pred
+                predictions = np.argmax(logits, axis=-1)
+                return metric.compute(predictions=predictions, references=labels)
+
+            # Hugging Face Trainer
+            training_args = TrainingArguments(
+                output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+            )
+
+            trainer = Trainer(
+                model=model,
+                args=training_args,
+                train_dataset=small_train_dataset,
+                eval_dataset=small_eval_dataset,
+                compute_metrics=compute_metrics,
+            )
+
+            # Start Training
+            trainer.train()
+
+
 Set up a training function
 --------------------------
 
 .. include:: ./common/torch-configure-train_func.rst
 
-Ray Train sets up the distributed process group on each worker before entering this function. 
-Put all the logic into this function, including dataset construction and preprocessing,
-model initialization, transformers trainer definition and more.
+Ray Train sets up the distributed process group on each worker before entering the training function.
+Put all your logic into this function, including:
+
+- Dataset construction and preprocessing
+- Model initialization
+- Transformers trainer definition
 
 .. note::
 
-    If you are using Hugging Face Datasets or Evaluate, make sure to call ``datasets.load_dataset`` and ``evaluate.load``
-    inside the training function. Don't pass the loaded datasets and metrics from outside of the training
-    function, because it might cause serialization errors while transferring the objects to the workers.
+    When using Hugging Face Datasets or Evaluate, always call ``datasets.load_dataset`` and ``evaluate.load``
+    inside the training function. Don't pass loaded datasets and metrics from outside the training
+    function, as this can cause serialization errors when transferring objects to workers.
 
 
 Report checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To persist your checkpoints and monitor training progress, add a
-:class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer.
+To persist checkpoints and monitor training progress, add a
+:class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer:
 
 
 .. code-block:: diff
@@ -235,16 +253,16 @@ To persist your checkpoints and monitor training progress, add a
          ...
 
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
-Note that the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation, and you can :ref:`further customize <train-dl-saving-checkpoints>` it.
+Reporting metrics and checkpoints to Ray Train enables integration with Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
+The :class:`ray.train.huggingface.transformers.RayTrainReportCallback` provides a basic implementation, and you can :ref:`customize it <train-dl-saving-checkpoints>` to fit your needs.
 
 
 Prepare a Transformers Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Finally, pass your Transformers Trainer into
+Pass your Transformers Trainer into
 :meth:`~ray.train.huggingface.transformers.prepare_trainer` to validate
-your configurations and enable Ray Data Integration.
+configurations and enable Ray Data integration:
 
 
 .. code-block:: diff
@@ -266,11 +284,11 @@ your configurations and enable Ray Data Integration.
 Next steps
 ----------
 
-After you have converted your Hugging Face Transformers training script to use Ray Train:
+Now that you've converted your Hugging Face Transformers script to use Ray Train:
 
-* See :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the :doc:`Examples <examples>` for end-to-end examples of how to use Ray Train.
-* Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
+* Explore :ref:`User Guides <train-user-guides>` to learn about specific tasks
+* Browse the :doc:`Examples <examples>` for end-to-end Ray Train applications
+* Consult the :ref:`API Reference <train-api>` for detailed information on the classes and methods
 
 
 .. _transformers-trainer-migration-guide:
@@ -278,13 +296,13 @@ After you have converted your Hugging Face Transformers training script to use R
 TransformersTrainer Migration Guide
 -----------------------------------
 
-Ray 2.1 introduced the `TransformersTrainer`, which exposes a `trainer_init_per_worker` interface
-to define `transformers.Trainer`, then runs a pre-defined training function in a black box.
+Ray 2.1 introduced `TransformersTrainer` with a `trainer_init_per_worker` interface
+to define `transformers.Trainer` and execute a pre-defined training function.
 
-Ray 2.7 introduced the newly unified :class:`~ray.train.torch.TorchTrainer` API,
-which offers enhanced transparency, flexibility, and simplicity. This API aligns more
-with standard Hugging Face Transformers scripts, ensuring that you have better control over your
-native Transformers training code.
+Ray 2.7 introduced the unified :class:`~ray.train.torch.TorchTrainer` API,
+which offers better transparency, flexibility, and simplicity. This API aligns more closely
+with standard Hugging Face Transformers scripts, giving you better control over your
+training code.
 
 
 .. tab-set::
@@ -303,16 +321,18 @@ native Transformers training code.
             import ray
             from ray.train.huggingface import TransformersTrainer
             from ray.train import ScalingConfig
+            from huggingface_hub import HfFileSystem
 
-            # Dataset
-            def preprocess(examples):
-                ...
 
-            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            processed_ds = hf_datasets.map(preprocess, ...)
-
-            ray_train_ds = ray.data.from_huggingface(processed_ds["train"])
-            ray_eval_ds = ray.data.from_huggingface(processed_ds["validation"])
+            # Load datasets using HfFileSystem
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            # List the parquet files for each split
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
+            ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
+            ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
             # Define the Trainer generation function
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -340,7 +360,7 @@ native Transformers training code.
             ray_trainer = TransformersTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
-                datasets={"train": ray_train_ds, "evaluation": ray_eval_ds},
+                datasets={"train": ray_train_ds, "validation": ray_eval_ds},
             )
             result = ray_trainer.fit()
 
@@ -357,21 +377,24 @@ native Transformers training code.
             from datasets import load_dataset
 
             import ray
+            from ray.train.torch import TorchTrainer
             from ray.train.huggingface.transformers import (
                 RayTrainReportCallback,
                 prepare_trainer,
             )
             from ray.train import ScalingConfig
+            from huggingface_hub import HfFileSystem
 
-            # Dataset
-            def preprocess(examples):
-                ...
 
-            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            processed_ds = hf_datasets.map(preprocess, ...)
-
-            ray_train_ds = ray.data.from_huggingface(processed_ds["train"])
-            ray_eval_ds = ray.data.from_huggingface(processed_ds["evaluation"])
+            # Load datasets using HfFileSystem
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            # List the parquet files for each split
+            all_files = [f["name"] for f in fs.ls(path)]
+            train_files = [f for f in all_files if "train" in f and f.endswith(".parquet")]
+            validation_files = [f for f in all_files if "validation" in f and f.endswith(".parquet")]
+            ray_train_ds = ray.data.read_parquet(train_files, filesystem=fs)
+            ray_eval_ds = ray.data.read_parquet(validation_files, filesystem=fs)
 
             # [1] Define the full training function
             # =====================================
@@ -383,7 +406,7 @@ native Transformers training code.
                 # [2] Build Ray Data iterables
                 # ============================
                 train_dataset = ray.train.get_dataset_shard("train")
-                eval_dataset = ray.train.get_dataset_shard("evaluation")
+                eval_dataset = ray.train.get_dataset_shard("validation")
 
                 train_iterable_ds = train_dataset.iter_torch_batches(batch_size=8)
                 eval_iterable_ds = eval_dataset.iter_torch_batches(batch_size=8)
@@ -405,8 +428,8 @@ native Transformers training code.
                     eval_dataset=eval_iterable_ds,
                 )
 
-                # [3] Inject Ray Train Report Callback
-                # ====================================
+                # [3] Add Ray Train Report Callback
+                # =================================
                 trainer.add_callback(RayTrainReportCallback())
 
                 # [4] Prepare your trainer
@@ -419,6 +442,6 @@ native Transformers training code.
             ray_trainer = TorchTrainer(
                 train_func,
                 scaling_config=scaling_config,
-                datasets={"train": ray_train_ds, "evaluation": ray_eval_ds},
+                datasets={"train": ray_train_ds, "validation": ray_eval_ds},
             )
             result = ray_trainer.fit()

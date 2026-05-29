@@ -1,14 +1,21 @@
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import simple_split_tokenizer
+from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+    simple_split_tokenizer,
+)
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class Tokenizer(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.tokenizer")
+class Tokenizer(SerializablePreprocessorBase):
     """Replace each string with a list of tokens.
 
     Examples:
@@ -40,12 +47,25 @@ class Tokenizer(Preprocessor):
         0   [Hello, world]
         1  [foo, bar, baz]
 
+        :class:`Tokenizer` can also be used in append mode by providing the
+        name of the output_columns that should hold the tokenized values.
+
+        >>> tokenizer = Tokenizer(columns=["text"], output_columns=["text_tokenized"])
+        >>> tokenizer.transform(ds).to_pandas()  # doctest: +SKIP
+                    text    text_tokenized
+        0  Hello, world!  [Hello,, world!]
+        1   foo bar\\nbaz   [foo, bar\\nbaz]
+
     Args:
         columns: The columns to tokenize.
         tokenization_fn: The function used to generate tokens. This function
             should accept a string as input and return a list of tokens as
             output. If unspecified, the tokenizer uses a function equivalent to
             ``lambda s: s.split(" ")``.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
     _is_fittable = False
@@ -54,21 +74,69 @@ class Tokenizer(Preprocessor):
         self,
         columns: List[str],
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
+        output_columns: Optional[List[str]] = None,
     ):
-        self.columns = columns
+        super().__init__()
+        self._columns = columns
         # TODO(matt): Add a more robust default tokenizer.
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
+        )
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_tokenizer(s: pd.Series):
-            return s.map(self.tokenization_fn)
+            return s.map(self._tokenization_fn)
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(column_tokenizer)
+        df[self._output_columns] = df.loc[:, self._columns].transform(column_tokenizer)
         return df
 
     def __repr__(self):
-        name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"tokenization_fn={name})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"tokenization_fn={name}, output_columns={self._output_columns!r})"
+        )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "tokenization_fn": self._tokenization_fn,
+            "output_columns": self._output_columns,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._tokenization_fn = fields["tokenization_fn"]
+        self._output_columns = fields["output_columns"]
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
         )

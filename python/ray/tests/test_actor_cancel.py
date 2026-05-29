@@ -1,13 +1,14 @@
 import asyncio
-import os
+import concurrent.futures
 import sys
 import time
 from collections import defaultdict
+from typing import Set
 
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.util.state import list_tasks
 
@@ -61,7 +62,6 @@ def test_async_actor_cancel(shutdown_only):
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
                 # It is False until this except block is finished.
-                print(asyncio.current_task().cancelled())
                 assert not asyncio.current_task().cancelled()
                 ray.get(verify_actor.called.remote())
                 raise
@@ -134,70 +134,6 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
         ray.get(ref_dep_not_resolved)
 
 
-@pytest.mark.skip(
-    reason=("The guarantee in this case is too weak now. " "Need more work.")
-)
-def test_in_flight_queued_requests_canceled(shutdown_only, monkeypatch):
-    """
-    When there are large input size in-flight actor tasks
-    tasks are queued inside a RPC layer (core_worker_client.h)
-    In this case, we don't cancel a request from a client side
-    but wait until it is sent to the server side and cancel it.
-    See SendRequests() inside core_worker_client.h
-    """
-    # Currently the max bytes is
-    # const int64_t kMaxBytesInFlight = 16 * 1024 * 1024.
-    # See core_worker_client.h.
-    input_arg = b"1" * 15 * 1024  # 15KB.
-    # Tasks are queued when there are more than 1024 tasks.
-    sig = SignalActor.remote()
-
-    @ray.remote
-    class Actor:
-        def __init__(self, signal_actor):
-            self.signal_actor = signal_actor
-
-        def f(self, input_arg):
-            ray.get(self.signal_actor.wait.remote())
-            return True
-
-    a = Actor.remote(sig)
-    refs = [a.f.remote(input_arg) for _ in range(5000)]
-
-    # Wait until the first task runs.
-    wait_for_condition(
-        lambda: len(list_tasks(filters=[("STATE", "=", "RUNNING")])) == 1
-    )
-
-    # Cancel all tasks.
-    for ref in refs:
-        ray.cancel(ref)
-
-    # The first ref is in progress, so we pop it out
-    first_ref = refs.pop(0)
-    ray.get(sig.send.remote())
-
-    # Make sure all tasks that are queued (including queued
-    # due to in-flight bytes) are canceled.
-    canceled = 0
-    for ref in refs:
-        try:
-            ray.get(ref)
-        except TaskCancelledError:
-            canceled += 1
-
-    # Verify at least half of tasks are canceled.
-    # Currently, the guarantee is weak because we cannot
-    # detect queued tasks due to inflight bytes limit.
-    # TODO(sang): Move the in flight bytes logic into
-    # actor submission queue instead of doing it inside
-    # core worker client.
-    assert canceled > 2500
-
-    # first ref shouldn't have been canceled.
-    assert ray.get(first_ref)
-
-
 def test_async_actor_server_side_cancel(shutdown_only):
     """
     Test Cancelation when a task is queued on a server side.
@@ -222,7 +158,7 @@ def test_async_actor_server_side_cancel(shutdown_only):
             list_tasks(
                 filters=[
                     ("name", "=", "Actor.g"),
-                    ("STATE", "=", "SUBMITTED_TO_WORKER"),
+                    ("STATE", "=", "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY"),
                 ]
             )
         )
@@ -238,9 +174,8 @@ def test_async_actor_server_side_cancel(shutdown_only):
             ray.get(ref)
 
     # Verify the task is submitted to the worker and never executed
-    # assert task.state == "SUBMITTED_TO_WORKER"
     for task in tasks:
-        assert task.state == "SUBMITTED_TO_WORKER"
+        assert task.state == "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY"
 
 
 def test_async_actor_cancel_after_task_finishes(shutdown_only):
@@ -292,16 +227,15 @@ def test_async_actor_cancel_restart(ray_start_cluster, monkeypatch):
         cluster.remove_node(node)
         r, ur = ray.wait([ref])
         # When cancel is called, the task won't be retried anymore.
-        # Since an actor is dead, in this case, it will raise
-        # RayActorError.
-        with pytest.raises(ray.exceptions.RayActorError):
+        # It will raise TaskCancelledError.
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
         # This will restart actor, but task won't be retried.
         cluster.add_node(num_cpus=1)
         # Verify actor is restarted. f should be retried
         ray.get(a.__ray_ready__.remote())
-        with pytest.raises(ray.exceptions.RayActorError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
 
@@ -323,34 +257,6 @@ def test_remote_cancel(ray_start_regular):
 
     with pytest.raises(ray.exceptions.TaskCancelledError):
         ray.get(sleep_ref)
-
-
-@pytest.mark.skip(reason=("Currently not passing. There's one edge case to fix."))
-def test_cancel_stress(shutdown_only):
-    ray.init()
-
-    @ray.remote
-    class Actor:
-        async def sleep(self):
-            await asyncio.sleep(1000)
-
-    actors = [Actor.remote() for _ in range(30)]
-
-    refs = []
-    for _ in range(20):
-        for actor in actors:
-            for i in range(100):
-                ref = actor.sleep.remote()
-                refs.append(ref)
-                if i % 2 == 0:
-                    ray.cancel(ref)
-
-    for ref in refs:
-        ray.cancel(ref)
-
-    for ref in refs:
-        with pytest.raises((ray.exceptions.TaskCancelledError, TaskCancelledError)):
-            ray.get(ref)
 
 
 def test_cancel_recursive_tree(shutdown_only):
@@ -404,7 +310,8 @@ def test_cancel_recursive_tree(shutdown_only):
     run_ref = a.run.remote(child_actor, sig)
     task_id = run_ref.task_id().hex()
     wait_for_condition(
-        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING",
+        timeout=20,
     )
     ray.cancel(run_ref, recursive=True)
     ray.get(sig.send.remote())
@@ -421,7 +328,8 @@ def test_cancel_recursive_tree(shutdown_only):
     run_ref = a.run.remote(child_actor, sig)
     task_id = run_ref.task_id().hex()
     wait_for_condition(
-        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING",
+        timeout=20,
     )
     ray.cancel(run_ref, recursive=False)
     ray.get(sig.send.remote())
@@ -447,7 +355,8 @@ def test_cancel_recursive_tree(shutdown_only):
             lambda task_id=task_id: list_tasks(filters=[("task_id", "=", task_id)])[
                 0
             ].state
-            == "RUNNING"
+            == "RUNNING",
+            timeout=20,
         )
         children_refs = ray.get(a.get_children_refs.remote(task_id))
         for child_ref in children_refs:
@@ -456,7 +365,8 @@ def test_cancel_recursive_tree(shutdown_only):
                 lambda task_id=task_id: list_tasks(filters=[("task_id", "=", task_id)])[
                     0
                 ].state
-                == "RUNNING"
+                == "RUNNING",
+                timeout=20,
             )
         recursive = i % 2 == 0
         ray.cancel(run_ref, recursive=recursive)
@@ -475,7 +385,7 @@ def test_cancel_recursive_tree(shutdown_only):
                 assert ray.get(ref)
 
         with pytest.raises(ray.exceptions.TaskCancelledError):
-            ray.get(run_ref)
+            ray.get(run_refs[i])
 
 
 @pytest.mark.parametrize("recursive", [True, False])
@@ -530,8 +440,152 @@ def test_cancel_recursive_chain(shutdown_only, recursive):
             ray.get(ref)
 
 
+def test_concurrent_submission_and_cancellation(shutdown_only):
+    """Test submitting and then cancelling many tasks concurrently.
+
+    This is a regression test for race conditions such as:
+        https://github.com/ray-project/ray/issues/52628.
+    """
+    NUM_TASKS = 2500
+
+    @ray.remote(num_cpus=0)
+    class Worker:
+        async def sleep(self, i: int):
+            # NOTE: all tasks should be cancelled, so this won't actually sleep for the
+            # full duration if the test is passing.
+            await asyncio.sleep(30)
+
+    worker = Worker.remote()
+
+    # Submit many tasks in parallel to cause queueing on the caller and receiver.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_TASKS) as executor:
+        futures = [executor.submit(worker.sleep.remote, i) for i in range(NUM_TASKS)]
+        refs = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    # Cancel the tasks in reverse order of submission.
+    for ref in reversed(refs):
+        ray.cancel(ref)
+
+    # Check that all tasks were successfully cancelled (none ran to completion).
+    for ref in refs:
+        with pytest.raises(ray.exceptions.TaskCancelledError):
+            ray.get(ref)
+
+
+def test_is_canceled_sync_actor_task(shutdown_only):
+    """Test that is_canceled() works correctly for sync actor tasks."""
+
+    signal_actor = SignalActor.remote()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self._was_canceled = False
+
+        def wait_until_canceled(self):
+            ray.get(signal_actor.wait.remote())
+            wait_for_condition(lambda: ray.get_runtime_context().is_canceled())
+            self._was_canceled = True
+
+        def was_canceled(self) -> bool:
+            return self._was_canceled
+
+    a = Actor.remote()
+    ref = a.wait_until_canceled.remote()
+
+    # Wait for the task to be actively waiting on the signal.
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+
+    # Cancel the task while it's blocked on the signal.
+    ray.cancel(ref, recursive=False)
+
+    # Now signal the task to unblock. The task result should be `TaskCancelledError`.
+    ray.get(signal_actor.send.remote())
+    with pytest.raises(TaskCancelledError):
+        ray.get(ref)
+
+    # Check that `is_canceled` was set correctly.
+    assert ray.get(a.was_canceled.remote())
+
+
+def test_is_canceled_concurrent_actor_task(shutdown_only):
+    """Test that is_canceled() works correctly for concurrent actor tasks."""
+
+    signal_actor = SignalActor.remote()
+
+    @ray.remote
+    class ConcurrentActor:
+        def __init__(self):
+            self._canceled_task_indices = set()
+
+        def task_with_cancel_check(self, task_index: int, expect_canceled: bool):
+            ray.get(signal_actor.wait.remote())
+
+            if expect_canceled:
+                wait_for_condition(lambda: ray.get_runtime_context().is_canceled())
+                self._canceled_task_indices.add(task_index)
+
+            return task_index
+
+        def get_canceled_task_indices(self) -> Set[int]:
+            return self._canceled_task_indices
+
+    actor = ConcurrentActor.options(max_concurrency=3).remote()
+
+    # Submit multiple tasks concurrently. Only task_index=1 will be canceled.
+    refs = [actor.task_with_cancel_check.remote(i, i == 1) for i in range(3)]
+
+    # Wait for all tasks to be running (waiting on the signal).
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 3)
+
+    # Cancel task_index=1.
+    ray.cancel(refs[1], recursive=False)
+
+    # Send signal to unblock all tasks.
+    ray.get(signal_actor.send.remote())
+
+    # The canceled task should raise TaskCancelledError.
+    with pytest.raises(TaskCancelledError):
+        ray.get(refs[1])
+
+    # The other tasks should complete normally.
+    assert ray.get([refs[0], refs[2]]) == [0, 2]
+
+    # Verify that `is_canceled` was propagated for task_index=1.
+    assert ray.get(actor.get_canceled_task_indices.remote()) == {1}
+
+
+def test_is_canceled_not_supported_in_async_actor(shutdown_only):
+    """Test is_canceled() for async actors."""
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            self.is_canceled = False
+
+        async def async_task(self):
+            # is_canceled() doesn't work for async actors
+            if ray.get_runtime_context().is_canceled():
+                self.is_canceled = True
+                return "canceled"
+            return "completed"
+
+        def is_canceled(self):
+            return self.is_canceled
+
+    actor = AsyncActor.remote()
+    ref = actor.async_task.remote()
+
+    # is_canceled() is not supported for async actors
+    with pytest.raises(
+        RuntimeError, match="This method is not supported in an async actor."
+    ):
+        ray.get(ref)
+
+    # Verify the state for async actor does NOT change as there's no graceful
+    # termination for async actor task
+    assert not ray.get(actor.is_canceled.remote())
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

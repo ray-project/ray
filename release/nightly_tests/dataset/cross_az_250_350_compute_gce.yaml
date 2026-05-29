@@ -1,0 +1,15 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+enable_cross_zone_scaling: true
+
+head_node:
+  instance_type: n2-standard-8
+
+worker_nodes:
+  - instance_type: n2-standard-8
+    min_nodes: 250
+    max_nodes: 350
+    market_type: ON_DEMAND
+
+flags:
+  enable_multi_az_serve: true

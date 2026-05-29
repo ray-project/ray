@@ -5,47 +5,57 @@ import re
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
-    RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
-from ray.serve._private.test_utils import check_replica_counts
-from ray.serve.schema import LoggingConfig
-from ray.serve.tests.test_failure import request_with_retries
+from ray.serve._private.test_utils import (
+    check_replica_counts,
+    get_application_url,
+    request_with_retries,
+)
+from ray.serve.schema import LoggingConfig, ServeDeploySchema
 from ray.util.state import list_actors
 
 
-def test_recover_start_from_replica_actor_names(serve_instance):
+@pytest.mark.parametrize(
+    "deployment_options",
+    [
+        {"num_replicas": 2},
+        {"autoscaling_config": {"min_replicas": 2, "max_replicas": 2}},
+    ],
+)
+def test_recover_start_from_replica_actor_names(serve_instance, deployment_options):
     """Test controller is able to recover starting -> running replicas from
     actor names.
     """
 
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
-    @serve.deployment(name="recover_start_from_replica_actor_names", num_replicas=2)
+    @serve.deployment(
+        name="recover_start_from_replica_actor_names", **deployment_options
+    )
     class TransientConstructorFailureDeployment:
         def __init__(self):
-            return True
+            pass
 
         def __call__(self, *args):
             return "hii"
 
     serve.run(TransientConstructorFailureDeployment.bind(), name="app")
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
@@ -55,8 +65,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
 
     replica_version_hash = None
     for replica in deployment_dict[id]:
-        ref = replica.actor_handle._get_metadata.remote()
-        _, version, _ = ray.get(ref)
+        ref = replica.get_actor_handle().initialize_and_get_metadata.remote()
+        _, version, _, _, _, _, _, _, _, _, _, _ = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -84,10 +94,11 @@ def test_recover_start_from_replica_actor_names(serve_instance):
 
     # Kill controller and wait for endpoint to be available again
     ray.kill(serve.context._global_client._controller, no_restart=False)
+    wait_for_condition(
+        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
+    )
     for _ in range(10):
-        response = request_with_retries(
-            "/recover_start_from_replica_actor_names/", timeout=30
-        )
+        response = request_with_retries(timeout=30, app_name="app")
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
@@ -107,8 +118,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Ensure recovered replica version has are the same
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
-        ref = actor_handle._get_metadata.remote()
-        _, version, _ = ray.get(ref)
+        ref = actor_handle.initialize_and_get_metadata.remote()
+        _, version, _, _, _, _, _, _, _, _, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
         ), "Replica version hash should be the same after recover from actor names"
@@ -156,32 +167,25 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     serve._run(V2.bind(), _blocking=False, name="app")
 
     # One replica of the old version should be stuck in stopping because
-    # of the blocked request.
-    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        # Two replicas of the new version should be brought up without
-        # waiting for the old replica to stop.
-        wait_for_condition(
-            check_replica_counts,
-            controller=serve_instance._controller,
-            deployment_id=DeploymentID(name="test", app_name="app"),
-            total=3,
-            by_state=[
-                (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
-                (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
-            ],
-        )
+    # of the blocked request. Two replicas of the new version should be
+    # brought up without waiting for the old replica to stop.
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=DeploymentID(name="test", app_name="app"),
+        total=3,
+        by_state=[
+            (ReplicaState.STOPPING, 1, lambda r: r._actor.pid in initial_pids),
+            (ReplicaState.RUNNING, 2, lambda r: r._actor.pid not in initial_pids),
+        ],
+    )
 
-        # All new requests should be sent to the new running replicas
-        refs = [h.remote() for _ in range(10)]
-        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
-        assert versions.count("2") == 10
-        pids2 = set(pids)
-        assert len(pids2 & initial_pids) == 0
-    else:
-        with pytest.raises(TimeoutError):
-            serve_instance._wait_for_application_running("app", timeout_s=0.1)
-
-        refs = [h.remote() for _ in range(10)]
+    # All new requests should be sent to the new running replicas
+    refs = [h.remote() for _ in range(10)]
+    versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
+    assert versions.count("2") == 10
+    pids2 = set(pids)
+    assert len(pids2 & initial_pids) == 0
 
     # Kill the controller
     ray.kill(serve.context._global_client._controller, no_restart=False)
@@ -191,11 +195,6 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     val, pid = blocked_ref.result()
     assert val == "1"
     assert pid in initial_pids
-
-    if not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
-        versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
-        assert versions.count("1") == 10
-        assert len(set(pids) & initial_pids)
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
@@ -211,21 +210,30 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
 
 def test_controller_recover_initializing_actor(serve_instance):
-    """Recover the actor which is under PENDING_INITIALIZATION"""
+    """Controller crash while a replica is still in `__init__`.
+
+    The previous controller never finished sending the replica its initial
+    `initialize_and_get_metadata(rank=...)` call, so the live actor has
+    neither a rank nor a fully-initialized user callable. The new
+    controller must detect this via the `was_initialized` probe and
+    replace the half-initialized actor with a fresh one rather than try to
+    recover it (which would silently complete its initialization with
+    `rank=None` and break rank tracking).
+    """
 
     signal = SignalActor.remote()
-    signal2 = SignalActor.remote()
+    init_started = SignalActor.remote()
     client = serve_instance
 
     @ray.remote
     def pending_init_indicator():
-        ray.get(signal2.wait.remote())
+        ray.get(init_started.wait.remote())
         return True
 
     @serve.deployment
     class V1:
         async def __init__(self):
-            ray.get(signal2.send.remote())
+            ray.get(init_started.send.remote())
             await signal.wait.remote()
 
         def __call__(self, request):
@@ -240,21 +248,44 @@ def test_controller_recover_initializing_actor(serve_instance):
             if SERVE_PROXY_NAME in actor["name"]:
                 continue
             if name in actor["name"]:
-                print(actor)
                 return actor["name"], actor["pid"]
 
-    actor_tag, _ = get_actor_info(f"app#{V1.name}")
+    original_actor_tag, _ = get_actor_info(f"app#{V1.name}")
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
-    # wait for controller is alive again
-    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
-    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
 
-    # Let the actor proceed initialization
+    # Wait for the controller to be replaced. `list_actors` can briefly
+    # report the killed controller as ALIVE (and any new controller as
+    # PENDING_CREATION) right after `ray.kill`, so wait specifically for
+    # the pid to change.
+    def controller_replaced():
+        info = get_actor_info(SERVE_CONTROLLER_NAME)
+        return info is not None and info[1] != controller1_pid
+
+    wait_for_condition(controller_replaced)
+
+    # The new controller's `was_initialized` probe will report False for
+    # the half-initialized actor, so it is killed and replaced. Wait for
+    # the replacement replica to start and report it has reached its
+    # constructor. Unblock its `__init__` once it has.
+    ray.get(pending_init_indicator.remote())
     ray.get(signal.send.remote())
     client._wait_for_application_running("app")
-    # Make sure the actor before controller dead is staying alive.
-    assert actor_tag == get_actor_info(f"app#{V1.name}")[0]
+
+    # The original half-initialized actor should have been replaced with a
+    # fresh one (different replica id baked into the actor name).
+    new_actor_tag, _ = get_actor_info(f"app#{V1.name}")
+    assert new_actor_tag != original_actor_tag
+
+    # And the original actor should actually be dead -- not just hidden by
+    # the ALIVE filter on a different replica id. `list_actors` may take a
+    # moment to reflect the kill in its state.
+    def original_actor_dead():
+        matching = list_actors(filters=[("name", "=", original_actor_tag)])
+        # Either the entry has been pruned entirely, or it is reported DEAD.
+        return not matching or all(a["state"] == "DEAD" for a in matching)
+
+    wait_for_condition(original_actor_dead)
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):
@@ -467,18 +498,52 @@ def test_controller_crashes_with_logging_config(serve_instance):
     # Check proxy logging
     def check_proxy_handle_in_controller():
         proxy_handles = ray.get(client._controller.get_proxies.remote())
-        assert len(proxy_handles) == 1
+        expected_num_proxies = 1
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            # fallback proxy
+            expected_num_proxies += 1
+        assert len(proxy_handles) == expected_num_proxies
         return True
 
     wait_for_condition(check_proxy_handle_in_controller)
     proxy_handles = ray.get(client._controller.get_proxies.remote())
     proxy_handle = list(proxy_handles.values())[0]
     file_path = ray.get(proxy_handle._get_logging_config.remote())
-    # Send request, we should see json logging and debug log message in proxy log.
-    resp = requests.get("http://127.0.0.1:8000")
-    assert resp.status_code == 200
+    # We should see the health check debug log in the proxy logs.
     wait_for_condition(
-        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET 200.*']
+        check_log_file,
+        log_file=file_path,
+        expected_regex=['"message": "Received health check."'],
+        timeout=15,  # The health check period is 10 seconds.
+    )
+
+
+def test_controller_recover_and_deploy(serve_instance):
+    """Ensure that in-progress deploy can finish even after controller dies."""
+    client = serve_instance
+    signal = SignalActor.options(name="signal123").remote()
+
+    config_json = {
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.hangs.app",
+            }
+        ]
+    }
+    config = ServeDeploySchema.model_validate(config_json)
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        lambda: serve.status().applications["default"].status == "DEPLOYING"
+    )
+    ray.kill(client._controller, no_restart=False)
+
+    signal.send.remote()
+
+    # When controller restarts, it should redeploy config automatically
+    wait_for_condition(
+        lambda: httpx.get(f"{get_application_url()}/").text == "hello world"
     )
 
 

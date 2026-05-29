@@ -1,21 +1,24 @@
 import os
+import sys
 from typing import Dict, Tuple
 from unittest.mock import patch
 
 import numpy as np
 import pytest
-import tensorflow as tf
 
 import ray
 from ray import train
-from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.tensorflow import (
-    TensorflowCheckpoint,
-    TensorflowPredictor,
-    TensorflowTrainer,
-)
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    import tensorflow as tf
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.train.tensorflow import TensorflowTrainer
 
 
 class TestReportCheckpointCallback:
@@ -63,7 +66,7 @@ class TestReportCheckpointCallback:
         # simulates the end of an epoch, and asserts that a metric and checkpoint are
         # reported.
         callback = ReportCheckpointCallback()
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_epoch_end(0, {"loss": 0})
 
@@ -209,13 +212,7 @@ def test_keras_callback_e2e():
         scaling_config=ScalingConfig(num_workers=2),
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
-    checkpoint = trainer.fit().checkpoint
-    tf_checkpoint = TensorflowCheckpoint(
-        path=checkpoint.path, filesystem=checkpoint.filesystem
-    )
-    predictor = TensorflowPredictor.from_checkpoint(tf_checkpoint)
-    items = np.random.uniform(0, 1, size=(10, 1))
-    predictor.predict(data=items)
+    trainer.fit()
 
 
 if __name__ == "__main__":

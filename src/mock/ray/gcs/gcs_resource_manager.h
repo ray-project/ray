@@ -1,0 +1,78 @@
+// Copyright  The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <gmock/gmock.h>
+
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_resource_manager.h"
+#include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
+#include "ray/util/clock.h"
+
+namespace ray {
+namespace gcs {
+
+static instrumented_io_context __mock_io_context_;
+static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
+static observability::FakeRayEventRecorder __mock_ray_event_recorder_;
+static Clock __mock_clock_;
+static pubsub::ObservabilityPublisher *__mock_observability_publisher() {
+  static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+      std::make_unique<pubsub::FakePublisher>());
+  return holder.get();
+}
+static GcsNodeManager __mock_gcs_node_manager_(nullptr,
+                                               nullptr,
+                                               __mock_io_context_,
+                                               nullptr,
+                                               ClusterID::Nil(),
+                                               __mock_ray_event_recorder_,
+                                               "",
+                                               __mock_observability_publisher(),
+                                               __mock_clock_);
+
+class MockGcsResourceManager : public GcsResourceManager {
+ public:
+  using GcsResourceManager::GcsResourceManager;
+  explicit MockGcsResourceManager()
+      : GcsResourceManager(__mock_io_context_,
+                           __mock_cluster_resource_manager_,
+                           __mock_gcs_node_manager_,
+                           NodeID::FromRandom()) {}
+  explicit MockGcsResourceManager(ClusterResourceManager &cluster_resource_manager,
+                                  GcsNodeManager &gcs_node_manager)
+      : GcsResourceManager(__mock_io_context_,
+                           cluster_resource_manager,
+                           gcs_node_manager,
+                           NodeID::FromRandom()) {}
+
+  MOCK_METHOD(void,
+              HandleGetAllAvailableResources,
+              (rpc::GetAllAvailableResourcesRequest request,
+               rpc::GetAllAvailableResourcesReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleGetAllResourceUsage,
+              (rpc::GetAllResourceUsageRequest request,
+               rpc::GetAllResourceUsageReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray

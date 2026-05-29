@@ -117,7 +117,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        **kwargs
+        **kwargs,
     ):
         """Initializes MultiAgentMixInReplayBuffer instance.
 
@@ -187,7 +187,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             prioritized_replay_alpha=prioritized_replay_alpha,
             prioritized_replay_beta=prioritized_replay_beta,
             prioritized_replay_eps=prioritized_replay_eps,
-            **kwargs
+            **kwargs,
         )
 
         self.replay_ratio = replay_ratio
@@ -282,7 +282,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         Args:
             num_items: Number of items to sample from this buffer.
             policy_id: ID of the policy that produced the experiences to be
-            sampled.
+                sampled.
             **kwargs: Forward compatibility kwargs.
 
         Returns:

@@ -1,9 +1,9 @@
 import logging
 from contextlib import nullcontext
-from typing import TypeVar
+from typing import Any, Dict, TypeVar
 
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import Singleton
-from ray.train._internal.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import make_table_html_repr
 
@@ -24,8 +24,22 @@ class BackendConfig:
     def train_func_context(self):
         return nullcontext
 
+    @property
+    def framework(self):
+        return None
+
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Returns serializable dictionary representation of the backend config.
+        Subclasses can override this to expose framework-specific configuration.
+
+        The fields here are used for state export of the backend config.
+        If a field is not serializable, it should be excluded.
+        """
+        return {}
 
 
 @DeveloperAPI
@@ -41,17 +55,18 @@ class Backend(metaclass=Singleton):
     """
 
     share_cuda_visible_devices: bool = False
+    has_replica_groups: bool = False
 
-    def on_start(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+    def on_start(self, worker_group: BaseWorkerGroup, backend_config: BackendConfig):
         """Logic for starting this backend."""
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+    def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config: BackendConfig):
         """Logic for shutting down the backend."""
         pass
 
     def on_training_start(
-        self, worker_group: WorkerGroup, backend_config: BackendConfig
+        self, worker_group: BaseWorkerGroup, backend_config: BackendConfig
     ):
         """Logic ran right before training is started.
 

@@ -4,8 +4,8 @@
 * dark/light theme specific values, which normally take precedence over the PST defaults.
 * */
 html {
-  --anyscale-blue: #0641ac;
-  --ray-blue: #3c8ae9; /* Ray blue color - use this for all ray branding */
+  --anyscale-blue: #0066FF;
+  --ray-blue: #02A0CF; /* Ray blue color - use this for all ray branding */
   --pst-color-primary: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
@@ -25,6 +25,7 @@ html[data-theme='dark'] {
   --pst-color-text-base: #f1f2f4;
   --pst-color-text-muted: #b3b9c4;
   --pst-color-border: #2c333a;
+  --bs-body-color: #f1f2f4;
   --heading-color: #ffffff;
   --base-pygments-code-color: #cccccc;
   --pst-color-link-hover: #cce0ff;
@@ -65,8 +66,8 @@ h6 {
   background-color: transparent;
 }
 .bd-content:after {
-/*   Commenting the code below to make more modifications after 2.10 release */
-/*   background: linear-gradient(
+  /*   Commenting the code below to make more modifications after 2.10 release */
+  /*   background: linear-gradient(
     60deg,
     rgba(0, 85, 204, 0.18) 14%,
     rgba(110, 93, 198, 0.18) 49.2%,
@@ -176,6 +177,15 @@ div.navbar-content a {
   align-items: start;
   white-space: pre;
   justify-content: center;
+  /* pydata-sphinx-theme 0.14's `.navbar-nav li a { height: 100% }` was
+     scoped to `ul.navbar-nav li a` in 0.17, which no longer matches our
+     `<nav class="navbar-nav">`. Without height: 100% on <a>, the <a>
+     shrinks to text height (~26px) inside its 64px-tall <p> parent,
+     leaving the link text top-aligned in the navbar and the chevron
+     (which is centered on the .ref-container) visually below the text.
+     Restoring height: 100% lets justify-content: center vertically
+     center the text in the full-height anchor. */
+  height: 100%;
 }
 div.navbar-content {
   height: 100%;
@@ -215,6 +225,20 @@ li.active-link {
 .navbar-nav li a:hover {
   text-decoration: none;
 }
+/* pydata-sphinx-theme 0.17 stopped removing text-decoration on
+   <a class="reference internal"> inside the top navbar (the rule it
+   ships now only matches <a class="nav-link">). Re-add it for our
+   reference-internal anchors. */
+.navbar-toplevel a.reference {
+  text-decoration: none;
+}
+/* pydata-sphinx-theme 0.17 stopped hiding the sidebar-header-items__title
+   element (Ray's navbar-links.html template emits "Site Navigation" as
+   a screen-reader heading). Hide it in the header context — it still
+   renders in the actual sidebar drawer where the heading is useful. */
+.navbar-header-items .sidebar-header-items__title {
+  display: none;
+}
 .navbar-header-items {
   padding-left: 0;
 }
@@ -225,27 +249,6 @@ li.active-link {
 }
 .navbar-brand.logo > svg path#ray-text {
   fill: var(--pst-color-text-base);
-}
-.navbar-brand.logo > svg path#ray-logo {
-  fill: var(--ray-blue);
-}
-
-/* Search button styling */
-.search-button-field {
-  border-radius: 4px;
-  min-width: 12em;
-  background-color: unset;
-}
-/* Disable `ctrl+k` label inside search button */
-.search-button-field > .search-button__kbd-shortcut {
-  display: none;
-}
-/* Disable "search" text inside search button */
-.search-button-field > .search-button__default-text {
-  visibility: hidden;
-}
-.search-button-field svg.fa-magnifying-glass {
-  color: var(--pst-color-border);
 }
 
 /* Anyscale branding */
@@ -393,4 +396,56 @@ table.autosummary tr > td:first-child > p > a > code > span {
 }
 .table.example-table th:first-child {
   width: 30%;
+}
+
+/* pydata-sphinx-theme 0.14 painted the announcement banner background via
+   an absolutely-positioned `::after` pseudo-element. 0.17 replaced that
+   with `background-color: var(--pst-color-secondary-bg)` directly on
+   `.bd-header-announcement`, so the `::after` rule is now a no-op and
+   pydata's default secondary-bg paints the banner lavender. Set the
+   background directly on the element to keep Ray's teal. */
+.bd-header-announcement {
+  color: var(--pst-color-light);
+  background-color: var(--ray-blue);
+}
+
+.bd-header-announcement a {
+  color: var(--pst-color-light);
+  text-decoration: underline;
+}
+
+/* Prevent the PyData theme Version Switcher from getting too large */
+.version-switcher__menu {
+  max-height: 40rem;
+  overflow-y: scroll;
+}
+
+/* Right align the version switcher dropdown menu to prevent it from going off screen */
+.version-switcher__menu[data-bs-popper] {
+  right: 0;
+  left: unset;
+}
+
+/* Hide the RTD version switcher since we are using PyData theme one */
+readthedocs-flyout {
+  display: none !important;
+}
+
+/* Styling the experimental Anyscale upsell CTA */
+.anyscale-cta {
+  margin-bottom: 16px;
+}
+
+
+/* Prevent text wrapping around left-aligned images on ultra-wide screens */
+@media (min-width: 1600px) {
+  .bd-content .align-left,
+  .bd-content .figure.align-left,
+  .bd-content img.align-left {
+    float: none !important;
+    display: block;
+    clear: both;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
 }

@@ -1,70 +1,104 @@
-import GPy
 import numpy as np
-from GPy.core import Param
-from GPy.kern import Kern
 from scipy.optimize import minimize
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import Hyperparameter, Kernel
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import euclidean_distances
 
 
-class TV_SquaredExp(Kern):
+class TV_SquaredExp(Kernel):
     """Time varying squared exponential kernel.
     For more info see the TV-GP-UCB paper:
     http://proceedings.mlr.press/v51/bogunovic16.pdf
     """
 
     def __init__(
-        self, input_dim, variance=1.0, lengthscale=1.0, epsilon=0.0, active_dims=None
+        self,
+        variance=1.0,
+        lengthscale=1.0,
+        epsilon=0.1,
+        variance_bounds=(1e-5, 1e5),
+        lengthscale_bounds=(1e-5, 1e5),
+        epsilon_bounds=(1e-5, 0.5),
     ):
-        super().__init__(input_dim, active_dims, "time_se")
-        self.variance = Param("variance", variance)
-        self.lengthscale = Param("lengthscale", lengthscale)
-        self.epsilon = Param("epsilon", epsilon)
-        self.link_parameters(self.variance, self.lengthscale, self.epsilon)
+        self.variance = variance
+        self.lengthscale = lengthscale
+        self.epsilon = epsilon
+        self.variance_bounds = variance_bounds
+        self.lengthscale_bounds = lengthscale_bounds
+        self.epsilon_bounds = epsilon_bounds
 
-    def K(self, X, X2):
-        # time must be in the far left column
-        if self.epsilon > 0.5:  # 0.5
-            self.epsilon = 0.5
-        if X2 is None:
-            X2 = np.copy(X)
+    @property
+    def hyperparameter_variance(self):
+        return Hyperparameter("variance", "numeric", self.variance_bounds)
+
+    @property
+    def hyperparameter_lengthscale(self):
+        return Hyperparameter("lengthscale", "numeric", self.lengthscale_bounds)
+
+    @property
+    def hyperparameter_epsilon(self):
+        return Hyperparameter("epsilon", "numeric", self.epsilon_bounds)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X = np.atleast_2d(X)
+        if Y is None:
+            Y = X
+
+        epsilon = np.clip(self.epsilon, 1e-5, 0.5)
+
+        # Time must be in the first column
         T1 = X[:, 0].reshape(-1, 1)
-        T2 = X2[:, 0].reshape(-1, 1)
+        T2 = Y[:, 0].reshape(-1, 1)
         dists = pairwise_distances(T1, T2, "cityblock")
-        timekernel = (1 - self.epsilon) ** (0.5 * dists)
+        timekernel = (1 - epsilon) ** (0.5 * dists)
 
-        X = X[:, 1:]
-        X2 = X2[:, 1:]
-
-        RBF = self.variance * np.exp(
-            -np.square(euclidean_distances(X, X2)) / self.lengthscale
+        # RBF kernel on remaining features
+        X_spatial = X[:, 1:]
+        Y_spatial = Y[:, 1:]
+        rbf = self.variance * np.exp(
+            -np.square(euclidean_distances(X_spatial, Y_spatial)) / self.lengthscale
         )
 
-        return RBF * timekernel
+        K = rbf * timekernel
 
-    def Kdiag(self, X):
-        return self.variance * np.ones(X.shape[0])
+        if eval_gradient:
+            K_gradient_variance = K
+            dist2 = np.square(euclidean_distances(X_spatial, Y_spatial))
+            K_gradient_lengthscale = K * dist2 / self.lengthscale
+            n = dists / 2
+            K_gradient_epsilon = -K * n * epsilon / (1 - epsilon)
+            return K, np.dstack(
+                [K_gradient_variance, K_gradient_lengthscale, K_gradient_epsilon]
+            )
 
-    def update_gradients_full(self, dL_dK, X, X2):
-        if X2 is None:
-            X2 = np.copy(X)
-        T1 = X[:, 0].reshape(-1, 1)
-        T2 = X2[:, 0].reshape(-1, 1)
+        return K
 
-        X = X[:, 1:]
-        X2 = X2[:, 1:]
-        dist2 = np.square(euclidean_distances(X, X2)) / self.lengthscale
+    def diag(self, X):
+        return np.full(X.shape[0], self.variance, dtype=np.float64)
 
-        dvar = np.exp(-np.square((euclidean_distances(X, X2)) / self.lengthscale))
-        dl = -(
-            2 * euclidean_distances(X, X2) ** 2 * self.variance * np.exp(-dist2)
-        ) * self.lengthscale ** (-2)
-        n = pairwise_distances(T1, T2, "cityblock") / 2
-        deps = -n * (1 - self.epsilon) ** (n - 1)
+    def is_stationary(self):
+        return False
 
-        self.variance.gradient = np.sum(dvar * dL_dK)
-        self.lengthscale.gradient = np.sum(dl * dL_dK)
-        self.epsilon.gradient = np.sum(deps * dL_dK)
+    @property
+    def theta(self):
+        return np.log([self.variance, self.lengthscale, self.epsilon])
+
+    @theta.setter
+    def theta(self, theta):
+        self.variance = np.exp(theta[0])
+        self.lengthscale = np.exp(theta[1])
+        self.epsilon = np.exp(theta[2])
+
+    @property
+    def bounds(self):
+        return np.log(
+            [
+                list(self.variance_bounds),
+                list(self.lengthscale_bounds),
+                list(self.epsilon_bounds),
+            ]
+        )
 
 
 def normalize(data, wrt):
@@ -94,24 +128,21 @@ def UCB(m, m1, x, fixed, kappa=None):
        Ref: https://jmlr.org/papers/volume15/desautels14a/desautels14a.pdf
 
     """
-
     c1 = 0.2
     c2 = 0.4
-    beta_t = c1 + max(0, np.log(c2 * m.X.shape[0]))
+    beta_t = c1 + max(0, np.log(c2 * m.X_train_.shape[0]))
     kappa = np.sqrt(beta_t) if kappa is None else kappa
 
     xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1, 1))).T
 
     try:
-        preds = m.predict(xtest)
-        preds = m.predict(xtest)
-        mean = preds[0][0][0]
+        mean = m.predict(xtest)[0]
     except ValueError:
         mean = -9999
 
     try:
-        preds = m1.predict(xtest)
-        var = preds[1][0][0]
+        _, std = m1.predict(xtest, return_std=True)
+        var = std[0] ** 2
     except ValueError:
         var = 0
     return mean + kappa * var
@@ -124,12 +155,12 @@ def optimize_acq(func, m, m1, fixed, num_f):
 
     T = 10
     best_value = -999
-    best_theta = m1.X[0, :]
+    best_theta = m1.X_train_[0, :]
 
-    bounds = [(0, 1) for _ in range(m.X.shape[1] - num_f)]
+    bounds = [(0, 1) for _ in range(m.X_train_.shape[1] - num_f)]
 
     for ii in range(T):
-        x0 = np.random.uniform(0, 1, m.X.shape[1] - num_f)
+        x0 = np.random.uniform(0, 1, m.X_train_.shape[1] - num_f)
 
         res = minimize(
             lambda x: -func(m, m1, x, fixed),
@@ -171,13 +202,11 @@ def select_length(Xraw, yraw, bounds, num_f):
             X = normalize(X_len, limits)
             y = standardize(y_len).reshape(y_len.size, 1)
 
-            kernel = TV_SquaredExp(
-                input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
-            )
-            m = GPy.models.GPRegression(X, y, kernel)
-            m.optimize(messages=True)
+            kernel = TV_SquaredExp(variance=1.0, lengthscale=1.0, epsilon=0.1)
+            m = GaussianProcessRegressor(kernel=kernel, optimizer="fmin_l_bfgs_b")
+            m.fit(X, y)
 
-            scores.append(m.log_likelihood())
+            scores.append(m.log_marginal_likelihood_value_)
         idx = np.argmax(scores)
         length = (idx + int((min_len / 10))) * 10
         return length

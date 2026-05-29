@@ -14,6 +14,7 @@ import grpc
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._common.signature import extract_signature, get_signature
 from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
@@ -21,16 +22,12 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
-from ray._private.signature import extract_signature, get_signature
 from ray._private.utils import check_oversized_function
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for int32 id's -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number
@@ -196,7 +193,12 @@ class ClientObjectRef(raylet.ObjectRef):
 
 
 class ClientActorRef(raylet.ActorID):
-    def __init__(self, id: Union[bytes, Future]):
+    def __init__(
+        self,
+        id: Union[bytes, Future],
+        weak_ref: Optional[bool] = False,
+    ):
+        self._weak_ref = weak_ref
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker
         if isinstance(id, bytes):
@@ -208,6 +210,9 @@ class ClientActorRef(raylet.ActorID):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __del__(self):
+        if self._weak_ref:
+            return
+
         if self._worker is not None and self._worker.is_connected():
             try:
                 if not self.is_nil():
@@ -263,12 +268,11 @@ class ClientRemoteFunc(ClientStub):
     This class is allowed to be passed around between remote functions.
 
     Args:
-        _func: The actual function to execute remotely
-        _name: The original name of the function
-        _ref: The ClientObjectRef of the pickled code of the function, _func
+        f: The actual function to execute remotely.
+        options: Optional ``ray.remote`` options applied to this function.
     """
 
-    def __init__(self, f, options=None):
+    def __init__(self, f: Callable, options: Optional[Dict[str, Any]] = None):
         self._lock = threading.Lock()
         self._func = f
         self._name = f.__name__
@@ -343,12 +347,11 @@ class ClientActorClass(ClientStub):
     It is wrapped by ray.remote and can be executed on the cluster.
 
     Args:
-        actor_cls: The actual class to execute remotely
-        _name: The original name of the class
-        _ref: The ClientObjectRef of the pickled `actor_cls`
+        actor_cls: The actual class to execute remotely.
+        options: Optional ``ray.remote`` options applied to this actor class.
     """
 
-    def __init__(self, actor_cls, options=None):
+    def __init__(self, actor_cls: type, options: Optional[Dict[str, Any]] = None):
         self.actor_cls = actor_cls
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
@@ -429,10 +432,14 @@ class ClientActorHandle(ClientStub):
     Args:
         actor_ref: A reference to the running actor given to the client. This
           is a serialized version of the actual handle as an opaque token.
+        actor_class: Optional ``ClientActorClass`` used to populate method
+          signatures and ``num_returns`` metadata without a server round-trip.
     """
 
     def __init__(
-        self, actor_ref: ClientActorRef, actor_class: Optional[ClientActorClass] = None
+        self,
+        actor_ref: ClientActorRef,
+        actor_class: Optional[ClientActorClass] = None,
     ):
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None
@@ -525,7 +532,10 @@ class ClientRemoteMethod(ClientStub):
     Args:
         actor_handle: A reference to the ClientActorHandle that generated
           this method and will have this method called upon it.
-        method_name: The name of this method
+        method_name: The name of this method.
+        num_returns: Number of object refs returned by invocations of this
+          method.
+        signature: The method's bound signature, used to validate call args.
     """
 
     def __init__(
@@ -697,7 +707,7 @@ def _get_client_id_from_context(context: Any) -> str:
     Get `client_id` from gRPC metadata. If the `client_id` is not present,
     this function logs an error and sets the status_code.
     """
-    metadata = {k: v for k, v in context.invocation_metadata()}
+    metadata = dict(context.invocation_metadata())
     client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")
@@ -735,6 +745,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     still be used to replace the one in cache.
     """
     diff = abs(id2 - id1)
+    # Int32 max is also the maximum number of simultaneous in-flight requests.
     if diff > (INT32_MAX // 2):
         # Rollover likely occurred. In this case the smaller ID is newer
         return id1 < id2

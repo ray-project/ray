@@ -5,9 +5,9 @@ import os
 import pytest
 
 import ray
-from ray import train, tune
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray import train
 from ray.train.tests.util import create_dict_checkpoint
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def chdir_tmpdir(tmp_path):
 
 
 def test_storage_path(ray_start_4_cpus, chdir_tmpdir):
-    """Tests that Train/Tune with a local storage path works on Windows."""
+    """Tests that Train with a local storage path works on Windows."""
 
     def train_fn(config):
         for i in range(5):
@@ -36,10 +36,6 @@ def test_storage_path(ray_start_4_cpus, chdir_tmpdir):
                     train.report({"loss": i}, checkpoint=checkpoint)
             else:
                 train.report({"loss": i})
-
-    tuner = tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=os.getcwd()))
-    results = tuner.fit()
-    assert not results.errors
 
     trainer = DataParallelTrainer(
         train_fn,

@@ -89,13 +89,17 @@ class TaskExecutor {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error,
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
       bool is_reattempt,
       bool is_streaming_generator,
       bool retry_exception,
-      int64_t generator_backpressure_num_objects);
+      int64_t generator_backpressure_num_objects,
+      /* This is used by the in-actor RDT object store. However, it is only supported in
+       * the Python frontend. */
+      const std::optional<std::string> &tensor_transport);
 
   virtual ~TaskExecutor(){};
 

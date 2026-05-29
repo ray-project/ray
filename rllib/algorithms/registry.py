@@ -1,4 +1,4 @@
-"""Registry of algorithm names for `rllib train --run=<alg_name>`"""
+"""Registry of algorithm names for tune.Tuner(trainable=[..])."""
 
 import importlib
 import re
@@ -37,7 +37,13 @@ def _import_dreamerv3():
 def _import_impala():
     import ray.rllib.algorithms.impala as impala
 
-    return impala.Impala, impala.Impala.get_default_config()
+    return impala.IMPALA, impala.IMPALA.get_default_config()
+
+
+def _import_iql():
+    import ray.rllib.algorithms.iql as iql
+
+    return iql.IQL, iql.IQL.get_default_config()
 
 
 def _import_marwil():
@@ -65,6 +71,7 @@ ALGORITHMS = {
     "DQN": _import_dqn,
     "DreamerV3": _import_dreamerv3,
     "IMPALA": _import_impala,
+    "IQL": _import_iql,
     "MARWIL": _import_marwil,
     "PPO": _import_ppo,
     "SAC": _import_sac,
@@ -78,6 +85,8 @@ ALGORITHMS_CLASS_TO_NAME = {
     "DQN": "DQN",
     "DreamerV3": "DreamerV3",
     "Impala": "IMPALA",
+    "IQL": "IQL",
+    "IMPALA": "IMPALA",
     "MARWIL": "MARWIL",
     "PPO": "PPO",
     "SAC": "SAC",

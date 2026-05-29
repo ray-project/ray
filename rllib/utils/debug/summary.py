@@ -1,8 +1,9 @@
-import numpy as np
 import pprint
-from typing import Any, Mapping
+from typing import Any
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+import numpy as np
+
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 
 _printer = pprint.PrettyPrinter(indent=2, width=60)
@@ -26,7 +27,7 @@ def summarize(obj: Any) -> Any:
 
 
 def _summarize(obj):
-    if isinstance(obj, Mapping):
+    if isinstance(obj, dict):
         return {k: _summarize(v) for k, v in obj.items()}
     elif hasattr(obj, "_asdict"):
         return {

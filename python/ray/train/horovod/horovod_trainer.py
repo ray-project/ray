@@ -37,7 +37,7 @@ class HorovodTrainer(DataParallelTrainer):
     the "train" key), then it will be split into multiple dataset
     shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``ray.train.get_dataset_shard(...)`` will return the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train loop methods <train-loop-api>`.
@@ -68,11 +68,6 @@ class HorovodTrainer(DataParallelTrainer):
 
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
-
-    You could use ``TensorflowPredictor`` or ``TorchPredictor`` in conjunction with
-    HorovodTrainer. You must save the model under the "model" kwarg in the
-    ``Checkpoint`` passed to ``train.report()``, so that it can be used by
-    corresponding predictors.
 
     Example:
 
@@ -170,10 +165,10 @@ class HorovodTrainer(DataParallelTrainer):
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset.
-        resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: A checkpoint to resume training from.
     """
 
     def __init__(

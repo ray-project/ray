@@ -1,8 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
+from ray.rllib.evaluation.postprocessing import Postprocessing, compute_advantages
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -15,7 +14,7 @@ from ray.rllib.policy.tf_mixins import (
     compute_gradients,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.typing import (
     LocalOptimizer,
@@ -38,7 +37,7 @@ class PostprocessAdvantages:
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         sample_batch = super().postprocess_trajectory(
             sample_batch, other_agent_batches, episode

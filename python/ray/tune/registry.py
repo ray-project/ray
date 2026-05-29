@@ -2,7 +2,7 @@ import atexit
 import logging
 from functools import partial
 from types import FunctionType
-from typing import Callable, Optional, Type, Union
+from typing import Any, Callable, Optional, Type, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -48,14 +48,20 @@ def get_trainable_cls(trainable_name):
 
 
 @DeveloperAPI
-def validate_trainable(trainable_name):
-    if not _has_trainable(trainable_name):
+def validate_trainable(trainable_name: str):
+    if not _has_trainable(trainable_name) and not _has_rllib_trainable(trainable_name):
+        raise TuneError(f"Unknown trainable: {trainable_name}")
+
+
+def _has_rllib_trainable(trainable_name: str) -> bool:
+    try:
         # Make sure everything rllib-related is registered.
         from ray.rllib import _register_all
+    except (ImportError, ModuleNotFoundError):
+        return False
 
-        _register_all()
-        if not _has_trainable(trainable_name):
-            raise TuneError("Unknown trainable: " + trainable_name)
+    _register_all()
+    return _has_trainable(trainable_name)
 
 
 @DeveloperAPI
@@ -93,6 +99,8 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
         trainable: Function or tune.Trainable class. Functions must
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
+        warn: If True, emit warnings when the registered trainable triggers
+            backwards-compatibility heuristics. Defaults to True.
     """
 
     from ray.tune.trainable import Trainable, wrap_function
@@ -221,11 +229,16 @@ class _Registry:
         atexit.register(_unregister_all)
         self._atexit_handler_registered = True
 
-    def register(self, category, key, value):
+    def register(self, category: str, key: str, value: Any):
         """Registers the value with the global registry.
 
+        Args:
+            category: The category to register under.
+            key: The key to register under.
+            value: The value to register.
+
         Raises:
-            PicklingError if unable to pickle to provided file.
+            PicklingError: If unable to pickle to provided file.
         """
         if category not in KNOWN_CATEGORIES:
             from ray.tune import TuneError

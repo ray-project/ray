@@ -15,7 +15,7 @@ worker_node_types:
       min_workers: 1
       use_spot: false
 
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:

@@ -16,13 +16,13 @@
 #include <ray/api/runtime_env.h>
 #include <ray/util/logging.h>
 
-#include "src/ray/protobuf/runtime_env_common.pb.h"
+#include "src/ray/protobuf/public/runtime_environment.pb.h"
 
 namespace ray {
 
 void RuntimeEnv::SetJsonStr(const std::string &name, const std::string &json_str) {
   try {
-    json value_j = json::parse(json_str);
+    nlohmann::json value_j = nlohmann::json::parse(json_str);
     fields_[name] = value_j;
   } catch (std::exception &e) {
     throw ray::internal::RayRuntimeEnvException("Failed to set the field " + name +
@@ -34,7 +34,7 @@ std::string RuntimeEnv::GetJsonStr(const std::string &name) const {
   if (!Contains(name)) {
     throw ray::internal::RayRuntimeEnvException("The field " + name + " not found.");
   }
-  auto j = fields_[name].get<json>();
+  auto j = fields_[name].get<nlohmann::json>();
   return j.dump();
 }
 
@@ -67,7 +67,7 @@ std::string RuntimeEnv::SerializeToRuntimeEnvInfo() const {
 RuntimeEnv RuntimeEnv::Deserialize(const std::string &serialized_runtime_env) {
   RuntimeEnv runtime_env;
   try {
-    runtime_env.fields_ = json::parse(serialized_runtime_env);
+    runtime_env.fields_ = nlohmann::json::parse(serialized_runtime_env);
   } catch (std::exception &e) {
     throw ray::internal::RayRuntimeEnvException("Failed to deserialize runtime env " +
                                                 serialized_runtime_env + ": " + e.what());

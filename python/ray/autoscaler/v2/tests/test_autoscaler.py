@@ -3,18 +3,18 @@ import os
 import subprocess
 import sys
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mock import MagicMock
-
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+from ray.autoscaler.v2.monitor import AutoscalerMonitor
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.cluster_utils import Cluster
@@ -122,7 +122,9 @@ def test_basic_scaling(make_autoscaler):
 
     # Resource requests
     print("=================== Test scaling up constraint 1/2====================")
-    request_cluster_resources(gcs_address, [{"CPU": 1}, {"GPU": 1}])
+    request_cluster_resources(
+        gcs_address, [{"resources": {"CPU": 1}}, {"resources": {"GPU": 1}}]
+    )
 
     def verify():
         autoscaler.update_autoscaling_state()
@@ -226,6 +228,31 @@ def test_basic_scaling(make_autoscaler):
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
+
+
+class TestAutoscalerMonitor(AutoscalerMonitor):
+    """Lightweight wrapper for testing _run() without full init."""
+
+    def __init__(self, gcs_address, gcs_client, autoscaler):
+        self.gcs_address = gcs_address
+        self.gcs_client = gcs_client
+        self.autoscaler = autoscaler
+        self._session_name = "test"
+
+
+def test_raise_AuthenticationError_v2(make_autoscaler):
+    autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
+    gcs_client = autoscaler._gcs_client
+    gcs_address = gcs_client.address
+
+    monitor = TestAutoscalerMonitor(gcs_address, gcs_client, autoscaler)
+
+    def flaky():
+        raise ray.exceptions.AuthenticationError("WrongClusterID")
+
+    with patch.object(autoscaler, "update_autoscaling_state", side_effect=flaky):
+        with pytest.raises(ray.exceptions.AuthenticationError):
+            monitor._run()
 
 
 if __name__ == "__main__":

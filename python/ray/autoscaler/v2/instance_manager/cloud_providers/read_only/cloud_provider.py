@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.instance_manager.node_provider import (
@@ -61,7 +61,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
 
         return cloud_instances
 
-    def terminate(self, instance_id: CloudInstanceId) -> None:
+    def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         raise NotImplementedError("Cannot terminate instances in read-only mode.")
 
     def launch(

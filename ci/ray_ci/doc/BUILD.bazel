@@ -1,0 +1,109 @@
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+py_binary(
+    name = "cmd_check_api_discrepancy",
+    srcs = ["cmd_check_api_discrepancy.py"],
+    deps = [":doc"],
+)
+
+py_binary(
+    name = "cmd_build",
+    srcs = ["cmd_build.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ci_require("click"),
+        ":doc",
+    ],
+)
+
+py_library(
+    name = "doc",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+            "cmd_*.py",
+        ],
+    ),
+    deps = [
+        ci_require("boto3"),
+        ci_require("sphinx"),
+        ci_require("myst_parser"),
+        ci_require("myst-nb"),
+        ci_require("jupytext"),
+        ci_require("appnope"),
+    ],
+)
+
+py_test(
+    name = "test_module",
+    size = "small",
+    srcs = [
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_module.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_api",
+    size = "small",
+    srcs = [
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_api.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_autodoc",
+    size = "small",
+    srcs = [
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_autodoc.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_build_cache",
+    size = "small",
+    srcs = ["test_build_cache.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)

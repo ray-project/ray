@@ -1,3 +1,4 @@
+import math
 import time
 
 import numpy as np
@@ -6,13 +7,23 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data.block import BlockAccessor
-from ray.data.extensions.tensor_extension import (
+from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowTensorArray,
+    FixedShapeTensorFormat,
+    create_arrow_fixed_shape_tensor_type,
+)
+from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
+from ray.data.dataset import Schema
+from ray.data.extensions.tensor_extension import (
     ArrowTensorType,
+    ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    FixedShapeTensorType,
     TensorArray,
     TensorDtype,
 )
@@ -22,7 +33,7 @@ from ray.tests.conftest import *  # noqa
 
 
 # https://github.com/ray-project/ray/issues/33695
-def test_large_tensor_creation(ray_start_regular_shared):
+def test_large_tensor_creation(ray_start_regular_shared, tensor_format_context):
     """Tests that large tensor read task creation can complete successfully without
     hanging."""
     start_time = time.time()
@@ -33,14 +44,20 @@ def test_large_tensor_creation(ray_start_regular_shared):
     assert end_time - start_time < 20
 
 
-def test_tensors_basic(ray_start_regular_shared):
+def test_tensors_basic(ray_start_regular_shared, tensor_format_context):
+
+    # Determine expected tensor type based on format
+    expected_type = create_arrow_fixed_shape_tensor_type(shape=(3, 5), dtype=pa.int64())
+
     # Create directly.
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, override_num_blocks=6)
-    assert str(ds) == (
-        "Dataset(num_rows=6, schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)})"
-    )
-    assert ds.size_bytes() == 5 * 3 * 6 * 8
+    assert ds.count() == 6
+    assert ds.schema() == Schema(pa.schema([("data", expected_type)]))
+    # The actual size is slightly larger due to metadata.
+    # We add 6 (one per tensor) offset values of 8 bytes each to account for the
+    # in-memory representation of the PyArrow LargeList type
+    assert math.isclose(ds.size_bytes(), 5 * 3 * 6 * 8 + 6 * 8, rel_tol=0.1)
 
     # Test row iterator yields tensors.
     for tensor in ds.iter_rows():
@@ -207,25 +224,17 @@ def test_tensors_basic(ray_start_regular_shared):
     assert extract_values("data", res) == list(range(1, 11))
 
 
-def test_batch_tensors(ray_start_regular_shared):
-    import torch
-
+def test_batch_tensors(ray_start_regular_shared, tensor_format_context):
     ds = ray.data.from_items(
-        [torch.tensor([0, 0]) for _ in range(40)], override_num_blocks=40
+        [np.array([0, 0]) for _ in range(40)], override_num_blocks=40
     )
-    res = (
-        "MaterializedDataset(\n"
-        "   num_blocks=40,\n"
-        "   num_rows=40,\n"
-        "   schema={item: numpy.ndarray(shape=(2,), dtype=int64)}\n"
-        ")"
-    )
-    assert str(ds) == res, str(ds)
-    df = next(iter(ds.iter_batches(batch_format="pandas")))
-    assert df.to_dict().keys() == {"item"}
+
+    batch = next(iter(ds.iter_batches()))
+    assert set(batch) == {"item"}
+    assert batch["item"].shape == (40, 2)
 
 
-def test_tensors_shuffle(ray_start_regular_shared):
+def test_tensors_shuffle(ray_start_regular_shared, tensor_format_context):
     # Test Arrow table representation.
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape)
@@ -262,7 +271,7 @@ def test_tensors_shuffle(ray_start_regular_shared):
     )
 
 
-def test_tensors_sort(ray_start_regular_shared):
+def test_tensors_sort(ray_start_regular_shared, tensor_format_context):
     # Test Arrow table representation.
     t = pa.table({"a": TensorArray(np.arange(32).reshape((2, 4, 4))), "b": [1, 2]})
     ds = ray.data.from_arrow(t)
@@ -298,74 +307,82 @@ def test_tensors_sort(ray_start_regular_shared):
     )
 
 
-def test_tensors_inferred_from_map(ray_start_regular_shared):
+def test_tensors_inferred_from_map(ray_start_regular_shared, tensor_format_context):
+    tensor_format = tensor_format_context
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use
+    expected_type = tensor_format.to_type()
+
     # Test map.
     ds = ray.data.range(10, override_num_blocks=10).map(
         lambda _: {"data": np.ones((4, 4))}
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=10,\n"
-        "   num_rows=10,\n"
-        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
-        ")"
-    )
+    assert ds.count() == 10
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test map_batches.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: {"data": np.ones((3, 4, 4))}, batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=24,\n"
-        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
-        ")"
-    )
+    assert ds.count() == 24
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test flat_map.
     ds = ray.data.range(10, override_num_blocks=10).flat_map(
         lambda _: [{"data": np.ones((4, 4))}, {"data": np.ones((4, 4))}]
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=10,\n"
-        "   num_rows=20,\n"
-        "   schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}\n"
-        ")"
-    )
+    assert ds.count() == 20
+    schema = ds.schema()
+    assert schema.names == ["data"]
+    dtype = schema.types[0]
+
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     # Test map_batches ndarray column.
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=24,\n"
-        "   schema={a: numpy.ndarray(shape=(4, 4), dtype=float64)}\n"
-        ")"
-    )
+    assert ds.count() == 24
+    schema = ds.schema()
+    assert schema.names == ["a"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, expected_type)
+    assert tuple(dtype.shape) == (4, 4)
+    assert dtype.value_type == pa.float64()
 
     ds = ray.data.range(16, override_num_blocks=4).map_batches(
         lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
         batch_size=2,
     )
     ds = ds.materialize()
-    assert str(ds) == (
-        "MaterializedDataset(\n"
-        "   num_blocks=4,\n"
-        "   num_rows=16,\n"
-        "   schema={a: numpy.ndarray(shape=(None, None), dtype=float64)}\n"
-        ")"
-    )
+    assert ds.count() == 16
+    schema = ds.schema()
+    assert schema.names == ["a"]
+    dtype = schema.types[0]
+    assert isinstance(dtype, ArrowVariableShapedTensorType)
+    assert tuple(dtype.shape) == (None, None)
+    assert dtype.value_type == pa.float64()
 
 
-def test_tensor_array_block_slice():
+def test_tensor_array_block_slice(tensor_format_context):
+    tensor_format = tensor_format_context
+
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
         expected_slice = table1.slice(a, b - a)
@@ -380,10 +397,17 @@ def test_tensor_array_block_slice():
                 expected_offset = 0 if is_copy else a
                 assert chunk2.offset == expected_offset
                 assert len(chunk2) == b - a
+                index = 1
+                if (
+                    tensor_format == FixedShapeTensorFormat.ARROW_NATIVE
+                    and FixedShapeTensorType is not None
+                ):
+                    # The buffer for native fixed shaped tensors sits at index 2, not 1
+                    index = 2
                 if is_copy:
-                    assert bufs2[1].address != bufs1[1].address
+                    assert bufs2[index].address != bufs1[index].address
                 else:
-                    assert bufs2[1].address == bufs1[1].address
+                    assert bufs2[index].address == bufs1[index].address
 
     n = 20
     one_arr = np.arange(4 * n).reshape(n, 2, 2)
@@ -394,12 +418,15 @@ def test_tensor_array_block_slice():
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    res = table2["one"].chunk(0).to_numpy_ndarray()
+
+    np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=True)
 
-    # Test without copy.
+    # Test without copy. arrow_native requires a copy
     table2 = block_accessor.slice(a, b, False)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    res = table2["one"].chunk(0).to_numpy_ndarray()
+    np.testing.assert_array_equal(res, one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
@@ -513,7 +540,8 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     )
 
 
-def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
+def test_tensors_in_tables_from_pandas(ray_start_regular_shared, tensor_format_context):
+
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -529,7 +557,10 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
         np.testing.assert_equal(v, e)
 
 
-def test_tensors_in_tables_from_pandas_variable_shaped(ray_start_regular_shared):
+def test_tensors_in_tables_from_pandas_variable_shaped(
+    ray_start_regular_shared, tensor_format_context
+):
+
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -550,6 +581,7 @@ def test_tensors_in_tables_from_pandas_variable_shaped(ray_start_regular_shared)
 def test_tensors_in_tables_pandas_roundtrip(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
+    tensor_format_context,
 ):
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -562,13 +594,16 @@ def test_tensors_in_tables_pandas_roundtrip(
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
-        expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
+        expected_df["two"] = list(expected_df["two"].to_numpy())
+    # Roundtrip may use Arrow-backed dtypes (e.g. int64[pyarrow]) for plain columns.
+    expected_df["one"] = expected_df["one"].astype(ds_df["one"].dtype)
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
 def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
+    tensor_format_context,
 ):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -583,13 +618,17 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
-        expected_df.loc[:, "two"] = _create_possibly_ragged_ndarray(
+        expected_df["two"] = _create_possibly_ragged_ndarray(
             expected_df["two"].to_numpy()
         )
+    # Roundtrip may use Arrow-backed dtypes (e.g. int64[pyarrow]) for plain columns.
+    expected_df["one"] = expected_df["one"].astype(ds_df["one"].dtype)
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
-def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path):
+def test_tensors_in_tables_parquet_roundtrip(
+    ray_start_regular_shared, tmp_path, tensor_format_context
+):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -607,7 +646,7 @@ def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path)
 
 
 def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, tensor_format_context
 ):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -627,7 +666,11 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
         np.testing.assert_equal(v, e)
 
 
-def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_path):
+def test_tensors_in_tables_parquet_with_schema(
+    ray_start_regular_shared,
+    tmp_path,
+    tensor_format_context,
+):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -636,12 +679,12 @@ def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_pat
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
-    schema = pa.schema(
-        [
-            ("one", pa.int32()),
-            ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-        ]
+
+    tensor_type = create_arrow_fixed_shape_tensor_type(
+        shape=inner_shape,
+        dtype=pa.from_numpy_dtype(arr.dtype),
     )
+    schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -650,7 +693,7 @@ def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_pat
 
 
 def test_tensors_in_tables_parquet_pickle_manual_serde(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, tensor_format_context
 ):
     import pickle
 
@@ -695,7 +738,7 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
 
 
 def test_tensors_in_tables_parquet_bytes_manual_serde(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, tensor_format_context
 ):
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -737,8 +780,10 @@ def test_tensors_in_tables_parquet_bytes_manual_serde(
 
 
 def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, tensor_format_context
 ):
+    tensor_format = tensor_format_context
+
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -751,27 +796,16 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
 
-    # Manually deserialize the tensor bytes and cast to a TensorArray.
-    def np_deser_udf(block: pa.Table):
-        # NOTE(Clark): We use NumPy to consolidate these potentially
-        # non-contiguous buffers, and to do buffer bookkeeping in general.
-        np_col = np.array(
-            [
-                np.ndarray(inner_shape, buffer=buf.as_buffer(), dtype=arr.dtype)
-                for buf in block.column(tensor_col_name)
-            ]
-        )
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        tensor_column_schema={tensor_col_name: (np.dtype(np.int64), inner_shape)},
+    )
 
-        return block.set_column(
-            block._ensure_integer_index(tensor_col_name),
-            tensor_col_name,
-            ArrowTensorArray.from_numpy(np_col),
-        )
-
-    ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
-
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use without fallback
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        tensor_format.to_type(),
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -781,8 +815,10 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
 
 
 def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, tensor_format_context
 ):
+    tensor_format = tensor_format_context
+
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -798,7 +834,7 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     def _block_udf(block: pa.Table):
         df = block.to_pandas()
         df[tensor_col_name] += 1
-        return pa.Table.from_pandas(df)
+        return pa.Table.from_pandas(df, schema=block.schema)
 
     ds = ray.data.read_parquet(
         str(tmp_path),
@@ -806,8 +842,11 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         _block_udf=_block_udf,
     )
 
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use without fallback
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        tensor_format.to_type(),
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -824,8 +863,9 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     )
 )
 def test_tensors_in_tables_parquet_bytes_with_schema(
-    ray_start_regular_shared, tmp_path
+    ray_start_regular_shared, tmp_path, tensor_format_context
 ):
+
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -836,12 +876,11 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     )
     ds = ray.data.from_pandas([df])
     ds.write_parquet(str(tmp_path))
-    schema = pa.schema(
-        [
-            ("one", pa.int32()),
-            ("two", ArrowTensorType(inner_shape, pa.from_numpy_dtype(arr.dtype))),
-        ]
+    tensor_type = create_arrow_fixed_shape_tensor_type(
+        shape=inner_shape,
+        dtype=pa.from_numpy_dtype(arr.dtype),
     )
+    schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -852,6 +891,7 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
 def test_tensors_in_tables_iter_batches(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
+    tensor_format_context,
 ):
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -871,8 +911,8 @@ def test_tensors_in_tables_iter_batches(
     )
     df = pd.concat([df1, df2], ignore_index=True)
     if enable_automatic_tensor_extension_cast:
-        df.loc[:, "one"] = list(df["one"].to_numpy())
-        df.loc[:, "two"] = list(df["two"].to_numpy())
+        df["one"] = list(df["one"].to_numpy())
+        df["two"] = list(df["two"].to_numpy())
     ds = ray.data.from_pandas([df1, df2])
     batches = list(ds.iter_batches(batch_size=2, batch_format="pandas"))
     assert len(batches) == 3
@@ -883,7 +923,7 @@ def test_tensors_in_tables_iter_batches(
         pd.testing.assert_frame_equal(batch, expected_batch)
 
 
-def test_ragged_tensors(ray_start_regular_shared):
+def test_ragged_tensors(ray_start_regular_shared, tensor_format_context):
     """Test Arrow type promotion between ArrowTensorType and
     ArrowVariableShapedTensorType when a column contains ragged tensors."""
     import numpy as np
@@ -894,10 +934,136 @@ def test_ragged_tensors(ray_start_regular_shared):
             {"spam": np.zeros((64, 64, 5))},
         ]
     )
-    new_type = ds.schema().types[0].scalar_type
+    new_type = ds.schema().types[0].value_type
     assert ds.schema().types == [
         ArrowVariableShapedTensorType(dtype=new_type, ndim=3),
     ]
+
+
+@pytest.mark.parametrize(
+    "write_format",
+    [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2],
+)
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorType, FixedShapeTensorScalar, FixedShapeTensorArray",
+)
+def test_tensor_format_conversion_v1_v2_to_native(
+    ray_start_regular_shared, tmp_path, restore_data_context, write_format
+):
+    """Test that data written in V1/V2 format can be read with native format
+    and written back while preserving types and data.
+
+    Steps:
+    1. Write tensor data using V1 or V2 format
+    2. Set context to use arrow_native format
+    3. Read the data back (should convert to native format)
+    4. Write to a different path
+    5. Read again and verify types/shapes/data are preserved in native format
+    """
+    ctx = DataContext.get_current()
+
+    # Step 1: Write data using V1 or V2 format
+    ctx.arrow_fixed_shape_tensor_format = write_format
+
+    outer_dim = 4
+    inner_shape = (3, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items, dtype=np.float64).reshape(shape)
+
+    # Create dataset with tensor column
+    tensor_col_name = "tensor"
+    df = pd.DataFrame(
+        {
+            "id": list(range(outer_dim)),
+            tensor_col_name: list(arr),
+        }
+    )
+    ds = ray.data.from_pandas([df])
+
+    # Verify initial format matches write_format
+    schema = ds.schema()
+    col_index = schema.names.index(tensor_col_name)
+    initial_type = schema.types[col_index]
+    assert isinstance(initial_type, write_format.to_type())
+
+    # Write to first path
+    path1 = tmp_path / "v1_v2_data"
+    ds.write_parquet(str(path1))
+
+    # Step 2: Switch context to native format
+    ctx.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.ARROW_NATIVE
+
+    # Step 3: Read data back - note that reading preserves original format
+    ds_read = ray.data.read_parquet(str(path1))
+
+    # Reading parquet preserves the original extension type (V1 or V2)
+    # The context setting only affects NEW tensor arrays
+    schema_read = ds_read.schema()
+    col_index = schema_read.names.index(tensor_col_name)
+    read_type = schema_read.types[col_index]
+    if write_format == FixedShapeTensorFormat.V1:
+        assert isinstance(
+            read_type, ArrowTensorType
+        ), f"Expected ArrowTensorType when reading V1 data, got {type(read_type).__name__}"
+    else:
+        assert isinstance(
+            read_type, ArrowTensorTypeV2
+        ), f"Expected ArrowTensorTypeV2 when reading V2 data, got {type(read_type).__name__}"
+
+    # Step 4: Apply a transformation that recreates tensor arrays in native format
+    # map_batches with identity function will convert to native format
+    def convert_to_native(batch):
+        # This forces recreation of the tensor arrays using the current context format
+        return batch
+
+    ds_converted = ds_read.map_batches(convert_to_native, batch_format="numpy")
+
+    # Now verify the format is native
+    schema_converted = ds_converted.schema()
+    col_index = schema_converted.names.index(tensor_col_name)
+    converted_type = schema_converted.types[col_index]
+    assert isinstance(converted_type, FixedShapeTensorType), (
+        f"Expected FixedShapeTensorType after conversion, "
+        f"got {type(converted_type).__name__}"
+    )
+
+    # Verify shape is preserved
+    assert (
+        tuple(converted_type.shape) == inner_shape
+    ), f"Shape mismatch: expected {inner_shape}, got {converted_type.shape}"
+
+    # Step 5: Write to different path
+    path2 = tmp_path / "native_data"
+    ds_converted.write_parquet(str(path2))
+
+    # Step 6: Read again and verify native format is preserved
+    ds_final = ray.data.read_parquet(str(path2))
+
+    schema_final = ds_final.schema()
+    col_index = schema_final.names.index(tensor_col_name)
+    final_type = schema_final.types[col_index]
+    assert isinstance(final_type, FixedShapeTensorType), (
+        f"Expected FixedShapeTensorType after round-trip, "
+        f"got {type(final_type).__name__}"
+    )
+
+    # Verify shape is still correct
+    assert tuple(final_type.shape) == inner_shape, (
+        f"Shape mismatch after round-trip: expected {inner_shape}, "
+        f"got {final_type.shape}"
+    )
+
+    # Verify data is preserved
+    final_values = ds_final.take()
+    for i, row in enumerate(sorted(final_values, key=lambda x: x["id"])):
+        assert row["id"] == i
+        np.testing.assert_array_equal(
+            row[tensor_col_name],
+            arr[i],
+            err_msg=f"Data mismatch at row {i}",
+        )
 
 
 if __name__ == "__main__":

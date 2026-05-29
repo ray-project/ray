@@ -1,6 +1,6 @@
-import ray
-from typing import Any, Dict, List, Union, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
+import ray
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.util.annotations import DeveloperAPI
@@ -19,8 +19,6 @@ class MultiOutputNode(DAGNode):
             args = list(args)
         if not isinstance(args, list):
             raise ValueError(f"Invalid input type for `args`, {type(args)}.")
-        if not isinstance(args, list):
-            args = (args,)
         super().__init__(
             args,
             {},

@@ -15,14 +15,17 @@
 #pragma once
 
 #include <boost/range/adaptor/map.hpp>
-#include <iostream>
+#include <optional>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
-#include "ray/common/id.h"
+#include "absl/time/time.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_instance_set.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
@@ -36,20 +39,33 @@ using scheduling::ResourceID;
 class ResourceRequest {
  public:
   /// Construct an empty ResourceRequest.
-  ResourceRequest() : ResourceRequest({}, false) {}
+  ResourceRequest() : ResourceRequest({}, false, LabelSelector()) {}
 
   /// Construct a ResourceRequest with a given resource map.
-  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
-      : ResourceRequest(resource_map, false){};
+  explicit ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
+      : ResourceRequest(std::move(resource_map), false, LabelSelector()){};
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
       : resources_(resource_map),
         requires_object_store_memory_(requires_object_store_memory) {}
 
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
+                  bool requires_object_store_memory,
+                  LabelSelector label_selector)
+      : resources_(std::move(resource_map)),
+        requires_object_store_memory_(requires_object_store_memory),
+        label_selector_(std::move(label_selector)) {}
+
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   const ResourceSet &GetResourceSet() const { return resources_; }
+
+  const LabelSelector &GetLabelSelector() const { return label_selector_; }
+
+  void SetLabelSelector(LabelSelector label_selector) {
+    label_selector_ = std::move(label_selector);
+  }
 
   FixedPoint Get(ResourceID resource_id) const { return resources_.Get(resource_id); }
 
@@ -117,6 +133,8 @@ class ResourceRequest {
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
+  // Label selector to schedule this request on a node.
+  LabelSelector label_selector_;
 };
 
 /// Represents a resource set that contains the per-instance resource values.
@@ -131,15 +149,16 @@ class TaskResourceInstances {
       boost::select_first_range<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>;
 
   /// Construct an empty TaskResourceInstances.
-  TaskResourceInstances() {}
+  TaskResourceInstances() = default;
 
   /// Construct a TaskResourceInstances with the values from a ResourceSet.
-  TaskResourceInstances(const ResourceSet &resources) {
+  explicit TaskResourceInstances(const ResourceSet &resources) {
     for (auto &resource_id : resources.ResourceIds()) {
       std::vector<FixedPoint> instances;
       auto value = resources.Get(resource_id);
       if (resource_id.IsUnitInstanceResource()) {
         size_t num_instances = static_cast<size_t>(value.Double());
+        instances.reserve(instances.size() + num_instances);
         for (size_t i = 0; i < num_instances; i++) {
           instances.push_back(1.0);
         };
@@ -196,7 +215,7 @@ class TaskResourceInstances {
   /// Set the per-instance values for a particular resource.
   TaskResourceInstances &Set(const ResourceID resource_id,
                              const std::vector<FixedPoint> &instances) {
-    if (instances.size() == 0) {
+    if (instances.empty()) {
       Remove(resource_id);
     } else {
       resources_[resource_id] = instances;
@@ -265,9 +284,9 @@ class TaskResourceInstances {
         buffer << resource[0];
       } else {
         buffer << "[";
-        for (size_t i = 0; i < resource.size(); i++) {
-          buffer << resource[i];
-          if (i < resource.size() - 1) {
+        for (size_t j = 0; j < resource.size(); j++) {
+          buffer << resource[j];
+          if (j < resource.size() - 1) {
             buffer << ", ";
           }
         }
@@ -275,7 +294,7 @@ class TaskResourceInstances {
       }
       has_added_resource = true;
     }
-    // TODO (chenk008): add custom_resources_
+    // TODO(chenk008): add custom_resources_
     buffer << "}";
     return buffer.str();
   }
@@ -289,14 +308,12 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const NodeResourceSet &resources)
+  explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
   NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
-  /// Resources owned by normal tasks.
-  ResourceSet normal_task_resources;
 
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
@@ -314,12 +331,8 @@ class NodeResources {
   int64_t draining_deadline_timestamp_ms = -1;
 
   // The timestamp of the last resource update if there was a resource report.
-  absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
+  std::optional<absl::Time> last_resource_update_time = absl::nullopt;
 
-  /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
-  /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
-  /// upload is latest.
-  int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
@@ -332,6 +345,9 @@ class NodeResources {
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
+  // Returns true if the node's labels satisfy the label selector requirement.
+  bool HasRequiredLabels(const LabelSelector &label_selector) const;
+  bool NodeLabelMatchesConstraint(const LabelConstraint &constraint) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other) const;
   bool operator!=(const NodeResources &other) const;
@@ -354,13 +370,13 @@ class NodeResourceInstances {
   const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
   const NodeResourceInstanceSet &GetTotalResourceInstances() const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResourceInstances &other);
+  bool operator==(const NodeResourceInstances &other) const;
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
 };
 
 struct Node {
-  Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(const NodeResources &resources) : local_view_(resources) {}
 
   NodeResources *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();
@@ -383,7 +399,13 @@ struct Node {
   std::optional<absl::Time> local_view_modified_ts_;
 };
 
-/// \request Conversion result to a ResourceRequest data structure.
+/// Convert a map of resources to a NodeResources data structure.
+///
+/// \param resource_map_total: Total capacities of resources we want to convert.
+/// \param resource_map_available: Available capacities of resources we want to convert.
+/// \param node_labels: Labels for the node.
+///
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,
@@ -398,5 +420,15 @@ ResourceRequest ResourceMapToResourceRequest(
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<ResourceID, double> &resource_map,
     bool requires_object_store_memory);
+
+// Helper function convert a std::unordered_map to the absl::flat_hash_map used
+// by the NodeResources labels field.
+inline void SetNodeResourcesLabels(
+    NodeResources &resources,
+    const std::unordered_map<std::string, std::string> &labels) {
+  for (const auto &pair : labels) {
+    resources.labels[pair.first] = pair.second;
+  }
+}
 
 }  // namespace ray

@@ -9,9 +9,10 @@ import torch
 from packaging.version import Version
 
 import ray
-from ray import train
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+import ray.train
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
+from ray.train.v2._internal.constants import is_v2_enabled
 from ray.util import PublicAPI
 
 
@@ -24,6 +25,9 @@ def import_lightning():  # noqa: F402
 
 
 pl = import_lightning()
+
+if is_v2_enabled():
+    from ray.train.v2.api.report_config import CheckpointUploadMode
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
@@ -182,16 +186,16 @@ class RayLightningEnvironment(LightningEnvironment):  # noqa: F821
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT, "1")
 
     def world_size(self) -> int:
-        return train.get_context().get_world_size()
+        return ray.train.get_context().get_world_size()
 
     def global_rank(self) -> int:
-        return train.get_context().get_world_rank()
+        return ray.train.get_context().get_world_rank()
 
     def local_rank(self) -> int:
-        return train.get_context().get_local_rank()
+        return ray.train.get_context().get_local_rank()
 
     def node_rank(self) -> int:
-        return train.get_context().get_node_rank()
+        return ray.train.get_context().get_node_rank()
 
     def set_world_size(self, size: int) -> None:
         # Disable it since `world_size()` directly returns data from Train context.
@@ -250,6 +254,13 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         checkpoint_00000*/      Ray Train Checkpoint
         └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
 
+    You can also provide the following arguments to the callback:
+
+    - checkpoint_upload_mode: The manner in which to upload the checkpoint.
+        See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>` for more details.
+    - validation: Whether to asynchronously validate the checkpoint.
+        See :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>` for more details.
+
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
@@ -257,12 +268,39 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     CHECKPOINT_NAME = "checkpoint.ckpt"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        # v2-only arguments
+        checkpoint_upload_mode=None,
+        validation=False,
+    ) -> None:
         super().__init__()
-        self.trial_name = train.get_context().get_trial_name()
-        self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
-        if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
+        self.checkpoint_upload_mode = checkpoint_upload_mode
+        self.validation = validation
+
+        if is_v2_enabled():
+            if checkpoint_upload_mode is None:
+                self.checkpoint_upload_mode = CheckpointUploadMode.SYNC
+        else:
+            if checkpoint_upload_mode is not None:
+                raise ValueError(
+                    "`checkpoint_upload_mode` is only supported in Ray Train v2. "
+                    "To enable it, please set `RAY_TRAIN_V2_ENABLED=1`."
+                )
+            if validation:
+                raise ValueError(
+                    "`validation` is only supported in Ray Train v2. "
+                    "To enable it, please set `RAY_TRAIN_V2_ENABLED=1`."
+                )
+
+        job_id = ray.get_runtime_context().get_job_id()
+        experiment_name = ray.train.get_context().get_experiment_name()
+
+        self.tmpdir_prefix = Path(
+            tempfile.gettempdir(),
+            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}-world_rank={ray.train.get_context().get_world_rank()}",
+        ).as_posix()
+        if os.path.isdir(self.tmpdir_prefix):
             shutil.rmtree(self.tmpdir_prefix)
 
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
@@ -282,14 +320,34 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         # Save checkpoint to local
         ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
+        # TODO: with CheckpointUploadMode.ASYNC, this does cpu -> disk synchronously
+        # and disk -> remote asynchronously. We can add a new CheckpointIO class to do
+        # cpu -> remote asynchronously and a checkpoint_upload_fn to wait for it.
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
         checkpoint = Checkpoint.from_directory(tmpdir)
-        train.report(metrics=metrics, checkpoint=checkpoint)
+        if is_v2_enabled():
+            ray.train.report(
+                metrics=metrics,
+                checkpoint=checkpoint,
+                checkpoint_upload_mode=self.checkpoint_upload_mode,
+                validation=self.validation,
+            )
+        else:
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
         trainer.strategy.barrier()
 
-        if self.local_rank == 0:
-            shutil.rmtree(tmpdir)
+        # With CheckpointUploadMode.ASYNC, the upload may still be in progress
+        # after report() returns. Let ray.train.report delete_local_checkpoint_after_upload
+        # handle cleanup instead.
+        if is_v2_enabled() and self.checkpoint_upload_mode is not None:
+            # Check here because CheckpointUploadMode is only imported when is_v2_enabled() is True
+            if (
+                self.checkpoint_upload_mode.default_delete_local_checkpoint_after_upload()
+            ):
+                return
+
+        shutil.rmtree(tmpdir)

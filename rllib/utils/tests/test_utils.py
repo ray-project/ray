@@ -1,12 +1,15 @@
+import unittest
+
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-import unittest
 
 import ray
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor as flatten_np
-from ray.rllib.utils.numpy import make_action_immutable
+from ray.rllib.utils.numpy import (
+    flatten_inputs_to_1d_tensor as flatten_np,
+    make_action_immutable,
+)
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.tf_utils import (
     flatten_inputs_to_1d_tensor as flatten_tf,
@@ -48,18 +51,14 @@ class TestUtils(unittest.TestCase):
         "c": {"ca": np.array([[[1, 2]], [[3, 5]]]), "cb": np.array([[1.0], [2.0]])},
     }
     # Corresponding space struct.
-    spaces = dict(
-        {
-            "a": gym.spaces.Discrete(4),
-            "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
-            "c": dict(
-                {
-                    "ca": gym.spaces.MultiDiscrete([4, 6]),
-                    "cb": gym.spaces.Box(-1.0, 1.0, ()),
-                }
-            ),
-        }
-    )
+    spaces = {
+        "a": gym.spaces.Discrete(4),
+        "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
+        "c": {
+            "ca": gym.spaces.MultiDiscrete([4, 6]),
+            "cb": gym.spaces.Box(-1.0, 1.0, ()),
+        },
+    }
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -573,7 +572,8 @@ class TestUtils(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

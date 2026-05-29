@@ -14,12 +14,17 @@
 
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <csignal>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "ray/common/grpc_util.h"
-#include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
@@ -28,18 +33,24 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
-    std::function<void(const NodeResources &)> resource_change_subscriber)
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    std::function<void(const NodeResources &)> resource_change_subscriber,
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ClockInterface &clock)
     : local_node_id_(local_node_id),
+      clock_(clock),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
-      resource_change_subscriber_(resource_change_subscriber) {
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
+      resource_change_subscriber_(resource_change_subscriber),
+      resource_usage_gauge_(resource_usage_gauge) {
   RAY_CHECK(node_resources.total == node_resources.available);
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
-  const auto now = absl::Now();
+  const auto now = clock_.Now();
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
-    last_idle_times_[resource_id] = now;
+    idle_time_states_[resource_id] = IdleTimeState{now, absl::nullopt};
   }
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
@@ -55,7 +66,7 @@ void LocalResourceManager::AddLocalResourceInstances(
 void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
   local_resources_.available.Remove(resource_id);
   local_resources_.total.Remove(resource_id);
-  last_idle_times_.erase(resource_id);
+  idle_time_states_.erase(resource_id);
   OnResourceOrStateChanged();
 }
 
@@ -114,20 +125,69 @@ void LocalResourceManager::FreeTaskResourceInstances(
     }
   }
 }
-void LocalResourceManager::SetBusyFootprint(WorkFootprint item) {
-  auto prev = last_idle_times_.find(item);
-  if (prev != last_idle_times_.end() && !prev->second.has_value()) {
+void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
+  auto prev = idle_time_states_.find(item);
+  if (prev != idle_time_states_.end() && !prev->second.current.has_value() &&
+      !prev->second.saved.has_value()) {
     return;
   }
-  last_idle_times_[item] = absl::nullopt;
+  idle_time_states_[item].current = absl::nullopt;
+  idle_time_states_[item].saved = absl::nullopt;
   OnResourceOrStateChanged();
 }
 
-void LocalResourceManager::SetIdleFootprint(WorkFootprint item) {
-  auto prev = last_idle_times_.find(item);
-  bool state_change = prev == last_idle_times_.end() || !prev->second.has_value();
+void LocalResourceManager::MaybeMarkFootprintAsBusy(WorkFootprint item) {
+  auto it = idle_time_states_.find(item);
 
-  last_idle_times_[item] = absl::Now();
+  // If the footprint is already busy, do nothing.
+  if (it != idle_time_states_.end() && !it->second.current.has_value()) {
+    return;
+  }
+
+  // If the footprint was idle, save its idle time.
+  if (it != idle_time_states_.end()) {
+    // It must have a value because we checked for the busy case above.
+    it->second.saved = it->second.current.value();
+  } else {
+    // If the footprint wasn't tracked, it was implicitly idle.
+    // Save InfinitePast as a marker.
+    idle_time_states_[item].saved = absl::InfinitePast();
+  }
+
+  // Mark as busy.
+  idle_time_states_[item].current = absl::nullopt;
+  OnResourceOrStateChanged();
+}
+
+void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
+  auto prev = idle_time_states_.find(item);
+
+  // Already idle with no saved state to restore — do nothing.
+  if (prev != idle_time_states_.end() && prev->second.current.has_value() &&
+      !prev->second.saved.has_value()) {
+    return;
+  }
+
+  bool state_change =
+      prev == idle_time_states_.end() || !prev->second.current.has_value();
+
+  // Check if there's a saved idle time from MaybeMarkFootprintAsBusy().
+  // If so, restore it instead of using Now() to preserve the original idle duration.
+  // This handles speculative busy marking where no actual work occurred.
+  if (prev != idle_time_states_.end() && prev->second.saved.has_value()) {
+    if (prev->second.saved.value() == absl::InfinitePast()) {
+      // InfinitePast is a marker indicating the footprint wasn't tracked before.
+      // Remove it from the map to restore the original state.
+      idle_time_states_.erase(item);
+    } else {
+      prev->second.current = prev->second.saved.value();
+      prev->second.saved = absl::nullopt;
+    }
+  } else {
+    idle_time_states_[item].current = clock_.Now();
+    idle_time_states_[item].saved = absl::nullopt;
+  }
+
   if (state_change) {
     OnResourceOrStateChanged();
   }
@@ -191,22 +251,22 @@ void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &reso
   if (resource_id.IsImplicitResource()) {
     return;
   }
-  last_idle_times_[resource_id] = absl::nullopt;
+  idle_time_states_[resource_id].current = absl::nullopt;
 }
 
 void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resource_id) {
   if (resource_id.IsImplicitResource()) {
     return;
   }
-  last_idle_times_[resource_id] = absl::Now();
+  idle_time_states_[resource_id].current = clock_.Now();
 }
 
-absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
+std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
   // If all the resources are idle.
   absl::Time all_idle_time = absl::InfinitePast();
 
-  for (const auto &iter : last_idle_times_) {
-    const auto &idle_time_or_busy = iter.second;
+  for (const auto &iter : idle_time_states_) {
+    const auto &idle_time_or_busy = iter.second.current;
 
     if (idle_time_or_busy == absl::nullopt) {
       // One resource is busy, entire resources should be considered non-idle.
@@ -253,9 +313,8 @@ NodeResources LocalResourceManager::ToNodeResources() const {
   node_resources.available = local_resources_.available.ToNodeResourceSet();
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
-  node_resources.is_draining = is_local_node_draining_;
-  node_resources.draining_deadline_timestamp_ms =
-      local_node_draining_deadline_timestamp_ms_;
+  node_resources.is_draining = IsLocalNodeDraining();
+  node_resources.draining_deadline_timestamp_ms = GetDrainingDeadline();
   return node_resources;
 }
 
@@ -281,11 +340,11 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     if (used == 0.0) {
       // Set it to idle as of now.
       RAY_LOG(INFO) << "Object store memory is idle.";
-      last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::Now();
+      idle_time_states_[ResourceID::ObjectStoreMemory()].current = clock_.Now();
     } else {
       // Clear the idle info since we know it's being used.
-      RAY_LOG(INFO) << "Object store memory is not idle.";
-      last_idle_times_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
+      RAY_LOG(DEBUG) << "Object store memory is not idle.";
+      idle_time_states_[ResourceID::ObjectStoreMemory()].current = absl::nullopt;
     }
 
     OnResourceOrStateChanged();
@@ -299,6 +358,10 @@ double LocalResourceManager::GetLocalAvailableCpus() const {
 void LocalResourceManager::PopulateResourceViewSyncMessage(
     syncer::ResourceViewSyncMessage &resource_view_sync_message) const {
   NodeResources resources = ToNodeResources();
+
+  // Populate node labels.
+  resource_view_sync_message.mutable_labels()->insert(resources.labels.begin(),
+                                                      resources.labels.end());
 
   auto total = resources.total.GetResourceMap();
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
@@ -323,22 +386,24 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   if (idle_time.has_value()) {
     // We round up the idle duration to the nearest millisecond such that the idle
     // reporting would be correct even if it's less than 1 millisecond.
-    const auto now = absl::Now();
+    const auto now = clock_.Now();
     resource_view_sync_message.set_idle_duration_ms(std::max(
         static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
   }
 
   resource_view_sync_message.set_is_draining(IsLocalNodeDraining());
-  resource_view_sync_message.set_draining_deadline_timestamp_ms(
-      local_node_draining_deadline_timestamp_ms_);
+  resource_view_sync_message.set_draining_deadline_timestamp_ms(GetDrainingDeadline());
 
-  for (const auto &iter : last_idle_times_) {
-    if (iter.second == absl::nullopt) {
+  for (const auto &iter : idle_time_states_) {
+    if (iter.second.current == absl::nullopt) {
       // If it is a WorkFootprint
       if (iter.first.index() == 0) {
         switch (std::get<WorkFootprint>(iter.first)) {
         case WorkFootprint::NODE_WORKERS:
           resource_view_sync_message.add_node_activity("Busy workers on node.");
+          break;
+        case WorkFootprint::PULLING_TASK_ARGUMENTS:
+          resource_view_sync_message.add_node_activity("Pulling task arguments.");
           break;
         default:
           UNREACHABLE;
@@ -381,9 +446,9 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
-    // The node is drained.
-    RAY_LOG(INFO) << "The node is drained, exiting...";
-    raylet::ShutdownRayletGracefully();
+    RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
+    rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
+    shutdown_raylet_gracefully_(std::move(node_death_info));
   }
 
   ++version_;
@@ -391,6 +456,22 @@ void LocalResourceManager::OnResourceOrStateChanged() {
     return;
   }
   resource_change_subscriber_(ToNodeResources());
+}
+
+rpc::NodeDeathInfo LocalResourceManager::DeathInfoFromDrainRequest() {
+  rpc::NodeDeathInfo death_info;
+  RAY_CHECK(drain_request_.has_value());
+  if (drain_request_->reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+    death_info.set_reason_message(drain_request_->reason_message());
+  } else {
+    RAY_CHECK_EQ(drain_request_->reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    death_info.set_reason_message(drain_request_->reason_message());
+  }
+  return death_info;
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
@@ -437,17 +518,16 @@ LocalResourceManager::GetResourceUsageMap() const {
 
 void LocalResourceManager::RecordMetrics() const {
   for (auto &[resource, resource_usage] : GetResourceUsageMap()) {
-    ray::stats::STATS_resources.Record(resource_usage.avail,
-                                       {{"State", "AVAILABLE"}, {"Name", resource}});
-    ray::stats::STATS_resources.Record(resource_usage.used,
-                                       {{"State", "USED"}, {"Name", resource}});
+    resource_usage_gauge_.Record(resource_usage.avail,
+                                 {{"State", "AVAILABLE"}, {"Name", resource}});
+    resource_usage_gauge_.Record(resource_usage.used,
+                                 {{"State", "USED"}, {"Name", resource}});
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
-  RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
-  is_local_node_draining_ = true;
-  local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
+void LocalResourceManager::SetLocalNodeDraining(
+    const rpc::DrainRayletRequest &drain_request) {
+  drain_request_ = std::make_optional(drain_request);
   OnResourceOrStateChanged();
 }
 

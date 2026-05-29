@@ -2,45 +2,43 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+
 import logging
 import os
+import random
 import socket
 import sys
 import time
 
+import httpx
 import pytest
-import requests
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray import serve
-from ray._private.services import new_port
-from ray._private.test_utils import (
-    convert_actor_state,
-    run_string_as_driver,
-    wait_for_condition,
-)
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
-    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
+from ray.serve.config import (
+    ControllerOptions,
+    GangSchedulingConfig,
+    HTTPOptions,
+    ProxyLocation,
+)
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
-
-# Explicitly importing it here because it is a ray core tests utility (
-# not in the tree)
-from ray.tests.conftest import maybe_external_redis  # noqa: F401
-from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 from ray.util.state import list_actors
+
+
+def _get_random_port() -> int:
+    return random.randint(10000, 65535)
 
 
 @pytest.fixture
@@ -83,130 +81,6 @@ def lower_slow_startup_threshold_and_reset():
         ] = original_slow_startup_warning_period_s
 
 
-def test_shutdown(ray_shutdown):
-    ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003))
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
-    cluster_node_info_cache.update()
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind())
-
-    actor_names = [
-        SERVE_CONTROLLER_NAME,
-        format_actor_name(
-            SERVE_PROXY_NAME,
-            cluster_node_info_cache.get_alive_nodes()[0][0],
-        ),
-    ]
-
-    def check_alive():
-        alive = True
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                alive = False
-        return alive
-
-    wait_for_condition(check_alive)
-
-    serve.shutdown()
-
-    def check_dead():
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    wait_for_condition(check_dead)
-
-
-def test_single_app_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in single-app case
-
-    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
-def test_multi_app_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in multi-app case.
-
-    Ensures that after deploying multiple distinct applications, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app1", route_prefix="/app1")
-    serve.run(f.bind(), name="app2", route_prefix="/app2")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app1:f",
-        "ServeReplica:app2:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
 def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -224,7 +98,7 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
     assert handle.remote().result() == "from_f"
-    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.context._global_client = None
     ray.shutdown()
@@ -239,13 +113,13 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
     assert handle.remote().result() == "from_g"
-    assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
-    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get("http://localhost:8000/say_hi_g").text == "from_g"
+    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
 def test_connect(ray_shutdown):
     # Check that you can make API calls from within a deployment.
-    ray.init(num_cpus=16, namespace="serve")
+    ray.init(num_cpus=8, namespace="serve")
     serve.start()
 
     @serve.deployment
@@ -293,8 +167,7 @@ def test_multiple_routers(ray_cluster):
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 2
+    assert len(ray.nodes()) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
 
     @serve.deployment(
@@ -386,7 +259,7 @@ def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    port = new_port()
+    port = _get_random_port()
     serve.start(
         http_options=dict(
             port=port,
@@ -395,6 +268,12 @@ def test_middleware(ray_shutdown):
             ],
         )
     )
+
+    @serve.deployment
+    class Dummy:
+        pass
+
+    serve.run(Dummy.bind())
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
@@ -405,45 +284,11 @@ def test_middleware(ray_shutdown):
         "Access-Control-Request-Method": "GET",
     }
     root = f"http://localhost:{port}"
-    resp = requests.options(root, headers=headers)
+    resp = httpx.options(root, headers=headers)
     assert resp.headers["access-control-allow-origin"] == "*"
 
-    resp = requests.get(f"{root}/-/routes", headers=headers)
+    resp = httpx.get(f"{root}/-/routes", headers=headers)
     assert resp.headers["access-control-allow-origin"] == "*"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_http_root_url(ray_shutdown):
-    @serve.deployment
-    def f(_):
-        pass
-
-    root_url = "https://my.domain.dev/prefix"
-
-    port = new_port()
-    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-    del os.environ[SERVE_ROOT_URL_ENV_KEY]
-
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url != root_url + "/f"
-    assert f.url == f"http://127.0.0.1:{port}/f"
-    serve.shutdown()
-    ray.shutdown()
-
-    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -452,21 +297,18 @@ def test_http_root_path(ray_shutdown):
     def hello():
         return "hello"
 
-    port = new_port()
+    port = _get_random_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
 
-    # check whether url is prefixed correctly
-    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
-
     # check routing works as expected
-    resp = requests.get(hello.url)
+    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/hello")
     assert resp.status_code == 200
     assert resp.text == "hello"
 
     # check advertized routes are prefixed correctly
-    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
+    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
     assert resp.status_code == 200
     assert resp.json() == {"/hello": "default"}
 
@@ -474,7 +316,7 @@ def test_http_root_path(ray_shutdown):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         serve.start(http_options={"host": "bad.ip.address"})
 
 
@@ -486,17 +328,16 @@ def test_no_http(ray_shutdown):
         {"http_options": {"location": "NoServer"}},
     ]
 
-    ray.init(num_cpus=16)
+    address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
-        print(f"[{i+1}/{len(options)}] Running with {option}")
+        print(f"[{i + 1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
-        live_actors = [
-            actor
-            for actor in ray._private.state.actors().values()
-            if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-        ]
+        live_actors = list_actors(
+            address=address,
+            filters=[("state", "=", "ALIVE")],
+        )
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_proxies.remote())) == 0
@@ -514,46 +355,18 @@ def test_no_http(ray_shutdown):
 
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4)
+    head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 2
+    assert len(ray.nodes()) == 2
 
-    serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
+    serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
 
-    # Only the controller and head node actor should be started
-    assert len(ray._private.state.actors()) == 2
-
-    # They should all be placed on the head node
-    cpu_per_nodes = {
-        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
-    }
-    assert cpu_per_nodes == {4, 4}
-
-
-def test_serve_shutdown(ray_shutdown):
-    ray.init(namespace="serve")
-    serve.start()
-
-    @serve.deployment
-    class A:
-        def __call__(self, *args):
-            return "hi"
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-    serve.shutdown()
-    serve.start()
-
-    assert len(serve.status().applications) == 0
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
+    # Only the controller and head node proxy should be started, both on the head node.
+    actors = list_actors(address=head_node.address)
+    assert len(actors) == 2
+    assert all([actor.node_id == head_node.node_id for actor in actors])
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
@@ -589,7 +402,9 @@ serve.run(A.bind())"""
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
+def test_serve_start_different_http_checkpoint_options_warning(
+    ray_shutdown, propagate_logs, caplog
+):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
@@ -605,7 +420,7 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
     serve.start()
 
     # create a different config
-    test_http = dict(host="127.1.1.8", port=new_port())
+    test_http = dict(host="127.1.1.8", port=_get_random_port())
 
     serve.start(http_options=test_http)
 
@@ -614,9 +429,6 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
             if "Autoscaling metrics pusher thread" in msg:
                 continue
             assert test_msg in msg
-
-    serve.shutdown()
-    ray.shutdown()
 
 
 def test_recovering_controller_no_redeploy():
@@ -677,6 +489,29 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     wait_for_condition(updating_message, timeout=20)
 
 
+def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
+    @serve.deployment(
+        num_replicas=4,
+        ray_actor_options={"num_cpus": 1},
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    def g(*args):
+        pass
+
+    serve._run(g.bind(), _blocking=False)
+
+    def updating_message():
+        deployment_status = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["g"]
+        )
+        message_substring = "more than 1s to be scheduled."
+        return (deployment_status.status == "UPDATING") and (
+            message_substring in deployment_status.message
+        )
+
+    wait_for_condition(updating_message, timeout=20)
+
+
 def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_reset):
     """
     Check that if status is UNHEALTHY and there is a resource availability
@@ -699,7 +534,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         .applications[SERVE_DEFAULT_APP_NAME]
         .deployments["f"]
         .status
-        == "UNHEALTHY",
+        == "DEPLOY_FAILED",
         timeout=20,
     )
 
@@ -745,11 +580,61 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
 
     # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/").text == "May I take your order?"
+        lambda: httpx.get("http://localhost:8000/").text == "May I take your order?"
     )
 
     serve.shutdown()
     ray.shutdown()
+
+
+def _deploy_flaky_app(counter_file, fail_count: int):
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = str(fail_count)
+    counter_file.write_text("0")
+    ray.init(num_cpus=1)
+    serve.start()
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="flaky_app",
+                    route_prefix="/flaky",
+                    import_path="ray.serve.tests.test_config_files.flaky_build.node",
+                )
+            ]
+        )
+    )
+
+
+def test_build_app_retries_until_success(ray_shutdown, tmp_path):
+    """A flaky build that succeeds on the 4th attempt deploys cleanly."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=3)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "RUNNING",
+            timeout=60,
+        )
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
+def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
+    """If the build keeps failing, the app status surfaces the user error."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=10)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "DEPLOY_FAILED",
+            timeout=60,
+        )
+        assert "flaky build failure" in serve.status().applications["flaky_app"].message
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
 
 
 @pytest.mark.parametrize(
@@ -758,47 +643,73 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
         {
             "proxy_location": None,
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": HTTPOptions(location=ProxyLocation.EveryNode),
         },
         {
             "proxy_location": None,
+            "http_options": {"test": "test"},  # location is not specified
+            "expected": HTTPOptions(
+                location=ProxyLocation.EveryNode
+            ),  # using default proxy_location (to align with the case when `http_options` are None)
+        },
+        {
+            "proxy_location": None,
+            "http_options": {
+                "location": "NoServer"
+            },  # `location` is specified, but `proxy_location` is not
+            "expected": HTTPOptions(
+                location=ProxyLocation.Disabled
+            ),  # using `location` value
+        },
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(location=None),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
+        },
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(),
+            "expected": HTTPOptions(location=ProxyLocation.HeadOnly),
+        },  # using default location from HTTPOptions
+        {
+            "proxy_location": None,
             "http_options": HTTPOptions(location="NoServer"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": {"location": "NoServer"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": HTTPOptions(host="foobar"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": ProxyLocation.Disabled,
-            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "http_options": HTTPOptions(location=ProxyLocation.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
     ],
 )
@@ -807,6 +718,72 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     serve.start(**options)
     client = _get_global_client()
     assert ray.get(client._controller.get_http_config.remote()) == expected_options
+
+
+@pytest.mark.parametrize(
+    "controller_options",
+    [
+        ControllerOptions(
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        ),
+        # Same options passed as a plain dict -- the API coerces it
+        # through ``ControllerOptions.model_validate``.
+        {
+            "runtime_env": {
+                "env_vars": {
+                    "RAY_SERVE_TEST_CONTROLLER_ENV": "from-model",
+                    "RAY_SERVE_TEST_CONTROLLER_ENV_2": "second",
+                }
+            }
+        },
+    ],
+)
+def test_serve_start_controller_options(ray_shutdown, controller_options):
+    """``ControllerOptions.runtime_env.env_vars`` lands on the controller actor.
+
+    Uses a custom RAY_SERVE_TEST_CONTROLLER_ENV var (not a real Serve knob)
+    so the assertion is decoupled from whatever the Anyscale env hook
+    auto-injects. The merge semantics are the env_hook's contract; this
+    test only asserts that *our* requested env_vars made it through.
+    """
+    serve.start(controller_options=controller_options)
+    client = _get_global_client()
+
+    # Reach into the controller actor to read its own os.environ; the
+    # controller is a singleton named actor on the head node, so a remote
+    # task on the same handle runs in the same process.
+    def _read_env(self, *, keys):
+        import os as _os
+
+        return {k: _os.environ.get(k) for k in keys}
+
+    env_seen = ray.get(
+        client._controller.__ray_call__.remote(
+            _read_env,
+            keys=[
+                "RAY_SERVE_TEST_CONTROLLER_ENV",
+                "RAY_SERVE_TEST_CONTROLLER_ENV_2",
+            ],
+        )
+    )
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV"] == "from-model"
+    assert env_seen["RAY_SERVE_TEST_CONTROLLER_ENV_2"] == "second"
+
+
+def test_serve_start_controller_options_rejects_disallowed_runtime_env(
+    ray_shutdown,
+):
+    """Bad runtime_env fails at the caller, not from a Ray task."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as exc:
+        serve.start(controller_options={"runtime_env": {"pip": ["numpy"]}})
+    assert "only supports ['env_vars']" in str(exc.value)
 
 
 if __name__ == "__main__":

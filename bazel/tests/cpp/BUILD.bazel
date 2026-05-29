@@ -1,0 +1,19 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+cc_library(
+    name = "example_lib",
+    srcs = ["example.cc"],
+    hdrs = ["example.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "example_test",
+    size = "small",
+    srcs = ["example_test.cc"],
+    tags = ["team:ci"],
+    deps = [
+        ":example_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

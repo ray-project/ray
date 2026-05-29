@@ -1,4 +1,5 @@
 import sys
+
 import pytest
 
 from ci.ray_ci.linux_container import LinuxContainer
@@ -7,7 +8,7 @@ from ci.ray_ci.linux_container import LinuxContainer
 def test_get_docker_image() -> None:
     assert (
         LinuxContainer("test")._get_docker_image()
-        == "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test"
+        == "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:test"
     )
 
 

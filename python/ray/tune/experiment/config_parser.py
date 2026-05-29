@@ -1,7 +1,8 @@
 import argparse
 import json
+from typing import Any, Callable, Optional
 
-from ray.train import CheckpointConfig
+from ray.tune import CheckpointConfig
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.resources import json_to_resources
@@ -11,13 +12,20 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
-def _make_parser(parser_creator=None, **kwargs):
+def _make_parser(
+    parser_creator: Optional[Callable[..., argparse.ArgumentParser]] = None,
+    **kwargs: Any,
+) -> argparse.ArgumentParser:
     """Returns a base argument parser for the ray.tune tool.
 
     Args:
         parser_creator: A constructor for the parser class.
-        kwargs: Non-positional args to be passed into the
+        **kwargs: Non-positional args to be passed into the
             parser class constructor.
+
+    Returns:
+        An ``argparse.ArgumentParser`` configured with the standard Tune
+        command-line flags.
     """
 
     if parser_creator:
@@ -168,7 +176,7 @@ def _create_trial_from_spec(
             in ray.tune.experiment.config_parser.
         parser: An argument parser object from
             make_parser.
-        trial_kwargs: Extra keyword arguments used in instantiating the Trial.
+        **trial_kwargs: Extra keyword arguments used in instantiating the Trial.
 
     Returns:
         A trial object with corresponding parameters to the specification.

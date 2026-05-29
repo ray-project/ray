@@ -2,12 +2,14 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import List
+from typing import Any, Dict, List
 
 import ray
+from ray._common.network_utils import build_address
+from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
-from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
+from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,13 @@ class TensorflowConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _TensorflowBackend
+
+    @property
+    def framework(self):
+        return TrainingFramework.TENSORFLOW
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 def _setup_tensorflow_environment(worker_addresses: List[str], index: int):
@@ -38,11 +47,11 @@ def _setup_tensorflow_environment(worker_addresses: List[str], index: int):
 
 
 class _TensorflowBackend(Backend):
-    def on_start(self, worker_group: WorkerGroup, backend_config: TensorflowConfig):
+    def on_start(self, worker_group: BaseWorkerGroup, backend_config: TensorflowConfig):
         # Compute URL for initializing distributed setup.
         def get_url():
             address, port = get_address_and_port()
-            return f"{address}:{port}"
+            return build_address(address, port)
 
         urls = worker_group.execute(get_url)
 

@@ -51,16 +51,7 @@ For more information like the number of rows, print the Dataset.
 
 .. testoutput::
 
-    Dataset(
-       num_rows=150,
-       schema={
-          sepal length (cm): double,
-          sepal width (cm): double,
-          petal length (cm): double,
-          petal width (cm): double,
-          target: int64
-       }
-    )
+    Dataset(num_rows=..., schema=...)
 
 .. _inspecting-rows:
 
@@ -98,7 +89,9 @@ A batch contains data from multiple rows. To inspect batches, call
 `Dataset.take_batch() <ray.data.Dataset.take_batch>`.
 
 By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type
-of the returned batch, set ``batch_format``.
+of the returned batch, set ``batch_format``. The batch format is independent from how
+Ray Data stores the underlying blocks, so you can use any batch format regardless of
+the internal block representation.
 
 .. tab-set::
 
@@ -132,13 +125,36 @@ of the returned batch, set ``batch_format``.
             print(batch)
 
         .. testoutput::
-            :options: +NORMALIZE_WHITESPACE
+            :options: +MOCK
 
                sepal length (cm)  sepal width (cm)  ...  petal width (cm)  target
             0                5.1               3.5  ...               0.2       0
             1                4.9               3.0  ...               0.2       0
-            <BLANKLINE>
-            [2 rows x 5 columns]
+    .. tab-item:: pyarrow
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+            batch = ds.take_batch(batch_size=2, batch_format="pyarrow")
+            print(batch)
+
+        .. testoutput::
+
+            pyarrow.Table
+            sepal length (cm): double
+            sepal width (cm): double
+            petal length (cm): double
+            petal width (cm): double
+            target: int64
+            ----
+            sepal length (cm): [[5.1,4.9]]
+            sepal width (cm): [[3.5,3]]
+            petal length (cm): [[1.4,1.4]]
+            petal width (cm): [[0.2,0.2]]
+            target: [[0,0]]
 
 For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and
@@ -153,10 +169,13 @@ Ray Data calculates statistics during execution for each operator, such as wall 
 To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data/ray-data.log`.
 For more on how to read this output, see :ref:`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
 
+.. This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54101.
+
 .. testcode::
+    :skipif: True
 
     import ray
-    import datasets
+    from huggingface_hub import HfFileSystem
 
     def f(batch):
         return batch
@@ -164,9 +183,12 @@ For more on how to read this output, see :ref:`Monitoring Your Workload with the
     def g(row):
         return True
 
-    hf_ds = datasets.load_dataset("mnist", "mnist")
+    path = "hf://datasets/ylecun/mnist/mnist/"
+
+    fs = HfFileSystem()
+    train_files = [f["name"] for f in fs.ls(path) if "train" in f["name"] and f["name"].endswith(".parquet")]
     ds = (
-        ray.data.from_huggingface(hf_ds["train"])
+        ray.data.read_parquet(train_files, filesystem=fs)
         .map_batches(f)
         .filter(g)
         .materialize()

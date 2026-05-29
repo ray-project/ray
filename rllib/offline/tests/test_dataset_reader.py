@@ -1,17 +1,17 @@
-import tempfile
 import os
-from pathlib import Path
+import tempfile
 import unittest
-import pytest
+from pathlib import Path
 
+import pytest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.offline import IOContext
 from ray.rllib.offline.dataset_reader import (
     DatasetReader,
-    get_dataset_and_shards,
     _unzip_if_needed,
+    get_dataset_and_shards,
 )
 
 
@@ -23,7 +23,7 @@ class TestDatasetReader(unittest.TestCase):
         #  credentials issues, using a local file instead for now.
 
         # cls.dset_path = "s3://air-example-data/rllib/cartpole/large.json"
-        cls.dset_path = "tests/data/pendulum/large.json"
+        cls.dset_path = "offline/tests/data/pendulum/large.json"
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -91,7 +91,7 @@ class TestDatasetReader(unittest.TestCase):
                     "paths": self.dset_path,
                 },
             )
-            .rollouts(num_rollout_workers=10)
+            .env_runners(num_env_runners=10)
         )
         NUM_WORKERS = 4
 
@@ -161,10 +161,8 @@ class TestUnzipIfNeeded(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.s3_path = "s3://air-example-data/rllib/pendulum"
-        cls.relative_path = "tests/data/pendulum"
-        cls.absolute_path = str(
-            Path(__file__).parent.parent.parent / "tests" / "data" / "pendulum"
-        )
+        cls.relative_path = "offline/tests/data/pendulum"
+        cls.absolute_path = str(Path(__file__).parent / "data" / "pendulum")
 
     # @TODO: unskip when this is fixed
     @pytest.mark.skip(reason="Shouldn't hit S3 in CI")

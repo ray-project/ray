@@ -3,9 +3,10 @@ import logging
 import os
 import sys
 import tempfile
-from typing import Dict, Any
 import unittest
 import urllib
+from typing import Any, Dict
+from unittest import mock
 from unittest.mock import MagicMock, Mock, patch
 
 import jsonschema
@@ -13,7 +14,6 @@ import pytest
 import yaml
 from click.exceptions import ClickException
 
-import mock
 from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
@@ -308,6 +308,10 @@ class AutoscalingConfigTest(unittest.TestCase):
         ] = 0
         assert prepared_config == expected_prepared
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="SSL cert verification fails on Windows CI due to outdated Miniconda CA bundle. Working to update the bundle in https://github.com/ray-project/ray/pull/61545.",
+    )
     def testValidateNetworkConfigForBackwardsCompatibility(self):
         web_yaml = (
             "https://raw.githubusercontent.com/ray-project/ray/"
@@ -516,7 +520,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         )
 
         # Configure subnets modifies configs in place so we need to copy
-        # the configs for comparision after passing into the method.
+        # the configs for comparison after passing into the method.
         config_subnets_configured_post = copy.deepcopy(config_subnets_configured)
         config_subnets_worker_configured_post = copy.deepcopy(
             config_subnets_worker_configured
@@ -650,9 +654,4 @@ class AutoscalingConfigTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

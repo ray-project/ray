@@ -2,15 +2,16 @@
 # it causes circular dependency issues for AsyncActors due to
 # ray.data's lazy import.
 # see https://github.com/ray-project/ray/issues/30498 for more context.
-from dataclasses import dataclass
 import logging
 import os
 import sys
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
+
+from ray._private.utils import is_in_test
 
 if TYPE_CHECKING:
     import pyarrow
-    from ray.data.extensions import ArrowTensorArray
 
 RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION = (
     "RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION"
@@ -23,22 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Whether we have already warned the user about bloated fallback serialization.
 _serialization_fallback_set = set()
-
-# Whether we're currently running in a test, either local or CI.
-_in_test = None
-
-
-def _is_in_test():
-    global _in_test
-
-    if _in_test is None:
-        _in_test = any(
-            env_var in os.environ
-            # These environment variables are always set by pytest and Buildkite,
-            # respectively.
-            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
-        )
-    return _in_test
 
 
 def _register_custom_datasets_serializers(serialization_context):
@@ -123,6 +108,27 @@ def _register_arrow_data_serializer(serialization_context):
     import pyarrow as pa
 
     serialization_context._register_cloudpickle_reducer(pa.Table, _arrow_table_reduce)
+    serialization_context._register_cloudpickle_reducer(pa.Schema, _arrow_schema_reduce)
+
+
+def _arrow_schema_reduce(
+    schema: "pyarrow.Schema",
+) -> Tuple[Callable[["bytes"], "pyarrow.Schema"], Tuple[bytes]]:
+    """Custom reducer for Arrow Schema that uses IPC serialization for performance.
+
+    Arrow's native IPC serialization for schemas is significantly faster than
+    cloudpickle (10-20x for serialization, 2-3x for deserialization), making
+    this optimization particularly valuable for workloads with large schemas.
+    """
+    # Use Arrow's native IPC serialization which is much faster than cloudpickle
+    return _restore_schema_from_ipc, (schema.serialize().to_pybytes(),)
+
+
+def _restore_schema_from_ipc(buf: bytes) -> "pyarrow.Schema":
+    """Restore an Arrow Schema serialized to Arrow IPC format."""
+    import pyarrow as pa
+
+    return pa.ipc.read_schema(pa.BufferReader(buf))
 
 
 def _arrow_table_reduce(t: "pyarrow.Table"):
@@ -148,7 +154,7 @@ def _arrow_table_reduce(t: "pyarrow.Table"):
             # Delegate to ChunkedArray reducer.
             reduced_column = _arrow_chunked_array_reduce(column)
         except Exception as e:
-            if not _is_dense_union(column.type) and _is_in_test():
+            if not _is_dense_union(column.type) and is_in_test():
                 # If running in a test and the column is not a dense union array
                 # (which we expect to need a fallback), we want to raise the error,
                 # not fall back.
@@ -209,7 +215,6 @@ def _reconstruct_chunked_array(
 
     # Reconstruct chunks from serialization payloads.
     chunks = [chunk.to_array() for chunk in chunks]
-
     return pa.chunked_array(chunks, type_)
 
 
@@ -252,33 +257,29 @@ class PicklableArrayPayload:
 def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array":
     """Reconstruct an Arrow Array from a possibly nested PicklableArrayPayload."""
     import pyarrow as pa
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
 
     children = [child_payload.to_array() for child_payload in payload.children]
+
     if pa.types.is_dictionary(payload.type):
         # Dedicated path for reconstructing a DictionaryArray, since
         # Array.from_buffers() doesn't work for DictionaryArrays.
         assert len(children) == 2, len(children)
         indices, dictionary = children
-        return pa.DictionaryArray.from_arrays(indices, dictionary)
+        return pa.DictionaryArray.from_arrays(
+            indices,
+            dictionary,
+            ordered=payload.type.ordered,  # Explicitly pass the ordered flag to from_arrays() to prevent dropping it as ordered=False by default
+        )
     elif pa.types.is_map(payload.type) and len(children) > 1:
         # In pyarrow<7.0.0, the underlying map child array is not exposed, so we work
         # with the key and item arrays.
         assert len(children) == 3, len(children)
         offsets, keys, items = children
         return pa.MapArray.from_arrays(offsets, keys, items)
-    elif isinstance(payload.type, ArrowTensorType) or isinstance(
-        payload.type, ArrowVariableShapedTensorType
-    ):
-        # Dedicated path for reconstructing an ArrowTensorArray or
-        # ArrowVariableShapedTensorArray, both of which can't be reconstructed by the
-        # Array.from_buffers() API.
+    elif isinstance(payload.type, pa.BaseExtensionType):
         assert len(children) == 1, len(children)
         storage = children[0]
-        return pa.ExtensionArray.from_storage(payload.type, storage)
+        return payload.type.wrap_array(storage)
     else:
         # Common case: use Array.from_buffers() to construct an array of a certain type.
         return pa.Array.from_buffers(
@@ -298,11 +299,6 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     type.
     """
     import pyarrow as pa
-
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
 
     if _is_dense_union(a.type):
         # Dense unions are not supported.
@@ -331,10 +327,8 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _dictionary_array_to_array_payload(a)
     elif pa.types.is_map(a.type):
         return _map_array_to_array_payload(a)
-    elif isinstance(a.type, ArrowTensorType) or isinstance(
-        a.type, ArrowVariableShapedTensorType
-    ):
-        return _tensor_array_to_array_payload(a)
+    elif isinstance(a.type, pa.BaseExtensionType):
+        return _extension_array_to_array_payload(a)
     else:
         raise ValueError("Unhandled Arrow array type:", a.type)
 
@@ -642,11 +636,9 @@ def _map_array_to_array_payload(a: "pyarrow.MapArray") -> "PicklableArrayPayload
     )
 
 
-def _tensor_array_to_array_payload(a: "ArrowTensorArray") -> "PicklableArrayPayload":
-    """Serialize tensor arrays to PicklableArrayPayload."""
-    # Offset is propagated to storage array, and the storage array items align with the
-    # tensor elements, so we only need to do the straightforward creation of the storage
-    # array payload.
+def _extension_array_to_array_payload(
+    a: "pyarrow.ExtensionArray",
+) -> "PicklableArrayPayload":
     storage_payload = _array_to_array_payload(a.storage)
     return PicklableArrayPayload(
         type=a.type,

@@ -9,16 +9,16 @@ import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as ray_pickle
+from ray._common.utils import try_to_create_directory
 from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
-from ray.train import Checkpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.train.constants import DEFAULT_STORAGE_PATH, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -42,9 +42,6 @@ from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-if TYPE_CHECKING:
-    from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +92,6 @@ class Trainable:
     def __init__(
         self,
         config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         storage: Optional[StorageContext] = None,
     ):
         """Initialize a Trainable.
@@ -109,8 +105,6 @@ class Trainable:
         Args:
             config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator: (Deprecated) Function that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             storage: StorageContext object that contains persistent storage paths
         """
 
@@ -120,10 +114,14 @@ class Trainable:
         if self.is_actor():
             disable_ipython()
 
-        # TODO(ml-team): Remove `logger_creator` in 2.7.
+        self._storage = storage
+        if storage:
+            assert storage.trial_fs_path
+            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+
         # TODO(justinvyu): Rename/remove logdir.
-        self._result_logger = self._logdir = None
-        self._create_logger(self.config, logger_creator)
+        self._logdir = None
+        self._setup_logdir()
 
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
@@ -147,11 +145,6 @@ class Trainable:
 
         self._start_time = time.time()
         self._local_ip = ray.util.get_node_ip_address()
-
-        self._storage = storage
-        if storage:
-            assert storage.trial_fs_path
-            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
 
         self._open_logfiles(stdout_file, stderr_file)
 
@@ -184,7 +177,7 @@ class Trainable:
 
 
         Args:
-            config[Dict[str, Any]]: The Trainable's config dict.
+            config: The Trainable's config dict.
 
         Returns:
             PlacementGroupFactory: A PlacementGroupFactory consumed by Tune
@@ -198,6 +191,9 @@ class Trainable:
 
         Args:
             config: The Trainer's config dict.
+
+        Returns:
+            A help string describing the resources required by the trainable.
         """
         return ""
 
@@ -263,6 +259,8 @@ class Trainable:
                 the whole buffer.
             max_buffer_length: Maximum number of results to buffer.
 
+        Returns:
+            A list of result dicts collected from each call to ``train()``.
         """
         results = []
 
@@ -418,7 +416,7 @@ class Trainable:
 
         This is to get class trainables to work with storage backend used by
         function trainables.
-        This basically re-implements `train.report` for class trainables,
+        This basically re-implements `tune.report` for class trainables,
         making sure to persist the checkpoint to storage.
         """
         if isinstance(checkpoint_dict_or_path, dict):
@@ -432,7 +430,7 @@ class Trainable:
                     f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                 )
 
-        local_checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        local_checkpoint = ray.tune.Checkpoint.from_directory(checkpoint_dir)
 
         metrics = self._last_result.copy() if self._last_result else {}
 
@@ -505,7 +503,9 @@ class Trainable:
         return checkpoint_result
 
     @DeveloperAPI
-    def restore(self, checkpoint_path: Union[str, Checkpoint, _TrainingResult]):
+    def restore(
+        self, checkpoint_path: Union[str, "ray.tune.Checkpoint", _TrainingResult]
+    ):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
@@ -517,22 +517,15 @@ class Trainable:
         `checkpoint_path` should match with the return from ``save()``.
 
         Args:
-            checkpoint_path: Path to restore checkpoint from. If this
-                path does not exist on the local node, it will be fetched
-                from external (cloud) storage if available, or restored
-                from a remote node.
-            checkpoint_node_ip: If given, try to restore
-                checkpoint from this node if it doesn't exist locally or
-                on cloud storage.
-            fallback_to_latest: If True, will try to recover the
-                latest available checkpoint if the given ``checkpoint_path``
-                could not be found.
-
+            checkpoint_path: training result that was returned by a
+                previous call to `save()`.
         """
-        # TODO(justinvyu): Clean up this interface
+        # TODO(justinvyu): This also supports restoring from a Checkpoint object
+        # or a path, which are legacy APIs that RLlib depends on.
+        # RLlib should remove this dependency since `restore` is a DeveloperAPI.
         if isinstance(checkpoint_path, str):
-            checkpoint_path = Checkpoint.from_directory(checkpoint_path)
-        if isinstance(checkpoint_path, Checkpoint):
+            checkpoint_path = ray.tune.Checkpoint.from_directory(checkpoint_path)
+        if isinstance(checkpoint_path, ray.tune.Checkpoint):
             checkpoint_result = _TrainingResult(checkpoint=checkpoint_path, metrics={})
         else:
             checkpoint_result: _TrainingResult = checkpoint_path
@@ -604,7 +597,7 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None, storage=None):
+    def reset(self, new_config, storage=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
@@ -617,17 +610,7 @@ class Trainable:
         if trial_info:
             self._trial_info = trial_info
 
-        self._result_logger.flush()
-        self._result_logger.close()
-
-        if logger_creator:
-            logger.debug("Logger reset.")
-            self._create_logger(new_config.copy(), logger_creator)
-        else:
-            logger.debug(
-                "Did not reset logger. Got: "
-                f"trainable.reset(logger_creator={logger_creator})."
-            )
+        self._setup_logdir()
 
         stdout_file = new_config.pop(STDOUT_FILE, None)
         stderr_file = new_config.pop(STDERR_FILE, None)
@@ -652,7 +635,7 @@ class Trainable:
 
         return True
 
-    def reset_config(self, new_config: Dict):
+    def reset_config(self, new_config: Dict) -> bool:
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms
@@ -668,29 +651,30 @@ class Trainable:
         """
         return False
 
-    def _create_logger(
-        self,
-        config: Dict[str, Any],
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
-    ):
-        """Create logger from logger creator.
+    def _setup_logdir(self):
+        """Set up the trial log directory.
 
-        Sets _logdir and _result_logger.
+        Sets _logdir and changes the working directory to the trial directory
+        on the worker process when running with Tune.
 
         `_logdir` is the **per trial** directory for the Trainable.
         """
-        if logger_creator:
-            self._result_logger = logger_creator(config)
-            self._logdir = self._result_logger.logdir
+        if self._storage:
+            self._logdir = self._storage.trial_working_directory
         else:
-            from ray.tune.logger import UnifiedLogger
-
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray._private.utils.try_to_create_directory(DEFAULT_STORAGE_PATH)
+            try_to_create_directory(DEFAULT_STORAGE_PATH)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH
             )
-            self._result_logger = UnifiedLogger(config, self._logdir, loggers=None)
+
+        os.makedirs(self._logdir, exist_ok=True)
+
+        if self._storage:
+            os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
+
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                os.chdir(self._logdir)
 
     def _open_logfiles(self, stdout_file, stderr_file):
         """Create loggers. Open stdout and stderr logfiles."""
@@ -740,8 +724,6 @@ class Trainable:
         Calls ``Trainable.cleanup`` internally. Subclasses should override
         ``Trainable.cleanup`` for custom cleanup procedures.
         """
-        self._result_logger.flush()
-        self._result_logger.close()
         if self._monitor.is_alive():
             self._monitor.stop()
             self._monitor.join()
@@ -832,7 +814,7 @@ class Trainable:
         """Returns configuration passed in by Tune."""
         return self.config
 
-    def step(self):
+    def step(self) -> Dict:
         """Subclasses should override this to implement train().
 
         The return value will be automatically passed to the loggers. Users
@@ -961,7 +943,7 @@ class Trainable:
         Args:
             result: Training result returned by step().
         """
-        self._result_logger.on_result(result)
+        pass
 
     def cleanup(self):
         """Subclasses should override this for any cleanup on stop.
@@ -986,7 +968,7 @@ class Trainable:
             export_formats: List of formats that should be exported.
             export_dir: Directory to place exported models.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}

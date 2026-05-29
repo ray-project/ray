@@ -1,28 +1,40 @@
-from typing import Iterator, List, Optional
+import copy
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field, fields, replace
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
+from ray.data.block import BlockMetadata
+from ray.data.expressions import Expr
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 
-class LogicalOperator(Operator):
+@dataclass(frozen=True, repr=False, eq=False)
+class LogicalOperator(Operator, ABC):
     """Abstract class for logical operators.
 
     A logical operator describes transformation, and later is converted into
     physical operator.
     """
 
-    def __init__(
-        self,
-        name: str,
-        input_dependencies: List["LogicalOperator"],
-        num_outputs: Optional[int] = None,
-    ):
-        super().__init__(
-            name,
-            input_dependencies,
-        )
-        for x in input_dependencies:
-            assert isinstance(x, LogicalOperator), x
-        self._num_outputs = num_outputs
+    _name: Optional[str] = field(init=False, default=None, repr=False)
+    _input_dependencies: List["LogicalOperator"] = field(
+        init=False, default_factory=list, repr=False
+    )
+    _num_outputs: Optional[int] = field(default=None, repr=False)
+
+    @property
+    def name(self) -> str:
+        return self._name or self.__class__.__name__
+
+    @property
+    @abstractmethod
+    def num_outputs(self) -> Optional[int]:
+        """Expected number of output blocks, if known."""
+        ...
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -33,21 +45,159 @@ class LogicalOperator(Operator):
         `Dataset.repartition(num_blocks=X)`. A more accurate estimation can be given by
         `PhysicalOperator.num_outputs_total()` during execution.
         """
-        if self._num_outputs is not None:
-            return self._num_outputs
-        elif len(self._input_dependencies) == 1:
-            return self._input_dependencies[0].estimated_num_outputs()
+        if self.num_outputs is not None:
+            return self.num_outputs
+        elif len(self.input_dependencies) == 1:
+            return self.input_dependencies[0].estimated_num_outputs()
         return None
 
     # Override the following 3 methods to correct type hints.
 
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        value = self._input_dependencies
+        for x in value:
+            assert isinstance(x, LogicalOperator), x
+        return value
 
-    @property
-    def output_dependencies(self) -> List["LogicalOperator"]:
-        return super().output_dependencies  # type: ignore
+    @input_dependencies.setter
+    def input_dependencies(self, value: List["LogicalOperator"]) -> None:
+        for x in value:
+            assert isinstance(x, LogicalOperator), x
+        object.__setattr__(self, "_input_dependencies", value)
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def _apply_transform(
+        self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
+    ) -> "LogicalOperator":
+        input_dependencies = self.input_dependencies
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in input_dependencies
+        ]
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = self._with_new_input_dependencies(transformed_inputs)
+        return transform(target)
+
+    def _with_new_input_dependencies(
+        self, input_dependencies: List["LogicalOperator"]
+    ) -> "LogicalOperator":
+        if "input_dependencies" in {field.name for field in fields(self)}:
+            return replace(self, input_dependencies=input_dependencies)
+
+        target = copy.copy(self)
+        object.__setattr__(target, "_input_dependencies", input_dependencies)
+        return target
+
+    def _get_args(self) -> Dict[str, Any]:
+        """This Dict must be serializable"""
+        args: Dict[str, Any] = {}
+        for dataclass_field in fields(self):
+            key = dataclass_field.name
+            value = getattr(self, key)
+            # Keep underscore-prefixed keys to preserve legacy export schema.
+            args[key if key.startswith("_") else f"_{key}"] = value
+        args["_name"] = self.name
+        # Preserve legacy export shape even though output deps are no longer tracked.
+        args["_output_dependencies"] = []
+        return args
+
+    def infer_schema(self) -> Optional["Schema"]:
+        """Returns the inferred schema of the output blocks."""
+        return None
+
+    def infer_metadata(self) -> "BlockMetadata":
+        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
+
+        This method is used by methods like :meth:`~ray.data.Dataset.schema` to
+        efficiently return metadata.
+        """
+        return BlockMetadata(None, None, None, None)
+
+    def is_lineage_serializable(self) -> bool:
+        """Returns whether the lineage of this operator can be serialized.
+
+        An operator is lineage serializable if you can serialize it on one machine and
+        deserialize it on another without losing information. Operators that store
+        object references (e.g., ``InputData``) aren't lineage serializable because the
+        objects aren't available on the deserialized machine.
+        """
+        return True
+
+
+class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
+    """Mixin for reading operators supporting projection pushdown"""
+
+    def supports_projection_pushdown(self) -> bool:
+        return False
+
+    def get_projection_map(self) -> Optional[Dict[str, str]]:
+        return None
+
+    def apply_projection(
+        self,
+        projection_map: Optional[Dict[str, str]],
+    ) -> LogicalOperator:
+        return self
+
+
+class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
+    """Mixin for reading operators supporting predicate pushdown"""
+
+    def supports_predicate_pushdown(self) -> bool:
+        return False
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return None
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> LogicalOperator:
+        return self
+
+
+class PredicatePassThroughBehavior(Enum):
+    """Defines how predicates can be passed through an operator."""
+
+    # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
+    PASSTHROUGH = "passthrough"
+
+    # Predicate can be pushed through but needs column rebinding (e.g., Project)
+    PASSTHROUGH_WITH_SUBSTITUTION = "passthrough_with_substitution"
+
+    # Predicate can be pushed into each branch (e.g., Union)
+    PUSH_INTO_BRANCHES = "push_into_branches"
+
+    # Predicate can be conditionally pushed based on columns (e.g., Join)
+    CONDITIONAL = "conditional"
+
+
+class LogicalOperatorSupportsPredicatePassThrough(ABC):
+    """Mixin for operators that allow predicates to be pushed through them.
+
+    This is distinct from LogicalOperatorSupportsPredicatePushdown, which is for
+    operators that can *accept* predicates (like Read). This trait is for operators
+    that allow predicates to *pass through* them.
+    """
+
+    @abstractmethod
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        """Returns the predicate passthrough behavior for this operator."""
+        pass
+
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_SUBSTITUTION).
+
+        Returns:
+            Dict mapping from old_name -> new_name, or None if no rebinding needed
+        """
+        return None

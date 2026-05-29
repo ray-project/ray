@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
+from ray.data.util.expression_utils import _get_setting_with_copy_warning
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -217,36 +218,31 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        from ray.air.util.tensor_extensions.arrow import ArrowTensorType
-        from ray.air.util.transform_pyarrow import (
-            _concatenate_extension_column,
-            _is_column_extension_type,
+        from ray.data._internal.arrow_ops import transform_pyarrow
+        from ray.data._internal.tensor_extensions.arrow import (
+            get_arrow_extension_fixed_shape_tensor_types,
         )
 
-        if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(data.schema.types[0], ArrowTensorType)
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
-            # Arrow’s incorrect concatenation of extension arrays:
-            # https://issues.apache.org/jira/browse/ARROW-16503
-            return _concatenate_extension_column(data[TENSOR_COLUMN_NAME]).to_numpy(
-                zero_copy_only=False
+        column_values_ndarrays = []
+
+        for col in data.columns:
+            # Combine columnar values arrays to make these contiguous
+            # (making them compatible with numpy format)
+            combined_array = transform_pyarrow.combine_chunked_array(col)
+
+            column_values_ndarrays.append(
+                transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
             )
-        else:
-            output_dict = {}
-            for col_name in data.column_names:
-                col = data[col_name]
-                if col.num_chunks == 0:
-                    col = pyarrow.array([], type=col.type)
-                elif _is_column_extension_type(col):
-                    # Arrow’s incorrect concatenation of extension arrays:
-                    # https://issues.apache.org/jira/browse/ARROW-16503
-                    col = _concatenate_extension_column(col)
-                else:
-                    col = col.combine_chunks()
-                output_dict[col_name] = col.to_numpy(zero_copy_only=False)
-            return output_dict
+
+        arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+
+        # NOTE: This branch is here for backwards-compatibility
+        if data.column_names == [TENSOR_COLUMN_NAME] and (
+            isinstance(data.schema.types[0], arrow_fixed_shape_tensor_types)
+        ):
+            return column_values_ndarrays[0]
+
+        return dict(zip(data.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
@@ -290,14 +286,10 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
-    pd = _lazy_import_pandas()
-    try:
-        SettingWithCopyWarning = pd.core.common.SettingWithCopyWarning
-    except AttributeError:
-        # SettingWithCopyWarning was moved to pd.errors in Pandas 1.5.0.
-        SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
+    # Get the SettingWithCopyWarning class if available
+    SettingWithCopyWarning = _get_setting_with_copy_warning()
 
-    from ray.air.util.tensor_extensions.pandas import (
+    from ray.data._internal.tensor_extensions.pandas import (
         TensorArray,
         column_needs_tensor_extension,
     )
@@ -318,8 +310,9 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                 # https://stackoverflow.com/a/74193599
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", category=FutureWarning)
-                    warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                    df.loc[:, col_name] = TensorArray(col)
+                    if SettingWithCopyWarning is not None:
+                        warnings.simplefilter("ignore", category=SettingWithCopyWarning)
+                    df[col_name] = TensorArray(col)
             except Exception as e:
                 raise ValueError(
                     f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -333,13 +326,9 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
 
 def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     """Cast all tensor extension columns in df to NumPy ndarrays."""
-    pd = _lazy_import_pandas()
-    try:
-        SettingWithCopyWarning = pd.core.common.SettingWithCopyWarning
-    except AttributeError:
-        # SettingWithCopyWarning was moved to pd.errors in Pandas 1.5.0.
-        SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
-    from ray.air.util.tensor_extensions.pandas import TensorDtype
+    # Get the SettingWithCopyWarning class if available
+    SettingWithCopyWarning = _get_setting_with_copy_warning()
+    from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
     # Try to convert any tensor extension columns to ndarray columns.
     # TODO(Clark): Optimize this with propagated DataFrame metadata containing a list of
@@ -353,6 +342,7 @@ def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
             # https://stackoverflow.com/a/74193599
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=FutureWarning)
-                warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+                if SettingWithCopyWarning is not None:
+                    warnings.simplefilter("ignore", category=SettingWithCopyWarning)
+                df[col_name] = list(col.to_numpy())
     return df

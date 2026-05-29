@@ -58,7 +58,7 @@ class InstanceManager:
         """
         Updates the instance manager state.
 
-        If there's a any failure, no updates would be made and the reply
+        If there's any failure, no updates would be made and the reply
         would contain the latest version of the instance manager state,
         and the error info.
 
@@ -80,7 +80,7 @@ class InstanceManager:
                 f"Version mismatch: expected: {request.expected_version}, "
                 f"actual: {version}"
             )
-            logger.warn(err_str)
+            logger.warning(err_str)
             return self._get_update_im_state_reply(
                 StatusCode.VERSION_MISMATCH,
                 version,
@@ -110,7 +110,7 @@ class InstanceManager:
                 err_str = (
                     f"Version mismatch: expected: {version}, actual: {result.version}"
                 )
-                logger.warn(err_str)
+                logger.warning(err_str)
                 return self._get_update_im_state_reply(
                     StatusCode.VERSION_MISMATCH, result.version, err_str
                 )
@@ -198,6 +198,7 @@ class InstanceManager:
             instance.cloud_instance_id = update.cloud_instance_id
             instance.node_kind = update.node_kind
             instance.instance_type = update.instance_type
+            instance.node_id = update.ray_node_id
         elif update.new_instance_status == Instance.RAY_RUNNING:
             assert update.ray_node_id, "RAY_RUNNING update must have ray_node_id"
             instance.node_id = update.ray_node_id

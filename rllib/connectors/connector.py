@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 import gymnasium as gym
 
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AlgorithmConfigDict,
     TensorType,
 )
-from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -121,7 +121,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
+    def from_state(ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state is required, so that all Connectors are serializable.
@@ -269,7 +269,7 @@ class AgentConnector(Connector):
 
         Args:
             data: Env and agent IDs, plus arbitrary data item from a single agent
-            of an environment.
+                of an environment.
 
         Returns:
             A transformed piece of agent connector data.

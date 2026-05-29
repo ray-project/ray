@@ -1,9 +1,10 @@
-import re
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
+import re
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
-    """Nvidia GPU accelerators."""
+    """NVIDIA GPU accelerators."""
 
     @staticmethod
     def get_resource_name() -> str:
@@ -80,7 +81,18 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         if name is None:
             return None
         match = NVIDIA_GPU_NAME_PATTERN.match(name)
-        return match.group(1) if match else None
+        result = match.group(1) if match else None
+        if result and len(result) > 1:
+            return result
+        # The regex above is anchored on the second word being all uppercase,
+        # which works for datacenter cards ("Tesla V100-SXM2-16GB" -> "V100",
+        # "NVIDIA A100-SXM4-40GB" -> "A100") but fails on consumer cards
+        # whose product line is in mixed case ("NVIDIA GeForce RTX 5090"
+        # stops at the lowercase 'e' in "GeForce" and captures only "G").
+        # Fall back to a hyphen-joined product name so callers get a useful
+        # accelerator_type label like "GeForce-RTX-5090".
+        cleaned = re.sub(r"^NVIDIA\s+", "", name).strip()
+        return cleaned.replace(" ", "-") if cleaned else None
 
     @staticmethod
     def validate_resource_request_quantity(
@@ -92,7 +104,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_cuda_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
+        if env_bool(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
         os.environ[

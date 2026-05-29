@@ -14,20 +14,15 @@
 
 #pragma once
 
-#include <boost/algorithm/string.hpp>
 #include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/constants.h"
-#include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
-#include "ray/util/util.h"
-
-/// Limit the ID range to test for collisions.
-#define MAX_ID_TEST 8
 
 namespace ray {
 
@@ -40,22 +35,17 @@ enum PredefinedResourcesEnum {
   PredefinedResourcesEnum_MAX
 };
 
-const std::string kCPU_ResourceLabel = "CPU";
-const std::string kGPU_ResourceLabel = "GPU";
-const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
-const std::string kMemory_ResourceLabel = "memory";
-const std::string kBundle_ResourceLabel = "bundle";
+inline constexpr char kCPU_ResourceLabel[] = "CPU";
+inline constexpr char kGPU_ResourceLabel[] = "GPU";
+inline constexpr char kObjectStoreMemory_ResourceLabel[] = "object_store_memory";
+inline constexpr char kMemory_ResourceLabel[] = "memory";
+inline constexpr char kBundle_ResourceLabel[] = "bundle";
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
-  absl::flat_hash_map<std::string, int64_t> string_to_int_;
-  absl::flat_hash_map<int64_t, std::string> int_to_string_;
-  std::hash<std::string> hasher_;
-  mutable absl::Mutex mutex_;
-
  public:
-  StringIdMap(){};
-  ~StringIdMap(){};
+  StringIdMap() {}
+  ~StringIdMap() = default;
 
   /// Get integer ID associated with an existing string ID.
   ///
@@ -73,7 +63,7 @@ class StringIdMap {
   ///
   /// \param String ID to be inserted.
   /// \param max_id The number of unique possible ids. This is used
-  ///               to force collisions for testing. If -1, it is not used.
+  ///               to force collisions for testing. If 0, it is not used.
   /// \return The integer ID associated with string ID string_id.
   int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
 
@@ -86,6 +76,12 @@ class StringIdMap {
 
   /// Get number of identifiers.
   int64_t Count();
+
+ private:
+  absl::flat_hash_map<std::string, int64_t> string_to_int_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<int64_t, std::string> int_to_string_ ABSL_GUARDED_BY(mutex_);
+  const std::hash<std::string> hasher_{};
+  mutable absl::Mutex mutex_;
 };
 
 enum class SchedulingIDTag { Node, Resource };
@@ -144,15 +140,15 @@ inline std::ostream &operator<<(
 /// the singleton map with PredefinedResources.
 template <>
 inline StringIdMap &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
-  static std::unique_ptr<StringIdMap> map{[]() {
-    std::unique_ptr<StringIdMap> map(new StringIdMap());
-    map->InsertOrDie(kCPU_ResourceLabel, CPU)
+  static std::unique_ptr<StringIdMap> singleton_map{[]() {
+    std::unique_ptr<StringIdMap> map_ptr(new StringIdMap());
+    map_ptr->InsertOrDie(kCPU_ResourceLabel, CPU)
         .InsertOrDie(kGPU_ResourceLabel, GPU)
         .InsertOrDie(kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
         .InsertOrDie(kMemory_ResourceLabel, MEM);
-    return map;
+    return map_ptr;
   }()};
-  return *map;
+  return *singleton_map;
 }
 
 namespace scheduling {

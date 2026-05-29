@@ -5,7 +5,6 @@ import sys
 import pytest
 
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
-from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
 from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
@@ -78,26 +77,12 @@ def test_log_scheduling_updates():
         ],
         infeasible_cluster_resource_constraints=[
             ClusterResourceConstraint(
-                min_bundles=ResourceRequestUtil.group_by_count(
+                resource_requests=ResourceRequestUtil.group_by_count(
                     cluster_resource_constraints
                 )
             )
         ],
-        cluster_shape={"type-1": 1, "type-2": 2},
-        node_type_configs={
-            "type-1": NodeTypeConfig(
-                name="type-1",
-                max_worker_nodes=10,
-                min_worker_nodes=1,
-                resources={"CPU": 1, "GPU": 1},
-            ),
-            "type-2": NodeTypeConfig(
-                name="type-2",
-                max_worker_nodes=10,
-                min_worker_nodes=1,
-                resources={"CPU": 2, "GPU": 2, "TPU": 1},
-            ),
-        },
+        cluster_resources={"CPU": 5, "GPU": 5, "TPU": 2},
     )
 
     assert mock_logger.get_logs("info") == [
@@ -117,8 +102,26 @@ def test_log_scheduling_updates():
 
     assert mock_logger.get_logs("error") == []
     assert mock_logger.get_logs("debug") == [
-        "Current cluster shape: {'type-1': 1, 'type-2': 2}."
+        "Current cluster resources: {'CPU': 5, 'GPU': 5, 'TPU': 2}."
     ]
+
+
+def test_log_scheduling_updates_without_cluster_shape():
+    mock_logger = MockEventLogger(logger)
+    event_logger = AutoscalerEventLogger(mock_logger, log_cluster_shape=False)
+
+    event_logger.log_cluster_scheduling_update(
+        launch_requests=[launch_request("m4.large", 1)],
+        terminate_requests=[termination_request("m4.xlarge", OUTDATED)],
+        infeasible_requests=[ResourceRequestUtil.make({"CPU": 4})],
+        cluster_resources={"CPU": 5},
+    )
+
+    assert mock_logger.get_logs("info") == []
+    assert mock_logger.get_logs("warning") == [
+        "No available node types can fulfill resource requests {'CPU': 4.0}*1. Add suitable node types to this cluster to resolve this issue."
+    ]
+    assert mock_logger.get_logs("debug") == []
 
 
 if __name__ == "__main__":

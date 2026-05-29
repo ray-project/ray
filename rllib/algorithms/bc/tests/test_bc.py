@@ -1,104 +1,146 @@
-import os
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 import ray
-import ray.rllib.algorithms.bc as bc
-from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
-    check_train_results,
-    framework_iterator,
+from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    LEARNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
 
 class TestBC(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         ray.init()
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_bc_compilation_and_learning_from_offline_file(self):
-        """Test whether BC can be built with all frameworks.
+        # Define the data paths.
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
+        base_path = Path(__file__).parents[3]
+        print(f"base_path={base_path}")
+        data_path = "local://" / base_path / data_path
 
-        And learns from a historic-data file (while being evaluated on an
-        actual env using evaluation_num_workers > 0).
-        """
-        rllib_dir = Path(__file__).parents[3]
-        print("rllib_dir={}".format(rllib_dir))
-        # This has still to be done until `pathlib` will be used in the readers.
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print(f"data_file={data_file} exists={os.path.isfile(data_file)}")
+        print(f"data_path={data_path}")
 
+        # Define the BC config.
         config = (
-            bc.BCConfig()
+            BCConfig()
+            .environment(env="CartPole-v1")
+            .learners(
+                num_learners=0,
+            )
             .evaluation(
                 evaluation_interval=3,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
-                evaluation_config=bc.BCConfig.overrides(input_="sampler"),
             )
-            .offline_data(input_=[data_file])
+            # Note, the `input_` argument is the major argument for the
+            # new offline API.
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
+            .training(
+                lr=0.0008,
+                train_batch_size_per_learner=2000,
+            )
         )
+
         num_iterations = 350
-        min_reward = 75.0
+        min_return_to_reach = 120.0
 
-        # Test for RLModule API and ModelV2.
-        for rl_modules in [True, False]:
-            config.experimental(_enable_new_api_stack=rl_modules)
-            # Old and new stack support different frameworks
-            if rl_modules:
-                frameworks_to_test = ("torch", "tf2")
+        # TODO (simon): Add support for recurrent modules.
+        algo = config.build()
+        learnt = False
+        for i in range(num_iterations):
+            results = algo.train()
+            print(results)
+
+            eval_results = results.get(EVALUATION_RESULTS, {})
+            if eval_results:
+                episode_return_mean = eval_results[ENV_RUNNER_RESULTS][
+                    EPISODE_RETURN_MEAN
+                ]
+                print(f"iter={i}, R={episode_return_mean}")
+                if episode_return_mean > min_return_to_reach:
+                    print("BC has learnt the task!")
+                    learnt = True
+                    break
+
+        if not learnt:
+            raise ValueError(
+                f"`BC` did not reach {min_return_to_reach} reward from "
+                "expert offline data!"
+            )
+
+        algo.stop()
+
+    def test_bc_lr_schedule(self):
+        # Define the data paths.
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
+        base_path = Path(__file__).parents[3]
+        data_path = "local://" / base_path / data_path
+
+        config = (
+            BCConfig()
+            .environment(env="CartPole-v1")
+            .learners(
+                num_learners=0,
+            )
+            .evaluation(
+                evaluation_interval=3,
+                evaluation_num_env_runners=1,
+                evaluation_duration=5,
+                evaluation_parallel_to_training=True,
+            )
+            # Note, the `input_` argument is the major argument for the
+            # new offline API.
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
+            .training(
+                lr=[
+                    [0, 0.001],
+                    [3000, 0.01],
+                ],
+                train_batch_size_per_learner=2000,
+            )
+        )
+        algo = config.build()
+
+        done = False
+        while not done:
+            results = algo.train()
+            ts = results[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+            assert ts > 0
+            lr = results[LEARNER_RESULTS][DEFAULT_POLICY_ID][
+                "default_optimizer_learning_rate"
+            ]
+            if ts < 3000:
+                # The learning rate should be linearly interpolated.
+                expected_lr = 0.001 + (ts / 3000) * (0.01 - 0.001)
+                self.assertAlmostEqual(lr, expected_lr, places=6)
             else:
-                frameworks_to_test = ("torch", "tf")
+                self.assertEqual(lr, 0.01)
+                done = True
 
-            for _ in framework_iterator(config, frameworks=frameworks_to_test):
-                for recurrent in [True, False]:
-                    # We only test recurrent networks with RLModules.
-                    if recurrent:
-                        # TODO (Artur): We read input data without a time-dimensions.
-                        #  In order for a recurrent offline learning RL Module to
-                        #  work, the input data needs to be transformed do add a
-                        #  time-dimension.
-                        continue
-
-                    config.training(model={"use_lstm": recurrent})
-                    algo = config.build(env="CartPole-v1")
-                    learnt = False
-                    for i in range(num_iterations):
-                        results = algo.train()
-                        check_train_results(results)
-                        print(results)
-
-                        eval_results = results.get("evaluation")
-                        if eval_results:
-                            print(
-                                "iter={} R={}".format(
-                                    i, eval_results["episode_reward_mean"]
-                                )
-                            )
-                            # Learn until good reward is reached in the actual env.
-                            if eval_results["episode_reward_mean"] > min_reward:
-                                print("learnt!")
-                                learnt = True
-                                break
-
-                    if not learnt:
-                        raise ValueError(
-                            "`BC` did not reach {} reward from expert offline "
-                            "data!".format(min_reward)
-                        )
-
-                    check_compute_single_action(algo, include_prev_action_reward=True)
-
-                    algo.stop()
+        algo.stop()
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

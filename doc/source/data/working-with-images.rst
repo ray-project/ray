@@ -20,13 +20,13 @@ Reading images
 Ray Data can read images from a variety of formats.
 
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
     .. tab-item:: Raw images
 
-        To load raw images like JPEG files, call :func:`~ray.data.read_images`.
+        To load raw images like JPEG files, call :func:`~ray.data.read_images`.  In the schema, the column name defaults to "image".
 
         .. note::
 
@@ -47,7 +47,28 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+
+    .. tab-item:: Images from Dataset of URIs
+
+        To load images from a dataset of URIs, use the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression.
+
+        .. testcode::
+
+            import ray
+            from ray.data.expressions import download
+
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
+            ds = ds.with_column("bytes", download("image_url"))
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column     Type
+            ------     ----
+            image_url  string
+            bytes      null
 
     .. tab-item:: NumPy
 
@@ -65,7 +86,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            data    numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            data    ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: TFRecords
 
@@ -106,7 +127,7 @@ To view the full list of supported file formats, see the
             def decode_bytes(row: Dict[str, Any]) -> Dict[str, Any]:
                 data = row["image"]
                 image = Image.open(io.BytesIO(data))
-                row["image"] = np.array(image)
+                row["image"] = np.asarray(image)
                 return row
 
             ds = (
@@ -128,7 +149,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
             label   int64
 
     .. tab-item:: Parquet
@@ -147,7 +168,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            img     struct<bytes: binary, path: string>
             label   int64
 
 
@@ -173,7 +194,7 @@ To transform images, call :meth:`~ray.data.Dataset.map` or
 
     ds = (
         ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages")
-        .map_batches(increase_brightness)
+        .map_batches(increase_brightness, batch_size="auto")
     )
 
 For more information on transforming data, see
@@ -230,12 +251,13 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
     predictions = ds.map_batches(
         ImageClassifier,
-        concurrency=2,
+        compute=ray.data.ActorPoolStrategy(size=2),
         batch_size=4
     )
     predictions.show(3)
 
 .. testoutput::
+    :options: +SKIP
 
     {'class': 118}
     {'class': 153}
@@ -251,7 +273,7 @@ Saving images
 -------------
 
 Save images with formats like PNG, Parquet, and NumPy. To view all supported formats,
-see the :ref:`Input/Output reference <input-output>`.
+see the :ref:`Saving Data API <saving-data-api>`.
 
 .. tab-set::
 

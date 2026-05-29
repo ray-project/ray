@@ -1,7 +1,8 @@
-import ray
 import os
-from functools import wraps
 import threading
+from functools import wraps
+
+import ray
 
 auto_init_lock = threading.Lock()
 enable_auto_connect = os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"

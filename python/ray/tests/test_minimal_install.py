@@ -3,13 +3,14 @@
 Tests that are specific to minimal installations.
 """
 
-import unittest.mock as mock
+import importlib
 import itertools
-import packaging
 import os
 import sys
+import unittest.mock as mock
 from typing import Dict
 
+import packaging
 import pytest
 
 
@@ -35,6 +36,8 @@ def test_correct_python_version():
 
 
 class MockBaseModel:
+    model_fields = {}
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -48,7 +51,6 @@ def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
     This module requires special handling to:
         - Make `BaseModel` a class object so type hints work.
         - Set the `__version__` attribute appropriately.
-        - Also mock `pydantic.v1` for `pydantic >= 2.0`.
         - Also mock `pydantic.dataclasses`.
 
     Returns a dict of mocked modules.
@@ -61,13 +63,10 @@ def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
     if packaging.version.parse(pydantic_version) >= packaging.version.parse("1.9.0"):
         mock_modules["pydantic"].__version__ = pydantic_version
 
-    if packaging.version.parse(pydantic_version) >= packaging.version.parse("2.0.0"):
-        mock_modules["pydantic.v1"] = mock_modules["pydantic"]
-
     return mock_modules
 
 
-@pytest.mark.parametrize("pydantic_version", ["1.8.0", "1.9.0", "2.0.0"])
+@pytest.mark.parametrize("pydantic_version", ["2.0.0"])
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL", "0") != "1",
     reason="Skip unless running in a minimal install.",
@@ -92,14 +91,23 @@ def test_module_import_with_various_non_minimal_deps(pydantic_version: str):
                     mock_modules[mod] = mock.MagicMock()
 
             with mock.patch.dict("sys.modules", mock_modules):
-                from ray.dashboard.utils import get_all_modules
-                from ray.dashboard.utils import DashboardHeadModule
+                from ray.dashboard.utils import DashboardHeadModule, get_all_modules
 
                 get_all_modules(DashboardHeadModule)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL", "0") != "1",
+    reason="Skip unless running in a minimal install.",
+)
+def test_pydantic_v1_is_unsupported():
+    mock_modules = _make_mock_pydantic_modules("1.9.0")
+
+    with mock.patch.dict("sys.modules", mock_modules):
+        sys.modules.pop("ray._common.pydantic_compat", None)
+        with pytest.raises(ImportError, match="Pydantic v1 is no longer supported"):
+            importlib.import_module("ray._common.pydantic_compat")
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

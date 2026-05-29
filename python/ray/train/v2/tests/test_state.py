@@ -1,0 +1,1426 @@
+import json
+import threading
+import time
+from collections import OrderedDict, defaultdict
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+import ray
+from ray.actor import ActorHandle
+from ray.data._internal.execution.interfaces.execution_options import (
+    ExecutionOptions,
+    ExecutionResources,
+)
+from ray.runtime_env import RuntimeEnv
+from ray.train import BackendConfig, DataConfig
+from ray.train.v2._internal.callbacks.state_manager import (
+    StateManagerCallback,
+    TrainingFramework,
+    _get_framework_version,
+)
+from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
+from ray.train.v2._internal.execution.context import DistributedContext
+from ray.train.v2._internal.execution.controller.state import (
+    ErroredState,
+    FinishedState,
+    InitializingState,
+    ReschedulingState,
+    ResizingState,
+    RestartingState,
+    RunningState,
+    SchedulingState,
+    ShuttingDownState,
+)
+from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
+from ray.train.v2._internal.execution.worker_group import (
+    ActorMetadata,
+    Worker,
+    WorkerGroup,
+    WorkerGroupContext,
+)
+from ray.train.v2._internal.state.schema import (
+    ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
+    DataExecutionOptions,
+    ExecutionOptions as ExecutionOptionsSchema,
+    FailureConfig as FailureConfigSchema,
+    RunAttemptStatus,
+    RunConfig as RunConfigSchema,
+    RunSettings,
+    RunStatus,
+    ScalingConfig as ScalingConfigSchema,
+    TrainResources,
+    TrainRun,
+    TrainRunAttempt,
+    _to_json_serializable_value,
+)
+from ray.train.v2._internal.state.state_actor import (
+    TrainStateActor,
+    get_state_actor,
+)
+from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2._internal.state.util import (
+    _DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+    construct_data_config,
+    execution_options_to_model,
+)
+from ray.train.v2.api.config import (
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+)
+from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
+from ray.train.v2.tests.util import (
+    create_dummy_run_context,
+    create_mock_train_run,
+    create_mock_train_run_attempt,
+)
+from ray.util.state.common import ActorState
+
+
+def create_mock_actor_state(state: ActorStatus):
+    return ActorState(
+        state=state,
+        actor_id="mock_actor_id",
+        class_name="mock_class_name",
+        job_id="mock_job_id",
+        name="mock_name",
+        node_id="mock_node_id",
+        pid=1234,
+        ray_namespace="mock_ray_namespace",
+    )
+
+
+@pytest.fixture(scope="function")
+def ray_start_regular():
+    ray.init()
+    yield
+    ray.shutdown()
+
+
+@pytest.fixture
+def mock_worker_group_context():
+    context = MagicMock(spec=WorkerGroupContext)
+    context.run_attempt_id = "attempt_1"
+    context.num_workers = 2
+    context.resources_per_worker = {"CPU": 1}
+    return context
+
+
+def get_mock_actor(actor_id: str):
+    actor = MagicMock(spec=ActorHandle)
+    actor._actor_id.hex.return_value = actor_id
+    return actor
+
+
+@pytest.fixture
+def mock_worker():
+    actor = get_mock_actor("actor_1")
+
+    metadata = MagicMock(spec=ActorMetadata)
+    metadata.node_id = "node_1"
+    metadata.node_ip = "127.0.0.1"
+    metadata.pid = 1000
+    metadata.gpu_ids = []
+
+    distributed_context = MagicMock(spec=DistributedContext)
+    distributed_context.world_rank = 0
+    distributed_context.local_rank = 0
+    distributed_context.node_rank = 0
+
+    return Worker(
+        actor=actor,
+        metadata=metadata,
+        resources={"CPU": 1},
+        distributed_context=distributed_context,
+        log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
+    )
+
+
+@pytest.fixture
+def mock_worker_group(mock_worker_group_context, mock_worker):
+    group = MagicMock(spec=WorkerGroup)
+    group.get_worker_group_context.return_value = mock_worker_group_context
+    group.get_worker_group_state.return_value = MagicMock(workers=[mock_worker])
+    group.get_latest_poll_status.return_value = None
+
+    # Mocks the return value of _get_framework_version
+    group.execute_single.return_value = {"ray": ray.__version__}
+
+    return group
+
+
+@pytest.fixture
+def callback(monkeypatch):
+    # Mock the runtime context to return a fixed actor ID
+    mock_runtime_context = MagicMock()
+    mock_runtime_context.get_job_id.return_value = "test_job_id"
+    mock_runtime_context.get_actor_id.return_value = "test_controller_id"
+    monkeypatch.setattr(
+        ray.runtime_context, "get_runtime_context", lambda: mock_runtime_context
+    )
+
+    # Mock the log path function
+    expected_controller_log_path = (
+        "/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log"
+    )
+    monkeypatch.setattr(
+        ray.train.v2._internal.callbacks.state_manager,
+        "get_train_application_controller_log_path",
+        lambda: expected_controller_log_path,
+    )
+
+    callback = StateManagerCallback(datasets={})
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
+    return callback
+
+
+# =============================================================================
+# TrainStateActor: CRUD and dead-controller reconciliation
+# =============================================================================
+
+
+def test_train_state_actor_create_and_get_run(ray_start_regular):
+    """Test basic CRUD operations for train runs in the state actor."""
+    actor = ray.remote(TrainStateActor).remote()
+
+    # Test creation with minimal fields
+    run = TrainRun(
+        id="test_run",
+        name="test",
+        job_id="job_1",
+        status=RunStatus.INITIALIZING,
+        status_detail=None,
+        controller_actor_id="controller_1",
+        start_time_ns=1000,
+        end_time_ns=None,
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config=None,
+            backend_config=BackendConfigSchema(framework=None, config={}),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                resources_per_worker=None,
+                placement_strategy="PACK",
+                accelerator_type=None,
+                use_tpu=False,
+                topology=None,
+                bundle_label_selector=None,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                data_execution_options=DataExecutionOptions(
+                    default=execution_options_to_model(
+                        DataConfig.default_ingest_options()
+                    ),
+                ),
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(
+                    num_to_keep=None,
+                    checkpoint_score_attribute=None,
+                    checkpoint_score_order="max",
+                ),
+                storage_path="s3://bucket/path",
+            ),
+        ),
+    )
+
+    ray.get(actor.create_or_update_train_run.remote(run))
+    runs = ray.get(actor.get_train_runs.remote())
+
+    assert len(runs) == 1
+    assert "test_run" in runs
+    stored_run = runs["test_run"]
+    assert stored_run == run  # Check full equality
+
+    # Test update preserves unmodified fields
+    updated_run = run.copy(
+        update={"status": RunStatus.RUNNING, "status_detail": "Now running"}
+    )
+    ray.get(actor.create_or_update_train_run.remote(updated_run))
+
+    runs = ray.get(actor.get_train_runs.remote())
+    stored_run = runs["test_run"]
+    assert stored_run == updated_run
+    assert stored_run.start_time_ns == run.start_time_ns  # Original field preserved
+
+
+def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
+    actor = ray.remote(TrainStateActor).remote()
+
+    resources = [TrainResources(resources={"CPU": 1})]
+    run_attempt = TrainRunAttempt(
+        run_id="test_run",
+        attempt_id="attempt_1",
+        status=RunAttemptStatus.PENDING,
+        status_detail=None,
+        start_time_ns=1000,
+        resources=resources,
+        workers=[],
+    )
+
+    # Test creation
+    ray.get(actor.create_or_update_train_run_attempt.remote(run_attempt))
+    attempts = ray.get(actor.get_train_run_attempts.remote())
+    assert "test_run" in attempts
+    assert "attempt_1" in attempts["test_run"]
+
+    attempt = attempts["test_run"]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.PENDING
+    assert attempt.start_time_ns == 1000
+    assert attempt.resources == resources
+    assert len(attempt.workers) == 0
+
+    # Test update
+    updated_attempt = run_attempt.copy(update={"status": RunAttemptStatus.RUNNING})
+    ray.get(actor.create_or_update_train_run_attempt.remote(updated_attempt))
+    attempts = ray.get(actor.get_train_run_attempts.remote())
+    assert attempts["test_run"]["attempt_1"].status == RunAttemptStatus.RUNNING
+
+
+def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
+    # Monkeypatch get_actor to return correct actor state per controller actor ID.
+    def get_actor(actor_id: str, timeout: float):
+        if actor_id == "nonexistent_controller_no_attempts_id":
+            return None
+        if actor_id in [
+            "dead_controller_one_attempt_id",
+            "dead_controller_two_attempts_id",
+            "finished_controller_id",
+        ]:
+            return create_mock_actor_state(state="DEAD")
+        if actor_id == "live_controller_one_attempt_id":
+            return create_mock_actor_state(state="ALIVE")
+        raise ValueError(f"Unknown actor {actor_id}.")
+
+    monkeypatch.setattr("ray.train.v2._internal.state.util.get_actor", get_actor)
+    monkeypatch.setattr("uuid.uuid4", lambda: MagicMock(hex="mock_uuid"))
+    monkeypatch.setattr("time.time_ns", lambda: 1000)
+
+    # Create TrainStateActor with interesting runs and run attempts.
+    # NOTE: TrainStateActor will poll for real but its updates are idempotent.
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        controllers_to_poll_per_iteration=5,
+    )
+    finished_controller_run = create_mock_train_run(
+        status=RunStatus.FINISHED,
+        controller_actor_id="finished_controller_id",
+        id="finished_controller_run_id",
+    )
+    live_controller_one_attempt_run = create_mock_train_run(
+        status=RunStatus.RUNNING,
+        controller_actor_id="live_controller_one_attempt_id",
+        id="live_controller_one_attempt_run_id",
+    )
+    actor._runs = OrderedDict(
+        {
+            "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
+                status=RunStatus.INITIALIZING,
+                controller_actor_id="nonexistent_controller_no_attempts_id",
+                id="nonexistent_controller_no_attempts_run_id",
+            ),
+            "dead_controller_one_attempt_run_id": create_mock_train_run(
+                status=RunStatus.INITIALIZING,
+                controller_actor_id="dead_controller_one_attempt_id",
+                id="dead_controller_one_attempt_run_id",
+            ),
+            "dead_controller_two_attempts_run_id": create_mock_train_run(
+                status=RunStatus.SCHEDULING,
+                controller_actor_id="dead_controller_two_attempts_id",
+                id="dead_controller_two_attempts_run_id",
+            ),
+            "finished_controller_run_id": finished_controller_run,
+            "live_controller_one_attempt_run_id": live_controller_one_attempt_run,
+        }
+    )
+    live_controller_one_attempt_run_attempt = create_mock_train_run_attempt(
+        status=RunAttemptStatus.RUNNING,
+        run_id="live_controller_one_attempt_run_id",
+        attempt_id="attempt_1",
+    )
+    dead_controller_two_attempts_first_attempt = (
+        create_mock_train_run_attempt(
+            attempt_id="attempt_1",
+            status=RunAttemptStatus.ERRORED,
+            run_id="dead_controller_two_attempts_run_id",
+        ),
+    )
+    actor._run_attempts = {
+        "nonexistent_controller_no_attempts_run_id": {},
+        "dead_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                attempt_id="attempt_1",
+                status=RunAttemptStatus.PENDING,
+                run_id="dead_controller_one_attempt_run_id",
+            ),
+        },
+        "dead_controller_two_attempts_run_id": OrderedDict(
+            {
+                "attempt_1": dead_controller_two_attempts_first_attempt,
+                "attempt_2": create_mock_train_run_attempt(
+                    status=RunAttemptStatus.RUNNING,
+                    attempt_id="attempt_2",
+                    run_id="dead_controller_two_attempts_run_id",
+                ),
+            }
+        ),
+        "finished_controller_run_id": {},
+        "live_controller_one_attempt_run_id": {
+            "attempt_1": live_controller_one_attempt_run_attempt,
+        },
+    }
+
+    # Assert correct runs and run attempts get aborted.
+    assert (
+        actor._abort_live_runs_with_dead_controllers(
+            "dead_controller_two_attempts_run_id"
+        )
+        == "dead_controller_two_attempts_run_id"
+    )
+    assert actor._runs == OrderedDict(
+        {
+            "nonexistent_controller_no_attempts_run_id": create_mock_train_run(
+                status=RunStatus.ABORTED,
+                controller_actor_id="nonexistent_controller_no_attempts_id",
+                end_time_ns=1000,
+                id="nonexistent_controller_no_attempts_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            ),
+            "dead_controller_one_attempt_run_id": create_mock_train_run(
+                status=RunStatus.ABORTED,
+                controller_actor_id="dead_controller_one_attempt_id",
+                end_time_ns=1000,
+                id="dead_controller_one_attempt_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            ),
+            "dead_controller_two_attempts_run_id": create_mock_train_run(
+                status=RunStatus.ABORTED,
+                controller_actor_id="dead_controller_two_attempts_id",
+                end_time_ns=1000,
+                id="dead_controller_two_attempts_run_id",
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            ),
+            "finished_controller_run_id": finished_controller_run,
+            "live_controller_one_attempt_run_id": live_controller_one_attempt_run,
+        }
+    )
+    assert actor._run_attempts == {
+        "nonexistent_controller_no_attempts_run_id": {},
+        "dead_controller_one_attempt_run_id": {
+            "attempt_1": create_mock_train_run_attempt(
+                status=RunAttemptStatus.ABORTED,
+                run_id="dead_controller_one_attempt_run_id",
+                attempt_id="attempt_1",
+                end_time_ns=1000,
+                worker_status=ActorStatus.DEAD,
+                status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+            )
+        },
+        "dead_controller_two_attempts_run_id": OrderedDict(
+            {
+                "attempt_1": dead_controller_two_attempts_first_attempt,
+                "attempt_2": create_mock_train_run_attempt(
+                    status=RunAttemptStatus.ABORTED,
+                    run_id="dead_controller_two_attempts_run_id",
+                    attempt_id="attempt_2",
+                    end_time_ns=1000,
+                    worker_status=ActorStatus.DEAD,
+                    status_detail=_DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+                ),
+            }
+        ),
+        "finished_controller_run_id": {},
+        "live_controller_one_attempt_run_id": {
+            "attempt_1": live_controller_one_attempt_run_attempt,
+        },
+    }
+
+
+@patch("ray.train.v2._internal.state.util.get_actor", autospec=True)
+def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
+    mock_get_actor,
+):
+    mock_get_actor.side_effect = ray.util.state.exception.ServerUnavailable
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        reconciliation_interval_s=0,
+    )
+    actor.create_or_update_train_run(
+        create_mock_train_run(
+            status=RunStatus.RUNNING,
+            controller_actor_id="controller_actor_id",
+            id="run_id",
+        )
+    )
+
+    # Still RUNNING after ServerUnavailable
+    while mock_get_actor.call_count == 0:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.RUNNING
+
+    # ABORTED after detecting dead controller
+    mock_get_actor.side_effect = lambda actor_id, timeout: create_mock_actor_state(
+        state="DEAD"
+    )
+    while actor.get_train_runs()["run_id"].status != RunStatus.ABORTED:
+        time.sleep(0.01)
+    assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
+
+
+# =============================================================================
+# TrainStateManager: run and run-attempt lifecycle
+# =============================================================================
+
+
+# max_concurrency=2 lets open_gate run alongside a gated create_or_update call;
+# otherwise the actor's single-threaded queue would deadlock.
+@ray.remote(max_concurrency=2)
+class _GatedStateActor:
+    """Mimics TrainStateActor but blocks create_or_update calls until released.
+
+    Used to verify that TrainStateManager.create_*/update_* calls with block=True
+    do not return until the state actor has finished processing the request.
+    """
+
+    def __init__(self):
+        self._runs = {}
+        self._run_attempts = defaultdict(dict)
+        self._gate_open = False
+
+    def open_gate(self):
+        self._gate_open = True
+
+    def _wait_for_gate(self):
+        while not self._gate_open:
+            time.sleep(0.01)
+
+    def create_or_update_train_run(self, run):
+        self._wait_for_gate()
+        self._runs[run.id] = run
+
+    def create_or_update_train_run_attempt(self, attempt):
+        self._wait_for_gate()
+        self._run_attempts[attempt.run_id][attempt.attempt_id] = attempt
+
+    def get_train_runs(self):
+        return self._runs
+
+    def get_train_run_attempts(self):
+        return self._run_attempts
+
+
+def test_create_train_run_blocks_for_caller_death_safety(
+    ray_start_regular, monkeypatch
+):
+    """create_train_run must not return until the state actor has finished
+    recording the run.
+
+    Without this, the controller could exit between .remote() submission and
+    the task being delivered to the state actor, losing the run entirely.
+    """
+    gated = _GatedStateActor.remote()
+    monkeypatch.setattr(
+        "ray.train.v2._internal.state.state_manager.get_or_create_state_actor",
+        lambda: gated,
+    )
+
+    manager = TrainStateManager()
+    finished = threading.Event()
+
+    def call():
+        manager.create_train_run(
+            id="test_run",
+            name="test",
+            job_id="job_1",
+            controller_actor_id="controller_1",
+            controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+            run_config=RunConfig(
+                name="test",
+                failure_config=FailureConfig(max_failures=1),
+                storage_path="s3://bucket/path",
+            ),
+            train_loop_config=None,
+            scaling_config=ScalingConfig(num_workers=1),
+            backend_config=BackendConfig(),
+            datasets={},
+            dataset_config=DataConfig(),
+        )
+        finished.set()
+
+    thread = threading.Thread(target=call)
+    thread.start()
+
+    # While the gate is closed, the manager must remain blocked.
+    finished.wait(timeout=1.0)
+    assert not finished.is_set(), (
+        "create_train_run returned before the state actor processed the "
+        "request — block=True is not enforcing caller-death safety."
+    )
+
+    # Opening the gate lets the state actor finish; the manager call unblocks.
+    ray.get(gated.open_gate.remote())
+    finished.wait(timeout=10)
+    assert finished.is_set()
+    thread.join()
+
+    runs = ray.get(gated.get_train_runs.remote())
+    assert "test_run" in runs
+
+
+def test_update_train_run_attempt_finished_blocks_for_caller_death_safety(
+    ray_start_regular, monkeypatch
+):
+    """update_train_run_attempt_finished must not return until the state actor
+    has recorded the terminal status.
+
+    Without blocking on terminal-status writes, the controller could exit with
+    the attempt still showing as RUNNING in the state actor.
+    """
+    gated = _GatedStateActor.remote()
+    monkeypatch.setattr(
+        "ray.train.v2._internal.state.state_manager.get_or_create_state_actor",
+        lambda: gated,
+    )
+
+    manager = TrainStateManager()
+    # Skip the create flow (which uses block=False for attempt creation) and
+    # seed the manager's in-memory state so the terminal update has something
+    # to act on.
+    manager._run_attempts["test_run"]["attempt_1"] = create_mock_train_run_attempt(
+        attempt_id="attempt_1",
+        run_id="test_run",
+        status=RunAttemptStatus.RUNNING,
+    )
+
+    finished = threading.Event()
+
+    def call():
+        manager.update_train_run_attempt_finished(
+            run_id="test_run", attempt_id="attempt_1"
+        )
+        finished.set()
+
+    thread = threading.Thread(target=call)
+    thread.start()
+
+    finished.wait(timeout=1.0)
+    assert not finished.is_set(), (
+        "update_train_run_attempt_finished returned before the state actor "
+        "processed the request — block=True is not enforcing caller-death "
+        "safety on terminal status."
+    )
+
+    ray.get(gated.open_gate.remote())
+    finished.wait(timeout=10)
+    assert finished.is_set()
+    thread.join()
+
+    attempts = ray.get(gated.get_train_run_attempts.remote())
+    assert attempts["test_run"]["attempt_1"].status == RunAttemptStatus.FINISHED
+
+
+def test_train_state_manager_run_lifecycle(ray_start_regular):
+    """Test the complete lifecycle of a training run through the state manager."""
+    manager = TrainStateManager()
+
+    # Test run creation with validation
+    run_id = "test_run"
+    manager.create_train_run(
+        id=run_id,
+        name="test",
+        job_id="job_1",
+        controller_actor_id="controller_1",
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(
+            name="test",
+            failure_config=FailureConfig(max_failures=1),
+            worker_runtime_env={"type": "conda"},
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
+            storage_path="s3://bucket/path",
+            storage_filesystem=None,
+        ),
+        train_loop_config={"epochs": 10},
+        scaling_config=ScalingConfig(num_workers=2),
+        backend_config=BackendConfig(),
+        datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
+        dataset_config=DataConfig(datasets_to_split="all"),
+    )
+
+    def get_run():
+        state_actor = get_state_actor()
+        runs = ray.get(state_actor.get_train_runs.remote())
+        return runs[run_id]
+
+    # Verify initial state
+    run = get_run()
+    assert run.status == RunStatus.INITIALIZING
+    assert run.start_time_ns is not None
+    assert run.end_time_ns is None
+
+    # Test state transitions with timestamps
+    state_transitions = [
+        (manager.update_train_run_scheduling, RunStatus.SCHEDULING),
+        (manager.update_train_run_running, RunStatus.RUNNING),
+        (manager.update_train_run_finished, RunStatus.FINISHED),
+    ]
+
+    for update_fn, expected_status in state_transitions:
+        update_fn(run_id)
+        run = get_run()
+        assert run.status == expected_status
+
+        if expected_status == RunStatus.FINISHED:
+            assert run.end_time_ns is not None
+        else:
+            assert run.end_time_ns is None
+
+
+def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
+    manager = TrainStateManager()
+
+    # Create initial run
+    manager.create_train_run(
+        id="test_run",
+        name="test",
+        job_id="job_1",
+        controller_actor_id="controller_1",
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(
+            name="test",
+            failure_config=FailureConfig(max_failures=1),
+            worker_runtime_env=RuntimeEnv(env_vars={"DUMMY_VAR": "abcd"}),
+            checkpoint_config=CheckpointConfig(),
+            storage_path="s3://bucket/path",
+        ),
+        train_loop_config={"epochs": 10},
+        scaling_config=ScalingConfig(num_workers=2),
+        backend_config=BackendConfig(),
+        datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
+        dataset_config=DataConfig(datasets_to_split="all"),
+    )
+
+    # Test attempt creation
+    manager.create_train_run_attempt(
+        run_id="test_run",
+        attempt_id="attempt_1",
+        num_workers=2,
+        resources_per_worker={"CPU": 1},
+    )
+
+    state_actor = get_state_actor()
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    assert "test_run" in attempts
+    assert "attempt_1" in attempts["test_run"]
+    attempt = attempts["test_run"]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.PENDING
+    assert len(attempt.resources) == 2
+    assert all(r.resources == {"CPU": 1} for r in attempt.resources)
+
+    # Test running state with workers
+    workers = [
+        Worker(
+            actor=get_mock_actor(f"actor_{i}"),
+            metadata=MagicMock(
+                node_id="node_1", node_ip="127.0.0.1", pid=1000 + i, gpu_ids=[]
+            ),
+            resources={"CPU": 1},
+            distributed_context=MagicMock(world_rank=i, local_rank=i, node_rank=0),
+            log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
+        )
+        for i in range(2)
+    ]
+
+    manager.update_train_run_attempt_running(
+        run_id="test_run",
+        attempt_id="attempt_1",
+        workers=workers,
+    )
+
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = attempts["test_run"]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.RUNNING
+    assert len(attempt.workers) == 2
+    assert all(w.status == ActorStatus.ALIVE for w in attempt.workers)
+
+    # Test finished state
+    manager.update_train_run_attempt_finished(
+        run_id="test_run",
+        attempt_id="attempt_1",
+    )
+
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = attempts["test_run"]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.FINISHED
+    assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 2
+    assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
+
+
+# =============================================================================
+# StateManagerCallback: controller state, worker group, and log paths
+# =============================================================================
+
+
+def test_callback_controller_state_transitions(ray_start_regular, callback):
+    states = [
+        InitializingState(),
+        SchedulingState(
+            scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
+        ),
+        RunningState(),
+        RestartingState(
+            training_failed_error=WorkerGroupError(error_message="", worker_failures={})
+        ),
+        SchedulingState(
+            scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
+        ),
+        RunningState(),
+        ResizingState(
+            scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
+        ),
+        SchedulingState(
+            scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
+        ),
+        ReschedulingState(
+            training_failed_error=ControllerError(WorkerGroupStartupTimeoutError(0))
+        ),
+        SchedulingState(
+            scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
+        ),
+        RunningState(),
+        ShuttingDownState(next_state=FinishedState()),
+        FinishedState(),
+    ]
+    expected_statuses = [
+        RunStatus.INITIALIZING,
+        RunStatus.SCHEDULING,
+        RunStatus.RUNNING,
+        RunStatus.RESTARTING,
+        RunStatus.SCHEDULING,
+        RunStatus.RUNNING,
+        RunStatus.RESIZING,
+        RunStatus.SCHEDULING,
+        RunStatus.SCHEDULING,  # Rescheduling
+        RunStatus.SCHEDULING,
+        RunStatus.RUNNING,
+        RunStatus.RUNNING,  # Shutting down
+        RunStatus.FINISHED,
+    ]
+
+    state_actor = get_state_actor()
+
+    for i in range(len(states) - 1):
+        callback.after_controller_state_update(states[i], states[i + 1])
+        runs = ray.get(state_actor.get_train_runs.remote())
+        run = runs[callback._run_id]
+        assert run.status == expected_statuses[i + 1]
+
+
+def test_callback_error_state_transition(ray_start_regular, callback):
+    error_msg = "Test error"
+    error_state = ErroredState(
+        training_failed_error=ControllerError(Exception(error_msg))
+    )
+    callback.after_controller_state_update(RunningState(), error_state)
+
+    state_actor = get_state_actor()
+    runs = ray.get(state_actor.get_train_runs.remote())
+    run = list(runs.values())[0]
+    print(runs)
+    assert run.status == RunStatus.ERRORED
+    assert error_msg in run.status_detail
+    assert run.end_time_ns is not None
+
+
+def test_callback_aborted_with_worker_group_context(
+    ray_start_regular, callback, mock_worker_group_context
+):
+    callback.before_worker_group_start(mock_worker_group_context)
+    callback.before_worker_group_abort(mock_worker_group_context)
+    state_actor = get_state_actor()
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.ABORTED
+
+
+def test_callback_worker_group_lifecycle(
+    ray_start_regular, callback, mock_worker_group, mock_worker_group_context
+):
+    """Test the complete lifecycle of a worker group through state callbacks."""
+    state_actor = get_state_actor()
+
+    def get_attempt():
+        attempts = ray.get(state_actor.get_train_run_attempts.remote())
+        return list(attempts.values())[0]["attempt_1"]
+
+    # Test initialization
+    callback.before_worker_group_start(mock_worker_group_context)
+    attempt = get_attempt()
+    assert attempt.status == RunAttemptStatus.PENDING
+    assert len(attempt.resources) == mock_worker_group_context.num_workers
+    assert all(
+        r.resources == mock_worker_group_context.resources_per_worker
+        for r in attempt.resources
+    )
+
+    # Test startup
+    callback.after_worker_group_start(mock_worker_group)
+    attempt = get_attempt()
+    assert attempt.status == RunAttemptStatus.RUNNING
+    assert len(attempt.workers) == len(
+        mock_worker_group.get_worker_group_state().workers
+    )
+    for worker in attempt.workers:
+        assert worker.status == ActorStatus.ALIVE
+        assert (
+            worker.resources.resources == mock_worker_group_context.resources_per_worker
+        )
+
+    # Test shutdown
+    callback.before_worker_group_shutdown(mock_worker_group)
+    attempt = get_attempt()
+    assert attempt.status == RunAttemptStatus.FINISHED
+    assert attempt.end_time_ns is not None
+
+
+def test_callback_worker_group_error(
+    ray_start_regular, callback, mock_worker_group, mock_worker_group_context
+):
+    state_actor = get_state_actor()
+
+    callback.before_worker_group_start(mock_worker_group_context)
+    callback.after_worker_group_start(mock_worker_group)
+
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.RUNNING
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].status == ActorStatus.ALIVE
+
+    # Simulate error in worker group
+    error_msg = "Test error"
+    error_status = MagicMock()
+    error_status.errors = [error_msg]
+    error_status.get_error_string.return_value = error_msg
+    mock_worker_group.get_latest_poll_status.return_value = error_status
+
+    callback.before_worker_group_shutdown(mock_worker_group)
+
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0]["attempt_1"]
+    assert attempt.status == RunAttemptStatus.ERRORED
+    assert attempt.status_detail == error_msg
+    assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].status == ActorStatus.DEAD
+
+
+def test_callback_log_file_paths(
+    ray_start_regular,
+    monkeypatch,
+    mock_worker_group_context,
+    mock_worker,
+):
+    """Test that StateManagerCallback correctly captures and propagates log file paths."""
+
+    # Mock the runtime context
+    mock_runtime_context = MagicMock()
+    mock_runtime_context.get_job_id.return_value = "test_job_id"
+    mock_runtime_context.get_actor_id.return_value = "test_controller_id"
+    monkeypatch.setattr(
+        ray.runtime_context, "get_runtime_context", lambda: mock_runtime_context
+    )
+
+    # Mock the log path function
+    expected_controller_log_path = (
+        "/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log"
+    )
+    monkeypatch.setattr(
+        ray.train.v2._internal.callbacks.state_manager,
+        "get_train_application_controller_log_path",
+        lambda: expected_controller_log_path,
+    )
+
+    # Create the callback
+    callback = StateManagerCallback(datasets={})
+
+    # Initialize the callback
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
+
+    # Verify the log path was set in the state actor
+    state_actor = get_state_actor()
+    runs = ray.get(state_actor.get_train_runs.remote())
+    run = runs[callback._run_id]
+    assert run.controller_log_file_path == expected_controller_log_path
+
+    # Now test worker log paths
+    # Create a mock worker with a log file path
+    mock_worker = mock_worker
+    mock_worker.log_file_path = (
+        "/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log"
+    )
+
+    # Create a mock worker group
+    mock_worker_group = MagicMock(spec=WorkerGroup)
+    mock_worker_group.get_worker_group_context.return_value = mock_worker_group_context
+    mock_worker_group.get_worker_group_state.return_value = MagicMock(
+        workers=[mock_worker]
+    )
+
+    # Mocks the return value of _get_framework_version
+    mock_worker_group.execute_single.return_value = {"ray": ray.__version__}
+
+    # mock_worker_group.get_latest_poll_status.return_value = None
+
+    # Start the worker group
+    callback.before_worker_group_start(mock_worker_group_context)
+    callback.after_worker_group_start(mock_worker_group)
+
+    # Verify the worker log path was set in the state actor
+    attempts = ray.get(state_actor.get_train_run_attempts.remote())
+    attempt = list(attempts.values())[0][mock_worker_group_context.run_attempt_id]
+    assert len(attempt.workers) == 1
+    assert attempt.workers[0].log_file_path == mock_worker.log_file_path
+
+
+# =============================================================================
+# Helpers: framework version detection and DataConfig serialization
+# =============================================================================
+
+
+def test_get_framework_version():
+    """Test _get_framework_version with None and every TrainingFramework value."""
+    # None should return only the ray version.
+    versions = _get_framework_version(None)
+    assert list(versions.keys()) == ["ray"]
+    assert versions["ray"] == ray.__version__
+
+    # Mock importlib.import_module to prevent heavy imports
+    mock_versions = {
+        name: f"{name}-mock-1.2.3"
+        for framework in TrainingFramework
+        for name in framework.module_names()
+    }
+
+    def mock_import(name):
+        module = MagicMock()
+        module.__version__ = mock_versions[name]
+        return module
+
+    with patch(
+        "ray.train.v2._internal.callbacks.state_manager.importlib"
+    ) as mock_importlib:
+        mock_importlib.import_module.side_effect = mock_import
+        for framework in TrainingFramework:
+            versions = _get_framework_version(framework)
+            assert versions["ray"] == ray.__version__
+            for module_name in framework.module_names():
+                assert versions[module_name] == mock_versions[module_name]
+
+
+def test_execution_options_to_model_defaults_and_custom():
+    """Test execution_options_to_model with default and fully customized options."""
+    # Default options
+    default_result = execution_options_to_model(ExecutionOptions())
+    assert isinstance(default_result, ExecutionOptionsSchema)
+    assert default_result.preserve_order is False
+    assert default_result.actor_locality_enabled is True
+
+    # All custom values
+    custom_result = execution_options_to_model(
+        ExecutionOptions(
+            resource_limits=ExecutionResources(
+                cpu=8.0, gpu=4.0, object_store_memory=1e9
+            ),
+            exclude_resources=ExecutionResources(cpu=2.0, gpu=0.5),
+            preserve_order=True,
+            actor_locality_enabled=False,
+            verbose_progress=False,
+        )
+    )
+    assert custom_result.resource_limits["CPU"] == 8.0
+    assert custom_result.resource_limits["GPU"] == 4.0
+    assert custom_result.resource_limits["object_store_memory"] == 1e9
+    assert custom_result.exclude_resources["CPU"] == 2.0
+    assert custom_result.exclude_resources["GPU"] == 0.5
+    assert custom_result.preserve_order is True
+    assert custom_result.actor_locality_enabled is False
+    assert custom_result.verbose_progress is False
+
+
+def test_construct_data_config_defaults_and_split_variants():
+    """Test construct_data_config with default config and different split options."""
+    # Default: data_execution_options.default mirrors the library default ingest
+    # options and per_dataset_execution_options is empty.
+    default = construct_data_config(DataConfig())
+    assert isinstance(default, DataConfigSchema)
+    assert default.datasets_to_split == "all"
+    assert default.enable_shard_locality is True
+    assert isinstance(default.data_execution_options, DataExecutionOptions)
+    assert default.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    assert default.data_execution_options.per_dataset_execution_options == {}
+
+    # Specific dataset list
+    result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
+    assert result.datasets_to_split == ["train", "eval"]
+
+    # Empty list
+    result = construct_data_config(DataConfig(datasets_to_split=[]))
+    assert result.datasets_to_split == []
+
+    # Shard locality disabled
+    result = construct_data_config(DataConfig(enable_shard_locality=False))
+    assert result.enable_shard_locality is False
+
+
+def test_construct_data_config_single_execution_options():
+    """A single ExecutionOptions lands in data_execution_options.default and
+    leaves per_dataset_execution_options empty."""
+    shared = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=8.0, gpu=2.0),
+        exclude_resources=ExecutionResources(cpu=1.0),
+        preserve_order=True,
+        actor_locality_enabled=False,
+        verbose_progress=False,
+    )
+    result = construct_data_config(
+        DataConfig(
+            datasets_to_split=["train", "eval"],
+            execution_options=shared,
+        )
+    )
+
+    assert result.data_execution_options.default == execution_options_to_model(shared)
+    assert result.data_execution_options.per_dataset_execution_options == {}
+
+
+def test_construct_data_config_per_dataset_execution_options():
+    """Per-dataset ExecutionOptions land in per_dataset_execution_options while
+    default remains the library default."""
+    config = DataConfig(
+        datasets_to_split=["ds1", "ds2", "ds3"],
+        execution_options={
+            "ds1": ExecutionOptions(
+                resource_limits=ExecutionResources(cpu=16.0, gpu=8.0),
+                exclude_resources=ExecutionResources(cpu=4.0),
+                preserve_order=True,
+                actor_locality_enabled=False,
+                verbose_progress=False,
+            ),
+            "ds2": ExecutionOptions(
+                verbose_progress=False,
+            ),
+            "ds3": ExecutionOptions(
+                exclude_resources=ExecutionResources(cpu=0.5, gpu=0.5),
+            ),
+        },
+        enable_shard_locality=False,
+    )
+    result = construct_data_config(config)
+
+    assert result.datasets_to_split == ["ds1", "ds2", "ds3"]
+    assert result.enable_shard_locality is False
+
+    # default reflects the library default ingest options.
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"ds1", "ds2", "ds3"}
+
+    ds1 = overrides["ds1"]
+    assert ds1.resource_limits["CPU"] == 16.0
+    assert ds1.resource_limits["GPU"] == 8.0
+    assert ds1.exclude_resources["CPU"] == 4.0
+    assert ds1.preserve_order is True
+    assert ds1.actor_locality_enabled is False
+    assert ds1.verbose_progress is False
+
+    ds2 = overrides["ds2"]
+    assert ds2.verbose_progress is False
+
+    ds3 = overrides["ds3"]
+    assert ds3.exclude_resources["CPU"] == 0.5
+    assert ds3.exclude_resources["GPU"] == 0.5
+
+
+def test_construct_data_config_partial_per_dataset_execution_options():
+    """User dict covering a subset of datasets populates only those overrides
+    while default remains the library default."""
+    custom = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=4.0),
+        preserve_order=True,
+    )
+    config = DataConfig(
+        datasets_to_split=["train", "eval", "predict"],
+        execution_options={"train": custom},
+    )
+    result = construct_data_config(config)
+
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"train"}
+    assert overrides["train"] == execution_options_to_model(custom)
+
+
+# =============================================================================
+# Schema sanitization tests
+# =============================================================================
+
+
+def test_to_json_serializable_value_standalone_inputs():
+    """The sanitizer accepts any value, not just dicts.
+
+    Covers JSON-native primitives (passthrough), edge floats (stringified),
+    bytes (str fallback), modules (str fallback), and a custom object
+    (uses __str__).
+    """
+
+    class Obj:
+        def __str__(self):
+            return "Obj()"
+
+    # JSON-native primitives pass through unchanged.
+    assert _to_json_serializable_value(None) is None
+    assert _to_json_serializable_value(True) is True
+    assert _to_json_serializable_value(42) == 42
+    assert _to_json_serializable_value("hello") == "hello"
+    assert _to_json_serializable_value(3.14) == 3.14
+    assert _to_json_serializable_value([1, "a", None]) == [1, "a", None]
+
+    # Non-finite floats get stringified (not valid JSON otherwise).
+    assert _to_json_serializable_value(float("inf")) == "inf"
+    assert _to_json_serializable_value(float("-inf")) == "-inf"
+    assert _to_json_serializable_value(float("nan")) == "nan"
+
+    # Bytes fall through to str() (no special handling).
+    assert _to_json_serializable_value(b"hello") == "b'hello'"
+
+    # A module uses its repr (modules define one, so we don't fall back to type name).
+    assert _to_json_serializable_value(json).startswith("<module 'json'")
+
+    # A custom object with __str__ uses that.
+    assert _to_json_serializable_value(Obj()) == "Obj()"
+
+    # A module uses default python string representation.
+    import ray
+
+    assert _to_json_serializable_value(ray).startswith("<module 'ray'")
+
+
+def test_to_json_serializable_value_collection_coercion():
+    """tuple, set, and frozenset are all coerced to lists."""
+    # tuple → list
+    assert _to_json_serializable_value({"t": (1, 2, 3)}) == {"t": [1, 2, 3]}
+
+    # set → list (use sorted comparison since set iteration order isn't guaranteed)
+    result = _to_json_serializable_value({"s": {3, 1, 2}})
+    assert sorted(result["s"]) == [1, 2, 3]
+
+    # frozenset → list
+    result = _to_json_serializable_value({"f": frozenset({3, 1, 2})})
+    assert sorted(result["f"]) == [1, 2, 3]
+
+    # Empty containers preserved.
+    assert _to_json_serializable_value({"d": {}, "l": [], "s": set()}) == {
+        "d": {},
+        "l": [],
+        "s": [],
+    }
+
+
+def test_to_json_serializable_value_non_string_keys():
+    """All dict keys are coerced via str(), regardless of original type."""
+
+    class KeyObj:
+        def __str__(self):
+            return "key_obj"
+
+    obj = {
+        1: "int",
+        2.5: "float",
+        None: "none",
+        (1, 2): "tuple",
+        KeyObj(): "custom",
+    }
+    assert _to_json_serializable_value(obj) == {
+        "1": "int",
+        "2.5": "float",
+        "None": "none",
+        "(1, 2)": "tuple",
+        "key_obj": "custom",
+    }
+
+
+def test_to_json_serializable_value_max_depth():
+    """Test that _to_json_serializable_value respects the max_depth argument."""
+
+    class CustomObj:
+        def __str__(self) -> str:
+            return "CustomObj"
+
+    obj = {
+        "native": 42,
+        "sequence": [1, CustomObj()],
+        "nested": {"inner": {"deep": 99}},
+        "obj": CustomObj(),
+        "inf_float": float("inf"),
+    }
+
+    with pytest.raises(ValueError, match="max_depth must be greater than 0"):
+        _to_json_serializable_value(obj, max_depth=0)
+
+    assert _to_json_serializable_value(obj, max_depth=2) == {
+        "native": 42,
+        "nested": {"inner": "..."},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
+    }
+
+    assert _to_json_serializable_value(obj, max_depth=3) == {
+        "native": 42,
+        "nested": {"inner": {"deep": 99}},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
+    }
+
+
+def test_to_json_serializable_value_falls_back_to_type_name():
+    """Objects without custom string representation are rendered as their class name."""
+
+    class NoCustomStr:
+        pass
+
+    class HasRepr:
+        def __repr__(self):
+            return "HasRepr(meaningful)"
+
+    obj = {"plain": NoCustomStr(), "with_repr": HasRepr()}
+    assert _to_json_serializable_value(obj) == {
+        "plain": "NoCustomStr",
+        "with_repr": "HasRepr(meaningful)",
+    }
+
+
+def test_train_run_schema_sanitizes_all_validated_fields():
+    """End-to-end: every dict field with a sanitizer validator coerces
+    non-JSON values at construction time, and the resulting TrainRun
+    serializes via pydantic's JSON dump without raising.
+
+    Covers:
+        - RunSettings.train_loop_config
+        - RunConfig.worker_runtime_env
+        - RunConfig.storage_filesystem
+        - BackendConfig.config
+        - ExecutionOptions.resource_limits / exclude_resources
+    """
+    import pyarrow.fs
+
+    class CustomCfg:
+        def __str__(self):
+            return "CustomCfg()"
+
+    run = TrainRun(
+        id="r1",
+        name="test_run",
+        job_id="job_1",
+        controller_actor_id="controller_1",
+        status=RunStatus.RUNNING,
+        status_detail=None,
+        start_time_ns=1,
+        end_time_ns=None,
+        controller_log_file_path=None,
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config={"epochs": 3, "obj": CustomCfg(), "fn": lambda x: x},
+            backend_config=BackendConfigSchema(
+                framework=None,
+                config={"hook": lambda: None, "module": json},
+            ),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                placement_strategy="PACK",
+                use_tpu=False,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                data_execution_options=DataExecutionOptions(
+                    default=ExecutionOptionsSchema(
+                        resource_limits={"CPU": float("inf"), "obj": CustomCfg()},
+                        exclude_resources={"GPU": float("nan")},
+                        preserve_order=False,
+                        actor_locality_enabled=True,
+                        verbose_progress=True,
+                    ),
+                ),
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test_run",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"setup_hook": lambda: None, "type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(checkpoint_score_order="max"),
+                storage_path="s3://bucket/path",
+                storage_filesystem=pyarrow.fs.LocalFileSystem(),
+            ),
+        ),
+    )
+
+    # Pydantic JSON dump must not raise, since every field was sanitized.
+    payload = json.loads(run.model_dump_json())
+    rs = payload["run_settings"]
+
+    # train_loop_config
+    assert rs["train_loop_config"]["epochs"] == 3
+    assert rs["train_loop_config"]["obj"] == "CustomCfg()"
+    assert rs["train_loop_config"]["fn"].startswith("<function ")
+
+    # backend_config.config
+    assert rs["backend_config"]["config"]["hook"].startswith("<function ")
+    assert rs["backend_config"]["config"]["module"].startswith("<module 'json'")
+
+    # data_config.data_execution_options.default.resource_limits / exclude_resources
+    default_opts = rs["data_config"]["data_execution_options"]["default"]
+    assert default_opts["resource_limits"]["CPU"] == "inf"
+    assert default_opts["resource_limits"]["obj"] == "CustomCfg()"
+    assert default_opts["exclude_resources"]["GPU"] == "nan"
+
+    # run_config.worker_runtime_env
+    assert rs["run_config"]["worker_runtime_env"]["setup_hook"].startswith("<function ")
+    assert rs["run_config"]["worker_runtime_env"]["type"] == "conda"
+
+    # run_config.storage_filesystem (pyarrow filesystems use default object repr,
+    # so they fall back to the type name)
+    assert rs["run_config"]["storage_filesystem"] == "LocalFileSystem"
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

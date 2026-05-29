@@ -7,7 +7,6 @@ import traceback
 import warnings
 from collections import defaultdict, deque
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -17,9 +16,9 @@ from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import CheckpointConfig
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
+from ray.tune import CheckpointConfig
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.error import TuneError, _AbortTrialExecution, _TuneStopTrialError
 from ray.tune.execution.class_cache import _ActorClassCache
@@ -33,10 +32,8 @@ from ray.tune.execution.insufficient_resources_manager import (
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Experiment, Trial
 from ray.tune.experiment.trial import (
-    _change_working_directory,
     _get_trainable_kwargs,
     _Location,
-    _noop_logger_creator,
     _TrialInfo,
 )
 from ray.tune.result import (
@@ -57,7 +54,10 @@ from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -446,7 +446,7 @@ class TuneController:
             f"{Path(newest_state_path).name}"
         )
         with self._storage.storage_filesystem.open_input_stream(newest_state_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         self.__setstate__(experiment_state["runner_data"])
 
@@ -1004,17 +1004,16 @@ class TuneController:
         trial.set_location(_Location())
         trainable_kwargs = _get_trainable_kwargs(trial=trial)
 
-        with _change_working_directory(trial):
-            tracked_actor = self._actor_manager.add_actor(
-                cls=_actor_cls,
-                resource_request=trial.placement_group_factory,
-                kwargs=trainable_kwargs,
-                on_start=self._actor_started,
-                on_stop=self._actor_stopped,
-                on_error=self._actor_failed,
-            )
-            self._trial_to_actor[trial] = tracked_actor
-            self._actor_to_trial[tracked_actor] = trial
+        tracked_actor = self._actor_manager.add_actor(
+            cls=_actor_cls,
+            resource_request=trial.placement_group_factory,
+            kwargs=trainable_kwargs,
+            on_start=self._actor_started,
+            on_stop=self._actor_stopped,
+            on_error=self._actor_failed,
+        )
+        self._trial_to_actor[trial] = tracked_actor
+        self._actor_to_trial[tracked_actor] = trial
 
         logger.debug(
             f"Scheduled new ACTOR for trial {trial}: {tracked_actor}. "
@@ -1255,18 +1254,17 @@ class TuneController:
 
         logger.debug(f"Future {method_name.upper()} SCHEDULED for trial {trial}")
 
-        with _change_working_directory(trial):
-            future = self._actor_manager.schedule_actor_task(
-                tracked_actor=tracked_actor,
-                method_name=method_name,
-                args=args,
-                kwargs=kwargs,
-                on_result=_on_result,
-                on_error=_on_error,
-                _return_future=_return_future,
-            )
-            if _return_future:
-                return future
+        future = self._actor_manager.schedule_actor_task(
+            tracked_actor=tracked_actor,
+            method_name=method_name,
+            args=args,
+            kwargs=kwargs,
+            on_result=_on_result,
+            on_error=_on_error,
+            _return_future=_return_future,
+        )
+        if _return_future:
+            return future
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set
@@ -1288,6 +1286,9 @@ class TuneController:
         Args:
             trial: Trial to act on.
             decision: Scheduling decision to undertake.
+            after_save: True if this action is being executed immediately
+                after a trial save; suppresses an additional checkpoint when
+                pausing.
         """
         if decision == TrialScheduler.CONTINUE:
             self._schedule_trial_train(trial)
@@ -1500,7 +1501,7 @@ class TuneController:
             if log_once("trial_executor_buffer_checkpoint"):
                 logger.warning(
                     "Disabling buffered training as you passed "
-                    "`checkpoint_at_end` to `train.CheckpointConfig()`."
+                    "`checkpoint_at_end` to `tune.CheckpointConfig()`."
                 )
             return 1, buffer_time_s
 
@@ -1551,10 +1552,11 @@ class TuneController:
                     # ignore all results that came after that.
                     break
 
-    def _process_trial_result(self, trial, result):
+    def _process_trial_result(self, trial: Trial, result: dict[str, Any]):
         result.update(trial_id=trial.trial_id)
         is_duplicate = RESULT_DUPLICATE in result
-        force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
+        force_checkpoint = False
+
         # TrialScheduler and SearchAlgorithm still receive a
         # notification because there may be special handling for
         # the `on_trial_complete` hook.
@@ -1590,8 +1592,10 @@ class TuneController:
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
-                    result=result.copy(),
+                    # NOTE: Allow user callbacks to modify the Trial result in place.
+                    result=result,
                 )
+            force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
             trial.update_last_result(result)
             # Include in next experiment checkpoint
             self._mark_trial_to_checkpoint(trial)
@@ -1739,6 +1743,8 @@ class TuneController:
 
         Args:
             trial: Trial being saved.
+            checkpoint_value: The training result containing the checkpoint
+                that was produced by the trial save.
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
@@ -1908,17 +1914,12 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(
-            _noop_logger_creator, logdir=trial.storage.trial_working_directory
-        )
-
         self._resetting_trials.add(trial)
         self._schedule_trial_task(
             trial=trial,
             method_name="reset",
             args=(extra_config,),
             kwargs={
-                "logger_creator": logger_creator,
                 "storage": trial.storage,
             },
             on_result=self._on_trial_reset,

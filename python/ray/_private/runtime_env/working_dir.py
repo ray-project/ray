@@ -1,10 +1,11 @@
 import logging
 import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -18,23 +19,33 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray._private.utils import get_directory_size_bytes
+from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
+from ray.util.debug import log_once
 
 default_logger = logging.getLogger(__name__)
 
 _WIN32 = os.name == "nt"
+_LOG_ONCE_DEFAULT_EXCLUDE_PREFIX = "runtime_env_default_exclude:"
 
 
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
-    scratch_dir: Optional[str] = os.getcwd(),
+    include_gitignore: bool,
+    scratch_dir: Optional[str] = None,
     logger: Optional[logging.Logger] = default_logger,
-    upload_fn=None,
+    upload_fn: Optional[Callable[[str, Optional[List[str]], bool], None]] = None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
     If the working_dir is already a URI, this is a no-op.
+
+    Excludes are combined from:
+      - .gitignore and .rayignore files in the working_dir
+      - runtime_env["excludes"] field
+      - RAY_RUNTIME_ENV_DEFAULT_EXCLUDES constant, overridable via
+        RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES environment variable
     """
     working_dir = runtime_env.get("working_dir")
     if working_dir is None:
@@ -56,31 +67,68 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for remote URIs.")
+        supported_extensions = (".zip", ".tar.gz", ".tgz")
+        if protocol in Protocol.remote_protocols() and not any(
+            path.endswith(ext) for ext in supported_extensions
+        ):
+            raise ValueError(
+                "Only .zip, .tar.gz, and .tgz files supported for remote URIs."
+            )
         return runtime_env
 
-    excludes = runtime_env.get("excludes", None)
+    default_excludes = ray_constants.get_runtime_env_default_excludes()
+    user_excludes = runtime_env.get("excludes") or []
+    excludes = default_excludes + list(user_excludes)
+    # TODO(ricardo): 2026-01-07 Remove these warnings in a few releases. Added in
+    # case users rely on these directories being uploaded with their working_dir
+    # since this change would be difficult to debug.
+    logger = logger or default_logger
+    working_dir_path = Path(working_dir)
+    for d in default_excludes:
+        if (working_dir_path / d).exists() and log_once(
+            f"{_LOG_ONCE_DEFAULT_EXCLUDE_PREFIX}{d}"
+        ):
+            logger.warning(
+                "Directory %r is now ignored by default when packaging the working "
+                "directory. To disable this behavior, set "
+                "the `RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES=''` environment "
+                "variable.",
+                d,
+            )
     try:
-        working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+        working_dir_uri = get_uri_for_directory(
+            working_dir,
+            include_gitignore=include_gitignore,
+            excludes=excludes,
+        )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
-        if not package_path.exists() or package_path.suffix != ".zip":
+        supported_local = (
+            package_path.suffix == ".zip"
+            or package_path.suffix == ".tgz"
+            or package_path.name.endswith(".tar.gz")
+        )
+        if not package_path.exists() or not supported_local:
             raise ValueError(
                 f"directory {package_path} must be an existing "
-                "directory or a zip package"
+                "directory or a supported archive (.zip, .tar.gz, .tgz)"
             )
 
         pkg_uri = get_uri_for_package(package_path)
-        try:
-            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
-        except Exception as e:
-            raise RuntimeEnvSetupError(
-                f"Failed to upload package {package_path} to the Ray cluster: {e}"
-            ) from e
+        if upload_fn is not None:
+            upload_fn(working_dir, excludes=excludes, is_file=True)
+        else:
+            try:
+                upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+            except Exception as e:
+                raise RuntimeEnvSetupError(
+                    f"Failed to upload package {package_path} to the Ray cluster: {e}"
+                ) from e
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
+        if scratch_dir is None:
+            scratch_dir = os.getcwd()
         try:
             upload_package_if_needed(
                 working_dir_uri,
@@ -88,6 +136,7 @@ def upload_working_dir_if_needed(
                 working_dir,
                 include_parent_dir=False,
                 excludes=excludes,
+                include_gitignore=include_gitignore,
                 logger=logger,
             )
         except Exception as e:
@@ -118,18 +167,15 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
 
 
 class WorkingDirPlugin(RuntimeEnvPlugin):
-
     name = "working_dir"
 
     # Note working_dir is not following the priority order of other plugins. Instead
     # it's specially treated to happen before all other plugins.
     priority = 5
 
-    def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
-    ):
+    def __init__(self, resources_dir: str, gcs_client: GcsClient):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
     def delete_uri(
@@ -161,7 +207,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         logger: logging.Logger = default_logger,
     ) -> int:
         local_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri,
+            self._resources_dir,
+            self._gcs_client,
+            logger=logger,
+            overwrite=True,
         )
         return get_directory_size_bytes(local_dir)
 

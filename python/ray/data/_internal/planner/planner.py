@@ -1,6 +1,22 @@
-from typing import Dict
+import warnings
+from functools import partial
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
+if TYPE_CHECKING:
+    import pyarrow.fs
+
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.aggregate_num_rows import (
+    AggregateNumRows,
+)
+from ray.data._internal.execution.operators.input_data_buffer import (
+    InputDataBuffer,
+)
+from ray.data._internal.execution.operators.join import JoinOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.mix_operator import MixOperator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -8,21 +24,144 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     PhysicalPlan,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
-from ray.data._internal.logical.operators.from_operators import AbstractFrom
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
-from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import (
+    AbstractAllToAll,
+    AbstractFrom,
+    AbstractUDFMap,
+    Count,
+    Download,
+    Filter,
+    InputData,
+    Join,
+    Limit,
+    ListFiles,
+    Mix,
+    Project,
+    Read,
+    ReadFiles,
+    StreamingRepartition,
+    StreamingSplit,
+    Union,
+    Write,
+    Zip,
+)
+from ray.data._internal.planner.checkpoint import (
+    plan_read_files_op_with_checkpoint_filter,
+    plan_read_op_with_checkpoint_filter,
+    plan_write_op_with_checkpoint_writer,
+)
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
-from ray.data._internal.planner.plan_from_op import plan_from_op
-from ray.data._internal.planner.plan_input_data_op import plan_input_data_op
-from ray.data._internal.planner.plan_limit_op import plan_limit_op
+from ray.data._internal.planner.plan_download_op import plan_download_op
+from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
+from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
-from ray.data._internal.planner.plan_udf_map_op import plan_udf_map_op
+from ray.data._internal.planner.plan_udf_map_op import (
+    plan_filter_op,
+    plan_project_op,
+    plan_streaming_repartition_op,
+    plan_udf_map_op,
+)
 from ray.data._internal.planner.plan_write_op import plan_write_op
+from ray.data._internal.usage.execution_callback import UsageCallback
+from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
+from ray.data.context import DataContext
+from ray.data.datasource.file_datasink import _FileDatasink
+
+LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
+PlanLogicalOpFn = Callable[
+    [LogicalOperatorType, List[PhysicalOperator], DataContext], PhysicalOperator
+]
+
+
+def plan_input_data_op(
+    logical_op: InputData,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    """Get the corresponding DAG of physical operators for InputData."""
+    assert len(physical_children) == 0
+
+    return InputDataBuffer(
+        data_context,
+        input_data=logical_op.input_data,
+    )
+
+
+def plan_from_op(
+    op: AbstractFrom,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    assert len(physical_children) == 0
+    return InputDataBuffer(data_context, op.input_data)
+
+
+def plan_zip_op(_, physical_children, data_context):
+    assert len(physical_children) >= 2
+    return ZipOperator(data_context, *physical_children)
+
+
+def plan_mix_op(logical_op, physical_children, data_context):
+    assert len(physical_children) >= 1
+    return MixOperator(
+        data_context,
+        *physical_children,
+        weights=logical_op.weights,
+        stopping_condition=logical_op.stopping_condition,
+    )
+
+
+def plan_union_op(_, physical_children, data_context):
+    assert len(physical_children) >= 2
+    return UnionOperator(data_context, *physical_children)
+
+
+def plan_limit_op(logical_op, physical_children, data_context):
+    assert len(physical_children) == 1
+    return LimitOperator(logical_op.limit, physical_children[0], data_context)
+
+
+def plan_count_op(logical_op, physical_children, data_context):
+    assert len(physical_children) == 1
+    return AggregateNumRows(
+        [physical_children[0]], data_context, column_name=Count.COLUMN_NAME
+    )
+
+
+def plan_join_op(
+    logical_op: Join,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    assert len(physical_children) == 2
+    return JoinOperator(
+        data_context=data_context,
+        left_input_op=physical_children[0],
+        right_input_op=physical_children[1],
+        join_type=logical_op.join_type,
+        left_key_columns=logical_op.left_key_columns,
+        right_key_columns=logical_op.right_key_columns,
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        num_partitions=logical_op.num_outputs,
+        partition_size_hint=logical_op.partition_size_hint,
+        aggregator_ray_remote_args_override=logical_op.aggregator_ray_remote_args,
+    )
+
+
+def plan_streaming_split_op(
+    logical_op: StreamingSplit,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+):
+    assert len(physical_children) == 1
+    return OutputSplitter(
+        physical_children[0],
+        n=logical_op.num_splits,
+        equal=logical_op.equal,
+        data_context=data_context,
+        locality_hints=logical_op.locality_hints,
+    )
 
 
 class Planner:
@@ -32,50 +171,216 @@ class Planner:
     done by physical optimizer.
     """
 
+    _DEFAULT_PLAN_FNS = {
+        Read: plan_read_op,
+        ReadFiles: plan_read_files_op,
+        ListFiles: plan_list_files_op,
+        InputData: plan_input_data_op,
+        Write: plan_write_op,
+        AbstractFrom: plan_from_op,
+        Filter: plan_filter_op,
+        AbstractUDFMap: plan_udf_map_op,
+        AbstractAllToAll: plan_all_to_all_op,
+        Mix: plan_mix_op,
+        Union: plan_union_op,
+        Zip: plan_zip_op,
+        Limit: plan_limit_op,
+        Count: plan_count_op,
+        Project: plan_project_op,
+        StreamingRepartition: plan_streaming_repartition_op,
+        Join: plan_join_op,
+        StreamingSplit: plan_streaming_split_op,
+        Download: plan_download_op,
+    }
+    # Operators that support checkpoint filtering. Subclasses can override.
+    _CHECKPOINT_FILTER_OPS = (Read, ReadFiles)
+
     def __init__(self):
-        self._physical_op_to_logical_op: Dict[PhysicalOperator, LogicalOperator] = {}
+        self._supports_checkpointing = False
+        self._plan_fns_for_checkpointing = {}
 
-    def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
+    def plan(
+        self, logical_plan: LogicalPlan
+    ) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
         """Convert logical to physical operators recursively in post-order."""
-        physical_dag = self._plan(logical_plan.dag)
-        return PhysicalPlan(physical_dag, self._physical_op_to_logical_op)
+        checkpoint_config = logical_plan.context.checkpoint_config
 
-    def _plan(self, logical_op: LogicalOperator) -> PhysicalOperator:
+        callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
+        callbacks.append(UsageCallback(logical_plan))
+
+        if checkpoint_config is not None and self._check_supports_checkpointing(
+            logical_plan
+        ):
+            self._supports_checkpointing = True
+            data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
+
+            checkpoint_callback = self._create_checkpoint_callback(
+                checkpoint_config,
+            )
+
+            callbacks.append(checkpoint_callback)
+
+            # Dynamically set the plan functions for checkpointing because they
+            # need to a reference to the checkpoint ref.
+            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                data_file_dir, data_file_fs
+            )
+
+        elif checkpoint_config is not None:
+            assert not self._check_supports_checkpointing(logical_plan)
+            warnings.warn(
+                "You've enabled checkpointing, but the logical plan doesn't support "
+                "checkpointing. Checkpointing will be disabled."
+            )
+        physical_dag, op_map = self._plan_recursively(
+            logical_plan.dag, logical_plan.context
+        )
+        physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
+        return physical_plan, callbacks
+
+    def get_plan_fn(self, logical_op: LogicalOperator) -> PlanLogicalOpFn:
+        if self._supports_checkpointing:
+            assert self._plan_fns_for_checkpointing
+            plan_fn = find_plan_fn(logical_op, self._plan_fns_for_checkpointing)
+            if plan_fn is not None:
+                return plan_fn
+
+        plan_fn = find_plan_fn(logical_op, self._DEFAULT_PLAN_FNS)
+        if plan_fn is not None:
+            return plan_fn
+
+        raise ValueError(
+            f"Found unknown logical operator during planning: {logical_op}"
+        )
+
+    def _plan_recursively(
+        self, logical_op: LogicalOperator, data_context: DataContext
+    ) -> Tuple[PhysicalOperator, Dict[LogicalOperator, PhysicalOperator]]:
+        """Plan a logical operator and its input dependencies recursively.
+
+        Args:
+            logical_op: The logical operator to plan.
+            data_context: The data context.
+
+        Returns:
+            A tuple of the physical operator corresponding to the logical operator, and
+            a mapping from physical to logical operators.
+        """
+        op_map: Dict[PhysicalOperator, LogicalOperator] = {}
+
         # Plan the input dependencies first.
         physical_children = []
         for child in logical_op.input_dependencies:
-            physical_children.append(self._plan(child))
+            physical_child, child_op_map = self._plan_recursively(child, data_context)
+            physical_children.append(physical_child)
+            op_map.update(child_op_map)
 
-        if isinstance(logical_op, Read):
-            assert not physical_children
-            physical_op = plan_read_op(logical_op)
-        elif isinstance(logical_op, InputData):
-            assert not physical_children
-            physical_op = plan_input_data_op(logical_op)
-        elif isinstance(logical_op, Write):
-            assert len(physical_children) == 1
-            physical_op = plan_write_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, AbstractFrom):
-            assert not physical_children
-            physical_op = plan_from_op(logical_op)
-        elif isinstance(logical_op, AbstractUDFMap):
-            assert len(physical_children) == 1
-            physical_op = plan_udf_map_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, AbstractAllToAll):
-            assert len(physical_children) == 1
-            physical_op = plan_all_to_all_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, Zip):
-            assert len(physical_children) == 2
-            physical_op = ZipOperator(physical_children[0], physical_children[1])
-        elif isinstance(logical_op, Union):
-            assert len(physical_children) >= 2
-            physical_op = UnionOperator(*physical_children)
-        elif isinstance(logical_op, Limit):
-            assert len(physical_children) == 1
-            physical_op = plan_limit_op(logical_op, physical_children[0])
-        else:
-            raise ValueError(
-                f"Found unknown logical operator during planning: {logical_op}"
+        plan_fn = self.get_plan_fn(logical_op)
+        # We will call `set_logical_operators()` in the following for-loop,
+        # no need to do it here.
+        physical_op = plan_fn(logical_op, physical_children, data_context)
+
+        # Traverse up the DAG, and set the mapping from physical to logical operators.
+        # At this point, all physical operators without logical operators set
+        # must have been created by the current logical operator.
+        queue = [physical_op]
+        while queue:
+            curr_physical_op = queue.pop()
+            # Once we find an operator with a logical operator set, we can stop.
+            if curr_physical_op._logical_operators:
+                break
+
+            curr_physical_op.set_logical_operators(logical_op)
+            # Add this operator to the op_map so optimizer can find it
+            op_map[curr_physical_op] = logical_op
+            queue.extend(curr_physical_op.input_dependencies)
+
+        # Also add the final operator (in case the loop didn't catch it)
+        op_map[physical_op] = logical_op
+        return physical_op, op_map
+
+    def _create_checkpoint_callback(
+        self,
+        checkpoint_config,
+    ) -> LoadCheckpointCallback:
+        """Factory method to create the LoadCheckpointCallback.
+
+        Subclasses can override this to use a different callback implementation.
+        """
+        return LoadCheckpointCallback(
+            checkpoint_config,
+        )
+
+    @staticmethod
+    def _get_data_file_info(logical_plan: LogicalPlan):
+        """Extract the data file directory and filesystem from the Write op's datasink.
+
+        Returns (path, filesystem) for file-based datasinks, or (None, None)
+        for non-file datasinks.
+        """
+        last_op = logical_plan.dag
+        if isinstance(last_op, Write):
+            datasink = last_op.datasink_or_legacy_datasource
+            if isinstance(datasink, _FileDatasink):
+                return datasink.unresolved_path, datasink.filesystem
+        return None, None
+
+    def _get_plan_fns_for_checkpointing(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        plan_fns = {
+            Read: partial(
+                plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
+            ),
+            ReadFiles: partial(
+                plan_read_files_op_with_checkpoint_filter,
+                data_file_dir,
+                data_file_filesystem,
+            ),
+            Write: plan_write_op_with_checkpoint_writer,
+        }
+        return plan_fns
+
+    def _check_supports_checkpointing(self, logical_plan: LogicalPlan) -> bool:
+        """Check if the logical plan supports checkpointing.
+
+        Subclasses can override _CHECKPOINT_FILTER_OPS to support more operators.
+        """
+        if not isinstance(logical_plan.dag, (Write, StreamingSplit)):
+            return False
+
+        def _all_paths_contain_checkpoint_filter(op: LogicalOperator) -> bool:
+            if isinstance(op, self._CHECKPOINT_FILTER_OPS):
+                return True
+            return all(
+                _all_paths_contain_checkpoint_filter(input_dep)
+                for input_dep in op.input_dependencies
             )
-        self._physical_op_to_logical_op[physical_op] = logical_op
-        return physical_op
+
+        return _all_paths_contain_checkpoint_filter(logical_plan.dag)
+
+
+def find_plan_fn(
+    logical_op: LogicalOperator, plan_fns: Dict[Type[LogicalOperator], PlanLogicalOpFn]
+) -> Optional[PlanLogicalOpFn]:
+    """Find the plan function for a logical operator.
+
+    This function goes through the plan functions in order and returns the first one
+    that is an instance of the logical operator type.
+
+    Args:
+        logical_op: The logical operator to find the plan function for.
+        plan_fns: The dictionary of plan functions.
+
+    Returns:
+        The plan function for the logical operator, or None if no plan function is
+        found.
+    """
+    # TODO: This implementation doesn't account for type hierarchies conflicts or
+    # multiple inheritance.
+    for op_type, plan_fn in plan_fns.items():
+        if isinstance(logical_op, op_type):
+            return plan_fn
+    return None

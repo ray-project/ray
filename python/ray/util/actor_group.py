@@ -1,12 +1,12 @@
+import logging
 import weakref
 from dataclasses import dataclass
-import logging
-from typing import List, TypeVar, Optional, Dict, Type, Tuple
+from typing import Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
+from ray._private.utils import get_ray_doc_version
 from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated
-from ray._private.utils import get_ray_doc_version
 
 T = TypeVar("T")
 ActorMetadata = TypeVar("ActorMetadata")
@@ -77,12 +77,13 @@ class ActorGroup:
             actor. Fractional values are allowed. Defaults to 1.
         num_gpus_per_actor: The number of GPUs to reserve for each
             actor. Fractional values are allowed. Defaults to 0.
-        resources_per_actor (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_actor: Dictionary specifying the resources that will be
             requested for each actor in addition to ``num_cpus_per_actor``
             and ``num_gpus_per_actor``.
-        init_args, init_kwargs: If ``actor_cls`` is provided,
-            these args will be used for the actor initialization.
+        init_args: Positional arguments forwarded to ``actor_cls`` when each
+            actor is created.
+        init_kwargs: Keyword arguments forwarded to ``actor_cls`` when each
+            actor is created.
 
     """
 
@@ -96,7 +97,7 @@ class ActorGroup:
         init_args: Optional[Tuple] = None,
         init_kwargs: Optional[Dict] = None,
     ):
-        from ray._private.usage.usage_lib import record_library_usage
+        from ray._common.usage.usage_lib import record_library_usage
 
         record_library_usage("util.ActorGroup")
 
@@ -192,7 +193,7 @@ class ActorGroup:
         """Removes the actors with the specified indexes.
 
         Args:
-            actor_indexes (List[int]): The indexes of the actors to remove.
+            actor_indexes: The indexes of the actors to remove.
         """
         new_actors = []
         for i in range(len(self.actors)):

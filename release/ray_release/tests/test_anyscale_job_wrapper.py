@@ -1,12 +1,16 @@
-import pytest
-import sys
 import json
+import os
+import sys
+from unittest.mock import patch
+
+import pytest
 
 from ray_release.command_runner._anyscale_job_wrapper import (
+    OUTPUT_JSON_FILENAME,
+    TIMEOUT_RETURN_CODE,
     main,
     run_bash_command,
-    TIMEOUT_RETURN_CODE,
-    OUTPUT_JSON_FILENAME,
+    run_spilling_check,
 )
 
 cloud_storage_kwargs = dict(
@@ -172,6 +176,64 @@ def test_end_to_end_prepare_failure(tmpdir):
         == expected_return_code
     )
     _check_output_json(None, [0, 1])
+
+
+_PROM_SPILL_SAMPLE = [
+    {"metric": {}, "values": [[1700000000, "1073741824"]]},
+]
+
+
+@pytest.mark.parametrize(
+    "metrics_payload,expected_return_code",
+    [
+        # No spilling — empty list (Prometheus `> 0` filter dropped all points)
+        ({"spilled_bytes": []}, 0),
+        # Spilling occurred — non-empty list
+        ({"spilled_bytes": _PROM_SPILL_SAMPLE}, 1),
+        # Missing value (None) — fail with "could not retrieve" error
+        ({"spilled_bytes": None}, 1),
+        # Missing key entirely — fail with "could not retrieve" error
+        ({}, 1),
+    ],
+)
+def test_run_spilling_check_with_metrics_file(
+    tmpdir, metrics_payload, expected_return_code
+):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(metrics_payload, f)
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == expected_return_code
+
+
+def test_run_spilling_check_missing_file(tmpdir):
+    metrics_path = str(tmpdir / "missing.json")
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == 1
+
+
+def test_run_spilling_check_unset_metrics_env(tmpdir):
+    env = {k: v for k, v in os.environ.items() if k != "METRICS_OUTPUT_JSON"}
+    with patch.dict(os.environ, env, clear=True):
+        assert run_spilling_check() == 1
+
+
+def test_run_spilling_check_malformed_json(tmpdir):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        f.write("{not valid json")
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == 1
+
+
+@pytest.mark.parametrize("payload", [[1, 2, 3], "spilled_bytes", 42, None])
+def test_run_spilling_check_non_dict_json(tmpdir, payload):
+    # Valid JSON but not a dict, so `metrics.get(...)` raises AttributeError.
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(payload, f)
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_spilling_check() == 1
 
 
 if __name__ == "__main__":

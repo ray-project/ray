@@ -126,7 +126,7 @@ spec:
       serviceType: ClusterIP
       # the pod replicas in this group typed head (assuming there could be more than 1 in the future)
       replicas: 1
-      # logical group name, for this called head-group, also can be functional
+      # logical group name, for this called headgroup, also can be functional
       # pod type head or worker
       # rayNodeType: head # Not needed since it is under the headgroup
       # the following params are used to complete the ray start: ray start --head --block --redis-port=6379 ...
@@ -166,8 +166,6 @@ spec:
                 - name: RAY_REDIS_ADDRESS
                   value: redis-{cluster_id}:6379
                 - name: RAY_gcs_rpc_server_reconnect_timeout_s
-                  value: "600"
-                - name: RAY_gcs_failover_worker_reconnect_timeout
                   value: "600"
                 - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
                   value: "1"
@@ -282,8 +280,6 @@ spec:
                       fieldRef:
                         fieldPath: status.podIP
                   - name: RAY_gcs_rpc_server_reconnect_timeout_s
-                    value: "600"
-                  - name: RAY_gcs_failover_worker_reconnect_timeout
                     value: "600"
                   - name: RAY_gcs_server_request_timeout_seconds
                     value: "5"

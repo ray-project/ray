@@ -18,8 +18,8 @@ from ray.autoscaler._private.gcp.config import (
 # The logic has been abstracted away here to allow for different GCP resources
 # (API endpoints), which can differ widely, making it impossible to use
 # the same logic for everything.
-from ray.autoscaler._private.gcp.node import GCPTPU  # noqa
 from ray.autoscaler._private.gcp.node import (
+    GCPTPU,  # noqa
     GCPCompute,
     GCPNode,
     GCPNodeType,
@@ -197,9 +197,9 @@ class GCPNodeProvider(NodeProvider):
                     count -= len(reuse_nodes)
 
             if count > 0:
-                results = resource.create_instances(
+                results: List[Tuple[dict, str]] = resource.create_instances(
                     base_config, labels, count
-                )  # type: List[Tuple[dict, str]]
+                )
 
                 created_nodes_dict = {
                     instance_id: result for result, instance_id in results

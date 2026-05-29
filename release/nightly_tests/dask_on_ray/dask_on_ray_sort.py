@@ -241,7 +241,7 @@ if __name__ == "__main__":
     duration = np.mean(output)
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"duration": duration, "success": 1}))
+        f.write(json.dumps({"duration": duration}))
 
     write_header = (
         not os.path.exists("output.csv") or os.path.getsize("output.csv") == 0
@@ -269,6 +269,6 @@ if __name__ == "__main__":
             "dask_nthreads": args.dask_nthreads,
             "dask_memlimit": args.dask_memlimit,
         }
-        for output in output:
-            row["duration"] = output
+        for current_output in output:
+            row["duration"] = current_output
             writer.writerow(row)

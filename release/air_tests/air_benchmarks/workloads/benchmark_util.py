@@ -110,7 +110,6 @@ def get_ip_port_actors(actors: List[ray.actor.ActorHandle]) -> List[str]:
         ip = ray.util.get_node_ip_address()
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
             s.bind(("localhost", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             port = s.getsockname()[1]
         return ip, port
 

@@ -1,10 +1,11 @@
-import os
 import logging
-from typing import Optional, List, Tuple
+import os
 from functools import lru_cache
 from importlib.util import find_spec
+from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ class HPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_hpu_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_HABANA_VISIBLE_MODULES_ENV_VAR):
+        if env_bool(NOSET_HABANA_VISIBLE_MODULES_ENV_VAR, False):
             return
 
         os.environ[

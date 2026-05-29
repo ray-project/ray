@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 import ray
+from ray._common.network_utils import build_address
 from ray._private.dict import deep_update
 from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_CLIENT_PORT,
@@ -102,10 +103,10 @@ class DockerCluster:
 
         if client:
             port = self.client_port
-            address = f"ray://{host}:{port}"
+            address = f"ray://{build_address(host, port)}"
         else:
             port = self.gcs_port
-            address = f"{host}:{port}"
+            address = build_address(host, port)
 
         timeout_at = time.monotonic() + timeout
         while time.monotonic() < timeout_at:
@@ -226,7 +227,7 @@ class DockerCluster:
 
             if not images:
                 try:
-                    subprocess.check_output(
+                    subprocess.check_call(
                         f"docker pull {self._docker_image}", shell=True
                     )
                 except Exception as e:
@@ -260,7 +261,7 @@ class DockerCluster:
 
     def _start_monitor(self):
         self._monitor_process = subprocess.Popen(
-            ["python", self._monitor_script, self.config_file]
+            [sys.executable, self._monitor_script, self.config_file]
         )
         time.sleep(2)
 
@@ -278,7 +279,7 @@ class DockerCluster:
         """
         self._start_monitor()
 
-        subprocess.check_output(
+        subprocess.check_call(
             f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True
         )
 
@@ -290,7 +291,7 @@ class DockerCluster:
         if ray.is_initialized:
             ray.shutdown()
 
-        subprocess.check_output(
+        subprocess.check_call(
             f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=True
         )
 
@@ -367,7 +368,7 @@ class DockerCluster:
         """
         node_id = self._get_node(node_id=node_id, num=num, rand=rand)
         container = self._get_docker_container(node_id=node_id)
-        subprocess.check_output(f"docker kill {container}", shell=True)
+        subprocess.check_call(f"docker kill {container}", shell=True)
 
 
 class RemoteAPI:

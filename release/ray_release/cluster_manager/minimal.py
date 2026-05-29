@@ -1,15 +1,20 @@
 import time
 
+from ray_release.anyscale_util import create_cluster_env_from_image
+from ray_release.cluster_manager.cluster_manager import ClusterManager
+from ray_release.config import COMPUTE_CONFIG_MODEL_FIELDS
 from ray_release.exception import (
+    ClusterComputeCreateError,
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
     ClusterEnvCreateError,
-    ClusterComputeCreateError,
 )
 from ray_release.logger import logger
-from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.util import format_link, anyscale_cluster_env_build_url
-from retry import retry
+from ray_release.retry import retry
+from ray_release.util import (
+    anyscale_cluster_env_build_url,
+    format_link,
+)
 
 REPORT_S = 30.0
 
@@ -20,10 +25,14 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
+    @retry(
+        init_delay_sec=10,
+        jitter_sec=5,
+        max_retry_count=2,
+        exceptions=(ClusterEnvCreateError,),
+    )
     def create_cluster_env(self):
         assert self.cluster_env_id is None
-
         assert self.cluster_env_name
 
         logger.info(
@@ -32,51 +41,14 @@ class MinimalClusterManager(ClusterManager):
             f"cluster envs with this name."
         )
 
-        paging_token = None
-        while not self.cluster_env_id:
-            result = self.sdk.search_cluster_environments(
-                dict(
-                    name=dict(equals=self.cluster_env_name),
-                    paging=dict(count=50, paging_token=paging_token),
-                    project_id=None if self.test.is_byod_cluster() else self.project_id,
-                )
-            )
-            paging_token = result.metadata.next_paging_token
-
-            for res in result.results:
-                if res.name == self.cluster_env_name:
-                    self.cluster_env_id = res.id
-                    logger.info(
-                        f"Cluster env already exists with ID " f"{self.cluster_env_id}"
-                    )
-                    break
-
-            if not paging_token or self.cluster_env_id:
-                break
-
-        if not self.cluster_env_id:
-            logger.info("Cluster env not found. Creating new one.")
-            try:
-                result = self.sdk.create_byod_cluster_environment(
-                    dict(
-                        name=self.cluster_env_name,
-                        config_json=dict(
-                            docker_image=self.test.get_anyscale_byod_image(),
-                            ray_version="nightly",
-                            env_vars=self.test.get_byod_runtime_env(),
-                        ),
-                    )
-                )
-                self.cluster_env_id = result.result.id
-            except Exception as e:
-                logger.warning(
-                    f"Got exception when trying to create cluster "
-                    f"env: {e}. Sleeping for 10 seconds with jitter and then "
-                    f"try again..."
-                )
-                raise ClusterEnvCreateError("Could not create cluster env.") from e
-
-            logger.info(f"Cluster env created with ID {self.cluster_env_id}")
+        self.cluster_env_id = create_cluster_env_from_image(
+            image=self.test.get_anyscale_byod_image(),
+            test_name=self.cluster_env_name,
+            runtime_env=self.test.get_byod_runtime_env(),
+            sdk=self.sdk,
+            cluster_env_id=self.cluster_env_id,
+            cluster_env_name=self.cluster_env_name,
+        )
 
     def build_cluster_env(self, timeout: float = 600.0):
         assert self.cluster_env_id
@@ -176,6 +148,9 @@ class MinimalClusterManager(ClusterManager):
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None
 
+        if self.cluster_compute and self.test.uses_anyscale_sdk_2026():
+            return self._create_cluster_compute_new_sdk(_repeat=_repeat)
+
         if self.cluster_compute:
             assert self.cluster_compute
 
@@ -243,6 +218,71 @@ class MinimalClusterManager(ClusterManager):
                     f"ID {self.cluster_compute_id}"
                 )
 
+    def _create_cluster_compute_new_sdk(self, _repeat: bool = True):
+        """Create cluster compute using the anyscale.compute_config API (2026 SDK)."""
+        assert self.cluster_compute
+
+        logger.info(
+            f"Test uses a compute config (2026 SDK) with name "
+            f"{self.cluster_compute_name}. Looking up existing "
+            f"compute configs with this name."
+        )
+
+        # Check if compute config already exists by name
+        anyscale_sdk = self.test.anyscale
+        try:
+            compute_config_version = anyscale_sdk.compute_config.get(
+                self.cluster_compute_name
+            )
+            self.cluster_compute_id = compute_config_version.id
+            logger.info(
+                f"Compute config already exists " f"with ID {self.cluster_compute_id}"
+            )
+            return
+        except RuntimeError as e:
+            if "not found" not in str(e):
+                raise
+        logger.info(
+            f"Compute config not found. "
+            f"Creating with name {self.cluster_compute_name}."
+        )
+
+        # Build ComputeConfig from the cluster compute dict, excluding
+        # keys like idle_termination_minutes/maximum_uptime_minutes that
+        # were added by set_cluster_compute() and are not part of the
+        # ComputeConfig model.
+        ComputeConfig = anyscale_sdk.compute_config.ComputeConfig
+        config_dict = {
+            k: v
+            for k, v in self.cluster_compute.items()
+            if k in COMPUTE_CONFIG_MODEL_FIELDS
+        }
+        config = ComputeConfig.from_dict(config_dict)
+
+        try:
+            full_name = anyscale_sdk.compute_config.create(
+                config, name=self.cluster_compute_name
+            )
+            compute_config_version = anyscale_sdk.compute_config.get(full_name)
+            self.cluster_compute_id = compute_config_version.id
+        except Exception as e:
+            if _repeat:
+                logger.warning(
+                    f"Got exception when trying to create compute "
+                    f"config: {e}. Sleeping for 10 seconds and then "
+                    f"try again once..."
+                )
+                time.sleep(10)
+                return self._create_cluster_compute_new_sdk(_repeat=False)
+
+            raise ClusterComputeCreateError("Could not create cluster compute") from e
+
+        logger.info(
+            f"Compute config created with "
+            f"name {full_name} and "
+            f"ID {self.cluster_compute_id}"
+        )
+
     def build_configs(self, timeout: float = 30.0):
         try:
             self.create_cluster_compute()
@@ -279,22 +319,3 @@ class MinimalClusterManager(ClusterManager):
             raise ClusterEnvBuildError(
                 f"Unexpected cluster env build error: {e}"
             ) from e
-
-    def delete_configs(self):
-        if self.cluster_id:
-            self.sdk.delete_cluster(self.cluster_id)
-        if self.cluster_env_build_id:
-            self.sdk.delete_cluster_environment_build(self.cluster_env_build_id)
-        if self.cluster_env_id:
-            self.sdk.delete_cluster_environment(self.cluster_env_id)
-        if self.cluster_compute_id:
-            self.sdk.delete_cluster_compute(self.cluster_compute_id)
-
-    def start_cluster(self, timeout: float = 600.0):
-        pass
-
-    def terminate_cluster_ex(self, wait: bool = False):
-        pass
-
-    def get_cluster_address(self) -> str:
-        return f"anyscale://{self.project_name}/{self.cluster_name}"

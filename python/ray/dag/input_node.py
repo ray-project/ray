@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
@@ -57,11 +57,11 @@ class InputNode(DAGNode):
         # Alternatively user can also pass single data object, list or dict
         # and access them via list index, object attribute or dict key str.
         ray_dag.execute(UserDataObject(m1=1, m2=2))
-            # dag_input.m1, dag_input.m2
+        # dag_input.m1, dag_input.m2
         ray_dag.execute([1, 2])
-            # dag_input[0], dag_input[1]
+        # dag_input[0], dag_input[1]
         ray_dag.execute({"m1": 1, "m2": 2})
-            # dag_input["m1"], dag_input["m2"]
+        # dag_input["m1"], dag_input["m2"]
     """
 
     def __init__(
@@ -215,7 +215,7 @@ class InputAttributeNode(DAGNode):
     def __init__(
         self,
         dag_input_node: InputNode,
-        key: str,
+        key: Union[int, str],
         accessor_method: str,
         input_type: str = None,
     ):
@@ -290,6 +290,10 @@ class InputAttributeNode(DAGNode):
         """
         if "result_type_string" in self._bound_other_args_to_resolve:
             return self._bound_other_args_to_resolve["result_type_string"]
+
+    @property
+    def key(self) -> Union[int, str]:
+        return self._key
 
 
 @DeveloperAPI

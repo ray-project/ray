@@ -1,13 +1,19 @@
+import sys
 import threading
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
+import pyarrow as pa
 import pytest
-import tensorflow as tf
 import torch
 
 import ray
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def build_model():
@@ -70,6 +76,83 @@ def test_basic_dataset_preemption(ray_start_regular_shared):
         assert result == list(range(50))
 
 
+def test_iter_batches_early_exit_shuts_down_executor(ray_start_regular_shared):
+    """Tests that breaking out of ``iter_batches`` early shuts down the
+    streaming executor deterministically. Otherwise the executor's worker
+    thread keeps producing blocks that pile up in the object store and
+    holds resources that can starve other datasets (e.g., a validation
+    dataset waiting to run)."""
+
+    ds = ray.data.range(1000, override_num_blocks=20)
+    it = ds.iterator()
+
+    for i, _ in enumerate(it.iter_batches(batch_size=10)):
+        if i == 0:
+            break
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
+def test_iter_batches_full_iteration_shuts_down_executor(ray_start_regular_shared):
+    """Tests that fully iterating ``iter_batches`` shuts down the
+    streaming executor (regression guard for the early-exit cleanup
+    path, which adds an idempotent shutdown to the iterator)."""
+
+    ds = ray.data.range(100, override_num_blocks=5)
+    it = ds.iterator()
+
+    for _ in it.iter_batches(batch_size=10):
+        pass
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
+def test_iter_batches_exception_shuts_down_executor(ray_start_regular_shared):
+    """Tests that an exception raised inside the user's iteration loop
+    still triggers executor shutdown via the iterator's ``finally``."""
+
+    ds = ray.data.range(1000, override_num_blocks=20)
+    it = ds.iterator()
+
+    class _Sentinel(Exception):
+        pass
+
+    with pytest.raises(_Sentinel):
+        for _ in it.iter_batches(batch_size=10):
+            raise _Sentinel()
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
+def test_iter_batches_close_on_held_iterator_shuts_down_executor(
+    ray_start_regular_shared,
+):
+    """Tests that ``it.close()`` shuts down the executor when the caller
+    holds an explicit reference to the iterator. Without ``close()``,
+    Python defers cleanup until the reference is dropped — ``break``
+    inside the for-loop wouldn't fire ``GeneratorExit`` on a held
+    reference. Some libraries (e.g. PyTorch Lightning's batch fetchers)
+    keep an ``iter()`` reference internally; this is the documented
+    eager-cleanup escape hatch."""
+
+    ds = ray.data.range(1000, override_num_blocks=20)
+    batches = ds.iterator().iter_batches(batch_size=10)
+
+    it = iter(batches)
+    next(it)
+    it.close()
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
     ds = ray.data.range(100)
     it = ds.iterator()
@@ -86,28 +169,41 @@ def test_basic_dataset_iter_rows(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
-def test_tf_conversion(ray_start_regular_shared):
+@pytest.mark.parametrize("include_additional_columns", [False, True])
+def test_tf_conversion(ray_start_regular_shared, include_additional_columns):
     ds = ray.data.range(5)
     it = ds.iterator()
-    tf_dataset = it.to_tf("id", "id")
+
+    if include_additional_columns:
+        tf_dataset = it.to_tf("id", "id", additional_columns="id")
+    else:
+        tf_dataset = it.to_tf("id", "id")
+
     for i, row in enumerate(tf_dataset):
         assert all(row[0] == i)
         assert all(row[1] == i)
         assert isinstance(row[0], tf.Tensor)
         assert isinstance(row[1], tf.Tensor)
+        if include_additional_columns:
+            assert all(row[2] == i)
+            assert isinstance(row[2], tf.Tensor)
 
 
-def test_tf_e2e(ray_start_regular_shared):
+@pytest.mark.parametrize("include_additional_columns", [False, True])
+def test_tf_e2e(ray_start_regular_shared, include_additional_columns):
     ds = ray.data.range(5)
     it = ds.iterator()
     model = build_model()
-    model.fit(it.to_tf("id", "id"), epochs=3)
+    if include_additional_columns:
+        model.fit(it.to_tf("id", "id", additional_columns="id"), epochs=3)
+    else:
+        model.fit(it.to_tf("id", "id"), epochs=3)
 
 
 def test_torch_conversion(ray_start_regular_shared):
     ds = ray.data.range(5)
     it = ds.iterator()
-    it.iter_batches = MagicMock()
+    it._iter_batches = MagicMock()
 
     for batch in it.iter_torch_batches():
         assert isinstance(batch["id"], torch.Tensor)
@@ -117,7 +213,7 @@ def test_torch_conversion(ray_start_regular_shared):
     #  `_collate_fn` (handles formatting and Tensor creation)
     # and `_finalize_fn` (handles host to device data transfer)
     # are used in `DataIterator.iter_batches()`.
-    iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+    iter_batches_calls_kwargs = [a.kwargs for a in it._iter_batches.call_args_list]
     assert all(
         callable(kwargs["_collate_fn"]) and callable(kwargs["_finalize_fn"])
         for kwargs in iter_batches_calls_kwargs
@@ -158,34 +254,213 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
             assert batch.tolist() == list(range(5, 10))
 
     # Test that we don't automatically set device if collate_fn is specified.
-    with patch(
-        "ray.air._internal.torch_utils.get_devices", lambda: [torch.device("cuda")]
-    ):
-        devices = ray.air._internal.torch_utils.get_devices()
-        assert devices[0].type == "cuda"
+    with patch("ray.train.torch.get_device", lambda: torch.device("cuda")):
+        devices = ray.train.torch.get_device()
+        assert devices.type == "cuda"
 
-        it.iter_batches = MagicMock()
+        it._iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
             assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
-        # When collate_fn is specified, check that`_finalize_fn`
-        # is not used in `DataIterator.iter_batches()`.
-        iter_batches_calls_kwargs = [a.kwargs for a in it.iter_batches.call_args_list]
+        # Check that _finalize_fn is always used in `DataIterator.iter_batches()`.
+        iter_batches_calls_kwargs = [a.kwargs for a in it._iter_batches.call_args_list]
         assert all(
-            kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
+            kwargs["_finalize_fn"] is not None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
 
 
-def test_iterator_to_materialized_dataset(ray_start_regular_shared):
+@pytest.fixture(params=["regular", "chunked"])
+def null_array_table(request):
+    """Fixture that returns a PyArrow table with either a regular or chunked null array."""
+    if request.param == "regular":
+        # Regular array
+        return pa.table({"fruit_apple": pa.array([None, None, None], type=pa.null())})
+    else:
+        # Chunked array
+        return pa.table(
+            {
+                "fruit_apple": pa.chunked_array(
+                    [
+                        pa.array([None], type=pa.null()),
+                        pa.array([None, None], type=pa.null()),
+                    ]
+                )
+            }
+        )
+
+
+@pytest.fixture
+def image_dataset(ray_start_regular_shared):
+    """Fixture that returns a Ray dataset with image-like columns."""
+    num_rows = 10
+    num_images = 8
+    image_size_flat = 224 * 224 * 3  # Flattened image size
+    rows = []
+    for _ in range(num_rows):
+        row = {}
+        for i in range(num_images):
+            row[f"image_{i}"] = np.random.randint(
+                0, 255, size=image_size_flat, dtype=np.uint8
+            )
+        rows.append(row)
+
+    table = pa.Table.from_pylist(rows)
+    return ray.data.from_arrow([table])
+
+
+def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
+    """Test iter_torch_batches with a PyArrow table containing null type arrays."""
+    ds = ray.data.from_arrow(null_array_table)
+    it = ds.iterator()
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch, dict)
+        assert "fruit_apple" in batch
+        assert isinstance(batch["fruit_apple"], torch.Tensor)
+        assert torch.isnan(batch["fruit_apple"]).all()
+        assert batch["fruit_apple"].shape == (3,)
+
+
+@pytest.fixture
+def collate_fns_with_and_without_threading():
+    """Fixture that provides DefaultCollateFn with and without threading."""
+    from ray.data.collate_fn import DefaultCollateFn
+
+    collate_fn_with_threading = DefaultCollateFn(num_workers=4)
+    collate_fn_no_threading = DefaultCollateFn(num_workers=0)
+
+    return {
+        "with_threading": collate_fn_with_threading,
+        "without_threading": collate_fn_no_threading,
+    }
+
+
+def _collect_batches(ds, collate_fn, batch_size=5):
+    """Helper function to collect batches from iter_torch_batches."""
+    batches = []
+    for batch in ds.iterator().iter_torch_batches(
+        collate_fn=collate_fn, batch_size=batch_size
+    ):
+        batches.append(batch)
+    return batches
+
+
+def test_torch_conversion_default_collate_fn_threading(
+    ray_start_regular_shared,
+    image_dataset,
+    collate_fns_with_and_without_threading,
+):
+    """Test DefaultCollateFn with/without threading produces same results."""
+    ds = image_dataset
+    collate_fns = collate_fns_with_and_without_threading
+
+    batches_with_threading = _collect_batches(ds, collate_fns["with_threading"])
+    batches_no_threading = _collect_batches(ds, collate_fns["without_threading"])
+
+    # Verify results are the same
+    assert len(batches_with_threading) == len(batches_no_threading)
+    for b1, b2 in zip(batches_with_threading, batches_no_threading):
+        assert set(b1.keys()) == set(b2.keys())
+        for col in b1.keys():
+            assert len(b1[col]) == len(b2[col])
+            for t1, t2 in zip(b1[col], b2[col]):
+                assert torch.equal(t1, t2)
+
+
+class TestToTorch:
+    def test_features_only(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2}, {"a": 3, "b": 4}])
+        it = ds.iterator().to_torch(batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert labels is None
+        assert isinstance(features, torch.Tensor)
+        assert features.shape == (2, 2)
+
+    def test_with_label_column(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"x": 1, "y": 10}, {"x": 2, "y": 20}])
+        it = ds.iterator().to_torch(label_column="y", batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert features.shape == (2, 1)
+        assert labels.shape == (2, 1)
+        assert sorted(labels.flatten().tolist()) == [10, 20]
+
+    def test_squeezed_label(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"x": 1, "y": 10}, {"x": 2, "y": 20}])
+        it = ds.iterator().to_torch(
+            label_column="y", batch_size=2, unsqueeze_label_tensor=False
+        )
+
+        features, labels = next(iter(it))
+
+        assert labels.shape == (2,)
+
+    def test_feature_columns_as_list_of_lists(self, ray_start_regular_shared):
+        ds = ray.data.from_pandas(pd.DataFrame({"a": [[1, 2], [3, 4], [5, 6]]}))
+        it = ds.iterator().to_torch(feature_columns=["a"], batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert labels is None
+        assert features.shape == (2, 1, 2)
+
+    def test_feature_columns_subset(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
+        it = ds.iterator().to_torch(feature_columns=["a", "c"], batch_size=1)
+
+        features, labels = next(iter(it))
+
+        assert features.shape == (1, 2)
+
+    def test_feature_columns_as_dict(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
+        it = ds.iterator().to_torch(
+            feature_columns={"group1": ["a"], "group2": ["b", "c"]},
+            batch_size=1,
+        )
+
+        features, labels = next(iter(it))
+
+        assert isinstance(features, dict)
+        assert set(features.keys()) == {"group1", "group2"}
+        assert features["group1"].shape == (1, 1)
+        assert features["group2"].shape == (1, 2)
+
+    def test_explicit_dtype(self, ray_start_regular_shared):
+        ds = ray.data.from_items([{"a": 1, "b": 2}])
+        it = ds.iterator().to_torch(feature_column_dtypes=torch.float32, batch_size=1)
+
+        features, _ = next(iter(it))
+
+        assert features.dtype == torch.float32
+
+    def test_returns_iterable_dataset(self, ray_start_regular_shared):
+        """to_torch should return a torch IterableDataset."""
+        ds = ray.data.range(1)
+
+        result = ds.iterator().to_torch(batch_size=1)
+
+        assert isinstance(result, torch.utils.data.IterableDataset)
+
+
+def test_to_torch_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iterator().to_torch()
+
+
+@pytest.mark.parametrize("should_equalize", [True, False])
+def test_iterator_to_materialized_dataset(ray_start_regular_shared, should_equalize):
     """Tests that `DataIterator.materialize` fully consumes the
     iterator and returns a `MaterializedDataset` view of the data
     that can be used to interact with the full dataset
     (e.g. load it all into memory)."""
     ds = ray.data.range(10)
     num_splits = 2
-    iters = ds.streaming_split(num_splits, equal=True)
+    iters = ds.streaming_split(num_splits, equal=should_equalize)
 
     def consume_in_parallel(fn):
         runners = [
@@ -219,5 +494,9 @@ def test_iterator_to_materialized_dataset(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))

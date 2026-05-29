@@ -97,13 +97,13 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
-    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
+    def report(self, trials: List[Trial], done: bool, *sys_info: str):
         """Reports progress across trials.
 
         Args:
             trials: Trials to report on.
             done: Whether this is the last progress report attempt.
-            sys_info: System info.
+            *sys_info: System info strings to include in the report.
         """
         raise NotImplementedError
 
@@ -126,6 +126,8 @@ class TuneReporterBase(ProgressReporter):
             be parameter names and the values should be the displayed names.
             If this is a list, the parameter name is used directly. If empty,
             defaults to all available parameters.
+        total_samples: Total number of samples expected for the tuning run,
+            used to render progress totals. Defaults to None.
         max_progress_rows: Maximum number of rows to print
             in the progress table. The progress table describes the
             progress of each trial. Defaults to 20.
@@ -314,7 +316,7 @@ class TuneReporterBase(ProgressReporter):
         self,
         trials: List[Trial],
         done: bool,
-        *sys_info: Dict,
+        *sys_info: str,
         fmt: str = "psql",
         delim: str = "\n",
     ):
@@ -328,8 +330,12 @@ class TuneReporterBase(ProgressReporter):
         Args:
             trials: Trials to report on.
             done: Whether this is the last progress report attempt.
+            *sys_info: System info strings appended below the status header.
             fmt: Table format. See `tablefmt` in tabulate API.
             delim: Delimiter between messages.
+
+        Returns:
+            The rendered progress string.
         """
         if self._sort_by_metric and (self._metric is None or self._mode is None):
             self._sort_by_metric = False
@@ -466,6 +472,8 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             be parameter names and the values should be the displayed names.
             If this is a list, the parameter name is used directly. If empty,
             defaults to all available parameters.
+        total_samples: Total number of samples expected for the tuning run,
+            used to render progress totals. Defaults to None.
         max_progress_rows: Maximum number of rows to print
             in the progress table. The progress table describes the
             progress of each trial. Defaults to 20.
@@ -530,14 +538,14 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `train.RunConfig()` instead."
+                "to `tune.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
         self._display_handle = None
         self.display("")  # initialize empty display to update later
 
-    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
+    def report(self, trials: List[Trial], done: bool, *sys_info: str):
         progress = self._progress_html(trials, done, *sys_info)
 
         if self.output_queue is not None:
@@ -637,6 +645,8 @@ class CLIReporter(TuneReporterBase):
             be parameter names and the values should be the displayed names.
             If this is a list, the parameter name is used directly. If empty,
             defaults to all available parameters.
+        total_samples: Total number of samples expected for the tuning run,
+            used to render progress totals. Defaults to None.
         max_progress_rows: Maximum number of rows to print
             in the progress table. The progress table describes the
             progress of each trial. Defaults to 20.
@@ -696,7 +706,7 @@ class CLIReporter(TuneReporterBase):
     def _print(self, msg: str):
         safe_print(msg)
 
-    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
+    def report(self, trials: List[Trial], done: bool, *sys_info: str):
         self._print(self._progress_str(trials, done, *sys_info))
 
 
@@ -837,6 +847,9 @@ def _trial_progress_str(
             minimizing or maximizing the metric attribute.
         sort_by_metric: Sort terminated trials by metric in the
             intermediate table. Defaults to False.
+
+    Returns:
+        Human-readable progress message describing the trials.
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
@@ -895,6 +908,12 @@ def _max_len(
         add_addr: If True, will add part of the object address to the end of the
             string, e.g. to identify different instances of the same class. If
             False, three dots (``...``) will be used instead.
+        wrap: If True, wrap long strings across up to two rows of ``max_len``
+            characters instead of truncating with an ellipsis.
+
+    Returns:
+        The original value if it is numeric/bool/None, otherwise an abbreviated
+        or wrapped string representation.
     """
     if value is None or isinstance(value, (int, float, numbers.Number, bool)):
         return value
@@ -1109,8 +1128,10 @@ def _trial_progress_table(
     return messages
 
 
-def _generate_sys_info_str(*sys_info) -> str:
+def _generate_sys_info_str(*sys_info: str) -> str:
     """Format system info into a string.
+
+    Args:
         *sys_info: System info strings to be included.
 
     Returns:
@@ -1131,6 +1152,10 @@ def _trial_errors_str(
         fmt: Output format (see tablefmt in tabulate API).
         max_rows: Maximum number of rows in the error table. Defaults to
             unlimited.
+
+    Returns:
+        A delimited string describing errored trials, or an empty string if
+        no trials have errored.
     """
     messages = []
     failed = [t for t in trials if t.error_file]
@@ -1198,7 +1223,11 @@ def _fair_filter_trials(
     The oldest trials are truncated if necessary.
 
     Args:
-        trials_by_state: Maximum number of trials to return.
+        trials_by_state: Mapping from trial state to the trials in that state.
+        max_trials: Maximum total number of trials to return across all states.
+        sort_by_metric: If True, preserve the existing order of terminated
+            trials (assumed pre-sorted by metric); otherwise sort by trial id.
+
     Returns:
         Dict mapping state to List of fairly represented trials.
     """
@@ -1253,6 +1282,10 @@ def _get_trial_info(
         parameters: Names of trial parameters to include.
         metrics: Names of metrics to include.
         max_column_length: Maximum column length (in characters).
+
+    Returns:
+        A list with the trial name, status, location, parameter values, and
+        metric values (in that order), abbreviated to ``max_column_length``.
     """
     result = trial.last_result
     config = trial.config
@@ -1448,7 +1481,9 @@ class TrialProgressCallback(Callback):
             )
         )
 
-    def display_result(self, trial: Trial, result: Dict, error: bool, done: bool):
+    def display_result(
+        self, trial: Trial, result: Dict, error: bool, done: bool
+    ) -> None:
         """Display a formatted HTML table of trial progress results.
 
         Trial progress is only shown if verbosity is set to level 2 or 3.

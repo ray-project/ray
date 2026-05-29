@@ -1,12 +1,17 @@
+import unittest
+from typing import Any, Callable, Dict, Optional, Tuple
+
 import gymnasium as gym
 import numpy as np
-import unittest
-
-from typing import List, Optional, Tuple
 
 import ray
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import MultiAgentDict
 
@@ -124,12 +129,6 @@ class MultiAgentTestEnv(MultiAgentEnv):
 
         return obs, reward, is_terminated, is_truncated, info
 
-    def action_space_sample(self, agent_ids: List[str] = None) -> MultiAgentDict:
-        # Actually not used at this stage.
-        return {
-            agent_id: self.action_space[agent_id].sample() for agent_id in agent_ids
-        }
-
 
 # TODO (simon): Test `get_state()` and `from_state()`.
 class TestMultiAgentEpisode(unittest.TestCase):
@@ -157,7 +156,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         actions = [{"a0": 0, "a1": 0}, {"a1": 1}, {"a1": 2}]
         rewards = [{"a0": 0.1, "a1": 0.1}, {"a1": 0.2}, {"a1": 0.3}]
         episode = MultiAgentEpisode(
-            observations=observations, actions=actions, rewards=rewards
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            agent_t_started={"a0": 0, "a1": 3},
         )
         check(episode.agent_episodes["a0"].observations.data, [0])
         check(episode.agent_episodes["a1"].observations.data, [0, 1, 2, 3])
@@ -178,7 +180,10 @@ class TestMultiAgentEpisode(unittest.TestCase):
         actions = [{"a0": 0}, {"a1": 1}, {"a0": 2, "a1": 2}, {"a1": 3}]
         rewards = [{"a0": 0.1}, {"a1": 0.2}, {"a0": 0.3, "a1": 0.3}, {"a1": 0.4}]
         episode = MultiAgentEpisode(
-            observations=observations, actions=actions, rewards=rewards
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            agent_t_started={"a0": 1, "a1": 3},
         )
         check(episode.agent_episodes["a0"].observations.data, [0, 2])
         check(episode.agent_episodes["a1"].observations.data, [1, 2, 3, 4])
@@ -229,7 +234,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             ]
             action = {agent_id: i + 1 for agent_id in agents_to_step_next}
 
-            # action = env.action_space_sample(agents_stepped)
             obs, reward, terminated, truncated, info = env.step(action)
 
             # If "agent_0" is part of the reset obs, it steps in the first ts.
@@ -261,6 +265,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs,
             env_t_started=len(rewards),
+            agent_t_started={"agent_0": agent_0_num_steps - 1},
             len_lookback_buffer="auto",  # default
         )
 
@@ -270,7 +275,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
         # Assert that the other agents are neither terminated nor truncated.
-        for agent_id in env.get_agent_ids():
+        for agent_id in env.agents:
             if agent_id != "agent_1" and agent_id != "agent_5":
                 self.assertFalse(episode.agent_episodes[agent_id].is_done)
 
@@ -287,6 +292,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             truncateds=truncateds,
             extra_model_outputs=extra_model_outputs[-10:],
             env_t_started=100,
+            agent_t_started={"agent_5": 8},
             len_lookback_buffer="auto",  # default: all data goes into lookback buffers
         )
 
@@ -301,7 +307,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             check(len(episode.agent_episodes[agent_id].actions), 0)
             check(len(episode.agent_episodes[agent_id].rewards), 0)
             check(episode.agent_episodes[agent_id].is_truncated, False)
-            check(episode.agent_episodes[agent_id].is_finalized, False)
+            check(episode.agent_episodes[agent_id].is_numpy, False)
         check(episode.agent_episodes["agent_5"].is_terminated, True)
         check(
             episode.env_t_to_agent_t["agent_5"].data,
@@ -362,7 +368,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.env_t == episode.env_t_started == 0)
         # Assert that the agents with initial observations have their single-agent
         # episodes in place.
-        for agent_id in env.get_agent_ids():
+        for agent_id in env.agents:
             # Ensure that all agents have a single env_ts=0 -> agent_ts=0
             # entry in their env- to agent-timestep mappings.
             if agent_id in obs:
@@ -586,12 +592,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two observations in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         obs = episode.get_observations(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             obs,
@@ -603,7 +609,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill
-        obs = episode.get_observations(indices=[-2, -1], neg_indices_left_of_zero=True)
+        obs = episode.get_observations(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             obs,
             {"agent_1": [0, 1], "agent_2": [0], "agent_3": [0, 1], "agent_4": [1]},
@@ -663,7 +669,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             obs,
@@ -809,12 +815,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two infos in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         inf = episode.get_infos(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             inf,
@@ -826,7 +832,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill
-        inf = episode.get_infos(indices=[-2, -1], neg_indices_left_of_zero=True)
+        inf = episode.get_infos(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             inf,
             {
@@ -901,7 +907,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             inf,
@@ -1166,12 +1172,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two actions in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         act = episode.get_actions(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             act,
@@ -1183,7 +1189,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill.
-        act = episode.get_actions(indices=[-2, -1], neg_indices_left_of_zero=True)
+        act = episode.get_actions(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             act,
             {
@@ -1235,7 +1241,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # From the last ts in lookback buffer to first actual ts (empty as all data is
         # in lookback buffer, but we fill).
         act = episode.get_actions(
-            slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True
+            slice(-1, 1), return_list=True, fill=-8, neg_index_as_lookback=True
         )
         check(
             act,
@@ -1327,7 +1333,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rew = episode.get_rewards(-4, env_steps=False, fill=-5)
         check(rew, {"a0": -5, "a1": 0})
 
-        # Generate simple records for a multi agent environment.
+        # Generate simple records for a multi-agent environment.
         (
             observations,
             actions,
@@ -1406,12 +1412,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two rewards in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         rew = episode.get_rewards(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             rew,
@@ -1423,7 +1429,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill.
-        episode.get_rewards(indices=[-2, -1], neg_indices_left_of_zero=True)
+        episode.get_rewards(indices=[-2, -1], neg_index_as_lookback=True)
 
         # Get last rewards for each individual agent.
         rew = episode.get_rewards(indices=-1, env_steps=False)
@@ -1475,7 +1481,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             rew,
@@ -1503,6 +1509,174 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # Now agent steps.
         rew = episode.get_rewards(env_steps=False)
         self.assertTrue(rew == {})
+
+        # Regression test for https://github.com/ray-project/ray/issues/62903
+        # get_rewards() on a finalized (numpy) episode should not crash when
+        # an agent was inactive during all requested env steps.
+        observations = [
+            {"a0": 0, "a1": 0},  # env step 0: both agents
+            {"a0": 1},  # env step 1: only a0 (a1 inactive)
+            {"a0": 2},  # env step 2: only a0 (a1 inactive)
+            {"a0": 3, "a1": 3},  # env step 3: both agents (terminal)
+        ]
+        actions = [{"a0": 0, "a1": 0}, {"a0": 1}, {"a0": 2}]
+        rewards = [
+            {"a0": 0.1, "a1": 0.1},
+            {"a0": 0.2},
+            {"a0": 0.3},
+            {"a0": 0.4, "a1": 0.4},
+        ]
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+            terminateds={"a0": True, "a1": True, "__all__": True},
+        )
+        episode.to_numpy()
+
+        # Full range: a1 has data at env steps 0 and 3, should work.
+        rew = episode.get_rewards()
+        check(rew, {"a0": [0.1, 0.2, 0.3], "a1": [0.1]})
+
+        # Slice covering only env steps where a1 was inactive.
+        # Before fix: ValueError("Input `list_of_structs` does not contain any items.")
+        rew = episode.get_rewards(indices=slice(1, 3))
+        check(rew, {"a0": [0.2, 0.3]})
+        self.assertNotIn("a1", rew)
+
+        # The fix is in the shared path _get_single_agent_data_by_env_step_indices,
+        # so get_actions should also work for the same slice.
+        act = episode.get_actions(indices=slice(1, 3))
+        check(act, {"a0": [1, 2]})
+        self.assertNotIn("a1", act)
+
+        # Non-finalized (list-based) episodes should behave the same way.
+        episode_list = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+            terminateds={"a0": True, "a1": True, "__all__": True},
+        )
+        rew_list = episode_list.get_rewards(indices=slice(1, 3))
+        check(rew_list, {"a0": [0.2, 0.3]})
+        self.assertNotIn("a1", rew_list)
+
+    def test_get_extra_model_outputs_hanging_val(self):
+        """Tests that get_extra_model_outputs(key=...) correctly indexes hanging_val.
+
+        When an agent has hanging extra_model_outputs (action sent, next obs not
+        yet received), the cached value must be indexed by the requested key before
+        being passed to InfiniteLookbackBuffer.get(). Without the fix:
+        - Non-finalized (list-based): silently returns the entire dict instead of
+          the scalar value (data corruption).
+        - Finalized (numpy-based): crashes in tree.map_structure due to structure
+          mismatch between dict and scalar.
+        """
+
+        def _make_episode():
+            """Build a 2-agent episode where a0 has hanging extra outputs."""
+            episode = MultiAgentEpisode()
+            episode.add_env_reset(
+                observations={"a0": 0, "a1": 0},
+                infos={"a0": {}, "a1": {}},
+            )
+            # t=1: both agents act and get new obs.
+            episode.add_env_step(
+                observations={"a0": 1, "a1": 1},
+                actions={"a0": 10, "a1": 10},
+                rewards={"a0": 1.0, "a1": 1.0},
+                infos={"a0": {}, "a1": {}},
+                terminateds={"a0": False, "a1": False, "__all__": False},
+                truncateds={"a0": False, "a1": False, "__all__": False},
+                extra_model_outputs={
+                    "a0": {"vf_preds": 0.5, "action_dist_inputs": 1.0},
+                    "a1": {"vf_preds": 0.6, "action_dist_inputs": 1.1},
+                },
+            )
+            # t=2: both act, but only a1 gets a new obs.
+            # a0 acts but gets no obs -> hanging action + extra_model_outputs.
+            episode.add_env_step(
+                observations={"a1": 2},
+                actions={"a0": 20, "a1": 20},
+                rewards={"a0": 2.0, "a1": 2.0},
+                infos={"a1": {}},
+                terminateds={"a1": False, "__all__": False},
+                truncateds={"a1": False, "__all__": False},
+                extra_model_outputs={
+                    "a0": {"vf_preds": 0.7, "action_dist_inputs": 1.2},
+                    "a1": {"vf_preds": 0.8, "action_dist_inputs": 1.3},
+                },
+            )
+            return episode
+
+        # --- Non-finalized episode (list-based buffers) ---
+        episode = _make_episode()
+        self.assertIn("a0", episode._hanging_extra_model_outputs_end)
+
+        # List indices -> _get_single_agent_data_by_env_step_indices.
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=[-1, -2],
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.7, 0.5])
+        check(result["a1"], [0.8, 0.6])
+
+        # Slice indices -> _get_single_agent_data_by_env_step_indices.
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=slice(-2, None),
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.5, 0.7])
+        check(result["a1"], [0.6, 0.8])
+
+        # Single int index -> _get_single_agent_data_by_index.
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=-1,
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
+        check(result["a1"], 0.8)
+
+        # Control: agent_steps path (already correct).
+        result = episode.get_extra_model_outputs(
+            key="vf_preds",
+            indices=-1,
+            env_steps=False,
+            agent_ids="a0",
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
+
+        # --- Finalized episode (numpy-based buffers via to_numpy()) ---
+        # On the finalized path, the un-indexed hanging_val dict causes a crash
+        # in tree.map_structure: "The two structures don't have the same nested
+        # structure" (ndarray vs dict).
+        episode_fin = _make_episode()
+        episode_fin.to_numpy()
+
+        result = episode_fin.get_extra_model_outputs(
+            key="vf_preds",
+            indices=[-1, -2],
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.7, 0.5])
+
+        result = episode_fin.get_extra_model_outputs(
+            key="vf_preds",
+            indices=-1,
+            env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
 
     def test_other_getters(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
@@ -2274,7 +2448,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(successor), 0)
         check(successor.env_t_started, 2)
         check(successor.env_t, 2)
-        check(successor.env_t_to_agent_t, {"a0": [0], "a1": [0]})
+        check(successor.env_t_to_agent_t, {"a0": [2], "a1": [2]})
         a0 = successor.agent_episodes["a0"]
         a1 = successor.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 0))
@@ -2296,13 +2470,14 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a0": 3, "a1": 3},
             ],
             len_lookback_buffer=2,
+            agent_t_started={"a0": 0, "a1": 0},
         )
         # Cut with lookback=0 argument (default).
         successor = episode.cut()
         check(len(successor), 0)
         check(successor.env_t_started, 1)
         check(successor.env_t, 1)
-        check(successor.env_t_to_agent_t, {"a0": [0], "a1": [0]})
+        check(successor.env_t_to_agent_t, {"a0": [1], "a1": [1]})
         a0 = successor.agent_episodes["a0"]
         a1 = successor.agent_episodes["a1"]
         check((len(a0), len(a1)), (0, 0))
@@ -2319,8 +2494,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(len(successor), 0)
         check(successor.env_t_started, 1)
         check(successor.env_t, 1)
-        check(successor.env_t_to_agent_t["a0"].data, [0, 1, 2])
-        check(successor.env_t_to_agent_t["a1"].data, [0, 1, 2])
+        check(successor.env_t_to_agent_t["a0"].data, [-1, 0, 1])
+        check(successor.env_t_to_agent_t["a1"].data, [-1, 0, 1])
         check(successor.env_t_to_agent_t["a0"].lookback, 2)
         check(successor.env_t_to_agent_t["a1"].lookback, 2)
         a0 = successor.agent_episodes["a0"]
@@ -2336,7 +2511,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(successor._hanging_extra_model_outputs_end, {})
 
         # Multi-agent episode, in which one agent has a long sequence of not acting,
-        # but does receive (intermittend/hanging) rewards during this time.
+        # but does receive (intermittent/hanging) rewards during this time.
         observations = [
             {"a0": 0, "a1": 0},  # 0
             {"a0": 1},  # 1
@@ -2352,6 +2527,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a0": 0.2, "a1": 0.2},  # 2
             ],
             len_lookback_buffer=0,
+            agent_t_started={"a0": 0, "a1": 0},
         )
         successor = episode.cut()
         check(len(successor), 0)
@@ -2365,9 +2541,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a0.observations, [3])
         check(a0.actions, [])
         check(a0.rewards, [])
-        check(successor._hanging_actions_begin, {"a1": 0})
         check(successor._hanging_rewards_begin, {"a1": 0.3})
-        check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         check(successor._hanging_actions_end, {})
         check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
@@ -2390,9 +2564,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a0.observations, [3, 4])
         check(a0.actions, [3])
         check(a0.rewards, [0.3])
-        check(successor._hanging_actions_begin, {"a1": 0})
         check(successor._hanging_rewards_begin, {"a1": 0.6})
-        check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         check(successor._hanging_actions_end, {})
         check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
@@ -2413,16 +2585,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([3, 4], []))
         check((a0.rewards, a1.rewards), ([0.3, 0.4], []))
         # Begin caches keep accumulating a1's rewards.
-        check(successor._hanging_actions_begin, {"a1": 0})
         check(successor._hanging_rewards_begin, {"a1": 1.0})
-        check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         # But end caches are now empty (due to a1's observation/finished step).
         check(successor._hanging_actions_end, {})
         check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
 
-        # Generate a simple multi-agent episode and check all internals after
-        # construction.
+        # Generate a simple multi-agent episode and check all internals after construction.
         episode_1 = self._create_simple_episode(
             [
                 {"a0": 0, "a1": 0},
@@ -2431,6 +2600,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                 {"a1": 3},
             ],
             len_lookback_buffer="auto",
+            agent_t_started={"a0": 0, "a1": 3},
         )
         episode_2 = episode_1.cut()
         check(episode_1.id_, episode_2.id_)
@@ -2531,6 +2701,45 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode_2.env_t, episode_2.env_t_started)
         check(episode_1.env_t, episode_2.env_t_started)
 
+        # Another complex case.
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0},
+                {"a2": 0},
+                {"a2": 1},
+                {"a2": 2},
+                {"a0": 1},
+                {"a2": 3},
+                {"a2": 4},
+                # <- BUT: actual cut here, b/c of hanging action of a2
+                {"a2": 5},
+                # <- would expect cut here (b/c of lookback==1)
+                {"a0": 2},
+                {"a1": 0},
+            ],
+            len_lookback_buffer=0,
+        )
+        successor = episode.cut(len_lookback_buffer=1)
+        check(len(successor), 0)
+        check(successor.env_t, 9)
+        check(successor.env_t_started, 9)
+        self.assertTrue(all(len(e) == 0 for e in successor.agent_episodes.values()))
+        self.assertTrue(all(len(e) == 1 for e in successor.env_t_to_agent_t.values()))
+        self.assertTrue(
+            all(e.lookback == 2 for e in successor.env_t_to_agent_t.values())
+        )
+        check(successor.env_t_to_agent_t["a0"].data, ["S", 2, "S"])
+        check(successor.env_t_to_agent_t["a1"].data, ["S", "S", 0])
+        check(successor.env_t_to_agent_t["a2"].data, [5, "S", "S"])
+
+        check(successor.get_observations(0), {"a1": 0})
+        with self.assertRaises(IndexError):
+            successor.get_observations(1)
+        check(successor.get_observations(-2), {"a0": 2})
+        check(successor.get_observations(-3), {"a2": 5})
+        with self.assertRaises(IndexError):
+            successor.get_observations(-4)
+
         # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
 
@@ -2548,7 +2757,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     agent_obs,
                     episode_2.get_observations(
                         -1,
-                        neg_indices_left_of_zero=True,
+                        neg_index_as_lookback=True,
                         env_steps=False,
                         agent_ids=agent_id,
                     ),
@@ -3037,6 +3246,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a1.rewards, [0.2])
         check(a1.is_done, False)
 
+    def test_slice_with_lookback(self):
         # Test what happens if we have lookback buffers.
         observations = [
             {"a0": 0, "a1": 0},  # lookback -2
@@ -3050,7 +3260,13 @@ class TestMultiAgentEpisode(unittest.TestCase):
             {"a0": 8},  # 6
             {"a1": 9},  # 7
         ]
-        episode = self._create_simple_episode(observations, len_lookback_buffer=2)
+        # env-t  0 1 2 3 4 5 6 7 8 9
+        # a0 obs 0 1       5 6 7 8
+        # a1 obs 0 1 2 3 4 5   7   9
+
+        episode = self._create_simple_episode(
+            observations, len_lookback_buffer=2, agent_t_started={"a0": 2, "a1": 2}
+        )
         # ---
         slice_ = episode[1:3]
         check(len(slice_), 2)
@@ -3108,127 +3324,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.rewards, a1.rewards), ([], []))
         check((a0.is_done, a1.is_done), (False, False))
 
-    def test_concat_episode(self):
-        # Generate a simple multi-agent episode.
-        base_episode = self._create_simple_episode(
-            [
-                {"a0": 0, "a1": 0},
-                {"a0": 1, "a1": 1},  # <- split here, then concat
-                {"a0": 2, "a1": 2},
-            ]
-        )
-        check(len(base_episode), 2)
-        # Split it into two slices.
-        episode_1, episode_2 = base_episode[:1], base_episode[1:]
-        check(len(episode_1), 1)
-        check(len(episode_2), 1)
-        # Re-concat these slices.
-        episode_1.concat_episode(episode_2)
-        check(len(episode_1), 2)
-        check(episode_1.env_t_started, 0)
-        check(episode_1.env_t, 2)
-        a0 = episode_1.agent_episodes["a0"]
-        a1 = episode_1.agent_episodes["a1"]
-        check((len(a0), len(a1)), (2, 2))
-        check((a0.t_started, a1.t_started), (0, 0))
-        check((a0.t, a1.t), (2, 2))
-        check((a0.observations, a1.observations), ([0, 1, 2], [0, 1, 2]))
-        check((a0.actions, a1.actions), ([0, 1], [0, 1]))
-        check((a0.rewards, a1.rewards), ([0.0, 0.1], [0.0, 0.1]))
-        check((a0.is_done, a1.is_done), (False, False))
-
-        # Generate a more complex multi-agent episode.
-        base_episode = self._create_simple_episode(
-            [
-                {"a0": 0, "a1": 0},
-                {"a0": 1, "a1": 1},
-                {"a1": 2},
-                {"a1": 3},
-                {"a1": 4},  # <- split here, then concat
-                {"a0": 5, "a1": 5},
-                {"a0": 6},  # <- split here, then concat
-                {"a0": 7, "a1": 7},  # <- split here, then concat
-                {"a0": 8},  # <- split here, then concat
-                {"a1": 9},
-            ]
-        )
-        check(len(base_episode), 9)
-
-        # Split it into two slices.
-        for split_ in [(4, (4, 5)), (6, (6, 3)), (7, (7, 2)), (8, (8, 1))]:
-            episode_1, episode_2 = base_episode[: split_[0]], base_episode[split_[0] :]
-            check(len(episode_1), split_[1][0])
-            check(len(episode_2), split_[1][1])
-            # Re-concat these slices.
-            episode_1.concat_episode(episode_2)
-            check(len(episode_1), 9)
-            check(episode_1.env_t_started, 0)
-            check(episode_1.env_t, 9)
-            a0 = episode_1.agent_episodes["a0"]
-            a1 = episode_1.agent_episodes["a1"]
-            check((len(a0), len(a1)), (5, 7))
-            check((a0.t_started, a1.t_started), (0, 0))
-            check((a0.t, a1.t), (5, 7))
-            check(
-                (a0.observations, a1.observations),
-                ([0, 1, 5, 6, 7, 8], [0, 1, 2, 3, 4, 5, 7, 9]),
-            )
-            check((a0.actions, a1.actions), ([0, 1, 5, 6, 7], [0, 1, 2, 3, 4, 5, 7]))
-            check(
-                (a0.rewards, a1.rewards),
-                ([0, 0.1, 0.5, 0.6, 0.7], [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7]),
-            )
-            check((a0.is_done, a1.is_done), (False, False))
-
-        # Test hanging rewards.
-        observations = [
-            {"a0": 0, "a1": 0},  # 0
-            {"a0": 1},  # 1
-            {"a0": 2},  # 2  <- split here, then concat
-            {"a0": 3},  # 3
-            {"a0": 4},  # 4
-        ]
-        actions = observations[:-1]
-        # a1 continues receiving rewards (along with a0's actions).
-        rewards = [
-            {"a0": 0.0, "a1": 0.0},  # 0
-            {"a0": 0.1, "a1": 1.0},  # 1
-            {"a0": 0.2, "a1": 2.0},  # 2
-            {"a0": 0.3, "a1": 3.0},  # 3
-        ]
-        base_episode = MultiAgentEpisode(
-            observations=observations,
-            actions=actions,
-            rewards=rewards,
-            len_lookback_buffer=0,
-        )
-        check(len(base_episode), 4)
-        check(base_episode._hanging_rewards_end, {"a1": 6.0})
-        episode_1, episode_2 = base_episode[:2], base_episode[2:]
-        check(len(episode_1), 2)
-        check(len(episode_2), 2)
-        # Re-concat these slices.
-        episode_1.concat_episode(episode_2)
-        check(len(episode_1), 4)
-        check(episode_1.env_t_started, 0)
-        check(episode_1.env_t, 4)
-        a0 = episode_1.agent_episodes["a0"]
-        a1 = episode_1.agent_episodes["a1"]
-        check((len(a0), len(a1)), (4, 0))
-        check((a0.t_started, a1.t_started), (0, 0))
-        check((a0.t, a1.t), (4, 0))
-        check(
-            (a0.observations, a1.observations),
-            ([0, 1, 2, 3, 4], [0]),
-        )
-        check((a0.actions, a1.actions), ([0, 1, 2, 3], []))
-        check(
-            (a0.rewards, a1.rewards),
-            ([0, 0.1, 0.2, 0.3], []),
-        )
-        check(episode_1._hanging_rewards_end, {"a1": 6.0})
-        check((a0.is_done, a1.is_done), (False, False))
-
     def test_get_return(self):
         # Generate an empty episode and ensure that the return is zero.
         episode = MultiAgentEpisode()
@@ -3255,9 +3350,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
     def test_len(self):
         # Generate an empty episode and ensure that `len()` raises an error.
         episode = MultiAgentEpisode()
-        # Now raise an error.
-        with self.assertRaises(AssertionError):
-            len(episode)
 
         # Generate a new episode with some initialization data.
         obs = [
@@ -3304,6 +3396,65 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # episode.concat_episode(successor)
         # Assert that the length is now 100.
         # self.assertTrue(len(episode), 200)
+
+    def test_get_state_and_from_state(self):
+        # Generate an empty episode and ensure that the state is empty.
+        # Generate a simple multi-agent episode.
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0, "a1": 0},
+                {"a1": 1},
+                {"a1": 2},
+                {"a0": 3, "a1": 3},
+                {"a0": 4},
+                {"a0": 5, "a1": 5},
+                {"a0": 6, "a1": 6},
+                {"a1": 7},
+                {"a1": 8},
+                {"a0": 9},
+            ]
+        )
+
+        # Get the state of the episode.
+        state = episode.get_state()
+        # Ensure that the state is not empty.
+        self.assertTrue(state)
+        episode_2 = MultiAgentEpisode.from_state(state)
+
+        # Assert that the two episodes are identical.
+        self.assertEqual(episode_2.id_, episode.id_)
+        self.assertEqual(
+            episode_2.agent_to_module_mapping_fn, episode.agent_to_module_mapping_fn
+        )
+        self.assertEqual(
+            type(episode_2.observation_space), type(episode.observation_space)
+        )
+        self.assertEqual(type(episode_2.action_space), type(episode.action_space))
+        check(episode_2.env_t_started, episode.env_t_started)
+        check(episode_2.env_t, episode.env_t)
+        check(episode_2.agent_t_started, episode.agent_t_started)
+        self.assertEqual(episode_2.env_t_to_agent_t, episode.env_t_to_agent_t)
+        for agent_id, env_t_to_agent_t in episode_2.env_t_to_agent_t.items():
+            check(env_t_to_agent_t.data, episode.env_t_to_agent_t[agent_id].data)
+            check(
+                env_t_to_agent_t.lookback, episode.env_t_to_agent_t[agent_id].lookback
+            )
+        check(episode_2._hanging_actions_end, episode._hanging_actions_end)
+        check(
+            episode_2._hanging_extra_model_outputs_end,
+            episode._hanging_extra_model_outputs_end,
+        )
+        check(episode_2._hanging_rewards_end, episode._hanging_rewards_end)
+        check(episode_2._hanging_rewards_begin, episode._hanging_rewards_begin)
+        check(episode_2.is_terminated, episode.is_terminated)
+        check(episode_2.is_truncated, episode.is_truncated)
+        self.assertSetEqual(
+            set(episode_2.agent_episodes.keys()), set(episode.agent_episodes.keys())
+        )
+        for agent_id, agent_eps in episode_2.agent_episodes.items():
+            self.assertEqual(agent_eps.id_, episode.agent_episodes[agent_id].id_)
+        check(episode_2._start_time, episode._start_time)
+        check(episode_2._last_step_time, episode._last_step_time)
 
     def test_get_sample_batch(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
@@ -3376,18 +3527,27 @@ class TestMultiAgentEpisode(unittest.TestCase):
             self.assertTrue(batch[agent_id]["truncateds"][-1])
 
         # Finally, test that an empty episode, gives an empty batch.
-        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = MultiAgentEpisode(agent_ids=env.agents)
         # Convert now to sample batch.
         batch = episode.get_sample_batch()
         # Ensure that this batch is empty.
         check(len(batch), 0)
 
-    def _create_simple_episode(self, obs, len_lookback_buffer=0):
+    def _create_simple_episode(
+        self, obs, len_lookback_buffer: int = 0, agent_t_started: dict[str, int] = None
+    ):
+        if agent_t_started is None:
+            unique_agents = {agent_id for ob in obs for agent_id in ob}
+            agent_t_started = {
+                agent_id: len_lookback_buffer for agent_id in unique_agents
+            }
+
         return MultiAgentEpisode(
             observations=obs,
             actions=obs[:-1],
             rewards=[{aid: o / 10 for aid, o in o_dict.items()} for o_dict in obs[:-1]],
             len_lookback_buffer=len_lookback_buffer,
+            agent_t_started=agent_t_started,
         )
 
     def _mock_multi_agent_records_from_env(
@@ -3404,23 +3564,19 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # If no episode is given, construct one.
         # We give it the `agent_ids` to make it create all objects.
-        episode = episode or MultiAgentEpisode()
+        episode = MultiAgentEpisode() if episode is None else episode
 
         # We initialize the episode, if requested.
         if init:
             obs, info = env.reset(seed=seed)
             episode.add_env_reset(observations=obs, infos=info)
-        # In the other case wer need at least the last observations for the next
+        # In the other case we need at least the last observations for the next
         # actions.
         else:
-            obs = {
-                agent_id: agent_obs
-                for agent_id, agent_obs in episode.get_observations().items()
-                if episode._hanging_actions_end[agent_id]
-            }
+            obs = dict(episode.get_observations(-1))
 
         # Sample `size` many records.
-        done_agents = set()
+        done_agents = {aid for aid, t in episode.get_terminateds().items() if t}
         for i in range(env.t, env.t + size):
             action = {
                 agent_id: i + 1 for agent_id in obs if agent_id not in done_agents
@@ -3493,9 +3649,450 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         return observations, actions, rewards, terminateds, truncateds, infos
 
+    def test_setters(self):
+        """Tests whether the MultiAgentEpisode's setter methods work as expected.
+
+        Also tests numpy'ized episodes.
+
+        This test covers all setter methods:
+        - set_observations
+        - set_actions
+        - set_rewards
+        - set_extra_model_outputs
+
+        Each setter is tested with various indexing scenarios including:
+        - Single index
+        - List of indices
+        - Slice objects
+        - Negative indices (both regular and lookback buffer interpretation)
+
+        Uses two agents: a0 and a1
+        """
+        import copy
+
+        SOME_KEY = "some_key"
+
+        # Create a simple multi-agent episode with two agents without lookback buffer first for basic tests
+        episode = MultiAgentEpisode(
+            observations=[
+                {"a0": 100, "a1": 200},  # Initial observations
+                {"a0": 101, "a1": 201},
+                {"a0": 102, "a1": 202},
+                {"a0": 103, "a1": 203},
+                {"a0": 104, "a1": 204},
+                {"a0": 105, "a1": 205},
+                {"a0": 106, "a1": 206},
+            ],
+            actions=[
+                {"a0": 1, "a1": 11},
+                {"a0": 2, "a1": 12},
+                {"a0": 3, "a1": 13},
+                {"a0": 4, "a1": 14},
+                {"a0": 5, "a1": 15},
+                {"a0": 6, "a1": 16},
+            ],
+            rewards=[
+                {"a0": 0.1, "a1": 1.1},
+                {"a0": 0.2, "a1": 1.2},
+                {"a0": 0.3, "a1": 1.3},
+                {"a0": 0.4, "a1": 1.4},
+                {"a0": 0.5, "a1": 1.5},
+                {"a0": 0.6, "a1": 1.6},
+            ],
+            extra_model_outputs=[
+                {"a0": {SOME_KEY: 0.01}, "a1": {SOME_KEY: 1.01}},
+                {"a0": {SOME_KEY: 0.02}, "a1": {SOME_KEY: 1.02}},
+                {"a0": {SOME_KEY: 0.03}, "a1": {SOME_KEY: 1.03}},
+                {"a0": {SOME_KEY: 0.04}, "a1": {SOME_KEY: 1.04}},
+                {"a0": {SOME_KEY: 0.05}, "a1": {SOME_KEY: 1.05}},
+                {"a0": {SOME_KEY: 0.06}, "a1": {SOME_KEY: 1.06}},
+            ],
+            len_lookback_buffer=0,
+        )
+
+        test_patterns = [
+            # (description, new_data, indices)
+            ("zero index", {"a0": 7353.0, "a1": 8353.0}, 0),
+            ("single index", {"a0": 7353.0, "a1": 8353.0}, 2),
+            ("negative index", {"a0": 7353.0, "a1": 8353.0}, -1),
+            ("short list of indices", {"a0": [7353.0], "a1": [8353.0]}, [1]),
+            (
+                "long list of indices",
+                {"a0": [73.0, 53.0, 35.0, 53.0], "a1": [83.0, 63.0, 45.0, 63.0]},
+                [1, 2, 3, 4],
+            ),
+            ("short slice", {"a0": [7353.0], "a1": [8353.0]}, slice(2, 3)),
+            (
+                "long slice",
+                {"a0": [7.0, 3.0, 5.0, 3.0], "a1": [17.0, 13.0, 15.0, 13.0]},
+                slice(2, 6),
+            ),
+        ]
+
+        # Test setters with all patterns
+        numpy_episode = copy.deepcopy(episode).to_numpy()
+
+        for e in [episode, numpy_episode]:
+            print(f"Testing MultiAgent numpy'ized={e.is_numpy}...")
+            for desc, new_data, indices in test_patterns:
+                print(f"Testing MultiAgent {desc}...")
+
+                expected_data = new_data
+                test_new_data = new_data
+
+                # Convert lists to numpy arrays for numpy episodes
+                if e.is_numpy and isinstance(list(new_data.values())[0], list):
+                    test_new_data = {
+                        agent_id: np.array(agent_data)
+                        for agent_id, agent_data in new_data.items()
+                    }
+
+                # Test set_observations
+                e.set_observations(new_data=test_new_data, at_indices=indices)
+                result = e.get_observations(indices)
+                for agent_id in ["a0", "a1"]:
+                    check(result[agent_id], expected_data[agent_id])
+
+                # Test set_actions
+                e.set_actions(new_data=test_new_data, at_indices=indices)
+                result = e.get_actions(indices)
+                for agent_id in ["a0", "a1"]:
+                    check(result[agent_id], expected_data[agent_id])
+
+                # Test set_rewards
+                e.set_rewards(new_data=test_new_data, at_indices=indices)
+                result = e.get_rewards(indices)
+                for agent_id in ["a0", "a1"]:
+                    check(result[agent_id], expected_data[agent_id])
+
+                # Test set_extra_model_outputs
+                # Note: We test this by directly checking the underlying agent episodes
+                # since get_extra_model_outputs can be complex with indices
+                e.set_extra_model_outputs(
+                    key=SOME_KEY, new_data=test_new_data, at_indices=indices
+                )
+
+                # Verify that the setter worked by checking the individual agent episodes
+                if desc in ["single index", "zero index"]:
+                    for agent_id in ["a0", "a1"]:
+                        actual_idx = e.agent_episodes[agent_id].t_started + indices
+                        if actual_idx < len(
+                            e.agent_episodes[agent_id].get_extra_model_outputs(SOME_KEY)
+                        ):
+                            check(
+                                e.agent_episodes[agent_id].get_extra_model_outputs(
+                                    SOME_KEY
+                                )[actual_idx],
+                                expected_data[agent_id],
+                            )
+                elif desc == "negative index":
+                    for agent_id in ["a0", "a1"]:
+                        agent_ep = e.agent_episodes[agent_id]
+                        actual_idx = (
+                            len(agent_ep.get_extra_model_outputs(SOME_KEY)) + indices
+                        )
+                        if actual_idx >= 0:
+                            check(
+                                agent_ep.get_extra_model_outputs(SOME_KEY)[actual_idx],
+                                expected_data[agent_id],
+                            )
+                elif desc in ["long list of indices", "short list of indices"]:
+                    for agent_id in ["a0", "a1"]:
+                        agent_ep = e.agent_episodes[agent_id]
+                        for i, expected_val in enumerate(expected_data[agent_id]):
+                            actual_idx = agent_ep.t_started + indices[i]
+                            if actual_idx < len(
+                                agent_ep.get_extra_model_outputs(SOME_KEY)
+                            ):
+                                check(
+                                    agent_ep.get_extra_model_outputs(SOME_KEY)[
+                                        actual_idx
+                                    ],
+                                    expected_val,
+                                )
+                elif desc in ["long slice", "short slice"]:
+                    for agent_id in ["a0", "a1"]:
+                        agent_ep = e.agent_episodes[agent_id]
+                        slice_indices = list(range(indices.start, indices.stop))
+                        for i, expected_val in enumerate(expected_data[agent_id]):
+                            actual_idx = agent_ep.t_started + slice_indices[i]
+                            if actual_idx < len(
+                                agent_ep.get_extra_model_outputs(SOME_KEY)
+                            ):
+                                check(
+                                    agent_ep.get_extra_model_outputs(SOME_KEY)[
+                                        actual_idx
+                                    ],
+                                    expected_val,
+                                )
+
+
+class MultiAgentCountingEnv(MultiAgentEnv):
+    def __init__(
+        self, agent_fns: dict[str, Callable[[int], bool]], max_episode_length: int = 100
+    ):
+        super().__init__()
+
+        self.agents = list(agent_fns.keys())
+        self.possible_agents = list(agent_fns.keys())
+        self.agent_fns = agent_fns
+
+        self.observation_space = gym.spaces.Dict(
+            {
+                agent: gym.spaces.Discrete(max_episode_length)
+                for agent in self.possible_agents
+            }
+        )
+        self.action_space = gym.spaces.Dict(
+            {
+                agent: gym.spaces.Discrete(max_episode_length)
+                for agent in self.possible_agents
+            }
+        )
+
+        self.agent_timestep = {}
+        self.env_timestep = 0
+        self.max_episode_length = max_episode_length
+
+        # Precompute the last env_t where each agent will receive an observation
+        self.agent_last_obs_t = {}
+        for agent, fn in agent_fns.items():
+            for t in range(max_episode_length, -1, -1):
+                if fn(t):
+                    self.agent_last_obs_t[agent] = t
+                    break
+
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[dict] = None,
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
+        self.env_timestep = 0
+        self.agent_timestep = {agent: 0 for agent in self.possible_agents}
+
+        obs = self.get_obs()
+        return obs, {agent_id: {"env_timestep": self.env_timestep} for agent_id in obs}
+
+    def step(
+        self, action_dict: MultiAgentDict
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
+        self.env_timestep += 1
+
+        obs = self.get_obs()
+        rewards = {agent: 1 for agent in obs.keys()}
+        info = {agent: {"env_timestep": self.env_timestep} for agent in obs.keys()}
+
+        # Terminate agents when this is their last observation
+        terminated = {
+            agent: self.env_timestep == self.agent_last_obs_t[agent]
+            for agent in obs.keys()
+        }
+        terminated["__all__"] = self.env_timestep == self.max_episode_length
+
+        return obs, rewards, terminated, {}, info
+
+    def get_obs(self) -> dict[str, int]:
+        obs = {}
+        for agent, fn in self.agent_fns.items():
+            if fn(self.env_timestep):
+                obs[agent] = self.agent_timestep[agent]
+                self.agent_timestep[agent] += 1
+
+        # Every timestep must have at least one observation
+        assert len(obs) > 0
+        return obs
+
+
+class EchoRLModule(RLModule):
+    """An RLModule that returns the observation as the action (for testing)."""
+
+    framework = "torch"
+
+    @override(RLModule)
+    def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Return the observation as the action."""
+        obs = batch[Columns.OBS]
+        # For Discrete observation space, obs is already an integer/array of integers
+        return {Columns.ACTIONS: obs}
+
+    @override(RLModule)
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        return self._forward(batch, **kwargs)
+
+    @override(RLModule)
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        return self._forward(batch, **kwargs)
+
+    @override(RLModule)
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        raise NotImplementedError("EchoRLModule is not trainable!")
+
+
+AGENT_FNS = {
+    "p_true": lambda x: True,
+    "p_mod_2": lambda x: x % 2 == 0,
+    "p_mod_3+": lambda x: x % 3 == 0 and x > 0,
+    "p_in": lambda x: x in [2, 12, 18, 19],
+}
+MAX_EPISODE_LENGTH = 20
+
+# Sample 8 timesteps
+# Env Time: 0 1 2 3 4 5 6 7 8 | 9 10 11 12 13 14 15 16 | 17 18 19 20 | 0 1 2 3
+#  Agents  -------------------|------------------------|-------------|--------
+# p_true  : 0 1 2 3 4 5 6 7 8 | 9 10 11 12 13 14 15 16 | 17 18 19 20 | 0 1 2 3
+# p_mod_2 : 0 - 1 - 2 - 3 - 4 | -  5  -  6  -  7  -  8 |  -  9  - 10 | 0 - 1 -
+# p_mod_3+: - - - 0 - - 1 - - | 2  -  -  3  -  -  4  - |  -  5  -  - | - - - 0
+# p_in    : - - 0 - - - - - - | -  -  -  1  -  -  -  - |  -  2  3  - | - - 0 -
+
+
+CONFIG = (
+    PPOConfig()
+    .environment(
+        lambda cfg: MultiAgentCountingEnv(
+            AGENT_FNS, max_episode_length=MAX_EPISODE_LENGTH
+        )
+    )
+    .env_runners(
+        num_envs_per_env_runner=1,
+        num_env_runners=0,
+    )
+    .rl_module(rl_module_spec=RLModuleSpec(module_class=EchoRLModule))
+    .multi_agent(
+        policies={"p0"},
+        policy_mapping_fn=lambda aid, eps, **kw: "p0",
+        policies_to_train=[],
+    )
+)
+
+
+def test_multi_agent_episode_functionality(num_timesteps=8, num_samples=10):
+    """This test checks that the core data returned from the interface between MAEnvRunner, MAEpisode and a MultiAgentEnv work as expected.
+
+    Using a counting environment with periodic agent observations and a custom echo RL-Module,
+    this allows us to check that the observations, rewards, actions match expectations.
+    In particular, this test has a focus on `env_t_to_agent_t` as this is used to understand
+    when and what observation align across episode chunks.
+    """
+    env_runner = MultiAgentEnvRunner(CONFIG)
+
+    episodes = []
+    for repeat in range(num_samples):
+        new_episodes = env_runner.sample(
+            num_timesteps=num_timesteps, random_actions=False
+        )
+        episodes += new_episodes
+
+        # Add testing for individual episode chunks that the data is correct
+        for ep in new_episodes:
+            for agent_id, sa_episode in ep.agent_episodes.items():
+                obs = sa_episode.get_observations()
+                actions = sa_episode.get_actions()
+                rewards = sa_episode.get_rewards()
+                infos = sa_episode.get_infos()
+                env_t_to_agent_t = ep.env_t_to_agent_t[agent_id].get()
+
+                # The observation should be sequential for the sa_episode's length
+                assert list(obs) == list(range(sa_episode.t_started, sa_episode.t + 1))
+                # The action should mirror the observations (but one shorter due to initial obs)
+                assert list(actions) == list(range(sa_episode.t_started, sa_episode.t))
+                # The rewards should be same length as actions
+                assert list(rewards) == [1] * (sa_episode.t - sa_episode.t_started)
+                # The info should be the same length as observations
+                assert len(list(infos)) == len(list(obs))
+
+                # Check env_t_to_agent_t has data for every timestep inclusive
+                assert len(env_t_to_agent_t) == ep.env_t + 1 - ep.env_t_started
+
+                agent_t = sum(AGENT_FNS[agent_id](t) for t in range(ep.env_t_started))
+                expected_env_t_to_agent_t = []
+                for env_t in range(ep.env_t_started, ep.env_t + 1):
+                    if AGENT_FNS[agent_id](env_t):
+                        expected_env_t_to_agent_t.append(agent_t)
+                        agent_t += 1
+                    else:
+                        expected_env_t_to_agent_t.append(
+                            MultiAgentEpisode.SKIP_ENV_TS_TAG
+                        )
+                assert list(env_t_to_agent_t) == expected_env_t_to_agent_t
+
+                # The info should contain the env_t of the observations
+                # This is equal to the env_t of the non-skip timesteps
+                non_skip_env_t = [
+                    ep.env_t_started + idx
+                    for idx, agent_t in enumerate(env_t_to_agent_t)
+                    if agent_t != MultiAgentEpisode.SKIP_ENV_TS_TAG
+                ]
+                if len(non_skip_env_t) < len(obs):
+                    first_obs_env_t = next(
+                        (
+                            env_t
+                            for env_t in range(ep.env_t_started, -1, -1)
+                            if AGENT_FNS[agent_id](env_t)
+                        )
+                    )
+                    non_skip_env_t = [first_obs_env_t] + non_skip_env_t
+                info_timesteps = [info["env_timestep"] for info in infos]
+                assert non_skip_env_t == info_timesteps
+
+    # Concatenate chunks together then test that the concatenated data is correct
+    unique_episode_ids = {eps.id_ for eps in episodes}
+    for ep_id in unique_episode_ids:
+        eps_chunks = [ep for ep in episodes if ep.id_ == ep_id]
+
+        # Concatenate episode chunks together
+        combined = eps_chunks[0]
+        for chunk in eps_chunks[1:]:
+            combined.concat_episode(chunk)
+
+        # Check the episode contents for each agent
+        for agent_id, sa_episode in combined.agent_episodes.items():
+            obs = sa_episode.get_observations()
+            actions = sa_episode.get_actions()
+            rewards = sa_episode.get_rewards()
+            infos = sa_episode.get_infos()
+            env_t_to_agent_t = combined.env_t_to_agent_t[agent_id].get()
+
+            # Observations should be sequential: 0, 1, 2, 3, ...
+            expected_obs = list(range(len(obs)))
+            assert list(obs) == expected_obs
+
+            # Actions should equal observations (EchoRLModule)
+            assert list(actions) == list(obs[:-1])
+
+            # Rewards should equal 1 for every timestep
+            assert list(rewards) == [1] * len(actions)
+
+            # You should have the same number of info as obs
+            assert len(list(infos)) == len(list(obs))
+
+            # For the env_t_to_agent_t, we should have data for each timestep
+            assert len(env_t_to_agent_t) == combined.env_t + 1
+            expected_env_t_to_agent_t = []
+            agent_t = 0
+            for env_t in range(combined.env_t + 1):
+                if AGENT_FNS[agent_id](env_t):
+                    expected_env_t_to_agent_t.append(agent_t)
+                    agent_t += 1
+                else:
+                    expected_env_t_to_agent_t.append(MultiAgentEpisode.SKIP_ENV_TS_TAG)
+            assert list(env_t_to_agent_t) == expected_env_t_to_agent_t
+
+            # The info timesteps should equal to the non-skip timesteps
+            non_skip_agent_t = [
+                env_t
+                for env_t, agent_t in enumerate(env_t_to_agent_t)
+                if agent_t != MultiAgentEpisode.SKIP_ENV_TS_TAG
+            ]
+            info_timesteps = [info["env_timestep"] for info in infos]
+            assert non_skip_agent_t == info_timesteps
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -5,12 +5,12 @@ import sys
 import pytest
 
 import ray
-from ray import train
+import ray.tune
 from ray.tune import register_trainable, run_experiments
 
 
 def f(config):
-    train.report(dict(timesteps_total=1))
+    ray.tune.report(dict(timesteps_total=1))
 
 
 def test_dependency():

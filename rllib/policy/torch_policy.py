@@ -6,7 +6,6 @@ import os
 import threading
 import time
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -52,9 +51,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode  # noqa
 
 torch, nn = try_import_torch()
 
@@ -184,7 +180,7 @@ class TorchPolicy(Policy):
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
-        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - num_gpus=0 (set by the user).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             self.device = torch.device("cpu")
@@ -200,7 +196,6 @@ class TorchPolicy(Policy):
             self.model = model
         # Place on one or more actual GPU(s), when:
         # - num_gpus > 0 (set by user) AND
-        # - local_mode=False AND
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
@@ -332,7 +327,7 @@ class TorchPolicy(Policy):
         prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
         prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,
@@ -548,9 +543,13 @@ class TorchPolicy(Policy):
 
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
-        device_batch_size = self.config.get(
-            "sgd_minibatch_size", self.config["train_batch_size"]
-        ) // len(self.devices)
+        device_batch_size = self.config.get("minibatch_size")
+        if device_batch_size is None:
+            device_batch_size = self.config.get(
+                "sgd_minibatch_size",
+                self.config["train_batch_size"],
+            )
+        device_batch_size //= len(self.devices)
 
         # Set Model to train mode.
         if self.model_gpu_towers:
@@ -739,7 +738,7 @@ class TorchPolicy(Policy):
             optim_state_dict = convert_to_numpy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        if not self.config.get("_enable_new_api_stack", False) and self.exploration:
+        if self.exploration:
             # This is not compatible with RLModules, which have a method
             # `forward_exploration` to specify custom exploration behavior.
             state["_exploration_state"] = self.exploration.get_state()

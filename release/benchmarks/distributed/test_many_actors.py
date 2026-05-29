@@ -1,10 +1,12 @@
 import os
-import ray
-import ray._private.test_utils as test_utils
 import time
-import tqdm
 
-from dashboard_test import DashboardTestAtScale
+import tqdm
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
+import ray
+import ray._common.test_utils
+import ray._private.test_utils as test_utils
 from ray._private.state_api_test_utils import summarize_worker_startup_time
 
 is_smoke_test = True
@@ -40,7 +42,7 @@ def no_resource_leaks():
 
 addr = ray.init(address="auto")
 
-test_utils.wait_for_condition(no_resource_leaks)
+ray._common.test_utils.wait_for_condition(no_resource_leaks)
 monitor_actor = test_utils.monitor_memory_usage()
 dashboard_test = DashboardTestAtScale(addr)
 
@@ -55,7 +57,7 @@ print(f"Peak memory usage per processes:\n {usage}")
 del monitor_actor
 
 # Get the dashboard result
-test_utils.wait_for_condition(no_resource_leaks)
+ray._common.test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
 try:
@@ -73,7 +75,6 @@ results = {
     "actors_per_second": rate,
     "num_actors": MAX_ACTORS_IN_CLUSTER,
     "time": end_time - start_time,
-    "success": "1",
     "_peak_memory": round(used_gb, 2),
     "_peak_process_memory": usage,
 }

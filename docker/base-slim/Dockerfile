@@ -1,0 +1,205 @@
+# syntax=docker/dockerfile:1.3-labs
+
+# This Dockerfile is used to build the slim Ray image
+# Mainly for use on Anyscale.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS main-build
+ARG PYTHON_VERSION="3.10"
+ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+set -x
+
+export DEBIAN_FRONTEND=noninteractive
+
+APT_PKGS=(
+	ca-certificates
+	netbase
+    tzdata
+	curl
+    sudo
+    openssh-client
+    openssh-server
+    rsync
+    zip
+    unzip
+    git
+    gdb
+    vim-tiny
+    less
+
+    # For HAProxy
+    liblua5.3-0
+)
+
+apt-get update
+apt-get upgrade -y
+apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
+rm -rf /var/lib/apt/lists/*
+
+useradd -ms /bin/bash -d /home/ray ray --uid 1000 --gid 100
+usermod -aG sudo ray
+echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
+
+# Install uv
+curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
+# Determine the architecture of the host
+if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
+    ARCH="x86_64"
+elif [[ "${HOSTTYPE}" =~ ^aarch64 ]]; then
+    ARCH="aarch64"
+else
+    echo "Unsupported architecture ${HOSTTYPE}" >/dev/stderr
+    exit 1
+fi
+
+# Install dynolog
+if [[ "$ARCH" == "x86_64" ]]; then
+    DYNOLOG_TMP="$(mktemp -d)"
+    (
+        cd "${DYNOLOG_TMP}"
+        curl -sSL https://github.com/facebookincubator/dynolog/releases/download/v0.3.2/dynolog_0.3.2-0-amd64.deb -o dynolog_0.3.2-0-amd64.deb
+        sudo dpkg -i dynolog_0.3.2-0-amd64.deb
+    )
+    rm -rf "${DYNOLOG_TMP}"
+fi
+
+# Install azcopy
+AZCOPY_VERSION="10.30.0"
+AZCOPY_TMP="$(mktemp -d)"
+(
+    cd "${AZCOPY_TMP}"
+    if [[ "$ARCH" == "x86_64" ]]; then
+        curl -sSfL "https://github.com/Azure/azure-storage-azcopy/releases/download/v${AZCOPY_VERSION}/azcopy_linux_amd64_${AZCOPY_VERSION}.tar.gz" \
+            -o- | tar -xz "azcopy_linux_amd64_${AZCOPY_VERSION}/azcopy"
+        sudo mv "azcopy_linux_amd64_${AZCOPY_VERSION}/azcopy" /usr/local/bin/azcopy
+    else
+        curl -sSfL "https://github.com/Azure/azure-storage-azcopy/releases/download/v${AZCOPY_VERSION}/azcopy_linux_arm64_${AZCOPY_VERSION}.tar.gz" \
+            -o- | tar -xz "azcopy_linux_arm64_${AZCOPY_VERSION}/azcopy"
+        sudo mv "azcopy_linux_arm64_${AZCOPY_VERSION}/azcopy" /usr/local/bin/azcopy
+    fi
+)
+rm -rf "${AZCOPY_TMP}"
+
+# Install awscli
+AWSCLI_TMP="$(mktemp -d)"
+(
+    cd "${AWSCLI_TMP}"
+    curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o "awscliv2.zip"
+    unzip -q awscliv2.zip
+    sudo ./aws/install
+)
+rm -rf "${AWSCLI_TMP}"
+aws --version
+
+EOF
+
+# Switch to ray user
+USER ray
+ENV HOME=/home/ray
+WORKDIR /home/ray
+
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+set -x
+
+MINIFORGE_VERSION="24.11.3-0"
+
+# Install miniforge
+MINIFORGE_LINK="https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-${HOSTTYPE}.sh"
+curl -sfL -o /tmp/miniforge.sh "${MINIFORGE_LINK}"
+bash /tmp/miniforge.sh -b -p /home/ray/anaconda3 # use anaconda3 to match existing images to avoid surprises.
+rm /tmp/miniforge.sh
+
+/home/ray/anaconda3/bin/conda init bash
+
+eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+/home/ray/anaconda3/bin/conda clean -a
+
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
+
+anyscale --version
+
+mkdir -p /tmp/supervisord
+
+EOF
+
+ENV PATH="/home/ray/.local/bin:/home/ray/anaconda3/bin:$PATH"
+
+# --- HAProxy Build Stage ---
+FROM $BASE_IMAGE AS haproxy-builder
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update -y
+apt-get upgrade -y
+apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libc6-dev \
+    liblua5.3-dev \
+    libpcre3-dev \
+    libssl-dev \
+    zlib1g-dev
+rm -rf /var/lib/apt/lists/*
+
+# Install HAProxy from source.
+# Fetched from ray-project/haproxy-release (a GitHub release mirror) because
+# www.haproxy.org's wildcard TLS cert expired 2026-04-17 and the release tarball
+# disappeared from the upstream download site. Integrity is enforced by sha256
+# verification. Drop this mirror and switch back to www.haproxy.org once the
+# cert is renewed and the tarball is republished.
+HAPROXY_VERSION="2.8.20"
+HAPROXY_SHA256="c8301de11dabfbf049db07080e43b9570a63f99e41d4b0754760656bf7ea00b7"
+BUILD_DIR=$(mktemp -d)
+curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+     -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" \
+     "https://github.com/ray-project/haproxy-release/releases/download/${HAPROXY_VERSION}/haproxy-${HAPROXY_VERSION}.tar.gz"
+echo "${HAPROXY_SHA256}  ${BUILD_DIR}/haproxy.tar.gz" | sha256sum -c -
+tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
+make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
+rm -rf "${BUILD_DIR}"
+
+EOF
+
+# --- Return to main image ---
+FROM main-build AS main
+
+# Switch to root for system-level HAProxy setup
+USER root
+
+# Copy HAProxy binary from builder stage
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
+
+# Install HAProxy runtime dependency and setup
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+chown -R ray:"$(id -gn ray)" /run/haproxy
+
+EOF
+
+USER ray
+WORKDIR /home/ray
+
+CMD ["bash"]

@@ -2,6 +2,7 @@ import logging
 import threading
 
 import cupy
+
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.const import ENV
 
@@ -25,7 +26,7 @@ class StreamPool:
         device_idx: the absolute index of the device for this pool.
     """
 
-    def __init__(self, device_idx):
+    def __init__(self, device_idx: int):
         self.device_idx = device_idx
 
         self._initialized = False

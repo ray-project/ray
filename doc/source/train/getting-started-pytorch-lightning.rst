@@ -38,54 +38,6 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
 .. tab-set::
 
-    .. tab-item:: PyTorch Lightning
-
-        .. This snippet isn't tested because it doesn't use any Ray code.
-
-        .. testcode::
-            :skipif: True
-
-            import torch
-            from torchvision.models import resnet18
-            from torchvision.datasets import FashionMNIST
-            from torchvision.transforms import ToTensor, Normalize, Compose
-            from torch.utils.data import DataLoader
-            import lightning.pytorch as pl
-
-            # Model, Loss, Optimizer
-            class ImageClassifier(pl.LightningModule):
-                def __init__(self):
-                    super(ImageClassifier, self).__init__()
-                    self.model = resnet18(num_classes=10)
-                    self.model.conv1 = torch.nn.Conv2d(
-                        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
-                    )
-                    self.criterion = torch.nn.CrossEntropyLoss()
-
-                def forward(self, x):
-                    return self.model(x)
-
-                def training_step(self, batch, batch_idx):
-                    x, y = batch
-                    outputs = self.forward(x)
-                    loss = self.criterion(outputs, y)
-                    self.log("loss", loss, on_step=True, prog_bar=True)
-                    return loss
-
-                def configure_optimizers(self):
-                    return torch.optim.Adam(self.model.parameters(), lr=0.001)
-
-            # Data
-            transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
-            train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
-            train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
-
-            # Training
-            model = ImageClassifier()
-            trainer = pl.Trainer(max_epochs=10)
-            trainer.fit(model, train_dataloaders=train_dataloader)
-
-
     .. tab-item:: PyTorch Lightning + Ray Train
 
         .. code-block:: python
@@ -130,7 +82,7 @@ Compare a PyTorch Lightning training script with and without Ray Train.
 
             def train_func():
                 # Data
-                transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+                transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
                 data_dir = os.path.join(tempfile.gettempdir(), "data")
                 train_data = FashionMNIST(root=data_dir, train=True, download=True, transform=transform)
                 train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
@@ -174,6 +126,53 @@ Compare a PyTorch Lightning training script with and without Ray Train.
                         ray.train.lightning.RayTrainReportCallback.CHECKPOINT_NAME,
                     ),
                 )
+
+    .. tab-item:: PyTorch Lightning
+
+        .. This snippet isn't tested because it doesn't use any Ray code.
+
+        .. testcode::
+            :skipif: True
+
+            import torch
+            from torchvision.models import resnet18
+            from torchvision.datasets import FashionMNIST
+            from torchvision.transforms import ToTensor, Normalize, Compose
+            from torch.utils.data import DataLoader
+            import lightning.pytorch as pl
+
+            # Model, Loss, Optimizer
+            class ImageClassifier(pl.LightningModule):
+                def __init__(self):
+                    super(ImageClassifier, self).__init__()
+                    self.model = resnet18(num_classes=10)
+                    self.model.conv1 = torch.nn.Conv2d(
+                        1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
+                    )
+                    self.criterion = torch.nn.CrossEntropyLoss()
+
+                def forward(self, x):
+                    return self.model(x)
+
+                def training_step(self, batch, batch_idx):
+                    x, y = batch
+                    outputs = self.forward(x)
+                    loss = self.criterion(outputs, y)
+                    self.log("loss", loss, on_step=True, prog_bar=True)
+                    return loss
+
+                def configure_optimizers(self):
+                    return torch.optim.Adam(self.model.parameters(), lr=0.001)
+
+            # Data
+            transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
+            train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
+            train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
+
+            # Training
+            model = ImageClassifier()
+            trainer = pl.Trainer(max_epochs=10)
+            trainer.fit(model, train_dataloaders=train_dataloader)
 
 
 Set up a training function
@@ -313,6 +312,44 @@ To persist your checkpoints and monitor training progress, add a
 
 
 Reporting metrics and checkpoints to Ray Train enables you to support :ref:`fault-tolerant training <train-fault-tolerance>` and :ref:`hyperparameter optimization <train-tune>`.
+
+You can also configure :ref:`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and
+:ref:`asynchronous validation <train-validating-checkpoints>` through the callback.
+The ``checkpoint_upload_mode`` flag offloads checkpoint uploading to a Ray Train managed background thread
+instead of blocking the Lightning training loop. The ``validation`` flag launches an asynchronous
+Ray task to validate the checkpoint instead of running ``validation_step`` synchronously in the training workers.
+Note that this is incompatible with Lightning's `AsyncCheckpointIO <https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.plugins.io.AsyncCheckpointIO.html>`_ plugin
+because Ray Train needs to control the upload thread in order to wait for it to finish before committing the checkpoint.
+
+.. code-block:: diff
+
+     import lightning.pytorch as pl
+     from ray.train.lightning import RayTrainReportCallback
+    +from ray.train import CheckpointUploadMode
+    +from ray.train import ValidationConfig, ValidationTaskConfig
+
+     def train_func():
+         ...
+         trainer = pl.Trainer(
+             ...
+    -        callbacks=[..., RayTrainReportCallback()],
+    +        callbacks=[..., RayTrainReportCallback(
+    +            checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+    +            validation=ValidationTaskConfig(fn_kwargs={}),
+    +        )],
+         )
+         ...
+
+    +def validation_fn(checkpoint):
+    +    # Load and validate the checkpoint, return metrics.
+    +    return {"val_score": ...}
+    +
+    +trainer = TorchTrainer(
+    +    train_func,
+    +    validation_config=ValidationConfig(fn=validation_fn),
+    +    ...
+    +)
+
 Note that the :class:`ray.train.lightning.RayTrainReportCallback` class only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 Prepare your Lightning Trainer

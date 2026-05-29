@@ -22,12 +22,20 @@ logger = logging.getLogger(__file__)
 
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 DEFAULT_FULL_TEST_TRIAL_LENGTH_S = 60
+CLOUD = "serve_release_tests_cloud"
 
 
 @click.command()
 @click.option("--num-replicas", type=int, default=DEFAULT_FULL_TEST_NUM_REPLICA)
 @click.option("--trial-length", type=int, default=DEFAULT_FULL_TEST_TRIAL_LENGTH_S)
-def main(num_replicas: Optional[int], trial_length: Optional[int]):
+@click.option("--output-path", "-o", type=str, default=None)
+@click.option("--image-uri", type=str, default=None)
+def main(
+    num_replicas: Optional[int],
+    trial_length: Optional[int],
+    output_path: Optional[str],
+    image_uri: Optional[str],
+):
     noop_1k_application = {
         "name": "default",
         "import_path": "noop:app",
@@ -45,7 +53,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
         ],
     }
     compute_config = ComputeConfig(
-        cloud="anyscale_v2_default_cloud",
+        cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -81,11 +89,14 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
 
     with start_service(
         service_name="replica-scalability",
+        image_uri=image_uri,
         compute_config=compute_config,
         applications=[noop_1k_application],
+        working_dir="workloads",
+        cloud=CLOUD,
     ) as service_name:
         ray.init("auto")
-        status = service.status(name=service_name)
+        status = service.status(name=service_name, cloud=CLOUD)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1
@@ -156,7 +167,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[int]):
 
         logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
         logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
-        save_test_results(results)
+        save_test_results(results, output_path=output_path)
 
 
 if __name__ == "__main__":

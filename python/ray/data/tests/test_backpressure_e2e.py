@@ -7,13 +7,18 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
+    DownstreamCapacityBackpressurePolicy,
+)
+from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
     get_initial_core_execution_metrics_snapshot,
+    restore_data_context,  # noqa: F401
 )
 from ray.tests.conftest import shutdown_only  # noqa: F401
 
@@ -34,23 +39,25 @@ def test_large_e2e_backpressure_no_spilling(
     NUM_ROWS_PER_TASK = 10
     NUM_TASKS = 20
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
-    BLOCK_SIZE = 10 * 1024 * 1024
-    object_store_memory = 200 * 1024**2
-    print(f"object_store_memory: {object_store_memory/1024/1024}MB")
+    BLOCK_SIZE = 10 * MiB
+    object_store_memory = 200 * MiB
+
+    print(f">>> Setting Object Store to {memory_string(object_store_memory)}")
+
     ray.init(num_cpus=NUM_CPUS, object_store_memory=object_store_memory)
 
     def produce(batch):
-        print("Produce task started", batch["id"])
+        print(">>> [Producer] Produce task started", batch["id"])
         time.sleep(0.1)
         for id in batch["id"]:
-            print("Producing", id)
+            print(f">>> [Producer] Producing row {id=}")
             yield {
                 "id": [id],
                 "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
             }
 
     def consume(batch):
-        print("Consume task started", batch["id"])
+        print(">>> [Consumer] Consume task started", batch["id"])
         time.sleep(0.01)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
@@ -90,11 +97,13 @@ def _build_dataset(
     # - The consumer op has `num_blocks` tasks, each of which consumes 1 block.
     ctx = ray.data.DataContext.get_current()
     ctx.target_max_block_size = block_size
-    ctx.execution_options.resource_limits.object_store_memory = obj_store_limit
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=obj_store_limit
+    )
 
     def producer(batch):
         for i in range(num_blocks):
-            print("Producing block", i, time.time())
+            print(f"[{time.time()}] Producing block #{i} ({block_size=})")
             yield {
                 "id": [i],
                 "data": [np.zeros(block_size, dtype=np.uint8)],
@@ -102,7 +111,7 @@ def _build_dataset(
 
     def consumer(batch):
         assert len(batch["id"]) == 1
-        print("Consuming block", batch["id"][0], time.time())
+        print(f"[{time.time()}] Consuming block #{batch['id'][0]}")
         time.sleep(0.01)
         del batch["data"]
         return batch
@@ -185,15 +194,37 @@ def test_no_deadlock_on_resource_contention(
         insert_limit_op=insert_limit_op,
     )
 
-    from ray.data._internal.execution.resource_manager import (
-        ReservationOpResourceAllocator,
+    from ray.data._internal.execution.streaming_executor_state import IdleDetector
+
+    with patch.object(IdleDetector, "DETECTION_INTERVAL_S", 0.1):
+        assert len(ds.take_all()) == num_blocks
+
+
+def test_no_deadlock_when_downstream_capacity_policy_zeros_limit(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    """Test when DownstreamCapacityBackpressurePolicy zeros the output limit,
+    the execution can still proceed without deadlock."""
+    cluster_obj_store_mem = 100 * MiB
+    ray.init(num_cpus=2, object_store_memory=cluster_obj_store_mem)
+
+    num_blocks = 20
+    block_size = 1 * MiB
+    ds = _build_dataset(
+        obj_store_limit=cluster_obj_store_mem // 2,
+        producer_num_cpus=1,
+        consumer_num_cpus=1,
+        num_blocks=num_blocks,
+        block_size=block_size,
     )
 
+    # Force DownstreamCapacityBackpressurePolicy to always return 0 to trigger unblock
     with patch.object(
-        ReservationOpResourceAllocator.IdleDetector,
-        "DETECTION_INTERVAL_S",
-        0.1,
+        DownstreamCapacityBackpressurePolicy,
+        "max_task_output_bytes_to_read",
+        lambda self, op: 0,
     ):
+        # Without the escape hatch firing, this would hang.
         assert len(ds.take_all()) == num_blocks
 
 
@@ -208,7 +239,11 @@ def test_no_deadlock_with_preserve_order(
     data_context.target_max_block_size = block_size
     data_context._max_num_blocks_in_streaming_gen_buffer = 1
     data_context.execution_options.preserve_order = True
-    data_context.execution_options.resource_limits.object_store_memory = 5 * block_size
+    data_context.execution_options.resource_limits = (
+        data_context.execution_options.resource_limits.copy(
+            object_store_memory=5 * block_size
+        )
+    )
 
     # Some tasks are slower than others.
     # The faster tasks will finish first and occupy Map op's internal output buffer.
@@ -229,6 +264,7 @@ def test_no_deadlock_with_preserve_order(
 def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F811
     # Tests that backpressure applies even when reading directly from the input
     # datasource. This relies on datasource metadata size estimation.
+
     @ray.remote
     class Counter:
         def __init__(self):
@@ -247,23 +283,25 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
         def __init__(self):
             self.counter = Counter.remote()
 
-        def prepare_read(self, parallelism, n):
-            def range_(i):
-                ray.get(self.counter.increment.remote())
-                return [
-                    pd.DataFrame({"data": np.ones((n // parallelism * 1024 * 1024,))})
-                ]
+        def prepare_read(self, parallelism):
+            # Use 50 MiB blocks to exceed the 25 MiB output reservation
+            # and trigger object store backpressure
+            num_bytes = 50 * MiB
 
-            sz = (n // parallelism) * 1024 * 1024 * 8
-            print("Block size", sz)
+            def range_(i):
+                print(f">>> Read task: {i=}")
+
+                ray.get(self.counter.increment.remote())
+                return [pd.DataFrame({"data": np.ones((num_bytes,), dtype=np.uint8)})]
+
+            print(f">>> Block size: {num_bytes}")
 
             return [
                 ReadTask(
                     lambda i=i: range_(i),
                     BlockMetadata(
-                        num_rows=n // parallelism,
-                        size_bytes=sz,
-                        schema=None,
+                        num_rows=1,
+                        size_bytes=num_bytes,
                         input_files=None,
                         exec_stats=None,
                     ),
@@ -272,24 +310,40 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
             ]
 
     source = CountingRangeDatasource()
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.resource_limits.object_store_memory = 10e6
 
-    # 10GiB dataset.
-    ds = ray.data.read_datasource(source, n=10000, override_num_blocks=1000)
-    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=100 * MiB,
+        cpu=1,
+    )
+    ctx.target_max_block_size = 50 * MiB
+
+    # Create dataset with many blocks
+    ds = ray.data.read_datasource(source, override_num_blocks=1000)
+    it = iter(ds.iter_internal_ref_bundles())
+    # Dequeue 1 block
     next(it)
+    # Let it bake for some time
     time.sleep(3)
-    del it, ds
+
     launched = ray.get(source.counter.get.remote())
 
-    # If backpressure is broken we'll launch 15+.
-    assert launched <= 10, launched
+    # Clean up
+    del it
+    # With 50 MiB blocks and 100 MiB limit, backpressure should limit to ~2 tasks
+    # because after 2 outputs (100 MiB), the budget is depleted
+    assert launched == 2, launched
 
 
-def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
+def test_streaming_backpressure_e2e(
+    shutdown_only, monkeypatch, restore_data_context  # noqa: F811
+):
     # This test case is particularly challenging since there is a large input->output
     # increase in data size: https://github.com/ray-project/ray/issues/34041
+
+    # Increase the Ray Core spilling threshold to 100% to avoid flakiness.
+    monkeypatch.setenv("RAY_object_spilling_threshold", "1")
+
     class TestSlow:
         def __call__(self, df: np.ndarray):
             time.sleep(2)
@@ -325,4 +379,4 @@ def test_streaming_backpressure_e2e(restore_data_context):  # noqa: F811
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

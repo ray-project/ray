@@ -41,7 +41,7 @@ def run_torch():
 
 
 def run_lightning():
-    import pytorch_lightning as pl
+    import lightning.pytorch as pl
 
     from ray.train.lightning import (
         RayDDPStrategy,
@@ -106,7 +106,7 @@ def run_transformers():
 
 @pytest.mark.parametrize("framework", ["torch", "lightning", "transformers"])
 def test_torch_utility_usage_tags(shutdown_only, framework):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
     gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])

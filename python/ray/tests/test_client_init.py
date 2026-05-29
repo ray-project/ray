@@ -1,19 +1,23 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
-import pytest
 
-import time
+import json
 import random
-import sys
 import subprocess
+import sys
+import time
 from unittest.mock import patch
 
-import ray.util.client.server.server as ray_client_server
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-
-from ray.util.client import _ClientContext
-from ray.cluster_utils import cluster_not_supported
+import pytest
 
 import ray
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.util.client.server.server as ray_client_server
+from ray._private.ray_logging.logging_config import LoggingConfig
+from ray.cloudpickle.compat import pickle
+from ray.cluster_utils import cluster_not_supported
+from ray.job_config import JobConfig
+from ray.util.client import _ClientContext
+from ray.util.client.worker import prepare_init_request_args
 
 
 @ray.remote
@@ -43,8 +47,8 @@ class C:
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.fixture
-def init_and_serve_lazy():
-    cluster = ray.cluster_utils.Cluster()
+def init_and_serve_lazy(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, num_gpus=0)
     cluster.wait_for_nodes(1)
     address = cluster.address
@@ -52,10 +56,9 @@ def init_and_serve_lazy():
     def connect(job_config=None, **ray_init_kwargs):
         ray.init(address=address, job_config=job_config, **ray_init_kwargs)
 
-    server_handle = ray_client_server.serve("localhost:50051", connect)
+    server_handle = ray_client_server.serve("localhost", 50051, connect)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
-    time.sleep(2)
 
 
 def test_validate_port():
@@ -196,11 +199,81 @@ def test_max_clients(init_and_serve):
         _ = api.connect("localhost:50051")
 
 
-if __name__ == "__main__":
-    import os
-    import pytest
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port=50056"],
+    indirect=True,
+)
+def test_logging_config_in_client_mode(call_ray_start):
+    """logging_config reaches task workers (JobConfig) when using Ray Client."""
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    @ray.remote
+    def job_logging_encoding():
+        w = ray.get_runtime_context().worker
+        jlc = w.job_logging_config
+        return None if jlc is None else jlc.encoding
+
+    ray.init(
+        "ray://localhost:50056",
+        logging_config=LoggingConfig(encoding="TEXT", log_level="INFO"),
+        log_to_driver=False,
+        configure_logging=False,
+    )
+
+    assert ray.get(job_logging_encoding.remote()) == "TEXT"
+
+
+def test_prepare_init_request_args():
+    """``prepare_init_request_args`` copies kwargs, JSON-serializes logging config,
+    propagates it onto ``JobConfig``, and pickles the job for ``InitRequest``."""
+    # no job config, no ray init kwargs
+    serialized, kwargs = prepare_init_request_args(None, None)
+    assert serialized is None and kwargs == {}
+
+    # invalid logging config type
+    with pytest.raises(
+        TypeError, match="logging_config must be a dict or LoggingConfig"
+    ):
+        prepare_init_request_args(JobConfig(), {"logging_config": 42})
+
+    # ray init kwargs contains serialized logging config
+    lc = LoggingConfig(encoding="JSON", log_level="DEBUG")
+    orig = {"logging_config": lc, "num_cpus": 1}
+    job = JobConfig()
+    _, out = prepare_init_request_args(job, orig)
+    assert isinstance(orig["logging_config"], LoggingConfig)
+    assert isinstance(out["logging_config"], dict)
+    assert out["logging_config"]["encoding"] == "JSON"
+    assert orig["num_cpus"] == 1
+    json.dumps(out)
+    assert job.py_logging_config is not None
+    assert job.py_logging_config.encoding == "JSON"
+
+    # write logging config to JobConfig
+    job_dict = JobConfig()
+    prepare_init_request_args(
+        job_dict,
+        {"logging_config": {"encoding": "TEXT", "log_level": "ERROR"}},
+    )
+    assert job_dict.py_logging_config.encoding == "TEXT"
+    assert job_dict.py_logging_config.log_level == "ERROR"
+
+    # don't overwrite existing logging config on JobConfig
+    existing = LoggingConfig(encoding="TEXT")
+    job_keep = JobConfig()
+    job_keep.set_py_logging_config(existing)
+    prepare_init_request_args(
+        job_keep,
+        {"logging_config": LoggingConfig(encoding="JSON")},
+    )
+    assert job_keep.py_logging_config is existing
+
+    # pickle the job for InitRequest
+    job_pickle = JobConfig()
+    blob, _ = prepare_init_request_args(job_pickle, {})
+    assert isinstance(blob, bytes) and len(blob) > 0
+    assert isinstance(pickle.loads(blob), JobConfig)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

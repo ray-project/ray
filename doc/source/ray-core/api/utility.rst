@@ -7,9 +7,32 @@ Utility
 
    ray.util.ActorPool
    ray.util.queue.Queue
+   ray.util.list_named_actors
+
+   ray.util.serialization.register_serializer
+   ray.util.serialization.deregister_serializer
+
+   ray.util.tpu.get_current_pod_worker_count
+   ray.util.tpu.get_current_pod_name
+   ray.util.tpu.get_num_tpu_chips_on_node
+   ray.util.tpu.get_tpu_coordinator_env_vars
+   ray.util.tpu.get_tpu_slice_name_from_node
+   ray.util.tpu.get_tpu_nodes_for_slice
+   ray.util.tpu.get_num_ready_tpu_slices
+   ray.util.tpu.get_tpu_num_slices_for_workers
+   ray.util.tpu.get_tpu_version_from_type
+   ray.util.tpu.get_tpu_worker_resources
+
+   ray.util.tpu.SlicePlacementGroup
+   ray.util.tpu.slice_placement_group
+
    ray.nodes
    ray.cluster_resources
    ray.available_resources
+
+   .. Other docs have references to these
+   ray.util.queue.Empty
+   ray.util.queue.Full
 
 .. _custom-metric-api-ref:
 

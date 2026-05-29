@@ -1,5 +1,7 @@
-import pytest
+import sys
+
 import grpc
+import pytest
 
 from ray.util.client.worker import Worker
 
@@ -55,10 +57,4 @@ def test_grpc_client_credentials_are_generated(monkeypatch):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

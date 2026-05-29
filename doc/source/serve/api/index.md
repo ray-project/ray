@@ -6,7 +6,7 @@
 (core-apis)=
 
 ```{eval-rst}
-.. module:: ray
+.. currentmodule:: ray
 ```
 
 ### Writing Applications
@@ -56,6 +56,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
+   serve.handle.DeploymentBroadcastResponse
 ```
 
 ### Running Applications
@@ -70,6 +71,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.delete
    serve.status
    serve.shutdown
+   serve.shutdown_async
 ```
 
 ### Configurations
@@ -78,11 +80,74 @@ See the [model composition guide](serve-model-composition) for how to update cod
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    serve.config.ProxyLocation
+   serve.config.AutoscalingContext
+   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.config.AggregationFunction
+   serve.config.GangPlacementStrategy
+   serve.config.GangRuntimeFailurePolicy
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
+   serve.config.AutoscalingPolicy
+   serve.config.RequestRouterConfig
+   serve.config.GangSchedulingConfig
+   serve.config.DeploymentActorConfig
+```
+
+### Schemas
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.schema.ServeActorDetails
+   serve.schema.ProxyDetails
+   serve.schema.ApplicationStatusOverview
+   serve.schema.ServeStatus
+   serve.schema.DeploymentStatusOverview
+   serve.schema.EncodingType
+   serve.schema.AutoscalingMetricsHealth
+   serve.schema.AutoscalingStatus
+   serve.schema.ScalingDecision
+   serve.schema.DeploymentAutoscalingDetail
+   serve.schema.ReplicaRank
+```
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   serve.schema.TaskProcessorAdapter
+```
+
+### Request Router
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.request_router.ReplicaID
+   serve.request_router.PendingRequest
+   serve.request_router.RunningReplica
+   serve.request_router.FIFOMixin
+   serve.request_router.LocalityMixin
+   serve.request_router.MultiplexMixin
+   serve.request_router.RequestRouter
 ```
 
 #### Advanced APIs
@@ -93,13 +158,23 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
 
    serve.get_replica_context
+   serve.get_trace_context
+   serve.get_deployment_actor
    serve.context.ReplicaContext
+   serve.context.GangContext
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
+   serve.exceptions.RayServeException
+   serve.exceptions.RequestCancelledError
+   serve.exceptions.gRPCStatusError
+   serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
+
 
 (serve-cli)=
 
@@ -192,7 +267,8 @@ Content-Type: application/json
     },
     "grpc_options": {
         "port": 9000,
-        "grpc_servicer_functions": []
+        "grpc_servicer_functions": [],
+        "request_timeout_s": null
     },
     "proxies": {
         "cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec": {
@@ -338,6 +414,7 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
    schema.ServeDeploySchema
    schema.gRPCOptionsSchema
@@ -345,6 +422,11 @@ Content-Type: application/json
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
+   schema.CeleryAdapterConfig
+   schema.TaskProcessorConfig
+   schema.TaskResult
+   schema.ScaleDeploymentRequest
+
 ```
 
 (serve-rest-api-response-schema)=
@@ -354,11 +436,28 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.TargetGroup
+   schema.Target
+   schema.DeploymentNode
+   schema.DeploymentTopology
+   schema.ControllerHealthMetrics
+   schema.DurationStats
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   schema.APIType
+   schema.ApplicationStatus
+   schema.ProxyStatus
+
 ```
 
 ## Observability
@@ -367,9 +466,66 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
    schema.LoggingConfig
+```
+
+(serve-llm-api)=
+
+## LLM API
+
+```{eval-rst}
+.. currentmodule:: ray
+``` 
+
+
+### Builders
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.build_llm_deployment
+   serve.llm.build_openai_app
+```
+
+### Configs
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.llm.LLMConfig
+   serve.llm.LLMServingArgs
+   serve.llm.ModelLoadingConfig
+   serve.llm.CloudMirrorConfig
+   serve.llm.LoraConfig
+```
+
+
+### Deployments
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.LLMServer
+   serve.llm.LLMRouter
 ```

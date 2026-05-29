@@ -1,0 +1,20 @@
+applications:
+  - name: MyApp
+    import_path: application_level_autoscaling:app
+    autoscaling_policy:
+      policy_function: autoscaling_policy:coordinated_scaling_policy_with_defaults
+    deployments:
+      - name: Preprocessor
+        autoscaling_config:
+          min_replicas: 1
+          max_replicas: 10
+          target_ongoing_requests: 1
+          upscale_delay_s: 2
+          downscale_delay_s: 5
+      - name: Model
+        autoscaling_config:
+          min_replicas: 2
+          max_replicas: 20
+          target_ongoing_requests: 1
+          upscale_delay_s: 3
+          downscale_delay_s: 5

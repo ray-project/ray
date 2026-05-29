@@ -1,17 +1,29 @@
 import dask
-from .scheduler import (
-    ray_dask_get,
-    ray_dask_get_sync,
-    enable_dask_on_ray,
-    disable_dask_on_ray,
-)
+from packaging.version import Version
+
+# Version(dask.__version__) becomes "0" during doc builds.
+if Version(dask.__version__) != Version("0") and Version(dask.__version__) < Version(
+    "2024.11.0"
+):
+    # Dask on Ray doesn't work if Dask version is less than 2024.11.0.
+    raise ImportError(
+        "Dask on Ray requires Dask version 2024.11.0 or later. "
+        "Please upgrade your Dask installation."
+    )
+
 from .callbacks import (
+    ProgressBarCallback,
     RayDaskCallback,
     local_ray_callbacks,
     unpack_ray_callbacks,
-    ProgressBarCallback,
 )
 from .optimizations import dataframe_optimize
+from .scheduler import (
+    disable_dask_on_ray,
+    enable_dask_on_ray,
+    ray_dask_get,
+    ray_dask_get_sync,
+)
 
 dask_persist = dask.persist
 

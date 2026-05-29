@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.util.state import list_cluster_events
 
 
@@ -57,14 +58,15 @@ def test_put_out_of_disk(shutdown_only):
     # ray.put doesn't work is that fallback allocation uses mmaped file
     # that doesn't neccssary allocate disk spaces.
     with create_tmp_file(250 * 1024 * 1024):
-        assert get_current_usage() > local_fs_capacity_threshold
-        time.sleep(1)
+        wait_for_condition(lambda: get_current_usage() > local_fs_capacity_threshold)
         with pytest.raises(ray.exceptions.OutOfDiskError):
             ray.put(np.random.rand(20 * 1024 * 1024))
         # delete tmp file to reclaim space back.
 
-    assert get_current_usage() < local_fs_capacity_threshold
-    time.sleep(1)
+    # Ideally get_current_usage() should immediately reflect the latest disk usage
+    # after the tmp file is deleted, but somehow there is some delays on CI machines
+    # so I use wait_for_condition here.
+    wait_for_condition(lambda: get_current_usage() < local_fs_capacity_threshold)
     ray.put(np.random.rand(20 * 1024 * 1024))
 
 

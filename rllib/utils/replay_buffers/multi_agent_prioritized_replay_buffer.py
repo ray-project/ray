@@ -1,8 +1,10 @@
-from typing import Dict
 import logging
+from typing import Dict
+
 import numpy as np
 
-from ray.util.timer import _Timer
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
@@ -16,10 +18,9 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
     StorageUnit,
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.util.debug import log_once
+from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class MultiAgentPrioritizedReplayBuffer(
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        **kwargs
+        **kwargs,
     ):
         """Initializes a MultiAgentReplayBuffer instance.
 
@@ -156,7 +157,7 @@ class MultiAgentPrioritizedReplayBuffer(
 
         Args:
             policy_id: ID of the policy that corresponds to the underlying
-            buffer
+                buffer
             batch: SampleBatch to add to the underlying buffer
             ``**kwargs``: Forward compatibility kwargs.
         """
@@ -244,7 +245,7 @@ class MultiAgentPrioritizedReplayBuffer(
 
         Args:
             prio_dict: A dictionary containing td_errors for
-            batches saved in underlying replay buffers.
+                batches saved in underlying replay buffers.
         """
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
@@ -259,8 +260,8 @@ class MultiAgentPrioritizedReplayBuffer(
         """Returns the stats of this buffer and all underlying buffers.
 
         Args:
-            debug: If True, stats of underlying replay buffers will
-            be fetched with debug=True.
+            debug: If True, stats of underlying replay buffers are
+                fetched with debug=True.
 
         Returns:
             stat: Dictionary of buffer stats.

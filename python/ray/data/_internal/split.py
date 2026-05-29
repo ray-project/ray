@@ -1,9 +1,9 @@
 import itertools
 import logging
+from dataclasses import replace
 from typing import Iterable, List, Tuple, Union
 
 import ray
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
@@ -28,7 +28,7 @@ def _calculate_blocks_rows(
         if metadata.num_rows is None:
             # Need to fetch number of rows.
             num_rows = ray.get(get_num_rows.remote(block))
-            metadata.num_rows = num_rows
+            metadata = replace(metadata, num_rows=num_rows)
         else:
             num_rows = metadata.num_rows
         block_rows.append(num_rows)
@@ -124,7 +124,6 @@ def _split_single_block(
         _meta = BlockMetadata(
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
-            schema=meta.schema,
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )
@@ -248,7 +247,7 @@ def _generate_global_split_results(
 def _split_at_indices(
     blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
     indices: List[int],
-    owned_by_consumer: bool = True,
+    owned_by_consumer: bool,
     block_rows: List[int] = None,
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Split blocks at the provided indices.
@@ -296,25 +295,3 @@ def _split_at_indices(
 def _get_num_rows(block: Block) -> int:
     """Get the number of rows contained in the provided block."""
     return BlockAccessor.for_block(block).num_rows()
-
-
-def _split_at_index(
-    block_list: BlockList,
-    index: int,
-) -> Tuple[
-    List[ObjectRef[Block]],
-    List[BlockMetadata],
-    List[ObjectRef[Block]],
-    List[BlockMetadata],
-]:
-    """Split blocks at the provided index.
-    Args:
-        blocks_with_metadata: Block futures to split, including the associated metadata.
-        index: The (global) index at which to split the blocks.
-    Returns:
-        The block split futures and their metadata for left and right of the index.
-    """
-    blocks_splits, metadata_splits = _split_at_indices(
-        block_list.get_blocks_with_metadata(), [index], block_list._owned_by_consumer
-    )
-    return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]

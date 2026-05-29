@@ -18,16 +18,28 @@ from typing import (
 import pyarrow.fs
 
 import ray.cloudpickle as pickle
+import ray.train
+import ray.tune
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig, ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
+from ray.train.constants import (
+    V2_MIGRATION_GUIDE_MESSAGE,
+    _v2_migration_warnings_enabled,
+)
+from ray.train.utils import _log_deprecation_warning
+from ray.tune import (
+    Experiment,
+    ExperimentAnalysis,
+    ResumeConfig,
+    RunConfig,
+    TuneConfig,
+    TuneError,
+)
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import _Config, run
-from ray.tune.tune_config import TuneConfig
 from ray.tune.utils import flatten_dict
 from ray.util import inspect_serializability
 
@@ -66,6 +78,9 @@ class TunerInternal:
     Args:
         restore_path: The path from where the Tuner can be restored. If provided, None
             of the rest args are needed.
+        storage_filesystem: A custom ``pyarrow.fs.FileSystem`` corresponding
+            to ``restore_path``. This may be necessary if the original
+            experiment used a custom filesystem.
         resume_config: Resume config to configure which trials to continue.
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
@@ -74,7 +89,11 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.train.RunConfig for more info.
+            if applicable. Refer to ray.tune.RunConfig for more info.
+        _tuner_kwargs: Internal. Extra kwargs forwarded to ``tune.run`` when
+            this Tuner is fit.
+        _entrypoint: Internal. Tracks which user-facing entrypoint constructed
+            this Tuner so that warnings and errors can be specialized.
     """
 
     def __init__(
@@ -92,6 +111,14 @@ class TunerInternal:
         from ray.train.trainer import BaseTrainer
 
         if isinstance(trainable, BaseTrainer):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The Ray Train + Ray Tune integration has been reworked. "
+                    "Passing a Trainer to the Tuner is deprecated and will be removed "
+                    "in a future release. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
+
             run_config = self._choose_run_config(
                 tuner_run_config=run_config,
                 trainer=trainable,
@@ -116,6 +143,16 @@ class TunerInternal:
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        if self._entrypoint == AirEntrypoint.TUNER and not isinstance(
+            self._run_config, ray.tune.RunConfig
+        ):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The `RunConfig` class should be imported from `ray.tune` "
+                    "when passing it to the Tuner. Please update your imports. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
 
         self.trainable = trainable
         assert self.converted_trainable
@@ -179,8 +216,10 @@ class TunerInternal:
         return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
 
     def _validate_trainable(
-        self, trainable: TrainableType, required_trainable_name: Optional[str] = None
-    ):
+        self,
+        trainable: TrainableType,
+        required_trainable_name: Optional[str] = None,
+    ) -> None:
         """Determines whether or not the trainable is valid.
 
         This includes checks on the serializability of the trainable, as well
@@ -191,6 +230,12 @@ class TunerInternal:
         the trainable type) is saved in the Trial metadata and needs to match
         upon restoration. This does not affect the typical path, since `Tuner.restore`
         expects the exact same trainable (which will have the same name).
+
+        Args:
+            trainable: The trainable to validate.
+            required_trainable_name: If provided, the trainable's generated
+                name must match this value; used on restoration to detect a
+                trainable swap.
 
         Raises:
             ValueError: if the trainable name does not match or if the trainable
@@ -255,11 +300,17 @@ class TunerInternal:
         self,
         new_param_space: Dict[str, Any],
         flattened_param_space_keys: Optional[List[str]],
-    ):
+    ) -> None:
         """Determines whether the (optionally) re-specified `param_space` is valid.
 
         This method performs very loose validation on the new param_space to
         prevent users from trying to specify new hyperparameters to tune over.
+
+        Args:
+            new_param_space: The newly provided search space to validate.
+            flattened_param_space_keys: Sorted flat keys of the original
+                ``param_space``. ``None`` skips validation for backwards
+                compatibility.
 
         Raises:
             ValueError: if not all keys match the original param_space.
@@ -299,8 +350,8 @@ class TunerInternal:
         """Loads Tuner state from the previously saved `tuner.pkl`.
 
         Args:
-            tuner_pkl_path: pathlib.Path of the `tuner.pkl` file saved during the
-                original Tuner initialization.
+            tuner_state: Deserialized contents of the `tuner.pkl` saved during
+                the original Tuner initialization.
 
         Returns:
             tuple: of `(old_trainable_name, flattened_param_space_keys)` used for
@@ -382,6 +433,9 @@ class TunerInternal:
                 a RunConfig specified by the user.
             param_space: The param space passed to the Tuner.
 
+        Returns:
+            The resolved ``RunConfig`` to use for the Tune experiment.
+
         Raises:
             ValueError: if the `run_config` is specified as a hyperparameter.
         """
@@ -393,7 +447,7 @@ class TunerInternal:
             )
 
         # Both Tuner RunConfig + Trainer RunConfig --> prefer Tuner RunConfig
-        if tuner_run_config and trainer.run_config != RunConfig():
+        if tuner_run_config and trainer.run_config != ray.train.RunConfig():
             logger.info(
                 "A `RunConfig` was passed to both the `Tuner` and the "
                 f"`{trainer.__class__.__name__}`. The run config passed to "
@@ -419,7 +473,7 @@ class TunerInternal:
         # TODO: introduce `ray.tune.sample.TuneableDataclass` and allow Tune to
         # natively resolve specs with dataclasses.
         scaling_config = self._param_space.get("scaling_config")
-        if not isinstance(scaling_config, ScalingConfig):
+        if not isinstance(scaling_config, ray.train.ScalingConfig):
             return
         self._param_space["scaling_config"] = scaling_config.__dict__.copy()
 
@@ -511,7 +565,7 @@ class TunerInternal:
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
@@ -532,7 +586,7 @@ class TunerInternal:
                     "to your CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you should include one last call to "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             elif handle_cp_at_end is True:
@@ -569,9 +623,6 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             _entrypoint=self._entrypoint,
-            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-            # For now, keep accepting both options.
-            local_dir=self._run_config.local_dir,
             # Deprecated
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )

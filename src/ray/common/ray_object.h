@@ -42,8 +42,9 @@ class RayObject {
   RayObject(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
-            bool copy_data = false) {
-    Init(data, metadata, nested_refs, copy_data);
+            bool copy_data = false,
+            std::optional<std::string> tensor_transport = std::nullopt) {
+    Init(data, metadata, nested_refs, copy_data, std::move(tensor_transport));
   }
 
   /// This constructor creates a ray object instance whose data will be generated
@@ -125,15 +126,30 @@ class RayObject {
   /// Return the absl time in nanoseconds when this object was created.
   int64_t CreationTimeNanos() const { return creation_time_nanos_; }
 
+  /// Return the tensor transport to use for transferring this object.
+  const std::optional<std::string> &GetTensorTransport() const {
+    return tensor_transport_;
+  }
+
+  void SetDirectTransportMetadata(std::string direct_transport_metadata) {
+    direct_transport_metadata_.emplace(std::move(direct_transport_metadata));
+  }
+
+  const std::optional<std::string> &GetDirectTransportMetadata() const {
+    return direct_transport_metadata_;
+  }
+
  private:
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
-            bool copy_data = false) {
+            bool copy_data = false,
+            std::optional<std::string> tensor_transport = std::nullopt) {
     data_ = data;
     metadata_ = metadata;
     nested_refs_ = nested_refs;
     has_data_copy_ = copy_data;
+    tensor_transport_ = std::move(tensor_transport);
     creation_time_nanos_ = absl::GetCurrentTimeNanos();
 
     if (has_data_copy_) {
@@ -166,6 +182,11 @@ class RayObject {
   bool accessed_ = false;
   /// The timestamp at which this object was created locally.
   int64_t creation_time_nanos_;
+  /// The tensor transport to use for transferring this object.
+  std::optional<std::string> tensor_transport_;
+  /// The direct transport metadata for the object if the object is a direct transport
+  /// object.
+  std::optional<std::string> direct_transport_metadata_;
 };
 
 }  // namespace ray

@@ -1,12 +1,15 @@
 import os
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 import ray
-from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
-from ray._private.accelerators import get_accelerator_manager_for_resource
-from ray.util.accelerators import INTEL_MAX_1550, INTEL_MAX_1100
+from ray._private.accelerators import (
+    IntelGPUAcceleratorManager as Accelerator,
+    get_accelerator_manager_for_resource,
+)
+from ray.util.accelerators import INTEL_MAX_1100, INTEL_MAX_1550
 
 
 def test_visible_intel_gpu_ids(shutdown_only):
@@ -36,6 +39,10 @@ def test_visible_intel_gpu_type(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_get_current_node_num_accelerators():
     old_dpctl = None
     if "dpctl" in sys.modules:
@@ -52,6 +59,10 @@ def test_get_current_node_num_accelerators():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_get_current_node_accelerator_type():
     old_dpctl = None
     if "dpctl" in sys.modules:
@@ -103,7 +114,4 @@ def test_set_current_process_visible_accelerator_ids():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,13 +1,15 @@
+import hashlib
+import os
+import sys
+from getpass import getuser
+from unittest.mock import patch
+
 import pytest
 
-import os
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
-from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray._private import ray_constants
-from getpass import getuser
-import hashlib
-from unittest.mock import patch
+from ray.autoscaler._private.command_runner import SSHCommandRunner
+from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.tests.test_autoscaler import MockProcessRunner, MockProvider
 
 _MOCK_TPU_NAME = "my-tpu"
 _MOCK_ACCELERATOR_TYPE = "v4-16"
@@ -43,8 +45,8 @@ def test_tpu_ssh_command_runner():
     instance = MockTpuInstance(num_workers=num_workers)
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -117,8 +119,8 @@ def test_tpu_docker_command_runner():
     instance = MockTpuInstance(num_workers=num_workers)
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -242,7 +244,7 @@ def test_max_active_connections_env_var():
     cmd_runner = TPUCommandRunner(**args)
     os.environ[ray_constants.RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR] = "1"
     num_connections = cmd_runner.num_connections
-    assert type(num_connections) == int
+    assert type(num_connections) is int
     assert num_connections == 1
 
 
@@ -285,9 +287,4 @@ def test_tpu_pod_resources():
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

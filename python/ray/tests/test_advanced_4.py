@@ -1,15 +1,14 @@
-import mock
+import os
 import subprocess
 import sys
+from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray._raylet import check_health
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray._private.test_utils import (
-    Semaphore,
     client_test_enabled,
-    wait_for_condition,
     get_gcs_memory_used,
 )
 from ray.experimental.internal_kv import _internal_kv_list
@@ -26,12 +25,6 @@ def shutdown_only_with_initialization_check():
 def test_initialized(shutdown_only_with_initialization_check):
     assert not ray.is_initialized()
     ray.init(num_cpus=0)
-    assert ray.is_initialized()
-
-
-def test_initialized_local_mode(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0, local_mode=True)
     assert ray.is_initialized()
 
 
@@ -69,7 +62,7 @@ def test_jemalloc_env_var_propagate():
     When the shared library is specified
     """
     library_path = "/abc"
-    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD": "1"}
+    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD_ON_WORKERS": "0"}
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
@@ -87,14 +80,15 @@ def test_jemalloc_env_var_propagate():
             process_type=gcs_ptype,
         )
 
-    # When comps don't match the process_type, it should return an empty dict.
-    expected = {}
+    # When comps don't match the process_type, it should not contain MALLOC_CONF.
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
         jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_RAYLET],
         process_type=gcs_ptype,
     )
+    assert "MALLOC_CONF" not in actual
+
     """
     When the malloc config is specified
     """
@@ -103,7 +97,7 @@ def test_jemalloc_env_var_propagate():
     expected = {
         "LD_PRELOAD": library_path,
         "MALLOC_CONF": malloc_conf,
-        "RAY_LD_PRELOAD": "1",
+        "RAY_LD_PRELOAD_ON_WORKERS": "0",
     }
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
@@ -114,26 +108,22 @@ def test_jemalloc_env_var_propagate():
     assert actual == expected
 
 
-def test_check_health(shutdown_only):
-    assert not check_health("127.0.0.1:8888")
-    # Should not raise error: https://github.com/ray-project/ray/issues/38785
-    assert not check_health("ip:address:with:colon:name:8265")
-
-    with pytest.raises(ValueError):
-        check_health("bad_address_no_port")
-
-    conn = ray.init()
-    addr = conn.address_info["address"]
-    assert check_health(addr)
-
-
-def test_check_health_version_check(shutdown_only):
-    with mock.patch("ray.__version__", "FOO-VERSION"):
-        conn = ray.init()
-        addr = conn.address_info["address"]
-        assert check_health(addr, skip_version_check=True)
-        with pytest.raises(RuntimeError):
-            check_health(addr)
+@patch.dict(os.environ, {"RAY_LD_PRELOAD_ON_WORKERS": "1"})
+def test_enable_jemallc_for_workers():
+    library_path = "/abc"
+    malloc_conf = "a,b,c"
+    expected = {
+        "LD_PRELOAD": library_path,
+        "MALLOC_CONF": malloc_conf,
+        "RAY_LD_PRELOAD_ON_WORKERS": "1",
+    }
+    actual = ray._private.services.propagate_jemalloc_env_var(
+        jemalloc_path=library_path,
+        jemalloc_conf=malloc_conf,
+        jemalloc_comps=[ray._private.ray_constants.PROCESS_TYPE_WORKER],
+        process_type=ray._private.ray_constants.PROCESS_TYPE_WORKER,
+    )
+    assert actual == expected
 
 
 def test_back_pressure(shutdown_only_with_initialization_check):
@@ -168,32 +158,6 @@ def test_back_pressure(shutdown_only_with_initialization_check):
         assert False
 
     ray.shutdown()
-
-
-def test_local_mode_deadlock(shutdown_only_with_initialization_check):
-    ray.init(local_mode=True)
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
-
-        def ping_actor(self, actor):
-            actor.ping.remote()
-            return 3
-
-    @ray.remote
-    class Bar:
-        def __init__(self):
-            pass
-
-        def ping(self):
-            return 1
-
-    foo = Foo.remote()
-    bar = Bar.remote()
-    # Expect ping_actor call returns normally without deadlock.
-    assert ray.get(foo.ping_actor.remote(bar)) == 3
 
 
 def function_entry_num(job_id):
@@ -291,10 +255,4 @@ def test_function_table_gc_actor(call_ray_start):
 
 
 if __name__ == "__main__":
-    import os
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

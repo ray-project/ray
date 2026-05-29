@@ -1,20 +1,20 @@
 # coding: utf-8
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 
 import numpy as np
 import pandas
 import pytest
-from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from packaging.version import Version
 from zoopt import ValueType
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.rllib import _register_all
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search import ConcurrencyLimiter
@@ -155,7 +155,7 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         def cost(space):
             loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
-            train.report(dict(loss=loss))
+            tune.report(dict(loss=loss))
 
         search_alg = HyperOptSearch(
             space,
@@ -172,7 +172,7 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         space = {"width": (0, 20), "height": (-100, 100)}
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -196,7 +196,7 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         optimizer = optimizerlib.OnePlusOne(instrumentation)
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -218,7 +218,7 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         )
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -236,7 +236,7 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         }
 
         def cost(param):
-            train.report(
+            tune.report(
                 dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
             )
 
@@ -251,10 +251,13 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="HEBO doesn't support py312")
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
+
+        from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
         space_config = [
             {"name": "width", "type": "num", "lb": 0, "ub": 20},
@@ -263,7 +266,7 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         space = HEBODesignSpace().parse(space_config)
 
         def cost(param):
-            train.report(
+            tune.report(
                 dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
             )
 
@@ -278,47 +281,68 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         space = AxSearch.convert_search_space(
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.modelbridge.registry import Models
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_node import GenerationStep
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+        except ImportError:
+            # ax 0.x
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+            from ax.modelbridge.registry import Models
 
         # set generation strategy to sobol to ensure reproductibility
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
         try:
-            # ax-platform>=0.2.0
             gs = GenerationStrategy(
                 steps=[
                     GenerationStep(
-                        model=Models.SOBOL,
+                        generator=Models.SOBOL,
                         num_trials=-1,
-                        model_kwargs={"seed": 4321},
+                        model_kwargs={"seed": 42},
                     ),
                 ]
             )
         except TypeError:
-            # ax-platform<0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_arms=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
-            )
+            try:
+                gs = GenerationStrategy(
+                    steps=[
+                        GenerationStep(
+                            model=Models.SOBOL,
+                            num_trials=-1,
+                            model_kwargs={"seed": 42},
+                        ),
+                    ]
+                )
+            except TypeError:
+                # ax-platform<0.2.0
+                gs = GenerationStrategy(
+                    steps=[
+                        GenerationStep(
+                            model=Models.SOBOL,
+                            num_arms=-1,
+                            model_kwargs={"seed": 42},
+                        ),
+                    ]
+                )
 
-        client = AxClient(random_seed=4321, generation_strategy=gs)
-        client.create_experiment(parameters=space, objective_name="loss", minimize=True)
+        client = AxClient(random_seed=42, generation_strategy=gs)
+        client.create_experiment(
+            parameters=space,
+            objectives={"loss": ObjectiveProperties(minimize=True)},
+        )
 
         def cost(space):
-            train.report(
+            tune.report(
                 dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
             )
 
@@ -326,13 +350,14 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="BOHB doesn't support py312")
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
 
         def cost(space):
             for i in range(10):
-                train.report(
+                tune.report(
                     dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3 - i))
                 )
 
@@ -345,6 +370,4 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

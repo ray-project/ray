@@ -1,4 +1,4 @@
-from ray._private.utils import get_function_args
+from ray._common.utils import get_function_args
 from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search.concurrency_limiter import ConcurrencyLimiter
 from ray.tune.search.repeater import Repeater
@@ -77,7 +77,7 @@ SEARCH_ALG_IMPORT = {
 
 @PublicAPI(stability="beta")
 def create_searcher(
-    search_alg,
+    search_alg: str,
     **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
@@ -86,11 +86,7 @@ def create_searcher(
 
     Args:
         search_alg: The search algorithm to use.
-        metric: The training result objective value attribute. Stopping
-            procedures will use this attribute.
-        mode: One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
-        **kwargs: Additional parameters.
+        **kwargs: Additional parameters (e.g. ``metric`` and ``mode``).
             These keyword arguments will be passed to the initialization
             function of the chosen class.
     Returns:

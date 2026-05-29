@@ -1,552 +1,102 @@
-import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Iterator, Optional, Tuple
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
-from ray.data._internal.logical.operators.from_operators import AbstractFrom
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
-from ray.data.block import Block, BlockMetadata
+from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.interfaces import SourceOperator
+from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import _take_first_non_empty_schema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
-from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    import pyarrow
-
-    from ray.data._internal.execution.interfaces import Executor
-    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
-    from ray.data.dataset import Dataset
-
-
-# Scheduling strategy can be inherited from prev operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
-
+    from ray.data._internal.execution.streaming_executor import (
+        StreamingExecutor,
+    )
+    from ray.data.dataset import _ExecutionCache
 
 logger = logging.getLogger(__name__)
 
 
 class ExecutionPlan:
-    """A lazy execution plan for a Dataset."""
+    """A thin execution shell for a Dataset.
 
-    # Implementation Notes:
-    #
-    # This lazy execution plan takes in an input block list and builds up a chain of
-    # List[BlockRef] --> List[BlockRef] operators. Prior to execution,
-    # we apply a set of logical plan optimizations, such as operator fusion,
-    # in order to reduce Ray task overhead and data copies.
-    #
-    # Internally, the execution plan holds two block lists:
-    #   * _in_blocks: The (possibly lazy) input block list.
-    #   * _snapshot_blocks: A snapshot of a computed block list, where this snapshot
-    #     is the cached output of executing some prefix in the operator chain.
-    #
-    # The operators in this execution plan are partitioned into two subchains:
-    # before the snapshot and after the snapshot. When the snapshot exists from a
-    # previous execution, any future executions will only have to execute the "after the
-    # snapshot" subchain, using the snapshot as the input to that subchain.
+    This plan holds shared references to Dataset's cache, stats, context,
+    and logical plan. It provides execution methods that bridge the logical
+    plan to the streaming executor. All owned state lives on Dataset;
+    ExecutionPlan is a temporary wrapper removed in a future PR.
+    """
 
     def __init__(
         self,
-        in_blocks: BlockList,
-        stats: DatasetStats,
-        *,
-        run_by_consumer: bool,
-        data_context: Optional[DataContext] = None,
+        context: DataContext,
+        cache: "_ExecutionCache",
+        in_stats: DatasetStats,
+        logical_plan: LogicalPlan,
     ):
-        """Create a plan with no transformation operators.
-
-        Args:
-            in_blocks: Base list of blocks.
-            stats: Stats for the base blocks.
-            dataset_uuid: Dataset's UUID.
-            run_by_consumer: Whether this plan is invoked to run by the consumption
-            APIs (e.g. .iter_batches()).
-        """
-        self._in_blocks = in_blocks
-        self._in_stats = stats
-        # A computed snapshot of some prefix of operators and their corresponding
-        # output blocks and stats.
-        self._snapshot_operator: Optional[LogicalOperator] = None
-        self._snapshot_blocks = None
-        self._snapshot_stats = None
-
-        # Cached schema.
-        self._schema = None
-        # Set when a Dataset is constructed with this plan
-        self._dataset_uuid = None
-
-        self._run_by_consumer = run_by_consumer
-        self._dataset_name = None
-
-        if data_context is None:
-            # Snapshot the current context, so that the config of Datasets is always
-            # determined by the config at the time it was created.
-            self._context = copy.deepcopy(DataContext.get_current())
-        else:
-            self._context = data_context
-
-    def __repr__(self) -> str:
-        return (
-            f"ExecutionPlan("
-            f"dataset_uuid={self._dataset_uuid}, "
-            f"run_by_consumer={self._run_by_consumer}, "
-            f"in_blocks={self._in_blocks}, "
-            f"snapshot_operator={self._snapshot_operator}"
-            f"snapshot_blocks={self._snapshot_blocks})"
-        )
-
-    def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
-        """Create a cosmetic string representation of this execution plan.
-
-        Returns:
-            The string representation of this execution plan.
-        """
-        # NOTE: this is used for Dataset.__repr__ to give a user-facing string
-        # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
-        # method as well.
-
-        from ray.data.dataset import MaterializedDataset
-
-        # Do not force execution for schema, as this method is expected to be very
-        # cheap.
-        plan_str = ""
-        plan_max_depth = 0
-        dataset_blocks = None
-        if (
-            self._snapshot_blocks is None
-            or self._snapshot_operator != self._logical_plan.dag
-        ):
-
-            def generate_logical_plan_string(
-                op: LogicalOperator,
-                curr_str: str = "",
-                depth: int = 0,
-            ):
-                """Traverse (DFS) the LogicalPlan DAG and
-                return a string representation of the operators."""
-                if isinstance(op, (Read, InputData, AbstractFrom)):
-                    return curr_str, depth
-
-                curr_max_depth = depth
-                op_name = op.name
-                if depth == 0:
-                    curr_str += f"{op_name}\n"
-                else:
-                    trailing_space = " " * ((depth - 1) * 3)
-                    curr_str += f"{trailing_space}+- {op_name}\n"
-
-                for input in op.input_dependencies:
-                    curr_str, input_max_depth = generate_logical_plan_string(
-                        input, curr_str, depth + 1
-                    )
-                    curr_max_depth = max(curr_max_depth, input_max_depth)
-                return curr_str, curr_max_depth
-
-            # generate_logical_plan_string(self._logical_plan.dag)
-            plan_str, plan_max_depth = generate_logical_plan_string(
-                self._logical_plan.dag
-            )
-
-            # Get schema of initial blocks.
-            if self.needs_eager_execution():
-                # In the case where the plan contains only a Read/From operator,
-                # it is cheap to execute it.
-                # This allows us to get the most accurate estimates related
-                # to the dataset, after applying execution plan optimizer rules
-                # (e.g. number of blocks may change based on parallelism).
-                self.execute()
-            if self._snapshot_blocks is not None:
-                schema = self._get_unified_blocks_schema(
-                    self._snapshot_blocks, fetch_if_missing=False
-                )
-                dataset_blocks = self._snapshot_blocks
-            else:
-                assert self._in_blocks is not None
-                schema = self._get_unified_blocks_schema(
-                    self._in_blocks, fetch_if_missing=False
-                )
-                dataset_blocks = self._in_blocks
-        else:
-            # Get schema of output blocks.
-            schema = self.schema(fetch_if_missing=False)
-            dataset_blocks = self._snapshot_blocks
-
-        if schema is None:
-            schema_str = "Unknown schema"
-        elif isinstance(schema, type):
-            schema_str = str(schema)
-        else:
-            schema_str = []
-            for n, t in zip(schema.names, schema.types):
-                if hasattr(t, "__name__"):
-                    t = t.__name__
-                schema_str.append(f"{n}: {t}")
-            schema_str = ", ".join(schema_str)
-            schema_str = "{" + schema_str + "}"
-        count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
-        if count is None:
-            count = "?"
-
-        num_blocks = None
-        if dataset_blocks is not None and dataset_cls == MaterializedDataset:
-            num_blocks = dataset_blocks.estimated_num_blocks()
-
-        name_str = (
-            "name={}, ".format(self._dataset_name)
-            if self._dataset_name is not None
-            else ""
-        )
-        num_blocks_str = f"num_blocks={num_blocks}, " if num_blocks else ""
-
-        dataset_str = "{}({}{}num_rows={}, schema={})".format(
-            dataset_cls.__name__,
-            name_str,
-            num_blocks_str,
-            count,
-            schema_str,
-        )
-
-        # If the resulting string representation fits in one line, use it directly.
-        SCHEMA_LINE_CHAR_LIMIT = 80
-        MIN_FIELD_LENGTH = 10
-        INDENT_STR = " " * 3
-        trailing_space = INDENT_STR * plan_max_depth
-
-        if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
-            # If the resulting string representation exceeds the line char limit,
-            # first try breaking up each `Dataset` parameter into its own line
-            # and check if each line fits within the line limit. We check the
-            # `schema` param's length, since this is likely the longest string.
-            schema_str_on_new_line = f"{trailing_space}{INDENT_STR}schema={schema_str}"
-            if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
-                # If the schema cannot fit on a single line, break up each field
-                # into its own line.
-                schema_str = []
-                for n, t in zip(schema.names, schema.types):
-                    if hasattr(t, "__name__"):
-                        t = t.__name__
-                    col_str = f"{trailing_space}{INDENT_STR * 2}{n}: {t}"
-                    # If the field line exceeds the char limit, abbreviate
-                    # the field name to fit while maintaining the full type
-                    if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
-                        shortened_suffix = f"...: {str(t)}"
-                        # Show at least 10 characters of the field name, even if
-                        # we have already hit the line limit with the type.
-                        chars_left_for_col_name = max(
-                            SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
-                            MIN_FIELD_LENGTH,
-                        )
-                        col_str = (
-                            f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
-                        )
-                    schema_str.append(col_str)
-                schema_str = ",\n".join(schema_str)
-                schema_str = (
-                    "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
-                )
-            name_str = (
-                f"\n{trailing_space}{INDENT_STR}name={self._dataset_name},"
-                if self._dataset_name is not None
-                else ""
-            )
-            num_blocks_str = (
-                f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
-                if num_blocks
-                else ""
-            )
-            dataset_str = (
-                f"{dataset_cls.__name__}("
-                f"{name_str}"
-                f"{num_blocks_str}"
-                f"\n{trailing_space}{INDENT_STR}num_rows={count},"
-                f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
-                f"\n{trailing_space})"
-            )
-
-        if plan_max_depth == 0:
-            plan_str += dataset_str
-        else:
-            plan_str += f"{INDENT_STR * (plan_max_depth - 1)}+- {dataset_str}"
-        return plan_str
-
-    def link_logical_plan(self, logical_plan: "LogicalPlan"):
-        """Link the logical plan into this execution plan.
-
-        This is used for triggering execution for optimizer code path in this legacy
-        execution plan.
-        """
+        self._context = context
+        self._cache = cache
+        self._in_stats = in_stats
         self._logical_plan = logical_plan
-
-    def copy(self) -> "ExecutionPlan":
-        """Create a shallow copy of this execution plan.
-
-        This copy can be executed without mutating the original, but clearing the copy
-        will also clear the original.
-
-        Returns:
-            A shallow copy of this execution plan.
-        """
-        plan_copy = ExecutionPlan(
-            self._in_blocks,
-            self._in_stats,
-            run_by_consumer=self._run_by_consumer,
-            data_context=self._context,
-        )
-        if self._snapshot_blocks is not None:
-            # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks
-            plan_copy._snapshot_operator = self._snapshot_operator
-            plan_copy._snapshot_stats = self._snapshot_stats
-        plan_copy._dataset_name = self._dataset_name
-        return plan_copy
-
-    def deep_copy(self) -> "ExecutionPlan":
-        """Create a deep copy of this execution plan.
-
-        This copy can be executed AND cleared without mutating the original.
-
-        Returns:
-            A deep copy of this execution plan.
-        """
-        in_blocks = self._in_blocks
-        if isinstance(in_blocks, BlockList):
-            in_blocks = in_blocks.copy()
-        plan_copy = ExecutionPlan(
-            in_blocks,
-            copy.copy(self._in_stats),
-            run_by_consumer=self._run_by_consumer,
-        )
-        if self._snapshot_blocks:
-            # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
-            plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
-            plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
-        plan_copy._dataset_name = self._dataset_name
-        return plan_copy
-
-    def initial_num_blocks(self) -> Optional[int]:
-        """Get the estimated number of blocks from the logical plan
-        after applying execution plan optimizations, but prior to
-        fully executing the dataset."""
-        return self._logical_plan.dag.estimated_num_outputs()
-
-    def schema(
-        self, fetch_if_missing: bool = False
-    ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the schema after applying all execution plan optimizations,
-        but prior to fully executing the dataset
-        (unless `fetch_if_missing` is set to True).
-
-        Args:
-            fetch_if_missing: Whether to execute the plan to fetch the schema.
-
-        Returns:
-            The schema of the output dataset.
-        """
-        from ray.data._internal.logical.operators.all_to_all_operator import (
-            RandomizeBlocks,
-        )
-
-        if self._schema is not None:
-            return self._schema
-
-        if self._snapshot_blocks is None or (
-            self._snapshot_operator is not None
-            and self._snapshot_operator.output_dependencies
-        ):
-            # There remain some operators yet to be executed.
-            # Even if a schema is already previously known, it may change,
-            # so we try executing to get the most updated schema.
-
-            # TODO(swang): There are several other operator types that could
-            # inherit the schema or we can compute the schema without having to
-            # execute any of the dataset: limit, filter, map_batches for
-            # add/drop columns, etc.
-            if fetch_if_missing:
-                if isinstance(self._logical_plan.dag, RandomizeBlocks):
-                    # TODO(ekl): this is a hack to optimize the case where we have a
-                    # trailing randomize block operator. That operator has no effect and
-                    # so we don't need to execute all blocks to get the schema.
-
-                    randomize_blocks_op = self._logical_plan.dag
-                    self._logical_plan._dag = randomize_blocks_op.input_dependencies[0]
-                    try:
-                        self.execute()
-                    finally:
-                        self._logical_plan = randomize_blocks_op
-                else:
-                    self.execute()
-            elif self.needs_eager_execution() or (
-                isinstance(self._logical_plan.dag, RandomizeBlocks)
-                and self.needs_eager_execution(
-                    self._logical_plan.dag.input_dependencies[0]
-                )
-            ):
-                # If the plan is input/read only, we execute it, so snapshot has output.
-                # If RandomizeBlocks is the last operator preceded by a input/read
-                # only plan, we can also execute it (regardless of the fetch_if_missing)
-                # since RandomizeBlocks is just changing the order of references
-                # (hence super cheap). Calling execute does not trigger read tasks.
-                self.execute()
-            else:
-                return None
-        # Snapshot is now guaranteed to be the output of the final operator or None.
-        blocks = self._snapshot_blocks
-        if not blocks:
-            return None
-        self._schema = self._get_unified_blocks_schema(blocks, fetch_if_missing)
-        return self._schema
-
-    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
-        self._schema = schema
-
-    def _get_unified_blocks_schema(
-        self, blocks: BlockList, fetch_if_missing: bool = False
-    ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the unified schema of the blocks.
-
-        Args:
-            blocks: the blocks to get schema
-            fetch_if_missing: Whether to execute the blocks to fetch the schema.
-        """
-
-        # Ensure the first block has schema information available in the metadata.
-        # Otherwise, this will trigger computation on the first block
-        # for a schema read.
-        if isinstance(blocks, LazyBlockList):
-            blocks.ensure_metadata_for_first_block()
-
-        metadata = blocks.get_metadata(fetch_if_missing=False)
-
-        unified_schema = unify_block_metadata_schema(metadata)
-        if unified_schema is not None:
-            return unified_schema
-        if not fetch_if_missing:
-            return None
-        # Synchronously fetch the schema.
-        # For lazy block lists, this launches read tasks and fetches block metadata
-        # until we find the first valid block schema. This is to minimize new
-        # computations when fetching the schema.
-        for _, m in blocks.iter_blocks_with_metadata():
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                return m.schema
-        return None
-
-    def meta_count(self) -> Optional[int]:
-        """Get the number of rows after applying all plan optimizations, if possible.
-
-        This method will never trigger any computation.
-
-        Returns:
-            The number of records of the result Dataset, or None.
-        """
-        if self.needs_eager_execution():
-            # If the plan is input/read only, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset
-            # from read, and output datasets of Dataset.split().
-            self.execute()
-
-        if self._logical_plan.dag is self._snapshot_operator:
-            return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
-        else:
-            return None
-
-    def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
-        metadata = blocks.get_metadata() if blocks else None
-        if metadata and all(m.num_rows is not None for m in metadata):
-            return sum(m.num_rows for m in metadata)
-        else:
-            return None
 
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
-        allow_clear_input_blocks: bool = True,
-        force_read: bool = False,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        DatasetStats,
-        Optional["Executor"],
-    ]:
+        create_executor_fn: Callable[[], "StreamingExecutor"],
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
 
         Args:
-            allow_clear_input_blocks: Whether we should try to clear the input blocks
-                for each operator.
-            force_read: Whether to force the read operator to fully execute.
+            create_executor_fn: Factory that creates a StreamingExecutor.
 
         Returns:
-            Tuple of iterator over output blocks and the executor.
+            Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
-
-        # Always used the saved context for execution.
-        ctx = self._context
-
-        if self.has_computed_output():
-            return (
-                self.execute(
-                    allow_clear_input_blocks, force_read
-                ).iter_blocks_with_metadata(),
-                self._snapshot_stats,
-                None,
-            )
+        cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
+        if cached_bundle is not None:
+            return iter([cached_bundle]), self._cache.get_stats(), None
 
         from ray.data._internal.execution.legacy_compat import (
-            execute_to_legacy_block_iterator,
+            execute_to_legacy_bundle_iterator,
         )
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
-        block_iter = execute_to_legacy_block_iterator(
-            executor,
-            self,
-            allow_clear_input_blocks=allow_clear_input_blocks,
-            dataset_uuid=self._dataset_uuid,
-        )
+        executor = create_executor_fn()
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
-        gen = iter(block_iter)
+        gen = iter(bundle_iter)
         try:
-            block_iter = itertools.chain([next(gen)], gen)
+            bundle_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        self._snapshot_stats = executor.get_stats()
-        return block_iter, self._snapshot_stats, executor
+        self._cache.set_stats(executor.get_stats())
+        return bundle_iter, self._cache.get_stats(), executor
 
     @omit_traceback_stdout
     def execute(
         self,
-        allow_clear_input_blocks: bool = True,
-        force_read: bool = False,
+        dataset_uuid: str,
+        create_executor_fn: Callable[[], "StreamingExecutor"],
         preserve_order: bool = False,
-    ) -> BlockList:
-        """Execute this plan.
+    ) -> RefBundle:
+        """Executes this plan (eagerly).
 
         Args:
-            allow_clear_input_blocks: Whether we should try to clear the input blocks
-                for each operator.
-            force_read: Whether to force the read operator to fully execute.
+            dataset_uuid: The dataset UUID for stats tagging.
+            create_executor_fn: Factory that creates a StreamingExecutor.
             preserve_order: Whether to preserve order in execution.
 
         Returns:
             The blocks of the output dataset.
         """
-
         # Always used the saved context for execution.
         context = self._context
-
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.warning(
@@ -557,55 +107,53 @@ class ExecutionPlan:
                     "for more details: "
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
-        if not self.has_computed_output():
+        if self._cache.get_bundle(self._logical_plan.dag) is None:
             from ray.data._internal.execution.legacy_compat import (
-                _get_initial_stats_from_plan,
-                execute_to_legacy_block_list,
-                get_legacy_lazy_block_list_read_only,
+                execute_to_ref_bundle,
             )
 
-            if self.is_from_in_memory_only():
-                # No need to execute MaterializedDatasets with only an InputData
-                # operator, since the data is already materialized. This also avoids
+            if (
+                isinstance(self._logical_plan.dag, SourceOperator)
+                and self._logical_plan.dag.output_data() is not None
+            ):
+                # If the data is already materialized (e.g., `from_pandas`), we can
+                # skip execution and directly return the output data. This avoids
                 # recording unnecessary metrics for an empty plan execution.
-                blocks = self._in_blocks
-                stats = _get_initial_stats_from_plan(self)
-            elif self.is_read_only():
-                # If the Dataset is read-only, get the LazyBlockList without
-                # executing the plan by only fetching metadata available from
-                # the input Datasource or Reader without executing its ReadTasks.
-                blocks = get_legacy_lazy_block_list_read_only(self)
-                stats = _get_initial_stats_from_plan(self)
-            else:
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
+                stats = self.initial_stats()
 
-                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-                executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options),
-                    metrics_tag,
+                # TODO(@bveeramani): Make `ExecutionPlan.execute()` return
+                # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
+                # allow us to remove the unwrapping logic below.
+                output_bundles = self._logical_plan.dag.output_data()
+                owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
+                schema = _take_first_non_empty_schema(
+                    bundle.schema for bundle in output_bundles
                 )
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    allow_clear_input_blocks=allow_clear_input_blocks,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
+                bundle = RefBundle(
+                    [
+                        (block, metadata)
+                        for bundle in output_bundles
+                        for block, metadata in bundle.blocks
+                    ],
+                    owns_blocks=owns_blocks,
+                    schema=schema,
                 )
+            else:
+                # Make sure executor is properly shutdown
+                with create_executor_fn() as executor:
+                    bundle = execute_to_ref_bundle(
+                        executor,
+                        self,
+                        dataset_uuid=dataset_uuid,
+                        preserve_order=preserve_order,
+                    )
+
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
                 )
                 if context.enable_auto_log_stats:
                     logger.info(stats_summary_string)
-
-            # TODO(ekl) we shouldn't need to set this in the future once we move
-            # to a fully lazy execution model, unless .materialize() is used. Th
-            # reason we need it right now is since the user may iterate over a
-            # Dataset multiple times after fully executing it once.
-            if not self._run_by_consumer:
-                blocks._owned_by_consumer = False
 
             # Retrieve memory-related stats from ray.
             try:
@@ -638,115 +186,24 @@ class ExecutionPlan:
             collect_stats(stats)
 
             # Set the snapshot to the output of the final operator.
-            self._snapshot_blocks = blocks
-            self._snapshot_operator = self._logical_plan.dag
-            self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
+            stats.dataset_uuid = dataset_uuid
+            self._cache.set_bundle(self._logical_plan.dag, bundle)
+            self._cache.set_stats(stats)
 
-            # In the case of a read-only dataset, we replace the
-            # input LazyBlockList with a copy that includes the
-            # calculated metadata from initializing the InputDataBuffer.
-            if self.is_read_only():
-                self._in_blocks = blocks
-        if _is_lazy(self._snapshot_blocks) and force_read:
-            executed_blocks = self._snapshot_blocks.compute_to_blocklist()
-            # After executing the snapshot blocks, get its updated stats.
-            # The snapshot blocks after execution will contain the execution stats.
-            self._snapshot_stats = self._snapshot_blocks.stats()
-            self._snapshot_blocks = executed_blocks
-            self._snapshot_operator = self._logical_plan.dag
-            # When force-read is enabled, we similarly update self._in_blocks.
-            if self.is_read_only():
-                self._in_blocks = self._snapshot_blocks
-        return self._snapshot_blocks
+        bundle = self._cache.get_bundle(self._logical_plan.dag)
+        assert bundle is not None
+        return bundle
 
-    def clear_block_refs(self) -> None:
-        """Clear all cached block references of this plan, including input blocks.
-
-        This will render the plan un-executable unless the root is a LazyBlockList."""
-        self._in_blocks.clear()
-        self._clear_snapshot()
-
-    def _clear_snapshot(self) -> None:
-        """Clear the snapshot kept in the plan to the beginning state."""
-        self._snapshot_blocks = None
-        self._snapshot_operator = None
-        self._snapshot_stats = None
-
-    def stats(self) -> DatasetStats:
-        """Return stats for this plan.
-
-        If the plan isn't executed, an empty stats object will be returned.
-        """
-        if not self._snapshot_stats:
+    def initial_stats(self) -> DatasetStats:
+        if self._cache.get_bundle(self._logical_plan.dag) is not None:
+            return self._cache.get_stats()
+        # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
+        # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+        # the initial stats. Because the `FromXxx` logical operators will be translated to
+        # "InputDataBuffer" physical operators, which will be ignored when generating
+        # stats, see `StreamingExecutor._generate_stats`.
+        # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
+        if self._logical_plan.has_lazy_input():
             return DatasetStats(metadata={}, parent=None)
-        return self._snapshot_stats
-
-    def stats_summary(self) -> DatasetStatsSummary:
-        return self.stats().to_summary()
-
-    def has_lazy_input(self) -> bool:
-        """Return whether this plan has lazy input blocks."""
-        return _is_lazy(self._in_blocks)
-
-    def needs_eager_execution(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        should be eagerly executed. By default, the last operator of
-        the LogicalPlan is used.
-
-        This is often useful for input/read-only plans,
-        where eager execution fetches accurate metadata for the dataset
-        without executing the underlying read tasks."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-        # Since read tasks will not be scheduled until data is consumed or materialized,
-        # it is cheap to execute the plan (i.e. run the plan optimizer).
-        # In the case where the data is already in-memory (InputData,
-        # FromXXX operator), it is similarly also cheap to execute it.
-        return self.is_from_in_memory_only(root_op) or self.is_read_only(root_op)
-
-    def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        contains only a Read op. By default, the last operator of
-        the LogicalPlan is used."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-        return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
-
-    def is_from_in_memory_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        contains only a read of already in-memory data (e.g. `FromXXX`
-        operators for `from_xxx` APIs, `InputData` operator for
-        :class:`~ray.data.MaterializedDataset`). By default, the last operator of
-        the LogicalPlan is used."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-        return (
-            isinstance(root_op, (InputData, AbstractFrom))
-            and len(root_op.input_dependencies) == 0
-        )
-
-    def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final operator, i.e. for the
-        output of this plan.
-        """
-        return (
-            self._snapshot_blocks is not None
-            and not self._snapshot_blocks.is_cleared()
-            and self._snapshot_operator == self._logical_plan.dag
-        )
-
-    def require_preserve_order(self) -> bool:
-        """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators.all_to_all_operator import Sort
-        from ray.data._internal.logical.operators.n_ary_operator import Zip
-
-        for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, (Zip, Sort)):
-                return True
-        return False
-
-
-def _is_lazy(blocks: BlockList) -> bool:
-    """Whether the provided block list is lazy."""
-    return isinstance(blocks, LazyBlockList)
+        else:
+            return self._in_stats

@@ -16,11 +16,11 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/raylet_client/raylet_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 
 #ifdef __cplusplus
 extern "C" {

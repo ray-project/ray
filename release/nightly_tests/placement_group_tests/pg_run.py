@@ -61,9 +61,9 @@ def main():
             break
 
     if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {}
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            results = {}
+            json.dump(results, out_file)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=2`
+`python [script file name].py --num-agents=2`
 
 Control the number of agents and policies (RLModules) via --num-agents and
 --num-policies.
@@ -17,8 +17,9 @@ For logging to your WandB account, use:
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
@@ -30,7 +31,11 @@ parser = add_rllib_example_script_args(
     default_reward=-400.0,
 )
 # TODO (sven): This arg is currently ignored (hard-set to 2).
-parser.add_argument("--num-policies", type=int, default=2)
+parser.add_argument(
+    "--num-policies",
+    type=int,
+    default=2,
+)
 
 
 if __name__ == "__main__":
@@ -47,15 +52,17 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
-        .rollouts(num_rollout_workers=4)
         .training(
             train_batch_size_per_learner=512,
-            mini_batch_size_per_learner=64,
+            minibatch_size=64,
             lambda_=0.1,
             gamma=0.95,
             lr=0.0003,
             model={"fcnet_activation": "relu"},
             vf_clip_param=10.0,
+        )
+        .rl_module(
+            model_config=DefaultModelConfig(fcnet_activation="relu"),
         )
     )
 

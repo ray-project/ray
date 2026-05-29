@@ -4,17 +4,109 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, get_localhost_ip
 from ray._private.client_mode_hook import (
     _explicitly_disable_client_mode,
     _explicitly_enable_client_mode,
 )
 from ray._private.ray_logging import setup_logger
+from ray._private.utils import check_version_info
 from ray.job_config import JobConfig
 from ray.util.annotations import DeveloperAPI
-from ray._private.utils import check_version_info
-
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_uv_hook_for_client(
+    runtime_env: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Apply UV runtime env hook on client side before connection.
+
+    UV (https://docs.astral.sh/uv/) is a modern Python package manager that
+    manages dependencies via pyproject.toml and uv.lock files. This function
+    detects when the client is running under 'uv run' and automatically
+    propagates the UV configuration to cluster workers so they can install
+    the same dependencies.
+
+    How it works:
+        1. Detects 'uv run' in the parent process tree
+        2. Extracts UV command-line arguments (e.g., --python, --locked)
+        3. Sets py_executable to 'uv run [args]' in runtime_env
+        4. Workers will use this UV command to install dependencies
+
+    Precedence rules:
+        - If user provides py_executable, UV hook is skipped entirely to avoid
+          unintended side effects (e.g., auto-setting working_dir)
+        - User-provided working_dir is preserved when UV hook runs
+        - Other runtime_env settings are merged with UV config
+
+    Feature flag:
+        Controlled by RAY_ENABLE_UV_RUN_RUNTIME_ENV constant (default: enabled)
+
+    Args:
+        runtime_env: The runtime environment dict to potentially modify.
+            Can be None if no runtime_env was specified.
+
+    Returns:
+        Modified runtime_env dict with UV configuration if detected,
+        otherwise the original runtime_env unchanged. Returns None if
+        input was None.
+
+    Raises:
+        RuntimeError: If UV environment is detected but configuration is invalid
+            (e.g., pyproject.toml not in working_dir, conflicting runtime_env).
+            Validation errors fail fast to provide clear feedback.
+
+    Note:
+        ImportError and other environmental errors are caught and logged,
+        allowing connection to proceed without UV propagation.
+
+    Example:
+        Client running under: uv run --python 3.11 my_script.py
+
+        >>> runtime_env = {"working_dir": "/tmp/myapp"}
+        >>> result = _apply_uv_hook_for_client(runtime_env)
+        >>> result
+        {'working_dir': '/tmp/myapp', 'py_executable': 'uv run --python 3.11'}
+
+    See Also:
+        - Issue: https://github.com/ray-project/ray/issues/57991
+        - UV docs: https://docs.astral.sh/uv/
+    """
+    if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
+        return runtime_env
+
+    # If user provided py_executable, skip UV hook entirely to avoid side effects
+    # (e.g., auto-setting working_dir which triggers unwanted directory upload)
+    if runtime_env and "py_executable" in runtime_env:
+        logger.debug(
+            "User-provided py_executable found, skipping UV hook to avoid "
+            "unintended runtime_env modifications"
+        )
+        return runtime_env
+
+    # Import hook here (not at module level) to:
+    # 1. Avoid circular import issues with ray._private modules
+    # 2. Only load UV hook code when feature flag is enabled
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    try:
+        result = hook(runtime_env)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to apply UV runtime env hook for Ray Client: {e} "
+            "If you want the driver to use UV without propagating to workers, "
+            "set RAY_ENABLE_UV_RUN_RUNTIME_ENV=0."
+        ) from e
+    if "py_executable" in result:
+        # UV environment was detected and applied by the hook
+        logger.debug(
+            f"UV environment detected for Ray Client: "
+            f"py_executable={result['py_executable']}"
+        )
+        return result
+
+    return runtime_env
 
 
 class _ClientContext:
@@ -48,8 +140,11 @@ class _ClientContext:
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
             connection_retries: number of connection attempts to make
+            namespace: The namespace to connect to.
             ignore_version: whether to ignore Python or Ray version mismatches.
                 This should only be used for debugging purposes.
+            _credentials: Optional gRPC channel credentials for secure connection.
+            ray_init_kwargs: Optional additional keyword arguments for ray.init().
 
         Returns:
             Dictionary of connection info, e.g., {"num_clients": 1}.
@@ -75,7 +170,30 @@ class _ClientContext:
         if ray_init_kwargs is None:
             ray_init_kwargs = {}
 
-        # NOTE(architkulkarni): env_hook is not supported with Ray Client.
+        # Apply UV hook client-side before connection.
+        # UV detection must happen on client side where 'uv run' process exists.
+        # See: https://github.com/ray-project/ray/issues/57991
+        #
+        # Runtime env can come from two sources:
+        # 1. ray_init_kwargs["runtime_env"] - directly passed to connect()
+        # 2. job_config.runtime_env - passed via JobConfig object
+        # We need to handle both sources and update them appropriately after UV hook.
+        runtime_env = ray_init_kwargs.get("runtime_env")
+        if runtime_env is None and job_config and job_config.runtime_env is not None:
+            runtime_env = job_config.runtime_env
+
+        runtime_env = _apply_uv_hook_for_client(runtime_env)
+
+        if runtime_env is not None:
+            # Update both ray_init_kwargs and job_config with UV modifications.
+            # This is necessary because _server_init() reads runtime_env from
+            # job_config.runtime_env, not from ray_init_kwargs["runtime_env"].
+            ray_init_kwargs["runtime_env"] = runtime_env
+            if job_config:
+                job_config.set_runtime_env(runtime_env)
+
+        # NOTE(architkulkarni): Custom env_hook is not supported with Ray Client.
+        # However, UV hook is now applied client-side above.
         ray_init_kwargs["_skip_env_hook"] = True
 
         if ray_init_kwargs.get("logging_level") is not None:
@@ -136,15 +254,19 @@ class _ClientContext:
 
     # remote can be called outside of a connection, which is why it
     # exists on the same API layer as connect() itself.
-    def remote(self, *args, **kwargs):
+    def remote(self, *args: Any, **kwargs: Any):
         """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
         but does not execute them.
 
         Args:
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            *args: opaque arguments forwarded to ``_ClientAPI.remote``.
+            **kwargs: opaque keyword arguments forwarded to ``_ClientAPI.remote``.
+
+        Returns:
+            A client-side stub for the remote function or actor, or a
+            decorator that produces one when applied.
         """
         return self.api.remote(*args, **kwargs)
 
@@ -170,10 +292,10 @@ class _ClientContext:
         import ray.util.client.server.server as ray_client_server
 
         server_handle, address_info = ray_client_server.init_and_serve(
-            "127.0.0.1:50051", *args, **kwargs
+            get_localhost_ip(), 50051, *args, **kwargs
         )
         self._server = server_handle.grpc_server
-        self.connect("127.0.0.1:50051")
+        self.connect(build_address(get_localhost_ip(), 50051))
         self._connected_with_init = True
         return address_info
 

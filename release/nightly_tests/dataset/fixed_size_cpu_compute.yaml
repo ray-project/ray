@@ -1,0 +1,15 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    # Default head node type on Anyscale workspaces.
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # Default worker node type on Anyscale workspaces.
+    - instance_type: m5.2xlarge
+      min_nodes: 10
+      max_nodes: 10
+      market_type: ON_DEMAND

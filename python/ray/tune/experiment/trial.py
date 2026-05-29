@@ -6,35 +6,29 @@ import platform
 import re
 import time
 import uuid
-from contextlib import contextmanager
-from functools import partial
 from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray._private.utils import binary_to_hex, hex_to_binary
+from ray._common.utils import binary_to_hex, hex_to_binary
 from ray.air.constants import (
     EXPR_ERROR_FILE,
     EXPR_ERROR_PICKLE_FILE,
     TRAINING_ITERATION,
 )
 from ray.exceptions import RayActorError, RayTaskError
-from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import (
-    RAY_CHDIR_TO_TRIAL_DIR,
-    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
-)
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
+from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -52,7 +46,11 @@ from ray.tune.result import (
 )
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
+from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 DEBUG_PRINT_INTERVAL = 5
@@ -93,11 +91,15 @@ class ExportFormat:
     H5 = "h5"
 
     @staticmethod
-    def validate(formats):
+    def validate(formats: List[str]):
         """Validates formats.
 
+        Args:
+            formats: List of export format strings; each entry is normalized in
+                place and checked against the supported set.
+
         Raises:
-            ValueError if the format is unknown.
+            ValueError: if the format is unknown.
         """
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
@@ -120,6 +122,12 @@ class _TrialInfo:
     """
 
     def __init__(self, trial: "Trial"):
+        """Initialize ``_TrialInfo`` from a ``Trial``.
+
+        Args:
+            trial: The ``Trial`` whose identifying information should be
+                captured into this serializable struct.
+        """
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
         self._trial_resources = trial.placement_group_factory
@@ -185,28 +193,8 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     return relative_logdir
 
 
-def _noop_logger_creator(config: Dict[str, Any], logdir: str):
-    # Upon remote process setup, record the actor's original working dir before
-    # changing to the Tune logdir
-    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
-
-    os.makedirs(logdir, exist_ok=True)
-
-    if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-            os.chdir(logdir)
-
-    return NoopLogger(config, logdir)
-
-
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
-
-    logger_creator = partial(
-        _noop_logger_creator, logdir=trial.storage.trial_working_directory
-    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
@@ -218,29 +206,10 @@ def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
 
     kwargs = {
         "config": trial_config,
-        "logger_creator": logger_creator,
         "storage": trial.storage,
     }
 
     return kwargs
-
-
-@contextmanager
-def _change_working_directory(trial):
-    """Context manager changing working directory to trial logdir.
-    Used in local mode.
-
-    For non-local mode it is no-op.
-    """
-    if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
-        old_dir = os.getcwd()
-        try:
-            os.chdir(trial.local_path)
-            yield
-        finally:
-            os.chdir(old_dir)
-    else:
-        yield
 
 
 @DeveloperAPI
@@ -315,6 +284,35 @@ class Trial:
         in ray.tune.experiment.config_parser.
 
         Args:
+            trainable_name: Name of the registered trainable to execute.
+            config: Hyperparameter configuration for this trial.
+            trial_id: Unique identifier for this trial. Auto-generated if not
+                provided.
+            storage: ``StorageContext`` describing where trial results and
+                checkpoints are persisted.
+            evaluated_params: Parameters chosen by the search algorithm, used
+                for display and configuration export.
+            experiment_tag: Identifying trial name to show in the console.
+            placement_group_factory: Resource specification for the trial as a
+                ``PlacementGroupFactory`` (or dict that will be converted to one).
+            stopping_criterion: Mapping of metric name to threshold value that
+                stops the trial once exceeded.
+            checkpoint_config: ``CheckpointConfig`` controlling how trial
+                checkpoints are saved and rotated.
+            export_formats: List of formats (e.g. ``["model"]``) to export at
+                the end of the trial.
+            restore_path: Path to a checkpoint directory used to seed the
+                trial's initial state.
+            trial_name_creator: Optional callable that returns a display name
+                for the trial.
+            trial_dirname_creator: Optional callable that returns the trial
+                directory name relative to the experiment directory.
+            log_to_file: Either a single path or a ``(stdout, stderr)`` pair of
+                paths to which the trial's stdout/stderr should be written.
+            max_failures: Number of times to retry the trial from its latest
+                checkpoint before giving up.
+            stub: If True, skip trainable validation. Used when building
+                ``Trial`` objects from on-disk checkpoints for inspection only.
             _setup_default_resource: Whether to set up default resources.
                 When initializing trials from checkpoints, this field is set to false,
                 so that setting up default resources can be delayed till after
@@ -658,8 +656,12 @@ class Trial:
 
         Should only be called when the trial is not running.
 
+        Args:
+            resources: New resource requirements for the trial; a ``dict``
+                will be converted into a ``PlacementGroupFactory``.
+
         Raises:
-            ValueError if trial status is running.
+            ValueError: if trial status is running.
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
@@ -792,11 +794,11 @@ class Trial:
         return None
 
     def _handle_restore_error(self, exc: Exception):
+        # For Restoration errors, we only increment the restore failure count
+        # if the number of failures exceeds the restore retry limit.
         if self.temporary_state.num_restore_failures >= int(
             os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
         ):
-            # Restore was unsuccessful, try again without checkpoint.
-            self.clear_checkpoint()
             self.run_metadata.num_failures += 1
         else:
             self.temporary_state.num_restore_failures += 1
@@ -851,18 +853,21 @@ class Trial:
         if result.get(DONE):
             return True
 
-        for criteria, stop_value in self.stopping_criterion.items():
-            if criteria not in result:
-                raise TuneError(
-                    "Stopping criteria {} not provided in result dict. Keys "
-                    "are {}.".format(criteria, list(result.keys()))
-                )
-            elif isinstance(criteria, dict):
+        for criterion, stop_value in self.stopping_criterion.items():
+            if isinstance(criterion, dict):
                 raise ValueError(
                     "Stopping criteria is now flattened by default. "
                     "Use forward slashes to nest values `key1/key2/key3`."
                 )
-            elif result[criteria] >= stop_value:
+            elif criterion not in result:
+                if log_once("tune_trial_stop_criterion_not_found"):
+                    logger.warning(
+                        f"Stopping criterion '{criterion}' not found in result dict! "
+                        f"Available keys are {list(result.keys())}. If '{criterion}' is"
+                        " never reported, the run will continue until training is "
+                        "finished."
+                    )
+            elif result[criterion] >= stop_value:
                 return True
         return False
 
@@ -879,17 +884,11 @@ class Trial:
     def has_checkpoint(self) -> bool:
         return self.checkpoint is not None
 
-    def clear_checkpoint(self):
-        if self.latest_checkpoint_result:
-            self.latest_checkpoint_result.checkpoint = None
-        self.temporary_state.restoring_from = None
-        self.run_metadata.invalidate_cache()
-
     def on_checkpoint(self, checkpoint_result: _TrainingResult):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint: Checkpoint taken.
+            checkpoint_result: Training result containing the checkpoint taken.
         """
         self.run_metadata.checkpoint_manager.register_checkpoint(checkpoint_result)
         # Update the checkpoint index to keep the checkpoint index in sync.
@@ -1009,7 +1008,7 @@ class Trial:
 
     @classmethod
     def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
-        state = json.loads(json_state, cls=TuneFunctionDecoder)
+        state = _loads_with_cloudpickle(json_state)
 
         new_trial = Trial(
             state["trainable_name"],
@@ -1062,7 +1061,7 @@ class Trial:
             if key in state:
                 state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
-        # Ensure that stub doesn't get overriden
+        # Ensure that stub doesn't get overridden
         stub = state.pop("stub", True)
         self.__dict__.update(state)
         self.stub = stub or getattr(self, "stub", False)

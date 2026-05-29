@@ -7,7 +7,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -20,6 +20,8 @@ ray.serve.context._set_internal_replica_context(
     replica_id=ReplicaID(unique_id="test", deployment_id=DeploymentID(name="test")),
     servable_object=None,
     _deployment_config=default_deployment_config,
+    rank=0,
+    world_size=1,
 )
 
 
@@ -126,14 +128,14 @@ async def test_batch_size_one_long_timeout(use_class):
     @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -158,7 +160,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     async def zero_timeout(requests):
         await block_execution_event.wait()
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class ZeroTimeout:
@@ -166,7 +168,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
         async def zero_timeout(self, requests):
             await block_execution_event.wait()
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = ZeroTimeout()
@@ -262,14 +264,14 @@ async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -801,6 +803,107 @@ async def test_batch_generator_setters():
             await coro.__anext__()
 
 
+@pytest.mark.asyncio
+async def test_batch_size_fn_deferred_item_early_break():
+    batches_processed = []
+
+    @serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0.05,
+        batch_size_fn=lambda items: sum(item["size"] for item in items),
+    )
+    async def batch_handler(requests):
+        batches_processed.append([req["value"] for req in requests])
+        return [req["value"] for req in requests]
+
+    # Request 1: size=6 (fits in batch)
+    # Request 2: size=6 (would make total 12 > 10, should be deferred)
+    # Each should be processed in its own batch
+    t1 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 6, "value": "first"})
+    )
+    t2 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 6, "value": "second"})
+    )
+
+    done, pending = await asyncio.wait([t1, t2], timeout=1.0)
+
+    assert len(done) == 2, "Both tasks should complete"
+    assert len(pending) == 0
+
+    results = {t1.result(), t2.result()}
+    assert results == {"first", "second"}
+
+    # Verify they were processed in separate batches due to size constraint
+    assert (
+        len(batches_processed) == 2
+    ), f"Expected 2 separate batches, got {batches_processed}"
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_fail_to_fit():
+    batches_processed = []
+
+    @serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0.05,
+        batch_size_fn=lambda items: sum(item["size"] for item in items),
+    )
+    async def batch_handler(requests):
+        batches_processed.append([req["value"] for req in requests])
+        return [req["value"] for req in requests]
+
+    # Request 1: size=6 (fits in batch)
+    # Request 2: size=6 (would make total 12 > 10, should be deferred)
+    # Each should be processed in its own batch
+    t1 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 6, "value": "first"})
+    )
+    t2 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 12, "value": "second"})
+    )
+
+    t1_result = await t1
+    assert t1_result == "first"
+    with pytest.raises(RuntimeError):
+        await t2
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_multiple_items_fit():
+    """Test that multiple items are batched together when they fit within max_batch_size."""
+    batches_seen = []
+
+    @serve.batch(
+        max_batch_size=20,
+        batch_wait_timeout_s=0.1,
+        batch_size_fn=lambda items: sum(item["size"] for item in items),
+    )
+    async def batch_handler(requests):
+        batch_values = [req["value"] for req in requests]
+        batches_seen.append(batch_values)
+        return batch_values
+
+    # All three requests fit: 5 + 6 + 7 = 18 <= 20
+    t1 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 5, "value": "a"})
+    )
+    t2 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 6, "value": "b"})
+    )
+    t3 = get_or_create_event_loop().create_task(
+        batch_handler({"size": 7, "value": "c"})
+    )
+
+    done, pending = await asyncio.wait([t1, t2, t3], timeout=1.0)
+    assert len(done) == 3
+    assert len(pending) == 0
+
+    # All three should be in the same batch since they fit
+    assert len(batches_seen) == 1, f"Expected 1 batch, got {len(batches_seen)}"
+    assert set(batches_seen[0]) == {"a", "b", "c"}
+
+
 def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
     """Test warn_if_max_batch_size_exceeds_max_ongoing_requests() logged the warning
      message correctly.
@@ -818,16 +921,21 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
     over_bound = bound + 1
     under_bound = bound - 1
     over_bound_warning_message = (
-        f"`max_batch_size` ({over_bound}) is larger than "
-        f"`max_ongoing_requests` ({bound}). This means "
-        "the replica will never receive a full batch. Please update "
-        "`max_ongoing_requests` to be >= `max_batch_size`.\n"
+        f"`max_batch_size` ({over_bound}) * `max_concurrent_batches` "
+        f"({1}) is larger than `max_ongoing_requests` "
+        f"({bound}). This means the replica will never achieve "
+        "the configured `max_batch_size` concurrently. Please update "
+        "`max_ongoing_requests` to be >= `max_batch_size` * `max_concurrent_batches`.\n"
     )
 
     # Start queue above the bound will log warning. Start at under or at the bound will
     # not log warning
     for max_batch_size in [over_bound, under_bound, bound]:
-        queue = _BatchQueue(max_batch_size=max_batch_size, batch_wait_timeout_s=1000)
+        queue = _BatchQueue(
+            max_batch_size=max_batch_size,
+            batch_wait_timeout_s=1000,
+            max_concurrent_batches=1,
+        )
         if max_batch_size > bound:
             assert over_bound_warning_message in stream.messages
         else:

@@ -17,17 +17,15 @@ class XGBoostTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import xgboost
 
         import ray.data
         import ray.train
-        from ray.train.xgboost import RayTrainReportCallback
-        from ray.train.xgboost.v2 import XGBoostTrainer
+        from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
         def train_fn_per_worker(config: dict):
-            from xgboost.collective import CommunicatorContext
-
             # (Optional) Add logic to resume training state from a checkpoint.
             # ray.train.get_checkpoint()
 
@@ -53,17 +51,16 @@ class XGBoostTrainer(DataParallelTrainer):
                 "max_depth": 2,
             }
 
-            # 2. Do distributed data-parallel training with the `CommunicatorContext`.
+            # 2. Do distributed data-parallel training.
             # Ray Train sets up the necessary coordinator processes and
             # environment variables for your workers to communicate with each other.
-            with CommunicatorContext():
-                bst = xgboost.train(
-                    params,
-                    dtrain=dtrain,
-                    evals=[(deval, "validation")],
-                    num_boost_round=10,
-                    callbacks=[RayTrainReportCallback()],
-                )
+            bst = xgboost.train(
+                params,
+                dtrain=dtrain,
+                evals=[(deval, "validation")],
+                num_boost_round=10,
+                callbacks=[RayTrainReportCallback()],
+            )
 
         train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
@@ -74,11 +71,6 @@ class XGBoostTrainer(DataParallelTrainer):
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -92,22 +84,22 @@ class XGBoostTrainer(DataParallelTrainer):
         xgboost_config: The configuration for setting up the distributed xgboost
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Datasets are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
+        datasets: The Ray Datasets to use for training and validation.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: A checkpoint to resume training from.
+            This checkpoint can be accessed from within ``train_loop_per_worker``
+            by calling ``ray.train.get_checkpoint()``.
     """
 
     def __init__(

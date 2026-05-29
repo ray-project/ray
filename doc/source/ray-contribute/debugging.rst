@@ -1,7 +1,7 @@
 Debugging for Ray Developers
 ============================
 
-This debugging guide is for contributors to the Ray project. 
+This debugging guide is for contributors to the Ray project.
 
 Starting processes in a debugger
 --------------------------------
@@ -63,13 +63,13 @@ If it worked, you should see as the first line in ``raylet.err``:
 
 .. literalinclude:: /../../src/ray/util/logging.h
   :language: C
-  :lines: 52,54
+  :lines: 113,120
 
 Backend event stats
 -------------------
-The ``raylet`` process also periodically dumps event stats to the ``debug_state.txt`` log
-file if the ``RAY_event_stats=1`` environment variable is set. To also enable regular
-printing of the stats to log files, you can additional set ``RAY_event_stats_print_interval_ms=1000``.
+The ``raylet`` process also periodically dumps event stats to ``debug_state.txt`` and its log
+file if ``RAY_event_stats=1`` environment variable is set. To alter the interval at which
+Ray writes stats to log files, you can set ``RAY_event_stats_print_interval_ms``.
 
 Event stats include ASIO event handlers, periodic timers, and RPC handlers. Here is a sample
 of what the event stats look like:

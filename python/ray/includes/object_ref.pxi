@@ -1,11 +1,17 @@
 from ray.includes.unique_ids cimport CObjectID
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+)
 
 import asyncio
 import concurrent.futures
 import functools
 import logging
 import threading
-from typing import Callable, Any, Union
+from typing import Callable, Any, Union, Optional
+from _collections_abc import GenericAlias
+from builtins import StopAsyncIteration
 
 import ray
 import cython
@@ -25,7 +31,15 @@ def _set_future_helper(
         return
 
     if isinstance(result, RayTaskError):
-        py_future.set_exception(result.as_instanceof_cause())
+        exc = result.as_instanceof_cause()
+        # Convert StopIteration to RuntimeError to prevent segfaults due to
+        # Cpython's behavior w.r.t. PEP479
+        if isinstance(exc, StopIteration) or isinstance(exc, StopAsyncIteration):
+            runtime_error = RuntimeError(f"generator raised {type(exc).__name__}")
+            runtime_error.__cause__ = exc
+            py_future.set_exception(runtime_error)
+        else:
+            py_future.set_exception(exc)
     elif isinstance(result, RayError):
         # Directly raise exception for RayActorError
         py_future.set_exception(result)
@@ -34,18 +48,19 @@ def _set_future_helper(
 
 
 cdef class ObjectRef(BaseID):
+    __class_getitem__ = classmethod(GenericAlias) # should match how typing.Generic works
 
     def __cinit__(self):
         self.in_core_worker = False
 
     def __init__(
             self, id, owner_addr="", call_site_data="",
-            skip_adding_local_ref=False):
+            skip_adding_local_ref=False, tensor_transport: Optional[str] = None):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False
         self.call_site_data = call_site_data
-
+        self._tensor_transport = tensor_transport
         worker = ray._private.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
         # But there are still some dummy object refs being created outside the
@@ -71,7 +86,7 @@ cdef class ObjectRef(BaseID):
                 pass
 
     cdef CObjectID native(self):
-        return self.data
+        return <CObjectID>self.data
 
     def binary(self):
         return self.data.Binary()
@@ -97,7 +112,8 @@ cdef class ObjectRef(BaseID):
     def call_site(self):
         return decode(self.call_site_data)
 
-    def size(self):
+    @classmethod
+    def size(cls):
         return CObjectID.Size()
 
     def _set_id(self, id):
@@ -152,3 +168,15 @@ cdef class ObjectRef(BaseID):
         core_worker = ray._private.worker.global_worker.core_worker
         core_worker.set_get_async_callback(self, py_callback)
         return self
+
+    def tensor_transport(self):
+        return self._tensor_transport
+
+    cdef optional[c_string] c_tensor_transport(self):
+        cdef:
+            optional[c_string] c_tensor_transport = nullopt
+            c_string c_tensor_transport_str
+        if self._tensor_transport is not None:
+            c_tensor_transport_str = self._tensor_transport.encode("utf-8")
+            c_tensor_transport.emplace(move(c_tensor_transport_str))
+        return c_tensor_transport

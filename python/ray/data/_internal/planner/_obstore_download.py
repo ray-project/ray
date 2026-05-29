@@ -1,0 +1,919 @@
+import asyncio
+import inspect
+import logging
+import os
+import threading
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+
+if TYPE_CHECKING:
+    import s3fs  # noqa: F401
+
+    from ray.data.context import DataContext
+
+import pyarrow as pa
+import pyarrow.fs
+
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _iter_arrow_table_for_target_max_block_size,
+)
+from ray.data.block import BlockAccessor
+from ray.data.datasource.path_util import _split_uri
+
+try:
+    from obstore import parse_scheme as obstore_parse_scheme
+except ImportError:
+    obstore_parse_scheme = None
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_obstore_int_env(var_name: str, default: int) -> int:
+    """Parse a non-negative Ray Data obstore env var without breaking import.
+
+    Malformed values log a warning and fall back to default so bad config in
+    the environment cannot prevent ``_obstore_download`` from loading.
+    """
+    raw = os.environ.get(var_name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(str(raw).strip(), 10)
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid integer for %s=%r — using default %s",
+            var_name,
+            raw,
+            default,
+        )
+        return default
+
+
+# Constants & configuration
+RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
+OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE and obstore_parse_scheme is not None
+
+_DEFAULT_RANGE_THRESHOLD_INT = 4 * 1024 * 1024  # 4 MB
+_DEFAULT_RANGE_CHUNK_SIZE_INT = 8 * 1024 * 1024  # 8 MB
+_DEFAULT_MAX_CONCURRENCY_INT = 128
+
+# Range-split downloads: files above this threshold (bytes) are downloaded as
+# parallel get_range requests instead of a single get.  Default 4 MB — below
+# the crossover where ranged overhead exceeds the single-GET time, but above
+# it large/skewed workloads see 10-25x speedup.  Set to 0 to disable.
+RAY_DATA_OBSTORE_RANGE_THRESHOLD = _parse_obstore_int_env(
+    "RAY_DATA_OBSTORE_RANGE_THRESHOLD", _DEFAULT_RANGE_THRESHOLD_INT
+)
+RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE = _parse_obstore_int_env(
+    "RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", _DEFAULT_RANGE_CHUNK_SIZE_INT
+)
+RAY_DATA_OBSTORE_MAX_CONCURRENCY = _parse_obstore_int_env(
+    "RAY_DATA_OBSTORE_MAX_CONCURRENCY", _DEFAULT_MAX_CONCURRENCY_INT
+)
+
+_FILE_SIZE_COLUMN_PREFIX = "__ray_file_size__"
+
+# Public utilities (exported to plan_download_op.py)
+_fallback_warned = False
+
+
+def _log_fallback_warning() -> None:
+    """Log a one-time warning when falling back to the PyArrow download path."""
+    global _fallback_warned
+    if _fallback_warned:
+        return
+    _fallback_warned = True
+    if not RAY_DATA_USE_OBSTORE:
+        logger.info(
+            "obstore disabled via RAY_DATA_USE_OBSTORE=0 — "
+            "using the PyArrow download path."
+        )
+    else:
+        logger.warning(
+            "obstore is not installed — falling back to the "
+            "PyArrow download path, which is significantly "
+            "slower for large or numerous files. "
+            "Install it with: pip install obstore"
+        )
+
+
+def _is_obstore_supported_url(path: str) -> bool:
+    """Check if *path* is a URL that obstore can handle.
+
+    obstore supports ``s3://``, ``gs://``, ``az://``, ``file://``,
+    ``http://``, and ``https://`` schemes.  Uses obstore's native
+    ``parse_scheme`` when available.
+
+    Returns ``False`` for relative paths or unsupported schemes.
+    This function should only be called when obstore is known to be available.
+    """
+    if obstore_parse_scheme is None:
+        return False
+    try:
+        obstore_parse_scheme(path)
+        return True
+    except Exception:
+        return False
+
+
+# Credential extraction & store management
+class _S3FSSessionCredentialProvider:
+    """Obstore credential provider backed by an fsspec s3fs session.
+
+    s3fs with Okta / STS / profile-based auth resolves credentials lazily via
+    ``fs.session.get_credentials()`` and rotates them on expiry. A single
+    snapshot becomes stale during long-running jobs, so we install this as
+    obstore's ``credential_provider`` callable instead — obstore will invoke
+    it whenever it needs fresh keys.
+
+    Cached in memory until ``expires_at`` so we don't re-enter the session on
+    every request. Thread-safe via an ``RLock`` because obstore may call this
+    concurrently from its async runtime.
+    """
+
+    _DEFAULT_TTL = timedelta(minutes=30)
+
+    def __init__(self, session: Any, ttl: Optional[timedelta] = None) -> None:
+        self._session = session
+        self._ttl = ttl if ttl is not None else self._DEFAULT_TTL
+        self._lock = threading.RLock()
+        self._cached: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_fsspec_fs(
+        cls, fsspec_fs: "s3fs.S3FileSystem"
+    ) -> Optional["_S3FSSessionCredentialProvider"]:
+        """Build a provider from an s3fs filesystem, or ``None`` if no session."""
+        session = getattr(fsspec_fs, "session", None) or getattr(
+            fsspec_fs, "_session", None
+        )
+        if session is None or not hasattr(session, "get_credentials"):
+            return None
+        return cls(session)
+
+    async def __call__(self) -> Dict[str, Any]:
+        """Return obstore-compatible S3 credentials, refreshing past expiry."""
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            if self._cached is not None and self._cached["expires_at"] > now:
+                return dict(self._cached)
+
+        session_creds = await self._await_maybe(self._session.get_credentials())
+        if session_creds is None:
+            raise RuntimeError("fsspec S3 session returned no credentials")
+        frozen = await self._await_maybe(session_creds.get_frozen_credentials())
+        access_key = getattr(frozen, "access_key", None)
+        if not access_key:
+            raise RuntimeError("fsspec S3 session returned no access key")
+
+        creds: Dict[str, Any] = {
+            "access_key_id": access_key,
+            "secret_access_key": getattr(frozen, "secret_key", None) or "",
+            "expires_at": self._compute_expires_at(session_creds),
+        }
+        token = getattr(frozen, "token", None)
+        if token:
+            creds["token"] = token
+
+        with self._lock:
+            self._cached = creds
+        return dict(creds)
+
+    @staticmethod
+    async def _await_maybe(value: Any) -> Any:
+        """Await *value* if it's awaitable (coroutine, Task, Future, custom)."""
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
+    def _compute_expires_at(self, session_creds: Any) -> datetime:
+        """Read the session's expiry, falling back to now + TTL."""
+        for attr in ("expiry_time", "_expiry_time"):
+            exp = getattr(session_creds, attr, None)
+            if isinstance(exp, datetime):
+                return exp if exp.tzinfo else exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) + self._ttl
+
+    def can_fetch_credentials(self) -> bool:
+        """Return True if a credential fetch succeeds from sync code right now.
+
+        Used by the planner during routing decisions: if the session can't
+        produce a credential set, fall back to the threaded path rather than
+        installing a provider that would fail on first request. Logs at DEBUG
+        so legitimate failures (expired creds, transient session errors) are
+        diagnosable without spamming the user.
+        """
+        try:
+            asyncio.run(self())
+        except Exception as e:
+            logger.debug("Could not fetch fsspec session credentials: %r", e)
+            return False
+        return True
+
+
+def _extract_credentials_from_filesystem(
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> Optional[Dict[str, Any]]:
+    """Extract credentials from a PyArrow filesystem for use with obstore.
+
+    Maps PyArrow filesystem configuration to obstore keyword arguments.
+    See obstore docs for available options per store type.
+
+    **Native S3 (``S3FileSystem``):** PyArrow's implementation is backed by the
+    AWS C++ SDK; Python only exposes a subset of options. ``region`` is typically
+    readable, while ``access_key``, ``secret_key``, ``session_token``, and
+    ``anonymous`` may not appear as Python attributes even when configured at
+    construction. Unavailable attributes are skipped silently, so forwarding to
+    obstore can degrade to the default AWS credential chain (env, IMDS, etc.)
+    without raising.
+
+    **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
+    (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
+    ``storage_options`` / common instance attributes first; if no static key
+    is present, we install a :class:`_S3FSSessionCredentialProvider` callback
+    so obstore can refresh session-backed (Okta/STS/profile) credentials on
+    expiry instead of using a stale snapshot. If both passes come up empty we
+    return ``None`` so the caller routes to the threaded path, keeping the
+    user's fsspec filesystem authoritative.
+
+    Other ``PyFileSystem`` handlers (non-fsspec or non-S3 fsspec protocols) are
+    not converted here; see :func:`_obstore_filesystem_requires_threaded_download`.
+
+    Args:
+        filesystem: A PyArrow filesystem instance.
+
+    Returns:
+        A dict of keyword arguments for ``obstore.store.from_url``, or
+        ``None`` when the filesystem was recognized as fsspec-S3 but we
+        couldn't pull usable credentials (caller must fall back).
+    """
+    if filesystem is None:
+        return {}
+
+    # Unwrap RetryingPyFileSystem if present
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+
+    kwargs: Dict[str, Any] = {}
+
+    S3FileSystem = getattr(pyarrow.fs, "S3FileSystem", None)
+    GcsFileSystem = getattr(pyarrow.fs, "GcsFileSystem", None)
+    AzureFileSystem = getattr(pyarrow.fs, "AzureFileSystem", None)
+    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
+    FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
+
+    if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
+        # NOTE: See docstring — many credential fields are not exposed on the
+        # Python S3FileSystem object; hasattr/getattr only forwards what exists.
+        for pa_attr, ob_key in [
+            ("region", "region"),
+            ("access_key", "access_key_id"),
+            ("secret_key", "secret_access_key"),
+            ("session_token", "session_token"),
+            ("endpoint_override", "endpoint"),
+        ]:
+            val = getattr(filesystem, pa_attr, None)
+            if val:
+                kwargs[ob_key] = val
+        if getattr(filesystem, "anonymous", False):
+            kwargs["skip_signature"] = True
+        return kwargs
+
+    if GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
+        # obstore GCSConfig does not have a project_id field. The only useful
+        # attribute PyArrow exposes on GcsFileSystem is `anonymous`, which maps
+        # to obstore's `skip_signature`. All other credentials (service account,
+        # application default credentials) are resolved by obstore from the
+        # environment automatically.
+        if getattr(filesystem, "anonymous", False):
+            kwargs["skip_signature"] = True
+        return kwargs
+
+    if AzureFileSystem is not None and isinstance(filesystem, AzureFileSystem):
+        for attr in ("account_name", "account_key"):
+            val = getattr(filesystem, attr, None)
+            if val:
+                kwargs[attr] = val
+        return kwargs
+
+    if (
+        PyFileSystem is not None
+        and FSSpecHandler is not None
+        and isinstance(filesystem, PyFileSystem)
+        and isinstance(filesystem.handler, FSSpecHandler)
+    ):
+        # fsspec-backed FS (e.g. s3fs with Okta/STS) wrapped for PyArrow.
+        fsspec_fs = getattr(filesystem.handler, "fs", None)
+        if fsspec_fs is None:
+            return None
+        protocol = getattr(fsspec_fs, "protocol", None)
+        if isinstance(protocol, tuple):
+            protocol = protocol[0] if protocol else None
+        if protocol not in ("s3", "s3a"):
+            # Non-S3 fsspec — obstore can't use these. Callers usually filter
+            # this out via _obstore_filesystem_requires_threaded_download, but
+            # direct callers must also route to the threaded path.
+            return None
+        opts = getattr(fsspec_fs, "storage_options", None) or {}
+        if not isinstance(opts, dict):
+            opts = {}
+        key = opts.get("key") or getattr(fsspec_fs, "key", None)
+        secret = opts.get("secret") or getattr(fsspec_fs, "secret", None)
+        token = opts.get("token") or getattr(fsspec_fs, "token", None)
+        endpoint = opts.get("endpoint_url") or getattr(fsspec_fs, "endpoint_url", None)
+        client_kwargs = opts.get("client_kwargs") or getattr(
+            fsspec_fs, "client_kwargs", None
+        )
+        if isinstance(client_kwargs, dict):
+            endpoint = endpoint or client_kwargs.get("endpoint_url")
+            region_name = client_kwargs.get("region_name")
+            if region_name:
+                kwargs["region"] = region_name
+        region_opt = opts.get("region_name")
+        if region_opt:
+            kwargs["region"] = region_opt
+        if key:
+            kwargs["access_key_id"] = key
+        if secret:
+            kwargs["secret_access_key"] = secret
+        if token:
+            kwargs["session_token"] = token
+        if endpoint:
+            kwargs["endpoint"] = endpoint
+        anon = opts.get("anon") or getattr(fsspec_fs, "anon", False)
+        if anon:
+            kwargs["skip_signature"] = True
+
+        # Static attrs didn't yield an access key and the user didn't opt into
+        # anonymous — install a credential_provider so obstore refreshes the
+        # session-backed keys (Okta/STS/profile-based) on expiry instead of
+        # using a stale snapshot.
+        if "access_key_id" not in kwargs and not anon:
+            provider = _S3FSSessionCredentialProvider.from_fsspec_fs(fsspec_fs)
+            if provider is None or not provider.can_fetch_credentials():
+                return None
+            kwargs["credential_provider"] = provider
+        return kwargs
+
+    # Unrecognized non-None filesystem — route to threaded so the user's FS
+    # stays authoritative. Obstore with empty kwargs would silently use its
+    # own credential chain, dropping any configuration on the user's FS.
+    return None
+
+
+def _obstore_filesystem_requires_threaded_download(
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> bool:
+    """Return True if obstore must not be used so the user's FS stays authoritative.
+
+    ``PyFileSystem`` instances that are not ``FSSpecHandler`` wrapping ``s3`` /
+    ``s3a`` cannot have credentials merged into obstore's ``from_url`` in a
+    reliable way. Using obstore with empty kwargs would ignore the user's
+    filesystem (Okta, STS, custom protocols) and tends to produce confusing
+    403s. The threaded download path passes the filesystem through to PyArrow
+    ``open_input_stream``, matching pre-obstore behavior.
+
+    ``None`` means no explicit filesystem (URI-driven resolution) — obstore is OK.
+    """
+    if filesystem is None:
+        return False
+
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+
+    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
+    FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
+    if PyFileSystem is None or not isinstance(filesystem, PyFileSystem):
+        return False
+    if FSSpecHandler is None or not isinstance(filesystem.handler, FSSpecHandler):
+        return True
+
+    fsspec_fs = getattr(filesystem.handler, "fs", None)
+    if fsspec_fs is None:
+        return True
+
+    protocol = getattr(fsspec_fs, "protocol", None)
+    if isinstance(protocol, tuple):
+        protocol = protocol[0] if protocol else None
+    if protocol in ("s3", "s3a"):
+        return False
+    return True
+
+
+def _is_fsspec_s3_filesystem(filesystem: "pyarrow.fs.FileSystem") -> bool:
+    """True if *filesystem* is a PyFileSystem wrapping an s3fs ``S3FileSystem``."""
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+    if not isinstance(filesystem, pyarrow.fs.PyFileSystem):
+        return False
+    if not isinstance(filesystem.handler, pyarrow.fs.FSSpecHandler):
+        return False
+    try:
+        from s3fs import S3FileSystem
+    except ImportError:
+        return False
+    return isinstance(filesystem.handler.fs, S3FileSystem)
+
+
+# Per-process dedup for credential-extraction warnings. Keyed by ``id(fs)`` so
+# each distinct filesystem object warns exactly once in a worker.
+_warned_credential_fs_ids: set = set()
+
+
+def _warn_fsspec_s3_credentials_unextractable(
+    filesystem: "pyarrow.fs.FileSystem",
+) -> None:
+    """Emit a one-shot WARNING for fsspec-S3 filesystems with unextractable creds.
+
+    Only call this for filesystems where ``_is_fsspec_s3_filesystem`` is True —
+    the message hardcodes fsspec-specific advice (``storage_options``) and
+    would be misleading for native filesystems like ``LocalFileSystem`` or
+    ``HdfsFileSystem``.
+    """
+    fs_id = id(filesystem)
+    if fs_id in _warned_credential_fs_ids:
+        return
+    _warned_credential_fs_ids.add(fs_id)
+
+    unwrapped = (
+        filesystem.unwrap()
+        if isinstance(filesystem, RetryingPyFileSystem)
+        else filesystem
+    )
+    handler = getattr(unwrapped, "handler", None)
+    inner = getattr(handler, "fs", None)
+    inner_class = type(inner).__name__ if inner is not None else "unknown"
+
+    logger.warning(
+        "Could not extract S3 credentials from user-supplied fsspec "
+        "filesystem (inner: %s); falling back to the PyArrow threaded "
+        "download path so the filesystem's own credential resolution stays "
+        "authoritative. If this is unexpected, pass credentials via fsspec "
+        "``storage_options`` (e.g. key/secret/token) so they can be "
+        "forwarded to obstore.",
+        inner_class,
+    )
+
+
+def _plan_obstore_routing(
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> "tuple[bool, Dict[str, Any]]":
+    """Decide whether to use obstore and return the kwargs to forward.
+
+    Returns ``(True, fs_kwargs)`` if obstore should be used, or ``(False, {})``
+    if the caller must route to the threaded path. Emits a ``WARNING`` only
+    when an fsspec-S3 filesystem was supplied but its credentials couldn't be
+    extracted — routing native / unrecognized filesystems to the threaded
+    path is the expected behavior and is logged at ``DEBUG``.
+    """
+    if _obstore_filesystem_requires_threaded_download(filesystem):
+        return False, {}
+    fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+    if fs_kwargs is None:
+        assert filesystem is not None  # None filesystem always returns {}
+        if _is_fsspec_s3_filesystem(filesystem):
+            _warn_fsspec_s3_credentials_unextractable(filesystem)
+        else:
+            logger.debug(
+                "Routing filesystem %s to the PyArrow threaded download path "
+                "(obstore cannot forward credentials for this filesystem type).",
+                type(filesystem).__name__,
+            )
+        return False, {}
+    return True, fs_kwargs
+
+
+class StoreRegistry:
+    """Cache of store_url -> ObjectStore instances.
+
+    Ensures one store is created per unique (scheme, authority) combination
+    and reuses it for all subsequent requests to the same host.
+    """
+
+    def __init__(
+        self,
+        retry_config: Optional[Dict[str, Any]] = None,
+        **filesystem_kwargs: Any,
+    ):
+        from obstore.store import from_url
+
+        self._from_url = from_url
+        self._retry_config = retry_config or {}
+        self._filesystem_kwargs = filesystem_kwargs
+        self._cache: Dict[str, Any] = {}
+
+    def get(self, store_url: str) -> Any:
+        if store_url not in self._cache:
+            kwargs = dict(self._filesystem_kwargs)
+            if store_url.startswith("http://"):
+                # obstore's reqwest client rejects http:// by default. Auto-enable it
+                # to maintain parity with PyArrow (which accepts http:// via fsspec),
+                # but warn about unencrypted traffic.
+                client_options = {
+                    **kwargs.get("client_options", {}),
+                    "allow_http": True,
+                }
+                kwargs["client_options"] = client_options
+                if not getattr(self, "_warned_http", False):
+                    self._warned_http = True
+                    logger.warning(
+                        "Downloading over unencrypted HTTP. "
+                        "Consider using https:// instead."
+                    )
+            self._cache[store_url] = self._from_url(
+                store_url,
+                retry_config=self._retry_config,
+                **kwargs,
+            )
+        return self._cache[store_url]
+
+
+def _yield_threaded_download_bytes(
+    block: pa.Table,
+    uri_column_names: List[str],
+    output_bytes_column_names: List[str],
+    data_context: "DataContext",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> Iterator[pa.Table]:
+    """Delegate to ``download_bytes_threaded`` after dropping internal size columns.
+
+    ``AsyncPartitionActor`` may attach ``__ray_file_size__*`` columns that the
+    threaded downloader does not handle.
+    """
+    size_cols = [
+        f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
+        for name in uri_column_names
+        if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in block.column_names
+    ]
+    if size_cols:
+        block = block.drop(size_cols)
+
+    from ray.data._internal.planner.plan_download_op import download_bytes_threaded
+
+    yield from download_bytes_threaded(
+        block,
+        uri_column_names,
+        output_bytes_column_names,
+        data_context,
+        filesystem,
+    )
+
+
+# Public entry point
+def download_bytes_async(
+    block: pa.Table,
+    uri_column_names: List[str],
+    output_bytes_column_names: List[str],
+    data_context: "DataContext",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> Iterator[pa.Table]:
+    """Download bytes for URI columns using obstore's async API.
+
+    For URI schemes not supported by obstore, falls back to the threaded
+    PyArrow download path via lazy import.
+
+    Args:
+        block: Input PyArrow table containing URI columns.
+        uri_column_names: Names of columns containing URIs to download.
+        output_bytes_column_names: Names for the output columns containing
+            downloaded bytes.
+        data_context: Ray Data context for configuration.
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
+
+    Yields:
+        pa.Table: PyArrow table with the downloaded bytes added as new columns.
+    """
+    if not isinstance(block, pa.Table):
+        block = BlockAccessor.for_block(block).to_arrow()
+
+    first_uris = block.column(uri_column_names[0]).to_pylist()
+    if not first_uris:
+        yield block
+        return
+
+    # Fall back to PyArrow for URI schemes obstore doesn't handle.
+    if not _is_obstore_supported_url(first_uris[0]):
+        logger.debug(
+            "URI scheme not supported by obstore (first URI: %s); "
+            "falling back to PyArrow threaded download.",
+            first_uris[0],
+        )
+        yield from _yield_threaded_download_bytes(
+            block,
+            uri_column_names,
+            output_bytes_column_names,
+            data_context,
+            filesystem,
+        )
+        return
+
+    # Resolve credentials up front in sync context. This is the only safe place
+    # to call ``_extract_credentials_from_filesystem`` for fsspec sessions that
+    # need ``asyncio.run`` internally — once we're inside ``_download_uris_with_obstore``
+    # we're already in an event loop and that path is unavailable.
+    use_obstore, fs_kwargs = _plan_obstore_routing(filesystem)
+    if not use_obstore:
+        yield from _yield_threaded_download_bytes(
+            block,
+            uri_column_names,
+            output_bytes_column_names,
+            data_context,
+            filesystem,
+        )
+        return
+
+    output_block = block
+
+    for uri_column_name, output_bytes_column_name in zip(
+        uri_column_names, output_bytes_column_names
+    ):
+        uris = output_block.column(uri_column_name).to_pylist()
+
+        if not uris:
+            continue
+
+        # Read pre-computed file sizes from AsyncPartitionActor if available.
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+        file_sizes = None
+        if size_col in output_block.column_names:
+            file_sizes = output_block.column(size_col).to_pylist()
+
+        uri_bytes = asyncio.run(
+            _download_uris_with_obstore(
+                uris,
+                uri_column_name,
+                fs_kwargs=fs_kwargs,
+                file_sizes=file_sizes,
+            )
+        )
+
+        output_block = output_block.append_column(
+            output_bytes_column_name, pa.array(uri_bytes)
+        )
+
+    # Drop internal file-size columns before yielding output.
+    size_cols = [
+        f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
+        for name in uri_column_names
+        if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in output_block.column_names
+    ]
+    if size_cols:
+        output_block = output_block.drop(size_cols)
+
+    yield from _iter_arrow_table_for_target_max_block_size(
+        output_block, data_context.target_max_block_size
+    )
+
+
+# Core async download logic
+async def _download_uris_with_obstore(
+    uris: List[str],
+    uri_column_name: str,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    file_sizes: Optional[List[Optional[int]]] = None,
+    fs_kwargs: Optional[Dict[str, Any]] = None,
+) -> List[Optional[bytes]]:
+    """Download URIs concurrently using obstore's async API.
+
+    Creates and caches one ``ObjectStore`` per unique (scheme, authority)
+    combination, then fires all downloads concurrently via asyncio.gather.
+    If a PyArrow *filesystem* is provided, its credentials are extracted
+    and forwarded to obstore's store construction.
+
+    When ``RAY_DATA_OBSTORE_RANGE_THRESHOLD`` is set to a positive value,
+    files larger than the threshold are downloaded as parallel range chunks
+    via ``get_range_async``.  The *file_sizes* list, when provided by the
+    upstream ``AsyncPartitionActor``, lets the function skip the HEAD request
+    for files whose size is already known.
+
+    Args:
+        uris: URIs to download.
+        uri_column_name: Column name (used only for error logging).
+        filesystem: Optional PyArrow filesystem whose credentials are
+            forwarded to the obstore store. Ignored when *fs_kwargs* is given.
+        file_sizes: Optional per-URI file sizes from AsyncPartitionActor.
+            ``0`` or ``None`` entries trigger a HEAD request when range
+            splitting is enabled.
+        fs_kwargs: Pre-extracted obstore kwargs from the planner. Preferred
+            over *filesystem* because it sidesteps re-extracting credentials
+            from inside the event loop (aiobotocore sessions need ``asyncio.run``).
+
+    Returns:
+        Downloaded bytes in the same order as *uris*.  ``None`` entries
+        indicate failed downloads.
+    """
+    if fs_kwargs is None:
+        # Direct-caller path (tests, internal helpers). Session-backed fsspec
+        # may fail here because we may already be inside an event loop; the
+        # planner path avoids this by pre-extracting upfront and passing
+        # ``fs_kwargs``. Re-extract best-effort, but fail closed if the
+        # filesystem is non-None and extraction signals "not extractable" —
+        # silently handing obstore the ambient credential chain is exactly
+        # the bug the new routing was designed to prevent.
+        extracted = _extract_credentials_from_filesystem(filesystem)
+        if extracted is None:
+            raise RuntimeError(
+                "_download_uris_with_obstore was called with a filesystem whose "
+                f"credentials cannot be statically extracted ({type(filesystem).__name__}). "
+                "Pass ``fs_kwargs`` explicitly, or route through "
+                "``_plan_obstore_routing`` / ``download_bytes_async`` so "
+                "non-extractable filesystems take the threaded PyArrow path."
+            )
+        fs_kwargs = extracted
+
+    range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
+    range_chunk_size = RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE
+    max_conc = RAY_DATA_OBSTORE_MAX_CONCURRENCY
+    if range_threshold > 0:
+        if max_conc <= 0:
+            logger.warning(
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD is set but "
+                "RAY_DATA_OBSTORE_MAX_CONCURRENCY=%d is invalid. "
+                "Range downloads require a positive concurrency limit to avoid "
+                "socket exhaustion. Disabling range splitting.",
+                max_conc,
+            )
+            range_threshold = 0
+        elif range_chunk_size <= 0:
+            logger.warning(
+                "RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE=%d is invalid (must be > 0). "
+                "Disabling range splitting to avoid empty range tasks and "
+                "zero-filled bogus downloads.",
+                range_chunk_size,
+            )
+            range_threshold = 0
+    sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
+
+    registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
+
+    if range_threshold <= 0:
+        logger.debug(
+            "Range splitting disabled (threshold=%d); downloading %d URIs via simple GET.",
+            range_threshold,
+            len(uris),
+        )
+        tasks = [_fetch_whole(uri, registry, uri_column_name, sem) for uri in uris]
+        return list(await asyncio.gather(*tasks))
+
+    # --- Range-split path ---
+    assert sem is not None
+    # 0 = unknown size; these will be resolved via HEAD below.
+    sizes = list(file_sizes) if file_sizes is not None else [0] * len(uris)
+
+    # Resolve unknown file sizes via HEAD. The cost is one concurrent RTT
+    # regardless of batch size, which is negligible compared to the speedup
+    # from correctly routing large files to ranged download.
+    unknown_indices = [i for i, s in enumerate(sizes) if not s or s <= 0]
+    if unknown_indices:
+        resolved = await asyncio.gather(
+            *[_resolve_size(uris[i], registry, sem) for i in unknown_indices]
+        )
+        for i, sz in zip(unknown_indices, resolved):
+            sizes[i] = sz
+
+    tasks = []
+    for uri, size in zip(uris, sizes):
+        if size and size > range_threshold:
+            tasks.append(
+                _fetch_ranged(
+                    uri, size, registry, uri_column_name, sem, range_chunk_size
+                )
+            )
+        else:
+            tasks.append(_fetch_whole(uri, registry, uri_column_name, sem))
+    return list(await asyncio.gather(*tasks))
+
+
+# Async helpers
+async def _resolve_size(
+    uri: str,
+    registry: StoreRegistry,
+    semaphore: asyncio.Semaphore,
+) -> int:
+    """Return the file size in bytes via a HEAD request, or 0 on failure.
+
+    Returning 0 on failure is intentional: callers treat 0 as "unknown size",
+    which routes the file to a simple GET instead of ranged download.
+    """
+    import obstore as obs
+
+    try:
+        store_url, path = _split_uri(uri)
+        store = registry.get(store_url)
+        async with semaphore:
+            meta = await obs.head_async(store, path)
+        return meta["size"] if isinstance(meta, dict) else meta.size
+    except Exception:
+        return 0
+
+
+async def _fetch_whole(
+    uri: str,
+    registry: StoreRegistry,
+    uri_column_name: str,
+    semaphore: Optional[asyncio.Semaphore] = None,
+) -> Optional[bytes]:
+    """Download a single URI, returning ``None`` on failure."""
+    try:
+        if semaphore is not None:
+            async with semaphore:
+                return await _fetch(uri, registry)
+        # No semaphore (RAY_DATA_OBSTORE_MAX_CONCURRENCY=0).
+        # Concurrency is bounded only by the partition actor batch size.
+        return await _fetch(uri, registry)
+    except OSError as e:
+        logger.debug(
+            "OSError reading uri %r for column %r: %s", uri, uri_column_name, e
+        )
+    except Exception as e:
+        logger.warning(
+            "Unexpected error reading uri %r for column %r: %s",
+            uri,
+            uri_column_name,
+            e,
+        )
+    return None
+
+
+async def _fetch_ranged(
+    uri: str,
+    size: int,
+    registry: StoreRegistry,
+    uri_column_name: str,
+    semaphore: asyncio.Semaphore,
+    range_chunk_size: int,
+) -> Optional[bytes]:
+    """Download a single large file using parallel range requests.
+
+    Falls back to a simple GET if any range chunk fails, so the
+    pipeline never loses a file due to a transient range error.
+    """
+    try:
+        store_url, path = _split_uri(uri)
+        store = registry.get(store_url)
+        result = bytearray(size)
+
+        tasks = [
+            asyncio.ensure_future(
+                _fetch_chunk(
+                    uri,
+                    store,
+                    path,
+                    chunk_start,
+                    min(chunk_start + range_chunk_size, size),
+                    result,
+                    semaphore,
+                )
+            )
+            for chunk_start in range(0, size, range_chunk_size)
+        ]
+
+        try:
+            await asyncio.gather(*tasks)
+        except Exception:
+            # Cancel remaining chunk tasks to release semaphore permits
+            # and avoid wasted downloads into a bytearray we'll discard.
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        return bytes(result)
+    except Exception as e:
+        logger.debug(
+            "Ranged download failed for %r, falling back to simple GET: %s", uri, e
+        )
+        return await _fetch_whole(uri, registry, uri_column_name, semaphore)
+
+
+async def _fetch_chunk(
+    uri: str,
+    store: Any,
+    path: str,
+    start: int,
+    end: int,
+    result: bytearray,
+    semaphore: asyncio.Semaphore,
+) -> None:
+    """Download a single byte range and write it into *result* in place."""
+    import obstore as obs
+
+    async with semaphore:
+        chunk = await obs.get_range_async(store, path, start=start, end=end)
+        expected = end - start
+        if len(chunk) != expected:
+            raise IOError(
+                f"Range request for {uri!r} returned {len(chunk)} "
+                f"bytes, expected {expected}"
+            )
+        result[start:end] = chunk
+
+
+async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
+    """Download a single URI as a whole-file GET and return raw bytes."""
+    import obstore as obs
+
+    store_url, path = _split_uri(uri)
+    result = await obs.get_async(registry.get(store_url), path)
+    return bytes(await result.bytes_async())

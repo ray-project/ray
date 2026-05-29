@@ -7,7 +7,7 @@ from threading import Thread
 
 import click
 
-from ray._private.usage import usage_constants, usage_lib
+from ray._common.usage import usage_constants, usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.command_runner import (
@@ -93,7 +93,7 @@ class NodeUpdater:
         # 1) use_internal_ip arg is True -> use_internal_ip is True
         # 2) worker node -> use value of provider_config["use_internal_ips"]
         # 3) head node -> use value of provider_config["use_internal_ips"] unless
-        #                 overriden by provider_config["use_external_head_ip"]
+        #                 overridden by provider_config["use_external_head_ip"]
         use_internal_ip = use_internal_ip or (
             provider_config.get("use_internal_ips", False)
             and not (

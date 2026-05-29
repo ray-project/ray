@@ -87,7 +87,7 @@ Step 2: Configure Access
 
 Ensure that your local machine can access the Ray Client port on the head node.
 
-The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_. 
+The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_.
 This allows you to connect to the Ray Client server on the head node via ``localhost``.
 
 First, open up an SSH connection with your Ray cluster and forward the
@@ -144,7 +144,7 @@ Alternative Connection Approach:
 
 Instead of port-forwarding, you can directly connect to the Ray Client server on the head node if your computer
 has network access to the head node. This is an option if your computer is on the same network as the Cluster or
-if your computer can connct to the Cluster with a VPN.
+if your computer can connect to the Cluster with a VPN.
 
 If your computer does not have direct access, you can modify the network configuration to grant access. On `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_,
 this can be done by modifying the security group to allow inbound access from your local IP address to the Ray Client server port (``10001`` by default).
@@ -178,7 +178,8 @@ this can be done by modifying the security group to allow inbound access from yo
 
 
 .. warning::
-   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.\n
+   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.
+
    **Do not expose this to `0.0.0.0/0`.**
 
 Connect to multiple Ray clusters (Experimental)
@@ -297,9 +298,29 @@ If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`
 
 Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the ``working_dir`` on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on the cluster. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.
 
+Using ``uv`` with Ray Client
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using `uv run <https://docs.astral.sh/uv/guides/scripts/>`_ with Ray Client, the server-side environment initialization may take longer than the default timeout values, especially when installing many packages. If you encounter timeout errors, you should increase the following environment variables:
+
+.. code-block:: bash
+
+   # Increase client-side connection timeout (default: 30 seconds)
+   export RAY_CLIENT_MAX_CONNECTION_TIMEOUT_S=120
+
+   # Increase server-side channel timeout (default: 30 seconds)
+   export RAY_CLIENT_SERVER_CHECK_CHANNEL_TIMEOUT_S=120
+
+   # Then run your application
+   uv run your_script.py
+
+These timeouts should be set before starting your Ray Client application. The values above (120 seconds) are recommended for most ``uv`` environments, but you may need to adjust them based on your environment initialization time, which depends on factors such as the number and size of packages, network speed, disk I/O performance, and whether packages require compilation.
+
+For more information on using ``uv`` with Ray, see :ref:`use-uv-for-package-management`.
+
 Troubleshooting
 ---------------
 
-Error: Attempted to reconnect a session that has already been cleaned up 
+Error: Attempted to reconnect a session that has already been cleaned up
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This error happens when Ray Client reconnects to a head node that does not recognize the client. This can happen if the head node restarts unexpectedly and loses state. On Kubernetes, this can happen if the head pod restarts after being evicted or crashing.

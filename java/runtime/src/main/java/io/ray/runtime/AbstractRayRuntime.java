@@ -101,21 +101,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public abstract void run();
 
   @Override
-  public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug(
-          "Putting an object in task {} with {} as the owner.",
-          workerContext.getCurrentTaskId(),
-          ownerActor.getId());
-    }
-    ObjectId objectId = objectStore.put(obj, ownerActor.getId());
-    return new ObjectRefImpl<T>(
-        objectId,
-        (Class<T>) (obj == null ? Object.class : obj.getClass()),
-        /*skipAddingLocalRef=*/ true);
-  }
-
-  @Override
   public <T> T get(ObjectRef<T> objectRef) throws RuntimeException {
     return get(objectRef, -1);
   }
@@ -393,7 +378,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       if (options == null) {
         LOGGER.debug("Creating Actor {} with default options.", functionDescriptor);
       } else {
-        LOGGER.debug("Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.jvmOptions);
+        LOGGER.debug(
+            "Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.getJvmOptions());
       }
     }
     if (rayConfig.runMode == RunMode.LOCAL && functionDescriptor.getLanguage() != Language.JAVA) {
@@ -403,7 +389,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
+      Preconditions.checkState(
+          options.getJvmOptions() == null || options.getJvmOptions().isEmpty());
     }
 
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);

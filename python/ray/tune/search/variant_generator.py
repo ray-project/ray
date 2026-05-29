@@ -46,8 +46,15 @@ def generate_variants(
 
     Use `format_vars` to format the returned dict of hyperparameters.
 
+    Args:
+        unresolved_spec: Experiment spec containing unresolved variants.
+        constant_grid_search: If True, sample random variables once before
+            iterating over grid variants; if False, resample for each grid variant.
+        random_state: Seed or numpy random generator used to draw random samples.
+
     Yields:
-        (Dict of resolved variables, Spec object)
+        Tuple[Dict, Dict]: ``(resolved_vars, spec)`` pairs, where ``resolved_vars``
+            is a dict of resolved variables and ``spec`` is the fully resolved spec.
     """
     for resolved_vars, spec in _generate_variants_internal(
         unresolved_spec,
@@ -90,6 +97,9 @@ def grid_search(values: Iterable) -> Dict[str, Iterable]:
     Args:
         values: An iterable whose parameters will be used for creating a trial grid.
 
+    Returns:
+        A dict in the form ``{"grid_search": values}`` understood by Tune's
+        variant generator.
     """
     return {"grid_search": values}
 
@@ -344,7 +354,7 @@ def assign_value(spec: Dict, path: Tuple, value: Any):
     """Assigns a value to a nested dictionary.
 
     Handles the special case of tuples, in which case the tuples
-    will be re-constructed to accomodate the updated value.
+    will be re-constructed to accommodate the updated value.
     """
     parent_spec = None
     parent_key = None

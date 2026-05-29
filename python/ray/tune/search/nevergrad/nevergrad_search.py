@@ -1,5 +1,6 @@
 import inspect
 import logging
+import math
 import pickle
 from typing import Dict, List, Optional, Sequence, Type, Union
 
@@ -194,7 +195,7 @@ class NevergradSearch(Searcher):
 
         self._live_trial_mapping = {}
 
-        if self._nevergrad_opt or self._space:
+        if self._nevergrad_opt is not None or self._space is not None:
             self._setup_nevergrad()
 
     def _setup_nevergrad(self):
@@ -247,7 +248,7 @@ class NevergradSearch(Searcher):
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
-        if self._nevergrad_opt or self._space:
+        if self._nevergrad_opt is not None or self._space is not None:
             return False
         space = self.convert_search_space(config)
         self._space = space
@@ -341,7 +342,7 @@ class NevergradSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
-                        lower=domain.lower, upper=domain.upper, exponent=sampler.base
+                        lower=domain.lower, upper=domain.upper, exponent=math.e
                     )
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
@@ -350,7 +351,7 @@ class NevergradSearch(Searcher):
                     return ng.p.Log(
                         lower=domain.lower,
                         upper=domain.upper - 1,  # Upper bound exclusive
-                        exponent=sampler.base,
+                        exponent=math.e,
                     ).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,

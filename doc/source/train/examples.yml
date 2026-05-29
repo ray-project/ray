@@ -1,14 +1,15 @@
-text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs!
+text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs.
 columns_to_show:
   - frameworks
+groupby: skill_level
 examples:
-  - title: Train an image classifier with PyTorch
+  - title: Distributing your PyTorch Training Code with Ray Train and Ray Data
     skill_level: beginner
     frameworks:
       - pytorch
     use_cases:
       - computer vision
-    link: examples/pytorch/torch_fashion_mnist_example
+    link: examples/pytorch/distributing-pytorch/README
   - title: Train an image classifier with Lightning
     skill_level: beginner
     frameworks:
@@ -33,6 +34,14 @@ examples:
     use_cases:
       - computer vision
     link: examples/tf/tensorflow_mnist_example
+  - title: Train a GPT-2-style Transformer with JAX and Flax
+    frameworks:
+      - jax
+      - flax
+    skill_level: beginner
+    use_cases:
+      - natural language processing
+    link: examples/jax/intro_to_jax_trainer/README
   - title: Train with Horovod and PyTorch
     frameworks:
       - horovod
@@ -54,7 +63,46 @@ examples:
       - natural language processing
     contributor: community
     link: examples/intel_gaudi/bert
-
+  - title: Profiling a Ray Train Workload with PyTorch Profiler
+    frameworks:
+      - pytorch
+    skill_level: beginner
+    use_cases:
+      - computer vision
+    link: examples/pytorch/pytorch-profiling/README
+  - title: Get started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+    use_cases:
+      - computer vision
+    link: examples/pytorch/pytorch-fsdp/README
+  - title: Get started with Tensor Parallelism (DeepSpeed AutoTP) and Ray Train
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+      - deepspeed
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/pytorch/tensor_parallel_autotp/README
+  - title: Get started with 2D Parallelism (Tensor + Data Parallelism) using FSDP2 and Ray Train
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/pytorch/tensor_parallel_dtensor/README
+  - title: Fine-tune an LLM with Ray Train and DeepSpeed
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+      - deepspeed
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/pytorch/deepspeed_finetune/README
   - title: Train a text classifier with DeepSpeed
     frameworks:
       - deepspeed
@@ -72,6 +120,16 @@ examples:
       - computer vision
       - generative ai
     link: examples/pytorch/dreambooth_finetuning
+  - title: Finetune Stable Diffusion and generate images with Intel Gaudi
+    skill_level: intermediate
+    frameworks:
+      - accelerate
+      - transformers
+    use_cases:
+      - computer vision
+      - generative ai
+    contributor: community
+    link: examples/intel_gaudi/sd
   - title: Train a text classifier with PyTorch Lightning and Ray Data
     frameworks:
       - lightning
@@ -86,8 +144,48 @@ examples:
     use_cases:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
+  - title: RL Post-Train an LLM using HuggingFace TRL with GRPO
+    frameworks:
+      - transformers
+      - trl
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - reinforcement learning
+    link: examples/transformers/transformer_reinforcement_learning/README
+  - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama
+  - title: "Pre-train Llama-2 with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+      - deepspeed
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama_pretrain
 
-  - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
+  - title: Fine-tune Llama3.1 with AWS Trainium
+    frameworks:
+      - pytorch
+      - aws neuron
+    skill_level: advanced
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/aws-trainium/llama3
+  - title: Fine-tune a Llama-2 text generation model with DeepSpeed and Hugging Face Accelerate
     frameworks:
       - accelerate
       - deepspeed
@@ -125,3 +223,8 @@ examples:
       - generative ai
       - natural language processing
     link: examples/lightning/dolly_lightning_fsdp_finetuning
+  - title: Train a tabular model with XGBoost
+    frameworks:
+      - xgboost
+    skill_level: beginner
+    link: examples/xgboost/distributed-xgboost-lightgbm

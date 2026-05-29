@@ -1,17 +1,32 @@
-from typing import List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
 
-from ray.data import Dataset
-from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
-from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
+from ray.data.block import BlockAccessor
+from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
+from ray.data.preprocessors.version_support import SerializablePreprocessor
+from ray.data.util.data_batch_conversion import BatchFormat
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
+
+# Small epsilon value to handle near-zero values in division operations.
+# This prevents numerical instability when scaling columns with very small
+# variance or range. Similar to sklearn's approach.
+_EPSILON = 1e-8
 
 
 @PublicAPI(stability="alpha")
-class StandardScaler(Preprocessor):
-    r"""Translate and scale each column by its mean and standard deviation, respectively.
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.standard_scaler")
+class StandardScaler(SerializablePreprocessorBase):
+    r"""Translate and scale each column by its mean and standard deviation,
+    respectively.
 
     The general formula is given by
 
@@ -59,17 +74,48 @@ class StandardScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
+        >>> preprocessor = StandardScaler(
+        ...     columns=["X1", "X2"],
+        ...     output_columns=["X1_scaled", "X2_scaled"]
+        ... )
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1  -1.224745  -0.707107
+        1   0  -3   1   0.000000  -0.707107
+        2   2   3   1   1.224745   1.414214
+
     Args:
         columns: The columns to separately scale.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(self, columns: List[str]):
-        self.columns = columns
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
+        super().__init__()
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        mean_aggregates = [Mean(col) for col in self.columns]
-        std_aggregates = [Std(col, ddof=0) for col in self.columns]
-        self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=Mean,
+            columns=self._columns,
+        )
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Std(col, ddof=0),
+            columns=self._columns,
+        )
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -77,24 +123,99 @@ class StandardScaler(Preprocessor):
             s_mean = self.stats_[f"mean({s.name})"]
             s_std = self.stats_[f"std({s.name})"]
 
-            # Handle division by zero.
-            # TODO: extend this to handle near-zero values.
-            if s_std == 0:
+            if s_std is None or s_mean is None:
+                s[:] = np.nan
+                return s
+
+            # Handle division by zero and near-zero values for numerical stability.
+            # If standard deviation is very small (constant or near-constant column),
+            # treat it as 1 to avoid numerical instability.
+            if s_std < _EPSILON:
                 s_std = 1
 
             return (s - s_mean) / s_std
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_standard_scaler
-        )
+        df[self._output_columns] = df[self._columns].transform(column_standard_scaler)
         return df
 
+    @staticmethod
+    def _scale_column(column: pa.Array, mean: float, std: float) -> pa.Array:
+        # Handle division by zero and near-zero values for numerical stability.
+        if std < _EPSILON:
+            std = 1
+
+        return pc.divide(
+            pc.subtract(column, pa.scalar(float(mean))), pa.scalar(float(std))
+        )
+
+    def _transform_arrow(self, table: pa.Table) -> pa.Table:
+        """Transform using fast native PyArrow operations."""
+        # Read all input columns first to avoid reading modified data when
+        # output_columns[i] == columns[j] for i < j
+        input_columns = [table.column(input_col) for input_col in self._columns]
+
+        for input_col, output_col, column in zip(
+            self._columns, self._output_columns, input_columns
+        ):
+            s_mean = self.stats_[f"mean({input_col})"]
+            s_std = self.stats_[f"std({input_col})"]
+
+            if s_std is None or s_mean is None:
+                # Return column filled with nulls, preserving original column type
+                null_array = pa.nulls(len(column), type=column.type)
+                table = BlockAccessor.for_block(table).upsert_column(
+                    output_col, null_array
+                )
+                continue
+
+            scaled_column = self._scale_column(column, s_mean, s_std)
+
+            table = BlockAccessor.for_block(table).upsert_column(
+                output_col, scaled_column
+            )
+
+        return table
+
+    @classmethod
+    @DeveloperAPI
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.ARROW
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
-class MinMaxScaler(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.min_max_scaler")
+class MinMaxScaler(SerializablePreprocessorBase):
     r"""Scale each column by its range.
 
     The general formula is given by
@@ -143,15 +264,38 @@ class MinMaxScaler(Preprocessor):
         1   0  -3  0.0
         2   2   3  0.0
 
+        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"], output_columns=["X1_scaled", "X2_scaled"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1        0.0        0.0
+        1   0  -3   1        0.5        0.0
+        2   2   3   1        1.0        1.0
+
     Args:
         columns: The columns to separately scale.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(self, columns: List[str]):
-        self.columns = columns
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
+        super().__init__()
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        aggregates = [Agg(col) for Agg in [Min, Max] for col in self._columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
 
@@ -161,24 +305,52 @@ class MinMaxScaler(Preprocessor):
             s_max = self.stats_[f"max({s.name})"]
             diff = s_max - s_min
 
-            # Handle division by zero.
-            # TODO: extend this to handle near-zero values.
-            if diff == 0:
+            # Handle division by zero and near-zero values for numerical stability.
+            # If range is very small (constant or near-constant column),
+            # treat it as 1 to avoid numerical instability.
+            if diff < _EPSILON:
                 diff = 1
 
             return (s - s_min) / diff
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_min_max_scaler
-        )
+        df[self._output_columns] = df[self._columns].transform(column_min_max_scaler)
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
-class MaxAbsScaler(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.max_abs_scaler")
+class MaxAbsScaler(SerializablePreprocessorBase):
     r"""Scale each column by its absolute max value.
 
     The general formula is given by
@@ -223,15 +395,38 @@ class MaxAbsScaler(Preprocessor):
         0  -6   2  0.0
         1   3  -4  0.0
 
+        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"], output_columns=["X1_scaled", "X2_scaled"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0  -2  -3   1       -1.0       -1.0
+        1   0  -3   1        0.0       -1.0
+        2   2   3   1        1.0        1.0
+
     Args:
         columns: The columns to separately scale.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
     """
 
-    def __init__(self, columns: List[str]):
-        self.columns = columns
+    def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
+        super().__init__()
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        aggregates = [AbsMax(col) for col in self.columns]
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        aggregates = [AbsMax(col) for col in self._columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
 
@@ -246,18 +441,45 @@ class MaxAbsScaler(Preprocessor):
 
             return s / s_abs_max
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_abs_max_scaler
-        )
+        df[self._output_columns] = df[self._columns].transform(column_abs_max_scaler)
         return df
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
-class RobustScaler(Preprocessor):
-    r"""Scale and translate each column using quantiles.
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.robust_scaler")
+class RobustScaler(SerializablePreprocessorBase):
+    r"""Scale and translate each column using approximate quantiles.
 
     The general formula is given by
 
@@ -268,6 +490,9 @@ class RobustScaler(Preprocessor):
     :math:`\mu_{1/2}` is the column median. :math:`\mu_{h}` and :math:`\mu_{l}` are the
     high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third
     quartile and :math:`\mu_{l}` is the first quartile.
+
+    Internally, the `ApproximateQuantile` aggregator is used to calculate the
+    approximate quantiles.
 
     .. tip::
         This scaler works well when your data contains many outliers.
@@ -302,50 +527,89 @@ class RobustScaler(Preprocessor):
         3  0.5 -0.750   2
         4  1.0  0.000   3
 
+        >>> preprocessor = RobustScaler(
+        ...    columns=["X1", "X2"],
+        ...    output_columns=["X1_scaled", "X2_scaled"]
+        ... )
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2  X3  X1_scaled  X2_scaled
+        0   1  13   1       -1.0      0.625
+        1   2   5   2       -0.5     -0.375
+        2   3  14   2        0.0      0.750
+        3   4   2   2        0.5     -0.750
+        4   5   8   3        1.0      0.000
+
     Args:
         columns: The columns to separately scale.
         quantile_range: A tuple that defines the lower and upper quantiles. Values
             must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
             ``(0.25, 0.75)``.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
+        quantile_precision: Controls the accuracy and memory footprint of the sketch (K in KLL);
+            higher values yield lower error but use more memory. Defaults to 800. See
+            https://datasketches.apache.org/docs/KLL/KLLAccuracyAndSize.html
+            for details on accuracy and size.
     """
 
+    DEFAULT_QUANTILE_PRECISION = 800
+
     def __init__(
-        self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
+        self,
+        columns: List[str],
+        quantile_range: Tuple[float, float] = (0.25, 0.75),
+        output_columns: Optional[List[str]] = None,
+        quantile_precision: int = DEFAULT_QUANTILE_PRECISION,
     ):
-        self.columns = columns
-        self.quantile_range = quantile_range
+        super().__init__()
+        self._columns = columns
+        self._quantile_range = quantile_range
+        self._quantile_precision = quantile_precision
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        low = self.quantile_range[0]
-        med = 0.50
-        high = self.quantile_range[1]
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
-        num_records = dataset.count()
-        max_index = num_records - 1
-        split_indices = [int(percentile * max_index) for percentile in (low, med, high)]
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def quantile_range(self) -> Tuple[float, float]:
+        return self._quantile_range
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @property
+    def quantile_precision(self) -> int:
+        return self._quantile_precision
+
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
+        quantiles = [
+            self._quantile_range[0],
+            0.50,
+            self._quantile_range[1],
+        ]
+        aggregates = [
+            ApproximateQuantile(
+                on=col,
+                quantiles=quantiles,
+                quantile_precision=self._quantile_precision,
+            )
+            for col in self._columns
+        ]
+        aggregated = dataset.aggregate(*aggregates)
 
         self.stats_ = {}
-
-        # TODO(matt): Handle case where quantile lands between 2 numbers.
-        # The current implementation will simply choose the closest index.
-        # This will affect the results of small datasets more than large datasets.
-        for col in self.columns:
-            filtered_dataset = dataset.map_batches(
-                lambda df: df[[col]], batch_format="pandas"
-            )
-            sorted_dataset = filtered_dataset.sort(col)
-            _, low, med, high = sorted_dataset.split_at_indices(split_indices)
-
-            def _get_first_value(ds: Dataset, c: str):
-                return ds.take(1)[0][c]
-
-            low_val = _get_first_value(low, col)
-            med_val = _get_first_value(med, col)
-            high_val = _get_first_value(high, col)
-
-            self.stats_[f"low_quantile({col})"] = low_val
-            self.stats_[f"median({col})"] = med_val
-            self.stats_[f"high_quantile({col})"] = high_val
+        for col in self._columns:
+            low_q, med_q, high_q = aggregated[f"approx_quantile({col})"]
+            self.stats_[f"low_quantile({col})"] = low_q
+            self.stats_[f"median({col})"] = med_q
+            self.stats_[f"high_quantile({col})"] = high_q
 
         return self
 
@@ -363,13 +627,51 @@ class RobustScaler(Preprocessor):
 
             return (s - s_median) / diff
 
-        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
-            column_robust_scaler
-        )
+        df[self._output_columns] = df[self._columns].transform(column_robust_scaler)
         return df
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "quantile_range": self._quantile_range,
+            "quantile_precision": self._quantile_precision,
+            "_fitted": getattr(self, "_fitted", None),
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._quantile_range = fields["quantile_range"]
+        self._quantile_precision = fields["quantile_precision"]
+        # optional fields
+        self._fitted = fields.get("_fitted")
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_quantile_range": _PublicField(
+                    public_field="quantile_range", default=(0.25, 0.75)
+                ),
+                "_quantile_precision": _PublicField(
+                    public_field="quantile_precision",
+                    default=self.DEFAULT_QUANTILE_PRECISION,
+                ),
+            },
+        )
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"quantile_range={self.quantile_range!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"quantile_range={self._quantile_range!r}, "
+            f"output_columns={self._output_columns!r})"
         )

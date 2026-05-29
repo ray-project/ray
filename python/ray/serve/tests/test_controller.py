@@ -5,17 +5,18 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ApplicationStatus
+from ray._common.test_utils import wait_for_condition
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 
 
@@ -66,7 +67,9 @@ def test_deploy_app_custom_exception(serve_instance):
         ]
     }
 
-    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(
+        controller.apply_config.remote(config=ServeDeploySchema.model_validate(config))
+    )
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -78,9 +81,9 @@ def test_deploy_app_custom_exception(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "policy", [None, DEFAULT_AUTOSCALING_POLICY, default_autoscaling_policy]
+    "policy_name", [None, DEFAULT_AUTOSCALING_POLICY_NAME, default_autoscaling_policy]
 )
-def test_get_serve_instance_details_json_serializable(serve_instance, policy):
+def test_get_serve_instance_details_json_serializable(serve_instance, policy_name):
     """Test the result from get_serve_instance_details is json serializable."""
 
     controller = _get_global_client()._controller
@@ -88,9 +91,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     autoscaling_config = {
         "min_replicas": 1,
         "max_replicas": 10,
-        "_policy": policy,
+        "_policy": {"name": policy_name},
     }
-    if policy is None:
+    if policy_name is None:
         autoscaling_config.pop("_policy")
 
     @serve.deployment(autoscaling_config=autoscaling_config)
@@ -103,6 +106,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
     node_ip = controller_details.node_ip
+    node_instance_id = controller_details.node_instance_id
     proxy_details = ray.get(controller.get_proxy_details.remote(node_id=node_id))
     deployment_timestamp = ray.get(
         controller.get_deployment_timestamps.remote(app_name="default")
@@ -111,12 +115,21 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
+    http_port, grpc_port = None, None
+
+    for target_group in details["target_groups"]:
+        if target_group["protocol"] == "HTTP" and target_group["targets"]:
+            http_port = target_group["targets"][0]["port"]
+
+        if target_group["protocol"] == "gRPC" and target_group["targets"]:
+            grpc_port = target_group["targets"][0]["port"]
 
     expected_json = json.dumps(
         {
             "controller_info": {
                 "node_id": node_id,
                 "node_ip": node_ip,
+                "node_instance_id": node_instance_id,
                 "actor_id": controller_details.actor_id,
                 "actor_name": controller_details.actor_name,
                 "worker_id": controller_details.worker_id,
@@ -132,6 +145,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                 node_id: {
                     "node_id": node_id,
                     "node_ip": node_ip,
+                    "node_instance_id": node_instance_id,
                     "actor_id": proxy_details.actor_id,
                     "actor_name": proxy_details.actor_name,
                     "worker_id": proxy_details.worker_id,
@@ -148,6 +162,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                     "message": "",
                     "last_deployed_time_s": deployment_timestamp,
                     "deployed_app_config": None,
+                    "source": "imperative",
                     "deployments": {
                         "autoscaling_app": {
                             "name": "autoscaling_app",
@@ -156,16 +171,14 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "message": "",
                             "deployment_config": {
                                 "name": "autoscaling_app",
-                                "max_concurrent_queries": 100,
-                                "max_ongoing_requests": 100,
+                                "max_ongoing_requests": 5,
                                 "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
                                     "initial_replicas": None,
                                     "max_replicas": 10,
-                                    "target_num_ongoing_requests_per_replica": 1.0,
-                                    "target_ongoing_requests": None,
+                                    "target_ongoing_requests": 2.0,
                                     "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,
                                     "smoothing_factor": 1.0,
@@ -174,22 +187,39 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "upscaling_factor": None,
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
+                                    "downscale_to_zero_delay_s": None,
                                     "upscale_delay_s": 30.0,
+                                    "aggregation_function": "mean",
+                                    "policy": {
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
+                                    },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
                                 "graceful_shutdown_timeout_s": 20.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
-                                    "runtime_env": {},
                                     "num_cpus": 1.0,
                                 },
+                                "request_router_config": {
+                                    "request_router_class": "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter",
+                                    "request_router_kwargs": {},
+                                    "request_routing_stats_period_s": 10.0,
+                                    "request_routing_stats_timeout_s": 30.0,
+                                    "initial_backoff_s": 0.025,
+                                    "backoff_multiplier": 2.0,
+                                    "max_backoff_s": 0.5,
+                                },
+                                "rolling_update_percentage": 0.2,
                             },
                             "target_num_replicas": 1,
+                            "required_resources": {"CPU": 1},
                             "replicas": [
                                 {
                                     "node_id": node_id,
                                     "node_ip": node_ip,
+                                    "node_instance_id": node_instance_id,
                                     "actor_id": replica.actor_id,
                                     "actor_name": replica.actor_name,
                                     "worker_id": replica.worker_id,
@@ -202,18 +232,184 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             ],
                         }
                     },
+                    "external_scaler_enabled": False,
+                    "deployment_topology": {
+                        "app_name": "default",
+                        "nodes": {
+                            "autoscaling_app": {
+                                "name": "autoscaling_app",
+                                "app_name": "default",
+                                "outbound_deployments": [],
+                                "is_ingress": True,
+                            }
+                        },
+                        "ingress_deployment": "autoscaling_app",
+                    },
                 }
             },
             "target_capacity": None,
+            "target_groups": [
+                {
+                    "targets": [
+                        {
+                            "ip": node_ip,
+                            "port": http_port,
+                            "instance_id": node_instance_id,
+                            "name": proxy_details.actor_name,
+                        },
+                    ],
+                    "route_prefix": "/",
+                    "protocol": "HTTP",
+                    "app_name": "",
+                    "ingress_request_router_targets": [],
+                },
+                {
+                    "targets": [
+                        {
+                            "ip": node_ip,
+                            "port": grpc_port,
+                            "instance_id": node_instance_id,
+                            "name": proxy_details.actor_name,
+                        },
+                    ],
+                    "route_prefix": "/",
+                    "protocol": "gRPC",
+                    "app_name": "",
+                    "ingress_request_router_targets": [],
+                },
+            ],
         }
     )
-    assert details_json == expected_json
+
+    # Health metrics contain timestamps that change between calls, so verify
+    # the keys match what get_health_metrics returns rather than exact values.
+    details_dict = json.loads(details_json)
+    actual_health_metrics = details_dict.pop("controller_health_metrics")
+    expected_dict = json.loads(expected_json)
+    assert details_dict == expected_dict
+
+    controller_health_metrics = ray.get(controller.get_health_metrics.remote())
+    assert set(actual_health_metrics.keys()) == set(controller_health_metrics.keys())
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]
     deployment = application["deployments"]["autoscaling_app"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_get_deployment_config(serve_instance):
+    """Test getting deployment config."""
+
+    controller = _get_global_client()._controller
+    deployment_id = DeploymentID(name="App", app_name="default")
+    deployment_config = ray.get(
+        controller.get_deployment_config.remote(deployment_id=deployment_id)
+    )
+    # Before any deployment is created, the config should be None.
+    assert deployment_config is None
+
+    @serve.deployment
+    class App:
+        pass
+
+    serve.run(App.bind())
+
+    deployment_config = ray.get(
+        controller.get_deployment_config.remote(deployment_id=deployment_id)
+    )
+    # After the deployment is created, the config should be DeploymentConfig.
+    assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_get_health_metrics(serve_instance):
+    """Test that get_health_metrics returns valid controller health metrics."""
+
+    controller = _get_global_client()._controller
+
+    # Deploy a simple application to ensure controller is active
+    @serve.deployment
+    def health_test_app():
+        return "ok"
+
+    serve.run(health_test_app.bind())
+
+    # Get health metrics
+    metrics = ray.get(controller.get_health_metrics.remote())
+
+    # Verify it's a dictionary
+    assert isinstance(metrics, dict)
+
+    # Verify all expected fields are present
+    expected_fields = [
+        "timestamp",
+        "controller_start_time",
+        "uptime_s",
+        "num_control_loops",
+        "loop_duration_s",
+        "loops_per_second",
+        "last_sleep_duration_s",
+        "expected_sleep_duration_s",
+        "event_loop_delay_s",
+        "num_asyncio_tasks",
+        "deployment_state_update_duration_s",
+        "application_state_update_duration_s",
+        "proxy_state_update_duration_s",
+        "node_update_duration_s",
+        "handle_metrics_delay_ms",
+        "replica_metrics_delay_ms",
+        "process_memory_mb",
+    ]
+
+    for field in expected_fields:
+        assert field in metrics, f"Missing field: {field}"
+
+    # Verify types and basic sanity checks
+    assert metrics["timestamp"] > 0
+    assert metrics["controller_start_time"] > 0
+    assert metrics["uptime_s"] >= 0
+    assert metrics["expected_sleep_duration_s"] > 0  # Should be CONTROL_LOOP_INTERVAL_S
+
+    # Wait for at least one control loop to complete
+    def has_control_loops():
+        m = ray.get(controller.get_health_metrics.remote())
+        return m["num_control_loops"] > 0
+
+    wait_for_condition(has_control_loops, timeout=10)
+
+    # Get updated metrics after control loops have run
+    metrics = ray.get(controller.get_health_metrics.remote())
+
+    # Verify control loop metrics are populated
+    assert metrics["num_control_loops"] > 0
+    assert metrics["loops_per_second"] > 0
+
+    # Verify DurationStats structure for loop_duration_s
+    loop_stats = metrics["loop_duration_s"]
+    assert loop_stats is not None
+    assert "mean" in loop_stats
+    assert "std" in loop_stats
+    assert "min" in loop_stats
+    assert "max" in loop_stats
+    assert loop_stats["mean"] > 0
+
+    # Verify DurationStats structure for component update durations
+    for field in [
+        "deployment_state_update_duration_s",
+        "application_state_update_duration_s",
+        "proxy_state_update_duration_s",
+        "node_update_duration_s",
+    ]:
+        stats = metrics[field]
+        assert stats is not None, f"{field} should not be None"
+        assert "mean" in stats, f"{field} should have 'mean'"
+        assert "std" in stats, f"{field} should have 'std'"
+        assert "min" in stats, f"{field} should have 'min'"
+        assert "max" in stats, f"{field} should have 'max'"
+
+    # Verify the metrics are JSON serializable
+    metrics_json = json.dumps(metrics)
+    assert isinstance(metrics_json, str)
 
 
 if __name__ == "__main__":

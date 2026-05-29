@@ -8,7 +8,6 @@ Ray Use Cases
 
     ../ray-air/getting-started
 
-
 This page indexes common Ray use cases for scaling ML.
 It contains highlighted references to blogs, examples, and tutorials also located
 elsewhere in the Ray documentation.
@@ -138,13 +137,13 @@ RLlib is an open-source library for reinforcement learning (RL), offering suppor
 
 .. figure:: /images/rllib_use_case.png
 
-   Decentralized distributed proximal polixy optimiation (DD-PPO) architecture.
+   Decentralized distributed proximal policy optimization (DD-PPO) architecture.
 
 Learn more about reinforcement learning with the following resources.
 
 - `[Course] Applied Reinforcement Learning with RLlib <https://applied-rl-course.netlify.app/>`_
 - `[Blog] Intro to RLlib: Example Environments <https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70>`_
-- :doc:`[Guide] Getting Started with RLlib </rllib/rllib-training>`
+- :doc:`[Guide] Getting Started with RLlib </rllib/getting-started>`
 - `[Talk] Deep reinforcement learning at Riot Games <https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games>`_
 - :doc:`[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`
 - `[Gallery] More RL Use Cases on the Blog <https://www.anyscale.com/blog?tag=rllib>`_
@@ -172,8 +171,7 @@ The following highlights examples utilizing Ray AI libraries to implement end-to
 
 - :doc:`[Example] Text classification with Ray </train/examples/transformers/huggingface_text_classification>`
 - :doc:`[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`
-- :doc:`[Example] Machine learning on tabular data </train/examples/xgboost/xgboost_example>`
-- :doc:`[Example] AutoML for Time Series with Ray </ray-core/examples/automl_for_time_series>`
+- :doc:`[Example] Machine learning on tabular data </ray-overview/examples/e2e-xgboost/README>`
 
 Large Scale Workload Orchestration
 ----------------------------------
@@ -183,4 +181,4 @@ The following highlights feature projects leveraging Ray Core's distributed APIs
 - `[Blog] Highly Available and Scalable Online Applications on Ray at Ant Group <https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant>`_
 - `[Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases <https://www.anyscale.com/blog/ray-forward-2022>`_
 - `[Blog] A new world record on the CloudSort benchmark using Ray <https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting>`_
-- :doc:`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web-crawler>`
+- :doc:`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web_crawler>`

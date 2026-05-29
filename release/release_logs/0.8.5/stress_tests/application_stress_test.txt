@@ -12,4 +12,3 @@ Number of trials: 4 (4 TERMINATED)
 | IMPALA_QbertNoFrameskip-v4_00002         | TERMINATED |       | QbertNoFrameskip-v4         |    356 |          5897.19 | 30077500 | 5230.25  |
 | IMPALA_SpaceInvadersNoFrameskip-v4_00003 | TERMINATED |       | SpaceInvadersNoFrameskip-v4 |    361 |          5990.74 | 30103500 |  806.043 |
 +------------------------------------------+------------+-------+-----------------------------+--------+------------------+----------+----------+
-

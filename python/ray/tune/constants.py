@@ -2,6 +2,9 @@
 #               Environment Variables
 # ==================================================
 
+# Environment variable for Tune execution callbacks
+RAY_TUNE_CALLBACKS_ENV_VAR = "RAY_TUNE_CALLBACKS"
+
 # NOTE: When adding a new environment variable, please track it in this list.
 TUNE_ENV_VARS = {
     "RAY_AIR_LOCAL_CACHE_DIR",
@@ -29,4 +32,5 @@ TUNE_ENV_VARS = {
     "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S",
     "TUNE_STATE_REFRESH_PERIOD",
     "TUNE_RESTORE_RETRY_NUM",
+    RAY_TUNE_CALLBACKS_ENV_VAR,
 }

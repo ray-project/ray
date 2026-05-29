@@ -1,18 +1,19 @@
 import asyncio
-from typing import Optional, Any, List, Dict
+import queue
 from collections.abc import Iterable
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
-class Empty(Exception):
+class Empty(queue.Empty):
     pass
 
 
 @PublicAPI(stability="beta")
-class Full(Exception):
+class Full(queue.Full):
     pass
 
 
@@ -30,9 +31,9 @@ class Queue:
     serialization overhead.
 
     Args:
-        maxsize (optional, int): maximum size of the queue. If zero, size is
+        maxsize: maximum size of the queue. If zero, size is
             unbounded.
-        actor_options (optional, Dict): Dictionary of options to pass into
+        actor_options: Dictionary of options to pass into
             the QueueActor during creation. These are directly passed into
             QueueActor.options(...). This could be useful if you
             need to pass in custom resource requirements, for example.
@@ -52,7 +53,7 @@ class Queue:
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
-        from ray._private.usage.usage_lib import record_library_usage
+        from ray._common.usage.usage_lib import record_library_usage
 
         record_library_usage("util.Queue")
 
@@ -92,6 +93,14 @@ class Queue:
         There is no guarantee of order if multiple producers put to the same
         full queue.
 
+        Args:
+            item: The item to enqueue.
+            block: If True, wait up to ``timeout`` for space to become
+                available. If False, raise ``Full`` immediately when the
+                queue is full.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
+
         Raises:
             Full: if the queue is full and blocking is False.
             Full: if the queue is full, blocking is True, and it timed out.
@@ -119,6 +128,14 @@ class Queue:
         There is no guarantee of order if multiple producers put to the same
         full queue.
 
+        Args:
+            item: The item to enqueue.
+            block: If True, wait up to ``timeout`` for space to become
+                available. If False, raise ``Full`` immediately when the
+                queue is full.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
+
         Raises:
             Full: if the queue is full and blocking is False.
             Full: if the queue is full, blocking is True, and it timed out.
@@ -143,6 +160,13 @@ class Queue:
 
         There is no guarantee of order if multiple consumers get from the
         same empty queue.
+
+        Args:
+            block: If True, wait up to ``timeout`` for an item to become
+                available. If False, raise ``Empty`` immediately when the
+                queue is empty.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
 
         Returns:
             The next item in the queue.
@@ -171,8 +195,16 @@ class Queue:
         There is no guarantee of order if multiple consumers get from the
         same empty queue.
 
+        Args:
+            block: If True, wait up to ``timeout`` for an item to become
+                available. If False, raise ``Empty`` immediately when the
+                queue is empty.
+            timeout: Maximum number of seconds to wait when ``block`` is
+                True. ``None`` waits forever.
+
         Returns:
             The next item in the queue.
+
         Raises:
             Empty: if the queue is empty and blocking is False.
             Empty: if the queue is empty, blocking is True, and it timed out.
@@ -192,6 +224,9 @@ class Queue:
     def put_nowait(self, item: Any) -> None:
         """Equivalent to put(item, block=False).
 
+        Args:
+            item: The item to enqueue.
+
         Raises:
             Full: if the queue is full.
         """
@@ -199,6 +234,9 @@ class Queue:
 
     def put_nowait_batch(self, items: Iterable) -> None:
         """Takes in a list of items and puts them into the queue in order.
+
+        Args:
+            items: Iterable of items to enqueue in order.
 
         Raises:
             Full: if the items will not fit in the queue
@@ -211,6 +249,9 @@ class Queue:
     def get_nowait(self) -> Any:
         """Equivalent to get(block=False).
 
+        Returns:
+            The next item in the queue.
+
         Raises:
             Empty: if the queue is empty.
         """
@@ -219,6 +260,12 @@ class Queue:
     def get_nowait_batch(self, num_items: int) -> List[Any]:
         """Gets items from the queue and returns them in a
         list in order.
+
+        Args:
+            num_items: Number of items to dequeue.
+
+        Returns:
+            A list of up to ``num_items`` items dequeued in FIFO order.
 
         Raises:
             Empty: if the queue does not contain the desired number of items

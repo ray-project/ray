@@ -9,7 +9,7 @@
    Getting Started <ray-overview/getting-started>
    Installation <ray-overview/installation>
    Use Cases <ray-overview/use-cases>
-   Example Gallery <ray-overview/examples>
+   Examples <ray-overview/examples/index>
    Ecosystem <ray-overview/ray-libraries>
    Ray Core <ray-core/walkthrough>
    Ray Data <data/data>
@@ -23,3 +23,4 @@
    Developer Guides <ray-contribute/index>
    Glossary <ray-references/glossary>
    Security <ray-security/index>
+   Project Governance <ray-governance/index>

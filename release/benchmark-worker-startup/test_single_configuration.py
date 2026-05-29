@@ -5,9 +5,10 @@ configuration.
 """
 
 import argparse
-import ray
 import sys
 import time
+
+import ray
 
 
 @ray.remote

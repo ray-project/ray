@@ -1,0 +1,27 @@
+model_loading_config:
+  model_id: FAKE_MODEL_UNDER_TEST
+
+# Overriding the engine class to only focus on testing the components around the engine
+runtime_env:
+  env_vars:
+    RAYLLM_VLLM_ENGINE_CLS: "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
+
+llm_engine: vLLM
+
+engine_kwargs:
+  max_model_len: 4096
+
+accelerator_type: A10G
+
+deployment_config:
+  autoscaling_config:
+    min_replicas: 4
+    initial_replicas: 4
+    max_replicas: 10
+    target_ongoing_requests: 20
+    metrics_interval_s: 10.0
+    look_back_period_s: 30.0
+    smoothing_factor: 0.6
+    downscale_delay_s: 300.0
+    upscale_delay_s: 15.0
+  max_ongoing_requests: 48

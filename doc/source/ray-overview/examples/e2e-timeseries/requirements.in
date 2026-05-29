@@ -1,0 +1,9 @@
+numpy
+pandas
+scikit-learn
+torch
+# ray[data,train,serve]==2.46.0
+aiohttp
+pyyaml
+s3fs
+nbformat

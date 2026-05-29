@@ -2,13 +2,16 @@ import asyncio
 import glob
 import json
 import os
-import pytest
 import shutil
+import sys
 from unittest.mock import patch
+
+import pytest
 
 import ray
 from ray._private.test_utils import check_call_ray
-from ray.util.tracing.setup_local_tmp_tracing import spans_dir
+from ray.util.tracing.setup_local_tmp_tracing import setup_tracing, spans_dir
+from ray.util.tracing.tracing_helper import _enable_tracing
 
 setup_tracing_path = "ray.util.tracing.setup_local_tmp_tracing:setup_tracing"
 
@@ -52,6 +55,24 @@ def ray_start_cli_predefined_actor_tracing(scope="function"):
         ["start", "--head", "--tracing-startup-hook", setup_tracing_path],
     )
     yield
+    ray.shutdown()
+    check_call_ray(["stop", "--force"])
+
+
+@pytest.fixture()
+def ray_start_cli_tracing_with_client(scope="function"):
+    """Start ray with tracing startup hook and Ray Client server."""
+    check_call_ray(["stop", "--force"])
+    check_call_ray(
+        [
+            "start",
+            "--head",
+            "--ray-client-server-port=50057",
+            "--tracing-startup-hook",
+            setup_tracing_path,
+        ],
+    )
+    yield "ray://localhost:50057"
     ray.shutdown()
     check_call_ray(["stop", "--force"])
 
@@ -197,6 +218,47 @@ def test_tracing_predefined_actor(cleanup_dirs, ray_start_cli_predefined_actor_t
     sync_actor_helper()
 
 
+def test_tracing_actor_client_mode(cleanup_dirs, ray_start_cli_tracing_with_client):
+    ray.init(ray_start_cli_tracing_with_client)
+    assert ray.util.client.ray.is_connected()
+    setup_tracing()
+    _enable_tracing()
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    counter = Counter.remote()
+    assert ray.get(counter.increment.remote()) == 1
+
+    span_list = get_span_list()
+    span_names = get_span_dict(span_list)
+    assert span_names == {
+        "test_tracing_actor_client_mode.<locals>.Counter.__init__ ray.remote": 1,
+        "Counter.__init__ ray.remote": 1,
+        "Counter.increment ray.remote": 1,
+        "Counter.__init__ ray.remote_worker": 1,
+        "Counter.increment ray.remote_worker": 1,
+    }, span_names
+
+    actor_creation_spans = [
+        span
+        for span in span_list
+        if span["name"].endswith("Counter.__init__ ray.remote")
+    ]
+    actor_method_span = next(
+        span for span in span_list if span["name"] == "Counter.increment ray.remote"
+    )
+    actor_id = counter._actor_id.hex()
+    for span in actor_creation_spans + [actor_method_span]:
+        assert span["attributes"]["ray.actor_id"] == actor_id
+
+
 def test_wrapping(ray_start_init_tracing):
     @ray.remote
     def f(**_kwargs):
@@ -222,9 +284,4 @@ def test_deserialization_works_without_opentelemetry(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

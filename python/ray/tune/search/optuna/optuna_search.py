@@ -1,4 +1,5 @@
 import functools
+import inspect
 import logging
 import pickle
 import time
@@ -31,12 +32,13 @@ try:
     import optuna as ot
     from optuna.distributions import BaseDistribution as OptunaDistribution
     from optuna.samplers import BaseSampler
-    from optuna.trial import Trial as OptunaTrial
-    from optuna.trial import TrialState as OptunaTrialState
+    from optuna.storages import BaseStorage
+    from optuna.trial import Trial as OptunaTrial, TrialState as OptunaTrialState
 except ImportError:
     ot = None
     OptunaDistribution = None
     BaseSampler = None
+    BaseStorage = None
     OptunaTrialState = None
     OptunaTrial = None
 
@@ -59,10 +61,16 @@ class _OptunaTrialSuggestCaptor:
         self.captured_values: Dict[str, Any] = {}
 
     def _get_wrapper(self, func: Callable) -> Callable:
+        sig = inspect.signature(func)
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # name is always the first arg for suggest_ methods
-            name = kwargs.get("name", args[0])
+            bound = sig.bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            if "name" not in bound.arguments:
+                raise ValueError("missing required argument: name")
+            name = bound.arguments["name"]
             ret = func(*args, **kwargs)
             self.captured_values[name] = ret
             return ret
@@ -133,7 +141,11 @@ class OptunaSearch(Searcher):
                 a delay when suggesting new configurations.
                 This is an Optuna issue and may be fixed in a future
                 Optuna release.
-
+        study_name: Optuna study name that uniquely identifies the trial
+            results. Defaults to ``"optuna"``.
+        storage: Optuna storage used for storing trial results to
+            storages other than in-memory storage,
+            for instance optuna.storages.RDBStorage.
         seed: Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
@@ -322,6 +334,8 @@ class OptunaSearch(Searcher):
         mode: Optional[Union[str, List[str]]] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
         sampler: Optional["BaseSampler"] = None,
+        study_name: Optional[str] = None,
+        storage: Optional["BaseStorage"] = None,
         seed: Optional[int] = None,
         evaluated_rewards: Optional[List] = None,
     ):
@@ -343,8 +357,10 @@ class OptunaSearch(Searcher):
 
         self._points_to_evaluate = points_to_evaluate or []
         self._evaluated_rewards = evaluated_rewards
-
-        self._study_name = "optuna"  # Fixed study name for in-memory storage
+        if study_name:
+            self._study_name = study_name
+        else:
+            self._study_name = "optuna"  # Fixed study name for in-memory storage
 
         if sampler and seed:
             logger.warning(
@@ -361,6 +377,15 @@ class OptunaSearch(Searcher):
 
         self._sampler = sampler
         self._seed = seed
+
+        if storage:
+            assert isinstance(storage, BaseStorage), (
+                "The `storage` parameter in `OptunaSearcher` must be an instance "
+                "of `optuna.storages.BaseStorage`."
+            )
+        # If storage is not provided, just set self._storage to None
+        # so that the default in-memory storage is used.
+        self._storage = storage
 
         self._completed_trials = set()
 
@@ -380,7 +405,6 @@ class OptunaSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
         pruner = ot.pruners.NopPruner()
-        storage = ot.storages.InMemoryStorage()
 
         if self._sampler:
             sampler = self._sampler
@@ -402,7 +426,7 @@ class OptunaSearch(Searcher):
             )
 
         self._ot_study = ot.study.create_study(
-            storage=storage,
+            storage=self._storage,
             sampler=sampler,
             pruner=pruner,
             study_name=self._study_name,
@@ -589,11 +613,18 @@ class OptunaSearch(Searcher):
             ot_trial_state = OptunaTrialState.PRUNED
 
         if intermediate_values:
-            intermediate_values_dict = {
-                i: value for i, value in enumerate(intermediate_values)
-            }
+            intermediate_values_dict = dict(enumerate(intermediate_values))
         else:
             intermediate_values_dict = None
+
+        # If the trial state is FAILED, the value must be `None` in Optuna==4.1.0
+        # Reference: https://github.com/optuna/optuna/pull/5211
+        # This is a temporary fix for the issue that Optuna enforces the value
+        # to be `None` if the trial state is FAILED.
+        # TODO (hpguo): A better solution may requires us to update the base class
+        # to allow the `value` arg in `add_evaluated_point` being `Optional[float]`.
+        if ot_trial_state == OptunaTrialState.FAIL:
+            value = None
 
         trial = ot.trial.create_trial(
             state=ot_trial_state,

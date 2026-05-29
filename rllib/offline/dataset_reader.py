@@ -1,17 +1,18 @@
 import logging
 import math
-from pathlib import Path
 import re
-import numpy as np
-from typing import List, Tuple, TYPE_CHECKING, Optional
 import zipfile
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
+import numpy as np
 
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
-from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 
 if TYPE_CHECKING:
@@ -60,7 +61,7 @@ def _unzip_if_needed(paths: List[str], format: str):
                 if not Path(path).exists():
                     relative_path = str(Path(__file__).parent.parent / path)
                     if not Path(relative_path).exists():
-                        raise FileNotFoundError(f"File not found: {path}")
+                        raise FileNotFoundError(f"File not found: {relative_path}")
                     path = relative_path
                 ret_paths.append(path)
     return ret_paths
@@ -213,7 +214,7 @@ class DatasetReader(InputReader):
 
         # the number of steps to return per call to next()
         self.batch_size = self._ioctx.config.get("train_batch_size", 1)
-        num_workers = self._ioctx.config.get("num_workers", 0)
+        num_workers = self._ioctx.config.get("num_env_runners", 0)
         seed = self._ioctx.config.get("seed", None)
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)

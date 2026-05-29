@@ -5,38 +5,38 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import gymnasium as gym
-import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
+import gymnasium as gym
+import numpy as np
+
 import ray
-from ray.rllib.algorithms.appo.utils import make_appo_models
 import ray.rllib.algorithms.impala.vtrace_torch as vtrace
+from ray.rllib.algorithms.appo.utils import make_appo_models
 from ray.rllib.algorithms.impala.impala_torch_policy import (
-    make_time_major,
     VTraceOptimizer,
+    make_time_major,
 )
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
     compute_bootstrap_value,
     compute_gae_for_sample_batch,
-    Postprocessing,
 )
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchDistributionWrapper,
     TorchCategorical,
+    TorchDistributionWrapper,
 )
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
-    LearningRateSchedule,
     KLCoeffMixin,
-    ValueNetworkMixin,
+    LearningRateSchedule,
     TargetNetworkMixin,
+    ValueNetworkMixin,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
@@ -69,15 +69,12 @@ class APPOTorchPolicy(
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
+        config["enable_rl_module_and_learner"] = False
+        config["enable_env_runner_and_connector_v2"] = False
 
-        # If Learner API is used, we don't need any loss-specific mixins.
-        # However, we also would like to avoid creating special Policy-subclasses
-        # for this as the entire Policy concept will soon not be used anymore with
-        # the new Learner- and RLModule APIs.
-        if not config.get("_enable_new_api_stack", False):
-            # Although this is a no-op, we call __init__ here to make it clear
-            # that base.__init__ will use the make_model() call.
-            VTraceOptimizer.__init__(self)
+        # Although this is a no-op, we call __init__ here to make it clear
+        # that base.__init__ will use the make_model() call.
+        VTraceOptimizer.__init__(self)
 
         lr_schedule_additional_args = []
         if config.get("_separate_vf_optimizer"):
@@ -383,7 +380,7 @@ class APPOTorchPolicy(
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         # Call super's postprocess_trajectory first.
         # sample_batch = super().postprocess_trajectory(

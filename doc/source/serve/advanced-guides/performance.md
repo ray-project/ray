@@ -15,22 +15,22 @@ This section offers some tips and tricks to improve your Ray Serve application's
 
 ## Performance and benchmarks
 
-Ray Serve is built on top of Ray, so its scalability is bounded by Ray’s scalability. Please see Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md) to learn more about the maximum number of nodes and other limitations.
+Ray Serve is built on top of Ray, so its scalability is bounded by Ray’s scalability. See Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md) to learn more about the maximum number of nodes and other limitations.
 
-## Debugging performance issues
+## Debugging performance issues in request path
 
-The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
+The performance issue you're most likely to encounter is high latency or low throughput for requests.
 
 Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, these issues may appear as:
 
 * `serve_num_router_requests_total` staying constant while your load increases
 * `serve_deployment_processing_latency_ms` spiking up as queries queue up in the background
 
-There are handful of ways to address these issues:
+The following are ways to address these issues:
 
 1. Make sure you are using the right hardware and resources:
-   * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_gpus”: 1}`)?
-   * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_cpus”: 2}`)?
+   * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g., `ray_actor_options={“num_gpus”: 1}`)?
+   * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g., `ray_actor_options={“num_cpus”: 2}`)?
    * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
 2. Try batching your requests. See [Dynamic Request Batching](serve-performance-batching-requests).
 3. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
@@ -41,18 +41,299 @@ There are handful of ways to address these issues:
 ### Using `async` methods
 
 :::{note}
-According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#very-technical-details), `def` endpoint functions will be called in a separate threadpool, so you might observe many requests running at the same time inside one replica, and this scenario might cause OOM or resource starvation. In this case, you can try to use `async def` to control the workload performance.
+According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#very-technical-details), `def` endpoint functions are called in a separate threadpool, so you might observe many requests running at the same time inside one replica, and this scenario might cause OOM or resource starvation. In this case, you can try to use `async def` to control the workload performance.
 :::
 
 Are you using `async def` in your callable? If you are using `asyncio` and
 hitting the same queuing issue mentioned above, you might want to increase
-`max_ongoing_requests`. Serve sets a low number (100) by default so the client gets
-proper backpressure. You can increase the value in the deployment decorator; e.g.
+`max_ongoing_requests`. By default, Serve sets this to a low value (5) to ensure clients receive proper backpressure.
+You can increase the value in the deployment decorator; for example,
 `@serve.deployment(max_ongoing_requests=1000)`.
 
 (serve-performance-e2e-timeout)=
 ### Set an end-to-end request timeout
 
-By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. It's recommended that you set an end-to-end timeout, so slow requests can be terminated and retried.
+By default, Serve lets client HTTP requests run to completion no matter how long they take. However, slow requests could bottleneck the replica processing, blocking other requests that are waiting. Set an end-to-end timeout, so slow requests can be terminated and retried.
 
-You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` in the `http_options` field of the Serve config. HTTP Proxies will wait for that many seconds before terminating an HTTP request. This config is global to your Ray cluster, and it cannot be updated during runtime. Use [client-side retries](serve-best-practices-http-requests) to retry requests that time out due to transient failures.
+You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` parameter
+in the `http_options` field of the Serve config. HTTP Proxies wait for that many
+seconds before terminating an HTTP request. This config is global to your Ray cluster,
+and you can't update it during runtime. Use [client-side retries](serve-best-practices-http-requests)
+to retry requests that time out due to transient failures.
+
+:::{note}
+Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
+:::
+
+(serve-performance-per-request-headers)=
+### Override timeout and disconnect behavior per request
+
+Two request headers let callers override the global `request_timeout_s` and client-disconnect policy on a per-request basis.
+
+`x-request-timeout-seconds`
+: Overrides `request_timeout_s` for this single request.
+  - A **positive float** sets the timeout in seconds (for example, `x-request-timeout-seconds: 30`).
+  - A **non-positive value** (for example, `0` or `-1`) disables the timeout for this request regardless of the global setting.
+  - An **absent or non-numeric value** falls back to the global `request_timeout_s`.
+
+`x-request-disconnect-disabled`
+: Controls whether Serve monitors for client disconnects on this request.
+  - `?1` — disables disconnect detection; Serve continues processing even if the client closes the connection.
+  - `?0` or absent — disconnect detection is enabled (default behavior).
+
+**Performance impact of disabling both headers together**
+
+Setting `x-request-timeout-seconds` to a non-positive value *and* `x-request-disconnect-disabled: ?1` on the same request enables a fast path in the direct-ingress handler that yields a meaningful throughput improvement:
+
+- Serve skips wrapping the user handler in an `asyncio.create_task()` call.
+- Serve skips the `asyncio.wait()` call that would otherwise coordinate the handler task, the disconnect-monitoring task, and the timeout watcher.
+- Instead, Serve directly `await`s the user handler, eliminating all per-request event-loop scheduling overhead for monitoring.
+
+In the proxy path the gain is more modest: `asyncio.wait()` is called per response chunk with one fewer task and no timeout handle, which reduces event-loop overhead at high request rates.
+
+
+### Set backoff time when choosing replica
+
+Ray Serve allows you to fine-tune the backoff behavior of the request router, which can help reduce latency when waiting for replicas to become ready. It uses exponential backoff strategy when retrying to route requests to replicas that are temporarily unavailable. You can optimize this behavior for your workload by configuring the following environment variables:
+
+- `RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S`: The initial backoff time (in seconds) before retrying a request. Default is `0.025`.
+- `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
+- `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
+
+### Set timeouts while probing replicas for queue length
+
+Ray Serve's request router probes replicas for their queue lengths to make intelligent load balancing decisions. You can tune the following environment variables to optimize this behavior for your workload:
+
+- `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The initial timeout (in seconds) for waiting for replicas to respond with their queue length information. Default is `0.1`.
+- `RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The maximum timeout (in seconds) for queue length responses. When retrying with exponential backoff, the deadline increases but is capped at this value. Default is `1.0`.
+- `RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S`: How long (in seconds) cached queue length information from replicas is considered valid. After this timeout, the cache entry expires and the router must probe the replica again. Default is `10.0`.
+
+### Configure locality-based routing
+
+Ray Serve routes requests to replicas based on locality to reduce network latency. The system applies locality routing in two scenarios: proxy-to-replica communication (HTTP/gRPC requests) and inter-deployment communication (replica-to-replica calls through `DeploymentHandle`).
+
+#### Routing priority
+
+When locality routing is enabled, the system selects replicas in the following priority order:
+
+1. **Same node**: Replicas running on the same node as the caller (lowest latency)
+2. **Same availability zone**: Replicas in the same availability zone as the caller
+3. **Any replica**: All available replicas (fallback when local replicas are busy)
+
+If replicas at a higher priority level are busy or unavailable, the system automatically falls back to the next level.
+
+#### Proxy-to-replica routing
+
+You can configure proxy routing behavior through environment variables:
+
+- `RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING`: When enabled, the proxy prefers routing requests to replicas on the same node. Default is `1` (enabled).
+- `RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING`: When enabled, the proxy prefers routing requests to replicas in the same availability zone. Default is `1` (enabled).
+
+#### Inter-deployment routing
+
+When one deployment calls another through a `DeploymentHandle`, you can enable locality routing to reduce latency between deployments.
+
+**Same-node routing**: By default, inter-deployment calls don't prefer same-node replicas. To enable same-node routing, initialize the handle with the `_prefer_local_routing` option:
+
+```python
+from ray import serve
+from ray.serve.handle import DeploymentHandle
+
+@serve.deployment
+class Caller:
+    def __init__(self, target_handle: DeploymentHandle):
+        # Enable same-node routing for this handle
+        self._handle = target_handle.options(_prefer_local_routing=True)
+
+    async def call_target(self):
+        # Requests prefer replicas on the same node as this Caller replica
+        return await self._handle.remote()
+```
+
+**Same-AZ routing**: The `RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING` environment variable controls availability zone routing for both proxy and inter-deployment communication. You can't configure AZ routing per-handle.
+
+(serve-high-throughput)=
+### Enable throughput-optimized serving
+
+:::{note}
+In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+:::
+
+This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
+
+- Reducing overhead associated with frequent logging.
+- Disabling behavior that allowed Serve applications to include blocking operations.
+
+If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput. The following table shows examples of blocking and non-blocking code:
+
+<table>
+<tr>
+<th>Blocking operation (❌)</th>
+<th>Non-blocking operation (✅)</th>
+</tr>
+<tr>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import time
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class BlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ❌ Blocking operation
+        time.sleep(2)
+        return {"message": "Processed (blocking)"}
+
+serve.run(BlockingDeployment.bind())
+```
+
+</td>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import asyncio
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class NonBlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ✅ Non-blocking operation
+        await asyncio.sleep(2)
+        return {"message": "Processed (non-blocking)"}
+
+serve.run(NonBlockingDeployment.bind())
+```
+
+</td>
+</tr>
+</table>
+
+To configure all options to the recommended settings, set the environment variable `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`.
+
+You can also configure each option individually. The following table details the recommended configurations and their impact:
+
+| Configured value | Impact |
+| --- | --- |
+| `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0` | Your code runs in the same event loop as the replica's main event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run your code in a separate event loop, which protects the replica's ability to communicate with the Serve Controller if your code has blocking operations. |
+| `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`| The request router runs in the same event loop as the your code's event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run the router in a separate event loop, which protect Ray Serve's request routing ability when your code has blocking operations |
+| `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. The system always flushes the buffer and writes logs when it detects a line with level ERROR.  Set the buffer size to `1` to disable buffering and write logs immediately. |
+| `RAY_SERVE_LOG_TO_STDERR=0` | Only write logs to files under the `logs/serve/` directory. Proxy, Controller, and Replica logs no longer appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Set this property to `1` to enable additional logging. |
+
+You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
+
+(serve-haproxy)=
+### Use HAProxy load balancing
+
+By default, Ray Serve uses a Python-based HTTP/gRPC proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
+
+When HAProxy mode is enabled:
+- An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
+- Each ingress replica opens a port, and HAProxy routes traffic directly to replicas, replacing the Python proxy entirely.
+- Live traffic flows through the HAProxy subprocess, not through any Python actor.
+
+#### Prerequisites
+
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The [official Ray Docker images](https://hub.docker.com/r/rayproject/ray) (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
+
+#### Enabling HAProxy
+
+Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes before starting Ray:
+
+```bash
+export RAY_SERVE_ENABLE_HA_PROXY=1
+```
+
+This environment variable must be set on all nodes in the ray cluster.
+
+::::{tab-set}
+
+:::{tab-item} KubeRay
+```yaml
+# In the Ray container spec for head and worker groups:
+env:
+  - name: RAY_SERVE_ENABLE_HA_PROXY
+    value: "1"
+```
+:::
+
+:::{tab-item} VM cluster
+```bash
+# On every node (head and workers)
+export RAY_SERVE_ENABLE_HA_PROXY=1
+ray start --head  # or ray start --address=<head-ip>:6379 on workers
+```
+:::
+
+::::
+
+#### Installing HAProxy manually (example)
+
+If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. These steps are provided as an example only. In the future, HAProxy will be bundled with the `ray` Python package.
+
+The following steps are for Ubuntu/Debian:
+```bash
+# Install build dependencies
+apt-get update -y && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl libc6-dev \
+    liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
+
+# Build HAProxy from source
+export HAPROXY_VERSION="2.8.20"
+curl -sSfL -o /tmp/haproxy.tar.gz \
+  "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
+make -C /tmp/haproxy-build TARGET=linux-glibc \
+  USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
+rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
+
+# Install runtime dependencies
+apt-get install -y --no-install-recommends liblua5.3-0
+
+# Create required directories
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+```
+
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependency is `liblua5.3-0` (Lua runtime library).
+
+(serve-interdeployment-grpc)=
+### Use gRPC for interdeployment communication
+
+By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
+
+#### When not to use gRPC
+
+1. Since gRPC is required to serialize every payload, it should not be used for large payloads (greater than ~1 MB). If gRPC was enabled by default, individual handles' transport mechanism can be manually set to actor RPC with `handle.options(_by_reference=True)`, and passes larger objects by reference.
+
+2. When passing a `DeploymentResponse` from one deployment into another (i.e., without `await`-ing it first), gRPC resolves the value at the caller and serializes it over the wire. With actor RPC, the underlying `ObjectRef` is forwarded without materializing the data. If your pipeline chains `DeploymentResponse` objects through multiple deployments with payload sizes >100KB, avoid using gRPC for those handles.
+
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __start_grpc_override__
+:end-before: __end_grpc_override__
+:language: python
+```
+
+## Debugging performance issues in controller
+
+The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
+including receiving autoscaling metrics from other Ray Serve components.
+If the Serve Controller becomes overloaded
+(symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
+you can tune the following environment variables:
+
+- `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: The interval between cycles of the control loop (defaults to `0.1` seconds). Increasing this value gives the Controller more time to process requests and may help alleviate overload.
+- `RAY_SERVE_CONTROLLER_MAX_CONCURRENCY`: The maximum number of concurrent requests the Controller can handle (defaults to `15000`). The Controller accepts one long poll request per handle, so its concurrency needs scale with the number of handles. Increase this value if you have a large number of deployment handles.
+- `RAY_SERVE_MAX_CACHED_HANDLES`: The maximum number of cached deployment handles (defaults to `100`). Each handle maintains a long poll connection to the controller, so limiting the cache size reduces controller overhead. Decrease this value if you're experiencing controller overload due to many handles.
+
+To get a quantitative view of controller health, query the GET `/api/serve/applications/` endpoint and inspect the [`controller_health_metrics`](../api/doc/ray.serve.schema.ControllerHealthMetrics.rst) field on the response. It exposes rolling-window statistics ([`DurationStats`](../api/doc/ray.serve.schema.DurationStats.rst): mean, std, min, max) for control-loop duration and component update latencies (deployment, application, proxy, and node state managers), along with the event-loop delay (actual vs. expected sleep — positive values indicate the loop is falling behind), the count of pending asyncio tasks, and the delay between when autoscaling metrics are generated and when they reach the controller. High `event_loop_delay_s` or growing `loop_duration_s.mean` are the clearest signals that the Controller is overloaded and the tuning knobs above should be applied.

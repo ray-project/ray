@@ -19,6 +19,12 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
+
+try:
+    # check if Arrow has S3 support
+    from pyarrow.fs import S3FileSystem
+except ImportError:
+    S3FileSystem = None
 # isort: on
 
 import fnmatch
@@ -53,6 +59,8 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         exclude: List of patterns that are applied to files returned by
             ``self.find()``. If a file path matches this pattern, it will
             be excluded.
+        **kwargs: Forwarded to the ``fsspec.implementations.local.LocalFileSystem``
+            parent class.
 
     """
 
@@ -98,7 +106,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+    if S3FileSystem and isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
         # Workaround multi-threading issue with pyarrow. Note that use_threads=True
         # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
@@ -233,12 +241,15 @@ def _upload_to_uri_with_exclude_fsspec(
 def _list_at_fs_path(
     fs: pyarrow.fs.FileSystem,
     fs_path: str,
-    file_filter: Callable[[pyarrow.fs.FileInfo], bool] = lambda x: True,
+    file_filter: Optional[Callable[[pyarrow.fs.FileInfo], bool]] = None,
 ) -> List[str]:
     """Returns the list of filenames at (fs, fs_path), similar to os.listdir.
 
     If the path doesn't exist, returns an empty list.
     """
+    if file_filter is None:
+        file_filter = lambda x: True  # noqa: E731
+
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
@@ -256,6 +267,13 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
 
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Checks if (fs, fs_path) is a directory or a file.
+
+    Args:
+        fs: The filesystem to use.
+        fs_path: The path on the filesystem to check.
+
+    Returns:
+        True if the path is a directory, False if it is a file.
 
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
@@ -297,6 +315,9 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
+
+    Returns:
+        A tuple of (filesystem, path) resolved from the inputs.
     """
     storage_path = str(storage_path)
 
@@ -520,7 +541,6 @@ class StorageContext:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
         # TODO(justinvyu): Fix this cyclical import.
-        from ray.train._checkpoint import Checkpoint
 
         logger.debug(
             "Copying checkpoint files to storage path:\n"
@@ -546,7 +566,7 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        persisted_checkpoint = Checkpoint(
+        persisted_checkpoint = checkpoint.__class__(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )

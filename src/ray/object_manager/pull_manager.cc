@@ -14,35 +14,39 @@
 
 #include "ray/object_manager/pull_manager.h"
 
-#include "ray/common/common_protocol.h"
-#include "ray/stats/metric_defs.h"
-#include "ray/util/container_util.h"
+#include <algorithm>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
 PullManager::PullManager(
-    NodeID &self_node_id,
-    const std::function<bool(const ObjectID &)> object_is_local,
-    const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-    const std::function<void(const ObjectID &)> cancel_pull_request,
-    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-    const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time_seconds,
+    NodeID self_node_id,
+    std::function<bool(const ObjectID &)> object_is_local,
+    std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+    std::function<void(const ObjectID &)> cancel_pull_request,
+    std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<double()> get_time_seconds,
     int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
-    : self_node_id_(self_node_id),
-      object_is_local_(object_is_local),
-      send_pull_request_(send_pull_request),
-      cancel_pull_request_(cancel_pull_request),
-      restore_spilled_object_(restore_spilled_object),
-      get_time_seconds_(get_time_seconds),
+    : self_node_id_(std::move(self_node_id)),
+      object_is_local_(std::move(object_is_local)),
+      send_pull_request_(std::move(send_pull_request)),
+      cancel_pull_request_(std::move(cancel_pull_request)),
+      restore_spilled_object_(std::move(restore_spilled_object)),
+      get_time_seconds_(std::move(get_time_seconds)),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
-      pin_object_(pin_object),
-      get_locally_spilled_object_url_(get_locally_spilled_object_url),
-      fail_pull_request_(fail_pull_request),
+      pin_object_(std::move(pin_object)),
+      get_locally_spilled_object_url_(std::move(get_locally_spilled_object_url)),
+      fail_pull_request_(std::move(fail_pull_request)),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -54,9 +58,9 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   absl::flat_hash_set<ObjectID> seen;
   std::vector<rpc::ObjectReference> deduplicated;
   for (const auto &ref : object_ref_bundle) {
-    const auto &id = ObjectRefToId(ref);
-    if (seen.count(id) == 0) {
-      seen.insert(id);
+    const auto id = ObjectRefToId(ref);
+    const bool is_new = seen.insert(id).second;
+    if (is_new) {
       deduplicated.emplace_back(ref);
     }
   }
@@ -64,7 +68,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated), task_key);
   const uint64_t req_id = next_req_id_++;
   RAY_LOG(DEBUG) << "Start pull request " << req_id
-                 << ". Bundle size: " << bundle_pull_request.objects.size();
+                 << ". Bundle size: " << bundle_pull_request.objects_.size();
 
   for (const auto &ref : deduplicated) {
     const auto obj_id = ObjectRefToId(ref);
@@ -121,7 +125,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
 
     // First calculate the bytes we need.
     int64_t bytes_to_pull = 0;
-    for (const auto &obj_id : next_request.objects) {
+    for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       if (needs_pull) {
         // This is the first bundle request in the queue to require this object.
@@ -152,7 +156,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
     num_bytes_being_pulled_ += bytes_to_pull;
-    for (const auto &obj_id : next_request.objects) {
+    for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_id);
       if (needs_pull) {
@@ -178,7 +182,7 @@ void PullManager::DeactivateBundlePullRequest(
     uint64_t request_id,
     std::unordered_set<ObjectID> *objects_to_cancel) {
   const auto &request = map_find_or_die(bundles.requests, request_id);
-  for (const auto &obj_id : request.objects) {
+  for (const auto &obj_id : request.objects_) {
     absl::MutexLock lock(&active_objects_mu_);
     auto it = active_object_pull_requests_.find(obj_id);
     if (it == active_object_pull_requests_.end() || !it->second.erase(request_id)) {
@@ -331,15 +335,15 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
   // Erase this pull request.
   std::vector<ObjectID> object_ids_to_cancel_subscription;
-  for (const auto &obj_id : bundle_it->second.objects) {
+  for (const auto &obj_id : bundle_it->second.objects_) {
     auto it = object_pull_requests_.find(obj_id);
     if (it != object_pull_requests_.end()) {
       RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
-        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+        pull_manager_object_request_time_ms_histogram_.Record(
             absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
-            "StartToCancel");
+            {{"Type", "StartToCancel"}});
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
@@ -516,9 +520,9 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
-      RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
-                     << " to spilled location at " << spilled_node_id << " of object "
-                     << object_id;
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Sending pull request from " << self_node_id_ << " to spilled location at "
+          << spilled_node_id;
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
@@ -534,8 +538,8 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   int node_index = distribution(gen_);
   NodeID node_id = node_vector[node_index];
   RAY_CHECK(node_id != self_node_id_);
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
-                 << " to in-memory location at " << node_id << " of object " << object_id;
+  RAY_LOG(DEBUG).WithField(object_id) << "Sending pull request from " << self_node_id_
+                                      << " to in-memory location at " << node_id;
   send_pull_request_(object_id, node_id);
   return true;
 }
@@ -592,28 +596,30 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
 }
 
 bool PullManager::TryPinObject(const ObjectID &object_id) {
-  if (pinned_objects_.count(object_id) == 0) {
-    auto ref = pin_object_(object_id);
-    if (ref != nullptr) {
-      num_succeeded_pins_total_++;
-      pinned_objects_size_ += ref->GetSize();
-      pinned_objects_[object_id] = std::move(ref);
-
-      auto it = object_pull_requests_.find(object_id);
-      RAY_CHECK(it != object_pull_requests_.end());
-      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
-          absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
-          "StartToPin");
-      if (it->second.activate_time_ms > 0) {
-        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
-            absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
-            "MemoryAvailableToPin");
-      }
-    } else {
-      num_failed_pins_total_++;
-    }
+  if (pinned_objects_.count(object_id) > 0) {
+    return true;
   }
-  return pinned_objects_.count(object_id) > 0;
+  auto ref = pin_object_(object_id);
+  if (ref != nullptr) {
+    num_succeeded_pins_total_++;
+    pinned_objects_size_ += ref->GetSize();
+    pinned_objects_[object_id] = std::move(ref);
+
+    auto it = object_pull_requests_.find(object_id);
+    RAY_CHECK(it != object_pull_requests_.end());
+    pull_manager_object_request_time_ms_histogram_.Record(
+        absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+        {{"Type", "StartToPin"}});
+    if (it->second.activate_time_ms > 0) {
+      pull_manager_object_request_time_ms_histogram_.Record(
+          absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
+          {{"Type", "MemoryAvailableToPin"}});
+    }
+    return true;
+  }
+
+  num_failed_pins_total_++;
+  return false;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
@@ -672,12 +678,12 @@ std::string PullManager::BundleInfo(const BundlePullRequestQueue &bundles) const
   }
   const auto &bundle = it->second;
   std::stringstream result;
-  result << bundle.objects.size() << " objects";
+  result << bundle.objects_.size() << " objects";
   if (!bundle.IsPullable()) {
     result << " (inactive, waiting for object sizes or locations)";
   } else {
     size_t num_bytes_needed = 0;
-    for (const auto &obj_id : bundle.objects) {
+    for (const auto &obj_id : bundle.objects_) {
       num_bytes_needed += map_find_or_die(object_pull_requests_, obj_id).object_size;
     }
     result << ", " << num_bytes_needed << " bytes";
@@ -705,7 +711,7 @@ int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles
 
   // Calculate the bytes we need.
   int64_t bytes_needed_calculated = 0;
-  for (const auto &obj_id : next_request.objects) {
+  for (const auto &obj_id : next_request.objects_) {
     bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
     if (needs_pull) {
       // This is the first bundle request in the queue to require this object.
@@ -720,30 +726,29 @@ int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles
 
 void PullManager::RecordMetrics() const {
   absl::MutexLock lock(&active_objects_mu_);
-  ray::stats::STATS_pull_manager_usage_bytes.Record(num_bytes_available_, "Available");
-  ray::stats::STATS_pull_manager_usage_bytes.Record(num_bytes_being_pulled_,
-                                                    "BeingPulled");
-  ray::stats::STATS_pull_manager_usage_bytes.Record(pinned_objects_size_, "Pinned");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(
-      get_request_bundles_.requests.size(), "Get");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(
-      wait_request_bundles_.requests.size(), "Wait");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(
-      task_argument_bundles_.requests.size(), "TaskArgs");
-  ray::stats::STATS_pull_manager_requested_bundles.Record(next_req_id_,
-                                                          "CumulativeTotal");
-  ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
-  ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
-                                                 "Active");
-  ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
-  ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
-  ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
-
-  ray::stats::STATS_pull_manager_num_object_pins.Record(num_succeeded_pins_total_,
-                                                        "Success");
-  ray::stats::STATS_pull_manager_num_object_pins.Record(num_failed_pins_total_,
-                                                        "Failure");
+  pull_manager_usage_bytes_gauge_.Record(num_bytes_available_, {{"Type", "Available"}});
+  pull_manager_usage_bytes_gauge_.Record(num_bytes_being_pulled_,
+                                         {{"Type", "BeingPulled"}});
+  pull_manager_usage_bytes_gauge_.Record(pinned_objects_size_, {{"Type", "Pinned"}});
+  pull_manager_requested_bundles_gauge_.Record(get_request_bundles_.requests.size(),
+                                               {{"Type", "Get"}});
+  pull_manager_requested_bundles_gauge_.Record(wait_request_bundles_.requests.size(),
+                                               {{"Type", "Wait"}});
+  pull_manager_requested_bundles_gauge_.Record(task_argument_bundles_.requests.size(),
+                                               {{"Type", "TaskArgs"}});
+  pull_manager_requested_bundles_gauge_.Record(next_req_id_,
+                                               {{"Type", "CumulativeTotal"}});
+  pull_manager_requests_gauge_.Record(object_pull_requests_.size(), {{"Type", "Queued"}});
+  pull_manager_requests_gauge_.Record(active_object_pull_requests_.size(),
+                                      {{"Type", "Active"}});
+  pull_manager_requests_gauge_.Record(pinned_objects_.size(), {{"Type", "Pinned"}});
+  pull_manager_active_bundles_gauge_.Record(num_active_bundles_);
+  pull_manager_retries_total_gauge_.Record(num_retries_total_);
+  pull_manager_retries_total_gauge_.Record(num_tries_total_);
+  pull_manager_num_object_pins_gauge_.Record(num_succeeded_pins_total_,
+                                             {{"Type", "Success"}});
+  pull_manager_num_object_pins_gauge_.Record(num_failed_pins_total_,
+                                             {{"Type", "Failure"}});
 }
 
 std::string PullManager::DebugString() const {

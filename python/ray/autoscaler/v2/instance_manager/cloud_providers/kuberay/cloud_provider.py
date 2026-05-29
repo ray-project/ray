@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
+from ray._raylet import GcsClient
+
 # TODO(rickyx): We should eventually remove these imports
 # when we deprecate the v1 kuberay node provider.
 from ray.autoscaler._private.kuberay.node_provider import (
@@ -19,9 +21,13 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KubernetesHttpApiClient,
     _worker_group_index,
     _worker_group_max_replicas,
+    _worker_group_num_of_hosts,
     _worker_group_replicas,
     worker_delete_patch,
     worker_replica_patch,
+)
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
+    KubeRayIPPRProvider,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
@@ -32,7 +38,7 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +56,21 @@ class KubeRayProvider(ICloudInstanceProvider):
         self,
         cluster_name: str,
         provider_config: Dict[str, Any],
+        gcs_client: GcsClient,
         k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
         """
+        Initializes a new KubeRayProvider.
+
         Args:
             cluster_name: The name of the RayCluster resource.
-            namespace: The namespace of the RayCluster resource.
-            k8s_api_client: The client to the Kubernetes API server.
-                This could be used to mock the Kubernetes API server for testing.
+            provider_config: The configuration for the RayCluster.
+            gcs_client: The client to the GCS server. Will be used for resizing raylets.
+            k8s_api_client: The client to the Kubernetes
+                API server. This can be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
-        self._head_node_type = provider_config["head_node_type"]
 
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
@@ -75,6 +84,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
+        self._ippr_provider = KubeRayIPPRProvider(
+            gcs_client=gcs_client, k8s_api_client=self._k8s_api_client
+        )
 
     @dataclass
     class ScaleRequest:
@@ -111,70 +123,75 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
-        return copy.deepcopy(
-            {id: instance for id, instance in self._cached_instances.items()}
-        )
+        return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
             logger.warning(f"Request {request_id} is already processed for: {ids}")
             return
-        self._requests.add(request_id)
+
         logger.info("Terminating worker pods: {}".format(ids))
-
-        scale_request = self._initialize_scale_request(
-            to_launch={}, to_delete_instances=ids
-        )
-        if scale_request.worker_groups_with_pending_deletes:
-            errors_msg = (
-                "There are workers to be deleted from: "
-                f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be deleted before adding new workers "
-                " to be deleted"
-            )
-            logger.warning(errors_msg)
-            self._add_terminate_errors(
-                ids,
-                request_id,
-                details=errors_msg,
-            )
-            return
-
+        scale_request = None
         try:
+            scale_request = self._initialize_scale_request(
+                to_launch={}, to_delete_instances=ids
+            )
+
+            if scale_request.worker_groups_with_pending_deletes:
+                errors_msg = (
+                    "There are workers to be deleted from: "
+                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    "Waiting for them to be deleted before adding new workers "
+                    " to be deleted"
+                )
+                logger.warning(errors_msg)
+                self._add_terminate_errors(
+                    ids,
+                    request_id,
+                    details=errors_msg,
+                )
+                return
+
             self._submit_scale_request(scale_request)
+            # Only add to processed requests if successful
+            self._requests.add(request_id)
+
         except Exception as e:
-            logger.exception(f"Error terminating nodes: {scale_request}")
+            logger.exception(f"Error terminating nodes: {scale_request or 'N/A'}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
             return
-        self._requests.add(request_id)
 
-        scale_request = self._initialize_scale_request(
-            to_launch=shape, to_delete_instances=[]
-        )
-
-        if scale_request.worker_groups_with_pending_deletes:
-            error_msg = (
-                "There are workers to be deleted from: "
-                f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be deleted before creating new workers."
-            )
-            logger.warning(error_msg)
-            self._add_launch_errors(
-                shape,
-                request_id,
-                details=error_msg,
-            )
-            return
-
+        scale_request = None
         try:
+            scale_request = self._initialize_scale_request(
+                to_launch=shape, to_delete_instances=[]
+            )
+
+            if scale_request.worker_groups_with_pending_deletes:
+                error_msg = (
+                    "There are workers to be deleted from: "
+                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    "Waiting for them to be deleted before creating new workers."
+                )
+                logger.warning(error_msg)
+                self._add_launch_errors(
+                    shape,
+                    request_id,
+                    details=error_msg,
+                )
+                return
+
             self._submit_scale_request(scale_request)
+            # Only add to processed requests if successful
+            self._requests.add(request_id)
+
         except Exception as e:
-            logger.exception(f"Error launching nodes: {scale_request}")
+            logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
             self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
@@ -184,6 +201,31 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
         return errors
+
+    def get_ippr_specs(self) -> IPPRSpecs:
+        """Return the cached, validated IPPR specs for the cluster.
+
+        The IPPR specs are refreshed during the provider's periodic sync with the
+        API server by reading the RayCluster annotation and validating it against
+        the IPPR schema.
+        """
+        return self._ippr_provider.get_ippr_specs()
+
+    def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        """Return the latest per-pod IPPR statuses keyed by pod name.
+
+        These statuses are refreshed from the current pod list during the provider's
+        periodic sync with the API server.
+        """
+        return self._ippr_provider.get_ippr_statuses()
+
+    def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
+        """Execute IPPR resize requests via the underlying IPPR provider.
+
+        Args:
+            resizes: The list of per-pod IPPR actions produced by the scheduler.
+        """
+        self._ippr_provider.do_ippr_requests(resizes)
 
     ############################
     # Private
@@ -210,21 +252,48 @@ class KubeRayProvider(ICloudInstanceProvider):
         cur_instances = self.instances
 
         # Get the worker groups that have pending deletes and the worker groups that
-        # have finished deletes.
+        # have finished deletes, and the set of workers included in the workersToDelete
+        # field of any worker group.
         (
             worker_groups_with_pending_deletes,
             worker_groups_without_pending_deletes,
-        ) = self._get_workers_groups_with_deletes(
-            ray_cluster, set(cur_instances.keys())
-        )
+            worker_to_delete_set,
+        ) = self._get_workers_delete_info(ray_cluster, set(cur_instances.keys()))
+
+        observed_workers_dict = defaultdict(int)
+        for instance in cur_instances.values():
+            if instance.node_kind != NodeKind.WORKER:
+                continue
+            if instance.cloud_instance_id in worker_to_delete_set:
+                continue
+            observed_workers_dict[instance.node_type] += 1
 
         # Calculate the desired number of workers by type.
         num_workers_dict = defaultdict(int)
-        for _, cur_instance in cur_instances.items():
-            if cur_instance.node_kind == NodeKind.HEAD:
-                # Only track workers.
-                continue
-            num_workers_dict[cur_instance.node_type] += 1
+        worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
+        for worker_group in worker_groups:
+            node_type = worker_group["groupName"]
+            # Handle the case where users manually increase `minReplicas`
+            # to scale up the number of worker Pods. In this scenario,
+            # `replicas` will be smaller than `minReplicas`.
+            # num_workers_dict should account for multi-host replicas when
+            # `numOfHosts`` is set.
+            num_of_hosts = worker_group.get("numOfHosts", 1)
+            replicas = (
+                max(worker_group["replicas"], worker_group["minReplicas"])
+                * num_of_hosts
+            )
+
+            # The `replicas` field in worker group specs can be updated by users at any time.
+            # However, users should only increase the field (manually upscaling the worker group), not decrease it,
+            # because downscaling the worker group requires specifying which workers to delete explicitly in the `workersToDelete` field.
+            # Since we don't have a way to enforce this, we need to fix unexpected decreases on the `replicas` field by using actual observations.
+            # For example, if the user manually decreases the `replicas` field to 0 without specifying which workers to delete,
+            # we should fix the `replicas` field back to the number of observed workers excluding the workers to be deleted,
+            # otherwise, we won't have a correct `replicas` matches the actual number of workers eventually.
+            num_workers_dict[node_type] = max(
+                replicas, observed_workers_dict[node_type]
+            )
 
         # Add to launch nodes.
         for node_type, count in to_launch.items():
@@ -241,6 +310,11 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             if to_delete_instance.node_kind == NodeKind.HEAD:
                 # Not possible to delete head node.
+                continue
+
+            if to_delete_instance.cloud_instance_id in worker_to_delete_set:
+                # If the instance is already in the workersToDelete field of
+                # any worker group, skip it.
                 continue
 
             num_workers_dict[to_delete_instance.node_type] -= 1
@@ -279,9 +353,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         raycluster = self.ray_cluster
 
         # Collect patches for replica counts.
-        for node_type, target_replicas in scale_request.desired_num_workers.items():
+        for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
+            # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
+            target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
@@ -322,6 +399,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             # No patch required.
             return
 
+        logger.info(f"Submitting a scale request: {scale_request}")
         self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
     def _add_launch_errors(
@@ -382,7 +460,9 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
+        self._ippr_provider.sync_with_raylets()
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -393,9 +473,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         return copy.deepcopy(self._cached_instances)
 
     @staticmethod
-    def _get_workers_groups_with_deletes(
+    def _get_workers_delete_info(
         ray_cluster_spec: Dict[str, Any], node_set: Set[CloudInstanceId]
-    ) -> Tuple[Set[NodeType], Set[NodeType]]:
+    ) -> Tuple[Set[NodeType], Set[NodeType], Set[CloudInstanceId]]:
         """
         Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
@@ -405,10 +485,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                 deletes.
             worker_groups_with_finished_deletes: The worker groups that have finished
                 deletes.
+            worker_to_delete_set: A set of Pods that are included in the workersToDelete
+                field of any worker group.
         """
 
         worker_groups_with_pending_deletes = set()
         worker_groups_with_deletes = set()
+        worker_to_delete_set = set()
 
         worker_groups = ray_cluster_spec["spec"].get("workerGroupSpecs", [])
         for worker_group in worker_groups:
@@ -423,14 +506,18 @@ class KubeRayProvider(ICloudInstanceProvider):
             worker_groups_with_deletes.add(node_type)
 
             for worker in workersToDelete:
+                worker_to_delete_set.add(worker)
                 if worker in node_set:
                     worker_groups_with_pending_deletes.add(node_type)
-                    break
 
         worker_groups_with_finished_deletes = (
             worker_groups_with_deletes - worker_groups_with_pending_deletes
         )
-        return worker_groups_with_pending_deletes, worker_groups_with_finished_deletes
+        return (
+            worker_groups_with_pending_deletes,
+            worker_groups_with_finished_deletes,
+            worker_to_delete_set,
+        )
 
     def _fetch_instances(self) -> Dict[CloudInstanceId, CloudInstance]:
         """
@@ -478,26 +565,26 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instance = self._cloud_instance_from_pod(pod, self._head_node_type)
+            cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
+
+        self._ippr_provider.sync_ippr_status_from_pods(pod_list["items"])
+
         return cloud_instances
 
     @staticmethod
-    def _cloud_instance_from_pod(
-        pod: Dict[str, Any], head_node_type: NodeType
-    ) -> Optional[CloudInstance]:
+    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
 
         Args:
             pod: The pod resource dict.
-            head_node_type: The node type of the head node.
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
-            type = head_node_type
+            type = labels[KUBERAY_LABEL_KEY_TYPE]
         elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]

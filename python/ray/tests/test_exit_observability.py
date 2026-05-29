@@ -4,12 +4,15 @@ import signal
 import sys
 
 import pytest
-from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.util.state import list_workers, list_nodes, list_tasks
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray._private.state_api_test_utils import verify_failed_task
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_nodes, list_tasks, list_workers
 
 
 def get_worker_by_pid(pid, detail=True):
@@ -232,8 +235,7 @@ ray.shutdown()
         assert type == "INTENDED_USER_EXIT" and "ray.cancel" in detail
         return verify_failed_task(
             name="cancel-f",
-            error_type="WORKER_DIED",  # Since it's a force cancel through kill signal.
-            error_message="Socket closed",
+            error_type="TASK_CANCELLED",
         )
 
     wait_for_condition(verify_exit_by_ray_cancel)
@@ -373,7 +375,9 @@ def test_worker_start_end_time(shutdown_only):
     pid = ray.get(worker.ready.remote())
 
     def verify():
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )[0]
         print(workers)
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] == 0
@@ -384,7 +388,9 @@ def test_worker_start_end_time(shutdown_only):
     ray.kill(worker)
 
     def verify():
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )[0]
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] > 0
         return True
@@ -397,7 +403,9 @@ def test_worker_start_end_time(shutdown_only):
     os.kill(pid, signal.SIGKILL)
 
     def verify():
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )[0]
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] > 0
         return True
@@ -448,9 +456,4 @@ def test_node_start_end_time(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

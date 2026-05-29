@@ -6,371 +6,25 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
-from ray.data.block import BlockAccessor
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
+)
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.context import DataContext
 from ray.data.extensions import (
+    ArrowConversionError,
+    ArrowPythonObjectType,
     ArrowTensorArray,
     ArrowTensorType,
-    ArrowVariableShapedTensorType,
 )
-
-
-def test_arrow_concat_empty():
-    # Test empty.
-    assert concat([]) == []
-
-
-def test_arrow_concat_single_block():
-    # Test single block:
-    t = pa.table({"a": [1, 2]})
-    out = concat([t])
-    assert len(out) == 2
-    assert out == t
-
-
-def test_arrow_concat_basic():
-    # Test two basic tables.
-    t1 = pa.table({"a": [1, 2], "b": [5, 6]})
-    t2 = pa.table({"a": [3, 4], "b": [7, 8]})
-    ts = [t1, t2]
-    out = concat(ts)
-    # Check length.
-    assert len(out) == 4
-    # Check schema.
-    assert out.column_names == ["a", "b"]
-    assert out.schema.types == [pa.int64(), pa.int64()]
-    # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
-    # consolidation).
-    assert out["a"].num_chunks == 2
-    assert out["b"].num_chunks == 2
-    # Check content.
-    assert out["a"].to_pylist() == [1, 2, 3, 4]
-    assert out["b"].to_pylist() == [5, 6, 7, 8]
-    # Check equivalence.
-    expected = pa.concat_tables(ts)
-    assert out == expected
-
-
-def test_arrow_concat_null_promotion():
-    # Test null column --> well-typed column promotion.
-    t1 = pa.table({"a": [None, None], "b": [5, 6]})
-    t2 = pa.table({"a": [3, 4], "b": [None, None]})
-    ts = [t1, t2]
-    out = concat(ts)
-    # Check length.
-    assert len(out) == 4
-    # Check schema.
-    assert out.column_names == ["a", "b"]
-    assert out.schema.types == [pa.int64(), pa.int64()]
-    # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
-    # consolidation).
-    assert out["a"].num_chunks == 2
-    assert out["b"].num_chunks == 2
-    # Check content.
-    assert out["a"].to_pylist() == [None, None, 3, 4]
-    assert out["b"].to_pylist() == [5, 6, None, None]
-    # Check equivalence.
-    expected = pa.concat_tables(ts, promote=True)
-    assert out == expected
-
-
-def test_arrow_concat_tensor_extension_uniform():
-    # Test tensor column concatenation.
-    a1 = np.arange(12).reshape((3, 2, 2))
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.arange(12, 24).reshape((3, 2, 2))
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
-    ts = [t1, t2]
-    out = concat(ts)
-    # Check length.
-    assert len(out) == 6
-    # Check schema.
-    assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowTensorType((2, 2), pa.int64())]
-    # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
-    # consolidation).
-    assert out["a"].num_chunks == 2
-    # Check content.
-    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), a1)
-    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), a2)
-    # Check equivalence.
-    expected = pa.concat_tables(ts, promote=True)
-    assert out == expected
-
-
-def test_arrow_concat_tensor_extension_variable_shaped():
-    # Test variable_shaped tensor column concatenation.
-    a1 = np.array(
-        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
-    )
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.array(
-        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
-    )
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
-    ts = [t1, t2]
-    out = concat(ts)
-    # Check length.
-    assert len(out) == 4
-    # Check schema.
-    assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
-    # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
-    # consolidation).
-    assert out["a"].num_chunks == 2
-    # Check content.
-    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
-        np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
-        np.testing.assert_array_equal(o, e)
-    # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
-    # fails for this case.
-
-
-def test_arrow_concat_tensor_extension_uniform_and_variable_shaped():
-    # Test concatenating a homogeneous-shaped tensor column with a variable-shaped
-    # tensor column.
-    a1 = np.arange(12).reshape((3, 2, 2))
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.array(
-        [np.arange(4).reshape((2, 2)), np.arange(4, 13).reshape((3, 3))], dtype=object
-    )
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
-    ts = [t1, t2]
-    out = concat(ts)
-    # Check length.
-    assert len(out) == 5
-    # Check schema.
-    assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
-    # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
-    # consolidation).
-    assert out["a"].num_chunks == 2
-    # Check content.
-    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
-        np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
-        np.testing.assert_array_equal(o, e)
-    # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
-    # fails for this case.
-
-
-def test_arrow_concat_tensor_extension_uniform_but_different():
-    # Test concatenating two homogeneous-shaped tensor columns with differing shapes
-    # between them.
-    a1 = np.arange(12).reshape((3, 2, 2))
-    t1 = pa.table({"a": ArrowTensorArray.from_numpy(a1)})
-    a2 = np.arange(12, 39).reshape((3, 3, 3))
-    t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
-    ts = [t1, t2]
-    out = concat(ts)
-    # Check length.
-    assert len(out) == 6
-    # Check schema.
-    assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
-    # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
-    # consolidation).
-    assert out["a"].num_chunks == 2
-    # Check content.
-    for o, e in zip(out["a"].chunk(0).to_numpy(), a1):
-        np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), a2):
-        np.testing.assert_array_equal(o, e)
-    # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
-    # fails for this case.
-
-
-def test_unify_schemas():
-    # Unifying a schema with the same schema as itself
-    tensor_arr_1 = pa.schema([("tensor_arr", ArrowTensorType((3, 5), pa.int32()))])
-    assert unify_schemas([tensor_arr_1, tensor_arr_1]) == tensor_arr_1
-
-    # Single columns with different shapes
-    tensor_arr_2 = pa.schema([("tensor_arr", ArrowTensorType((2, 1), pa.int32()))])
-    contains_diff_shaped = [tensor_arr_1, tensor_arr_2]
-    assert unify_schemas(contains_diff_shaped) == pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
-        ]
-    )
-
-    # Single columns with same shapes
-    tensor_arr_3 = pa.schema([("tensor_arr", ArrowTensorType((3, 5), pa.int32()))])
-    contains_diff_types = [tensor_arr_1, tensor_arr_3]
-    assert unify_schemas(contains_diff_types) == pa.schema(
-        [
-            ("tensor_arr", ArrowTensorType((3, 5), pa.int32())),
-        ]
-    )
-
-    # Single columns with a variable shaped tensor, same ndim
-    var_tensor_arr = pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
-        ]
-    )
-    contains_var_shaped = [tensor_arr_1, var_tensor_arr]
-    assert unify_schemas(contains_var_shaped) == pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
-        ]
-    )
-
-    # Single columns with a variable shaped tensor, different ndim
-    var_tensor_arr_1d = pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 1)),
-        ]
-    )
-    var_tensor_arr_3d = pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 3)),
-        ]
-    )
-    contains_1d2d = [tensor_arr_1, var_tensor_arr_1d]
-    assert unify_schemas(contains_1d2d) == pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 2)),
-        ]
-    )
-    contains_2d3d = [tensor_arr_1, var_tensor_arr_3d]
-    assert unify_schemas(contains_2d3d) == pa.schema(
-        [
-            ("tensor_arr", ArrowVariableShapedTensorType(pa.int32(), 3)),
-        ]
-    )
-
-    # Multi-column schemas
-    multicol_schema_1 = pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-    multicol_schema_2 = pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
-            ("col_var_tensor", ArrowTensorType((9, 4, 1, 0, 5), pa.int16())),
-        ]
-    )
-    assert unify_schemas([multicol_schema_1, multicol_schema_2]) == pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowTensorType((4, 2), pa.int32())),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-
-    multicol_schema_3 = pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-    assert unify_schemas([multicol_schema_1, multicol_schema_3]) == pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-
-    # Unifying >2 schemas together
-    assert unify_schemas(
-        [multicol_schema_1, multicol_schema_2, multicol_schema_3]
-    ) == pa.schema(
-        [
-            ("col_int", pa.int32()),
-            ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
-            ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
-        ]
-    )
-
-
-def test_arrow_block_select():
-    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
-    table = pa.Table.from_pandas(df)
-    block_accessor = BlockAccessor.for_block(table)
-
-    block = block_accessor.select(["two"])
-    assert block.schema == pa.schema([("two", pa.int64())])
-    assert block.to_pandas().equals(df[["two"]])
-
-    block = block_accessor.select(["two", "one"])
-    assert block.schema == pa.schema([("two", pa.int64()), ("one", pa.int64())])
-    assert block.to_pandas().equals(df[["two", "one"]])
-
-    with pytest.raises(ValueError):
-        block = block_accessor.select([lambda x: x % 3, "two"])
-
-
-def test_arrow_block_slice_copy():
-    # Test that ArrowBlock slicing properly copies the underlying Arrow
-    # table.
-    def check_for_copy(table1, table2, a, b, is_copy):
-        expected_slice = table1.slice(a, b - a)
-        assert table2.equals(expected_slice)
-        assert table2.schema == table1.schema
-        assert table1.num_columns == table2.num_columns
-        for col1, col2 in zip(table1.columns, table2.columns):
-            assert col1.num_chunks == col2.num_chunks
-            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
-                bufs1 = chunk1.buffers()
-                bufs2 = chunk2.buffers()
-                expected_offset = 0 if is_copy else a
-                assert chunk2.offset == expected_offset
-                assert len(chunk2) == b - a
-                if is_copy:
-                    assert bufs2[1].address != bufs1[1].address
-                else:
-                    assert bufs2[1].address == bufs1[1].address
-
-    n = 20
-    df = pd.DataFrame(
-        {"one": list(range(n)), "two": ["a"] * n, "three": [np.nan] + [1.5] * (n - 1)}
-    )
-    table = pa.Table.from_pandas(df)
-    a, b = 5, 10
-    block_accessor = BlockAccessor.for_block(table)
-
-    # Test with copy.
-    table2 = block_accessor.slice(a, b, True)
-    check_for_copy(table, table2, a, b, is_copy=True)
-
-    # Test without copy.
-    table2 = block_accessor.slice(a, b, False)
-    check_for_copy(table, table2, a, b, is_copy=False)
-
-
-def test_arrow_block_slice_copy_empty():
-    # Test that ArrowBlock slicing properly copies the underlying Arrow
-    # table when the table is empty.
-    df = pd.DataFrame({"one": []})
-    table = pa.Table.from_pandas(df)
-    a, b = 0, 0
-    expected_slice = table.slice(a, b - a)
-    block_accessor = BlockAccessor.for_block(table)
-
-    # Test with copy.
-    table2 = block_accessor.slice(a, b, True)
-    assert table2.equals(expected_slice)
-    assert table2.schema == table.schema
-    assert table2.num_rows == 0
-
-    # Test without copy.
-    table2 = block_accessor.slice(a, b, False)
-    assert table2.equals(expected_slice)
-    assert table2.schema == table.schema
-    assert table2.num_rows == 0
 
 
 def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100)
-    assert ds.to_dask().sum().compute()[0] == 4950
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)
     ds.write_parquet(path)
@@ -392,6 +46,190 @@ def test_pyarrow(ray_start_regular_shared):
     assert ds.filter(lambda x: x["id"] == 0).flat_map(
         lambda x: [{"b": x["id"] + 2}, {"b": x["id"] + 20}]
     ).take() == [{"b": 2}, {"b": 20}]
+
+
+def _create_dataset(op, data):
+    ds = ray.data.range(2, override_num_blocks=2)
+
+    if op == "map":
+
+        def map(x):
+            return {
+                "id": x["id"],
+                "my_data": data[x["id"]],
+            }
+
+        ds = ds.map(map)
+    else:
+        assert op == "map_batches"
+
+        def map_batches(x):
+            row_id = x["id"][0]
+            return {
+                "id": x["id"],
+                "my_data": [data[row_id]],
+            }
+
+        ds = ds.map_batches(map_batches, batch_size=None)
+
+    # Needed for the map_batches case to trigger the error,
+    # because the error happens when merging the blocks.
+    ds = ds.map_batches(lambda x: x, batch_size=2)
+    return ds
+
+
+def test_map_batches_fallback_to_pandas_on_incompatible_data(
+    ray_start_regular_shared,
+    restore_data_context,
+):
+    # For map_batches, if the first UDF output is incompatible with Arrow,
+    # Ray Data will fall back to using Pandas.
+    class UnsupportedType:
+        pass
+
+    data = [UnsupportedType(), 1]
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+    ds = _create_dataset("map_batches", data)
+    ds = ds.materialize()
+    bundles = ds.iter_internal_ref_bundles()
+    block = ray.get(next(bundles).block_refs[0])
+    assert isinstance(block, pd.DataFrame)
+
+
+def test_map_raises_on_incompatible_data(
+    ray_start_regular_shared,
+    restore_data_context,
+):
+    # For row-based map, the output buffer builds Arrow blocks eagerly, so
+    # incompatible data raises ArrowConversionError when object fallback is disabled.
+    class UnsupportedType:
+        pass
+
+    data = [UnsupportedType(), 1]
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+    ds = _create_dataset("map", data)
+    with pytest.raises(ArrowConversionError):
+        ds.materialize()
+
+
+_PYARROW_SUPPORTS_TYPE_PROMOTION = (
+    get_pyarrow_version() >= MIN_PYARROW_VERSION_TYPE_PROMOTION
+)
+
+
+@pytest.mark.parametrize(
+    "op, data, should_fail, expected_type",
+    [
+        # Case A: Upon serializing to Arrow fallback to `ArrowPythonObjectType`
+        ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
+        # Case B: No fallback to `ArrowPythonObjectType`, but type promotion allows
+        #         int to be promoted to a double
+        (
+            "map_batches",
+            [1.0, 2**4],
+            not _PYARROW_SUPPORTS_TYPE_PROMOTION,
+            pa.float64(),
+        ),
+        # Case C: No fallback to `ArrowPythonObjectType` and no type promotion possible
+        ("map_batches", ["1.0", 2**4], True, None),
+    ],
+)
+def test_pyarrow_conversion_error_handling(
+    ray_start_regular_shared,
+    op,
+    data,
+    should_fail: bool,
+    expected_type: pa.DataType,
+):
+    # Ray Data infers the block type (arrow or pandas) and the block schema
+    # based on the first *block* produced by UDF.
+    #
+    # These tests simulate following scenarios
+    #   1. (Case A) Type of the value of the first block is deduced as Arrow scalar
+    #      type, but second block carries value that overflows pa.int64 representation,
+    #      and column henceforth will be serialized as `ArrowPythonObjectExtensionType`
+    #      coercing first block to it as well
+    #   2. (Case B) Both blocks carry proper Arrow scalars which, however, have
+    #      diverging types and therefore Arrow fails during merging of these blocks
+    #      into 1
+    ds = _create_dataset(op, data)
+
+    if should_fail:
+        with pytest.raises(Exception) as e:
+            ds.materialize()
+
+        error_msg = str(e.value)
+        expected_msg = "ArrowConversionError: Error converting data to Arrow:"
+
+        assert expected_msg in error_msg
+        assert "my_data" in error_msg
+
+    else:
+        ds.materialize()
+
+        assert ds.schema().base_schema == pa.schema(
+            [pa.field("id", pa.int64()), pa.field("my_data", expected_type)]
+        )
+
+        results = sorted(ds.take_all(), key=lambda r: r["id"])
+        assert results == [{"id": i, "my_data": data[i]} for i in range(len(data))]
+
+
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires Arrow version of at least 14.0.0",
+)
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_context):
+    tensor_format = tensor_format_context
+    num_rows = 1024
+
+    # Block A: int is uint64; tensor = Ray tensor extension
+    t_uint = pa.table(
+        {
+            "int": pa.array(np.zeros(num_rows // 2, dtype=np.uint64), type=pa.uint64()),
+            "tensor": ArrowTensorArray.from_numpy(
+                np.zeros((num_rows // 2, 3, 3), dtype=np.float32)
+            ),
+        }
+    )
+
+    # Block B: int is float64 with NaNs; tensor = same extension type
+    f = np.ones(num_rows // 2, dtype=np.float64)
+    f[::8] = np.nan
+    t_float = pa.table(
+        {
+            "int": pa.array(f, type=pa.float64()),
+            "tensor": ArrowTensorArray.from_numpy(
+                np.zeros((num_rows // 2, 3, 3), dtype=np.float32)
+            ),
+        }
+    )
+
+    # Two input blocks with different Arrow dtypes for "int"
+    ds = ray.data.from_arrow([t_uint, t_float])
+
+    # Force a concat across blocks
+    ds = ds.repartition(1)
+
+    # This should not raise: RuntimeError: Types mismatch: double != uint64
+    ds.materialize()
+
+    # Ensure that the result is correct
+    # Determine expected tensor type based on current DataContext setting
+    if tensor_format == FixedShapeTensorFormat.V2:
+        expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
+    else:
+        expected_tensor_type = ArrowTensorType((3, 3), pa.float32())
+
+    assert ds.schema().base_schema == pa.schema(
+        [("int", pa.float64()), ("tensor", expected_tensor_type)]
+    )
+    assert ds.count() == num_rows
 
 
 if __name__ == "__main__":

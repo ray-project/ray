@@ -3,7 +3,7 @@ region: us-west-2
 
 max_workers: 999
 
-aws:
+advanced_configurations_json:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
     BlockDeviceMappings:
         - DeviceName: /dev/sda1

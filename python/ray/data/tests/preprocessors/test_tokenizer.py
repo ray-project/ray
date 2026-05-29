@@ -22,9 +22,94 @@ def test_tokenizer():
         ["the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"],
         ["banana", "banana"],
     ]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+    # Test append mode
+    with pytest.raises(
+        ValueError, match="The length of columns and output_columns must match."
+    ):
+        Tokenizer(columns=["A", "B"], output_columns=["A_tokenized"])
+
+    tokenizer = Tokenizer(
+        columns=["A", "B"], output_columns=["A_tokenized", "B_tokenized"]
+    )
+    transformed = tokenizer.transform(ds)
+    out_df = transformed.to_pandas()
+    print(out_df)
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "A": col_a,
+            "B": col_b,
+            "A_tokenized": processed_col_a,
+            "B_tokenized": processed_col_b,
+        }
+    ).astype(out_df.dtypes.to_dict())
+
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+    # Test custom tokenization function
+    def custom_tokenizer(s: str) -> list:
+        return s.replace("banana", "fruit").split()
+
+    tokenizer = Tokenizer(
+        columns=["A", "B"],
+        tokenization_fn=custom_tokenizer,
+        output_columns=["A_custom", "B_custom"],
+    )
+    transformed = tokenizer.transform(ds)
+    out_df = transformed.to_pandas()
+
+    custom_processed_col_a = [["this", "is", "a", "test"], ["apple"]]
+    custom_processed_col_b = [
+        ["the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"],
+        ["fruit", "fruit"],
+    ]
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "A": col_a,
+            "B": col_b,
+            "A_custom": custom_processed_col_a,
+            "B_custom": custom_processed_col_b,
+        }
+    ).astype(out_df.dtypes.to_dict())
+
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+
+def test_tokenizer_serialization():
+    """Test Tokenizer serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create tokenizer
+    tokenizer = Tokenizer(columns=["text"])
+
+    # Serialize using CloudPickle
+    serialized = tokenizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = Tokenizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, Tokenizer)
+    assert deserialized.columns == ["text"]
+    assert callable(deserialized.tokenization_fn)
+    assert deserialized.output_columns == ["text"]
+
+    # Verify it works correctly
+    df = pd.DataFrame({"text": ["hello world", "foo bar"]})
+    result = deserialized.transform_batch(df)
+
+    # Verify tokenization was applied correctly
+    assert result["text"][0] == ["hello", "world"]
+    assert result["text"][1] == ["foo", "bar"]
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ Serve supports deploying multiple independent Serve applications. This user guid
 ### Background 
 With the introduction of multi-application Serve, we walk you through the new concept of applications and when you should choose to deploy a single application versus multiple applications per cluster. 
 
-An application consists of one or more deployments. The deployments in an application are tied into a direct acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
+An application consists of one or more deployments. The deployments in an application are tied into a directed acyclic graph through [model composition](serve-model-composition). An application can be called via HTTP at the specified route prefix, and the ingress deployment handles all such inbound traffic. Due to the dependence between deployments in an application, one application is a unit of upgrade. 
 
 ### When to use multiple applications
 You can solve many use cases by using either model composition or multi-application. However, both have their own individual benefits and can be used together.
@@ -38,7 +38,7 @@ Copy this code to a file named `text_translator.py`.
 Generate a multi-application config file that contains both of these two applications and save it to `config.yaml`.
 
 ```
-serve build --multi-app image_classifier:app text_translator:app -o config.yaml
+serve build image_classifier:app text_translator:app -o config.yaml
 ```
 
 This generates the following config:
@@ -53,21 +53,27 @@ grpc_options:
   port: 9000
   grpc_servicer_functions: []
 
-applications:
-- name: app1
-  route_prefix: /classify
-  import_path: image_classifier:app
-  runtime_env: {}
-  deployments:
-  - name: downloader
-  - name: ImageClassifier
+logging_config:
+  encoding: JSON
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
 
-- name: app2
-  route_prefix: /translate
-  import_path: text_translator:app
-  runtime_env: {}
-  deployments:
-  - name: Translator
+applications:
+  - name: app1
+    route_prefix: /classify
+    import_path: image_classifier:app
+    runtime_env: {}
+    deployments:
+      - name: downloader
+      - name: ImageClassifier
+
+  - name: app2
+    route_prefix: /translate
+    import_path: text_translator:app
+    runtime_env: {}
+    deployments:
+      - name: Translator
 ```
 
 :::{note} 

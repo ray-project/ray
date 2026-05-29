@@ -1,73 +1,113 @@
 import asyncio
 import logging
-import marshal
 import os
 import pickle
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import run_background_task
+from ray._common.network_utils import build_address, get_all_interfaces_ip
+from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
-from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    DeploymentHandleSource,
+    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
-    MultiplexedReplicaInfo,
+    HandleMetricReport,
     NodeId,
+    ReplicaMetricReport,
+    RequestProtocol,
+    RequestRoutingInfo,
     RunningReplicaInfo,
-    StatusOverview,
     TargetCapacityDirection,
 )
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    CONTROL_LOOP_PERIOD_S,
-    CONTROLLER_MAX_CONCURRENCY,
+    CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
-    RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_LOG_TO_STDERR,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    RAY_SERVE_THROUGHPUT_OPTIMIZED,
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
-    SERVE_ROOT_URL_ENV_KEY,
 )
-from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.controller_health_metrics_tracker import (
+    ControllerHealthMetricsTracker,
+)
+from ray.serve._private.default_impl import (
+    create_cluster_node_info_cache,
+    get_proxy_actor_class,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_state import DeploymentStateManager
+from ray.serve._private.deployment_state import (
+    DeploymentStateManager,
+)
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.exceptions import ExternalScalerDisabledError
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.http_util import (
+    configure_http_options_with_defaults,
+)
 from ray.serve._private.logging_utils import (
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    DEFAULT,
     call_function_from_import_path,
+    decompress_metric_report,
     get_all_live_placement_group_names,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
-from ray.serve.generated.serve_pb2 import ActorNameList, DeploymentArgs, DeploymentRoute
-from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto
-from ray.serve.generated.serve_pb2 import EndpointSet
+from ray.serve.generated.serve_pb2 import (
+    ActorNameList,
+    ApplicationArgs,
+    DeploymentArgs,
+    DeploymentRoute,
+    EndpointInfo as EndpointInfoProto,
+    EndpointSet,
+)
 from ray.serve.schema import (
+    APIType,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ReplicaDetails,
+    ReplicaRank,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    Target,
+    TargetGroup,
     gRPCOptionsSchema,
 )
 from ray.util import metrics
@@ -80,9 +120,9 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
+SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
-@ray.remote(num_cpus=0)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -111,10 +151,13 @@ class ServeController:
     async def __init__(
         self,
         *,
-        http_config: HTTPOptions,
+        http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
+        if RAY_SERVE_THROUGHPUT_OPTIMIZED:
+            self._log_throughput_opt_message()
+
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
@@ -140,9 +183,7 @@ class ServeController:
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="controller", component_id=str(os.getpid())
-        )
+
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
@@ -154,13 +195,41 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        self._ha_proxy_enabled = RAY_SERVE_ENABLE_HA_PROXY
+        self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
+        if self._ha_proxy_enabled:
+            logger.info(
+                "HAProxy is enabled in ServeController, replacing Serve proxy "
+                "with HAProxy."
+            )
+            all_interfaces = get_all_interfaces_ip()
+            if http_options.host != all_interfaces:
+                logger.warning(
+                    f"HTTPOptions.host={http_options.host!r} won't accept "
+                    "connections from HAProxy on other nodes; cross-node "
+                    "routing will fail with connection refused. Set host to "
+                    f"{all_interfaces!r} or omit it to use the HAProxy-mode "
+                    "default."
+                )
+        elif self._direct_ingress_enabled:
+            logger.info(
+                "Direct ingress is enabled in ServeController, enabling proxy "
+                "on head node only."
+            )
+            http_options.location = ProxyLocation.HeadOnly
+
+        # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
-            config=http_config,
+            http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
-            grpc_options=grpc_options,
+            grpc_options=set_proxy_default_grpc_options(grpc_options),
+            proxy_actor_class=get_proxy_actor_class(),
+            running_native_proxies=self._ha_proxy_enabled,
         )
+        # We modify the HTTP and gRPC options above, so delete them to avoid
+        del http_options, grpc_options
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -185,21 +254,38 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager, self.endpoint_state, self.kv_store
+            self.deployment_state_manager,
+            self.autoscaling_state_manager,
+            self.endpoint_state,
+            self.kv_store,
+            self.global_logging_config,
         )
 
         # Controller actor details
         self._actor_details = ServeActorDetails(
             node_id=ray.get_runtime_context().get_node_id(),
             node_ip=ray.util.get_node_ip_address(),
+            node_instance_id=ray.util.get_node_instance_id(),
             actor_id=ray.get_runtime_context().get_actor_id(),
             actor_name=SERVE_CONTROLLER_NAME,
             worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
+        self._shutdown_flag_persisted = False
+        if self.kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None:
+            self._shutting_down = True
+            self._shutdown_flag_persisted = True
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
+
+        # Actors registered for cleanup on serve.shutdown(), keyed by actor ID
+        self._registered_cleanup_actors: Dict[str, ActorHandle] = {}
+
+        # Initialize health metrics tracker
+        self._health_metrics_tracker = ControllerHealthMetricsTracker(
+            controller_start_time=time.time()
+        )
 
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
@@ -213,6 +299,27 @@ class ServeController:
         self._proxy_nodes = set()
         self._update_proxy_nodes()
 
+        # Initialize to None (not []) to ensure the first broadcast always happens,
+        # even if target_groups is empty (e.g., route_prefix=None deployments).
+        self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
+
+        self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
+
+    def _log_throughput_opt_message(self) -> None:
+        msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
+        if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            msg += "  • Direct ingress enabled\n"
+        if RAY_SERVE_USE_GRPC_BY_DEFAULT:
+            msg += "  • gRPC communication enabled\n"
+        if not RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+            msg += "  • User code running in main thread (not separate)\n"
+        if not RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+            msg += "  • Router running in main thread (not separate)\n"
+        if not RAY_SERVE_LOG_TO_STDERR:
+            msg += "  • Log to stderr disabled\n"
+        msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
+        logger.info(msg)
+
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
             self.global_logging_config
@@ -225,8 +332,7 @@ class ServeController:
         self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
-            LongPollNamespace.GLOBAL_LOGGING_CONFIG,
-            global_logging_config,
+            {LongPollNamespace.GLOBAL_LOGGING_CONFIG: global_logging_config}
         )
         configure_component_logger(
             component_name="controller",
@@ -250,50 +356,85 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
+    def record_autoscaling_metrics_from_replica(
+        self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
-        logger.debug(
-            f"Received metrics from replica {replica_id}: {window_avg} running requests"
+        if isinstance(replica_metric_report, bytes):
+            replica_metric_report = decompress_metric_report(replica_metric_report)
+        latency = time.time() - replica_metric_report.timestamp
+        latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.replica_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": replica_metric_report.replica_id.deployment_id.name,
+                "application": replica_metric_report.replica_id.deployment_id.app_name,
+                "replica": replica_metric_report.replica_id.unique_id,
+            },
         )
+        # Track in health metrics
+        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, window_avg, send_timestamp
+            replica_metric_report
         )
 
-    def record_handle_metrics(
-        self,
-        deployment_id: str,
-        handle_id: str,
-        actor_id: Optional[str],
-        handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[str, float],
-        send_timestamp: float,
+    def record_autoscaling_metrics_from_handle(
+        self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
-        logger.debug(
-            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
-            f"{queued_requests} queued requests and {running_requests} running requests"
+        if isinstance(handle_metric_report, bytes):
+            handle_metric_report = decompress_metric_report(handle_metric_report)
+        latency = time.time() - handle_metric_report.timestamp
+        latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.handle_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": handle_metric_report.deployment_id.name,
+                "application": handle_metric_report.deployment_id.app_name,
+                "handle": handle_metric_report.handle_id,
+            },
         )
+        # Track in health metrics
+        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_handle(
-            deployment_id=deployment_id,
-            handle_id=handle_id,
-            actor_id=actor_id,
-            handle_source=handle_source,
-            queued_requests=queued_requests,
-            running_requests=running_requests,
-            send_timestamp=send_timestamp,
+            handle_metric_report
         )
 
-    def _dump_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_state_manager.get_metrics()
+    def record_autoscaling_metrics_from_async_inference_task_queue(
+        self, report: AsyncInferenceTaskQueueMetricReport
+    ):
+        """Record async inference task queue metrics pushed from QueueMonitor."""
+        latency = time.time() - report.timestamp_s
+        latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.async_inference_task_queue_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": report.deployment_id.name,
+                "application": report.deployment_id.app_name,
+            },
+        )
+        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
+
+    def _get_total_num_requests_for_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ):
+        return self.autoscaling_state_manager.get_total_num_requests_for_deployment(
+            deployment_id
+        )
+
+    def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
+        return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
-        return self.deployment_state_manager._deployment_states[deployment_id]._replicas
+        return self.deployment_state_manager._dump_replica_states_for_testing(
+            deployment_id
+        )
 
-    def _stop_one_running_replica_for_testing(self, deployment_name):
-        self.deployment_state_manager._deployment_states[
-            deployment_name
-        ]._stop_one_running_replica_for_testing()
+    def _stop_one_running_replica_for_testing(self, deployment_id):
+        self.deployment_state_manager._stop_one_running_replica_for_testing(
+            deployment_id
+        )
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -322,6 +463,10 @@ class ServeController:
             keys_to_snapshot_ids_bytes
         )
 
+    def notify_long_poll_client_disabled(self, client_id: str, reason: str) -> None:
+        """Surfaces the disabled reason from LongPollClient in the logs."""
+        self.long_poll_host.notify_client_disabled(client_id, reason)
+
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
@@ -332,8 +477,8 @@ class ServeController:
         # NOTE(zcin): Java only supports 1.x deployments, so only return
         # a dictionary of deployment name -> endpoint info
         data = {
-            endpoint_tag.name: EndpointInfoProto(route=endppint_dict["route"])
-            for endpoint_tag, endppint_dict in endpoints.items()
+            endpoint_tag.name: EndpointInfoProto(route=endpoint_dict["route"])
+            for endpoint_tag, endpoint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
@@ -375,81 +520,14 @@ class ServeController:
         start_time = time.time()
         while True:
             loop_start_time = time.time()
-
             try:
-                self.cluster_node_info_cache.update()
-            except Exception:
-                logger.exception("Exception updating cluster node info cache.")
-
-            if self._shutting_down:
-                try:
-                    self.shutdown()
-                except Exception:
-                    logger.exception("Exception during shutdown.")
-
-            if (
-                not self.done_recovering_event.is_set()
-                and time.time() - start_time > recovering_timeout
-            ):
-                logger.warning(
-                    f"Replicas still recovering after {recovering_timeout}s, "
-                    "setting done recovering event to broadcast long poll updates."
+                await self.run_control_loop_step(
+                    start_time, recovering_timeout, num_loops
                 )
-                self.done_recovering_event.set()
-
-            try:
-                dsm_update_start_time = time.time()
-                any_recovering = self.deployment_state_manager.update()
-                self.dsm_update_duration_gauge_s.set(
-                    time.time() - dsm_update_start_time
-                )
-                if not self.done_recovering_event.is_set() and not any_recovering:
-                    self.done_recovering_event.set()
-                    if num_loops > 0:
-                        # Only log if we actually needed to recover anything.
-                        logger.info(
-                            "Finished recovering deployments after "
-                            f"{(time.time() - start_time):.2f}s.",
-                            extra={"log_to_stderr": False},
-                        )
-            except Exception:
-                logger.exception("Exception updating deployment state.")
-
-            try:
-                asm_update_start_time = time.time()
-                self.application_state_manager.update()
-                self.asm_update_duration_gauge_s.set(
-                    time.time() - asm_update_start_time
-                )
-            except Exception:
-                logger.exception("Exception updating application state.")
-
-            # Update the proxy nodes set before updating the proxy states,
-            # so they are more consistent.
-            node_update_start_time = time.time()
-            self._update_proxy_nodes()
-            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
-
-            # Don't update proxy_state until after the done recovering event is set,
-            # otherwise we may start a new proxy but not broadcast it any
-            # info about available deployments & their replicas.
-            if self.proxy_state_manager and self.done_recovering_event.is_set():
-                try:
-                    proxy_update_start_time = time.time()
-                    self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
-                    self.proxy_update_duration_gauge_s.set(
-                        time.time() - proxy_update_start_time
-                    )
-                except Exception:
-                    logger.exception("Exception updating proxy state.")
-
-            # When the controller is done recovering, drop invalid handle metrics
-            # that may be stale for autoscaling
-            if not any_recovering:
-                self.autoscaling_state_manager.drop_stale_handle_metrics(
-                    self.deployment_state_manager.get_alive_replica_actor_ids()
-                    | self.proxy_state_manager.get_alive_proxy_actor_ids()
-                )
+            except Exception as e:
+                # we never expect this to happen, but adding this to be safe
+                logger.exception(f"There was an exception in the control loop: {e}")
+                await asyncio.sleep(1)
 
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
@@ -461,13 +539,173 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
             self.control_loop_duration_gauge_s.set(loop_duration)
+            # Track in health metrics
+            self._health_metrics_tracker.record_loop_duration(loop_duration)
 
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
+            self._health_metrics_tracker.num_control_loops = num_loops
+            self._health_metrics_tracker.last_control_loop_time = time.time()
 
             sleep_start_time = time.time()
-            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
-            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+            await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
+            sleep_duration = time.time() - sleep_start_time
+            self.sleep_duration_gauge_s.set(sleep_duration)
+            self._health_metrics_tracker.last_sleep_duration_s = sleep_duration
+
+    async def run_control_loop_step(
+        self, start_time: float, recovering_timeout: float, num_loops: int
+    ):
+        try:
+            self.cluster_node_info_cache.update()
+        except Exception:
+            logger.exception("Exception updating cluster node info cache.")
+
+        if self._shutting_down:
+            try:
+                self.shutdown()
+            except Exception:
+                logger.exception("Exception during shutdown.")
+
+        if (
+            not self.done_recovering_event.is_set()
+            and time.time() - start_time > recovering_timeout
+        ):
+            logger.warning(
+                f"Replicas still recovering after {recovering_timeout}s, "
+                "setting done recovering event to broadcast long poll updates."
+            )
+            self.done_recovering_event.set()
+
+        # initialize any_recovering to None to indicate that we don't know if
+        # we've recovered anything yet
+        any_recovering: Optional[bool] = None
+        try:
+            dsm_update_start_time = time.time()
+            any_recovering = self.deployment_state_manager.update()
+
+            dsm_duration = time.time() - dsm_update_start_time
+            self.dsm_update_duration_gauge_s.set(dsm_duration)
+            self._health_metrics_tracker.record_dsm_update_duration(dsm_duration)
+            if not self.done_recovering_event.is_set() and not any_recovering:
+                self.done_recovering_event.set()
+                if num_loops > 0:
+                    # Only log if we actually needed to recover anything.
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{(time.time() - start_time):.2f}s.",
+                        extra={"log_to_stderr": False},
+                    )
+        except Exception:
+            logger.exception("Exception updating deployment state.")
+
+        try:
+            asm_update_start_time = time.time()
+            self.application_state_manager.update()
+            asm_duration = time.time() - asm_update_start_time
+            self.asm_update_duration_gauge_s.set(asm_duration)
+            self._health_metrics_tracker.record_asm_update_duration(asm_duration)
+        except Exception:
+            logger.exception("Exception updating application state.")
+
+        # Update the proxy nodes set before updating the proxy states,
+        # so they are more consistent.
+        node_update_start_time = time.time()
+        self._update_proxy_nodes()
+        node_update_duration = time.time() - node_update_start_time
+        self.node_update_duration_gauge_s.set(node_update_duration)
+        self._health_metrics_tracker.record_node_update_duration(node_update_duration)
+
+        # Don't update proxy_state until after the done recovering event is set,
+        # otherwise we may start a new proxy but not broadcast it any
+        # info about available deployments & their replicas.
+        if self.proxy_state_manager and self.done_recovering_event.is_set():
+            try:
+                proxy_update_start_time = time.time()
+                self.proxy_state_manager.update(proxy_nodes=self._proxy_nodes)
+                proxy_update_duration = time.time() - proxy_update_start_time
+                self.proxy_update_duration_gauge_s.set(proxy_update_duration)
+                self._health_metrics_tracker.record_proxy_update_duration(
+                    proxy_update_duration
+                )
+            except Exception:
+                logger.exception("Exception updating proxy state.")
+
+        # When the controller is done recovering, drop invalid handle metrics
+        # that may be stale for autoscaling
+        if any_recovering is False:
+            self.autoscaling_state_manager.drop_stale_handle_metrics(
+                self.deployment_state_manager.get_alive_replica_actor_ids()
+                | self.proxy_state_manager.get_alive_proxy_actor_ids()
+            )
+
+        self._maybe_update_ingress_ports()
+
+        # HAProxy handling
+        if self._ha_proxy_enabled:
+            # Right after a controller restart, the replica details may be incomplete,
+            # so we wait until recovery is finished before sending any updated target
+            # groups to HAProxy.
+            if self.done_recovering_event.is_set():
+                self.broadcast_target_groups_if_changed()
+
+            # Wait until the fallback proxy has transitioned out of STARTING at
+            # least once before broadcasting. After a controller restart, the proxy
+            # starts as STARTING even if it's already healthy. If we broadcast
+            # before the first health check, the fallback target will be None and
+            # HAProxy will remove the fallback server from its config.
+            if (
+                self.proxy_state_manager
+                and self.proxy_state_manager.started_fallback_proxy_at_least_once()
+            ):
+                self.broadcast_fallback_targets_if_changed()
+
+    def _maybe_update_ingress_ports(self) -> None:
+        """Update ingress ports if direct ingress is enabled."""
+        # Direct ingress port management
+        if self._direct_ingress_enabled:
+            # Update port values for ingress replicas.
+            # Ingress request router replicas also need direct-ingress ports.
+            ingress_replicas_info_list: List[
+                Tuple[str, str, int, int]
+            ] = self.deployment_state_manager.get_ingress_replicas_info()
+
+            NodePortManager.update_ports(ingress_replicas_info_list)
+
+            # Clean up stale ports
+            # get all alive replica ids and their node ids.
+            NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+
+    def broadcast_target_groups_if_changed(self) -> None:
+        """Broadcast target groups over long poll if they have changed.
+
+        Keeps an in-memory record of the last target groups that were broadcast
+        to determine if they have changed.
+        """
+        target_groups: List[TargetGroup] = self.get_target_groups(
+            from_proxy_manager=True,
+        )
+
+        # Check if target groups have changed by comparing the objects directly
+        if self._last_broadcasted_target_groups == target_groups:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.TARGET_GROUPS: target_groups}
+        )
+        self._last_broadcasted_target_groups = target_groups
+
+    def broadcast_fallback_targets_if_changed(self) -> None:
+        """Broadcast the fallback targets over long poll if they have changed."""
+        fallback_targets = self.proxy_state_manager.get_fallback_proxy_targets()
+
+        if self._last_broadcasted_fallback_targets == fallback_targets:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.FALLBACK_TARGETS: fallback_targets}
+        )
+        self._last_broadcasted_fallback_targets = fallback_targets
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -506,7 +744,38 @@ class ServeController:
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
+        # Autoscaling metrics delay gauges
+        self.replica_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_replica_metrics_delay_ms",
+            description=(
+                "Time taken for the replica metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "replica"),
+        )
+        self.handle_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_handle_metrics_delay_ms",
+            description=(
+                "Time taken for the handle metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "handle"),
+        )
+        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
+            description=(
+                "Time taken for the async inference task queue metrics to be reported "
+                "to the controller. High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
     def _recover_state_from_checkpoint(self):
+        if self._shutting_down:
+            # If we're recovering into a `shutdown-in-progress state, don't
+            # re-apply the config.
+            return
+
         (
             deployment_time,
             serve_config,
@@ -576,6 +845,26 @@ class ServeController:
         """
         return self._actor_details
 
+    def get_health_metrics(self) -> Dict[str, Any]:
+        """Returns comprehensive health metrics for the controller.
+
+        This method provides detailed performance metrics to help diagnose
+        controller health issues, especially as cluster size increases.
+
+        Returns:
+            Dictionary containing health metrics including:
+            - Control loop performance (iteration speed, durations)
+            - Event loop health (task count, scheduling delay)
+            - Component update latencies
+            - Autoscaling metrics latency (handle/replica)
+            - Memory usage
+        """
+        try:
+            return self._health_metrics_tracker.collect_metrics().model_dump()
+        except Exception:
+            logger.exception("Exception collecting controller health metrics.")
+            raise
+
     def get_proxy_details(self, node_id: str) -> Optional[ProxyDetails]:
         """Returns the proxy details for the proxy on the given node.
 
@@ -628,13 +917,13 @@ class ServeController:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                return (
-                    f"http://{http_config.host}:{http_config.port}"
-                    f"{http_config.root_path}"
-                )
+            # HTTP is disabled
+            if http_config.host is None:
+                return ""
+            return (
+                f"http://{build_address(http_config.host, http_config.port)}"
+                f"{http_config.root_path}"
+            )
         return http_config.root_url
 
     def config_checkpoint_deleted(self) -> bool:
@@ -644,6 +933,36 @@ class ServeController:
         deleted.
         """
         return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
+
+    def _register_shutdown_cleanup_actor(self, actor_handle: ActorHandle) -> None:
+        """Register an actor to be killed on serve.shutdown().
+
+        This allows deployments to register auxiliary actors (like caches,
+        coordinators, etc.) that should be cleaned up when Serve shuts down.
+        The actors must use lifetime="detached" to survive replica restarts,
+        but will be explicitly killed during serve.shutdown().
+
+        Note: Registered actors are NOT persisted across controller restarts.
+        For full persistence, use controller-managed deployment-scoped actors
+        (see https://github.com/ray-project/ray/issues/60359).
+
+        If the same actor is registered multiple times (e.g., from multiple
+        router instances sharing a tree actor via get_if_exists=True), it will
+        only be stored once.
+
+        Args:
+            actor_handle: The actor handle to register for cleanup.
+        """
+        actor_id = actor_handle._actor_id.hex()
+        self._registered_cleanup_actors[actor_id] = actor_handle
+
+    def _kill_registered_cleanup_actors(self) -> None:
+        """Kill all actors registered for shutdown cleanup."""
+        for actor in self._registered_cleanup_actors.values():
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass  # Actor may already be dead
 
     def shutdown(self):
         """Shuts down the serve instance completely.
@@ -660,6 +979,9 @@ class ServeController:
             self._shutdown_start_time = time.time()
             logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
+        if not self._shutdown_flag_persisted:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
@@ -683,6 +1005,10 @@ class ServeController:
             and endpoint_is_shutdown
             and proxy_state_is_shutdown
         ):
+            self._kill_registered_cleanup_actors()
+            self.application_state_manager.delete_checkpoint()
+            self.deployment_state_manager.delete_checkpoint()
+            self.kv_store.delete(SHUTDOWN_IN_PROGRESS_KEY)
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
@@ -716,37 +1042,82 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
 
-    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+    def deploy_applications(
+        self,
+        name_to_deployment_args_list: Dict[str, List[bytes]],
+        name_to_application_args: Dict[str, bytes],
+    ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
-        If same app name deployed, old application will be overwrriten.
+        If same app name deployed, old application will be overwritten.
 
         Args:
             name: Application name.
-            deployment_args_list: List of serialized deployment infomation,
+            deployment_args_list: List of serialized deployment information,
                 where each item in the list is bytes representing the serialized
                 protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
                 information for the single deployment.
+            name_to_application_args: Dictionary mapping application names to serialized
+                application arguments, where each item is bytes representing the serialized
+                protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
+                for the application.
         """
-        deployment_args_deserialized = []
-        for deployment_args_bytes in deployment_args_list:
-            deployment_args = DeploymentArgs.FromString(deployment_args_bytes)
-            deployment_args_deserialized.append(
-                {
-                    "deployment_name": deployment_args.deployment_name,
-                    "deployment_config_proto_bytes": deployment_args.deployment_config,
-                    "replica_config_proto_bytes": deployment_args.replica_config,
-                    "deployer_job_id": deployment_args.deployer_job_id,
-                    "route_prefix": deployment_args.route_prefix
-                    if deployment_args.HasField("route_prefix")
-                    else None,
-                    "ingress": deployment_args.ingress,
-                    "docs_path": deployment_args.docs_path
-                    if deployment_args.HasField("docs_path")
-                    else None,
-                }
+        if self._shutting_down:
+            logger.warning(
+                "Ignoring deploy_applications request because Serve controller is shutting down."
             )
-        self.application_state_manager.deploy_app(name, deployment_args_deserialized)
+            return
+
+        name_to_deployment_args = {}
+        for name, deployment_args_list in name_to_deployment_args_list.items():
+            deployment_args_deserialized = []
+            for deployment_args_bytes in deployment_args_list:
+                args = DeploymentArgs.FromString(deployment_args_bytes)
+                deployment_args_deserialized.append(
+                    {
+                        "deployment_name": args.deployment_name,
+                        "deployment_config_proto_bytes": args.deployment_config,
+                        "replica_config_proto_bytes": args.replica_config,
+                        "deployer_job_id": args.deployer_job_id,
+                        "ingress": args.ingress,
+                        "ingress_request_router": args.ingress_request_router,
+                        "route_prefix": (
+                            args.route_prefix if args.HasField("route_prefix") else None
+                        ),
+                    }
+                )
+            name_to_deployment_args[name] = deployment_args_deserialized
+
+        name_to_application_args_deserialized = {}
+        for name, application_args_bytes in name_to_application_args.items():
+            name_to_application_args_deserialized[name] = ApplicationArgs.FromString(
+                application_args_bytes
+            )
+
+        self.application_state_manager.deploy_apps(
+            name_to_deployment_args, name_to_application_args_deserialized
+        )
+
+        self.application_state_manager.save_checkpoint()
+
+    def deploy_application(
+        self,
+        name: str,
+        deployment_args_list: List[bytes],
+        application_args: bytes,
+    ) -> None:
+        """
+        Deploy a single application
+        (as deploy_applications(), but it only takes a single name and deployment args).
+        This primarily exists as a shim to avoid
+        changing Java code in https://github.com/ray-project/ray/pull/49168,
+        and could be removed if the Java code was refactored
+        to use the new bulk deploy_applications API.
+        """
+        self.deploy_applications(
+            {name: deployment_args_list},
+            {name: application_args},
+        )
 
     def apply_config(
         self,
@@ -760,6 +1131,12 @@ class ServeController:
 
         If `deployment_time` is not provided, `time.time()` is used.
         """
+        if self._shutting_down:
+            logger.warning(
+                "Ignoring apply_config request because Serve controller is shutting down."
+            )
+            return
+
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
@@ -781,20 +1158,12 @@ class ServeController:
         self._target_capacity = config.target_capacity
 
         for app_config in config.applications:
-            for deployments in app_config.deployments:
-                if deployments.route_prefix != DEFAULT.VALUE:
-                    logger.warning(
-                        "Specifying route prefix for a deployment is deprecated. "
-                        "Please specify route prefix at an application level in the "
-                        "Serve config instead."
-                    )
-
             # If the application logging config is not set, use the global logging
             # config.
             if app_config.logging_config is None and config.logging_config:
                 app_config.logging_config = config.logging_config
 
-            app_config_dict = app_config.dict(exclude_unset=True)
+            app_config_dict = app_config.model_dump(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
         self.kv_store.put(
@@ -819,6 +1188,8 @@ class ServeController:
             target_capacity_direction=self._target_capacity_direction,
         )
 
+        self.application_state_manager.save_checkpoint()
+
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
 
@@ -829,7 +1200,7 @@ class ServeController:
             DeploymentRoute's protobuf serialized bytes
 
         Raises:
-            KeyError if the deployment doesn't exist.
+            KeyError: If the deployment doesn't exist.
         """
         id = DeploymentID(name=name, app_name=app_name)
         deployment_info = self.deployment_state_manager.get_deployment(id)
@@ -857,30 +1228,90 @@ class ServeController:
             for id, info in self.deployment_state_manager.get_deployment_infos().items()
         }
 
+    def get_deployment_config(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentConfig]:
+        """Get the deployment config for the given deployment id.
+
+        Args:
+            deployment_id: The deployment id to get the config for.
+
+        Returns:
+            A deployment config object if the deployment id exist,
+            None otherwise.
+        """
+        deployment_info = self.deployment_state_manager.get_deployment_infos().get(
+            deployment_id
+        )
+        return deployment_info.deployment_config if deployment_info else None
+
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
-        return self.deployment_state_manager._deployment_states.keys()
+        return self.deployment_state_manager.get_deployment_ids()
 
-    def get_serve_instance_details(self) -> Dict:
+    def update_deployment_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ) -> None:
+        """Update the target number of replicas for a deployment.
+
+        Args:
+            deployment_id: The deployment to update.
+            target_num_replicas: The new target number of replicas.
+
+        Raises:
+            ExternalScalerDisabledError: If external_scaler_enabled is set to False for the application.
+        """
+
+        # Check if external scaler is enabled for this application
+        app_name = deployment_id.app_name
+        if not self.application_state_manager.does_app_exist(app_name):
+            raise ValueError(f"Application '{app_name}' not found")
+
+        if not self.application_state_manager.get_external_scaler_enabled(app_name):
+            raise ExternalScalerDisabledError(
+                f"Cannot update replicas for deployment '{deployment_id.name}' in "
+                f"application '{app_name}'. The external scaling API can only be used "
+                f"when 'external_scaler_enabled' is set to true in the application "
+                f"configuration. Current value: external_scaler_enabled=false. "
+                f"To use this API, redeploy your application with "
+                f"'external_scaler_enabled: true' in the config."
+            )
+
+        self.deployment_state_manager.set_target_num_replicas(
+            deployment_id, target_num_replicas
+        )
+
+    def get_serve_instance_details(self, source: Optional[APIType] = None) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
         The information includes application and deployment statuses, config options,
         error messages, etc.
 
+        Args:
+            source: If provided, returns application
+                statuses for applications matching this API type.
+                Defaults to None, which means all applications are returned.
+
         Returns:
-            Dict that follows the format of the schema ServeInstanceDetails. Currently,
-            there is a value set for every field at all schema levels, except for the
-            route_prefix in the deployment_config for each deployment.
+            Dict that follows the format of the schema ServeInstanceDetails.
         """
 
         http_config = self.get_http_config()
         grpc_config = self.get_grpc_config()
         applications = {}
 
+        app_statuses = self.application_state_manager.list_app_statuses(source=source)
+
+        # If there are no app statuses, there's no point getting the app configs.
+        # Moreover, there might be no app statuses because the GCS is down,
+        # in which case getting the app configs would fail anyway,
+        # since they're stored in the checkpoint in the GCS.
+        app_configs = self.get_app_configs() if app_statuses else {}
+
         for (
             app_name,
             app_status_info,
-        ) in self.application_state_manager.list_app_statuses().items():
+        ) in app_statuses.items():
             applications[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
@@ -889,37 +1320,359 @@ class ServeController:
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
                 # This can be none if the app was deployed through
-                # serve.run, or if the app is in deleting state
-                deployed_app_config=self.get_app_config(app_name),
+                # serve.run, the app is in deleting state,
+                # or a checkpoint hasn't been set yet
+                deployed_app_config=app_configs.get(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
+                    app_name
+                ),
+                external_scaler_enabled=self.application_state_manager.get_external_scaler_enabled(
+                    app_name
+                ),
+                deployment_topology=self.application_state_manager.get_deployment_topology(
                     app_name
                 ),
             )
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
-        # fill in all info that should be shown to users. Currently, every field is set
-        # except for the route_prefix in the deployment_config of each deployment, since
-        # route_prefix is set instead in each application.
-        # Eventually we want to remove route_prefix from DeploymentSchema.
-        http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
-        grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+        # fill in all info that should be shown to users.
+        http_options = HTTPOptionsSchema.model_validate(
+            http_config.model_dump(exclude_unset=True)
+        )
+        grpc_options = gRPCOptionsSchema.model_validate(
+            grpc_config.model_dump(exclude_unset=True)
+        )
+
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
+            proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=self.proxy_state_manager.get_proxy_details()
-            if self.proxy_state_manager
-            else None,
+            proxies=(
+                self.proxy_state_manager.get_proxy_details()
+                if self.proxy_state_manager
+                else None
+            ),
             applications=applications,
+            target_groups=self.get_target_groups(),
+            controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    def _get_proxy_target_groups(self) -> List[TargetGroup]:
+        """Get target groups for proxy-based routing."""
+        target_groups: List[TargetGroup] = []
+
+        if self.proxy_state_manager.get_proxy_details():
+            # setting prefix route to "/" because in ray serve, proxy
+            # accepts requests from the client and routes them to the
+            # correct application. This is true for both HTTP and gRPC proxies.
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix="/",
+                    targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
+                    app_name="",
+                    ingress_request_router_targets=[],
+                )
+            )
+            if is_grpc_enabled(self.get_grpc_config()):
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix="/",
+                        targets=self.proxy_state_manager.get_targets(
+                            RequestProtocol.GRPC
+                        ),
+                        app_name="",
+                        ingress_request_router_targets=[],
+                    )
+                )
+        return target_groups
+
+    def get_target_groups(
+        self,
+        app_name: Optional[str] = None,
+        from_proxy_manager: bool = False,
+    ) -> List[TargetGroup]:
+        """Get target groups for direct ingress deployments.
+
+        This returns target groups that point directly to replica ports
+        rather than proxy ports when direct ingress is enabled.
+
+        Following situations are possible:
+        1. Direct ingress is not enabled. In this case, we just return the
+        target groups from the proxy implementation.
+        2. Direct ingress is enabled and there are no applications. In this case,
+        we return target groups for proxy. Serve controller is running but there
+        are no applications to route traffic to.
+        3. Direct ingress is enabled and there are applications. All applications
+        have atleast one running replica. In this case, we return target groups
+        for all applications with targets pointing to the running replicas.
+        4. Direct ingress is enabled and there are applications. Some applications
+        have no running replicas. In this case, for applications that have no
+        running replicas, we return target groups for proxy and for applications
+        that have running replicas, we return target groups for direct ingress.
+        If there are multiple applications with no running replicas, we return
+        one target group per application with unique route prefix.
+        5. HAProxy is enabled and the caller is not an internal proxy manager. In
+        this case, we return target groups containing the proxies (e.g. haproxy).
+        6. HAProxy is enabled and the caller is an internal proxy manager (e.g.
+        haproxy manager). In this case, we return target groups containing the
+        ingress replicas and possibly the Serve proxies.
+        """
+        proxy_target_groups = self._get_proxy_target_groups()
+        if not self._direct_ingress_enabled or (
+            self._ha_proxy_enabled and not from_proxy_manager
+        ):
+            return proxy_target_groups
+
+        # Get all applications and their metadata
+        if app_name is None:
+            apps = [
+                _app_name
+                for _app_name, _ in self.application_state_manager.list_app_statuses().items()
+            ]
+        else:
+            apps = [app_name]
+
+        # TODO(landscapepainter): A better way to handle this is to write an API that can tell
+        # if the ingress deployment is healthy regardless of the application status.
+        apps = [
+            app
+            for app in apps
+            if self.application_state_manager.get_route_prefix(app) is not None
+        ]
+
+        if not apps:
+            # When HAProxy is enabled and there are no apps, return empty target groups
+            # so that all requests fall through to the default_backend (404)
+            if self._ha_proxy_enabled and from_proxy_manager:
+                return []
+            return proxy_target_groups
+
+        # Create target groups for each application
+        target_groups = []
+        for app_name in apps:
+            route_prefix = self.application_state_manager.get_route_prefix(app_name)
+            app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
+            if app_target_groups:
+                target_groups.extend(app_target_groups)
+            else:
+                target_groups.extend(
+                    self._get_target_groups_for_app_with_no_running_replicas(
+                        route_prefix, app_name
+                    )
+                )
+
+        return target_groups
+
+    def _get_running_replica_details_for_deployment(
+        self, app_name: str, deployment_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for a specific deployment in an app."""
+        deployment_id = DeploymentID(app_name=app_name, name=deployment_name)
+        details = self.deployment_state_manager.get_deployment_details(deployment_id)
+        if not details:
+            return []
+        replica_details = details.replicas
+        running_replica_ids = {
+            replica_info.replica_id.unique_id
+            for replica_info in self.deployment_state_manager.get_running_replica_infos().get(
+                deployment_id, []
+            )
+        }
+        return [
+            replica_detail
+            for replica_detail in replica_details
+            if replica_detail.replica_id in running_replica_ids
+        ]
+
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for the ingress deployment."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        return self._get_running_replica_details_for_deployment(
+            app_name, ingress_deployment_name
+        )
+
+    def _get_target_groups_for_app(
+        self, app_name: str, route_prefix: str
+    ) -> List[TargetGroup]:
+        """
+        Create HTTP and gRPC target groups for a specific application.
+
+        This function can return empty list if there are no running replicas.
+        Or replicas have not fully initialized yet, where their ports are not
+        allocated yet.
+
+        When an ingress request router deployment is configured (ingress
+        bypass), its replicas go into ``ingress_request_router_targets`` for Lua
+        routing decisions and the app's ingress replicas remain the main
+        targets for data plane traffic.
+        """
+        ingress_request_router_deployment_name = (
+            self.application_state_manager.get_ingress_request_router_deployment_name(
+                app_name
+            )
+        )
+
+        # Get running replicas for the ingress deployment
+        replica_details = self._get_running_replica_details_for_ingress_deployment(
+            app_name
+        )
+        # Without ingress replicas, HAProxy has no data-plane targets to route to,
+        # so suppress router targets too — the app is effectively unreachable.
+        if not replica_details:
+            return []
+
+        ingress_request_router_targets = []
+        if ingress_request_router_deployment_name is not None:
+            ingress_request_router_targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, ingress_request_router_deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
+
+        target_groups = []
+
+        # Create targets for each protocol
+        http_targets = self._get_targets_for_protocol(
+            replica_details, RequestProtocol.HTTP
+        )
+        if http_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                    ingress_request_router_targets=ingress_request_router_targets,
+                )
+            )
+
+        # Add gRPC targets if enabled
+        if is_grpc_enabled(self.get_grpc_config()):
+            grpc_targets = self._get_targets_for_protocol(
+                replica_details, RequestProtocol.GRPC
+            )
+            if grpc_targets:
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix=route_prefix,
+                        targets=grpc_targets,
+                        app_name=app_name,
+                        ingress_request_router_targets=[],
+                    )
+                )
+
+        return target_groups
+
+    def _get_target_groups_for_app_with_no_running_replicas(
+        self, route_prefix: str, app_name: str
+    ) -> List[TargetGroup]:
+        """
+        For applications that have no running replicas, we return target groups
+        for proxy. This will allow applications to be discoverable via the
+        proxy in situations where their replicas have scaled down to 0.
+        """
+        if self._ha_proxy_enabled:
+            http_targets = []
+            grpc_targets = []
+            include_http = True
+            include_grpc = is_grpc_enabled(self.get_grpc_config())
+        else:
+            http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
+            grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+            include_http = len(http_targets) > 0
+            include_grpc = len(grpc_targets) > 0
+
+        target_groups = []
+        if include_http:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                    ingress_request_router_targets=[],
+                )
+            )
+        if include_grpc:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.GRPC,
+                    route_prefix=route_prefix,
+                    targets=grpc_targets,
+                    app_name=app_name,
+                    ingress_request_router_targets=[],
+                )
+            )
+
+        return target_groups
+
+    def _get_targets_for_protocol(
+        self, replica_details: List[ReplicaDetails], protocol: RequestProtocol
+    ) -> List[Target]:
+        """Create targets for a specific protocol from a list of replicas."""
+        return [
+            Target(
+                ip=replica_detail.node_ip,
+                port=self._get_port(replica_detail, protocol),
+                instance_id=replica_detail.node_instance_id,
+                name=replica_detail.actor_name,
+            )
+            for replica_detail in replica_details
+            if self._is_port_allocated(replica_detail, protocol)
+        ]
+
+    def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        return self.deployment_state_manager.get_node_id_to_alive_replica_ids()
+
+    def allocate_replica_port(
+        self, node_id: str, replica_id: str, protocol: RequestProtocol
+    ) -> int:
+        """Allocate an HTTP port for a replica in direct ingress mode."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        return node_manager.allocate_port(replica_id, protocol)
+
+    def release_replica_port(
+        self,
+        node_id: str,
+        replica_id: str,
+        port: int,
+        protocol: RequestProtocol,
+        block_port: bool = False,
+    ):
+        """Release an HTTP port for a replica in direct ingress mode."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        node_manager.release_port(replica_id, port, protocol, block_port)
+
+    def _get_port(
+        self, replica_detail: ReplicaDetails, protocol: RequestProtocol
+    ) -> int:
+        """Get the port for a replica."""
+        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        return node_manager.get_port(replica_detail.replica_id, protocol)
+
+    def _is_port_allocated(
+        self, replica_detail: ReplicaDetails, protocol: RequestProtocol
+    ) -> bool:
+        """Check if the port for a replica is allocated."""
+        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
         Args:
             name: application name. If application name doesn't exist, app_status
-            is NOT_STARTED.
+                  is NOT_STARTED.
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)
@@ -945,13 +1698,30 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
+    def get_app_configs(self) -> Dict[str, ServeApplicationSchema]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is not None:
-            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name in config_checkpoints_dict:
-                config = config_checkpoints_dict[name]
-                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
+        if checkpoint is None:
+            return {}
+
+        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        return {
+            app: ServeApplicationSchema.model_validate(config)
+            for app, config in config_checkpoints_dict.items()
+        }
+
+    def get_external_scaler_enabled(self, app_name: str) -> bool:
+        """Get the external_scaler_enabled flag value for an application.
+
+        This is a helper method specifically for Java tests to verify the flag
+        is correctly set, since Java cannot deserialize Python Pydantic objects.
+
+        Args:
+            app_name: Name of the application.
+
+        Returns:
+            True if external_scaler_enabled is set for the application, False otherwise.
+        """
+        return self.application_state_manager.get_external_scaler_enabled(app_name)
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
@@ -998,13 +1768,27 @@ class ServeController:
         for name in names:
             self.application_state_manager.delete_app(name)
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed model ids for a replica of deployment
+        self.application_state_manager.save_checkpoint()
+
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
+
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self.deployment_state_manager.record_multiplexed_replica_info(info)
+        self.deployment_state_manager.record_request_routing_info(info)
+
+    def _get_replica_ranks_mapping(
+        self, deployment_id: DeploymentID
+    ) -> Dict[str, ReplicaRank]:
+        """Get the current rank mapping for all replicas in a deployment.
+        Args:
+            deployment_id: The deployment ID to get ranks for.
+        Returns:
+            Dictionary mapping replica_id to ReplicaRank object (with rank, node_rank, local_rank).
+        """
+        return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 
     async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
@@ -1019,6 +1803,14 @@ class ServeController:
                 is killed, which raises a RayActorError.
         """
         self._shutting_down = True
+        try:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
+        except Exception:
+            logger.warning(
+                "Failed to persist shutdown flag; will retry in control loop.",
+                extra={"log_to_stderr": False},
+            )
         if not wait:
             return
 
@@ -1026,31 +1818,12 @@ class ServeController:
         # until the controller is killed, which raises a RayActorError.
         await self._shutdown_event.wait()
 
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
-
     def _get_logging_config(self) -> Tuple:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:
@@ -1122,50 +1895,3 @@ def log_target_capacity_change(
             )
         else:
             logger.info("Target capacity entering 100% at steady state.")
-
-
-@ray.remote(num_cpus=0)
-class ServeControllerAvatar:
-    """A hack that proxy the creation of async actors from Java.
-
-    To be removed after https://github.com/ray-project/ray/pull/26037
-
-    Java api can not support python async actor. If we use java api create
-    python async actor. The async init method won't be executed. The async
-    method will fail with pickle error. And the run_control_loop of controller
-    actor can't be executed too. We use this proxy actor create python async
-    actor to avoid the above problem.
-    """
-
-    def __init__(
-        self,
-        http_proxy_port: int = 8000,
-    ):
-        try:
-            self._controller = ray.get_actor(
-                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-            )
-        except ValueError:
-            self._controller = None
-        if self._controller is None:
-            http_config = HTTPOptions()
-            logging_config = LoggingConfig()
-            http_config.port = http_proxy_port
-            self._controller = ServeController.options(
-                num_cpus=0,
-                name=SERVE_CONTROLLER_NAME,
-                lifetime="detached",
-                max_restarts=-1,
-                max_task_retries=-1,
-                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-                namespace=SERVE_NAMESPACE,
-                max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-                enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-            ).remote(
-                http_config=http_config,
-                global_logging_config=logging_config,
-            )
-
-    def check_alive(self) -> None:
-        """No-op to check if this actor is alive."""
-        return

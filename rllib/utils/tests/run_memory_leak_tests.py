@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 #!/usr/bin/env python
 # Runs one or more memory leak tests.
 #
@@ -11,22 +13,23 @@
 #     tags = ["memory_leak_tests"],
 #     size = "medium",  # 5min timeout
 #     srcs = ["tests/test_memory_leak.py"],
-#     data = glob(["tuned_examples/ppo/*.yaml"]),
+#     data = glob(["examples/algorithms/ppo/*.yaml"]),
 #     # Pass `BAZEL` option and the path to look for yaml files.
-#     args = ["BAZEL", "tuned_examples/ppo/memory-leak-test-ppo.yaml"]
+#     args = ["BAZEL", "examples/algorithms/ppo/memory-leak-test-ppo.yaml"]
 # )
 
 import argparse
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import yaml
 
 import ray
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.debug.memory import check_memory_leaks
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
@@ -46,7 +49,7 @@ parser.add_argument(
 parser.add_argument(
     "--local-mode",
     action="store_true",
-    help="Run ray in local mode for easier debugging.",
+    help=argparse.SUPPRESS,  # Deprecated.
 )
 parser.add_argument(
     "--to-check",
@@ -120,10 +123,13 @@ if __name__ == "__main__":
         print("== Test config ==")
         print(yaml.dump(experiment))
 
+        if args.local_mode:
+            raise ValueError("`--local-mode` is no longer supported.")
+
         # Construct the Algorithm instance based on the given config.
         leaking = True
         try:
-            ray.init(num_cpus=5, local_mode=args.local_mode)
+            ray.init(num_cpus=5)
             if isinstance(experiment["run"], str):
                 algo_cls = get_trainable_cls(experiment["run"])
             else:

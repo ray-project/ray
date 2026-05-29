@@ -16,8 +16,8 @@ def double(number):
 start_time = time.time()
 serial_doubled_numbers = [double(number) for number in numbers]
 end_time = time.time()
-print(f"Ordinary funciton call takes {end_time - start_time} seconds")
-# Ordinary funciton call takes 0.16506004333496094 seconds
+print(f"Ordinary function call takes {end_time - start_time} seconds")
+# Ordinary function call takes 0.16506004333496094 seconds
 
 
 @ray.remote

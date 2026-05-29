@@ -11,19 +11,19 @@ meaningfully affect the loss function. This happens to be true for all the
 current algorithms: https://github.com/ray-project/ray/issues/2992
 """
 
+import functools
 import logging
+from typing import List, Optional
+
 import numpy as np
 import tree  # pip install dm_tree
-from typing import List, Optional
-import functools
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
+from ray.rllib.utils.typing import SampleBatchType, TensorType, ViewRequirementsDict
 from ray.util import log_once
-from ray.rllib.utils.typing import SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

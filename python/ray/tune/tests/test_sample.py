@@ -4,22 +4,24 @@ https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
 change your pytest running directory to ray/python/ray/tune/tests/
 """
 
+import sys
 import unittest
 from collections import defaultdict
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 import ray
 import ray.tune.search.sample
-from ray import train, tune
+from ray import tune
 from ray.tune import Experiment
 from ray.tune.search.util import logger
 from ray.tune.search.variant_generator import generate_variants
 
 
 def _mock_objective(config):
-    train.report(config)
+    tune.report(config)
 
 
 def assertDictAlmostEqual(a, b):
@@ -27,7 +29,7 @@ def assertDictAlmostEqual(a, b):
         assert k in b, f"Key {k} not found in {b}"
         w = b[k]
 
-        assert type(v) == type(w), f"Type {type(v)} is not {type(w)}"
+        assert type(v) is type(w), f"Type {type(v)} is not {type(w)}"
 
         if isinstance(v, dict):
             assert assertDictAlmostEqual(v, w), f"Subdict {v} != {w}"
@@ -232,7 +234,7 @@ class SearchSpaceTest(unittest.TestCase):
         config.pop("func")
         from ray.tune.search.basic_variant import BasicVariantGenerator
 
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
 
         num_samples = 5
         params = dict(
@@ -471,7 +473,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -501,15 +503,17 @@ class SearchSpaceTest(unittest.TestCase):
             },
         ]
 
-        client1 = AxClient(random_seed=1234)
+        client1 = AxClient(random_seed=42)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
-        client2 = AxClient(random_seed=1234)
+        client2 = AxClient(random_seed=42)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -537,12 +541,19 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax import Models
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.service.ax_client import AxClient
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_node import GenerationStep
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+        except ImportError:
+            # ax 0.x
+            from ax import Models
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -562,16 +573,20 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        # Legacy Ax versions (compatbile with Python 3.6)
-        # use `num_arms` instead
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
         try:
             generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                steps=[GenerationStep(generator=Models.UNIFORM, num_trials=-1)]
             )
         except TypeError:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
-            )
+            try:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
+                )
+            except TypeError:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                )
 
         client1 = AxClient(
             enforce_sequential_optimization=False,
@@ -580,8 +595,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1.create_experiment(
             parameters=AxSearch.convert_search_space(config),
-            objective_name="a",
-            minimize=False,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
@@ -687,6 +701,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testConvertBOHB(self):
         import ConfigSpace
 
@@ -709,7 +727,7 @@ class SearchSpaceTest(unittest.TestCase):
         bohb_config.add_hyperparameters(
             [
                 ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
-                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4, q=2),
+                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4),
                 ConfigSpace.UniformFloatHyperparameter(
                     "b/z", lower=1e-4, upper=1e-2, log=True
                 ),
@@ -748,12 +766,21 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testSampleBoundsBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
+            "quniform",  # BOHB drops quantization
+            "qloguniform",  # BOHB drops quantization
+            "qrandint",  # BOHB drops quantization
+            "qrandint_q3",  # BOHB drops quantization
+            "qlograndint",  # BOHB drops quantization
+            "randn",  # ConfigSpace 1.2+ doesn't support unbounded normals
+            "qrandn",  # ConfigSpace 1.2+ doesn't support unbounded normals
         ]
 
         config = self.config.copy()
@@ -768,6 +795,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testConvertHEBO(self):
         import torch
         from hebo.design_space.design_space import DesignSpace
@@ -824,6 +854,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testSampleBoundsHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
@@ -1166,18 +1199,18 @@ class SearchSpaceTest(unittest.TestCase):
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
 
         def optuna_define_by_run_with_constants(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return {"constant": 1}
 
         def optuna_define_by_run_invalid(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return 1
 
@@ -1521,6 +1554,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB not yet supported for python 3.12+"
+    )
     def testPointsToEvaluateBOHB(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1838,6 +1874,10 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
     @patch.object(logger, "warning")
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="TODO(justinvyu): not working for python 3.12 yet",
+    )
     def testSetSearchPropertiesBackwardsCompatibility(self, mocked_warning_method):
         from ray.tune.search import Searcher
 
@@ -1864,8 +1904,4 @@ class SearchSpaceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

@@ -1,13 +1,19 @@
-from ray.rllib.utils.deprecation import Deprecated
+from typing import Any, Callable, TypeVar
+
+from ray._common.deprecation import Deprecated
 from ray.util.annotations import _mark_annotated
 
+# TypeVar for preserving function/class signatures through decorators
+F = TypeVar("F", bound=Callable[..., Any])
 
-def override(cls):
+
+def override(parent_cls: type) -> Callable[[F], F]:
     """Decorator for documenting method overrides.
 
     Args:
-        cls: The superclass that provides the overridden method. If this
-            cls does not actually have the method, an error is raised.
+        parent_cls: The superclass that provides the overridden method. If
+            `parent_class` does not actually have the method or the class, in which
+            method is defined is not a subclass of `parent_class`, an error is raised.
 
     .. testcode::
         :skipif: True
@@ -25,15 +31,37 @@ def override(cls):
 
     """
 
-    def check_override(method):
-        if method.__name__ not in dir(cls):
-            raise NameError("{} does not override any method of {}".format(method, cls))
+    class OverrideCheck:
+        def __init__(self, func, expected_parent_cls):
+            self.func = func
+            self.expected_parent_cls = expected_parent_cls
+
+        def __set_name__(self, owner, name):
+            # Check if the owner (the class) is a subclass of the expected base class
+            if not issubclass(owner, self.expected_parent_cls):
+                raise TypeError(
+                    f"When using the @override decorator, {owner.__name__} must be a "
+                    f"subclass of {parent_cls.__name__}!"
+                )
+            # Set the function as a regular method on the class.
+            setattr(owner, name, self.func)
+
+    def decorator(method: F) -> F:
+        # Check, whether `method` is actually defined by the parent class.
+        if method.__name__ not in dir(parent_cls):
+            raise NameError(
+                f"When using the @override decorator, {method.__name__} must override "
+                f"the respective method (with the same name) of {parent_cls.__name__}!"
+            )
+
+        # Check if the class is a subclass of the expected base class
+        OverrideCheck(method, parent_cls)
         return method
 
-    return check_override
+    return decorator
 
 
-def PublicAPI(obj):
+def PublicAPI(obj: F) -> F:
     """Decorator for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of RLlib. You
@@ -61,7 +89,7 @@ def PublicAPI(obj):
     return obj
 
 
-def DeveloperAPI(obj):
+def DeveloperAPI(obj: F) -> F:
     """Decorator for documenting developer APIs.
 
     Developer APIs are classes and methods explicitly exposed to developers
@@ -88,7 +116,7 @@ def DeveloperAPI(obj):
     return obj
 
 
-def ExperimentalAPI(obj):
+def ExperimentalAPI(obj: F) -> F:
     """Decorator for documenting experimental APIs.
 
     Experimental APIs are classes and methods that are in development and may
@@ -117,7 +145,7 @@ def ExperimentalAPI(obj):
     return obj
 
 
-def OldAPIStack(obj):
+def OldAPIStack(obj: F) -> F:
     """Decorator for classes/methods/functions belonging to the old API stack.
 
     These should be deprecated at some point after Ray 3.0 (RLlib GA).
@@ -130,7 +158,7 @@ def OldAPIStack(obj):
     return obj
 
 
-def OverrideToImplementCustomLogic(obj):
+def OverrideToImplementCustomLogic(obj: F) -> F:
     """Users should override this in their sub-classes to implement custom logic.
 
     Used in Algorithm and Policy to tag methods that need overriding, e.g.
@@ -148,11 +176,11 @@ def OverrideToImplementCustomLogic(obj):
             ...
 
     """
-    obj.__is_overriden__ = False
+    obj.__is_overridden__ = False  # type: ignore[attr-defined]
     return obj
 
 
-def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
+def OverrideToImplementCustomLogic_CallToSuperRecommended(obj: F) -> F:
     """Users should override this in their sub-classes to implement custom logic.
 
     Thereby, it is recommended (but not required) to call the super-class'
@@ -173,17 +201,17 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
             super().setup(config)
             # ... or here (after having called super()'s setup method.
     """
-    obj.__is_overriden__ = False
+    obj.__is_overridden__ = False  # type: ignore[attr-defined]
     return obj
 
 
-def is_overridden(obj):
+def is_overridden(obj: Callable[..., Any]) -> bool:
     """Check whether a function has been overridden.
 
     Note, this only works for API calls decorated with OverrideToImplementCustomLogic
     or OverrideToImplementCustomLogic_CallToSuperRecommended.
     """
-    return getattr(obj, "__is_overriden__", True)
+    return getattr(obj, "__is_overridden__", True)
 
 
 # Backward compatibility.

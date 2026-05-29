@@ -10,14 +10,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pyarrow.fs
 
 from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE, TRAINING_ITERATION
-from ray.train import Checkpoint
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
+from ray.tune import Checkpoint
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import CONFIG_PREFIX, DEFAULT_METRIC
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.serialization import TuneFunctionDecoder
+from ray.tune.utils.serialization import _loads_with_cloudpickle
 from ray.tune.utils.util import is_nan, is_nan_or_inf, unflattened_lookup
 from ray.util.annotations import PublicAPI
 
@@ -41,16 +41,6 @@ class ExperimentAnalysis:
     This is the default behavior, unless default loggers are explicitly excluded
     with the `TUNE_DISABLE_AUTO_CALLBACK_LOGGERS=1` environment variable.
 
-    Parameters:
-        experiment_checkpoint_path: Path to an `experiment_state.json` file,
-            or a directory that contains an `experiment_state.json` file.
-        default_metric: Default metric for comparing results. Can be
-            overwritten with the ``metric`` parameter in the respective
-            functions.
-        default_mode: Default mode for comparing results. Has to be one
-            of [min, max]. Can be overwritten with the ``mode`` parameter
-            in the respective functions.
-        trials: List of trials that can be accessed via `analysis.trials`.
     """
 
     def __init__(
@@ -62,6 +52,22 @@ class ExperimentAnalysis:
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
     ):
+        """Initialize an ``ExperimentAnalysis``.
+
+        Args:
+            experiment_checkpoint_path: Path to an `experiment_state.json` file,
+                or a directory that contains an `experiment_state.json` file.
+            storage_filesystem: A custom ``pyarrow.fs.FileSystem`` corresponding
+                to ``experiment_checkpoint_path``. This may be necessary if the
+                original experiment used a custom filesystem.
+            trials: List of trials that can be accessed via `analysis.trials`.
+            default_metric: Default metric for comparing results. Can be
+                overwritten with the ``metric`` parameter in the respective
+                functions.
+            default_mode: Default mode for comparing results. Has to be one
+                of [min, max]. Can be overwritten with the ``mode`` parameter
+                in the respective functions.
+        """
         self.default_metric = default_metric
         if default_mode and default_mode not in ["min", "max"]:
             raise ValueError("`default_mode` has to be None or one of [min, max]")
@@ -107,7 +113,7 @@ class ExperimentAnalysis:
 
     def _load_trials(self) -> List[Trial]:
         with self._fs.open_input_stream(self._experiment_json_fs_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         experiment_fs_path = Path(self._experiment_fs_path)
 
@@ -256,7 +262,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.train.Checkpoint>` object.
+            :class:`Checkpoint <ray.tune.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -451,7 +457,7 @@ class ExperimentAnalysis:
             mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            A :class:`Checkpoint <ray.train.Checkpoint>` object
+            A :class:`Checkpoint <ray.tune.Checkpoint>` object
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
@@ -589,12 +595,19 @@ class ExperimentAnalysis:
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
+
+        Returns:
+            The hyperparameter configuration of the best trial, or ``None`` if
+            no best trial could be identified.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
 
     def get_last_checkpoint(
-        self, trial=None, metric="training_iteration", mode="max"
+        self,
+        trial: Optional[Trial] = None,
+        metric: str = "training_iteration",
+        mode: str = "max",
     ) -> Optional[Checkpoint]:
         """Gets the last checkpoint of the provided trial,
         i.e., with the highest "training_iteration".

@@ -45,12 +45,12 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
     .. code-block:: python
 
-        from ray import train, tune
+        from ray import tune
 
         def train_fn(config, data=None):
             for sample in data:
                 loss = update_model(sample)
-                train.report(loss=loss)
+                tune.report(dict(loss=loss))
 
         data = HugeDataset(download=True)
 
@@ -86,6 +86,10 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
             tune.with_parameters(MyTrainable, data=data),
             # ...
         )
+
+    Returns:
+        A wrapped trainable that has the provided ``kwargs`` injected via the
+        Ray object store at call time.
     """
     from ray.tune.trainable import Trainable
 
@@ -185,6 +189,9 @@ def with_resources(
         )
         results = tuner.fit()
 
+    Returns:
+        A trainable annotated with the requested resources so that Tune can
+        schedule trials accordingly.
     """
     from ray.tune.trainable import Trainable
 

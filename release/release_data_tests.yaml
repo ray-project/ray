@@ -1,0 +1,1468 @@
+- name: DEFAULTS
+  group: data-base
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      runtime_env:
+        # Enable verbose stats for resource manager (to troubleshoot autoscaling)
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Fail the test if a worker spills
+        - RAYTEST_FAIL_ON_SPILLING=1
+
+      # 'type: gpu' means: use the 'ray-ml' image.
+      type: gpu
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+###############
+# Reading tests
+###############
+
+- name: "read_parquet_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
+      --iter-bundles
+
+- name: "read_large_parquet_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
+- name: "read_images_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+
+- name: read_tfrecords
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
+      --iter-bundles
+
+- name: "read_from_uris_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 5400
+    script: python read_from_uris_benchmark.py
+
+###############
+# Writing tests
+###############
+
+- name: write_parquet
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
+
+###############
+# Iceberg tests
+###############
+
+- name: "iceberg_benchmark_{{mode}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_pyiceberg.sh
+    cluster_compute: iceberg_benchmark_compute.yaml
+
+  matrix:
+    setup:
+      mode: [append, upsert, overwrite]
+
+  run:
+    timeout: 4800
+    script: python iceberg_benchmark.py --mode {{mode}}
+
+###################
+# Aggregation tests
+###################
+
+- name: "count_parquet_{{scaling}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
+
+###############
+# Groupby tests
+###############
+
+# The groupby tests use the TPC-H lineitem table. Here are the columns used for the
+# groupbys and their corresponding TPC-H column names:
+#
+# | Our dataset     | TPC-H column name |
+# |-----------------|-------------------|
+# | column02        | l_suppkey         |
+# | column08        | l_returnflag      |
+# | column13        | l_shipinstruct    |
+# | column14        | l_shipmode        |
+#
+# Here are the number of groups for different groupby columns in SF 1000:
+#
+# | Groupby columns                  | Number of groups |
+# |----------------------------------|------------------|
+# | column08, column13, column14     | 84               |
+# | column02, column14               | 7,000,000        |
+#
+# The SF (scale factor) 1000 lineitem table contains ~6B rows.
+
+# TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
+
+- name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+        - "column02 column14"  # 7M groups
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --aggregate --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+
+- name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
+      columns:
+        - "column08 column13 column14"   # 84 groups
+        - "column02 column14"  # 7M groups
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 3600
+    script: >
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
+      --shuffle-strategy {{shuffle_strategy}}
+
+###############
+# Join tests
+###############
+
+# NOTE:
+# Joining on Benchmark TPCH parquet datasets
+# Left dataset 'LINEITEM' = SF*6M rows
+# Right dataset 'ORDERS' = SF*1.5M rows
+# Join key = 'l_orderkey', 'o_orderkey' respectively from 'LINEITEM', 'ORDERS' dataset. In the generated dataset,
+# * For 'LINEITEM' dataset, 'column_00' corresponds to l_orderkey
+# * For 'ORDERS' dataset, 'column_0' corresponds to o_orderkey.
+# Join type = inner, left_join, right_join and full_join
+#
+# Dataset TPCH Scale Factor (SF) for CSV files. Note that parquet files will be low smaller with column compression.
+# SF1 = 1GB
+# SF10 = 10GB
+# SF100 = 100GB
+# SF1000 = 1TB
+# SF10000 = 10TB
+#
+# Do adjust timeout below based on SF above.
+#
+
+- name: joins_{{dataset}}_{{join_type}}
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: fixed_size_100_cpu_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf100]
+      join_type: [inner, left_outer, right_outer, full_outer]
+
+  run:
+    timeout: 3600
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type {{join_type}}
+      --num_partitions 50
+
+###############
+# Wide Schema tests
+###############
+
+- name: wide_schema_pipeline_{{data_type}}
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  matrix:
+    setup:
+      data_type: [primitives, tensors, objects, nested_structs]
+
+  run:
+    timeout: 300
+    script: >
+      python wide_schema_pipeline_benchmark.py
+      --data-type {{data_type}}
+
+#######################
+# Streaming split tests
+#######################
+
+- name: streaming_split
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  run:
+    timeout: 300
+    wait_for_nodes:
+      num_nodes: 10
+
+  variations:
+    - __suffix__: regular
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10
+
+    - __suffix__: regular_equal
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10 --equal-split
+
+    - __suffix__: early_stop
+      # This test case will early stop the data ingestion iteration on the GPU actors.
+      # This is a common usage in PyTorch Lightning
+      # (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+      # There was a bug in Ray Data that caused GPU memory leak (see #34819).
+      # We add this test case to cover this scenario.
+      run:
+        script: python streaming_split_benchmark.py --num-workers 10 --early-stop
+
+############
+# Mix tests
+############
+
+- name: mix
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: dataset_mixing/compute_8_cpu.yaml
+  run:
+    timeout: 600
+    wait_for_nodes:
+      num_nodes: 8
+
+  variations:
+    - __suffix__: 8ds_equal
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 16
+          --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_equal_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
+    - __suffix__: 8ds_power_law_random_mix
+      run:
+        script: >
+          python dataset_mixing/mix_benchmark.py --num-datasets 8
+          --weights 128 64 32 16 8 4 2 1 --num-workers 1
+          --random-mix --max-rows-per-worker 100000
+
+################
+# Training tests
+################
+
+- name: distributed_training
+  python: "3.10"
+  working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_install_mosaicml.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: dataset/multi_node_train_16_workers.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+      --target-worker-gb 50 --use-gpu
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=0
+            - RAYTEST_FAIL_ON_SPILLING=0
+      run:
+        prepare: >
+          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
+          "_RayTrainWorker__execute.get_next"
+
+- name: training_ingest_benchmark
+  python: "3.10"
+  working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+
+  variations:
+    - __suffix__: s3_parquet_cpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_cpu_compute.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_benchmark.py
+          --data-loader s3_parquet --simulated-training-time 0.01
+
+    - __suffix__: s3_url_image_cpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_cpu_compute.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_benchmark.py
+          --data-loader s3_url_image --simulated-training-time 0.01
+
+    - __suffix__: s3_read_images_cpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_cpu_compute.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_benchmark.py
+          --data-loader s3_read_images --simulated-training-time 0.01
+
+    - __suffix__: s3_parquet_gpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_benchmark.py
+          --data-loader s3_parquet --simulated-training-time 0.01
+          --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
+
+    - __suffix__: s3_url_image_gpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_benchmark.py
+          --data-loader s3_url_image --simulated-training-time 0.01
+          --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
+
+    - __suffix__: s3_read_images_gpu
+      cluster:
+        cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
+      run:
+        timeout: 4800
+        script: >
+          python dataset/training_ingest_benchmark.py
+          --data-loader s3_read_images --simulated-training-time 0.01
+          --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
+
+#################
+# Iteration tests
+#################
+
+- name: "iter_batches_{{format}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  matrix:
+    setup:
+      format: [numpy, pandas, pyarrow]
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches {{format}}
+
+- name: to_tf
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
+      --to-tf image image
+
+- name: iter_torch_batches
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0 # Allow temporarily to unblock release
+    cluster_compute: fixed_size_gpu_head_compute.yaml
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
+      --iter-torch-batches
+
+###########
+# Map tests
+###########
+
+- name: map
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  run:
+    timeout: 1800
+    script: python map_benchmark.py --api map --sf 100
+
+- name: flat_map
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  run:
+    timeout: 1800
+    script: python map_benchmark.py --api flat_map --sf 100
+
+- name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
+  python: "3.10"
+  matrix:
+    setup:
+      # Fixed-size task tests with different formats.
+      format: [numpy, pandas, pyarrow]
+      compute: [tasks]
+      scaling: [fixed_size]
+      repeat_map_batches: [once, repeat]
+    adjustments:
+      # Fixed-size actor test.
+      - with:
+          format: numpy
+          compute: actors
+          scaling: fixed_size
+          repeat_map_batches: once
+      # Autoscaling task test
+      - with:
+          format: numpy
+          compute: tasks
+          scaling: autoscaling
+          repeat_map_batches: once
+      # Autoscaling actor test
+      - with:
+          format: numpy
+          compute: actors
+          scaling: autoscaling
+          repeat_map_batches: once
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: >
+      python map_benchmark.py --api map_batches --batch-format {{format}}
+      --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
+
+# Exercises a 300-column wide output schema (100 scalar float32 +
+# 200 float32[32]) modeled after production reference data. Stresses
+# per-block BlockMetadataWithSchema propagation on the driver, which
+# dominates large-schema production workloads.
+- name: worker_scaling_{{num_workers}}_{{worker_type}}
+  python: "3.10"
+  frequency: weekly
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
+
+  matrix:
+    setup:
+      num_workers: [500, 1000, 2000, 5000]
+      worker_type: [actors, tasks]
+
+  run:
+    timeout: 2700
+    # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded by the
+    # profiling coordinator and uploaded to PROFILING_S3_BUCKET.
+    script: >
+      PYSPY_ENABLED=1
+      python worker_scaling_benchmark.py
+      --num-workers {{num_workers}}
+      --worker-type {{worker_type}}
+      --num-scalar-cols 200
+      --num-array-cols 400
+
+
+######################
+# Backpressure tests
+######################
+
+- name: backpressure_fast_producer_slow_consumer
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python backpressure_benchmark.py --case fast-producer-slow-consumer
+
+- name: backpressure_training_prefetch
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: multi_node
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch
+
+    - __suffix__: single_node
+      cluster:
+        cluster_compute: fixed_size_1_cpu_compute.yaml
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
+
+
+########################
+# Sort and shuffle tests
+########################
+
+- name: "random_shuffle_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      # This release test consistently fails on autoscaling clusters. So, we only run
+      # it on fixed-size clusters. The reason for the failure is unclear.
+      scaling: [fixed_size]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: >
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+
+
+- name: random_shuffle_chaos
+  python: "3.10"
+  working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
+      --max-to-kill 2
+    script: >
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+      --shuffle
+
+
+- name: "sort_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: ["fixed_size"]
+      # the "autoscaling" variation is failing and disabled.
+      # TODO: https://github.com/anyscale/ray/issues/727
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 10800
+    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+
+- name: sort_chaos
+  python: "3.10"
+  working_dir: nightly_tests
+
+  # TODO(ray-data): https://github.com/anyscale/ray/issues/546
+  frequency: manual
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    prepare: >
+      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
+      --max-to-kill 3
+    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+
+#######################
+# Batch inference tests
+#######################
+
+# Tests memory management on a cluster with mixed node types:
+# CPU nodes (small memory) produce data faster than GPU nodes (large memory)
+# can consume it. The global object store threshold is the sum of all nodes,
+# so CPU stages may not trigger backpressure even when CPU nodes are full.
+- name: heterogeneous_memory_batch_inference
+  python: "3.10"
+  frequency: nightly
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: heterogeneous_memory_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python heterogeneous_memory_batch_inference.py
+
+# 300 GB image classification parquet data up to 10 GPUs
+# 10 g4dn.12xlarge.
+- name: "image_classification_{{scaling}}"
+  python: "3.10"
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
+    cluster_compute: "{{scaling}}_gpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 1800
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: image_classification_chaos
+  python: "3.10"
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run
+  # the 'setup_chaos.py' script.
+  working_dir: nightly_tests
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
+    script: >
+      python dataset/gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
+
+# 300 GB image classification parquet data up to 10 GPUs
+# 10 g4dn.12xlarge.
+# NOTE: This is almost identical to the `image_classification` test except it removes
+# non-default configurations and writes to cloud storage. After some period of time,
+# we should remove the legacy `image_classification` test and only keep this one.
+- name: "image_classification_from_parquet_{{scaling}}"
+  python: "3.10"
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
+      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
+      #       that is removed in Pyarrow 21.0
+      python_depset: image_classification_py3.10.lock
+    cluster_compute: "{{scaling}}_gpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  run:
+    timeout: 1800
+    script: >
+      python image_classification_from_parquet/main.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: image_embedding_from_uris_{{case}}
+  python: "3.10"
+  frequency: weekly
+  group: data-batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+      fail_on_dead_nodes: []
+      fail_on_spilling: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+          fail_on_dead_nodes: 1
+          fail_on_spilling: 1
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+          fail_on_dead_nodes: 1
+          fail_on_spilling: 0 # Allow temporarily to unblock release
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
+          fail_on_dead_nodes: 0
+          fail_on_spilling: 0
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING={{fail_on_spilling}}
+  run:
+    timeout: 3600
+    script: python image_embedding_from_uris/main.py {{args}}
+
+
+- name: image_embedding_from_jsonl_{{case}}
+  python: "3.10"
+  frequency: "{{frequency}}"
+  group: data-batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+      frequency: []
+      fail_on_dead_nodes: []
+      fail_on_spilling: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40
+          frequency: weekly
+          fail_on_dead_nodes: 0 # Allow node death during test
+          fail_on_spilling: 1
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 40
+          frequency: weekly
+          fail_on_dead_nodes: 1
+          fail_on_spilling: 1
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40 --chaos
+          # This release test is run on a 'manual' frequency because it's expected to
+          # fail.
+          frequency: manual
+          fail_on_dead_nodes: 0
+          fail_on_spilling: 0
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING={{fail_on_spilling}}
+      post_build_script: byod_install_pybase64.sh
+
+  run:
+    timeout: 3600
+    script: python image_embedding_from_jsonl/main.py {{args}}
+
+- name: text_embedding_{{case}}
+  python: "3.10"
+  frequency: weekly
+  group: data-batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+      fail_on_dead_nodes: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100
+          fail_on_dead_nodes: 1
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 100
+          fail_on_dead_nodes: 1
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 100 100 --chaos
+          fail_on_dead_nodes: 0
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING=1
+      type: cu123
+      post_build_script: byod_install_text_embedding.sh
+
+  run:
+    timeout: 3600
+    script: python text_embedding/main.py {{args}}
+
+# Multi-stage inference pipeline with separate CPU preprocessing and GPU inference.
+# Mimics production ML inference pipeline with:
+# - Separate preprocessing (CPU) and inference (GPU actors) stages
+# - Pandas preprocessing
+# - Metadata column passthrough
+# - Extra output columns
+- name: multi_stage_batch_inference
+  python: "3.10"
+  frequency: weekly
+  group: data-batch-inference
+  env: gce
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: autoscaling_gpu_g2_gce.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python model_inference_pipeline_benchmark.py
+      --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
+      --preprocessing-batch-size "auto"
+      --inference-batch-size 1024
+      --inference-min-actors 1
+      --inference-max-actors 300
+
+##############
+# TPCH Queries
+##############
+
+- name: "tpch_q1_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q1.py --sf 1000
+
+- name: "tpch_q2_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q2.py --sf 100
+
+- name: "tpch_q3_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q3.py --sf 100
+
+- name: "tpch_q4_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q4.py --sf 100
+
+- name: "tpch_q5_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q5.py --sf 100
+
+- name: "tpch_q6_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q6.py --sf 100
+
+- name: "tpch_q7_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q7.py --sf 100
+
+- name: "tpch_q8_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q8.py --sf 100
+
+- name: "tpch_q9_{{scaling}}"
+  python: "3.10"
+  frequency: "{{frequency}}"
+  matrix:
+    setup:
+      scaling: []
+      frequency: []
+    adjustments:
+      - with:
+          scaling: fixed_size
+          frequency: nightly
+      - with:
+          scaling: autoscaling
+          frequency: nightly
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q9.py --sf 100
+
+- name: "tpch_q10_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q10.py --sf 100
+
+- name: "tpch_q11_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q11.py --sf 100
+
+- name: "tpch_q12_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q12.py --sf 100
+
+- name: "tpch_q13_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q13.py --sf 100
+
+- name: "tpch_q14_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q14.py --sf 100
+
+- name: "tpch_q15_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q15.py --sf 100
+
+- name: "tpch_q17_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q17.py --sf 100
+
+- name: "tpch_q18_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q18.py --sf 100
+
+- name: "tpch_q20_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q20.py --sf 100
+
+- name: "tpch_q21_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q21.py --sf 100
+
+- name: "tpch_q22_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q22.py --sf 100
+
+#################################################
+# Cross-AZ RPC fault tolerance test
+#################################################
+
+- name: "cross_az_map_batches_autoscaling"
+  frequency: manual
+  env: gce
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: cross_az_250_350_compute_gce.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python map_benchmark.py --api map_batches --batch-format numpy
+      --compute actors --sf 1000 --repeat-inputs 1 --concurrency 1024 2048
+
+  variations:
+    - __suffix__: gce
+    - __suffix__: aws
+      env: aws
+      cluster:
+        cluster_compute: cross_az_250_350_compute_aws.yaml
+ # TODO(#58246): Enable these variations once RAY_testing_rpc_failure is supported.
+ #   - __suffix__: gce_failure_injection
+ #     cluster:
+ #       byod:
+ #         # RAY_testing_rpc_failure is used to inject RPC failures across all RPCs (*) with no limit (-1) on the number of total failures,
+ #         # 10% request failures, 10% response failures, 1 guaranteed request failure and 1 guaranteed response failure.
+ #         # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
+ #         runtime_env:
+ #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
+ #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
+ #       cluster_compute: cross_az_250_350_compute_gce.yaml
+ #   - __suffix__: aws_failure_injection
+ #     env: aws
+ #     cluster:
+ #       byod:
+ #         runtime_env:
+ #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
+ #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
+ #       cluster_compute: cross_az_250_350_compute_aws.yaml
+
+- name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
+  python: "3.10"
+  frequency: weekly
+  env: gce
+  working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
+
+  run:
+    timeout: 14400
+    # The network failure interval is set to 210 seconds since the test as is takes around double that to run without failures.
+    # If the runtime of the test is dramatically reduced in the future, the interval will have to be retuned.
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 210 --network-failure-duration 5 --command python dataset/map_benchmark.py
+      --api map_batches --batch-format numpy --compute actors --sf 1000
+      --repeat-inputs 1 --concurrency 1024 2048
+
+  variations:
+    - __suffix__: gce
+    - __suffix__: aws
+      env: aws
+      cluster:
+        cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
+
+###################
+# Autoscaling tests
+###################
+
+- name: does_not_over_provision
+  group: data-autoscaling
+  # Set to manual because this is expected to fail with the
+  # `DefaultClusterAutoscalerV2`.
+  frequency: manual
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod: {}
+    cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python autoscaling/does_not_over_provision.py

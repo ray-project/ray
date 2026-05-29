@@ -1,10 +1,11 @@
+import importlib
 import logging
 import os
 import sys
 import threading
-import importlib
 
 import ray
+from ray._common.network_utils import build_address
 from ray.util.annotations import DeveloperAPI
 
 log = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ def _ensure_debugger_port_open_thread_safe():
                 (ray._private.worker.global_worker.node_ip_address, 0)
             )
             ray._private.worker.global_worker.set_debugger_port(port)
-            log.info(f"Ray debugger is listening on {host}:{port}")
+            log.info(f"Ray debugger is listening on {build_address(host, port)}")
         else:
             log.info(f"Ray debugger is already open on {debugger_port}")
 
@@ -84,7 +85,12 @@ def set_trace(breakpoint_uuid=None):
     _override_breakpoint_hooks()
 
     with ray._private.worker.global_worker.worker_paused_by_debugger():
-        log.info("Waiting for debugger to attach...")
+        msg = (
+            "Waiting for debugger to attach (see "
+            "https://docs.ray.io/en/latest/ray-observability/"
+            "ray-distributed-debugger.html)..."
+        )
+        log.info(msg)
         debugpy.wait_for_client()
 
     log.info("Debugger client is connected")
@@ -123,8 +129,8 @@ def _debugpy_excepthook():
         additional_info.is_tracing -= 1
 
 
-def _is_ray_debugger_enabled():
-    return "RAY_DEBUG" in os.environ
+def _is_ray_debugger_post_mortem_enabled():
+    return os.environ.get("RAY_DEBUG_POST_MORTEM", "0") == "1"
 
 
 def _post_mortem():

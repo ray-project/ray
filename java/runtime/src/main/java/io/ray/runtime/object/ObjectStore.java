@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
 import io.ray.api.exception.RayException;
-import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
@@ -32,16 +31,6 @@ public abstract class ObjectStore {
   public abstract ObjectId putRaw(NativeRayObject obj);
 
   /**
-   * Put a raw object into object store, and assign its ownership to the actor identified by
-   * ownerActorId.
-   *
-   * @param obj The ray object.
-   * @param ownerActorId The id of the actor to assign ownership.
-   * @return Generated ID of the object.
-   */
-  public abstract ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId);
-
-  /**
    * Put a raw object with specified ID into object store.
    *
    * @param obj The ray object.
@@ -61,22 +50,6 @@ public abstract class ObjectStore {
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
     return putRaw(ObjectSerializer.serialize(object));
-  }
-
-  /**
-   * Serialize and put an object to the object store, and assign its ownership to the actor
-   * identified by ownerActorId.
-   *
-   * @param object The object to put.
-   * @param ownerActorId The id of the actor to assign ownership.
-   * @return Id of the object.
-   */
-  public ObjectId put(Object object, ActorId ownerActorId) {
-    if (object instanceof NativeRayObject) {
-      throw new IllegalArgumentException(
-          "Trying to put a NativeRayObject. Please use putRaw instead.");
-    }
-    return putRaw(ObjectSerializer.serialize(object), ownerActorId);
   }
 
   /**
@@ -167,7 +140,7 @@ public abstract class ObjectStore {
    *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
    *     local node and will return immediately once the object is available anywhere in the
    *     cluster.
-   * @return A bitset that indicates each object has appeared or not.
+   * @return A list of booleans that indicates each object has appeared or not.
    */
   public abstract List<Boolean> wait(
       List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);

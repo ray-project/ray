@@ -1,6 +1,7 @@
 import inspect
+from typing import Any
 
-from ray._private.utils import get_function_args
+from ray._common.utils import get_function_args
 from ray.tune.schedulers.async_hyperband import ASHAScheduler, AsyncHyperBandScheduler
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.schedulers.hyperband import HyperBandScheduler
@@ -15,8 +16,7 @@ from ray.util import PublicAPI
 
 
 def _pb2_importer():
-    # PB2 introduces a GPy dependency which can be expensive, so we import
-    # lazily.
+    # PB2 is imported lazily since it has additional dependencies.
     from ray.tune.schedulers.pb2 import PB2
 
     return PB2
@@ -42,9 +42,9 @@ SCHEDULER_IMPORT = {
 
 @PublicAPI(stability="beta")
 def create_scheduler(
-    scheduler,
-    **kwargs,
-):
+    scheduler: str,
+    **kwargs: Any,
+) -> TrialScheduler:
     """Instantiate a scheduler based on the given string.
 
     This is useful for swapping between different schedulers.

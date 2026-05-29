@@ -97,7 +97,7 @@ Ray raises the exception.
     :start-after: __streaming_generator_exception_start__
     :end-before: __streaming_generator_exception_end__
 
-In the above example, if the an application fails the task, Ray returns the object reference with an exception
+In the above example, if an application fails the task, Ray returns the object reference with an exception
 in a correct order. For example, if Ray raises the exception after the second yield, the third
 ``next(gen)`` returns an object reference with an exception all the time. If a system error fails the task,
 (e.g., a node failure or worker process failure), ``next(gen)`` returns the object reference that contains the system level exception
@@ -166,7 +166,7 @@ Unblocking wait is possible with the Ray generator in the following ways:
 **Wait until a generator task completes**
 
 ``ObjectRefGenerator`` has an API ``completed``. It returns an object reference that is available when a generator task finishes or errors.
-For example, you can do ``ray.get(<generator_instance>.compelted())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
+For example, you can do ``ray.get(<generator_instance>.completed())`` to wait until a task completes. Note that using ``ray.get`` to ``ObjectRefGenerator`` isn't allowed.
 
 **Use asyncio and await**
 
@@ -210,3 +210,10 @@ Ray generators don't support these features:
 - ``return`` statements from generators.
 - Passing ``ObjectRefGenerator`` to another task or actor.
 - :ref:`Ray Client <ray-client-ref>`
+
+Deprecated Dynamic Generator
+----------------------------
+.. toctree::
+    :maxdepth: 1
+
+    tasks/dynamic_generators.rst

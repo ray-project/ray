@@ -39,7 +39,6 @@ if __name__ == "__main__":
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         results = {
             "shuffle_time": delta,
-            "success": 1,
         }
         results["perf_metrics"] = [
             {

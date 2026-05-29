@@ -1,6 +1,8 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray.cloudpickle as pickle
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -55,12 +57,14 @@ class JobConfig:
         self.jvm_options = jvm_options or []
         #: A list of directories or jar files that
         #: specify the search path for user code.
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
-            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
-        )
+        validated_code_search_path = code_search_path or []
+        # Validate eagerly so optimized Python runs do not skip this check.
+        if not isinstance(validated_code_search_path, (list, tuple)):
+            raise TypeError(
+                "The type of code search path is incorrect: "
+                f"{type(code_search_path)}"
+            )
+        self.code_search_path = validated_code_search_path
         self._client_job = _client_job
         #: An opaque metadata dictionary.
         self.metadata = metadata or {}
@@ -70,6 +74,8 @@ class JobConfig:
         self.set_default_actor_lifetime(default_actor_lifetime)
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
+        # Python logging configurations that will be passed to Ray tasks/actors.
+        self.py_logging_config = None
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -115,6 +121,40 @@ class JobConfig:
             self.runtime_env = self._validate_runtime_env()
         self._cached_pb = None
 
+    def set_py_logging_config(
+        self,
+        logging_config: Optional[LoggingConfig] = None,
+    ):
+        """Set the logging configuration for the job.
+
+        The logging configuration will be applied to the root loggers of
+        all Ray task and actor processes that belong to this job.
+
+        Args:
+            logging_config: The logging configuration to set.
+        """
+        self.py_logging_config = logging_config
+
+    def ensure_logging_config(
+        self,
+        logging_config: Optional[Union[dict, LoggingConfig]] = None,
+    ) -> None:
+        """Set logging config from a dict or LoggingConfig if not already configured.
+
+        This is a no-op when *logging_config* is ``None`` or
+        ``py_logging_config`` is already set.
+        """
+        if logging_config is None or self.py_logging_config is not None:
+            return
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig.from_dict(logging_config)
+        elif not isinstance(logging_config, LoggingConfig):
+            raise TypeError(
+                "logging_config must be a dict or LoggingConfig, "
+                f"got {type(logging_config)}"
+            )
+        self.set_py_logging_config(logging_config)
+
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
 
@@ -152,10 +192,26 @@ class JobConfig:
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
         from ray.runtime_env import RuntimeEnv
+        from ray.runtime_env.runtime_env import _validate_no_local_paths
 
-        if isinstance(self.runtime_env, RuntimeEnv):
-            return self.runtime_env
-        return RuntimeEnv(**self.runtime_env)
+        runtime_env = self.runtime_env
+
+        if not isinstance(runtime_env, RuntimeEnv):
+            runtime_env = RuntimeEnv(**self.runtime_env)
+
+        # Skip local path validation for Ray Client jobs.
+        # This is required for Ray Client to work with working_dir (e.g., UV support).
+        # For Ray Client (_client_job=True), the working_dir is already validated
+        # and uploaded to GCS on the client side. The server-side job_config may
+        # temporarily contain a local extracted path during the proxy flow, but this
+        # is safe because:
+        # 1. The actual GCS URI was already validated on the client
+        # 2. Workers get their runtime_env from GCS with the correct URI
+        # 3. Validating again on the server causes false "not a valid URI" errors
+        if not self._client_job:
+            _validate_no_local_paths(runtime_env)
+
+        return runtime_env
 
     def _get_proto_job_config(self):
         """Return the protobuf structure of JobConfig."""
@@ -188,6 +244,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
+            if self.py_logging_config:
+                pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
 
         return self._cached_pb

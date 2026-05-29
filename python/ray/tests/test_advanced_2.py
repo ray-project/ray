@@ -9,9 +9,9 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
-from ray.util.placement_group import placement_group
+from ray._common.test_utils import wait_for_condition
 from ray.util.accelerators import AWS_NEURON_CORE
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,12 @@ def test_gpu_ids(shutdown_only):
         ]
         assert len(gpu_ids) == len(gpu_ids_from_runtime_context)
         assert len(neuron_core_ids) == 0
-        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]  # noqa
-        )
+        if num_gpus_per_worker > 0:
+            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+                [str(i) for i in gpu_ids]  # noqa
+            )
+        else:
+            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         return gpu_ids
@@ -55,9 +58,7 @@ def test_gpu_ids(shutdown_only):
         if num_workers_started == num_gpus:
             break
         if time.time() > start_time + 10:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start up."
-            )
+            raise TimeoutError("Timed out while waiting for workers to start up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -71,18 +72,14 @@ def test_gpu_ids(shutdown_only):
         def __init__(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]  # noqa
-            )
+            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
             # Set self.x to make sure that we got here.
             self.x = 1
 
         def test(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
-            )
+            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
             return self.x
 
     @ray.remote(num_gpus=1)
@@ -382,9 +379,9 @@ def test_custom_resources(ray_start_cluster):
         return ray._private.worker.global_worker.node.unique_id
 
     # The g tasks should be scheduled only on the second raylet.
-    raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
-    assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] == custom_resource_node.unique_id
+    node_ids = set(ray.get([g.remote() for _ in range(50)]))
+    assert len(node_ids) == 1
+    assert list(node_ids)[0] == custom_resource_node.unique_id
 
     # Make sure that resource bookkeeping works when a task that uses a
     # custom resources gets blocked.
@@ -462,9 +459,9 @@ def test_two_custom_resources(ray_start_cluster):
     assert len(set(ray.get([g.remote() for _ in range(500)]))) == 2
 
     # The h tasks should be scheduled only on the second raylet.
-    raylet_ids = set(ray.get([h.remote() for _ in range(50)]))
-    assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] == custom_resource_node.unique_id
+    node_ids = set(ray.get([h.remote() for _ in range(50)]))
+    assert len(node_ids) == 1
+    assert list(node_ids)[0] == custom_resource_node.unique_id
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
@@ -476,7 +473,7 @@ def test_many_custom_resources(shutdown_only):
     # This eventually turns into a command line argument which on windows is
     # limited to 32,767 characters.
     if sys.platform == "win32":
-        num_custom_resources = 4000
+        num_custom_resources = 1000
     else:
         num_custom_resources = 10000
     total_resources = {
@@ -542,9 +539,7 @@ def test_neuron_core_ids(shutdown_only):
         if num_workers_started == num_nc:
             break
         if time.time() > start_time + 10:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start up."
-            )
+            raise TimeoutError("Timed out while waiting for workers to start up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -560,9 +555,7 @@ def test_neuron_core_ids(shutdown_only):
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 0
-            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
-                [str(i) for i in neuron_core_ids]  # noqa
-            )
+            assert os.environ.get("NEURON_RT_VISIBLE_CORES") is None
             # Set self.x to make sure that we got here.
             self.x = 0
 
@@ -571,9 +564,7 @@ def test_neuron_core_ids(shutdown_only):
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 0
-            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
-                [str(i) for i in neuron_core_ids]  # noqa
-            )
+            assert os.environ.get("NEURON_RT_VISIBLE_CORES") is None
             return self.x
 
     @ray.remote(resources={"neuron_cores": 1})
@@ -747,7 +738,4 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

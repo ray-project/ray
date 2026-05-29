@@ -2,13 +2,19 @@
 
 Repository for documentation of the Ray project, hosted at [docs.ray.io](https://docs.ray.io).
 
+## Contributing new documentation pages
+
+Author new documentation files under `doc/source/` as MyST Markdown (`.md`), not reStructuredText (`.rst`). A lint check rejects newly added `.rst` files. Edits to existing `.rst` files continue to work. `git mv` is not flagged for any rename, which covers file renames and directory reorganization.
+
+MyST is a Markdown superset that supports the Sphinx directives used throughout the docs. See the [MyST Parser documentation](https://myst-parser.readthedocs.io/) for syntax reference.
+
 ## Installation
 
 To build the documentation, make sure you have `ray` installed first.
 For building the documentation locally install the following dependencies:
 
 ```bash
-pip install -r requirements-doc.txt
+pip install -r requirements-doc.lock.txt
 ```
 
 ## Building the documentation
@@ -84,7 +90,7 @@ The benefits of working with notebooks for examples are that you don't separate 
 
 ## Adding Markdown docs from external (ecosystem) repositories
 
-In order to avoid a situation where duplicate documentation files live in both the docs folder
+In order to avoid a situation where duplicate documentation files live in both the `doc/` folder
 in this repository and in external repositories of ecosystem libraries (eg. xgboost-ray), you can
 specify Markdown files that will be downloaded from other GitHub repositories during the build process.
 

@@ -1,18 +1,23 @@
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-# Unset dind settings; we are using the host's docker daemon.
-ENV DOCKER_TLS_CERTDIR=
-ENV DOCKER_HOST=
-ENV DOCKER_TLS_VERIFY=
-ENV DOCKER_CERT_PATH=
+ARG PYTHON=3.10
+ARG BUILD_VARIANT=build
+ARG PYTHON_DEPSET=python/deplocks/ci/core-${BUILD_VARIANT}-ci_depset_py${PYTHON}.lock
 
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN pip install -U --ignore-installed  \
-  -c python/requirements_compiled.txt \
-  -r python/requirements.txt \
-  -r python/requirements/test-requirements.txt \
-  -r python/requirements/ml/dl-cpu-requirements.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+
+RUN <<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+
+uv pip uninstall --system ray
+
+EOF

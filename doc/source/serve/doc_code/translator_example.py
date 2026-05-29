@@ -21,11 +21,11 @@ class Translator:
         return self.translate(req["text"])
 
 
-app = Translator.options(route_prefix="/translate").bind()
+app = Translator.bind()
 # __serve_example_end__
 
 
-serve.run(app, name="app2")
+serve.run(app, name="app2", route_prefix="/translate")
 
 # __request_begin__
 text = "Hello, the weather is quite fine today!"

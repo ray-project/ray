@@ -15,6 +15,7 @@
 #include "ray/util/sequencer.h"
 
 #include <chrono>
+#include <deque>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -36,7 +37,7 @@ TEST(SequencerTest, ExecuteOrderedTest) {
     sequencer.Post(key, operation);
   }
 
-  while (queue.size() < (size_t)size) {
+  while (queue.size() < static_cast<size_t>(size)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
@@ -47,8 +48,3 @@ TEST(SequencerTest, ExecuteOrderedTest) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

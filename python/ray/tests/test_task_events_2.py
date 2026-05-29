@@ -1,26 +1,29 @@
 import asyncio
-from collections import defaultdict
 import os
-from typing import Dict
-import pytest
 import sys
 import time
-from ray._private import ray_constants
+from collections import defaultdict
 from functools import reduce
+from typing import Dict
+
+import pytest
 
 import ray
-from ray._private.state_api_test_utils import (
-    PidActor,
-    get_state_api_manager,
-    verify_tasks_running_or_terminated,
-    verify_failed_task,
-)
-from ray.util.state.common import ListApiOptions, StateResource
-from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
+from ray._common.test_utils import (
+    async_wait_for_condition,
     run_string_as_driver,
-    run_string_as_driver_nonblocking,
     wait_for_condition,
+)
+from ray._private import ray_constants
+from ray._private.state_api_test_utils import (
+    _is_actor_task_running,
+    get_state_api_manager,
+    verify_failed_task,
+    wait_for_task_states,
+)
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+    wait_for_aggregator_agent_if_enabled,
 )
 from ray.util.state import (
     StateApiClient,
@@ -28,6 +31,17 @@ from ray.util.state import (
     list_jobs,
     list_tasks,
 )
+from ray.util.state.common import ListApiOptions, StateResource
+
+import psutil
+
+# Run every test in this module twice: default and aggregator-enabled
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -225,12 +239,10 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     """
     ray.init(_system_config=_SYSTEM_CONFIG)
 
-    pid_actor = PidActor.remote()
-
     # Check a detached actor's parent task's failure do not
     # affect the actor's task subtree.
     @ray.remote(max_retries=0)
-    def parent_starts_detached_actor(pid_actor):
+    def parent_starts_detached_actor():
         @ray.remote
         class DetachedActor:
             def __init__(self):
@@ -241,12 +253,7 @@ def test_fault_tolerance_detached_actor(shutdown_only):
                     await asyncio.sleep(0.1)
                 pass
 
-            async def run(self, pid_actor):
-                ray.get(
-                    pid_actor.report_pid.remote(
-                        "detached-actor-run", os.getpid(), "RUNNING"
-                    )
-                )
+            async def run(self):
                 self.running = True
                 await asyncio.sleep(999)
 
@@ -254,7 +261,7 @@ def test_fault_tolerance_detached_actor(shutdown_only):
         a = DetachedActor.options(
             name="detached-actor", lifetime="detached", namespace="test"
         ).remote()
-        a.run.options(name="detached-actor-run").remote(pid_actor)
+        a.run.options(name="detached-actor-run").remote()
         ray.get(a.running.remote())
 
         # Enough time for events to be reported to GCS.
@@ -263,26 +270,14 @@ def test_fault_tolerance_detached_actor(shutdown_only):
         os._exit(1)
 
     with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(parent_starts_detached_actor.remote(pid_actor))
+        ray.get(parent_starts_detached_actor.remote())
 
-    a = ray.get_actor("detached-actor", namespace="test")
-    task_pids = ray.get(pid_actor.get_pids.remote())
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=task_pids,
-        expect_num_tasks=1,
-    )
+    wait_for_task_states({"detached-actor-run": "RUNNING"})
 
     a = ray.get_actor("detached-actor", namespace="test")
     ray.kill(a)
 
-    # Verify the actual process no longer running.
-    task_pids["detached-actor-run"] = (task_pids["detached-actor-run"][0], "FAILED")
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=task_pids,
-        expect_num_tasks=1,
-    )
+    wait_for_task_states({"detached-actor-run": "FAILED"})
 
     # Verify failed task marked with expected info.
     wait_for_condition(
@@ -390,94 +385,69 @@ ray.get(parent.remote())
 
 
 @ray.remote
-def task_finish_child(pid_actor):
-    ray.get(pid_actor.report_pid.remote("task_finish_child", os.getpid(), "FINISHED"))
+def task_finish_child():
     pass
 
 
 @ray.remote
-def task_sleep_child(pid_actor):
-    ray.get(pid_actor.report_pid.remote("task_sleep_child", os.getpid()))
+def task_sleep_child():
     time.sleep(999)
 
 
 @ray.remote
 class ChildActor:
-    def children(self, pid_actor):
-        ray.get(pid_actor.report_pid.remote("children", os.getpid()))
-        ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
-        ray.get(task_sleep_child.options(name="task_sleep_child").remote(pid_actor))
+    def children(self):
+        ray.get(task_finish_child.options(name="task_finish_child").remote())
+        ray.get(task_sleep_child.options(name="task_sleep_child").remote())
 
 
 @ray.remote
 class Actor:
-    def fail_parent(self, pid_actor):
-        ray.get(pid_actor.report_pid.remote("fail_parent", os.getpid(), "FAILED"))
-        ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
-        task_sleep_child.options(name="task_sleep_child").remote(pid_actor)
-
-        # Wait til child tasks run.
-        def wait_fn():
-            assert (
-                ray.get(pid_actor.get_pids.remote()).get("task_sleep_child") is not None
-            )
-            assert (
-                list_tasks(filters=[("name", "=", "task_finish_child")])[0]["state"]
-                == "FINISHED"
-            )
-            return True
-
-        wait_for_condition(wait_fn)
-        raise ValueError("expected to fail.")
-
-    def child_actor(self, pid_actor):
-        ray.get(pid_actor.report_pid.remote("child_actor", os.getpid(), "FAILED"))
-        a = ChildActor.remote()
-        a.children.options(name="children").remote(pid_actor)
-        # Wait til child tasks run.
-        wait_for_condition(
-            lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child")
-            is not None
+    def fail_parent(self):
+        ray.get(task_finish_child.options(name="task_finish_child").remote())
+        task_sleep_child.options(name="task_sleep_child").remote()
+        wait_for_task_states(
+            {"task_sleep_child": "RUNNING", "task_finish_child": "FINISHED"}
         )
         raise ValueError("expected to fail.")
 
-    def ready(self):
-        pass
+    def child_actor(self):
+        a = ChildActor.remote()
+        a.children.options(name="children").remote()
+        wait_for_task_states({"task_sleep_child": "RUNNING"})
+        raise ValueError("expected to fail.")
 
 
 def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
     # Test actor tasks
-    pid_actor = PidActor.remote()
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.ready.remote())
-        ray.get(a.fail_parent.options(name="fail_parent").remote(pid_actor))
+        ray.get(a.fail_parent.options(name="fail_parent").remote())
 
-    # Wait for all tasks to finish:
-    # 3 = fail_parent + task_finish_child + task_sleep_child
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
-        expect_num_tasks=3,
+    wait_for_task_states(
+        {
+            "fail_parent": "FAILED",
+            "task_finish_child": "FINISHED",
+            "task_sleep_child": "RUNNING",
+        }
     )
 
 
 def test_fault_tolerance_nested_actors_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
-    pid_actor = PidActor.remote()
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.ready.remote())
-        ray.get(a.child_actor.options(name="child_actor").remote(pid_actor))
+        ray.get(a.child_actor.options(name="child_actor").remote())
 
-    # Wait for all tasks to finish:
-    # 4 = child_actor + children + task_finish_child + task_sleep_child
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
-        expect_num_tasks=4,
+    wait_for_task_states(
+        {
+            "child_actor": "FAILED",
+            "children": "RUNNING",
+            "task_finish_child": "FINISHED",
+            "task_sleep_child": "RUNNING",
+        }
     )
 
 
@@ -502,7 +472,10 @@ def test_ray_intentional_errors(shutdown_only):
         def exit_normal(self):
             exit(0)
 
-    ray.init(num_cpus=1)
+    # Avoid worker-dead marking racing with max_calls task completion.
+    sys_config = _SYSTEM_CONFIG.copy()
+    sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 30000
+    ray.init(num_cpus=1, _system_config=sys_config)
 
     a = Actor.remote()
     ray.get(a.ready.remote())
@@ -597,66 +570,61 @@ def test_ray_intentional_errors(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-    ray.init(_system_config=_SYSTEM_CONFIG)
+    ray_context = ray.init(_system_config=_SYSTEM_CONFIG)
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    # TODO(#57203): remove this once task event buffer handles this internally.
+    wait_for_aggregator_agent_if_enabled(address, node_id)
 
-    def sleep_or_fail(pid_actor=None, exit_type=None):
+    def sleep_or_fail(exit_type=None, wait_for_chain=False):
         if exit_type is None:
             time.sleep(999)
-        # Wait until the children run
-        if pid_actor:
-            wait_for_condition(
-                lambda: len(ray.get(pid_actor.get_pids.remote())) == 3,
-            )
+        if wait_for_chain:
+            wait_for_task_states({"A": "RUNNING", "B": "RUNNING", "C": "RUNNING"})
 
         if exit_type == "exit_kill":
             os._exit(1)
         else:
             raise ValueError("Expected to fail")
 
-    # Test a chain of tasks
     @ray.remote(max_retries=0)
-    def A(exit_type, pid_actor):
-        x = B.remote(pid_actor)
-        ray.get(pid_actor.report_pid.remote("A", os.getpid()))
-        sleep_or_fail(pid_actor, exit_type)
+    def A(exit_type):
+        x = B.remote()
+        sleep_or_fail(exit_type, wait_for_chain=True)
         ray.get(x)
 
     @ray.remote(max_retries=0)
-    def B(pid_actor):
-        x = C.remote(pid_actor)
-        ray.get(pid_actor.report_pid.remote("B", os.getpid()))
+    def B():
+        x = C.remote()
         sleep_or_fail()
         ray.get(x)
 
     @ray.remote(max_retries=0)
-    def C(pid_actor):
-        ray.get(pid_actor.report_pid.remote("C", os.getpid()))
+    def C():
         sleep_or_fail()
 
     @ray.remote(max_restarts=0, max_task_retries=0)
     class Actor:
-        def run(self, pid_actor):
+        def run(self):
             with pytest.raises(
                 (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
             ):
-                ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
-
-    pid_actor = PidActor.remote()
+                ray.get(A.remote(exit_type=exit_type))
 
     if actor_or_normal_tasks == "normal_task":
         with pytest.raises(
             (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
         ):
-            ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
+            ray.get(A.remote(exit_type=exit_type))
     else:
         a = Actor.remote()
-        ray.get(a.run.remote(pid_actor=pid_actor))
+        ray.get(a.run.remote())
 
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
-        expect_num_tasks=3,
-    )
+    if exit_type == "exit_kill":
+        expected_states = {"A": "FAILED", "B": "FAILED", "C": "FAILED"}
+    else:
+        expected_states = {"A": "FAILED", "B": "RUNNING", "C": "RUNNING"}
+    wait_for_task_states(expected_states)
 
 
 NORMAL_TASK = "normal_task"
@@ -702,13 +670,28 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
 
     ray.init(_system_config=_SYSTEM_CONFIG)
 
+    killed_names = {name for name, _ in death_list}
+    exit_killed_names = {name for name, kind in death_list if kind == "exit_kill"}
+
+    parent_of = {"root": None}
+    for p, cs in execution_graph.items():
+        for _, c in cs:
+            parent_of[c] = p
+
+    def has_exit_killed_ancestor(name):
+        cur = parent_of.get(name)
+        while cur is not None:
+            if cur in exit_killed_names:
+                return True
+            cur = parent_of.get(cur)
+        return False
+
     @ray.remote
     class Killer:
         def __init__(self, death_list):
             self.idx_ = 0
             self.death_list_ = death_list
             self.kill_started = False
-            self.name_to_pids = {}
 
         async def start_killing(self):
             self.kill_started = True
@@ -724,18 +707,17 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
             to_kill = self.death_list_[self.idx_]
             return to_kill
 
-        async def report_pid(self, name, pid):
-            self.name_to_pids[name] = (pid, None)
-
-        async def get_pids(self):
-            return self.name_to_pids
-
         async def all_killed(self):
             while self.idx_ < len(self.death_list_):
                 await asyncio.sleep(0.5)
 
         async def advance_next(self):
             self.idx_ += 1
+
+    def expected_state_for(name):
+        if name in killed_names or has_exit_killed_ancestor(name):
+            return "FAILED"
+        return "RUNNING"
 
     def run_children(my_name, killer, execution_graph):
         children = execution_graph.get(my_name, [])
@@ -768,12 +750,10 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     @ray.remote(max_task_retries=0, max_restarts=0)
     class Actor:
         def actor_task(self, my_name, killer, execution_graph):
-            ray.get(killer.report_pid.remote(my_name, os.getpid()))
             run_children(my_name, killer, execution_graph)
 
     @ray.remote(max_retries=0)
     def task(my_name, killer, execution_graph):
-        ray.get(killer.report_pid.remote(my_name, os.getpid()))
         run_children(my_name, killer, execution_graph)
 
     killer = Killer.remote(death_list)
@@ -813,13 +793,8 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     ray.get(killer.all_killed.remote())
     print("all killed")
 
-    wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(killer.get_pids.remote()),
-        expect_num_tasks=len(tasks),
-        timeout=30,
-        retry_interval_ms=500,
-    )
+    expected_states = {name: expected_state_for(name) for name in tasks}
+    wait_for_task_states(expected_states)
 
 
 def check_file(type, task_name, expected_log, expect_no_end=False):
@@ -997,8 +972,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
 
     def get_last_job() -> str:
         jobs = list_jobs()
-        sorted(jobs, key=lambda x: x["job_id"])
-        return jobs[-1].job_id
+        return max(jobs, key=lambda x: x.job_id).job_id
 
     async def verify_tasks(task_name: str):
         # Query with job directly.
@@ -1017,7 +991,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
         # Run the script
         run_string_as_driver(script.format(task_name=i))
 
-        await async_wait_for_condition_async_predicate(
+        await async_wait_for_condition(
             verify_tasks, task_name=f"f.{i}", retry_interval_ms=500
         )
 
@@ -1046,7 +1020,7 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
-    ray.init(
+    ray_context = ray.init(
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 5,
@@ -1054,6 +1028,11 @@ def test_task_events_gc_default_policy(shutdown_only):
             "task_events_report_interval_ms": 100,
         },
     )
+    address = ray_context.address_info["address"]
+    node_id = ray_context.address_info["node_id"]
+    # TODO(#57203): remove this once task event buffer handles this internally.
+    wait_for_aggregator_agent_if_enabled(address, node_id)
+
     a = Actor.remote()
     ray.get(a.ready.remote())
     # Run 10 and 5 should be evicted
@@ -1111,8 +1090,247 @@ def test_task_events_gc_default_policy(shutdown_only):
     wait_for_condition(verify_tasks, expected_tasks_cnt={"error_task": 5})
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="setproctitle has different definitions of `title` on different OSes",
+)
+class TestIsActorTaskRunning:
+    def test_main_thread_short_comm(self, ray_start_regular):
+        """
+        Test that the main thread's comm is not truncated.
+        """
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check")
+                    assert psutil.Process(pid).name() == "ray::A.check"
+                    assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                    return True
+
+                wait_for_condition(_check)
+
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
+
+    def test_main_thread_long_comm(self, ray_start_regular):
+        """
+        In this case, the process comm should be truncated because of the
+        name is more than 15 characters ("ray::Actor.check_long_comm"). Hence,
+        `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+
+        @ray.remote
+        class Actor:
+            def check_long_comm(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check_long_comm")
+                    assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
+                    assert (
+                        psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+                    )
+                    return True
+
+                wait_for_condition(_check)
+
+                return pid
+
+        a = Actor.remote()
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
+
+    def test_main_thread_options_name_short_comm(self, ray_start_regular):
+        """
+        The task name is passed in as `options.name`.
+        """
+        task_name = "hello"
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == f"ray::{task_name}"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                    return True
+
+                wait_for_condition(_check)
+
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_main_thread_options_name_long_comm(self, ray_start_regular):
+        """
+        The task name is passed in as `options.name`, and it's longer than 15
+        characters. `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+        task_name = "very_long_task_name_1234567890"
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == f"ray::{task_name}"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                    return True
+
+                wait_for_condition(_check)
+
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_short_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+        """
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class A:
+            def check(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check")
+                    assert psutil.Process(pid).name() == "ray::A"
+                    assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                    return True
+
+                wait_for_condition(_check)
+
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
+
+    def test_default_thread_long_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+
+        In this example, because `ray::VeryLongCommActor` is longer than 15
+        characters, `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class VeryLongCommActor:
+            def check_long_comm(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check_long_comm")
+                    assert (
+                        psutil.Process(pid).name()
+                        == "ray::VeryLongCommActor.check_long_comm"
+                    )
+                    assert (
+                        psutil.Process(pid).cmdline()[0]
+                        == "ray::VeryLongCommActor.check_long_comm"
+                    )
+                    return True
+
+                wait_for_condition(_check)
+
+                return pid
+
+        a = VeryLongCommActor.remote()
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
+
+    def test_default_thread_options_name_short_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+        """
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class A:
+            def check(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == "ray::A"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                    return True
+
+                wait_for_condition(_check)
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_options_name_long_comm(self, ray_start_regular):
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class Actor:
+            def check_long_comm(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == "ray::Actor"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                    return True
+
+                wait_for_condition(_check)
+                return pid
+
+        a = Actor.remote()
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_options_name_long_comm_2(self, ray_start_regular):
+        """
+        `/proc/PID/comm` is truncated to 15 characters, so the process title
+        is "ray::VeryLongCo". `psutil.Process.name()` doesn't return `cmdline()[0]`
+        because `cmdline()[0]` doesn't start with "ray::VeryLongCo". This is the
+        implementation detail of `psutil`.
+        """
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class VeryLongCommActor:
+            def check_long_comm(self):
+                pid = os.getpid()
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    # The first 15 characters of "ray::VeryLongCommActor"
+                    assert psutil.Process(pid).name() == "ray::VeryLongCo"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                    return True
+
+                wait_for_condition(_check)
+                return pid
+
+        a = VeryLongCommActor.remote()
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

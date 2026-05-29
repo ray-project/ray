@@ -6,48 +6,33 @@ import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Dict
 
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
-from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.test_utils import (
+    SharedFlag,
+    check_deployment_status,
+    check_num_replicas_eq,
+    get_application_url,
+)
 from ray.serve._private.utils import get_component_file_name
+from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
 
 
-@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
-def test_deploy_nullify_route_prefix(serve_instance, prefixes):
-    # With multi dags support, dag driver will receive all route
-    # prefix when route_prefix is "None", since "None" will be converted
-    # to "/" internally.
-    # Note: the expose http endpoint will still be removed for internal
-    # dag node by setting "None" to route_prefix
-    @serve.deployment
-    def f(*args):
-        return "got me"
-
-    for prefix in prefixes:
-        dag = f.options(route_prefix=prefix).bind()
-        handle = serve.run(dag)
-        assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == "got me"
-        assert handle.remote().result() == "got me"
-
-
-@pytest.mark.timeout(10, method="thread")
-def test_deploy_empty_bundle(serve_instance):
+def test_deploy_zero_cpus(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     class D:
-        def hello(self, _):
+        def hello(self):
             return "hello"
 
-    # This should succesfully terminate within the provided time-frame.
-    serve.run(D.bind())
+    h = serve.run(D.bind())
+    assert h.hello.remote().result() == "hello"
 
 
 def test_deployment_error_handling(serve_instance):
@@ -55,9 +40,7 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(
-        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
-    ):
+    with pytest.raises(RuntimeError):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
@@ -130,14 +113,18 @@ def test_http_proxy_request_cancellation(serve_instance):
             return ret_val
 
     serve.run(A.bind())
+    url = get_application_url("HTTP")
+    # Windows usually resolves "localhost" to the IPv6 loopback ::1 first, but the
+    # Serve proxy is listening only on IPv4.  The initial TCP connect then hangs,
+    # breaking the short‑timeout logic in this test.  Using the literal IPv4 address
+    # 127.0.0.1 skips the IPv6 attempt and makes the test deterministic on Windows.
+    if sys.platform == "win32":
+        url = url.replace("localhost", "127.0.0.1")
 
-    url = "http://127.0.0.1:8000/A"
     with ThreadPoolExecutor() as pool:
         # Send the first request, it should block for the result
-        first_blocking_fut = pool.submit(
-            functools.partial(requests.get, url, timeout=100)
-        )
-        time.sleep(1)
+        first_blocking_fut = pool.submit(functools.partial(httpx.get, url, timeout=100))
+        wait_for_condition(lambda: ray.get(s.cur_num_waiters.remote()) == 1)
         assert not first_blocking_fut.done()
 
         # Send more requests, these should be queued in handle.
@@ -145,11 +132,10 @@ def test_http_proxy_request_cancellation(serve_instance):
         # They should all disconnect from http connection.
         # These requests should never reach the replica.
         rest_blocking_futs = [
-            pool.submit(functools.partial(requests.get, url, timeout=0.5))
+            pool.submit(functools.partial(httpx.get, url, timeout=0.5))
             for _ in range(3)
         ]
-        time.sleep(1)
-        assert all(f.done() for f in rest_blocking_futs)
+        wait_for_condition(lambda: all(f.done() for f in rest_blocking_futs))
 
         # Now unblock the first request.
         ray.get(s.send.remote())
@@ -157,7 +143,7 @@ def test_http_proxy_request_cancellation(serve_instance):
 
     # Sending another request to verify that only one request has been
     # processed so far.
-    assert requests.get(url).text == "2"
+    assert httpx.get(url).text == "2"
 
 
 def test_nonserializable_deployment(serve_instance):
@@ -189,18 +175,7 @@ def test_nonserializable_deployment(serve_instance):
 def test_deploy_application_unhealthy(serve_instance):
     """Test deploying an application that becomes unhealthy."""
 
-    @ray.remote
-    class Event:
-        def __init__(self):
-            self.is_set = False
-
-        def set(self):
-            self.is_set = True
-
-        def is_set(self):
-            return self.is_set
-
-    event = Event.remote()
+    event = SharedFlag.remote()
 
     @serve.deployment(health_check_period_s=1, health_check_timeout_s=3)
     class Model:
@@ -263,7 +238,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
-    wait_for_condition(check_fail, timeout=15)
+    wait_for_condition(check_fail, timeout=20)
 
 
 def test_deploy_same_deployment_name_different_app(serve_instance):
@@ -278,10 +253,22 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
     serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
     serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
 
-    assert requests.get("http://localhost:8000/app1").text == "hello alice"
-    assert requests.get("http://localhost:8000/app2").text == "hello bob"
-    routes = requests.get("http://localhost:8000/-/routes").json()
+    url = get_application_url("HTTP", app_name="app1")
+    assert httpx.get(f"{url}").text == "hello alice"
+    url_without_route_prefix = get_application_url(
+        "HTTP", app_name="app1", exclude_route_prefix=True
+    )
+    routes_url = f"{url_without_route_prefix}/-/routes"
+    routes = httpx.get(routes_url).json()
     assert routes["/app1"] == "app1"
+
+    url = get_application_url("HTTP", app_name="app2")
+    assert httpx.get(f"{url}").text == "hello bob"
+    url_without_route_prefix = get_application_url(
+        "HTTP", app_name="app2", exclude_route_prefix=True
+    )
+    routes_url = f"{url_without_route_prefix}/-/routes"
+    routes = httpx.get(routes_url).json()
     assert routes["/app2"] == "app2"
 
     app1_status = serve.status().applications["app1"]
@@ -320,7 +307,6 @@ def test_num_replicas_auto_api(serve_instance, use_options):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
@@ -328,12 +314,18 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "upscale_delay_s": 30.0,
         "look_back_period_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
+        },
     }
 
 
@@ -350,13 +342,21 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
     if use_options:
         A = serve.deployment(A).options(
             num_replicas="auto",
-            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            autoscaling_config={
+                "metrics_interval_s": 1,
+                "upscale_delay_s": 1,
+                "look_back_period_s": 2,
+            },
             graceful_shutdown_timeout_s=1,
         )
     else:
         A = serve.deployment(
             num_replicas="auto",
-            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            autoscaling_config={
+                "metrics_interval_s": 1,
+                "upscale_delay_s": 1,
+                "look_back_period_s": 2,
+            },
             graceful_shutdown_timeout_s=1,
         )(A)
 
@@ -373,21 +373,26 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`
         "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
-        "look_back_period_s": 30.0,
+        "look_back_period_s": 2.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
+        },
     }
 
     for i in range(3):
@@ -397,9 +402,9 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             assert ray.get(signal.cur_num_waiters.remote()) == target
             return True
 
-        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        wait_for_condition(check_num_waiters, target=2 * (i + 1), timeout=30)
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 
