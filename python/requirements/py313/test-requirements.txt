@@ -15,11 +15,11 @@ boto3==1.29.7
 cloudpickle==3.1.1
 tornado>=6.2.0
 cython==0.29.37
-# FastAPI 0.125+ removed pydantic.v1 model support in route handlers
-# (raises PydanticV1NotSupportedError). test_pydantic_serialization still
-# exercises v1 BaseModel in FastAPI routes, so pin to the last known-good
-# version (matches the default py3.11 lock).
-fastapi==0.121.0
+# Bumped to >=0.133.0 for the starlette 1.0.1 security update (FastAPI <0.133
+# caps starlette<1.0). FastAPI 0.125+ removed pydantic.v1 model support in
+# route handlers; Ray's Serve tests use native pydantic v2 models, so this is
+# safe.
+fastapi>=0.133.0
 # asgiref 3.10+ reworked async-to-sync adapters; Serve's direct-ingress
 # request timeout / disconnect handling regresses on 3.11 — fails
 # test_direct_ingress_standalone::test_http_request_timeout_disconnect_headers
@@ -32,7 +32,7 @@ flask==2.1.3
 freezegun==1.1.0
 google-api-python-client==2.111.0
 google-cloud-storage==2.14.0
-gradio==5.50.0; platform_system != "Windows"
+gradio==6.15.2; platform_system != "Windows"
 graphviz==0.20.3
 websockets==15.0.1
 joblib==1.2.0
@@ -156,7 +156,7 @@ wheel>=0.45.1
 aiohttp>=3.13.3
 cryptography>=44.0.3
 pyopenssl>=25.0.0
-starlette>=0.40.0
+starlette>=1.0.1
 requests>=2.32.3
 docker>=7.1.0
 # tensorflow-metadata (pinned for py3.10 compat) caps protobuf<=6.32 on py<3.11.

@@ -1,5 +1,9 @@
 # Keep this in sync with the definition in setup.py for ray[llm]
 vllm[audio]==0.20.0
+# vLLM requires prometheus-fastapi-instrumentator>=7.0.0; releases <8.0.0 cap
+# starlette<1.0, which conflicts with the starlette>=1.0.1 CVE update. 8.0.0
+# loosened the cap to starlette<2.0.
+prometheus-fastapi-instrumentator>=8.0.0
 # Keep NIXL in sync with vLLM's kv_connectors requirements.
 # https://github.com/vllm-project/vllm/blob/v0.20.0/requirements/kv_connectors.txt#L2
 nixl[cu13]==0.10.1

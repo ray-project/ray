@@ -539,7 +539,7 @@ fairscale==0.4.6
     # via -r python/requirements/ml/py313/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.121.0
+fastapi==0.133.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -714,11 +714,11 @@ googleapis-common-protos==1.74.0
     #   tensorflow-metadata
 gpytorch==1.15.2
     # via botorch
-gradio==5.50.0 ; platform_system != "Windows"
+gradio==6.15.2 ; platform_system != "Windows"
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
-gradio-client==1.14.0
+gradio-client==2.5.0
     # via gradio
 graphemeu==0.7.2
     # via alive-progress
@@ -2266,7 +2266,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.5.1
     # via cmdstanpy
-starlette==0.49.3
+starlette==1.0.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
