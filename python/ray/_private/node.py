@@ -1459,7 +1459,7 @@ class Node:
             assert curr_val == self._session_name.encode("utf-8"), (
                 f"Session name {self._session_name} does not match "
                 f"persisted value {curr_val}. Perhaps there was an "
-                f"error connecting to Redis."
+                f"error connecting to the GCS storage backend."
             )
 
         # Add tracing_startup_hook to redis / internal kv manually
