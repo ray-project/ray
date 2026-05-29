@@ -357,9 +357,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
           &group_to_bundles,
       const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
-  /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> listener);
-
   void HandleWaitingRemovedBundles();
 
  protected:
@@ -501,9 +498,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
-
-  /// The resources changed listeners.
-  std::vector<std::function<void()>> resources_changed_listeners_;
 
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>

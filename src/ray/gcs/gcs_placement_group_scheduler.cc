@@ -736,10 +736,6 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
       }
     }
   }
-
-  for (const auto &listener : resources_changed_listeners_) {
-    listener();
-  }
 }
 
 void GcsPlacementGroupScheduler::ReturnBundleResources(
@@ -752,16 +748,6 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
       waiting_removed_bundles_.push_back(bundle.second);
     }
   }
-
-  for (const auto &listener : resources_changed_listeners_) {
-    listener();
-  }
-}
-
-void GcsPlacementGroupScheduler::AddResourcesChangedListener(
-    std::function<void()> listener) {
-  RAY_CHECK(listener != nullptr);
-  resources_changed_listeners_.emplace_back(std::move(listener));
 }
 
 bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
@@ -824,9 +810,6 @@ void GcsPlacementGroupScheduler::HandleWaitingRemovedBundles() {
       // Release bundle successfully.
       waiting_removed_bundles_.erase(current);
     }
-  }
-  for (const auto &listener : resources_changed_listeners_) {
-    listener();
   }
 }
 
