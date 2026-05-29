@@ -1320,9 +1320,9 @@ async def test_stop_job_timeout(job_manager, tmp_path, use_env_var, stop_timeout
 import signal
 import time
 def handler(*args):
-    open({str(handled_file)!r}, 'w').close()
+    open({handled_file.as_posix()!r}, 'w').close()
 signal.signal(signal.SIGTERM, handler)
-open({str(ready_file)!r}, 'w').close()
+open({ready_file.as_posix()!r}, 'w').close()
 while True:
     time.sleep(1)\"
 """
