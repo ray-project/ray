@@ -72,6 +72,16 @@ def parse_args():
         help="Number of Embedder replicas",
     )
     parser.add_argument(
+        "--chunker-target-chunk-size",
+        type=int,
+        default=16 * MiB,
+        help=(
+            "Target chunk size (bytes) for splitting a Parquet file into read "
+            "tasks. Lower values produce more, smaller read blocks (bounded by "
+            "the file's row-group count)."
+        ),
+    )
+    parser.add_argument(
         "--num-gpus", type=int, default=1, help="Number of GPUs per Embedder"
     )
     parser.add_argument(
@@ -137,6 +147,11 @@ def main(args):
     ctx.partitioner_max_bucket_size = 1 * MiB
     ctx.partitioner_min_bucket_size = 1 * KiB
     ctx.read_op_min_num_blocks = 1200
+    # The partitioner only groups whole file-chunks into blocks; it can't split
+    # a file finer than the chunker does. Lower the chunker target so a single
+    # large Parquet file is split into many chunks (and therefore many small
+    # read blocks), instead of the default 1 GiB chunks.
+    ctx.parquet_chunker_target_chunk_size = args.chunker_target_chunk_size
 
     start_time = time.time()
     ds = ray.data.read_parquet(
