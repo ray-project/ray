@@ -674,14 +674,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._cluster_idle_observed_since = None
             return
 
-        # numOfHosts > 1 yields one raylet node per host,
-        # so min worker nodes is minReplicas * numOfHosts.
-        min_worker_nodes_by_type = {
-            wg["groupName"]: wg.get("minReplicas", 0) * wg.get("numOfHosts", 1)
-            for wg in self._ray_cluster["spec"].get("workerGroupSpecs", [])
-        }
-
-        if not self._is_cluster_idle_observable(ray_state, min_worker_nodes_by_type):
+        if not self._is_cluster_idle_observable(ray_state):
             self._cluster_idle_observed_since = None
             return
         if self._has_active_user_drivers():
@@ -696,29 +689,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         self.set_cluster_idle_annotation()
 
     @staticmethod
-    def _is_cluster_idle_observable(
-        ray_state: ClusterResourceState,
-        min_worker_nodes_by_type: Dict[str, int],
-    ) -> bool:
-        """Returns True when the cluster currently looks idle.
+    def _is_cluster_idle_observable(ray_state: ClusterResourceState) -> bool:
+        """Returns True when every alive worker is raylet-idle and no demand pends.
 
-        Conditions: every worker group is at min_worker_nodes, every alive
-        worker reports raylet idle (idle_duration_ms > 0), and the GCS view
-        has no pending resource demand. Head is excluded because Ray-internal
-        actors keep its NODE_WORKERS permanently busy.
+        Head is excluded because Ray-internal actors
+        are pinned there and keep it permanently busy.
         """
-        worker_count_by_type: Dict[str, int] = defaultdict(int)
-        for node in ray_state.node_states:
-            if node.status == NodeStatus.DEAD:
-                continue
-            if is_head_node(node):
-                continue
-            worker_count_by_type[node.ray_node_type_name] += 1
-
-        for type_name, min_count in min_worker_nodes_by_type.items():
-            if worker_count_by_type.get(type_name, 0) > min_count:
-                return False
-
         for node in ray_state.node_states:
             if node.status == NodeStatus.DEAD:
                 continue

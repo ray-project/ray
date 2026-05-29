@@ -854,34 +854,24 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             )
         return state
 
-    @staticmethod
-    def _min_workers(small_min: int = 0) -> Dict[str, int]:
-        return {"small-group": small_min}
-
     def test_is_cluster_idle_observable_no_workers(self):
         assert (
-            KubeRayProvider._is_cluster_idle_observable(
-                self._ray_state(worker_count=0), self._min_workers()
-            )
+            KubeRayProvider._is_cluster_idle_observable(self._ray_state(worker_count=0))
             is True
         )
 
-    def test_is_cluster_idle_observable_worker_above_min(self):
-        # min=0, 1 worker present → above min → not observable
+    def test_is_cluster_idle_observable_idle_workers_above_min(self):
+        # Worker count is irrelevant: idle workers above min are still idle.
         assert (
-            KubeRayProvider._is_cluster_idle_observable(
-                self._ray_state(worker_count=1),
-                self._min_workers(small_min=0),
-            )
-            is False
+            KubeRayProvider._is_cluster_idle_observable(self._ray_state(worker_count=3))
+            is True
         )
 
     def test_is_cluster_idle_observable_worker_busy(self):
-        # min=1, 1 worker present but idle_duration_ms == 0 → busy
+        # A worker running work (idle_duration_ms == 0) keeps the cluster busy.
         assert (
             KubeRayProvider._is_cluster_idle_observable(
-                self._ray_state(worker_count=1, worker_idle_ms=0),
-                self._min_workers(small_min=1),
+                self._ray_state(worker_count=1, worker_idle_ms=0)
             )
             is False
         )
@@ -892,8 +882,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 self._ray_state(
                     worker_count=0,
                     pending_resource_requests=[{"resources_bundle": {"CPU": 1}}],
-                ),
-                self._min_workers(),
+                )
             )
             is False
         )
@@ -939,15 +928,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._gcs_client = _FailingGcs()
         assert self.provider._has_active_user_drivers() is True
 
-    def _set_ray_cluster_spec(self, small_min: int = 0) -> None:
-        self.provider._ray_cluster = {
-            "spec": {
-                "workerGroupSpecs": [
-                    {"groupName": "small-group", "minReplicas": small_min}
-                ]
-            }
-        }
-
     def test_evaluate_cluster_idle_disabled_when_threshold_none(self):
         path = f"rayclusters/{self.provider._cluster_name}"
         self.provider._idle_termination_seconds = None
@@ -958,7 +938,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
     def test_evaluate_cluster_idle_waits_for_threshold(self):
         self.provider._gcs_client = self._make_gcs()  # no drivers
         self.provider._idle_termination_seconds = 100.0
-        self._set_ray_cluster_spec()
 
         def evaluate_at(t):
             with mock.patch("time.monotonic", return_value=t):
@@ -977,7 +956,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
     def test_evaluate_cluster_idle_resets_when_driver_attaches(self):
         path = f"rayclusters/{self.provider._cluster_name}"
         self.provider._idle_termination_seconds = 100.0
-        self._set_ray_cluster_spec()
 
         with mock.patch("time.monotonic", return_value=0.0):
             self.provider._gcs_client = self._make_gcs()  # no drivers
@@ -1008,26 +986,14 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._refresh_idle_termination_seconds()
         assert self.provider._idle_termination_seconds is None
 
-    def test_evaluate_cluster_idle_multi_host_at_min(self):
-        # minReplicas=1, numOfHosts=2 → 2 raylet nodes at min; observable should pass.
+    def test_evaluate_cluster_idle_idle_workers_above_min(self):
+        # Idle workers above min no longer block termination (no scale-down gate).
         self.provider._gcs_client = self._make_gcs()  # no drivers
         self.provider._idle_termination_seconds = 100.0
-        self.provider._ray_cluster = {
-            "spec": {
-                "workerGroupSpecs": [
-                    {
-                        "groupName": "small-group",
-                        "minReplicas": 1,
-                        "numOfHosts": 2,
-                    }
-                ]
-            }
-        }
 
         path = f"rayclusters/{self.provider._cluster_name}"
         with mock.patch("time.monotonic", return_value=0.0):
-            self.provider.evaluate_cluster_idle(self._ray_state(worker_count=2))
-        # Two workers at min (1 replica * 2 hosts) — anchor set, not yet patched.
+            self.provider.evaluate_cluster_idle(self._ray_state(worker_count=3))
         assert self.provider._cluster_idle_observed_since == 0.0
         assert path not in self.mock_client._patches
 
