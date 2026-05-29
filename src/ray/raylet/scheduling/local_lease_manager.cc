@@ -654,10 +654,6 @@ bool LocalLeaseManager::PoppedWorkerHandler(
 
       auto max_retries = RayConfig::instance().pop_worker_max_retries();
       if (max_retries >= 0 && work->GetPopWorkerRetries() > max_retries) {
-        // In case of too many retries, we cancel this task
-        // directly and raise a `RaySystemError` exception to user
-        // eventually. The task will be removed from dispatch queue in
-        // `CancelTask`.
         CancelLeases(
             [lease_id](const auto &w) {
               return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
@@ -665,7 +661,13 @@ bool LocalLeaseManager::PoppedWorkerHandler(
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
             absl::StrCat("Failed to startup worker after retrying ",
                          RayConfig::instance().pop_worker_max_retries(),
-                         " times."));
+                         " times. This is most often caused by errors in the worker's "
+                         "Python environment setup -- for example, pip / uv install "
+                         "failures, a broken py_executable, or a missing dependency in "
+                         "the cluster image. The underlying error is logged in "
+                         "raylet.err on node ",
+                         self_node_id_.Hex(),
+                         "."));
       } else {
         work->SetStateWaiting(cause);
       }
