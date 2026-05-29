@@ -265,4 +265,43 @@ TEST_F(ThresholdMemoryMonitorTest,
          "threshold.";
 }
 
+// Verifies that IsUsageAboveThreshold() reflects the cached result of the
+// last periodic check: true after the monitor observes memory above the
+// threshold. The kill callback is set up so its fire indicates the periodic
+// helper has already updated the cache.
+TEST_F(ThresholdMemoryMonitorTest, TestIsUsageAboveThresholdReflectsCachedAboveResult) {
+  int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
+  int64_t cgroup_current_bytes = 850 * 1024 * 1024;  // 850 MB current usage
+  int64_t anon_memory_bytes = 200 * 1024 * 1024;
+  int64_t shmem_memory_bytes = 100 * 1024 * 1024;
+  int64_t inactive_file_bytes = 30 * 1024 * 1024;
+  int64_t active_file_bytes = 20 * 1024 * 1024;
+  // Working set = 850 - 30 - 20 = 800 MB (80% of 1GB, above 70% threshold)
+
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
+                                                   cgroup_current_bytes,
+                                                   anon_memory_bytes,
+                                                   shmem_memory_bytes,
+                                                   inactive_file_bytes,
+                                                   active_file_bytes);
+
+  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+
+  NoopCgroupManager noop_cgroup_manager;
+  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
+  auto &monitor = MakeThresholdMemoryMonitor(
+      memory_usage_threshold_bytes,  // (70%)
+      1 /*refresh_interval_ms*/,
+      [has_checked_once](std::string) { has_checked_once->count_down(); },
+      cgroup_dir /*root_cgroup_path*/);
+
+  has_checked_once->wait();
+  // Cache is written inside the helper before the kill callback fires, so the
+  // latch returning here guarantees IsUsageAboveThreshold() has been updated.
+  ASSERT_TRUE(monitor.IsUsageAboveThreshold())
+      << "Expected the cached above-threshold flag to be true after the "
+         "monitor observed memory above the threshold.";
+}
+
 }  // namespace ray
