@@ -314,6 +314,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
         output = []
         acc = 0
+        label_selector = self.data_context.execution_options.label_selector
         while acc < nrow:
             b = self._buffer.get_next()
             self._metrics.on_input_dequeued(b, input_index=0)
@@ -321,7 +322,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(b)
                 acc += b.num_rows()
             else:
-                left, right = _split(b, nrow - acc)
+                left, right = _split(b, nrow - acc, label_selector)
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)
@@ -345,7 +346,11 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return preferred_locations.keys()
 
 
-def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
+def _split(
+    bundle: RefBundle,
+    left_size: int,
+    label_selector: Optional[Dict[str, str]] = None,
+) -> Tuple[RefBundle, RefBundle]:
     left_blocks, left_meta = [], []
     right_blocks, right_meta = [], []
     acc = 0
@@ -360,7 +365,7 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
         else:
             # Trouble case: split it up.
             lm, rm = _split_meta(m, left_size - acc)
-            lb, rb = _split_block(b, left_size - acc)
+            lb, rb = _split_block(b, left_size - acc, label_selector)
             left_meta.append(lm)
             right_meta.append(rm)
             left_blocks.append(lb)
@@ -402,12 +407,15 @@ def _split_meta(
 
 
 def _split_block(
-    b: ObjectRef[Block], left_size: int
+    b: ObjectRef[Block],
+    left_size: int,
+    label_selector: Optional[Dict[str, str]] = None,
 ) -> Tuple[ObjectRef[Block], ObjectRef[Block]]:
     split_single_block = cached_remote_fn(_split_single_block)
-    left, right = split_single_block.options(num_cpus=0, num_returns=2).remote(
-        b, left_size
-    )
+    options: Dict[str, Any] = {"num_cpus": 0, "num_returns": 2}
+    if label_selector:
+        options["label_selector"] = label_selector
+    left, right = split_single_block.options(**options).remote(b, left_size)
     return left, right
 
 

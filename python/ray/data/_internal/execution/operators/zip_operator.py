@@ -216,11 +216,13 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         split_side_owned = all(
             b.owns_blocks for b in (left_input if input_side_inverted else right_input)
         )
+        label_selector = self.data_context.execution_options.label_selector
         aligned_right_blocks_with_metadata = _split_at_indices(
             right_blocks_with_metadata,
             indices,
             owned_by_consumer=split_side_owned,
             block_rows=right_block_rows,
+            label_selector=label_selector,
         )
         del right_blocks_with_metadata
 
@@ -229,6 +231,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         del left_blocks_with_metadata, aligned_right_blocks_with_metadata
 
         zip_one_block = cached_remote_fn(_zip_one_block, num_returns=2)
+        if label_selector:
+            zip_one_block = zip_one_block.options(label_selector=label_selector)
 
         output_blocks = []
         output_metadata_schema = []
@@ -283,6 +287,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         metadata.
         """
         get_num_rows_and_bytes = cached_remote_fn(_get_num_rows_and_bytes)
+        label_selector = self.data_context.execution_options.label_selector
+        if label_selector:
+            get_num_rows_and_bytes = get_num_rows_and_bytes.options(
+                label_selector=label_selector
+            )
         block_rows = []
         block_bytes = []
         for block, metadata in blocks_with_metadata:

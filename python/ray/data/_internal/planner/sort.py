@@ -6,6 +6,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -43,13 +44,18 @@ def generate_sort_fn(
         # Use same number of output partitions.
         num_outputs = num_mappers
 
+        label_selector = data_context.execution_options.label_selector
         # Sample boundaries for sort key.
         if not sort_key.boundaries:
             sample_bar = ctx.sub_progress_bar_dict[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
             ]
             boundaries = SortTaskSpec.sample_boundaries(
-                blocks, sort_key, num_outputs, sample_bar
+                blocks,
+                sort_key,
+                num_outputs,
+                sample_bar,
+                label_selector=label_selector,
             )
         else:
             # For user-specified boundaries (which only partition by the primary
@@ -68,10 +74,14 @@ def generate_sort_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(sort_spec)
 
+        map_ray_remote_args = merge_label_selector({}, label_selector)
+        reduce_ray_remote_args = merge_label_selector({}, label_selector)
         return scheduler.execute(
             refs,
             num_outputs,
             ctx,
+            map_ray_remote_args=map_ray_remote_args,
+            reduce_ray_remote_args=reduce_ray_remote_args,
             _debug_limit_execution_to_num_blocks=(
                 _debug_limit_shuffle_execution_to_num_blocks
             ),

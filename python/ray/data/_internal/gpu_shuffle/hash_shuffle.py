@@ -262,6 +262,7 @@ class GPURankPool:
         spill_memory_limit: Union[int, str, None],
         setup_timeout_s: float,
         should_sort: bool = False,
+        label_selector: Optional[Dict[str, str]] = None,
     ):
         self._nranks = nranks
         self._total_nparts = total_nparts
@@ -271,6 +272,7 @@ class GPURankPool:
         self._spill_memory_limit = spill_memory_limit
         self._setup_timeout_s = setup_timeout_s
         self._should_sort = should_sort
+        self._label_selector = label_selector
         self._actors: List[ActorHandle] = []
         self._shutdown: bool = False
 
@@ -307,8 +309,14 @@ class GPURankPool:
             self._total_nparts,
             self._key_columns,
         )
+        actor_options: Dict[str, typing.Any] = {
+            "num_gpus": 1,
+            "scheduling_strategy": "SPREAD",
+        }
+        if self._label_selector:
+            actor_options["label_selector"] = self._label_selector
         self._actors = [
-            GPUShuffleActor.options(num_gpus=1, scheduling_strategy="SPREAD",).remote(
+            GPUShuffleActor.options(**actor_options).remote(
                 nranks=self._nranks,
                 total_nparts=self._total_nparts,
                 key_columns=self._key_columns,
@@ -459,6 +467,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             spill_memory_limit=data_context.gpu_shuffle_spill_memory_limit,
             setup_timeout_s=data_context.gpu_shuffle_setup_timeout_s,
             should_sort=should_sort,
+            label_selector=data_context.execution_options.label_selector,
         )
 
         self._next_block_idx: int = 0

@@ -1,11 +1,31 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray.data.block import BlockAccessor, CallableClass
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
+
+
+def merge_label_selector(
+    ray_remote_args: Dict[str, Any],
+    ctx_label_selector: Optional[Dict[str, str]],
+) -> Dict[str, Any]:
+    """Merge a DataContext-level label_selector into ``ray_remote_args``.
+
+    Operator-level keys (already in ``ray_remote_args["label_selector"]``) win on
+    conflict so existing node-pin selectors are preserved. Returns a new dict;
+    the input is not mutated. If ``ctx_label_selector`` is falsy, returns the
+    input unchanged.
+    """
+    if not ctx_label_selector:
+        return ray_remote_args
+    op_selector = ray_remote_args.get("label_selector") or {}
+    merged = {**ctx_label_selector, **op_selector}
+    out = dict(ray_remote_args)
+    out["label_selector"] = merged
+    return out
 
 
 def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:

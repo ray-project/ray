@@ -58,7 +58,7 @@ from ray.data._internal.execution.operators.map_operator import (
     _map_task,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.execution.util import locality_string
+from ray.data._internal.execution.util import locality_string, merge_label_selector
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data._internal.utils.heapdict import heapdict
 from ray.data.block import Block, BlockMetadata
@@ -450,6 +450,9 @@ class ActorPoolMapOperator(MapOperator):
         remote_args = self._ray_remote_args.copy()
         if self._ray_remote_args_fn:
             remote_args.update(self._ray_remote_args_fn())
+        remote_args = merge_label_selector(
+            remote_args, self.data_context.execution_options.label_selector
+        )
         return remote_args
 
     def has_next(self) -> bool:
