@@ -5,8 +5,6 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
 )
 
-_DEFAULT_SIDE_CHANNEL_PORT_START = 20000
-
 
 class NixlConnectorBackend(BaseConnectorBackend):
     def _set_side_channel_port(self):
@@ -17,7 +15,7 @@ class NixlConnectorBackend(BaseConnectorBackend):
 
         base_port = int(
             self.llm_config.experimental_configs.get(
-                "NIXL_SIDE_CHANNEL_PORT_BASE", _DEFAULT_SIDE_CHANNEL_PORT_START
+                "NIXL_SIDE_CHANNEL_PORT_BASE", 20000
             )
         )
         port = base_port + self._compute_port_offset()

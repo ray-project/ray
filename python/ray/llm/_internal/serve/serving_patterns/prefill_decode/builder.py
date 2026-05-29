@@ -42,10 +42,6 @@ from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
 
-# Disjoint default NIXL side-channel port bases so colocated prefill/decode replicas don't collide.
-_DEFAULT_NIXL_PORT_BASE_PREFILL = 20000
-_DEFAULT_NIXL_PORT_BASE_DECODE = 22000
-
 # ---------------------------------------------------------------------------
 # Deprecated: ProxyClsConfig
 # TODO(Kourosh): Deprecate, remove in Ray 2.58.
@@ -180,13 +176,10 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
-    def _default_nixl_port_bases(self):
-        """Default prefill and decode to disjoint NIXL port bases unless set."""
-        self.prefill_config.experimental_configs.setdefault(
-            "NIXL_SIDE_CHANNEL_PORT_BASE", _DEFAULT_NIXL_PORT_BASE_PREFILL
-        )
+    def _default_decode_nixl_port_base(self):
+        """Shift decode's NIXL base off prefill's default (20000) so colocated replicas don't collide."""
         self.decode_config.experimental_configs.setdefault(
-            "NIXL_SIDE_CHANNEL_PORT_BASE", _DEFAULT_NIXL_PORT_BASE_DECODE
+            "NIXL_SIDE_CHANNEL_PORT_BASE", 22000
         )
         return self
 
