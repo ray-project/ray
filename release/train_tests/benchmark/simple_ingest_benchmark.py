@@ -394,10 +394,7 @@ def run_once(args: argparse.Namespace) -> Dict[str, float]:
     )
 
     # Sample object-store usage continuously during the run so we catch
-    # short-lived peaks (e.g., upstream-queue bursts before backpressure
-    # kicks in). Driver-side Ray must be initialized to query the state.
-    if not ray.is_initialized():
-        ray.init(ignore_reinit_error=True)
+    # short-lived peaks (e.g., upstream-queue bursts before backpressure kicks in).
     state = get_state_from_address(ray.get_runtime_context().gcs_address)
     start_spilled = _get_spilled_bytes_total(state)
 
