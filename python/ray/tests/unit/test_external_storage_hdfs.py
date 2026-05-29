@@ -61,6 +61,11 @@ def test_hdfs_invalid_uri():
         _make_storage(uri="s3://bucket/path")
 
 
+def test_hdfs_empty_uri_list():
+    with pytest.raises(ValueError, match="uri must contain at least one HDFS URI"):
+        _make_storage(uri=[])
+
+
 def test_hdfs_invalid_buffer_size():
     with pytest.raises(ValueError, match="buffer_size must be a positive integer"):
         _make_storage(buffer_size=0)

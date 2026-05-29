@@ -598,6 +598,8 @@ class ExternalStorageHDFSImpl(ExternalStorage):
             uri = [uri]
         if not isinstance(uri, list):
             raise TypeError("uri must be a string or list of strings.")
+        if not uri:
+            raise ValueError("uri must contain at least one HDFS URI.")
         for u in uri:
             if not u.startswith("hdfs://"):
                 raise ValueError(f"HDFS URI must start with 'hdfs://', got: {u}")
