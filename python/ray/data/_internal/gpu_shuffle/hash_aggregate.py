@@ -493,14 +493,14 @@ class BuiltinGPUAggregationSpec(GPUAggregationSpec):
 
     Supported builtin aggregations: count, sum, min, max, mean.
 
-    Parameters:
-    - aggregation: The kind of builtin aggregation (count, sum, min, max, mean).
-    - output_name: Name of the column created by this aggregation.
-    - target_column: Name of the column to aggregate.
-    - ignore_nulls: Whether to ignore null values during aggregation.
-    - accumulator_prefix: Prefix for the intermediate accumulator columns.
-    - source_dtype: Source dtype of the target column. If not provided, it will be
-        inferred from the input schema.
+    Args:
+        aggregation: The kind of builtin aggregation (count, sum, min, max, mean).
+        output_name: Name of the column created by this aggregation.
+        target_column: Name of the column to aggregate.
+        ignore_nulls: Whether to ignore null values during aggregation.
+        accumulator_prefix: Prefix for the intermediate accumulator columns.
+        source_dtype: Source dtype of the target column. If not provided, it will
+            be inferred from the input schema.
     """
 
     def __init__(
