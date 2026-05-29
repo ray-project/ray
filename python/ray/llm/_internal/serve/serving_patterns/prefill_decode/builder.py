@@ -175,6 +175,14 @@ class PDServingArgs(BaseModelExtended):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _default_decode_nixl_port_base(self):
+        """Shift decode's NIXL base off prefill's default (20000) so colocated replicas don't collide."""
+        self.decode_config.experimental_configs.setdefault(
+            "NIXL_SIDE_CHANNEL_PORT_BASE", 22000
+        )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Builder

@@ -827,6 +827,19 @@ def _matches_session_id_header(header_key: str) -> bool:
     )
 
 
+def session_id_from_headers(headers: Dict[str, str]) -> Optional[str]:
+    """Return the session-id header value from str-keyed headers, or None.
+
+    Same matching rule as ``parse_session_id_header`` (which takes bytes
+    keys); use this for already-decoded ``Dict[str, str]`` headers such as
+    Starlette ``request.headers`` or ``RawRequestInfo.headers``.
+    """
+    return next(
+        (value for key, value in headers.items() if _matches_session_id_header(key)),
+        None,
+    )
+
+
 def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
     """Return the configured session-id header value, or '' if absent.
 

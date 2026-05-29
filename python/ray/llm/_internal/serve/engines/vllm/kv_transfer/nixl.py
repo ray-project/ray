@@ -9,17 +9,17 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
 class NixlConnectorBackend(BaseConnectorBackend):
     def _set_side_channel_port(self):
         from vllm import envs as vllm_envs
-        from vllm.utils.network_utils import get_open_port
 
-        if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
-            base_port: int = int(
-                self.llm_config.experimental_configs.get(
-                    "NIXL_SIDE_CHANNEL_PORT_BASE", get_open_port()
-                )
+        if vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
+            return
+
+        base_port = int(
+            self.llm_config.experimental_configs.get(
+                "NIXL_SIDE_CHANNEL_PORT_BASE", 20000
             )
-            # Use a deterministic rank-based offset (DP rank if set; else replica hash)
-            port = base_port + self._compute_port_offset()
-            os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
+        )
+        port = base_port + self._compute_port_offset()
+        os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
     def _set_side_channel_host(self):
         from vllm import envs as vllm_envs
