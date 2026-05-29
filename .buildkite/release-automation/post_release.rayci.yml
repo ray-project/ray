@@ -24,5 +24,6 @@ steps:
     commands:
       - export TEMPLATE_NAME="$(buildkite-agent meta-data get template-name)"
       - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
-      - export CURSOR_WEBHOOK_URL=$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-webhook-url --query SecretString --output text)
-      - 'curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Content-Type: application/json" -d "{\"template_name\":\"$$TEMPLATE_NAME\",\"ray_version\":\"$$RAY_VERSION\"}"'
+      - export CURSOR_WEBHOOK_URL="$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-webhook-url --query SecretString --output text | tr -d '\n\r')"
+      - export CURSOR_API_KEY="$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-api-key --query SecretString --output text | tr -d '\n\r')"
+      - 'curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Authorization: Bearer $$CURSOR_API_KEY" -H "Content-Type: application/json" -d "{\"template_name\":\"$$TEMPLATE_NAME\",\"ray_version\":\"$$RAY_VERSION\"}"'
