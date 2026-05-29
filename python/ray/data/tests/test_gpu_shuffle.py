@@ -804,7 +804,9 @@ class TestGPUHashAggregatePlanning:
             def __init__(self, **kwargs: Any) -> None:
                 self.inserted_chunks = []
 
-            def insert_chunk(self, table: pd.DataFrame, column_names: List[str]) -> None:
+            def insert_chunk(
+                self, table: pd.DataFrame, column_names: List[str]
+            ) -> None:
                 self.inserted_chunks.append((table, column_names))
 
         fake_cudf = types.ModuleType("cudf")
@@ -854,7 +856,9 @@ class TestGPUHashAggregatePlanning:
             def __init__(self, **kwargs: Any) -> None:
                 self.inserted_chunks = []
 
-            def insert_chunk(self, table: pd.DataFrame, column_names: List[str]) -> None:
+            def insert_chunk(
+                self, table: pd.DataFrame, column_names: List[str]
+            ) -> None:
                 self.inserted_chunks.append((table, column_names))
 
         fake_cudf = types.ModuleType("cudf")
@@ -973,9 +977,7 @@ class TestGPUHashAggregatePlanning:
             pa.schema([("count()", pa.int64())]), check_metadata=False
         )
 
-        runtime_plan = build_gpu_aggregation_plan(
-            ("user_id",), (Count(), Sum("value"))
-        )
+        runtime_plan = build_gpu_aggregation_plan(("user_id",), (Count(), Sum("value")))
         assert runtime_plan is not None
 
         with patch.dict("sys.modules", {"cudf": fake_cudf}):

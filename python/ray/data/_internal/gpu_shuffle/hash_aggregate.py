@@ -467,7 +467,9 @@ class GPUAggregationSpec(ABC):
         """Return preferred dtypes for partial accumulator columns."""
         return {column: None for column in self.accumulator_columns}
 
-    def final_arrow_types(self, input_schema: Optional[Schema] = None) -> Dict[str, Any]:
+    def final_arrow_types(
+        self, input_schema: Optional[Schema] = None
+    ) -> Dict[str, Any]:
         """Return the CPU Arrow types for the final output columns.
 
         This is usually one entry per aggregation/spec.
@@ -634,7 +636,9 @@ class BuiltinGPUAggregationSpec(GPUAggregationSpec):
             return self._final_mean(df, key_columns)
         return self._final_simple_reduction(df, key_columns)
 
-    def final_arrow_types(self, input_schema: Optional[Schema] = None) -> Dict[str, Any]:
+    def final_arrow_types(
+        self, input_schema: Optional[Schema] = None
+    ) -> Dict[str, Any]:
         """Return the CPU Arrow types for the final output column."""
         source_dtype = self.source_dtype
         if source_dtype is None:
@@ -853,7 +857,6 @@ class BuiltinGPUAggregationSpec(GPUAggregationSpec):
         result = _group_aggregate(df, key_columns, acc_col, "sum", self.output_name)
         return result[list(key_columns) + [self.output_name]]
 
-
     def _partial_mean(
         self,
         df: cudf.DataFrame,
@@ -1025,9 +1028,7 @@ class GPUAggregationPlan:
         if not fields:
             return current
 
-        ordered_names = [
-            column for column in self.required_columns if column in fields
-        ]
+        ordered_names = [column for column in self.required_columns if column in fields]
         ordered_names.extend(name for name in fields if name not in ordered_names)
         return pa.schema([(name, fields[name]) for name in ordered_names])
 
@@ -1134,9 +1135,7 @@ class GPUAggregationPlan:
 
         result = None
         for spec in self._specs:
-            partial = spec.partial_aggregate(
-                df, key_columns, input_schema=input_schema
-            )
+            partial = spec.partial_aggregate(df, key_columns, input_schema=input_schema)
             result = (
                 partial
                 if result is None
