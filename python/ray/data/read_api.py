@@ -66,6 +66,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -422,6 +423,43 @@ def _resolve_read_remote_args(
     )
 
 
+def _read_parquet_sample_column_bytes(
+    sample: "FileManifest",
+    *,
+    filesystem: Any = None,
+) -> Optional[Dict[str, int]]:
+    """Read the first sampled Parquet file's footer to get per-column on-disk bytes.
+
+    Used by :func:`_read_datasource_v2` to capture column-mass info at
+    planning time so :meth:`ReadFiles.infer_metadata` can produce a
+    projection-aware in-memory size estimate after projection-pushdown
+    has settled on the actual scanner column list.
+
+    Footer-only read — no row data is fetched. Returns ``None`` on any
+    I/O error or when the file has no row groups; callers fall back to
+    a uniform (non-projection-aware) estimate.
+    """
+    from ray.data._internal.datasource.parquet_datasource import (
+        _per_column_uncompressed_bytes,
+    )
+
+    if len(sample) == 0:
+        return None
+    first_path = sample.paths.tolist()[0]
+    try:
+        import pyarrow.dataset as pds
+
+        ds = pds.dataset(first_path, format="parquet", filesystem=filesystem)
+        fragments = list(ds.get_fragments())
+        if not fragments:
+            return None
+        per_column = _per_column_uncompressed_bytes(fragments[0].metadata)
+        return per_column or None
+    except Exception as e:
+        logger.debug("Skipping per-column footer read for %s: %s", first_path, e)
+        return None
+
+
 @wrap_auto_init
 def _read_datasource_v2(
     datasource,
@@ -525,9 +563,16 @@ def _read_datasource_v2(
     # into a single bucket.
     import sys
 
+    # Each read task fills a bucket up to
+    # ``target_max_block_size * num_blocks_per_read_task`` of estimated
+    # in-memory data and emits that many ~``target_max_block_size`` output
+    # blocks. Packing multiple blocks per task amortizes task-launch
+    # overhead and lifts ``avg_outputs_per_task`` above 1, doubling the
+    # resource manager's ``min(2, avg_outputs_per_task)`` admission tax
+    # so it stops over-scheduling read tasks against object-store budget.
     min_bucket_size = ctx.target_min_block_size or 0
     max_bucket_size = (
-        ctx.target_max_block_size
+        ctx.target_max_block_size * ctx.num_blocks_per_read_task
         if ctx.target_max_block_size is not None
         else sys.maxsize
     )
@@ -553,6 +598,39 @@ def _read_datasource_v2(
             else shuffle
         )
 
+    # Projection-aware dataset-size estimate. We pass the planning-time
+    # sample's average per-file on-disk bytes plus per-column uncompressed
+    # bytes (from one sample file's Parquet footer) to ``ReadFiles``,
+    # which combines them lazily in :meth:`ReadFiles.infer_metadata` once
+    # projection-pushdown has settled on the final scanner column list.
+    # The estimate is:
+    #
+    #     projection_mass  = sum(uncompressed[col] for col in projected_cols)
+    #                        / sum(uncompressed[*])
+    #     est_per_file     = avg_on_disk_per_file
+    #                        * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    #                        * projection_mass
+    #     estimated_size_bytes
+    #                      = est_per_file * num_buckets
+    #
+    # The mass term keeps narrow projections from inheriting the full
+    # file's weight (e.g. a 6-of-16 column ``select_columns(...)`` scales
+    # the per-file estimate by ~0.3 instead of 1.0).
+    sample_avg_file_size: Optional[int] = None
+    sample_per_column_bytes: Optional[Dict[str, int]] = None
+    if len(sample) > 0:
+        on_disk_total = int(sample.file_sizes.sum())
+        if on_disk_total > 0:
+            sample_avg_file_size = on_disk_total // len(sample)
+        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+            ParquetDatasourceV2,
+        )
+
+        if isinstance(datasource, ParquetDatasourceV2):
+            sample_per_column_bytes = _read_parquet_sample_column_bytes(
+                sample, filesystem=datasource.filesystem
+            )
+
     list_files_op = ListFiles(
         paths=list(datasource.paths),
         file_indexer=indexer,
@@ -574,6 +652,9 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        sample_avg_file_size=sample_avg_file_size,
+        sample_per_column_bytes=sample_per_column_bytes,
+        num_buckets=num_buckets,
         input_dependencies=[list_files_op],
     )
 

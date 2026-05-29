@@ -77,6 +77,16 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
+# Each V2 read task fills a bucket up to
+# ``target_max_block_size * num_blocks_per_read_task`` of estimated in-memory
+# size, then emits that many ~``target_max_block_size`` output blocks.
+# Packing multiple blocks per task amortizes task-launch and threading
+# overhead and raises ``avg_outputs_per_task`` above 1, which doubles the
+# resource manager's per-task admission tax via the ``min(2, ...)`` clamp
+# in ``op_runtime_metrics.obj_store_mem_max_pending_output_per_task`` —
+# preventing the manager from over-admitting concurrent read tasks.
+DEFAULT_NUM_BLOCKS_PER_READ_TASK = 8
+
 DEFAULT_USE_DATASOURCE_V2 = True
 
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
@@ -514,6 +524,14 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        num_blocks_per_read_task: Target number of output blocks per V2 read
+            task. Each task fills a bucket up to
+            ``target_max_block_size * num_blocks_per_read_task`` of estimated
+            in-memory data, then emits that many ~``target_max_block_size``
+            output blocks. Packing multiple blocks per task amortizes
+            task-launch overhead and lifts the resource manager's per-task
+            admission tax (which clamps at the streaming-gen buffer cap of
+            2) so it stops over-scheduling read tasks. Defaults to 8.
         use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
             the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
             driver-side first-file sampling for schema inference,
@@ -754,6 +772,7 @@ class DataContext:
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    num_blocks_per_read_task: int = DEFAULT_NUM_BLOCKS_PER_READ_TASK
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
     # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
     # chunker uses its built-in default (currently 1 GiB).

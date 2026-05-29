@@ -26,11 +26,13 @@ def _write(path, table):
 @pytest.fixture
 def restore_ctx():
     ctx = DataContext.get_current()
-    original = ctx.use_datasource_v2
+    original_v2 = ctx.use_datasource_v2
+    original_blocks_per_task = ctx.num_blocks_per_read_task
     try:
         yield ctx
     finally:
-        ctx.use_datasource_v2 = original
+        ctx.use_datasource_v2 = original_v2
+        ctx.num_blocks_per_read_task = original_blocks_per_task
 
 
 def test_v2_flag_default():
@@ -123,6 +125,144 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
+
+
+def test_read_parquet_v2_max_bucket_size_scales_with_num_blocks_per_read_task(
+    tmp_path, restore_ctx
+):
+    """The V2 listing partitioner's per-bucket cap is
+    ``target_max_block_size * num_blocks_per_read_task``, so each read
+    task emits roughly ``num_blocks_per_read_task`` output blocks (the
+    knob amortizes task-launch overhead and lifts ``avg_outputs_per_task``
+    above 1).
+    """
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    restore_ctx.num_blocks_per_read_task = 4
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    list_files_op = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files_op.file_partitioner, RoundRobinPartitioner)
+    assert (
+        list_files_op.file_partitioner._max_bucket_size
+        == restore_ctx.target_max_block_size * 4
+    )
+
+
+def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
+    """``ReadFiles.infer_metadata().size_bytes`` is the projection-aware
+    in-memory size estimate built from planning-time sample data (average
+    per-file on-disk bytes × ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` ×
+    column-mass ratio × ``num_buckets``). Surfaces a non-None value so
+    downstream consumers (hash-shuffle aggregator-memory sizing via
+    ``_try_estimate_output_bytes`` -> ``_get_default_aggregator_ray_remote_args``)
+    skip the conservative 1-GiB-per-aggregator fallback.
+    """
+    _write(tmp_path / "data.parquet", pa.table({"a": list(range(1024))}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=4)
+
+    read_files_op = ds._logical_plan.dag
+    assert isinstance(read_files_op, ReadFiles)
+    # Planning-time sample data is captured on the op.
+    assert read_files_op.sample_avg_file_size is not None
+    assert read_files_op.sample_avg_file_size > 0
+    assert read_files_op.sample_per_column_bytes is not None
+    assert read_files_op.num_buckets == 4
+    # The size estimate is materialized via infer_metadata.
+    size = read_files_op.infer_metadata().size_bytes
+    assert size is not None
+    assert size > 0
+
+
+def test_read_parquet_v2_infer_metadata_projection_aware(tmp_path, restore_ctx):
+    """When projection-pushdown trims the scanner column list, the size
+    estimate scales down by the projected columns' mass-fraction of the
+    file. Two columns with very different sizes; projecting only the
+    narrow one should yield a meaningfully smaller estimate than reading
+    both.
+
+    Simulates the post-projection-pushdown state via
+    ``ReadFiles.apply_projection`` (the optimizer rule that fires at
+    execution time).
+    """
+    # Wide string column dominates file mass; narrow int column is tiny.
+    # Strings are made unique so dict-encoding can't compress them away
+    # — keeps ``total_uncompressed_size`` reflective of real data size.
+    n = 4096
+    wide_values = [f"unique-{i}-" + ("x" * 256) for i in range(n)]
+    narrow_values = list(range(n))
+    _write(
+        tmp_path / "data.parquet",
+        pa.table({"narrow": narrow_values, "wide": wide_values}),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=4)
+    full_read = ds._logical_plan.dag
+    assert isinstance(full_read, ReadFiles)
+    full_size = full_read.infer_metadata().size_bytes
+
+    # Simulate projection-pushdown applying the ``select_columns(["narrow"])``
+    # rewrite into the scanner.
+    narrow_read = full_read.apply_projection({"narrow": "narrow"})
+    narrow_size = narrow_read.infer_metadata().size_bytes
+
+    assert full_size is not None and full_size > 0
+    assert narrow_size is not None and narrow_size > 0
+    # Projecting only the narrow column should shrink the estimate
+    # substantially — the wide string column dominates the file's
+    # uncompressed bytes.
+    assert (
+        narrow_size < full_size / 2
+    ), f"Expected projection-aware shrink: narrow={narrow_size}, full={full_size}"
+
+
+def test_read_parquet_v2_size_bytes_propagates_through_chain(tmp_path, restore_ctx):
+    """``size_bytes`` from ``ReadFiles.infer_metadata`` must propagate through
+    map ops (Filter/Project) and shuffles (Join, Aggregate) so each
+    downstream hash-shuffle sees a non-None size estimate and avoids the
+    1 GiB-per-aggregator fallback. Walks ``Aggregate → Filter → Join →
+    ReadFiles`` and asserts non-None ``size_bytes`` at every level.
+    """
+    from ray.data.expressions import col
+
+    _write(
+        tmp_path / "left.parquet",
+        pa.table({"k": list(range(1024)), "v": list(range(1024))}),
+    )
+    right_dir = tmp_path / "right"
+    right_dir.mkdir()
+    _write(right_dir / "right.parquet", pa.table({"k": list(range(64))}))
+
+    restore_ctx.use_datasource_v2 = True
+    left = ray.data.read_parquet(str(tmp_path / "left.parquet"))
+    right = ray.data.read_parquet(str(right_dir))
+
+    joined = left.join(right, num_partitions=4, join_type="inner", on=("k",))
+    filtered = joined.filter(expr=col("v") > 0)
+    aggregated = filtered.groupby("k").count()
+
+    dag = aggregated._logical_plan.dag
+    # Walk the chain top-down through every logical op above the read,
+    # asserting size_bytes is non-None at each level. Stop at ReadFiles —
+    # its upstream ``ListFiles`` is a pure source (no size to report).
+    seen_ops = []
+    cursor = dag
+    while True:
+        seen_ops.append(type(cursor).__name__)
+        assert (
+            cursor.infer_metadata().size_bytes is not None
+        ), f"size_bytes is None at {type(cursor).__name__} in chain {seen_ops}"
+        if isinstance(cursor, ReadFiles):
+            break
+        deps = cursor.input_dependencies
+        assert deps, f"unexpected leaf at {type(cursor).__name__}"
+        cursor = deps[0]
+    # Confirm we actually traversed all the op types we care about.
+    assert {"Aggregate", "Filter", "Join", "ReadFiles"}.issubset(set(seen_ops))
 
 
 def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restore_ctx):

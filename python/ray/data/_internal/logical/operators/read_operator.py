@@ -270,6 +270,17 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
+    # Planning-time sample data used by :meth:`infer_metadata` to derive
+    # a projection-aware in-memory ``size_bytes`` estimate after
+    # projection-pushdown has settled on the scanner's column list.
+    # ``_read_datasource_v2`` populates these from one sampled file's
+    # Parquet footer (per-column ``total_uncompressed_size``) plus the
+    # sample manifest's average on-disk file size. The estimate is
+    # computed lazily so it uses the *current* scanner column list,
+    # which reflects any ``ProjectionPushdown`` that's run since planning.
+    sample_avg_file_size: Optional[int] = None
+    sample_per_column_bytes: Optional[Dict[str, int]] = None
+    num_buckets: Optional[int] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -316,15 +327,61 @@ class ReadFiles(
         return schema
 
     def infer_metadata(self) -> BlockMetadata:
-        """Return empty metadata; downstream callers fall back to materialization.
+        return BlockMetadata(
+            num_rows=None,
+            size_bytes=self._estimate_size_bytes(),
+            input_files=None,
+            exec_stats=None,
+        )
 
-        Prior ``ReadFiles`` versions reached into a driver-side file cache to
-        compute size hints. With listing owned by an upstream
-        ``ListFiles`` op, metadata-for-sizing is computed from the
-        materialized manifest at execution time — the logical op doesn't
-        try to pre-estimate.
+    def _estimate_size_bytes(self) -> Optional[int]:
+        """Projection-aware in-memory size estimate.
+
+        Combines planning-time sample data
+        (``sample_avg_file_size`` and ``sample_per_column_bytes``) with
+        the *current* scanner column list (post projection-pushdown) to
+        produce an upper-bound estimate that scales correctly when the
+        query projects a narrow subset of columns:
+
+            projection_mass = sum(per_col_bytes[c] for c in projected)
+                              / sum(per_col_bytes[*])
+            est_per_file    = avg_file_size
+                              * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+                              * projection_mass
+            estimated_total = est_per_file * num_buckets
+
+        Lazy so it reflects projection-pushdown changes to the scanner.
+        When per-column data is unavailable, falls back to
+        ``projection_mass = 1.0`` (full-file mass).
         """
-        return BlockMetadata(None, None, None, None)
+        from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+            PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        )
+
+        if (
+            self.sample_avg_file_size is None
+            or self.sample_avg_file_size <= 0
+            or self.num_buckets is None
+        ):
+            return None
+
+        projection_mass = 1.0
+        if self.sample_per_column_bytes:
+            total_col_bytes = sum(self.sample_per_column_bytes.values())
+            if total_col_bytes > 0:
+                projected = self.scanner.pruned_column_names()
+                if projected:
+                    projected_bytes = sum(
+                        self.sample_per_column_bytes.get(c, 0) for c in projected
+                    )
+                    projection_mass = projected_bytes / total_col_bytes
+
+        est_per_file = (
+            self.sample_avg_file_size
+            * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+            * projection_mass
+        )
+        return int(est_per_file * self.num_buckets)
 
     def supports_projection_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (

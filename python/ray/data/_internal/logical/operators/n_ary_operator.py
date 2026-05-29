@@ -7,6 +7,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
+from ray.data.block import BlockMetadata
 from ray.util.annotations import PublicAPI
 
 __all__ = [
@@ -79,6 +80,26 @@ class NAry(LogicalOperator):
     @property
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
+
+    def infer_metadata(self) -> BlockMetadata:
+        """Sum ``size_bytes`` across all input dependencies.
+
+        For Zip / Union / Mix this is the natural output size. For Join
+        it's an upper bound (inner joins on FK produce roughly
+        ``max(input)``, but ``sum`` is safe and lets downstream
+        consumers like hash-shuffle aggregator memory sizing budget
+        without seeing ``None``). ``num_rows`` and ``input_files`` are
+        nulled — subclasses with stronger guarantees override.
+        """
+        sizes = [op.infer_metadata().size_bytes for op in self.input_dependencies]
+        return BlockMetadata(
+            num_rows=None,
+            size_bytes=(
+                sum(sizes) if sizes and all(s is not None for s in sizes) else None
+            ),
+            input_files=None,
+            exec_stats=None,
+        )
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
