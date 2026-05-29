@@ -10,6 +10,10 @@ import uuid
 import warnings
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
+from fastapi.routing import APIRoute
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response, StreamingResponse
+
 from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -19,6 +23,12 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
+)
+from ray.llm._internal.serve.core.ingress.utils import (
+    NON_STREAMING_RESPONSE_TYPES,
+    _openai_json_wrapper,
+    _peek_at_generator,
+    _sanitize_chat_completion_request,
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
@@ -62,28 +72,18 @@ _PREWARM_MAX_RETRIES = 60
 
 def _strip_routes(app, path: str) -> None:
     """Remove the engine-native APIRoute(s) registered at ``path``."""
-    from fastapi.routing import APIRoute
-
     app.routes[:] = [
         r for r in app.routes if not (isinstance(r, APIRoute) and r.path == path)
     ]
 
 
-async def _pd_http_response(gen):
+async def _pd_http_response(gen) -> Response:
     """Shape a P/D orchestration generator into an OpenAI HTTP response.
 
     Returns a JSON response when the first chunk is an error or a complete
     (non-streaming) response, otherwise an SSE stream. Uses the same response
     helpers as ``OpenAiIngress`` so the wire format matches the standard path.
     """
-    from starlette.responses import JSONResponse, StreamingResponse
-
-    from ray.llm._internal.serve.core.ingress.ingress import (
-        NON_STREAMING_RESPONSE_TYPES,
-        _openai_json_wrapper,
-        _peek_at_generator,
-    )
-
     first, gen = await _peek_at_generator(gen)
     if isinstance(first, list):
         first = first[0]
@@ -201,12 +201,6 @@ class PDOrchestratorMixin:
         this server's ``chat`` / ``completions``, which run remote prefill
         then local decode. All other routes stay engine-native.
         """
-        from starlette.requests import Request
-
-        from ray.llm._internal.serve.core.ingress.ingress import (
-            _sanitize_chat_completion_request,
-        )
-
         app = await super().__serve_build_asgi_app__()
         _strip_routes(app, "/v1/chat/completions")
         _strip_routes(app, "/v1/completions")

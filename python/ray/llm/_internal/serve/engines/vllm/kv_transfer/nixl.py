@@ -58,8 +58,8 @@ class NixlConnectorBackend(BaseConnectorBackend):
                 "that you are using an older version of vLLM."
             )
 
-        self._set_side_channel_host()
         self._set_side_channel_port()
+        self._set_side_channel_host()
 
         # We need to overwrite the engine_id to make it unique across replicas.
         engine_id = self.kv_transfer_config.get("engine_id", self._get_unique_suffix())
