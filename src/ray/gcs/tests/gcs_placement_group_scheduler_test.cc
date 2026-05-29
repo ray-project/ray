@@ -24,6 +24,7 @@
 
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_placement_group.h"
@@ -261,8 +262,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     // Make sure the resources are not used.
     for (const auto &[node_id, node] : resource_view_before_scheduling) {
       const auto &view = node.GetLocalView();
-      if (!view.IsV2()) {
-        const auto &nr = static_cast<const NodeResources &>(view);
+      if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+        const auto &nr = dynamic_cast<const NodeResources &>(view);
         if (nr.total != nr.GetAvailable()) {
           return false;
         }

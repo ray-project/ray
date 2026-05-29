@@ -67,9 +67,9 @@ void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
     std::unique_ptr<NodeResourcesBase> copy;
-    if (!node_resources.IsV2()) {
+    if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
       copy = std::make_unique<NodeResources>(
-          static_cast<const NodeResources &>(node_resources));
+          dynamic_cast<const NodeResources &>(node_resources));
     }
     nodes_.emplace(node_id, Node(std::move(copy)));
   } else {
@@ -148,14 +148,12 @@ bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     const auto &node_resources = it->second.GetLocalView();
-    RAY_CHECK(node_resources.IsV2() == ret_resources->IsV2())
-        << "ret_resources type must match the node's resource version";
-    if (node_resources.IsV2()) {
-      *static_cast<NodeResourcesV2 *>(ret_resources) =
-          static_cast<const NodeResourcesV2 &>(node_resources);
+    if (RayConfig::instance().enable_per_instance_resource_scheduling()) {
+      dynamic_cast<NodeResourcesV2 &>(*ret_resources) =
+          dynamic_cast<const NodeResourcesV2 &>(node_resources);
     } else {
-      *static_cast<NodeResources *>(ret_resources) =
-          static_cast<const NodeResources &>(node_resources);
+      dynamic_cast<NodeResources &>(*ret_resources) =
+          dynamic_cast<const NodeResources &>(node_resources);
     }
     return true;
   } else {
@@ -194,9 +192,9 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
     available = 0;
   }
   local_view->total.Set(resource_id, total);
-  if (!local_view->IsV2()) {
-    static_cast<NodeResources *>(local_view)
-        ->SetAvailableResource(resource_id, available);
+  if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+    dynamic_cast<NodeResources &>(*local_view)
+        .SetAvailableResource(resource_id, available);
   }
 }
 
@@ -210,8 +208,8 @@ bool ClusterResourceManager::DeleteResources(
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
     local_view->total.Set(resource_id, 0);
-    if (!local_view->IsV2()) {
-      static_cast<NodeResources *>(local_view)->SetAvailableResource(resource_id, 0);
+    if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+      dynamic_cast<NodeResources &>(*local_view).SetAvailableResource(resource_id, 0);
     }
   }
   return true;
@@ -237,9 +235,9 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   NodeResourcesBase *resources = it->second.GetMutableLocalView();
 
-  if (!resources->IsV2()) {
-    static_cast<NodeResources *>(resources)->SubtractAvailable(
-        resource_request.GetResourceSet());
+  if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+    dynamic_cast<NodeResources &>(*resources)
+        .SubtractAvailable(resource_request.GetResourceSet());
   }
 
   // TODO(swang): We should also subtract object store memory if the task has
@@ -288,9 +286,9 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
       if (new_available > total) {
         new_available = total;
       }
-      if (!node_resources->IsV2()) {
-        static_cast<NodeResources *>(node_resources)
-            ->SetAvailableResource(resource_id, new_available);
+      if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+        dynamic_cast<NodeResources &>(*node_resources)
+            .SetAvailableResource(resource_id, new_available);
       }
     }
   }

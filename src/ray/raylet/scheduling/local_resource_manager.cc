@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/util/logging.h"
@@ -44,8 +45,8 @@ LocalResourceManager::LocalResourceManager(
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber),
       resource_usage_gauge_(resource_usage_gauge) {
-  if (!node_resources.IsV2()) {
-    const auto &v1 = static_cast<const NodeResources &>(node_resources);
+  if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+    const auto &v1 = dynamic_cast<const NodeResources &>(node_resources);
     RAY_CHECK(v1.total == v1.GetAvailable());
   }
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
