@@ -14,6 +14,7 @@
 
 #include "ray/common/monitors/cpu_monitor_utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -36,7 +37,7 @@ int64_t CpuMonitorUtils::GetCpuLimit(const std::string &root_cgroup_path) {
 
   CpuCountOr cpu_count = GetCpuCountV2(cgroupV2CpuMaxPath);
   if (cpu_count.has_value()) {
-    return std::max(1, cpu_count.value());
+    return std::max<int64_t>(1, cpu_count.value());
   }
   RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
                                  cgroupV2CpuMaxPath,
@@ -47,7 +48,7 @@ int64_t CpuMonitorUtils::GetCpuLimit(const std::string &root_cgroup_path) {
 
   cpu_count = GetCpuCountV1(cgroupV1CpuQuotaPath, cgroupV1CpuPeriodPath);
   if (cpu_count.has_value()) {
-    return std::max(1, cpu_count.value());
+    return std::max<int64_t>(1, cpu_count.value());
   }
   RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
                                  cgroupV1CpuQuotaPath,
