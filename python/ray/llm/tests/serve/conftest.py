@@ -201,9 +201,6 @@ def get_rayllm_testing_model(
     router_app = build_openai_app(args)
     serve._run(router_app, name="router", _blocking=False)
 
-    # Gate on all replicas RUNNING before serving traffic, otherwise the HAProxy
-    # ingress router 503s with "unknown_replica_id" when it routes to a replica
-    # not yet in the reloaded replica map while the fleet scales up (#63731).
     wait_for_condition(
         lambda: serve.status().applications["router"].status
         == ApplicationStatus.RUNNING,
