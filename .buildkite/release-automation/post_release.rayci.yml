@@ -20,6 +20,7 @@ steps:
     depends_on:
       - block-trigger-cursor-template-upgrade
     instance_type: small_branch
+    mount_buildkite_agent: true
     commands:
       - export TEMPLATE_NAME="$(buildkite-agent meta-data get template-name)"
       - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
