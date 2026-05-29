@@ -67,13 +67,14 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
-# Backport vLLM PR #39873 until the pinned vLLM release includes it.
-python - <<'PY'
+# Temporarily patch fixes from https://github.com/vllm-project/vllm/pull/39873
+# until the pinned vLLM release includes it.
+VLLM_IMPORT_UTILS_PATCH="$(pwd)/python/requirements/llm/patches/vllm-trial-import-patch"
+VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
 from pathlib import Path
 
-ref = "9a77e42a670baf89871ff1d49aa4247b7749024f"
 candidate_dirs = [
     Path(sysconfig.get_paths()["purelib"]),
     Path(sysconfig.get_paths()["platlib"]),
@@ -83,46 +84,22 @@ candidate_dirs = [
 for base_dir in dict.fromkeys(candidate_dirs):
     import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
     if import_utils.exists():
+        print(base_dir)
         break
 else:
     raise SystemExit("vLLM import_utils.py not found")
-
-old = '''@cache
-def _has_module(module_name: str) -> bool:
-    """Return True if *module_name* can be found in the current environment.
-
-    The result is cached so that subsequent queries for the same module incur
-    no additional overhead.
-    """
-    return importlib.util.find_spec(module_name) is not None
-'''
-new = '''@cache
-def _has_module(module_name: str) -> bool:
-    """Return True if *module_name* can be imported in the current environment.
-
-    Uses ``importlib.util.find_spec`` as a fast pre-check, then performs a
-    trial import to verify that native dependencies (shared libraries, etc.)
-    are also satisfied.  The result is cached so that subsequent queries for
-    the same module incur no additional overhead.
-    """
-    if importlib.util.find_spec(module_name) is None:
-        return False
-    try:
-        importlib.import_module(module_name)
-        return True
-    except (ImportError, OSError) as exc:
-        logger.debug("Module %s was found but failed to import: %s", module_name, exc)
-        return False
-'''
-text = import_utils.read_text()
-if old in text:
-    import_utils.write_text(text.replace(old, new))
-elif "importlib.import_module(module_name)" not in text:
-    raise SystemExit("Could not apply vLLM optional import fix")
-
-print(f"Backported vLLM optional import fix {ref} to {import_utils}")
 PY
+)"
+(
+    cd "${VLLM_SITE_PACKAGES}"
+    git apply "${VLLM_IMPORT_UTILS_PATCH}"
+)
 
 EOF
 
+
+# vLLM 0.21.0 selects the FlashInfer top-k/top-p sampler during engine initialization
+# instead of the previous PyTorch-native/Triton sampling path. The FlashInfer sampler
+# introduces longer adds a large one-time engine initialization cost. To avoid performance
+# surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
