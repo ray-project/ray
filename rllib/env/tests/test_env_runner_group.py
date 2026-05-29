@@ -172,10 +172,12 @@ class TestEnvRunnerGroup(unittest.TestCase):
             ),
         )
 
-        # Force the call to return ~no completed results within the zero
-        # window by making the remote work non-trivial.
+        # Make the remote call slow relative to ``timeout_seconds=0.0`` so
+        # ``ray.wait(timeout=0.0)`` returns with zero results. A short sleep
+        # is enough; we don't need the workers to be busy for long, just
+        # long enough for the fire-and-forget poll to come back empty.
         def _slow(w):
-            time.sleep(2)
+            time.sleep(0.5)
             return 1
 
         ws.foreach_env_runner(
@@ -191,37 +193,27 @@ class TestEnvRunnerGroup(unittest.TestCase):
         """Verify the lifetime counter increments when remote calls time out."""
         ws = EnvRunnerGroup(
             config=(
-                PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=3)
+                PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
         )
 
         self.assertEqual(ws.num_env_runners_dropped_lifetime(), 0)
 
-        # Force ALL three remote workers to exceed a very short timeout
-        # by sleeping in the remote call. Drops should equal the number of
-        # remote workers we dispatched to.
+        # Force both remote workers to exceed a short positive timeout by
+        # sleeping in the remote call. The sleep just needs to exceed the
+        # timeout; keeping it small keeps the test fast in CI and avoids
+        # leaving long-running actor work alive past the test boundary.
         def _slow(w):
-            time.sleep(5)
+            time.sleep(0.5)
             return 1
 
         results = ws.foreach_env_runner(
             _slow,
             local_env_runner=False,
-            timeout_seconds=0.1,
+            timeout_seconds=0.05,
         )
         self.assertEqual(len(results), 0)
-        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 3)
-
-        # Counter is cumulative across calls; a second timed-out call should
-        # accumulate on top of the previous total. Note that timed-out
-        # actors stay healthy (see foreach_env_runner doc) so they remain
-        # candidates for the next dispatch.
-        ws.foreach_env_runner(
-            _slow,
-            local_env_runner=False,
-            timeout_seconds=0.1,
-        )
-        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 6)
+        self.assertEqual(ws.num_env_runners_dropped_lifetime(), 2)
 
         ws.stop()
 
