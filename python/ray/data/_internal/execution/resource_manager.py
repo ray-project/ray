@@ -384,8 +384,18 @@ class ResourceManager:
         if verbose:
             usage_str += (
                 f" (in={memory_string(self.get_mem_op_internal(op))},"
-                f"out={memory_string(self.get_mem_op_outputs(op))})"
+                f"out={memory_string(self.get_mem_op_outputs(op))}"
             )
+            # External-consumer bytes (iterator / streaming_split prefetch) are
+            # only attached to the output operator. Surface them in its line so
+            # users can see how much of `out` is held by the downstream iterator
+            # vs. the operator's own output queues.
+            if op is self._output_operator and self._has_external_consumer:
+                usage_str += (
+                    f",external_consumer="
+                    f"{memory_string(self._external_consumer_bytes)}"
+                )
+            usage_str += ")"
             if self._op_resource_allocator is not None:
                 allocation = self._op_resource_allocator.get_allocation(op)
                 if allocation:
