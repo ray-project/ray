@@ -447,11 +447,11 @@ TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
 TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker3 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
@@ -527,9 +527,9 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
 
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
 
   // Create 2 leases that requires 3 CPU's each and are waiting on an arg.
@@ -596,7 +596,7 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
   // - Node has 3 CPUs available with one free worker.
   // - Node is idle initially.
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);

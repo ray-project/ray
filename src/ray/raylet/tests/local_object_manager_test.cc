@@ -37,6 +37,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -231,8 +232,9 @@ class MockIOWorker : public MockWorker {
  public:
   MockIOWorker(WorkerID worker_id,
                int port,
+               ClockInterface &clock,
                std::shared_ptr<rpc::CoreWorkerClientInterface> io_worker)
-      : MockWorker(worker_id, port), io_worker_(io_worker) {}
+      : MockWorker(worker_id, port, clock), io_worker_(io_worker) {}
 
   rpc::CoreWorkerClientInterface *rpc_client() { return io_worker_.get(); }
 
@@ -287,8 +289,9 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
   std::list<std::function<void(std::shared_ptr<WorkerInterface>)>> restoration_callbacks;
   std::shared_ptr<MockIOWorkerClient> io_worker_client =
       std::make_shared<MockIOWorkerClient>();
-  std::shared_ptr<WorkerInterface> io_worker =
-      std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
+  FakeClock clock_;
+  std::shared_ptr<WorkerInterface> io_worker = std::make_shared<MockIOWorker>(
+      WorkerID::FromRandom(), 1234, clock_, io_worker_client);
 };
 
 class MockObjectBuffer : public Buffer {
@@ -355,7 +358,8 @@ class LocalObjectManagerTestWithMinSpillingSize {
             /*core_worker_subscriber=*/subscriber_.get(),
             object_directory_.get(),
             /*object_store_memory_gauge=*/fake_object_store_memory_gauge_,
-            /*spill_manager_metrics=*/spill_manager_metrics_),
+            /*spill_manager_metrics=*/spill_manager_metrics_,
+            /*clock=*/fake_clock_),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
     manager.min_spilling_size_ = min_spilling_size;
@@ -421,6 +425,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
       fake_spill_manager_objects_bytes_gauge_,
       fake_spill_manager_request_total_gauge_,
       fake_spill_manager_throughput_mb_gauge_};
+  FakeClock fake_clock_;
   LocalObjectManager manager;
 
   std::unordered_set<ObjectID> freed;
