@@ -11,7 +11,21 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-14 git
+apt-get install -y curl zip unzip clang-14 git
+
+# Install AWS CLI v2
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+rm -rf /tmp/aws /tmp/awscliv2.zip
+
+# Install buildkite-agent
+BUILDKITE_AGENT_VERSION=3.106.0
+curl -fsSL "https://github.com/buildkite/agent/releases/download/v${BUILDKITE_AGENT_VERSION}/buildkite-agent-linux-amd64-${BUILDKITE_AGENT_VERSION}.tar.gz" \
+  -o /tmp/buildkite-agent.tar.gz
+tar -xzf /tmp/buildkite-agent.tar.gz -C /usr/local/bin buildkite-agent
+chmod +x /usr/local/bin/buildkite-agent
+rm /tmp/buildkite-agent.tar.gz
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
