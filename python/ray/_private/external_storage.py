@@ -623,7 +623,7 @@ class ExternalStorageHDFSImpl(ExternalStorage):
 
         self._buffer_size = buffer_size
         self._uris = [u.rstrip("/") for u in uri]
-        self._base_paths = [
+        base_paths = [
             urllib.parse.urlparse(u).path.rstrip("/") or "/" for u in self._uris
         ]
         self._current_uri_index = random.randrange(0, len(self._uris))
@@ -631,7 +631,7 @@ class ExternalStorageHDFSImpl(ExternalStorage):
         # Per-node directory to isolate spill files across nodes.
         self._node_prefix = f"{DEFAULT_OBJECT_PREFIX}_{node_id}"
         self._spill_dirs: List[str] = []
-        for base_path in self._base_paths:
+        for base_path in base_paths:
             spill_dir = f"{base_path.rstrip('/')}/{self._node_prefix}"
             self._spill_dirs.append(spill_dir)
 
