@@ -2200,7 +2200,7 @@ py_test(
 
 py_test(
     name = "env/tests/test_env_runner_group",
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_env_runner_group.py"],
     tags = [
         "evaluation",
