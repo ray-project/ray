@@ -17,7 +17,6 @@
 #include <memory>
 
 #include "gtest/gtest.h"
-
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
 
 namespace ray {
