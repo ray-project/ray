@@ -159,7 +159,6 @@ void LocalObjectManager::FlushFreeObjects() {
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  last_free_objects_at_ms_ = clock_.NowUnixMillis();
 }
 
 bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {

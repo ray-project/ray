@@ -73,7 +73,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         io_worker_pool_(io_worker_pool),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(std::move(on_objects_freed)),
-        last_free_objects_at_ms_(clock.NowUnixMillis()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         max_spilling_file_size_bytes_(
             RayConfig::instance().max_spilling_file_size_bytes()),
@@ -314,10 +313,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// The field is used to dedup the same restore request while restoration is in
   /// progress.
   absl::flat_hash_set<ObjectID> objects_pending_restore_;
-
-  /// The time that we last sent a FreeObjects request to other nodes for
-  /// objects that have gone out of scope in the application.
-  uint64_t last_free_objects_at_ms_ = 0;
 
   /// Objects that are out of scope in the application and that should be freed
   /// from plasma. The cache is flushed when it reaches the
