@@ -125,6 +125,19 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
+  if (!is_leader_fn_()) {
+    RAY_CHECK(node_info.is_head_node())
+        << "Only the local head node registration is allowed on passive GCS.";
+    RAY_LOG(INFO).WithField(node_id) << "GCS server is in passive mode. Caching local "
+                                        "head node registration in-memory.";
+    {
+      absl::MutexLock lock(&mutex_);
+      passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
   if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
@@ -826,6 +839,33 @@ void GcsNodeManager::UpdateAliveNode(
   // variables
   alive_nodes_[node_id] =
       std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
+}
+
+void GcsNodeManager::PromoteNodeManager() {
+  std::shared_ptr<rpc::GcsNodeInfo> local_node;
+  {
+    absl::MutexLock lock(&mutex_);
+    if (passive_local_node_ == nullptr) {
+      return;
+    }
+    local_node = passive_local_node_;
+    passive_local_node_ = nullptr;
+  }
+
+  RAY_LOG(INFO)
+      << "Promoting GcsNodeManager: registering local head node via standard pipeline.";
+  rpc::RegisterNodeRequest request;
+  request.mutable_node_info()->CopyFrom(*local_node);
+  auto reply = std::make_shared<rpc::RegisterNodeReply>();
+  auto send_reply_callback = [local_node, reply](Status status,
+                                                 std::function<void()> f1,
+                                                 std::function<void()> f2) {
+    RAY_CHECK_OK(status) << "Failed to register local head node during GCS promotion.";
+    RAY_LOG(INFO)
+        << "Successfully registered local head node during GCS promotion. Node ID: "
+        << NodeID::FromBinary(local_node->node_id());
+  };
+  HandleRegisterNode(request, reply.get(), send_reply_callback);
 }
 
 }  // namespace gcs

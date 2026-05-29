@@ -757,26 +757,25 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
 }
 
 TEST_F(GcsNodeManagerTest, TestCheckAliveLeadership) {
-  // 1. When constructed without is_leader_fn (or default), it must return is_leader = true.
+  // 1. When constructed without is_leader_fn (or default), it must return is_leader =
+  // true.
   {
-    gcs::GcsNodeManager node_manager(
-        gcs_publisher_.get(),
-        gcs_table_storage_.get(),
-        *io_context_,
-        client_pool_.get(),
-        ClusterID::FromRandom(),
-        *fake_ray_event_recorder_,
-        "session_name",
-        observability_publisher_.get(),
-        clock_);
+    gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                     gcs_table_storage_.get(),
+                                     *io_context_,
+                                     client_pool_.get(),
+                                     ClusterID::FromRandom(),
+                                     *fake_ray_event_recorder_,
+                                     "session_name",
+                                     observability_publisher_.get(),
+                                     clock_);
 
     rpc::CheckAliveRequest request;
     rpc::CheckAliveReply reply;
     bool callback_called = false;
-    auto send_reply_callback = [&callback_called, &reply](
-                                   Status status,
-                                   std::function<void()> f1,
-                                   std::function<void()> f2) {
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
       EXPECT_TRUE(status.ok());
       EXPECT_TRUE(reply.is_leader());
       callback_called = true;
@@ -785,27 +784,26 @@ TEST_F(GcsNodeManagerTest, TestCheckAliveLeadership) {
     EXPECT_TRUE(callback_called);
   }
 
-  // 2. When constructed with is_leader_fn returning false, it must return is_leader = false.
+  // 2. When constructed with is_leader_fn returning false, it must return is_leader =
+  // false.
   {
-    gcs::GcsNodeManager node_manager(
-        gcs_publisher_.get(),
-        gcs_table_storage_.get(),
-        *io_context_,
-        client_pool_.get(),
-        ClusterID::FromRandom(),
-        *fake_ray_event_recorder_,
-        "session_name",
-        observability_publisher_.get(),
-        clock_,
-        []() { return false; });
+    gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                     gcs_table_storage_.get(),
+                                     *io_context_,
+                                     client_pool_.get(),
+                                     ClusterID::FromRandom(),
+                                     *fake_ray_event_recorder_,
+                                     "session_name",
+                                     observability_publisher_.get(),
+                                     clock_,
+                                     []() { return false; });
 
     rpc::CheckAliveRequest request;
     rpc::CheckAliveReply reply;
     bool callback_called = false;
-    auto send_reply_callback = [&callback_called, &reply](
-                                   Status status,
-                                   std::function<void()> f1,
-                                   std::function<void()> f2) {
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
       EXPECT_TRUE(status.ok());
       EXPECT_FALSE(reply.is_leader());
       callback_called = true;
@@ -813,6 +811,299 @@ TEST_F(GcsNodeManagerTest, TestCheckAliveLeadership) {
     node_manager.HandleCheckAlive(request, &reply, send_reply_callback);
     EXPECT_TRUE(callback_called);
   }
+}
+
+TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotion) {
+  bool is_leader = false;
+  auto is_leader_fn = [&is_leader]() { return is_leader; };
+
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::FromRandom(),
+                                   *fake_ray_event_recorder_,
+                                   "session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   is_leader_fn);
+
+  auto wait_ready = [this](std::future<bool> future) {
+    while (future.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+      io_context_->poll();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return future.get();
+  };
+
+  // 1. Register a node (simulating local head raylet).
+  // It must succeed in-memory (be added to cache) but NOT be written to Redis!
+  NodeID node_id = NodeID::FromRandom();
+  RAY_LOG(INFO) << "TEST: Local head node B ID is " << node_id.Hex();
+  auto node_info = GenNodeInfo(10, "127.0.0.1", "local_node");
+  node_info->set_node_id(node_id.Binary());
+  node_info->set_is_head_node(true);
+
+  rpc::RegisterNodeRequest request;
+  request.mutable_node_info()->CopyFrom(*node_info);
+  rpc::RegisterNodeReply reply;
+  std::promise<bool> promise;
+  auto send_reply_callback =
+      [&promise](Status status, std::function<void()> f1, std::function<void()> f2) {
+        EXPECT_TRUE(status.ok());
+        promise.set_value(true);
+      };
+  node_manager.HandleRegisterNode(request, &reply, send_reply_callback);
+  EXPECT_TRUE(wait_ready(promise.get_future()));
+
+  // Verify node is NOT in cache during passive mode
+  EXPECT_FALSE(node_manager.IsNodeAlive(node_id));
+
+  // Verify node is NOT in Redis NodeTable!
+  {
+    std::promise<bool> redis_promise;
+    gcs_table_storage_->NodeTable().Get(
+        node_id,
+        {[&redis_promise](const Status &status,
+                          const std::optional<rpc::GcsNodeInfo> &value) {
+           EXPECT_FALSE(value.has_value());
+           redis_promise.set_value(true);
+         },
+         *io_context_});
+    EXPECT_TRUE(wait_ready(redis_promise.get_future()));
+  }
+
+  // 2. Call PromoteNodeManager().
+  // It must flush the local node registration to Redis NodeTable!
+  is_leader = true;
+  node_manager.PromoteNodeManager();
+
+  // Verify node is now in Redis NodeTable!
+  {
+    std::promise<bool> redis_promise;
+    gcs_table_storage_->NodeTable().Get(
+        node_id,
+        {[node_id, &redis_promise](const Status &status,
+                                   const std::optional<rpc::GcsNodeInfo> &value) {
+           EXPECT_TRUE(status.ok());
+           EXPECT_TRUE(value.has_value());
+           if (value.has_value()) {
+             EXPECT_EQ(NodeID::FromBinary(value->node_id()), node_id);
+           }
+           redis_promise.set_value(true);
+         },
+         *io_context_});
+    EXPECT_TRUE(wait_ready(redis_promise.get_future()));
+  }
+
+  // Verify node is now in cache after GCS promotion has finished!
+  EXPECT_TRUE(node_manager.IsNodeAlive(node_id));
+}
+
+TEST_F(GcsNodeManagerTest, TestPassiveBypassAndPromotionStaleHeadCleanup) {
+  // Helper to wait for futures using synchronous polling
+  auto wait_ready = [this](std::future<bool> future) {
+    while (future.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+      io_context_->poll();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return future.get();
+  };
+
+  // 1. Pre-populate nodes in Redis:
+  // - A stale head node A (ALIVE)
+  NodeID stale_node_id = NodeID::FromRandom();
+  auto stale_node_info = GenNodeInfo(10, "12.34.56.78", "stale_head_node");
+  stale_node_info->set_node_id(stale_node_id.Binary());
+  stale_node_info->set_is_head_node(true);
+  {
+    std::promise<bool> write_promise;
+    gcs_table_storage_->NodeTable().Put(stale_node_id,
+                                        *stale_node_info,
+                                        {[&write_promise](const Status &status) {
+                                           EXPECT_TRUE(status.ok());
+                                           write_promise.set_value(true);
+                                         },
+                                         *io_context_});
+    EXPECT_TRUE(wait_ready(write_promise.get_future()));
+  }
+
+  // - A remote worker node W (ALIVE)
+  NodeID worker_node_id = NodeID::FromRandom();
+  auto worker_node_info = GenNodeInfo(10, "10.244.0.5", "remote_worker_node");
+  worker_node_info->set_node_id(worker_node_id.Binary());
+  worker_node_info->set_is_head_node(false);
+  {
+    std::promise<bool> write_promise;
+    gcs_table_storage_->NodeTable().Put(worker_node_id,
+                                        *worker_node_info,
+                                        {[&write_promise](const Status &status) {
+                                           EXPECT_TRUE(status.ok());
+                                           write_promise.set_value(true);
+                                         },
+                                         *io_context_});
+    EXPECT_TRUE(wait_ready(write_promise.get_future()));
+  }
+
+  // - An old dead node D (DEAD)
+  NodeID dead_node_id = NodeID::FromRandom();
+  auto dead_node_info = GenNodeInfo(10, "10.244.0.9", "old_dead_node");
+  dead_node_info->set_node_id(dead_node_id.Binary());
+  dead_node_info->set_is_head_node(false);
+  dead_node_info->set_state(rpc::GcsNodeInfo::DEAD);
+  {
+    std::promise<bool> write_promise;
+    gcs_table_storage_->NodeTable().Put(dead_node_id,
+                                        *dead_node_info,
+                                        {[&write_promise](const Status &status) {
+                                           EXPECT_TRUE(status.ok());
+                                           write_promise.set_value(true);
+                                         },
+                                         *io_context_});
+    EXPECT_TRUE(wait_ready(write_promise.get_future()));
+  }
+
+  // 2. Start GcsNodeManager in passive mode.
+  bool is_leader = false;
+  auto is_leader_fn = [&is_leader]() { return is_leader; };
+
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::FromRandom(),
+                                   *fake_ray_event_recorder_,
+                                   "session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   is_leader_fn);
+
+  // 3. Register the new local head node B (alive) during passive GCS.
+  NodeID new_node_id = NodeID::FromRandom();
+  RAY_LOG(INFO) << "TEST: Local head node B ID is " << new_node_id.Hex();
+  auto new_node_info = GenNodeInfo(10, "127.0.0.1", "new_head_node");
+  new_node_info->set_node_id(new_node_id.Binary());
+  new_node_info->set_is_head_node(true);
+
+  rpc::RegisterNodeRequest request;
+  request.mutable_node_info()->CopyFrom(*new_node_info);
+  rpc::RegisterNodeReply reply;
+  std::promise<bool> reg_promise;
+  node_manager.HandleRegisterNode(
+      request,
+      &reply,
+      [&reg_promise](Status status, std::function<void()> f1, std::function<void()> f2) {
+        EXPECT_TRUE(status.ok());
+        reg_promise.set_value(true);
+      });
+  EXPECT_TRUE(wait_ready(reg_promise.get_future()));
+
+  // 4. Load GcsNodeManager state from Redis (Hydration simulation).
+  gcs::GcsInitData init_data(*gcs_table_storage_);
+  std::promise<bool> init_data_promise;
+  init_data.AsyncLoad(
+      {[&init_data_promise]() { init_data_promise.set_value(true); }, *io_context_});
+  EXPECT_TRUE(wait_ready(init_data_promise.get_future()));
+
+  node_manager.Initialize(init_data);
+
+  // Verify hydrated cache state:
+  // - Stale head node A is loaded as ALIVE
+  EXPECT_TRUE(node_manager.IsNodeAlive(stale_node_id));
+  // - Worker node W is loaded as ALIVE
+  EXPECT_TRUE(node_manager.IsNodeAlive(worker_node_id));
+  // - Dead node D is loaded as DEAD
+  EXPECT_TRUE(node_manager.IsNodeDead(dead_node_id));
+  // - New head node B is NOT in cache yet (kept in passive cache)
+  EXPECT_FALSE(node_manager.IsNodeAlive(new_node_id));
+
+  // 5. Trigger PromoteNodeManager().
+  RAY_LOG(INFO) << "TEST: Triggering PromoteNodeManager()";
+  is_leader = true;
+  node_manager.PromoteNodeManager();
+
+  // Verify stale node A is now DEAD in Redis!
+  RAY_LOG(INFO) << "TEST: Verifying stale node A DEAD check";
+  {
+    std::promise<bool> redis_promise;
+    gcs_table_storage_->NodeTable().Get(
+        stale_node_id,
+        {[&redis_promise](const Status &status,
+                          const std::optional<rpc::GcsNodeInfo> &value) {
+           RAY_LOG(INFO) << "TEST: NodeTable Get callback executed for stale node A";
+           EXPECT_TRUE(status.ok());
+           EXPECT_TRUE(value.has_value());
+           if (value.has_value()) {
+             EXPECT_EQ(value->state(), rpc::GcsNodeInfo::DEAD);
+           }
+           redis_promise.set_value(true);
+         },
+         *io_context_});
+    EXPECT_TRUE(wait_ready(redis_promise.get_future()));
+  }
+  EXPECT_TRUE(node_manager.IsNodeDead(stale_node_id));
+
+  // Verify new head node B is now ALIVE in Redis!
+  RAY_LOG(INFO) << "TEST: Verifying new head node B ALIVE check";
+  {
+    std::promise<bool> redis_promise;
+    gcs_table_storage_->NodeTable().Get(
+        new_node_id,
+        {[new_node_id, &redis_promise](const Status &status,
+                                       const std::optional<rpc::GcsNodeInfo> &value) {
+           RAY_LOG(INFO)
+               << "TEST: NodeTable Get callback executed for new head node B. Has value: "
+               << value.has_value();
+           EXPECT_TRUE(status.ok());
+           EXPECT_TRUE(value.has_value());
+           if (value.has_value()) {
+             EXPECT_EQ(value->state(), rpc::GcsNodeInfo::ALIVE);
+             EXPECT_EQ(NodeID::FromBinary(value->node_id()), new_node_id);
+           }
+           redis_promise.set_value(true);
+         },
+         *io_context_});
+    EXPECT_TRUE(wait_ready(redis_promise.get_future()));
+  }
+  EXPECT_TRUE(node_manager.IsNodeAlive(new_node_id));
+
+  // Verify remote worker node W is STILL ALIVE in Redis and Cache!
+  {
+    std::promise<bool> redis_promise;
+    gcs_table_storage_->NodeTable().Get(
+        worker_node_id,
+        {[&redis_promise](const Status &status,
+                          const std::optional<rpc::GcsNodeInfo> &value) {
+           EXPECT_TRUE(status.ok());
+           EXPECT_TRUE(value.has_value());
+           if (value.has_value()) {
+             EXPECT_EQ(value->state(), rpc::GcsNodeInfo::ALIVE);
+           }
+           redis_promise.set_value(true);
+         },
+         *io_context_});
+    EXPECT_TRUE(wait_ready(redis_promise.get_future()));
+  }
+  EXPECT_TRUE(node_manager.IsNodeAlive(worker_node_id));
+
+  // Verify old dead node D is STILL DEAD in Redis and Cache!
+  {
+    std::promise<bool> redis_promise;
+    gcs_table_storage_->NodeTable().Get(
+        dead_node_id,
+        {[&redis_promise](const Status &status,
+                          const std::optional<rpc::GcsNodeInfo> &value) {
+           EXPECT_TRUE(status.ok());
+           EXPECT_TRUE(value.has_value());
+           if (value.has_value()) {
+             EXPECT_EQ(value->state(), rpc::GcsNodeInfo::DEAD);
+           }
+           redis_promise.set_value(true);
+         },
+         *io_context_});
+    EXPECT_TRUE(wait_ready(redis_promise.get_future()));
+  }
+  EXPECT_TRUE(node_manager.IsNodeDead(dead_node_id));
 }
 
 }  // namespace ray

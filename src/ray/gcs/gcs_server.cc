@@ -424,6 +424,7 @@ void GcsServer::DoStartLoadingDeferred() {
               io_context_provider_.GetDefaultIOContext()});
          gcs_autoscaler_state_manager_->Initialize(*gcs_init_data);
 
+          gcs_node_manager_->PromoteNodeManager();
          periodical_runner_->RunFnPeriodically(
              [this] { RecordMetrics(); },
              /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,

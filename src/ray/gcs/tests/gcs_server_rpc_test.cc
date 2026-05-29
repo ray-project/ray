@@ -779,4 +779,114 @@ TEST_F(GcsServerTest, TestPassivePromotion) {
   passive_server->Stop();
 }
 
+TEST_F(GcsServerTest, TestPassiveHeadNodeRegistrationAndPromotion) {
+  // 1. Pre-populate stale head node A in Redis using active GCS server.
+  auto stale_head_info = GenNodeInfo(9, "127.0.0.9", "stale_head_node");
+  stale_head_info->set_is_head_node(true);
+  rpc::RegisterNodeRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(*stale_head_info);
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+
+  gcs::GcsServerConfig passive_config;
+  passive_config.grpc_server_port = 0;
+  passive_config.grpc_server_name = "PassiveGcsServerForHeadReg";
+  passive_config.grpc_server_thread_num = 1;
+  passive_config.redis_address = "127.0.0.1";
+  passive_config.node_ip_address = "127.0.0.1";
+  passive_config.enable_sharding_conn = false;
+  passive_config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+  passive_config.ray_leader_elect_enabled = true;
+
+  auto passive_server =
+      std::make_unique<GcsServerTestFixture>(passive_config, fake_metrics_, io_service_);
+  passive_server->Start();
+
+  // Wait until server starts listening.
+  while (passive_server->GetPort() == 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Create client pointing to passive GCS server.
+  auto passive_client = std::make_unique<rpc::GcsRpcClient>(
+      "0.0.0.0", passive_server->GetPort(), *client_call_manager_);
+
+  // 2. Register new head node B (ALIVE) on passive GCS server.
+  // It must bypass passive gating and return Status::OK!
+  auto new_head_info = GenNodeInfo(10, "127.0.0.1", "new_head_node");
+  new_head_info->set_is_head_node(true);
+  NodeID new_node_id = NodeID::FromBinary(new_head_info->node_id());
+  {
+    std::promise<bool> promise;
+    rpc::RegisterNodeRequest register_request;
+    register_request.mutable_node_info()->CopyFrom(*new_head_info);
+    passive_client->RegisterNode(
+        std::move(register_request),
+        [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+          EXPECT_TRUE(status.ok());
+          EXPECT_EQ(reply.status().code(), static_cast<int>(StatusCode::OK));
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+  }
+
+  // Verify B is NOT in Redis yet (still cached in passive).
+  {
+    std::promise<bool> promise;
+    rpc::GetAllNodeInfoRequest get_all_request;
+    client_->GetAllNodeInfo(  // Queries active Redis
+        std::move(get_all_request),
+        [new_node_id, &promise](const Status &status,
+                                const rpc::GetAllNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          bool found_new_head = false;
+          for (int index = 0; index < reply.node_info_list_size(); ++index) {
+            if (reply.node_info_list(index).node_id() == new_node_id.Binary()) {
+              found_new_head = true;
+            }
+          }
+          EXPECT_FALSE(found_new_head);
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+  }
+
+  // 3. Trigger GCS promotion on passive server.
+  passive_server->TriggerPromotion();
+
+  // Wait 200ms for async load and PromoteNodeManager standard delegation to finish.
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // 4. After promotion, verify that stale head node A is marked DEAD, and new head node B
+  // is registered ALIVE in Redis.
+  {
+    std::promise<bool> promise;
+    rpc::GetAllNodeInfoRequest get_all_request;
+    passive_client->GetAllNodeInfo(
+        std::move(get_all_request),
+        [stale_head_info, new_node_id, &promise](const Status &status,
+                                                 const rpc::GetAllNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          bool found_stale_head = false;
+          bool found_new_head = false;
+          for (int index = 0; index < reply.node_info_list_size(); ++index) {
+            const auto &node = reply.node_info_list(index);
+            if (node.node_id() == stale_head_info->node_id()) {
+              found_stale_head = true;
+              EXPECT_EQ(node.state(), rpc::GcsNodeInfo::DEAD);
+            }
+            if (node.node_id() == new_node_id.Binary()) {
+              found_new_head = true;
+              EXPECT_EQ(node.state(), rpc::GcsNodeInfo::ALIVE);
+            }
+          }
+          EXPECT_TRUE(found_stale_head);
+          EXPECT_TRUE(found_new_head);
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+  }
+
+  passive_server->Stop();
+}
+
 }  // namespace ray
