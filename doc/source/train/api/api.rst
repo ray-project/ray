@@ -174,6 +174,28 @@ Ray Train Utilities
     ~train.collective.barrier
     ~train.collective.broadcast_from_rank_zero
 
+
+Cross Validation
+----------------
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class.rst
+    :toctree: doc/
+
+    ~train.cross_validation.cross_validate
+    ~train.cross_validation.KFoldSplitter
+    ~train.cross_validation.StratifiedKFoldSplitter
+    ~train.cross_validation.GroupedKFoldSplitter
+    ~train.cross_validation.TimeSeriesSplitter
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.cross_validation.CVResult
+
 Ray Train Output
 ----------------
 

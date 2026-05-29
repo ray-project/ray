@@ -19,4 +19,5 @@ Ray Train User Guides
     user-guides/monitor-your-application
     user-guides/local_mode
     user-guides/reproducibility
+    user-guides/cross-validation
     Hyperparameter Optimization <user-guides/hyperparameter-optimization>
