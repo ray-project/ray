@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
@@ -104,7 +105,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
   return result;
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkChildTasksFailedOnWorkerDead(
+void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
   auto task_attempts_itr = worker_index_.find(worker_id);
   if (task_attempts_itr == worker_index_.end()) {
@@ -152,11 +153,12 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkChildTasksFailedOnWorkerDead(
     error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
     for (const auto &task_locator : task_attempts_itr->second) {
       TaskID task_id = TaskID::FromBinary(task_locator->GetTaskEventsMutable().task_id());
-      std::stringstream error_message;
-      error_message << "Worker running the task (" << task_id.Hex()
-                    << ") died with exit_type: " << worker_failure_data.exit_type()
-                    << " with error_message: " << worker_failure_data.exit_detail();
-      error_info.set_error_message(error_message.str());
+      error_info.set_error_message(
+          absl::StrFormat("Worker running the task (%s) died with exit_type: %s "
+                          "with error_message: %s",
+                          task_id.Hex(),
+                          rpc::WorkerExitType_Name(worker_failure_data.exit_type()),
+                          worker_failure_data.exit_detail()));
       MarkTaskAttemptFailedIfNeeded(task_locator, failed_ts_ns, error_info);
     }
     return;
@@ -168,23 +170,27 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkChildTasksFailedOnWorkerDead(
   // dies. The detached actor's own worker death is handled by its own OnWorkerDead
   // invocation.
   std::function<void(const TaskID &)> dfs_mark_failed = [&](const TaskID &task_id) {
-    auto children_itr = parent_to_child_index_.find(task_id);
+    absl::flat_hash_map<TaskID,
+                        absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>::iterator
+        children_itr = parent_to_child_index_.find(task_id);
     if (children_itr == parent_to_child_index_.end()) {
       return;
     }
     for (const auto &child_locator : children_itr->second) {
       const auto &child_events = child_locator->GetTaskEventsMutable();
-      if (child_events.has_task_info() && child_events.task_info().is_detached_actor()) {
+      RAY_CHECK(child_events.has_task_info());
+      if (child_events.task_info().is_detached_actor()) {
         continue;
       }
       TaskID child_task_id = TaskID::FromBinary(child_events.task_id());
       error_info.set_error_type(rpc::ErrorType::OWNER_DIED);
-      std::stringstream error_message;
-      error_message << "Task (" << child_task_id.Hex() << ") failed because owner ("
-                    << worker_id.Hex()
-                    << ") died with exit_type: " << worker_failure_data.exit_type()
-                    << " with error_message: " << worker_failure_data.exit_detail();
-      error_info.set_error_message(error_message.str());
+      error_info.set_error_message(
+          absl::StrFormat("Task (%s) failed because owner (%s) died with exit_type: %s "
+                          "with error_message: %s",
+                          child_task_id.Hex(),
+                          worker_id.Hex(),
+                          rpc::WorkerExitType_Name(worker_failure_data.exit_type()),
+                          worker_failure_data.exit_detail()));
       MarkTaskAttemptFailedIfNeeded(child_locator, failed_ts_ns, error_info);
       dfs_mark_failed(child_task_id);
     }
@@ -201,12 +207,13 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkChildTasksFailedOnWorkerDead(
       TaskID task_id =
           TaskID::FromBinary(parent_task_locator->GetTaskEventsMutable().task_id());
       error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
-      std::stringstream error_message;
-      error_message << "Task (" << task_id.Hex()
-                    << ") failed because detached actor worker (" << worker_id.Hex()
-                    << ") died with exit_type: " << worker_failure_data.exit_type()
-                    << " with error_message: " << worker_failure_data.exit_detail();
-      error_info.set_error_message(error_message.str());
+      error_info.set_error_message(
+          absl::StrFormat("Task (%s) failed because detached actor worker (%s) died with "
+                          "exit_type: %s with error_message: %s",
+                          task_id.Hex(),
+                          worker_id.Hex(),
+                          rpc::WorkerExitType_Name(worker_failure_data.exit_type()),
+                          worker_failure_data.exit_detail()));
       MarkTaskAttemptFailedIfNeeded(parent_task_locator, failed_ts_ns, error_info);
     }
 
@@ -861,7 +868,7 @@ void GcsTaskManager::OnWorkerDead(
           return;
         }
         // Mark the entire tree of child tasks for each task on the dead worker as FAILED.
-        task_event_storage_->MarkChildTasksFailedOnWorkerDead(worker_id, *worker_data);
+        task_event_storage_->MarkTaskLineageFailedOnWorkerDead(worker_id, *worker_data);
       });
 }
 

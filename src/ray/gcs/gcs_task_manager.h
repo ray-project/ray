@@ -239,7 +239,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     ///
     /// \param worker_id Worker ID
     /// \param worker_failure_data Worker failure data.
-    void MarkChildTasksFailedOnWorkerDead(
+    void MarkTaskLineageFailedOnWorkerDead(
         const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data);
 
     /// Get the job task summary given a job id.
