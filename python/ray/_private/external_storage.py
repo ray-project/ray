@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import shutil
+import threading
 import time
 import urllib
 import uuid
@@ -537,6 +538,217 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 _external_storage = NullStorage()
 
 
+class ExternalStorageHDFSImpl(ExternalStorage):
+    """The external storage class for HDFS-backed spilling.
+
+    Uses PyArrow's HadoopFileSystem (libhdfs via JNI). Spilled files are
+    visible cluster-wide, so any node can restore objects spilled by other
+    nodes without cross-node RPC, similar to S3/GCS backends.
+
+    Requirements (on every Ray node):
+        - pyarrow >= 17.0.0 (already required by Ray)
+        - Hadoop client installed (libhdfs and jars)
+        - HADOOP_HOME and JAVA_HOME exported
+        - CLASSPATH includes Hadoop jars (e.g. via
+          ``hadoop classpath --glob``)
+        - RAY_DISABLE_FAILURE_SIGNAL_HANDLER=1 may be required because
+          Ray's C++ failure signal handler conflicts with the JVM.
+
+    Args:
+        node_id: Node id used as prefix for the spill directory to avoid
+            collisions between nodes sharing the same HDFS path.
+        uri: HDFS URI (single string or list of strings for round-robin),
+            e.g. "hdfs://nameservice/user/ray/spill".
+        user: Optional HDFS user. Defaults to the current OS user.
+        kerb_ticket: Optional path to Kerberos ticket cache.
+        extra_conf: Optional dict of Hadoop conf overrides, e.g.
+            ``{"dfs.replication": "3"}`` to reduce replication for ephemeral
+            spill data.
+        buffer_size: Buffer size in bytes for HDFS I/O. At least 1 MB is
+            recommended for remote storage.
+
+    Raises:
+        ImportError: If pyarrow is not installed.
+        ValueError: If the given URI is invalid or the spill directory
+            cannot be created.
+    """
+
+    def __init__(
+        self,
+        node_id: str,
+        uri: Union[str, List[str]],
+        user: Optional[str] = None,
+        kerb_ticket: Optional[str] = None,
+        extra_conf: Optional[dict] = None,
+        buffer_size: int = 1024 * 1024,
+    ):
+        super().__init__()
+
+        try:
+            import pyarrow.fs as pa_fs
+        except ImportError as e:
+            raise ImportError(
+                "HDFS object spilling requires pyarrow. "
+                f"Original error: {e}"
+            )
+
+        if uri is None:
+            raise ValueError("uri must be provided for HDFS spilling.")
+        if isinstance(uri, str):
+            uri = [uri]
+        if not isinstance(uri, list):
+            raise TypeError("uri must be a string or list of strings.")
+        for u in uri:
+            if not u.startswith("hdfs://"):
+                raise ValueError(f"HDFS URI must start with 'hdfs://', got: {u}")
+        if not isinstance(buffer_size, int) or buffer_size <= 0:
+            raise ValueError("buffer_size must be a positive integer.")
+
+        # All URIs are assumed to point to the same logical HDFS cluster.
+        # Use the first URI to derive the host/port for the HDFS client.
+        # For HA clusters, host is typically a nameservice (port defaults to 0).
+        parsed = urllib.parse.urlparse(uri[0])
+        self._pa_fs = pa_fs
+        self._host = parsed.hostname or parsed.netloc or "default"
+        self._port = parsed.port or 0
+        self._user = user
+        self._kerb_ticket = kerb_ticket
+        self._extra_conf = extra_conf
+
+        # Lazily initialized after CoreWorker connects (see _ensure_fs).
+        self._fs = None
+        self._fs_lock = threading.Lock()
+
+        self._buffer_size = buffer_size
+        self._uris = [u.rstrip("/") for u in uri]
+        self._base_paths = [
+            urllib.parse.urlparse(u).path.rstrip("/") or "/" for u in self._uris
+        ]
+        self._current_uri_index = random.randrange(0, len(self._uris))
+
+        # Per-node directory to isolate spill files across nodes.
+        self._node_prefix = f"{DEFAULT_OBJECT_PREFIX}_{node_id}"
+        self._spill_dirs: List[str] = []
+        for base_path in self._base_paths:
+            spill_dir = f"{base_path.rstrip('/')}/{self._node_prefix}"
+            self._spill_dirs.append(spill_dir)
+
+    def _ensure_fs(self):
+        """Create the HDFS client and spill dirs for this node."""
+        if self._fs is not None:
+            return
+        with self._fs_lock:
+            if self._fs is not None:
+                return
+            fs = self._pa_fs.HadoopFileSystem(
+                host=self._host,
+                port=self._port,
+                user=self._user,
+                kerb_ticket=self._kerb_ticket,
+                extra_conf=self._extra_conf,
+            )
+            for spill_dir in self._spill_dirs:
+                try:
+                    fs.create_dir(spill_dir, recursive=True)
+                except OSError as e:
+                    raise ValueError(
+                        f"Failed to create HDFS spill directory {spill_dir}: {e}"
+                    )
+            self._fs = fs
+
+    def ensure_initialized(self):
+        """Eagerly initialize the HDFS client (starts the JVM via libhdfs)."""
+        self._ensure_fs()
+
+    def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+        if not object_refs:
+            return []
+
+        self._ensure_fs()
+        self._current_uri_index = (self._current_uri_index + 1) % len(self._uris)
+        uri = self._uris[self._current_uri_index]
+        spill_dir = self._spill_dirs[self._current_uri_index]
+
+        filename = _get_unique_spill_filename(object_refs)
+        write_path = f"{spill_dir}/{filename}"
+        # Keep hdfs:// scheme so the URL is resolvable across nodes.
+        url = f"{uri}/{self._node_prefix}/{filename}"
+
+        with self._fs.open_output_stream(
+            write_path, buffer_size=self._buffer_size
+        ) as f:
+            return self._write_multiple_objects(f, object_refs, owner_addresses, url)
+
+    def restore_spilled_objects(
+        self, object_refs: List[ObjectRef], url_with_offset_list: List[str]
+    ):
+        self._ensure_fs()
+        total = 0
+        for object_ref, url_with_offset_item in zip(object_refs, url_with_offset_list):
+            url_with_offset = (
+                url_with_offset_item.decode()
+                if isinstance(url_with_offset_item, bytes)
+                else url_with_offset_item
+            )
+            logger.info(
+                "Restoring spilled object %s from %s",
+                object_ref,
+                url_with_offset,
+            )
+            parsed_result = parse_url_with_offset(url_with_offset)
+            base_url = parsed_result.base_url
+            offset = parsed_result.offset
+
+            # PyArrow's HDFS API takes bare paths, not URIs.
+            read_path = urllib.parse.urlparse(base_url).path
+
+            # open_input_file (not open_input_stream) supports random-access seek().
+            with self._fs.open_input_file(read_path) as f:
+                f.seek(offset)
+                address_len = int.from_bytes(f.read(8), byteorder="little")
+                metadata_len = int.from_bytes(f.read(8), byteorder="little")
+                buf_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
+                owner_address = f.read(address_len)
+                total += buf_len
+                metadata = f.read(metadata_len)
+                self._put_object_to_store(
+                    metadata, buf_len, f, object_ref, owner_address
+                )
+        return total
+
+    def delete_spilled_objects(self, urls: List[str]):
+        if not urls:
+            return
+        self._ensure_fs()
+        for url in urls:
+            url_str = url.decode() if isinstance(url, bytes) else url
+            base_url = parse_url_with_offset(url_str).base_url
+            path = urllib.parse.urlparse(base_url).path
+            try:
+                self._fs.delete_file(path)
+            except FileNotFoundError:
+                # Occurs when the urls are retried during worker crash/failure.
+                pass
+            except OSError as e:
+                # Best-effort deletion: log but don't raise.
+                logger.debug(f"Failed to delete spilled object {path}: {e}")
+
+    def destroy_external_storage(self):
+        self._ensure_fs()
+        for spill_dir in self._spill_dirs:
+            try:
+                self._fs.delete_dir(spill_dir)
+                logger.info(f"Deleted HDFS spill directory {spill_dir}")
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.exception(
+                    f"Error cleaning up HDFS spill directory {spill_dir}. "
+                    "You might still have remaining spilled objects there."
+                )
+
+
 class UnstableFileStorage(FileSystemStorage):
     """This class is for testing with writing failure."""
 
@@ -584,6 +796,8 @@ def setup_external_storage(config, node_id, session_name):
             _external_storage = ExternalStorageSmartOpenImpl(
                 node_id, **config["params"]
             )
+        elif storage_type == "hdfs":
+            _external_storage = ExternalStorageHDFSImpl(node_id, **config["params"])
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.

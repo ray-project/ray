@@ -250,6 +250,7 @@ if __name__ == "__main__":
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is initialized.
+    # HDFS uses lazy init: the JVM starts on first spill/restore via _ensure_fs().
     if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray._private import external_storage
 

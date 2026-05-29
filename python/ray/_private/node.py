@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import traceback
@@ -1785,6 +1786,50 @@ class Node:
         object_spilling_config = self._config.get("object_spilling_config", {})
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
+            if object_spilling_config.get("type") == "hdfs":
+                # Destroy HDFS spill dirs in a child process to avoid JVM crash 
+                # in head when pyarrow jvm already started.
+                hdfs_destroy_script = textwrap.dedent(
+                    """
+                    import json
+                    import os
+
+                    from ray._private import external_storage
+
+                    config = json.loads(os.environ["RAY_HDFS_DESTROY_CONFIG"])
+                    storage = external_storage.setup_external_storage(
+                        config,
+                        os.environ["RAY_HDFS_DESTROY_NODE_ID"],
+                        "",
+                    )
+                    if hasattr(storage, "ensure_initialized"):
+                        storage.ensure_initialized()
+                    storage.destroy_external_storage()
+                    """
+                )
+                env = os.environ.copy()
+                env["RAY_HDFS_DESTROY_CONFIG"] = json.dumps(
+                    object_spilling_config
+                )
+                env["RAY_HDFS_DESTROY_NODE_ID"] = self._node_id
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-c", hdfs_destroy_script],
+                        env=env,
+                        timeout=60,
+                    )
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        "Timed out destroying HDFS external storage during shutdown."
+                    )
+                else:
+                    if result.returncode != 0:
+                        logger.warning(
+                            f"Failed to destroy HDFS external storage. "
+                            f"Exit code: {result.returncode}"
+                        )
+                return
+
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
@@ -1832,6 +1877,8 @@ class Node:
         storage = external_storage.setup_external_storage(
             deserialized_config, dummy_node_id, self._session_name
         )
+        if hasattr(storage, "ensure_initialized"):
+            storage.ensure_initialized()
         storage.destroy_external_storage()
         external_storage.reset_external_storage()
 
