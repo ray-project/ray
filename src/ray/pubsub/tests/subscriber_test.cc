@@ -240,10 +240,16 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
                          failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   ASSERT_TRUE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
+  ASSERT_EQ(subscriber_->GetLastPublishedMessageMsForTest(
+                channel, owner_addr, object_id.Binary()),
+            0);
 
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(ReplyLongPolling(channel, objects_batched));
+  ASSERT_GT(subscriber_->GetLastPublishedMessageMsForTest(
+                channel, owner_addr, object_id.Binary()),
+            0);
   // Make sure the long polling batch works as expected.
   for (const auto &oid : objects_batched) {
     ASSERT_EQ(object_subscribed_[oid], 1);
