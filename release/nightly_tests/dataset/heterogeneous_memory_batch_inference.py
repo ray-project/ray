@@ -134,8 +134,8 @@ def parse_args():
         description="Heterogeneous memory batch inference benchmark"
     )
     p.add_argument("--num-rows", type=int, default=400_000)
-    p.add_argument("--gen-batch-size", type=int, default=1024)
-    p.add_argument("--cpu-batch-size", type=int, default=1024)
+    p.add_argument("--gen-batch-size", type=int, default=256)
+    p.add_argument("--cpu-batch-size", type=int, default=256)
     p.add_argument("--gpu-batch-size", type=int, default=256)
     p.add_argument("--gpu-concurrency", type=int, default=8)
     return p.parse_args()
