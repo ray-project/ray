@@ -149,8 +149,7 @@ class SubscriberChannel {
       return 0;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription
-          ->last_published_message_ms;
+      return subscription_it->second.all_entities_subscription->last_published_message_ms;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {

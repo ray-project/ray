@@ -134,8 +134,8 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
       << rpc::ChannelType_Name(channel_type_);
 
   cum_published_messages_++;
-  auto maybe_subscription_callback = GetAndRecordSubscriptionItemCallback(
-      publisher_address, key_id, current_time_ms());
+  auto maybe_subscription_callback =
+      GetAndRecordSubscriptionItemCallback(publisher_address, key_id, current_time_ms());
   if (!maybe_subscription_callback.has_value()) {
     return;
   }
@@ -163,7 +163,11 @@ std::string SubscriberChannel::LastNotificationDebugString(
     if (last_published_message_ms == 0) {
       return std::string("never");
     }
-    return std::to_string(now_ms - last_published_message_ms) + "ms ago";
+    const int64_t age = now_ms - last_published_message_ms;
+    if (age < 0) {
+      return std::string("clock skew detected");
+    }
+    return std::to_string(age) + "ms ago";
   };
 
   std::stringstream result;
@@ -181,8 +185,8 @@ std::string SubscriberChannel::LastNotificationDebugString(
     }
     int64_t newest_notification_ms = 0;
     for (const auto &subscription : subscriptions.per_entity_subscription) {
-      newest_notification_ms = std::max(
-          newest_notification_ms, subscription.second.last_published_message_ms);
+      newest_notification_ms =
+          std::max(newest_notification_ms, subscription.second.last_published_message_ms);
     }
     result << subscriptions.per_entity_subscription.size()
            << " entity subscriptions, newest last notified "
@@ -388,10 +392,13 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
         const google::protobuf::EnumDescriptor *descriptor =
             rpc::ChannelType_descriptor();
         for (const auto &channel_it : channels_) {
-          subscription_state
-              << "\n- "
-              << descriptor->FindValueByNumber(channel_it.first)->name() << ": "
-              << channel_it.second->LastNotificationDebugString(publisher_id);
+          const auto *value_desc = descriptor->FindValueByNumber(channel_it.first);
+          std::string channel_name =
+              value_desc ? value_desc->name()
+                         : std::to_string(static_cast<int>(channel_it.first));
+          subscription_state << "\n- " << channel_name << ": "
+                             << channel_it.second->LastNotificationDebugString(
+                                    publisher_id);
         }
         RAY_LOG(INFO) << "Received publisher_id " << reply_publisher_id.Hex()
                       << " is different from last seen publisher_id " << last_publisher_id
