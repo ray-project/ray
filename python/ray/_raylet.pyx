@@ -9,6 +9,7 @@ from cpython.exc cimport PyErr_CheckSignals
 import asyncio
 import gc
 import inspect
+import json
 import logging
 import msgpack
 import io
@@ -2590,7 +2591,38 @@ def maybe_initialize_job_config():
         # Add driver's system path to sys.path
         py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
         if py_driver_sys_path:
+            # Check if this worker has its own working_dir from runtime_env
+            # that differs from the job's. If so, we must not let the job's
+            # working_dir path override the actor's in sys.path.
+            _actor_working_dir_uri = None
+            try:
+                _serialized_env = core_worker.get_current_runtime_env()
+                if _serialized_env and _serialized_env != "{}":
+                    _actor_working_dir_uri = json.loads(
+                        _serialized_env).get("working_dir")
+            except Exception:
+                pass
+
+            # Resolve the actor's working_dir URI to a local path.
+            # The runtime_env agent extracts GCS packages to:
+            #   <resources_dir>/working_dir_files/<pkg_name>/
+            # The first entry in PYTHONPATH is this resolved local path.
+            _actor_working_dir_local = None
+            if _actor_working_dir_uri:
+                _pythonpath = os.environ.get("PYTHONPATH", "")
+                if _pythonpath:
+                    _first_path = _pythonpath.split(os.pathsep)[0]
+                    if os.path.isdir(_first_path):
+                        _actor_working_dir_local = _first_path
+
             for p in py_driver_sys_path:
+                # Skip the job-level working_dir path if this actor has its
+                # own different working_dir set via runtime_env.
+                if (_actor_working_dir_local
+                        and p != _actor_working_dir_local
+                        and os.path.dirname(p) == os.path.dirname(
+                            _actor_working_dir_local)):
+                    continue
                 sys.path.insert(0, p)
 
         # Cache and set the current job id.
