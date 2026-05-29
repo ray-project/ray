@@ -1,7 +1,6 @@
 import glob
 import logging
 import os
-import re
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
@@ -10,18 +9,32 @@ from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
+# Ray-facing visibility env var. Ray's accelerator scheduler reads and writes
+# this name; qb Runtime itself reads ``QBRUNTIME_VISIBLE_DEVICES`` (see
+# ``set_current_process_visible_accelerator_ids`` below for the mirror).
 MBLT_RT_VISIBLE_DEVICES_ENV_VAR = "MBLT_DEVICES"
 NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_MBLT_RT_VISIBLE_DEVICES"
 
-# Character device files created by the Mobilint kernel driver, one per card.
-# ARIES family enumerates as ``/dev/aries0``, ``/dev/aries1``, ...; REGULUS
-# family enumerates as ``/dev/regulus0``, ``/dev/regulus1``, .... The driver
-# caps each node at 8 devices.
-_MBLT_ARIES_DEV_GLOB = "/dev/aries*"
-_MBLT_REGULUS_DEV_GLOB = "/dev/regulus*"
+# The visibility env var the qb Runtime native library actually reads when
+# resolving device numbers. Verified by inspecting the SDK shared object
+# strings (``libqbruntime.so.1.2.0`` references
+# ``QBRUNTIME_VISIBLE_DEVICES`` directly).
+_QBRUNTIME_VISIBLE_DEVICES_ENV_VAR = "QBRUNTIME_VISIBLE_DEVICES"
 
-# PCI vendor ID for Mobilint, used as a last-resort signal when neither the
-# Python SDK nor the kernel driver is available.
+# Character device files created by the Mobilint kernel driver.
+# ARIES family enumerates as ``/dev/aries0``, ``/dev/aries1``, ... (one
+# numeric-suffixed node per card; the kernel driver caps the node at 8 cards).
+# REGULUS family exposes per-card NPU control through ``/dev/regulus-npu*``;
+# the sibling ``/dev/regulus`` and ``/dev/regulus-usb`` paths are auxiliary
+# nodes that must not be counted as additional cards.
+_MBLT_ARIES_DEV_GLOB = "/dev/aries[0-9]*"
+_MBLT_REGULUS_DEV_GLOB = "/dev/regulus-npu*"
+
+# PCI vendor ID for Mobilint, used as a count fallback when neither the
+# Python SDK nor the kernel driver is available. Mobilint's vendor ID is not
+# in the standard ``pci.ids`` hwdata, so the lspci output for a Mobilint card
+# is typically ``Device 209f:0000`` with no human-readable family name; this
+# fallback is therefore only used to count cards, not to identify the SKU.
 _MBLT_PCI_FILTER = ("lspci", "-d", "209f:", "-nn")
 
 
@@ -57,9 +70,11 @@ class MBLTAcceleratorManager(AcceleratorManager):
            (``qbruntime.get_available_device_numbers()``). This is the
            authoritative source on a node where qb Runtime is installed.
         2. If qb Runtime is unavailable (``ImportError`` or runtime error),
-           count the ``/dev/aries*`` and ``/dev/regulus*`` character devices
-           created by the Mobilint kernel driver.
-        3. If the driver has not loaded yet, scan the PCI bus for Mobilint's
+           count the ``/dev/aries[0-9]*`` and ``/dev/regulus-npu*`` character
+           devices created by the Mobilint kernel driver. REGULUS exposes one
+           NPU node per card alongside auxiliary ``/dev/regulus-usb`` paths
+           that are intentionally excluded from the count.
+        3. If the driver has not loaded yet, count rows of Mobilint's PCI
            vendor ID via ``lspci -d 209f:``.
         """
         try:
@@ -81,35 +96,23 @@ class MBLTAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         """Gets the SKU family of Mobilint NPUs on the current node.
 
-        Returns ``"MOBILINT_ARIES"``, ``"MOBILINT_REGULUS"``, or ``None`` if
-        no Mobilint NPU is detected. Ray assumes a single accelerator type
-        per node, so the first matching family is used.
+        Returns ``"MOBILINT_ARIES"`` or ``"MOBILINT_REGULUS"``, or ``None``
+        if the family cannot be determined. Ray assumes a single accelerator
+        type per node, so the first matching family is used. ARIES1 and
+        ARIES2 hardware revisions both report as ``"MOBILINT_ARIES"``;
+        finer-grained scheduling can read sysfs ``product_type`` or invoke
+        ``ARIES_IOC_GET_ARIES_VERSION`` if needed in a future change.
 
         The family is determined by the kernel driver's ``/dev`` node name
-        (``aries*`` vs ``regulus*``), with ``lspci`` as a fallback when the
-        driver has not loaded. qb Runtime's Python binding does not expose
-        the chip family directly, so it is not consulted here.
+        (``aries[0-9]*`` vs ``regulus-npu*``). lspci is intentionally not
+        consulted for the family because Mobilint's vendor ID is not in the
+        standard ``pci.ids`` hwdata; the lspci description has no stable
+        human-readable substring to disambiguate ARIES from REGULUS.
         """
         if glob.glob(_MBLT_ARIES_DEV_GLOB):
             return "MOBILINT_ARIES"
         if glob.glob(_MBLT_REGULUS_DEV_GLOB):
             return "MOBILINT_REGULUS"
-
-        try:
-            out = subprocess.check_output(
-                _MBLT_PCI_FILTER,
-                text=True,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-            )
-        except Exception as e:
-            logger.debug("Failed to query lspci for Mobilint NPUs: %s", e)
-            return None
-
-        if re.search(r"\bregulus\b", out, re.IGNORECASE):
-            return "MOBILINT_REGULUS"
-        if re.search(r"\baries\b", out, re.IGNORECASE):
-            return "MOBILINT_ARIES"
         return None
 
     @staticmethod
@@ -137,9 +140,13 @@ class MBLTAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
-        os.environ[
-            MBLTAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join(map(str, visible_mblt_devices))
+        ids_str = ",".join(map(str, visible_mblt_devices))
+        # ``MBLT_DEVICES`` is the Ray-facing name used by user code; the qb
+        # Runtime native library reads ``QBRUNTIME_VISIBLE_DEVICES``. Both
+        # must be set for Ray's per-worker visibility to propagate into
+        # ``qbruntime.Accelerator(...)`` and ``get_available_device_numbers()``.
+        os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = ids_str
+        os.environ[_QBRUNTIME_VISIBLE_DEVICES_ENV_VAR] = ids_str
 
 
 def _count_mblt_dev_nodes() -> int:

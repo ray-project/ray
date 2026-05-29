@@ -118,7 +118,7 @@ class TestMBLTAcceleratorManager:
         "globbed,expected",
         [
             (["/dev/aries0", "/dev/aries1"], "MOBILINT_ARIES"),
-            (["/dev/regulus0"], "MOBILINT_REGULUS"),
+            (["/dev/regulus-npu"], "MOBILINT_REGULUS"),
             ([], None),
         ],
     )
@@ -133,11 +133,18 @@ class TestMBLTAcceleratorManager:
             return []
 
         monkeypatch.setattr("ray._private.accelerators.mblt.glob.glob", fake_glob)
-        monkeypatch.setattr(
-            "ray._private.accelerators.mblt.subprocess.check_output",
-            lambda *a, **k: "",
-        )
         assert MBLTAcceleratorManager.get_current_node_accelerator_type() == expected
+
+    def test_get_current_node_accelerator_type_returns_none_when_no_dev(
+        self, monkeypatch
+    ):
+        # No /dev nodes and no SDK: type detection must NOT guess from lspci,
+        # which cannot disambiguate ARIES vs REGULUS in the absence of a
+        # hwdata entry for Mobilint's vendor ID.
+        monkeypatch.setattr(
+            "ray._private.accelerators.mblt.glob.glob", lambda *a, **k: []
+        )
+        assert MBLTAcceleratorManager.get_current_node_accelerator_type() is None
 
     def test_validate_resource_request_quantity_integer(self):
         valid, error = MBLTAcceleratorManager.validate_resource_request_quantity(1)
@@ -155,16 +162,26 @@ class TestMBLTAcceleratorManager:
         assert "whole number" in error
         assert "1.5" in error
 
-    def test_set_current_process_visible_accelerator_ids(self):
+    def test_set_current_process_visible_accelerator_ids(self, monkeypatch):
+        # Clear both env vars so the assertion below is unambiguous.
+        monkeypatch.delenv("QBRUNTIME_VISIBLE_DEVICES", raising=False)
         MBLTAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
         assert os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] == "0,1"
+        # The qb Runtime native library reads QBRUNTIME_VISIBLE_DEVICES,
+        # not MBLT_DEVICES, so Ray must mirror the value into both.
+        assert os.environ["QBRUNTIME_VISIBLE_DEVICES"] == "0,1"
 
-    def test_set_current_process_visible_accelerator_ids_respects_noset(self):
+    def test_set_current_process_visible_accelerator_ids_respects_noset(
+        self, monkeypatch
+    ):
         os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "0,1"
+        monkeypatch.delenv("QBRUNTIME_VISIBLE_DEVICES", raising=False)
         os.environ[NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
 
         MBLTAcceleratorManager.set_current_process_visible_accelerator_ids(["2", "3"])
         assert os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] == "0,1"
+        # The NOSET flag must also prevent the QBRUNTIME mirror.
+        assert "QBRUNTIME_VISIBLE_DEVICES" not in os.environ
 
 
 if __name__ == "__main__":
