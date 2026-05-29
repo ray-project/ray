@@ -9,7 +9,6 @@ from typing import Dict, List
 from numpy import ndarray
 
 import ray
-from ray.data._internal.util import KiB, MiB
 import torch
 from sentence_transformers import SentenceTransformer
 from langchain_text_splitters import (
@@ -70,16 +69,6 @@ def parse_args():
         type=int,
         default=15,
         help="Number of Embedder replicas",
-    )
-    parser.add_argument(
-        "--chunker-target-chunk-size",
-        type=int,
-        default=16 * MiB,
-        help=(
-            "Target chunk size (bytes) for splitting a Parquet file into read "
-            "tasks. Lower values produce more, smaller read blocks (bounded by "
-            "the file's row-group count)."
-        ),
     )
     parser.add_argument(
         "--num-gpus", type=int, default=1, help="Number of GPUs per Embedder"
@@ -144,14 +133,6 @@ class Embedder:
 
 def main(args):
     ctx = ray.data.DataContext.get_current()
-    ctx.partitioner_max_bucket_size = 1 * MiB
-    ctx.partitioner_min_bucket_size = 1 * KiB
-    ctx.read_op_min_num_blocks = 1200
-    # The partitioner only groups whole file-chunks into blocks; it can't split
-    # a file finer than the chunker does. Lower the chunker target so a single
-    # large Parquet file is split into many chunks (and therefore many small
-    # read blocks), instead of the default 1 GiB chunks.
-    ctx.parquet_chunker_target_chunk_size = args.chunker_target_chunk_size
 
     start_time = time.time()
     ds = ray.data.read_parquet(
@@ -162,6 +143,14 @@ def main(args):
     metadata_fetching_s = metadata_fetch_end - start_time
     if args.smoke_test:
         ds = ds.limit(100)
+
+    # A single Parquet file can't be read into more blocks than it has row
+    # groups, so the DataSourceV2 read caps out well below the parallelism we
+    # want for the downstream chunk + embed stages. Repartition to spread the
+    # data across more, smaller blocks. Gated on V2 since the V1 reader sizes
+    # its own read blocks.
+    if ctx.use_datasource_v2:
+        ds = ds.repartition(1200, shuffle=False)
 
     ds = ds.flat_map(
         Chunker(
