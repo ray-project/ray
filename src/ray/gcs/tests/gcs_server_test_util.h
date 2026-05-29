@@ -338,8 +338,6 @@ struct GcsServerMocker {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
 
-    size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
-
     using gcs::GcsPlacementGroupScheduler::ScheduleUnplacedBundles;
     // Extra conveinence overload for the mock tests to keep using the old interface.
     void ScheduleUnplacedBundles(

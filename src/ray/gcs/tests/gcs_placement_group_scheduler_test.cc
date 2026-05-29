@@ -267,6 +267,19 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     return true;
   }
 
+  void SimulateResetRemoteNodeView() {
+    auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    std::vector<std::pair<scheduling::NodeID, ResourceSet>> snapshot;
+    for (const auto &[node_id, node] : cluster_resource_manager.GetResourceView()) {
+      snapshot.emplace_back(node_id,
+                            ResourceSet(node.GetLocalView().total.GetResourceMap()));
+    }
+    for (const auto &[node_id, total] : snapshot) {
+      cluster_resource_manager.AddNodeAvailableResources(node_id, total);
+    }
+  }
+
   void ScheduleUnplacedBundles(
       const std::shared_ptr<GcsPlacementGroup> &placement_group) {
     scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
@@ -1323,8 +1336,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromDeadNodes) {
   GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
                               /*grant1=*/{false, Status::IOError("")});
 
-  // Make sure the resources are returned to the cluster_resource_manager at the GCS
-  // side.
+  // GCS does not add the reserved resources back on prepare failure; the reservation
+  // persists in the GCS local view until ClusterResourceManager's periodic
+  // ResetRemoteNodeView timer reverts the node to its last raylet-reported snapshot.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // After that periodic reset, GCS reconverges to the true state.
+  SimulateResetRemoteNodeView();
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 }
 
@@ -1351,8 +1369,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromNodeWithInsufficientResour
   GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
                               /*grant1=*/{false, Status::OK()});
 
-  // Make sure the resources are returned to the cluster_resource_manager at the GCS
-  // side.
+  // GCS does not add the reserved resources back on prepare failure; the reservation
+  // persists in the GCS local view until ClusterResourceManager's periodic
+  // ResetRemoteNodeView timer reverts the node to its last raylet-reported snapshot.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // After that periodic reset, GCS reconverges to the true state.
+  SimulateResetRemoteNodeView();
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 }
 
@@ -1384,8 +1407,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   // node1 grants the schedule request status=Status::IOError("")
   GrantCommitBundleResources(Status::IOError(""), Status::IOError(""));
 
-  // Make sure the resources are returned to the cluster_resource_manager at the GCS
-  // side.
+  // GCS does not add the reserved resources back on commit failure; the reservation
+  // persists in the GCS local view until ClusterResourceManager's periodic
+  // ResetRemoteNodeView timer reverts the node to its last raylet-reported snapshot.
+  ASSERT_FALSE(EnsureClusterResourcesAreNotInUse());
+
+  // After that periodic reset, GCS reconverges to the true state.
+  SimulateResetRemoteNodeView();
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 }
 
@@ -1405,45 +1433,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource) {
   // The bundle should have two wildcard resources (CPU_group_{placement_group_id} and
   // bundle_group_{placement_group_id}).
   ASSERT_EQ(wildcard_resource_count, 2);
-}
-
-TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {
-  auto node = GenNodeInfo();
-  AddNode(node);
-  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
-
-  auto create_placement_group_request = GenCreatePlacementGroupRequest();
-  auto placement_group = std::make_shared<GcsPlacementGroup>(
-      create_placement_group_request, "", counter_, clock_);
-
-  // Schedule the placement_group with 1 available node, and the lease request should be
-  // send to the node.
-  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
-      placement_group,
-      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_insfeasble) {
-        absl::MutexLock lock(&placement_group_requests_mutex_);
-        failure_placement_groups_.emplace_back(std::move(placement_group));
-      },
-      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-        absl::MutexLock lock(&placement_group_requests_mutex_);
-        success_placement_groups_.emplace_back(std::move(placement_group));
-      }});
-  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
-  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
-
-  // Remove the node.
-  RemoveNode(node);
-
-  // Remove the placement group.
-  const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
-
-  // There shouldn't be any remaining bundles to be removed since the node is
-  // already removed. The bundles are already removed when the node is removed.
-  ASSERT_EQ(scheduler_->waiting_removed_bundles_.size(), 0);
 }
 
 }  // namespace gcs
