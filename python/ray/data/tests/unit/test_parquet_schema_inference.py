@@ -16,7 +16,8 @@ def test_read_parquet_memory_growth(tmp_path, monkeypatch):
     fragment's physical_schema when the sampled fragment had a pa.null() column
     (PyArrow < 22.0), causing O(N) metadata reads and memory usage.
     """
-    if get_pyarrow_version() < parse_version("22.0.0"):
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is None or pyarrow_version < parse_version("22.0.0"):
         pytest.skip("Bounded permissive schema inspection requires PyArrow >= 22.0.0")
 
     num_cols = 50
