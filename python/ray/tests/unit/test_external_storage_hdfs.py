@@ -80,10 +80,21 @@ def test_hdfs_ensure_fs_creates_client_and_spill_dirs():
         user=None,
         kerb_ticket=None,
         extra_conf=None,
+        buffer_size=1024 * 1024,
     )
     expected_spill_dir = f"/user/ray/spill/{DEFAULT_OBJECT_PREFIX}_{node_id}"
     mock_fs.create_dir.assert_called_once_with(expected_spill_dir, recursive=True)
     assert storage._fs is mock_fs
+
+
+def test_hdfs_ensure_fs_passes_custom_buffer_size_to_client():
+    storage = _make_storage(buffer_size=2 * 1024 * 1024)
+    mock_fs = MagicMock()
+
+    with patch.object(storage._pa_fs, "HadoopFileSystem", return_value=mock_fs) as ctor:
+        storage.ensure_initialized()
+
+    assert ctor.call_args.kwargs["buffer_size"] == 2 * 1024 * 1024
 
 
 def test_hdfs_create_spill_dir_failure():
@@ -132,6 +143,7 @@ def test_hdfs_spill_objects_writes_to_hdfs():
 
     assert len(urls) == 2
     mock_fs.open_output_stream.assert_called_once()
+    assert mock_fs.open_output_stream.call_args.kwargs == {}
     write_path = mock_fs.open_output_stream.call_args[0][0]
     assert write_path.startswith(
         f"/user/ray/spill/{DEFAULT_OBJECT_PREFIX}_test-node-id/"

@@ -564,8 +564,8 @@ class ExternalStorageHDFSImpl(ExternalStorage):
         extra_conf: Optional dict of Hadoop conf overrides, e.g.
             ``{"dfs.replication": "3"}`` to reduce replication for ephemeral
             spill data.
-        buffer_size: Buffer size in bytes for HDFS I/O. At least 1 MB is
-            recommended for remote storage.
+        buffer_size: Buffer size in bytes for PyArrow ``HadoopFileSystem``
+            read/write I/O. At least 1 MB is recommended for remote storage.
 
     Raises:
         ImportError: If pyarrow is not installed.
@@ -646,6 +646,7 @@ class ExternalStorageHDFSImpl(ExternalStorage):
                 user=self._user,
                 kerb_ticket=self._kerb_ticket,
                 extra_conf=self._extra_conf,
+                buffer_size=self._buffer_size,
             )
             for spill_dir in self._spill_dirs:
                 try:
@@ -675,9 +676,7 @@ class ExternalStorageHDFSImpl(ExternalStorage):
         # Keep hdfs:// scheme so the URL is resolvable across nodes.
         url = f"{uri}/{self._node_prefix}/{filename}"
 
-        with self._fs.open_output_stream(
-            write_path, buffer_size=self._buffer_size
-        ) as f:
+        with self._fs.open_output_stream(write_path) as f:
             return self._write_multiple_objects(f, object_refs, owner_addresses, url)
 
     def restore_spilled_objects(
