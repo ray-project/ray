@@ -15,11 +15,6 @@ class NixlConnectorBackend(BaseConnectorBackend):
         if vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_PORT"):
             return
 
-        # _compute_port_offset() is deterministic per replica (DP rank if set,
-        # else Serve replica rank * num_devices), so replicas within one
-        # deployment land on non-colliding ports. Operators running multiple
-        # PD deployments on a single node should set NIXL_SIDE_CHANNEL_PORT_BASE
-        # to non-overlapping ranges per deployment.
         base_port = int(
             self.llm_config.experimental_configs.get(
                 "NIXL_SIDE_CHANNEL_PORT_BASE", _DEFAULT_SIDE_CHANNEL_PORT_START
