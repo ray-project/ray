@@ -781,6 +781,22 @@ def test_full_tick_exercises_update_merge_reallocate():
     assert train_total == 12
 
 
+def test_get_or_create_raises_on_mismatched_subcluster_label_key(
+    ray_start_regular_shared,
+):
+    """Same key is reusable; a different key raises."""
+    import ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator as dac
+
+    dac._AGREED_SUBCLUSTER_LABEL_KEY = None
+    try:
+        get_or_create_autoscaling_coordinator(subcluster_label_key="subcluster")
+        get_or_create_autoscaling_coordinator(subcluster_label_key="subcluster")
+        with pytest.raises(ValueError, match="subcluster_label_key"):
+            get_or_create_autoscaling_coordinator(subcluster_label_key="tier")
+    finally:
+        dac._AGREED_SUBCLUSTER_LABEL_KEY = None
+
+
 if __name__ == "__main__":
     import sys
 
