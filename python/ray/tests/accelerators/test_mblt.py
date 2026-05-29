@@ -11,40 +11,35 @@ from ray._private.accelerators.mblt import (
 )
 
 
-@pytest.fixture(autouse=True)
-def mock_qbruntime_module(monkeypatch):
-    class MockAccelerator:
-        def __init__(self, dev_no):
-            if dev_no >= 4:
-                raise RuntimeError("No such device")
-            self._dev_no = dev_no
+def _install_qbruntime_mock(monkeypatch, num_present: int = 4):
+    """Install a fake ``qbruntime`` module exposing ``get_available_device_numbers``.
 
-        def get_available_cores(self):
-            return [0]
-
-        def get_device_name(self):
-            return "ARIES"
-
+    The real ``qbruntime`` package (see qb Runtime v1.2.0) returns a list of
+    integer device indices from this function; we mirror that contract.
+    """
     mock_qbruntime = types.ModuleType("qbruntime")
-    mock_qbruntime_accelerator = types.ModuleType("qbruntime.accelerator")
-    mock_qbruntime_accelerator.Accelerator = MockAccelerator
-    mock_qbruntime.accelerator = mock_qbruntime_accelerator
-
+    mock_qbruntime.get_available_device_numbers = lambda: list(range(num_present))
     monkeypatch.setitem(sys.modules, "qbruntime", mock_qbruntime)
-    monkeypatch.setitem(
-        sys.modules, "qbruntime.accelerator", mock_qbruntime_accelerator
-    )
-    # Prevent real system calls (glob /dev/aries*, lspci) from bounding
-    # the probe range: return None so max_probe always falls back to 256.
-    monkeypatch.setattr(
-        "ray._private.accelerators.mblt._hint_num_from_os", lambda: None
-    )
+    return mock_qbruntime
 
 
 @pytest.fixture
 def clear_mblt_environment(monkeypatch):
     monkeypatch.delenv(MBLT_RT_VISIBLE_DEVICES_ENV_VAR, raising=False)
     monkeypatch.delenv(NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def isolate_dev_and_lspci(monkeypatch):
+    """Prevent the real /dev tree and lspci from influencing detection."""
+    monkeypatch.setattr(
+        "ray._private.accelerators.mblt._count_mblt_dev_nodes", lambda: 0
+    )
+    monkeypatch.setattr(
+        "ray._private.accelerators.mblt._count_mblt_pci_entries", lambda: 0
+    )
+    # Default: no qbruntime installed. Individual tests can install the mock.
+    monkeypatch.delitem(sys.modules, "qbruntime", raising=False)
 
 
 @pytest.mark.usefixtures("clear_mblt_environment")
@@ -58,8 +53,8 @@ class TestMBLTAcceleratorManager:
             == MBLT_RT_VISIBLE_DEVICES_ENV_VAR
         )
 
-    def test_get_current_process_visible_accelerator_ids(self):
-        os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = "0,1,2,3"
+    def test_get_current_process_visible_accelerator_ids_set(self, monkeypatch):
+        monkeypatch.setenv(MBLT_RT_VISIBLE_DEVICES_ENV_VAR, "0,1,2,3")
         assert MBLTAcceleratorManager.get_current_process_visible_accelerator_ids() == [
             "0",
             "1",
@@ -67,60 +62,97 @@ class TestMBLTAcceleratorManager:
             "3",
         ]
 
-        os.environ[MBLT_RT_VISIBLE_DEVICES_ENV_VAR] = ""
+    def test_get_current_process_visible_accelerator_ids_empty(self, monkeypatch):
+        monkeypatch.setenv(MBLT_RT_VISIBLE_DEVICES_ENV_VAR, "")
         assert (
             MBLTAcceleratorManager.get_current_process_visible_accelerator_ids() == []
         )
 
-        os.environ.pop(MBLT_RT_VISIBLE_DEVICES_ENV_VAR, None)
+    def test_get_current_process_visible_accelerator_ids_unset(self):
         assert (
             MBLTAcceleratorManager.get_current_process_visible_accelerator_ids() is None
         )
 
-    def test_get_current_node_num_accelerators(self):
-        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 4
-
-    def test_get_current_node_num_accelerators_does_not_underprobe(self, monkeypatch):
-        monkeypatch.setattr(
-            "ray._private.accelerators.mblt._hint_num_from_os", lambda: 1
-        )
-
-        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 4
-
-    def test_get_current_node_accelerator_type(self):
-        assert MBLTAcceleratorManager.get_current_node_accelerator_type() == "ARIES"
-
-    def test_get_current_node_accelerator_type_from_property(self, monkeypatch):
-        class MockAcceleratorWithProperty:
-            def __init__(self, dev_no):
-                self.device_name = "ARIES-PROP"
-
-        mock_qbruntime = types.ModuleType("qbruntime")
-        mock_qbruntime_accelerator = types.ModuleType("qbruntime.accelerator")
-        mock_qbruntime_accelerator.Accelerator = MockAcceleratorWithProperty
-        mock_qbruntime.accelerator = mock_qbruntime_accelerator
-
-        monkeypatch.setitem(sys.modules, "qbruntime", mock_qbruntime)
-        monkeypatch.setitem(
-            sys.modules, "qbruntime.accelerator", mock_qbruntime_accelerator
-        )
-
+    @pytest.mark.parametrize("num_present", [0, 1, 4, 8])
+    def test_get_current_node_num_accelerators_sdk(self, monkeypatch, num_present):
+        _install_qbruntime_mock(monkeypatch, num_present=num_present)
         assert (
-            MBLTAcceleratorManager.get_current_node_accelerator_type() == "ARIES-PROP"
+            MBLTAcceleratorManager.get_current_node_num_accelerators() == num_present
         )
 
-    def test_validate_resource_request_quantity(self):
+    def test_get_current_node_num_accelerators_sdk_raises_falls_back_to_dev(
+        self, monkeypatch
+    ):
+        mock_qbruntime = types.ModuleType("qbruntime")
+
+        def _boom():
+            raise RuntimeError("driver mismatch")
+
+        mock_qbruntime.get_available_device_numbers = _boom
+        monkeypatch.setitem(sys.modules, "qbruntime", mock_qbruntime)
+        monkeypatch.setattr(
+            "ray._private.accelerators.mblt._count_mblt_dev_nodes", lambda: 2
+        )
+        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 2
+
+    def test_get_current_node_num_accelerators_no_sdk_uses_dev_fallback(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray._private.accelerators.mblt._count_mblt_dev_nodes", lambda: 2
+        )
+        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 2
+
+    def test_get_current_node_num_accelerators_no_sdk_no_dev_uses_pci(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray._private.accelerators.mblt._count_mblt_pci_entries", lambda: 3
+        )
+        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 3
+
+    def test_get_current_node_num_accelerators_none(self):
+        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == 0
+
+    @pytest.mark.parametrize(
+        "globbed,expected",
+        [
+            (["/dev/aries0", "/dev/aries1"], "MOBILINT_ARIES"),
+            (["/dev/regulus0"], "MOBILINT_REGULUS"),
+            ([], None),
+        ],
+    )
+    def test_get_current_node_accelerator_type_from_dev(
+        self, monkeypatch, globbed, expected
+    ):
+        def fake_glob(pattern):
+            if expected == "MOBILINT_ARIES" and "aries" in pattern:
+                return globbed
+            if expected == "MOBILINT_REGULUS" and "regulus" in pattern:
+                return globbed
+            return []
+
+        monkeypatch.setattr("ray._private.accelerators.mblt.glob.glob", fake_glob)
+        monkeypatch.setattr(
+            "ray._private.accelerators.mblt.subprocess.check_output",
+            lambda *a, **k: "",
+        )
+        assert MBLTAcceleratorManager.get_current_node_accelerator_type() == expected
+
+    def test_validate_resource_request_quantity_integer(self):
         valid, error = MBLTAcceleratorManager.validate_resource_request_quantity(1)
         assert valid is True
         assert error is None
 
+    def test_validate_resource_request_quantity_whole_float(self):
         valid, error = MBLTAcceleratorManager.validate_resource_request_quantity(1.0)
         assert valid is True
         assert error is None
 
+    def test_validate_resource_request_quantity_fractional(self):
         valid, error = MBLTAcceleratorManager.validate_resource_request_quantity(1.5)
         assert valid is False
-        assert "must be whole numbers" in error
+        assert "whole number" in error
         assert "1.5" in error
 
     def test_set_current_process_visible_accelerator_ids(self):
