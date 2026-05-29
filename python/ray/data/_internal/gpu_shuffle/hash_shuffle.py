@@ -346,7 +346,7 @@ class GPURankPool:
                     f"(pending ranks: {pending_indices}). "
                     f"Check GPU/network health."
                 )
-            ready, pending = ray.wait(pending, num_returns=len(pending), timeout=1)
+            ready, pending = ray.wait(pending, num_returns=1, timeout=1)
             if ready:
                 ray.get(ready)
                 logger.info(
