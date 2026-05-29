@@ -14,13 +14,15 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
-#include <boost/optional/optional_io.hpp>
 #include <chrono>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/optional/optional_io.hpp>
+#include "gtest/gtest.h"
 
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
