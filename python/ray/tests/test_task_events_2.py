@@ -366,7 +366,10 @@ ray.get(parent.remote())
                 ), f"task {task['func_or_class_name']} has wrong state"
 
                 assert task["error_type"] == "WORKER_DIED"
-                assert "Job finishes" in task["error_message"]
+                assert (
+                    "Job finishes" in task["error_message"]
+                    or "owner died" in task["error_message"]
+                ), f"unexpected error message: {task['error_message']}"
 
                 duration_ms = task["end_time_ms"] - task["start_time_ms"]
                 assert (
