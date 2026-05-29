@@ -66,6 +66,7 @@ prefill_config = LLMConfig(
         "max_model_len": 1024,
         "max_num_seqs": 32,
     },
+    experimental_configs={"NIXL_SIDE_CHANNEL_PORT_BASE": 15000},
 )
 
 # Configure decode with data parallel attention
@@ -84,6 +85,7 @@ decode_config = LLMConfig(
         "max_model_len": 1024,
         "max_num_seqs": 32,
     },
+    experimental_configs={"NIXL_SIDE_CHANNEL_PORT_BASE": 16000},
 )
 
 # Build and deploy the PD application (3-tier: ingress -> decode -> prefill)
