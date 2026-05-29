@@ -88,7 +88,7 @@ def _make_tiny_cnn() -> torch.nn.Module:
 
 VARIANTS = {
     "compute_bound": {"batch_size": 32, "make_model": _make_resnet50},
-    "data_bound": {"batch_size": 8096, "make_model": _make_tiny_cnn},
+    "data_bound": {"batch_size": 2048, "make_model": _make_tiny_cnn},
 }
 
 
