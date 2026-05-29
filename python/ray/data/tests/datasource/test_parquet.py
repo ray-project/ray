@@ -947,9 +947,12 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ), "estimated data size is not deterministic in multiple calls."
 
         text_output_path = os.path.join(tmp_path, "text")
-        ray.data.range(1000).map(lambda _: {"text": "a" * 1000}).write_parquet(
-            text_output_path
-        )
+        # NOTE: Override # of blocks to keep the file count stable and within
+        #       the planning-time sample cap, so the V2 size estimate (which
+        #       scales by the number of sampled files) covers every file.
+        ray.data.range(1000, override_num_blocks=10).map(
+            lambda _: {"text": "a" * 1000}
+        ).write_parquet(text_output_path)
         ds = ray.data.read_parquet(text_output_path)
         data_size = ds.size_bytes()
         assert (

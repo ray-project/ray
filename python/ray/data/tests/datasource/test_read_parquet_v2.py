@@ -151,13 +151,13 @@ def test_read_parquet_v2_max_bucket_size_scales_with_num_blocks_per_read_task(
 
 
 def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
-    """``ReadFiles.infer_metadata().size_bytes`` is the projection-aware
-    in-memory size estimate built from planning-time sample data (average
-    per-file on-disk bytes × ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` ×
-    column-mass ratio × ``num_buckets``). Surfaces a non-None value so
-    downstream consumers (hash-shuffle aggregator-memory sizing via
-    ``_try_estimate_output_bytes`` -> ``_get_default_aggregator_ray_remote_args``)
-    skip the conservative 1-GiB-per-aggregator fallback.
+    """``ReadFiles.infer_metadata().size_bytes`` materializes a non-None
+    estimate via the datasource's
+    :meth:`DataSourceV2.estimate_total_in_memory_bytes` override (Parquet
+    provides one). Surfaces a value so downstream consumers (hash-shuffle
+    aggregator-memory sizing via ``_try_estimate_output_bytes`` ->
+    ``_get_default_aggregator_ray_remote_args``) skip the conservative
+    1-GiB-per-aggregator fallback.
     """
     _write(tmp_path / "data.parquet", pa.table({"a": list(range(1024))}))
 
@@ -166,12 +166,31 @@ def test_read_parquet_v2_infer_metadata_size_bytes(tmp_path, restore_ctx):
 
     read_files_op = ds._logical_plan.dag
     assert isinstance(read_files_op, ReadFiles)
-    # Planning-time sample data is captured on the op.
-    assert read_files_op.sample_avg_file_size is not None
-    assert read_files_op.sample_avg_file_size > 0
-    assert read_files_op.sample_per_column_bytes is not None
-    assert read_files_op.num_buckets == 4
+    # Sample + datasource are wired up so the op can query the datasource
+    # estimate (scaled by the number of sampled files).
+    assert read_files_op.sample is not None
+    assert read_files_op.datasource is not None
     # The size estimate is materialized via infer_metadata.
+    size = read_files_op.infer_metadata().size_bytes
+    assert size is not None
+    assert size > 0
+
+
+def test_read_parquet_v2_infer_metadata_size_bytes_many_files(tmp_path, restore_ctx):
+    """The estimate is non-None even when the dataset has more files than the
+    schema-inference sample cap (16). The estimate scales by the number of
+    sampled files, so a capped sample still yields a (representative)
+    non-None size rather than collapsing to the 1-GiB shuffle fallback.
+    """
+    for i in range(20):
+        _write(tmp_path / f"data_{i}.parquet", pa.table({"a": list(range(256))}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=4)
+
+    read_files_op = ds._logical_plan.dag
+    assert isinstance(read_files_op, ReadFiles)
+    assert read_files_op.sample is not None
     size = read_files_op.infer_metadata().size_bytes
     assert size is not None
     assert size > 0

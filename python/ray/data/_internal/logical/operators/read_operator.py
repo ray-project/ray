@@ -24,7 +24,9 @@ if TYPE_CHECKING:
     import pyarrow as pa
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
+    from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
     )
@@ -270,17 +272,16 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
-    # Planning-time sample data used by :meth:`infer_metadata` to derive
-    # a projection-aware in-memory ``size_bytes`` estimate after
-    # projection-pushdown has settled on the scanner's column list.
-    # ``_read_datasource_v2`` populates these from one sampled file's
-    # Parquet footer (per-column ``total_uncompressed_size``) plus the
-    # sample manifest's average on-disk file size. The estimate is
-    # computed lazily so it uses the *current* scanner column list,
-    # which reflects any ``ProjectionPushdown`` that's run since planning.
-    sample_avg_file_size: Optional[int] = None
-    sample_per_column_bytes: Optional[Dict[str, int]] = None
-    num_buckets: Optional[int] = None
+    # Datasource and planning-time file sample used by :meth:`infer_metadata`
+    # to query an in-memory size estimate via
+    # :meth:`DataSourceV2.estimate_total_in_memory_bytes` (scaled by the
+    # number of sampled files). Datasources that don't override that method
+    # return ``None``, so the estimate is skipped (leaving ``size_bytes``
+    # unset, the prior behavior). Format-specific logic (encoding-ratio
+    # sampling, projection awareness, etc.) lives inside the datasource
+    # method — this op stays format-agnostic.
+    datasource: Optional["DataSourceV2"] = None
+    sample: Optional["FileManifest"] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -334,54 +335,26 @@ class ReadFiles(
             exec_stats=None,
         )
 
-    def _estimate_size_bytes(self) -> Optional[int]:
-        """Projection-aware in-memory size estimate.
+    @functools.cached_property
+    def _cached_estimated_size_bytes(self) -> Optional[int]:
+        """Delegate the size estimate to the datasource (if it can compute one).
 
-        Combines planning-time sample data
-        (``sample_avg_file_size`` and ``sample_per_column_bytes``) with
-        the *current* scanner column list (post projection-pushdown) to
-        produce an upper-bound estimate that scales correctly when the
-        query projects a narrow subset of columns:
-
-            projection_mass = sum(per_col_bytes[c] for c in projected)
-                              / sum(per_col_bytes[*])
-            est_per_file    = avg_file_size
-                              * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-                              * projection_mass
-            estimated_total = est_per_file * num_buckets
-
-        Lazy so it reflects projection-pushdown changes to the scanner.
-        When per-column data is unavailable, falls back to
-        ``projection_mass = 1.0`` (full-file mass).
+        Cached because :meth:`infer_metadata` may be called repeatedly
+        during planning (each downstream op's ``infer_metadata`` walks
+        back to the read). Cache lives per-instance; ``apply_projection``
+        / ``apply_predicate`` create fresh instances via ``replace()``,
+        so post-pushdown scanner state automatically invalidates the
+        cached value.
         """
-        from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-            PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
-        )
-
-        if (
-            self.sample_avg_file_size is None
-            or self.sample_avg_file_size <= 0
-            or self.num_buckets is None
-        ):
+        if self.sample is None or self.datasource is None:
             return None
-
-        projection_mass = 1.0
-        if self.sample_per_column_bytes:
-            total_col_bytes = sum(self.sample_per_column_bytes.values())
-            if total_col_bytes > 0:
-                projected = self.scanner.pruned_column_names()
-                if projected:
-                    projected_bytes = sum(
-                        self.sample_per_column_bytes.get(c, 0) for c in projected
-                    )
-                    projection_mass = projected_bytes / total_col_bytes
-
-        est_per_file = (
-            self.sample_avg_file_size
-            * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-            * projection_mass
+        return self.datasource.estimate_total_in_memory_bytes(
+            self.sample,
+            projected_columns=self.scanner.pruned_column_names(),
         )
-        return int(est_per_file * self.num_buckets)
+
+    def _estimate_size_bytes(self) -> Optional[int]:
+        return self._cached_estimated_size_bytes
 
     def supports_projection_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (

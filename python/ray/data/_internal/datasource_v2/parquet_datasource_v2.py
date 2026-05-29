@@ -9,6 +9,7 @@ Constructed from `read_api.read_parquet` when
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -35,6 +36,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
     ParquetInMemorySizeEstimator,
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
@@ -53,6 +55,8 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -156,6 +160,93 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
         return ParquetInMemorySizeEstimator()
+
+    @override
+    def estimate_total_in_memory_bytes(
+        self,
+        sample: FileManifest,
+        *,
+        projected_columns: Optional[List[str]] = None,
+    ) -> Optional[int]:
+        """Projection-aware in-memory size estimate for the sampled files.
+
+        Override of :meth:`DataSourceV2.estimate_total_in_memory_bytes`.
+        Returns ``on_disk_total × ratio`` (equivalently
+        ``avg_file_size × ratio × len(sample)``), where:
+
+        - ``on_disk_total``: summed on-disk bytes of the sampled files;
+          ``avg_file_size`` is the per-file mean and ``len(sample)`` (the
+          number of sampled files) is the multiplier.
+        - ``ratio``: the workload's actual in-memory-vs-on-disk encoding
+          ratio, sampled from one row group of the first sample file with
+          ``columns=projected_columns``. Scoping the row-group read to the
+          projected columns makes the ratio *projection-aware* — its
+          numerator is the in-memory size of just the projected columns,
+          divided by the file's full on-disk size — so a narrow
+          ``select_columns(...)`` scales the estimate down without a
+          separate column-mass term. It also avoids the ARROW-5030
+          nested-batch fallback when projecting away nested types. Falls
+          back to ``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`` (5x) when
+          sampling fails or returns no rows.
+
+        Returns ``None`` only when the sample is empty or sums to zero
+        on-disk bytes — the caller (``ReadFiles._estimate_size_bytes``)
+        treats that as "unknown size" and leaves ``BlockMetadata.size_bytes``
+        unset (the prior behavior).
+        """
+        if len(sample) == 0:
+            return None
+        on_disk_total = int(sample.file_sizes.sum())
+        if on_disk_total <= 0:
+            return None
+
+        ratio = (
+            self._sample_encoding_ratio(sample, projected_columns)
+            or PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+        )
+        return int(on_disk_total * ratio)
+
+    def _sample_encoding_ratio(
+        self,
+        sample: FileManifest,
+        projected_columns: Optional[List[str]],
+    ) -> Optional[float]:
+        """Read one row group of the first sample file to measure the
+        in-memory / on-disk encoding ratio. Scoping the read to
+        ``projected_columns`` makes the ratio projection-aware and keeps
+        queries that project away nested columns from triggering ARROW-5030
+        here.
+        """
+        first_path = sample.paths.tolist()[0]
+        first_file_size = int(sample.file_sizes.tolist()[0])
+        if first_file_size <= 0:
+            return None
+        try:
+            import pyarrow.dataset as pds
+
+            from ray.data._internal.datasource.parquet_datasource import (
+                _fetch_parquet_file_info,
+                _ParquetFragment,
+            )
+
+            ds = pds.dataset(first_path, format="parquet", filesystem=self._filesystem)
+            fragments = list(ds.get_fragments())
+            if not fragments:
+                return None
+            file_info = _fetch_parquet_file_info(
+                _ParquetFragment(fragments[0], first_file_size),
+                columns=list(projected_columns) if projected_columns else None,
+                schema=None,
+            )
+            if file_info is None or file_info.avg_row_in_mem_bytes is None:
+                return None
+            in_memory_bytes = file_info.estimate_in_memory_bytes()
+            if not in_memory_bytes:
+                return None
+            return float(in_memory_bytes) / first_file_size
+        except Exception as e:
+            logger.debug("Skipping encoding-ratio sampling for %s: %s", first_path, e)
+            return None
 
     @override
     def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:

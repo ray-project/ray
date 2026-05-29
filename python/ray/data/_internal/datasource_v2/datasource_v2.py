@@ -21,6 +21,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
+    List,
     Optional,
 )
 
@@ -33,6 +34,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
     from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
         InMemorySizeEstimator,
     )
@@ -143,6 +145,37 @@ class DataSourceV2(ABC, Generic[InputSplit]):
 
         Returns:
             InMemorySizeEstimator instance, or None if not supported.
+        """
+        return None
+
+    def estimate_total_in_memory_bytes(
+        self,
+        sample: "FileManifest",
+        *,
+        projected_columns: Optional[List[str]] = None,
+    ) -> Optional[int]:
+        """Planning-time in-memory size estimate for the sampled files.
+
+        ``ReadFiles.infer_metadata`` calls this with the planning-time file
+        sample and the *current* (post-pushdown) projected column list, and
+        surfaces the result as ``BlockMetadata.size_bytes``. The estimate is
+        scaled by the number of sampled files (``len(sample)``).
+
+        Override this for formats that can produce a useful estimate (see
+        :class:`ParquetDatasourceV2`). Format-specific logic (encoding-ratio
+        sampling, projection awareness, etc.) lives inside the override so the
+        generic ``ReadFiles`` op stays format-agnostic.
+
+        Args:
+            sample: The planning-time file sample.
+            projected_columns: Post-pushdown projected column list, or ``None``
+                when no projection has been applied.
+
+        Returns:
+            Estimated in-memory size in bytes for the sampled files, or
+            ``None`` (the default) when no reliable estimate is available.
+            Callers treat ``None`` as "unknown size" and leave
+            ``BlockMetadata.size_bytes`` unset.
         """
         return None
 
