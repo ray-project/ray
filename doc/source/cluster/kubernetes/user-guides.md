@@ -25,7 +25,6 @@ user-guides/persist-kuberay-operator-logs
 user-guides/gpu
 user-guides/tpu
 user-guides/pod-command
-user-guides/autoscaler-command
 user-guides/helm-chart-rbac
 user-guides/tls
 user-guides/k8s-autoscaler
@@ -63,7 +62,6 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`persist-kuberay-custom-resource-logs`
 * {ref}`persist-kuberay-operator-logs`
 * {ref}`kuberay-pod-command`
-* {ref}`kuberay-autoscaler-command`
 * {ref}`kuberay-helm-chart-rbac`
 * {ref}`kuberay-tls`
 * {ref}`kuberay-gke-bucket`
