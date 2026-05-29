@@ -691,8 +691,12 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
-        # Counter for per-spawn stdout/stderr file names; known pre-spawn (unlike pid).
+        # Per-spawn counter for stdout/stderr file names.
         self._spawn_seq: int = 0
+        # Unique per actor incarnation. A restart resets _spawn_seq to 0, so
+        # without this a new incarnation would reuse — and (wb) truncate — the
+        # previous one's log files. The actor PID changes on every restart.
+        self._log_id: int = os.getpid()
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -746,7 +750,7 @@ class HAProxyApi(ProxyApi):
 
         # Redirect both std streams to files → no 64KB pipe buffer to deadlock on.
         self._spawn_seq += 1
-        base = f"{self.cfg.socket_path}.{self._spawn_seq}"
+        base = f"{self.cfg.socket_path}.{self._log_id}.{self._spawn_seq}"
         stdout_path = f"{base}.stdout.log"
         stderr_path = f"{base}.stderr.log"
         with open(stdout_path, "wb", buffering=0) as stdout_file, open(
