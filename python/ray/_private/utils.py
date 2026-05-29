@@ -606,7 +606,7 @@ def resolve_object_store_memory(
         if sys.platform == "linux" or sys.platform == "linux2":
             # Multiple by 0.95 to give a bit of wiggle-room.
             # https://github.com/ray-project/ray/pull/23034/files
-            shm_avail = get_shared_memory_bytes() * 0.95
+            shm_avail = int(get_shared_memory_bytes() * 0.95)
             shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
 
             object_store_memory_cap = min(object_store_memory_cap, shm_cap)
