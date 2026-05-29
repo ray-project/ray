@@ -6,11 +6,11 @@ import os
 import random
 import time
 import traceback
-from collections import defaultdict
+from collections import defaultdict, deque
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -58,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -2835,6 +2836,9 @@ class DeploymentState:
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
+        self._recent_dead_replicas: Deque[ReplicaDetails] = deque(
+            maxlen=RAY_SERVE_RETAINED_DEAD_REPLICAS
+        )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
             DeploymentStatus.UPDATING,
@@ -3277,6 +3281,9 @@ class DeploymentState:
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
+
+    def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
+        return list(self._recent_dead_replicas)
 
     def broadcast_running_replicas_if_changed(self) -> None:
         """Broadcasts the set of running replicas over long poll if it has changed.
@@ -4708,6 +4715,15 @@ class DeploymentState:
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
 
+                # Retain replicas that allocated a log file so the dashboard can
+                # still show their logs after the actor is gone.
+                if replica.actor_details.log_file_path is not None:
+                    self._recent_dead_replicas.append(
+                        replica.actor_details.model_copy(
+                            update={"state": ReplicaState.STOPPED}
+                        )
+                    )
+
                 # Record shutdown duration metric.
                 if replica.shutdown_start_time is not None:
                     shutdown_duration_ms = (
@@ -5587,6 +5603,7 @@ class DeploymentStateManager:
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 replicas=deployment_state.list_replica_details(),
+                recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
             )
 
     def get_deployment_statuses(

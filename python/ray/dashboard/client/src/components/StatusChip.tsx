@@ -76,6 +76,7 @@ const getColorMap = (orange: string, grey: string) =>
       [ServeReplicaState.RECOVERING]: orange,
       [ServeReplicaState.RUNNING]: green,
       [ServeReplicaState.STOPPING]: red,
+      [ServeReplicaState.STOPPED]: grey,
     },
     serveProxy: {
       [ServeSystemActorStatus.HEALTHY]: green,
