@@ -20,7 +20,6 @@
 
 #include "ray/common/status.h"
 #include "ray/gcs/grpc_service_interfaces.h"
-#include "ray/util/network_util.h"
 
 namespace ray {
 namespace gcs {
@@ -35,9 +34,7 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
  public:
   LeaderGatedNodeInfoHandler(rpc::NodeInfoGcsServiceHandler &handler,
                              std::function<bool()> is_leader_fn)
-      : handler_(handler),
-        is_leader_fn_(std::move(is_leader_fn)),
-        local_ip_(GetNodeIpAddressFromPerspective()) {}
+      : handler_(handler), is_leader_fn_(std::move(is_leader_fn)) {}
 
   // =========================================================================
   // Gated Mutating RPCs (Blocked on passive GCS, returns Status::GcsPassive)
@@ -46,10 +43,9 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
   void HandleRegisterNode(rpc::RegisterNodeRequest request,
                           rpc::RegisterNodeReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override {
-    const std::string &node_ip = request.node_info().node_manager_address();
-    const bool is_local = (node_ip == local_ip_) || (node_ip == "127.0.0.1") ||
-                          (node_ip == "localhost") || (node_ip == "::1");
-    if (!is_leader_fn_() && !is_local) {
+    // Passive GCS blocks remote worker node registrations, but allows the colocated local
+    // head node Raylet to register so that dashboard/health check services can start.
+    if (!is_leader_fn_() && !request.node_info().is_head_node()) {
       GCS_PROXY_SEND_REPLY(send_reply_callback, reply, Status::GcsPassive());
       return;
     }
@@ -114,7 +110,6 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
  private:
   rpc::NodeInfoGcsServiceHandler &handler_;
   const std::function<bool()> is_leader_fn_;
-  const std::string local_ip_;
 };
 
 class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {

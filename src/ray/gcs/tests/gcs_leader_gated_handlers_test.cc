@@ -280,11 +280,11 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationBypass) {
 
   LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn);
 
-  // 1. Passive GCS (is_leader = false): RegisterNode with local loopback IP must be
+  // 1. Passive GCS (is_leader = false): RegisterNode with is_head_node = true must be
   // ALLOWED.
   {
     rpc::RegisterNodeRequest request;
-    request.mutable_node_info()->set_node_manager_address("127.0.0.1");
+    request.mutable_node_info()->set_is_head_node(true);
     rpc::RegisterNodeReply reply;
     bool callback_called = false;
     auto send_reply_callback = [&callback_called](Status status,
@@ -299,22 +299,24 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationBypass) {
     underlying.called_ = false;
   }
 
-  // 2. Passive GCS: RegisterNode with local node IP must be ALLOWED.
+  // 2. Passive GCS: RegisterNode with is_head_node = false must be BLOCKED.
   {
     rpc::RegisterNodeRequest request;
-    request.mutable_node_info()->set_node_manager_address(
-        GetNodeIpAddressFromPerspective());
+    request.mutable_node_info()->set_is_head_node(false);
     rpc::RegisterNodeReply reply;
     bool callback_called = false;
-    auto send_reply_callback = [&callback_called](Status status,
-                                                  std::function<void()> f1,
-                                                  std::function<void()> f2) {
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
       EXPECT_TRUE(status.ok());
+      Status logical_status =
+          Status(StatusCode(reply.status().code()), reply.status().message());
+      EXPECT_TRUE(logical_status.IsGcsPassive());
       callback_called = true;
     };
     proxy.HandleRegisterNode(request, &reply, send_reply_callback);
     EXPECT_TRUE(callback_called);
-    EXPECT_TRUE(underlying.called_);
+    EXPECT_FALSE(underlying.called_);
     underlying.called_ = false;
   }
 
