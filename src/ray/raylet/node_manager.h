@@ -245,15 +245,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// or object ids can be freed up across the cluster.
   void SetShouldGlobalGC();
 
-  /// Mark the specified objects as failed with the given error type.
-  ///
-  /// \param error_type The type of the error that caused this task to fail.
-  /// \param object_ids The object ids to store error messages into.
-  /// \param job_id The optional job to push errors to if the writes fail.
-  void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<rpc::ObjectReference> &object_ids,
-                           const JobID &job_id);
-
   /// Stop this node manager.
   void Stop();
 
@@ -782,6 +773,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ReleaseKillWorkerInProgress();
 
   /**
+   * @param process_memory_snapshot The snapshot of per-process memory usage
+   * for fetching the memory usage of the worker.
+   * @param worker The worker to create the kill details for.
+   * @return The detail message for the worker's memory usage.
+   */
+  std::string CreateWorkerMemoryUsageDetails(
+      const ProcessesMemorySnapshot &process_memory_snapshot,
+      const std::shared_ptr<WorkerInterface> &worker) const;
+
+  /**
    * @param workers_to_kill The workers to print the kill details for.
    * @param node_id The ID of the node.
    * @param system_memory_snapshot The snapshot of the system memory.
@@ -792,6 +793,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::string CreateOomKillMessageDetails(
       const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
           &workers_to_kill,
+      const std::vector<std::shared_ptr<WorkerInterface>> &all_workers,
       const NodeID &node_id,
       const MemoryUsageSnapshot &system_memory_snapshot,
       const std::string &object_store_memory_usage,
