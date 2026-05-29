@@ -230,11 +230,11 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             )
 
             ds = pds.dataset(first_path, format="parquet", filesystem=self._filesystem)
-            fragments = list(ds.get_fragments())
-            if not fragments:
+            fragment = next(ds.get_fragments(), None)
+            if fragment is None:
                 return None
             file_info = _fetch_parquet_file_info(
-                _ParquetFragment(fragments[0], first_file_size),
+                _ParquetFragment(fragment, first_file_size),
                 columns=list(projected_columns) if projected_columns else None,
                 schema=None,
             )

@@ -1289,34 +1289,6 @@ def _row_group_uncompressed_size(
     return sum(rg_meta.column(i).total_uncompressed_size for i in indices)
 
 
-def _per_column_uncompressed_bytes(
-    metadata: "pyarrow.parquet.FileMetaData",
-) -> Dict[str, int]:
-    """Top-level column name → total uncompressed bytes across all row groups.
-
-    Composes :func:`_row_group_uncompressed_size` (uncompressed because
-    ``rg_meta.total_byte_size`` can return compressed bytes for some
-    files — apache/arrow#48138) with the top-level-name resolution
-    pattern from :func:`_resolve_leaf_column_indices`. Used by the V2
-    ``ReadFiles.infer_metadata`` projection-aware size estimate: knowing
-    each top-level column's mass lets the estimator scale a fixed
-    encoding-ratio multiplier by the projected fraction instead of
-    multiplying by the full file's mass.
-    """
-    if metadata.num_row_groups == 0 or metadata.num_columns == 0:
-        return {}
-    result: Dict[str, int] = {}
-    for leaf_idx in range(metadata.num_columns):
-        leaf_path = metadata.row_group(0).column(leaf_idx).path_in_schema
-        top_name = leaf_path.split(".", 1)[0]
-        size = sum(
-            _row_group_uncompressed_size(metadata.row_group(rg_idx), [leaf_idx])
-            for rg_idx in range(metadata.num_row_groups)
-        )
-        result[top_name] = result.get(top_name, 0) + size
-    return result
-
-
 def _resolve_leaf_column_indices(
     metadata: "pyarrow.parquet.FileMetaData",
     columns: List[str],
