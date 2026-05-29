@@ -24,3 +24,5 @@ env:
 skip_tags:
   - disabled
 allow_trigger_step: true
+docker_plugin:
+  allow_mount_buildkite_agent: true
