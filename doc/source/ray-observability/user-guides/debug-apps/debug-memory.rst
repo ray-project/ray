@@ -79,8 +79,7 @@ memory reserved for system processes by setting a higher value for the ``--syste
 
 If Ray's memory monitor kills the worker, Ray retries it automatically (see the :ref:`retry policy <ray-oom-retry-policy>` for details).
 Ray's memory monitor also logs the details of the out-of-memory kill to the ``raylet.out`` log file.
-The log delimits new lines with ``;`` instead of ``\n`` to make grepping easier.
-The example log below has ``;`` replaced with ``\n`` for readability.
+An example log is shown below.
 
 .. code-block:: bash
 
@@ -122,16 +121,16 @@ The example log below has ``;`` replaced with ``\n`` for readability.
   Total non-selected idle workers USS bytes: 1.00GB
   To see more information about memory usage on this node, use `ray logs raylet.out -ip <ip address>`
   Top 10 memory users: PID  MEM(GB) COMMAND
-  3310151        21.95   ray::hungry_hippo
-  3310149      21.87   ray::hungry_hippo
-  3310155      21.85   ray::hungry_hippo
+  3310151   21.95   ray::hungry_hippo
+  3310149   21.87   ray::hungry_hippo
+  3310155   21.85   ray::hungry_hippo
   3310153   21.64   ray::hungry_hippo
-  3310147      21.53   ray::hungry_hippo
-  3108574      1.95    bazel
-  3180337     1.61    ray::foo_actor
-  3310152        0.67    ray::hungry_hippo
-  2924839      0.53    ray::idle_worker
-  3149737     0.47    ray::idle_worker
+  3310147   21.53   ray::hungry_hippo
+  3108574   1.95    bazel
+  3180337   1.61    ray::foo_actor
+  3310152   0.67    ray::hungry_hippo
+  2924839   0.53    ray::idle_worker
+  3149737   0.47    ray::idle_worker
   Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero. Since 2.56, Ray updated the oom killing policy to enabling killing multiple workers and selecting workers based on the time since the task start executing. To revert to the legacy policy of determining worker to oom kill based on owner group size or only selecting a single worker to kill at a time, set the environment variable `RAY_worker_killing_policy_by_group` to true before starting Ray. If the idle workers have a non-trivial memory footprint at the time of OOM (check OOM log for non-selected idle workers), consider setting the environment variable `RAY_idle_worker_killing_memory_threshold_bytes` to a lower value to consider idle workers with lower memory footprint for killing.
 
 If Tasks or Actors can't be retried, they raise an exception with
