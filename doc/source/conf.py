@@ -513,7 +513,9 @@ exclude_patterns = [
     ],
     # ray_train_workloads bundles sub-folder READMEs that aren't part of any
     # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
-    "_collections/train/tutorials/**/README.*",
+    # Keep the root README.* — train.rst's toctree and tutorials button both
+    # link to /_collections/train/tutorials/README.
+    "_collections/train/tutorials/*/**/README.*",
     # Sidecar README.md files in fetched template dirs duplicate the canonical
     # notebook that the gallery / toctree already links to. Exclude to avoid
     # orphan warnings without losing reachable content.
