@@ -812,6 +812,28 @@
     timeout: 3600
     script: python heterogeneous_memory_batch_inference.py
 
+# Multitenancy variant: runs two copies of the heterogeneous_memory pipeline
+# concurrently on a single cluster, each pinned to its own subcluster via
+# label_selector. Asserts isolation (no runtime regression vs. solo) and
+# placement (no task crossed subcluster boundaries).
+- name: heterogeneous_memory_batch_inference_multitenancy
+  python: "3.10"
+  frequency: nightly
+  group: data-batch-inference
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+    cluster_compute: heterogeneous_memory_compute_multitenancy.yaml
+
+  run:
+    timeout: 7200
+    script: python heterogeneous_memory_batch_inference_multitenancy.py
+
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"

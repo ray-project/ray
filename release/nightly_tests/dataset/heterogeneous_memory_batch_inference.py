@@ -28,6 +28,7 @@ Cluster (heterogeneous_memory_compute.yaml):
 
 import argparse
 import time
+from typing import Optional
 
 import numpy as np
 from benchmark import Benchmark
@@ -91,8 +92,22 @@ def build_and_run_pipeline(
     cpu_batch_size: int,
     gpu_batch_size: int,
     gpu_concurrency: int,
+    subcluster: Optional[str] = None,
 ):
+    if subcluster is not None:
+        # Set on the process-global DataContext first: some operator paths
+        # read via DataContext.get_current() at task-submission time, which
+        # is thread-local in places, so the per-Dataset setting alone isn't
+        # sufficient when callers run on a non-driver thread.
+        ray.data.DataContext.get_current().execution_options.label_selector = {
+            "subcluster": subcluster
+        }
+
     ds = ray.data.range(num_rows)
+
+    if subcluster is not None:
+        # Also pin on the Dataset's own context so chained ops inherit it.
+        ds.context.execution_options.label_selector = {"subcluster": subcluster}
 
     ds = ds.map_batches(gen_data, batch_size=gen_batch_size)
 

@@ -1,0 +1,54 @@
+# Multitenancy variant of heterogeneous_memory_compute.yaml.
+# Each tenant gets a full mirror of the original cluster's CPU+GPU pools,
+# pinned to its subcluster via Ray node labels. The two tenants share the
+# same Ray cluster but should run as if isolated.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # tenant_a CPU pool — mirrors the original CPU pool.
+    - name: cpu-tenant-a
+      instance_type: m5.2xlarge
+      min_nodes: 10
+      max_nodes: 10
+      market_type: ON_DEMAND
+      labels:
+        subcluster: tenant_a
+
+    # tenant_b CPU pool — mirrors the original CPU pool.
+    - name: cpu-tenant-b
+      instance_type: m5.2xlarge
+      min_nodes: 10
+      max_nodes: 10
+      market_type: ON_DEMAND
+      labels:
+        subcluster: tenant_b
+
+    # tenant_a "GPU" pool (logical GPUs, no CPUs).
+    - name: gpu-tenant-a
+      instance_type: r5.4xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+        CPU: 0
+        GPU: 4
+      labels:
+        subcluster: tenant_a
+
+    # tenant_b "GPU" pool (logical GPUs, no CPUs).
+    - name: gpu-tenant-b
+      instance_type: r5.4xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      resources:
+        CPU: 0
+        GPU: 4
+      labels:
+        subcluster: tenant_b
