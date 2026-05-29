@@ -83,6 +83,7 @@ from ray.serve.schema import (
     Target,
     TargetGroup,
 )
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1219,8 +1220,21 @@ class HAProxyManager(ProxyActorInterface):
 
         # Coalescing state: each broadcast sets _update_pending=True and
         # (re)arms _coalesce_task, which sleeps one window then applies.
+        # _coalesce_armed_at is the monotonic time of the first broadcast
+        # since the last apply, used to report end-to-end update latency.
         self._update_pending: bool = False
         self._coalesce_task: Optional[asyncio.Task] = None
+        self._coalesce_armed_at: Optional[float] = None
+        self._haproxy_update_latency = metrics.Histogram(
+            "serve_haproxy_update_latency_s",
+            description=(
+                "Seconds from the first coalesced controller broadcast to the "
+                "HAProxy reload completing. Includes the coalesce window, time "
+                "queued behind an in-flight reload, and the reload itself."
+            ),
+            boundaries=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+            tag_keys=("node_id",),
+        ).set_default_tags({"node_id": node_id})
 
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
@@ -1559,18 +1573,16 @@ class HAProxyManager(ProxyActorInterface):
         self._schedule_haproxy_update()
 
     def _schedule_haproxy_update(self) -> None:
-        """Mark state dirty and ensure a coalescing task is running.
+        """Mark state dirty and ensure the apply task is running.
 
-        Multiple broadcasts within RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S
-        collapse into a single _update_haproxy_backends call. If coalescing
-        is disabled (window <= 0), apply synchronously to preserve the prior
-        behavior.
+        Broadcasts within RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S collapse
+        into a single _update_haproxy_backends call. A window of 0 disables
+        the coalesce delay (each broadcast applies immediately) but still
+        runs through the same task, so update latency is always recorded.
         """
-        if RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S <= 0:
-            self._update_haproxy_backends()
-            return
-
         self._update_pending = True
+        if self._coalesce_armed_at is None:
+            self._coalesce_armed_at = time.monotonic()
         if self._coalesce_task is None or self._coalesce_task.done():
             self._coalesce_task = self.event_loop.create_task(
                 self._coalesce_and_apply()
@@ -1583,16 +1595,24 @@ class HAProxyManager(ProxyActorInterface):
         # for up to 2 retries; past that, wait for the next broadcast.
         consecutive_failures = 0
         while self._update_pending:
-            await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
+            if RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S > 0:
+                await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
             self._update_pending = False
+            armed_at = self._coalesce_armed_at
+            self._coalesce_armed_at = None
             try:
                 await self._update_haproxy_backends()
+                if armed_at is not None:
+                    self._haproxy_update_latency.observe(time.monotonic() - armed_at)
                 consecutive_failures = 0
             except Exception:
                 logger.exception("Coalesced HAProxy update failed.")
                 consecutive_failures += 1
                 if consecutive_failures < 3:
                     self._update_pending = True
+                    # Keep measuring from the original broadcast so a retry's
+                    # latency still reflects the full delay.
+                    self._coalesce_armed_at = armed_at
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""
