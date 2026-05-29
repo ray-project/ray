@@ -1513,5 +1513,73 @@ def test_completed_task_not_marked_failed_on_worker_death(shutdown_only):
     wait_for_condition(verify, timeout=15, retry_interval_ms=500)
 
 
+def test_owner_death_skips_detached_actor_but_marks_non_detached(shutdown_only):
+    """
+    Owner spawns both a detached and a non-detached actor before crashing.
+
+    Expected after owner's ungraceful death:
+      - Non-detached actor's running method should be marked FAILED (the owner-side
+        DFS no longer skips non-detached actor subtrees).
+      - Detached actor's running method should stay RUNNING (the DFS skips detached
+        actor subtrees; the actor outlives its owner by design).
+    """
+    ray.init(_system_config=_SYSTEM_CONFIG)
+
+    @ray.remote(max_retries=0)
+    def parent_starts_actors():
+        @ray.remote
+        class _Actor:
+            def __init__(self):
+                self.started = False
+
+            async def is_running(self):
+                return self.started
+
+            async def run(self):
+                self.started = True
+                await asyncio.sleep(999)
+
+        detached = _Actor.options(
+            name="mixed-detached", lifetime="detached", namespace="test"
+        ).remote()
+        detached.run.options(name="mixed-detached-run").remote()
+
+        non_detached = _Actor.remote()
+        non_detached.run.options(name="mixed-non-detached-run").remote()
+
+        # Wait until both actor methods are actually running before crashing.
+        wait_for_condition(lambda: ray.get(detached.is_running.remote()), timeout=15)
+        wait_for_condition(
+            lambda: ray.get(non_detached.is_running.remote()), timeout=15
+        )
+
+        # Give the task event buffer a chance to flush before the crash.
+        time.sleep(1)
+        os._exit(1)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(parent_starts_actors.remote())
+
+    # Non-detached actor's task should end up FAILED (owner DFS doesn't skip it).
+    wait_for_task_states({"mixed-non-detached-run": "FAILED"})
+
+    # Detached actor's task should remain RUNNING — its subtree was skipped.
+    wait_for_task_states({"mixed-detached-run": "RUNNING"})
+
+    # Sanity check: state still RUNNING after a brief wait (no delayed marking).
+    time.sleep(2)
+    tasks = list_tasks(filters=[("name", "=", "mixed-detached-run")], detail=True)
+    assert len(tasks) == 1
+    assert tasks[0]["state"] == "RUNNING", (
+        f"detached actor task should still be RUNNING after owner death, "
+        f"got {tasks[0]['state']}"
+    )
+
+    # Clean up the detached actor explicitly.
+    detached = ray.get_actor("mixed-detached", namespace="test")
+    ray.kill(detached)
+    wait_for_task_states({"mixed-detached-run": "FAILED"})
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
