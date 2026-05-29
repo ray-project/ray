@@ -262,7 +262,7 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard]",
             "requests",
-            "starlette",
+            "starlette>=1.0.1",
             "fastapi",
             "watchfiles",
         ],

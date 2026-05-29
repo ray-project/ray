@@ -51,7 +51,7 @@ requests
 pandas
 tensorboardX
 aiohttp>=3.7,<3.9
-starlette
+starlette>=1.0.1
 typer
 fsspec
 pandas>=1.3
