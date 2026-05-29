@@ -665,9 +665,10 @@ class ExternalStorageHDFSImpl(ExternalStorage):
             return []
 
         self._ensure_fs()
-        self._current_uri_index = (self._current_uri_index + 1) % len(self._uris)
-        uri = self._uris[self._current_uri_index]
-        spill_dir = self._spill_dirs[self._current_uri_index]
+        current_uri_index = (self._current_uri_index + 1) % len(self._uris)
+        self._current_uri_index = current_uri_index
+        uri = self._uris[current_uri_index]
+        spill_dir = self._spill_dirs[current_uri_index]
 
         filename = _get_unique_spill_filename(object_refs)
         write_path = f"{spill_dir}/{filename}"
