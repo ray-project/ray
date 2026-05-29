@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
-    from vllm.entrypoints.openai.speech_to_text.serving import (
+    from vllm.entrypoints.speech_to_text.transcription.serving import (
         OpenAIServingTranscription,
     )
     from vllm.entrypoints.pooling.embed.serving import ServingEmbedding

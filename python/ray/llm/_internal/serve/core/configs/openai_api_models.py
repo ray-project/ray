@@ -27,7 +27,7 @@ try:
         ErrorInfo as _ErrorInfo,
         ErrorResponse as _ErrorResponse,
     )
-    from vllm.entrypoints.openai.speech_to_text.protocol import (
+    from vllm.entrypoints.speech_to_text.transcription.protocol import (
         TranscriptionRequest as _TranscriptionRequest,
         TranscriptionResponse as _TranscriptionResponse,
         TranscriptionStreamResponse as _TranscriptionStreamResponse,
