@@ -2530,7 +2530,9 @@ typing-extensions==4.15.0
 typing-inspect==0.9.0
     # via pyre-extensions
 typing-inspection==0.4.2
-    # via pydantic
+    # via
+    #   fastapi
+    #   pydantic
 tzdata==2025.2
     # via
     #   kombu

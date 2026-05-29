@@ -2637,7 +2637,9 @@ h5py==3.12.1 \
 hf-gradio==0.4.1 ; sys_platform != 'win32' \
     --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
     --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
-    # via gradio
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 hf-xet==1.4.3 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:0392c79b7cf48418cd61478c1a925246cf10639f4cd9d94368d8ca1e8df9ea07 \
     --hash=sha256:1feb0f3abeacee143367c326a128a2e2b60868ec12a36c225afb1d6c5a05e6d2 \
