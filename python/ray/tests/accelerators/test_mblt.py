@@ -3,7 +3,6 @@ import sys
 import types
 
 import pytest
-
 from ray._private.accelerators.mblt import (
     MBLT_RT_VISIBLE_DEVICES_ENV_VAR,
     NOSET_MBLT_RT_VISIBLE_DEVICES_ENV_VAR,
@@ -76,9 +75,7 @@ class TestMBLTAcceleratorManager:
     @pytest.mark.parametrize("num_present", [0, 1, 4, 8])
     def test_get_current_node_num_accelerators_sdk(self, monkeypatch, num_present):
         _install_qbruntime_mock(monkeypatch, num_present=num_present)
-        assert (
-            MBLTAcceleratorManager.get_current_node_num_accelerators() == num_present
-        )
+        assert MBLTAcceleratorManager.get_current_node_num_accelerators() == num_present
 
     def test_get_current_node_num_accelerators_sdk_raises_falls_back_to_dev(
         self, monkeypatch
