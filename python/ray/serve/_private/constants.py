@@ -1,6 +1,8 @@
+import logging
 import os
 from typing import List
 
+from ray._common.network_utils import get_all_interfaces_ip
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -16,6 +18,7 @@ from ray.serve._private.constants_utils import (
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
@@ -295,6 +298,25 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+# Watchdog that detects a wedged user code event loop when user code runs in a
+# separate thread (RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1) and no user-defined
+# check_health is present. The main loop periodically schedules asyncio.sleep(0) on
+# the user loop; if the probe times out MAX_FAIL times consecutively, check_health
+# raises immediately so the replica is restarted without waiting for the controller's
+# RPC timeout. Set MAX_FAIL=0 to disable.
+USER_HEALTH_CHECK_PROBE_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_INTERVAL_S",
+    60.0,
+)
+USER_HEALTH_CHECK_PROBE_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_TIMEOUT_S",
+    300.0,
+)
+USER_HEALTH_CHECK_PROBE_MAX_FAIL = get_env_int_non_negative(
+    "RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL",
+    3,
+)
+
 # Controller polls deployment-scoped actors with ``__ray_ready__`` (same idea as
 # replica health checks). Defaults match deployment replica timing; override via env.
 DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
@@ -386,7 +408,12 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
 # Serve HTTP request header key for session-stickiness routing.
-SERVE_SESSION_ID = "x_session_id"
+# Stored as the operator wrote it (no ``-``/``_`` mangling); set via
+# ``RAY_SERVE_SESSION_ID_HEADER_KEY`` (default ``x-session-id``). Compare
+# against incoming header names with ``_matches_session_id_header`` from
+# ``http_util`` -- that helper tolerates intermediate proxies that swap
+# ``-`` and ``_`` (nginx, AWS API Gateway, ...).
+SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id")
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
@@ -648,6 +675,11 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
+# Stopped replicas to retain per deployment for dashboard log access. 0 disables.
+RAY_SERVE_RETAINED_DEAD_REPLICAS = get_env_int_non_negative(
+    "RAY_SERVE_RETAINED_DEAD_REPLICAS", 10
+)
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
 NO_ROUTES_MESSAGE = "Route table is not populated yet."
@@ -726,9 +758,10 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 # HAProxy stats UI port
 RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
-# HAProxy log port
-RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
-    os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
+# HAProxy log target (single sink). Accepts any syntax HAProxy's `log` directive
+# supports, e.g. "127.0.0.1:514" (UDP syslog) or "/dev/log" (unix datagram socket).
+RAY_SERVE_HAPROXY_LOG_TARGET = get_env_str(
+    "RAY_SERVE_HAPROXY_LOG_TARGET", "127.0.0.1:514"
 )
 
 # HAProxy timeout configurations (in seconds, None = no timeout)
@@ -746,9 +779,15 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
 # setting TCP_NODELAY on both client and server connections.
-RAY_SERVE_HAPROXY_TCP_NODELAY = (
-    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
-)
+#
+# Default is ON. The streaming serving case (the dominant Ray Serve workload
+# today -- streaming LLM completions, SSE, gRPC streaming) is hostile to
+# Nagle's algorithm: when the upstream emits a small first chunk (e.g. the
+# first SSE event), Nagle holds it in the kernel buffer waiting for either
+# more data or the delayed-ACK timer, which lands as added TTFT. Set to "0"
+# only if you have a non-streaming HAProxy workload that benefits from
+# packet coalescing.
+RAY_SERVE_HAPROXY_TCP_NODELAY = get_env_bool("RAY_SERVE_HAPROXY_TCP_NODELAY", "1")
 
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
@@ -795,16 +834,32 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 5
 )
 
+# Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
+# `retry-on` token reference:
+# https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
+    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
+)
+RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
+)
+RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
+)
+
 # Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
 # active. Bodies longer than this are truncated; the Lua forwards what it has
 # with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
 # do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
+# Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
 )
 
 # HAProxy tuning flags
-RAY_SERVE_HAPROXY_BUFSIZE = get_env_int("RAY_SERVE_HAPROXY_BUFSIZE", 1024 * 16)  # 16KB
+RAY_SERVE_HAPROXY_TUNE_BUFSIZE = get_env_int(
+    "RAY_SERVE_HAPROXY_TUNE_BUFSIZE", 16384  # 16KB
+)
 RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE = get_env_int(
     "RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE", 1024 * 16
 )  # 16KB
@@ -819,6 +874,41 @@ RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE = get_env_int(
 )  # 64KB
 RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
     "RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS", 100
+)
+
+# Escape hatch: when true, HAProxy forwards the (possibly truncated) request
+# body to /internal/route and the router reads it. Off by default because for
+# large payloads the body buffering / re-emit cost adds noticeable time-to-
+# first-response. Skipping the forward is fine for any policy whose decision
+# does not depend on the request body: round-robin and power-of-two ignore
+# the body entirely, and session-aware policies key on the ``x-session-id``
+# header (forwarded with the request line) rather than the body.
+#
+# Flip this to true if the configured request router needs the body for its
+# decision, e.g. prefix-aware / prefix-cache routing.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False
+)
+
+# Emit per-request metrics from the ingress-request-router data path:
+# - truncated body counter
+# - router consultation latency histogram
+# - replica-id mismatch counter (router pinned X, HAProxy used Y after fallthrough)
+#
+# When enabled, HAProxy logs an RFC 5424 line with metric fields in the
+# structured-data section to RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH, and the
+# HAProxy proxy actor parses each datagram into ray.serve.metrics Counter /
+# Histogram objects. When disabled, neither the log target nor the Lua timing
+# calls are rendered into the generated config -- there is no runtime cost.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED = get_env_bool(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "0"
+)
+
+# Unix dgram socket that HAProxy writes the structured metric log lines to.
+# Bound by the proxy actor before HAProxy is started. Only consulted when
+# RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED is true.
+RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
@@ -880,9 +970,20 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
 
-# Direct ingress must be enabled if HAProxy is enabled
 if RAY_SERVE_ENABLE_HA_PROXY:
+    # Direct ingress must be enabled if HAProxy is enabled.
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
+
+    # Replica HTTP ports must be reachable from HAProxy on remote nodes, so
+    # the effective default binds to all interfaces regardless of
+    # RAY_SERVE_DEFAULT_HTTP_HOST.
+    if DEFAULT_HTTP_HOST not in (None, get_all_interfaces_ip()):
+        logger.warning(
+            f"RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r} is ignored "
+            "because RAY_SERVE_ENABLE_HA_PROXY=1 forces host to all interfaces "
+            "so HAProxy on other nodes can reach Serve HTTP ports."
+        )
+    DEFAULT_HTTP_HOST = get_all_interfaces_ip()
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(

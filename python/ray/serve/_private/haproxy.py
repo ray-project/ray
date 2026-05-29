@@ -50,21 +50,29 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    RAY_SERVE_HAPROXY_INGRESS_RETRIES,
+    RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
+    RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
+    RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
     RAY_SERVE_HAPROXY_STATS_PORT,
-    RAY_SERVE_HAPROXY_SYSLOG_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_TUNE_BUFSIZE,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
@@ -486,7 +494,7 @@ class BackendConfig:
         }
 
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, fallback_server={self.fallback_server}, protocol={self.protocol.value})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server}, protocol={self.protocol.value})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -549,14 +557,28 @@ class HAProxyConfig:
 
     grpc_options: gRPCOptions = field(default_factory=gRPCOptions)
 
-    syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
+    log_target: str = RAY_SERVE_HAPROXY_LOG_TARGET
+
+    # Per-request metrics for the ingress request router data path.
+    # When metrics are disabled, there is no additional overhead:
+    #  1) no metric log target / log-format-sd is rendered,
+    #  2) the Lua template skips the timing+truncation set_vars, and
+    #  3) HAProxyManager does not bind the dgram socket.
+    ingress_request_router_metrics_enabled: bool = (
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
+    )
+    metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
+
+    ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
+    ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
+    ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
 
     is_head: bool = False
 
     # Tuning flags
-    bufsize: int = RAY_SERVE_HAPROXY_BUFSIZE
+    bufsize: int = RAY_SERVE_HAPROXY_TUNE_BUFSIZE
     h2_max_frame_size: int = RAY_SERVE_HAPROXY_H2_MAX_FRAME_SIZE
     h2_be_initial_window_size: int = RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE
     h2_be_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
@@ -841,10 +863,38 @@ class HAProxyApi(ProxyApi):
         if not routers:
             return None
 
+        # When metrics are enabled, render the two timing hooks and the
+        # truncation set_var; when disabled, all three substitute to empty
+        # strings to avoid any additional overhead.
+        if self.cfg.ingress_request_router_metrics_enabled:
+            metrics_pre = "local _metrics_t0 = core.now()"
+            metrics_post = (
+                "local _metrics_t1 = core.now(); "
+                'txn:set_var("txn.ingress_request_router_latency_us", '
+                "(_metrics_t1.sec - _metrics_t0.sec) * 1000000 "
+                "+ (_metrics_t1.usec - _metrics_t0.usec))"
+            )
+            metrics_set_truncated = (
+                'txn:set_var("txn.ingress_request_router_truncated_full_length", '
+                "truncated)"
+            )
+        else:
+            metrics_pre = ""
+            metrics_post = ""
+            metrics_set_truncated = ""
+
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
+            # HAProxy's req_get_headers() returns lowercase header keys,
+            # so lowercase here for the Lua lookup. Empty string disables
+            # forwarding entirely.
+            SESSION_HEADER=SERVE_SESSION_ID.lower(),
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
+            METRICS_PRE_CALL_ROUTER=metrics_pre,
+            METRICS_POST_CALL_ROUTER=metrics_post,
+            METRICS_SET_TRUNCATED=metrics_set_truncated,
         )
 
         lua_path = os.path.join(
@@ -854,7 +904,7 @@ class HAProxyApi(ProxyApi):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
-    def _generate_config_file_internal(self) -> None:
+    def _generate_config_file_internal(self) -> bool:
         """Internal config generation without locking (for use within locked sections)."""
         try:
             env = Environment()
@@ -944,7 +994,12 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_bufsize": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
                     ),
-                    "grpc_fallback_server": self.grpc_fallback_server,
+                    "ingress_request_router_forward_body": (
+                        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+                    ),
+                    "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
+                    "metrics_socket_path": self.cfg.metrics_socket_path,
+                    "grpc_fallback_server": self.grpc_fallback_server,  # used for handling ListApplications
                 }
             )
 
@@ -1275,9 +1330,39 @@ class HAProxyManager(ProxyActorInterface):
                     RAY_SERVE_HAPROXY_SERVER_STATE_BASE, self._node_id
                 ),
                 server_state_file=_per_node(RAY_SERVE_HAPROXY_SERVER_STATE_FILE),
+                metrics_socket_path=_per_node(RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH),
             ),
             config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
+
+        # Start the metrics collector for the ingress request router. The
+        # collector owns its own dgram socket and transport lifecycle; we
+        # only hold a reference so we can close it on shutdown.
+        self._metrics_collector: Optional["HAProxyMetricsCollector"] = None
+        self._metrics_attach_task: Optional[asyncio.Task] = None
+        if self._haproxy.cfg.ingress_request_router_metrics_enabled:
+            from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
+
+            try:
+                os.makedirs(
+                    os.path.dirname(self._haproxy.cfg.metrics_socket_path),
+                    exist_ok=True,
+                )
+                self._metrics_collector = HAProxyMetricsCollector()
+                self._metrics_attach_task = self.event_loop.create_task(
+                    self._metrics_collector.bind_and_attach(
+                        self._haproxy.cfg.metrics_socket_path,
+                        loop=self.event_loop,
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to construct ingress-request-router metrics "
+                    "collector; metrics will not be emitted. HAProxy will "
+                    "continue normally."
+                )
+                self._metrics_collector = None
+
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
     async def shutdown(self) -> None:
@@ -1300,12 +1385,31 @@ class HAProxyManager(ProxyActorInterface):
             )
         except Exception as e:
             raise RuntimeError(f"Error stopping HAProxy during shutdown: {e}")
+        finally:
+            if self._metrics_collector is not None:
+                self._metrics_collector.close()
+                self._metrics_collector = None
 
     async def ready(self) -> str:
         try:
             # Wait for haproxy to start. Internally, this starts the process and
             # waits for it to be running by querying the stats socket.
             await self._haproxy_start_task
+            # Surface metrics bind failures here. HAProxy startup is much
+            # slower than the bind (subprocess vs. one syscall), so by the
+            # time we get here the attach task has either succeeded or
+            # raised; awaiting it is just collecting the result.
+            if self._metrics_attach_task is not None:
+                try:
+                    await self._metrics_attach_task
+                except Exception:
+                    logger.exception(
+                        "Failed to bind/attach metrics dgram reader; "
+                        "metrics will not be drained."
+                    )
+                    if self._metrics_collector is not None:
+                        self._metrics_collector.close()
+                        self._metrics_collector = None
         except Exception as e:
             logger.exception("Failed to start HAProxy.")
             raise e from None

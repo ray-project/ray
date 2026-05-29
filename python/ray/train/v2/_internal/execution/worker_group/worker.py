@@ -20,7 +20,6 @@ from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
 )
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
@@ -112,6 +111,11 @@ class Worker:
     def execute_async(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> ObjectRef:
         """Execute ``func`` on worker.
 
+        Args:
+            fn: The function to execute on the worker.
+            *fn_args: Positional arguments to forward to ``fn``.
+            **fn_kwargs: Keyword arguments to forward to ``fn``.
+
         Returns:
             (ObjectRef) An ObjectRef representing the output of func.
 
@@ -160,6 +164,9 @@ class RayTrainWorker:
             return result
 
         # Create and start the training thread.
+        logger.debug(
+            f"Rank {get_train_context().get_world_rank()}: Launching training function."
+        )
         get_train_context().execution_context.training_thread_runner.run(
             train_fn_with_final_checkpoint_flush
         )
@@ -240,7 +247,7 @@ class RayTrainWorker:
         self,
         train_run_context: TrainRunContext,
         distributed_context: DistributedContext,
-        synchronization_actor: SynchronizationActor,
+        synchronization_actor: ActorHandle,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
         controller_actor: ActorHandle,

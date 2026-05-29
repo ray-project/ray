@@ -2646,6 +2646,14 @@ class MultiAgentEpisode:
 
         # Extract data directly from the infinite lookback buffer object.
         else:
+            # When a specific extra_model_outputs key was requested, the callers
+            # may pass the full extra_model_outputs dict (instead of the indexed
+            # sub-buffer/value). Ensure both are properly indexed here.
+            if what == "extra_model_outputs" and extra_model_outputs_key is not None:
+                if isinstance(inf_lookback_buffer, dict):
+                    inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
+                if hanging_val is not None and isinstance(hanging_val, dict):
+                    hanging_val = hanging_val[extra_model_outputs_key]
             return inf_lookback_buffer.get(
                 indices=index_incl_lookback - inf_lookback_buffer.lookback,
                 neg_index_as_lookback=True,
@@ -2716,6 +2724,8 @@ class MultiAgentEpisode:
         inf_lookback_buffer = getattr(sa_episode, what)
         if extra_model_outputs_key is not None:
             inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
+            if hanging_val is not None:
+                hanging_val = hanging_val[extra_model_outputs_key]
 
         # If there are self.SKIP_ENV_TS_TAG items in `indices_incl_lookback` and user
         # wants to fill these (together with outside-episode-bounds indices) ->
