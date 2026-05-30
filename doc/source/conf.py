@@ -3,13 +3,16 @@ import json
 import logging
 import os
 import pathlib
+import random
 import re
 import sys
+import time
 import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 import sphinx
@@ -138,6 +141,57 @@ _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.j
 _TEMPLATE_CHANNEL_TIMEOUT_S = 30
 _TEMPLATE_DOWNLOAD_TIMEOUT_S = 90
 
+# Retry policy for the templates.ci.ray.io HTTP calls. Many doc builds can run
+# concurrently against the same endpoint (PR previews + branch builds); under
+# that load the host returns transient errors (HTTP 5xx/429, connection resets,
+# read timeouts). A single urlopen with no retry would drop the template, and
+# since every template is wired into a toctree that broken ref fails the whole
+# build under `fail_on_warning`. Retry with exponential backoff plus full random
+# jitter so the retry bursts from many concurrent builds don't re-synchronize
+# and hammer the endpoint in lockstep.
+_TEMPLATE_FETCH_ATTEMPTS = 3
+_TEMPLATE_RETRY_BASE_S = 1.0
+
+
+def _urlopen_read_with_retries(url, timeout):
+    """Fetch `url` and return its body bytes, retrying transient failures.
+
+    Retries cover both the connection and the body read (a slow `read()` under
+    load can itself time out). Only transient conditions are retried — a 4xx
+    other than 429 won't fix itself, so it's raised immediately. After the
+    final attempt the last exception propagates to the caller's handler, which
+    preserves the existing per-template skip semantics.
+    """
+    last_exc = None
+    for attempt in range(_TEMPLATE_FETCH_ATTEMPTS):
+        try:
+            with urlopen(url, timeout=timeout) as resp:
+                return resp.read()
+        except HTTPError as exc:
+            last_exc = exc
+            # HTTPError is a subclass of URLError, so it must be caught first.
+            # Don't retry deterministic client errors (4xx except 429).
+            if exc.code != 429 and not (500 <= exc.code < 600):
+                raise
+        except (URLError, TimeoutError, OSError) as exc:
+            # URLError wraps DNS/refused/connection-reset; TimeoutError is the
+            # urlopen/read timeout; OSError covers lower-level socket errors.
+            last_exc = exc
+        if attempt < _TEMPLATE_FETCH_ATTEMPTS - 1:
+            base = _TEMPLATE_RETRY_BASE_S * (2 ** attempt)
+            delay = base + random.uniform(0, base)  # full jitter on the delay
+            logger.info(
+                "sphinx-collections: retrying %s in %.1fs "
+                "(attempt %d/%d) after: %s",
+                url,
+                delay,
+                attempt + 1,
+                _TEMPLATE_FETCH_ATTEMPTS,
+                last_exc,
+            )
+            time.sleep(delay)
+    raise last_exc
+
 _TEMPLATE_COLLECTIONS = {
     "asynchronous_inference": {
         "target": "serve/tutorials/asynchronous-inference",
@@ -224,8 +278,9 @@ def _resolve_template_url(name):
     """Fetch the build zip URL for a template from the channel API."""
     api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
-    with urlopen(api_url, timeout=_TEMPLATE_CHANNEL_TIMEOUT_S) as resp:
-        data = json.loads(resp.read())
+    data = json.loads(
+        _urlopen_read_with_retries(api_url, _TEMPLATE_CHANNEL_TIMEOUT_S)
+    )
     url = data["url"]
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
     url = url.replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
@@ -254,8 +309,9 @@ def _fetch_and_extract_zip(config):
             shutil.rmtree(target)
         target.mkdir(parents=True, exist_ok=True)
         logger.info("sphinx-collections: downloading %s -> %s", url, target)
-        with urlopen(url, timeout=_TEMPLATE_DOWNLOAD_TIMEOUT_S) as resp:
-            zip_bytes = io.BytesIO(resp.read())
+        zip_bytes = io.BytesIO(
+            _urlopen_read_with_retries(url, _TEMPLATE_DOWNLOAD_TIMEOUT_S)
+        )
         with zipfile.ZipFile(zip_bytes) as zf:
             zf.extractall(target)
         logger.info(
