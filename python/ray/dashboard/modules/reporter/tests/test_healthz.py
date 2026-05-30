@@ -117,5 +117,48 @@ def test_unified_healthz_worker_gcs_down(monkeypatch, ray_start_cluster):
     assert requests.get(uri).status_code == 200
 
 
+def test_gcs_readiness_normal(ray_start_cluster):
+    dashboard_port = find_free_port()
+    ray_start_cluster.add_node(dashboard_port=dashboard_port)
+    uri = f"http://localhost:{dashboard_port}/api/gcs_readiness"
+    wait_for_condition(lambda: requests.get(uri).status_code == 200)
+
+
+def test_healthz_passive(monkeypatch, ray_start_cluster):
+    from ray.dashboard.modules.reporter.utils import HealthChecker
+
+    # Enable active-passive check by monkeypatching check_gcs_readiness to return False
+    monkeypatch.setattr(HealthChecker, "check_gcs_readiness", lambda self: False)
+
+    dashboard_port = find_free_port()
+    agent_port = find_free_port()
+    h = ray_start_cluster.add_node(
+        dashboard_port=dashboard_port, dashboard_agent_listen_port=agent_port
+    )
+
+    # 1. Test GCS specific endpoints
+    gcs_healthz_uri = f"http://localhost:{dashboard_port}/api/gcs_healthz"
+    gcs_readiness_uri = f"http://localhost:{dashboard_port}/api/gcs_readiness"
+
+    # GCS liveness check (/api/gcs_healthz) should still succeed because it doesn't verify leadership
+    wait_for_condition(lambda: requests.get(gcs_healthz_uri).status_code == 200)
+
+    # GCS readiness check (/api/gcs_readiness) should fail with 503 because leadership returns False
+    resp = requests.get(gcs_readiness_uri)
+    assert resp.status_code == 503
+
+    # 2. Test unified /api/healthz endpoint
+    unified_uri = f"http://{h.node_ip_address}:{agent_port}/api/healthz"
+
+    # Unified liveness check (/api/healthz) should succeed
+    wait_for_condition(lambda: requests.get(unified_uri).status_code == 200)
+
+    # Unified readiness check (/api/healthz?readiness=true) should fail with 503
+    unified_readiness_uri = f"{unified_uri}?readiness=true"
+    resp = requests.get(unified_readiness_uri)
+    assert resp.status_code == 503
+    assert "gcs: GCS readiness check failed." in resp.text
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

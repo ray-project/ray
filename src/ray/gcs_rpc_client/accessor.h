@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -262,6 +263,10 @@ class NodeInfoAccessor {
   /// alive.
   virtual bool IsNodeAlive(const NodeID &node_id) const;
 
+  /// Check if the GCS server is currently the active leader based on the cached status
+  /// updated from GCS CheckAlive replies.
+  virtual bool IsGcsLeader() const;
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -296,9 +301,13 @@ class NodeInfoAccessor {
       node_cache_address_and_liveness_
           ABSL_GUARDED_BY(node_cache_address_and_liveness_mutex_);
 
+  /// Cached GCS server leadership status
+  std::atomic<bool> is_gcs_leader_{true};
+
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
   FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
+  FRIEND_TEST(NodeInfoAccessorTest, TestIsGcsLeaderCaching);
 };
 
 /// \class NodeResourceInfoAccessor
