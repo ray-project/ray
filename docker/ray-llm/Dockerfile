@@ -8,7 +8,7 @@ COPY python/requirements/llm/patches/vllm-trial-import-patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.21.0"
+ARG VLLM_SCRIPTS_REF="v0.22.0"
 
 RUN <<EOF
 #!/bin/bash

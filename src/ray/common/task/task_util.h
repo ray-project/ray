@@ -20,11 +20,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -35,13 +37,15 @@ struct TaskFailureEntry {
   rpc::RayErrorInfo ray_error_info_;
 
   /// The creation time of this entry.
-  std::chrono::steady_clock::time_point creation_time_;
+  SteadyTimePoint creation_time_;
 
   /// Whether this task should be retried.
   bool should_retry_;
-  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
+  TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info,
+                   bool should_retry,
+                   ClockInterface &clock)
       : ray_error_info_(ray_error_info),
-        creation_time_(std::chrono::steady_clock::now()),
+        creation_time_(clock.SteadyNow()),
         should_retry_(should_retry) {}
 };
 
