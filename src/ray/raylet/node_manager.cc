@@ -3504,15 +3504,19 @@ int NodeManager::WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
 void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
                                        rpc::KillLocalActorReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  auto worker =
-      worker_pool_.GetRegisteredWorker(WorkerID::FromBinary(request.worker_id()));
+  const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  const auto actor_id = ActorID::FromBinary(request.intended_actor_id());
+  RAY_LOG(INFO).WithField(worker_id).WithField(actor_id) << "Received KillLocalActor RPC";
+
+  auto worker = worker_pool_.GetRegisteredWorker(worker_id);
   // If the worker is not registered, then it must have already been killed
   if (!worker || worker->IsDead()) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "HandleKillLocalActor: worker not registered or already dead, "
+           "returning OK without dispatching kill";
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
-
-  auto worker_id = worker->WorkerId();
 
   rpc::KillActorRequest kill_actor_request;
   kill_actor_request.set_intended_actor_id(request.intended_actor_id());
@@ -3547,10 +3551,8 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
 
   worker->rpc_client()->KillActor(
       kill_actor_request,
-      [actor_id = ActorID::FromBinary(request.intended_actor_id()),
-       timer,
-       send_reply_callback,
-       replied](const ray::Status &status, const rpc::KillActorReply &) {
+      [actor_id, timer, send_reply_callback, replied](const ray::Status &status,
+                                                      const rpc::KillActorReply &) {
         if (*replied) {
           return;
         }
