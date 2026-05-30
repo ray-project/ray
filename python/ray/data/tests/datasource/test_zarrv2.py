@@ -594,7 +594,7 @@ def test_overlap_rejects_negative_and_non_int(aligned_zarrv2_store):
             zarrv2_datasource.ZarrV2Datasource(
                 str(aligned_zarrv2_store),
                 align_axis_0=True,
-                chunk_shape=[4],
+                chunk_shapes=[4],
                 overlap=bad,
             )
 
