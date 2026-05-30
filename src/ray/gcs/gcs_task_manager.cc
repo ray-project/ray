@@ -133,6 +133,11 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
   // its task event buffer on graceful exit, so the actual states of the task will arrive
   // at GCS.
   if (!is_detached_actor_worker && is_graceful) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " is a non-detached actor worker and exited gracefully ("
+                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
+                   << "); not marking any child tasks failed, since graceful exit "
+                      "ensures child task status to be flushed to GCS";
     return;
   }
 
@@ -150,6 +155,11 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
   // for a detached actor and This can be fixed for detached actors if we see these
   // instances happening for customers in future.
   if (is_detached_actor_worker && is_graceful) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " is a detached actor worker and exited gracefully ("
+                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
+                   << "); marking only root tasks on this worker failed. Graceful exit "
+                      "ensures child task status wil be flushed to GCS.";
     error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
     for (const auto &task_locator : task_attempts_itr->second) {
       TaskID task_id = TaskID::FromBinary(task_locator->GetTaskEventsMutable().task_id());
@@ -169,6 +179,19 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
   // detached actor (or a method call on one) must not be marked FAILED when the owner
   // dies. The detached actor's own worker death is handled by its own OnWorkerDead
   // invocation.
+  if (is_detached_actor_worker) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " is a detached actor worker and exited ungracefully ("
+                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
+                   << "); marking root tasks failed and DFS-marking child tasks failed.";
+  } else {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " is a non-detached actor worker and exited ungracefully ("
+                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
+                   << "); DFS-marking child tasks failed. Reporting status of tasks "
+                      "running on this worker"
+                      "is their owner's responsibility";
+  }
   std::function<void(const TaskID &)> dfs_mark_failed = [&](const TaskID &task_id) {
     absl::flat_hash_map<TaskID,
                         absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>::iterator
@@ -178,6 +201,8 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
     }
     for (const auto &child_locator : children_itr->second) {
       const auto &child_events = child_locator->GetTaskEventsMutable();
+      // At this point, child events should have task_info because when
+      // parent_to_child_index_ was populated, has_task_info() is checked.
       RAY_CHECK(child_events.has_task_info());
       if (child_events.task_info().is_detached_actor()) {
         continue;
