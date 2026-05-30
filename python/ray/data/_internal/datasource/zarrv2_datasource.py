@@ -36,7 +36,7 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    import pyarrow
+    from pyarrow import fs as pyarrow_fs
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
@@ -463,7 +463,7 @@ class ZarrV2Datasource(Datasource):
     def __init__(
         self,
         path: str,
-        filesystem: pyarrow.fs.FileSystem | AbstractFileSystem | None = None,
+        filesystem: pyarrow_fs.FileSystem | AbstractFileSystem | None = None,
         chunk_shapes: dict[str, list] | list | None = None,
         array_paths: list[str] | None = None,
         allow_full_metadata_scan: bool = False,
@@ -554,9 +554,14 @@ class ZarrV2Datasource(Datasource):
                     f"Unknown array path(s) in chunk_shapes: {unknown_chunk_shape_keys}"
                 )
 
-        if align_axis_0 is False:
-            self._aligned_array_names: list[str] | None = None
-        elif align_axis_0 is True:
+        if not isinstance(align_axis_0, bool):
+            raise TypeError(
+                f"align_axis_0 must be a bool, got {type(align_axis_0).__name__}"
+            )
+
+        if not align_axis_0:
+            self._aligned_array_names = None
+        else:
             shape0_by_array = {
                 name: meta.shape[0] if meta.shape else 0
                 for name, meta in self._metadata_by_path.items()
@@ -568,10 +573,6 @@ class ZarrV2Datasource(Datasource):
                     f"shape-compatible subset via array_paths=[...]."
                 )
             self._aligned_array_names = list(self._metadata_by_path.keys())
-        else:
-            raise TypeError(
-                f"align_axis_0 must be a bool, got " f"{type(align_axis_0).__name__}"
-            )
 
         # Validate overlap. Only meaningful when arrays are co-iterated as
         # wide rows, since the trailing lookahead is exposed via the

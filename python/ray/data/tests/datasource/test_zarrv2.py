@@ -14,6 +14,9 @@ import ray
 from ray.data._internal.datasource import zarrv2_datasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
+import logging
+from typing import Any, cast
+
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
     frames = [block for task in tasks for block in task()]
@@ -420,7 +423,7 @@ def test_rejects_invalid_chunk_shapes_dict_keys(zarrv2_group_store):
     ):
         zarrv2_datasource.ZarrV2Datasource(
             str(zarrv2_group_store),
-            chunk_shapes={1: [2]},
+            chunk_shapes=cast(Any, {1: [2]}),
         )
 
 
@@ -526,7 +529,7 @@ def test_align_axis_0_rejects_non_bool(aligned_zarrv2_store):
     with pytest.raises(TypeError, match=r"align_axis_0 must be a bool"):
         zarrv2_datasource.ZarrV2Datasource(
             str(aligned_zarrv2_store),
-            align_axis_0=["img", "state"],
+            align_axis_0=cast(Any, ["img", "state"]),
         )
 
 
@@ -585,12 +588,14 @@ def test_overlap_requires_align_axis_0(aligned_zarrv2_store):
 
 
 def test_overlap_rejects_negative_and_non_int(aligned_zarrv2_store):
-    for bad in (-1, 1.5, "two"):
+    bad_values: list[Any] = [-1, 1.5, "two"]
+
+    for bad in bad_values:
         with pytest.raises(ValueError, match="overlap must be a non-negative integer"):
             zarrv2_datasource.ZarrV2Datasource(
                 str(aligned_zarrv2_store),
                 align_axis_0=True,
-                chunk_shapes=[4],
+                chunk_shape=[4],
                 overlap=bad,
             )
 
@@ -988,7 +993,7 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
         ray.shutdown()
     ray.init(
         num_cpus=1,
-        logging_level="ERROR",
+        logging_level=logging.ERROR,
         log_to_driver=False,
         runtime_env={"worker_process_setup_hook": _CUSTOM_CODEC_HOOK},
     )
