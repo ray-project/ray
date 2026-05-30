@@ -318,6 +318,28 @@ These fields specify Autoscaler container environment variables.
 These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#environment-variables)
 for container environment variables.
 
+* **`command`** and **`args`** (KubeRay >= v1.7.0):
+These fields override the autoscaler container's entrypoint and arguments.
+When either field is set, KubeRay uses those values directly instead of generating the autoscaler start command.
+KubeRay also injects the environment variable `KUBERAY_GEN_AUTOSCALER_START_CMD` into the autoscaler container, so you can reference the generated command in your custom `args`:
+  ```sh
+  # Example value of KUBERAY_GEN_AUTOSCALER_START_CMD inside the autoscaler container:
+  ray kuberay-autoscaler --cluster-name $(RAY_CLUSTER_NAME) --cluster-namespace $(RAY_CLUSTER_NAMESPACE)
+  ```
+  Note that `$(RAY_CLUSTER_NAME)` and `$(RAY_CLUSTER_NAMESPACE)` are resolved by the system before the container starts. When bash later expands `$KUBERAY_GEN_AUTOSCALER_START_CMD`, the command already contains the resolved values.
+
+  ```yaml
+  autoscalerOptions:
+    version: v2
+    # KubeRay uses `command` and `args` as-is when they are present,
+    # instead of generating the autoscaler start command.
+    command: ["/bin/bash", "-lc", "--"]
+    # Reference the generated command via $KUBERAY_GEN_AUTOSCALER_START_CMD to wrap it with extra logic.
+    args: ["echo 'Starting autoscaler...'; $KUBERAY_GEN_AUTOSCALER_START_CMD"]
+  ```
+
+  For a complete example, see [ray-cluster.autoscaler-v2-overwrite-cmd.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler-v2-overwrite-cmd.yaml).
+
 ### 4. Set the `rayStartParams` and the resource limits for the Ray container
 
 ```{admonition} Resource limits are optional starting from Ray 2.41.0
