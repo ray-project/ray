@@ -794,7 +794,7 @@ With this, Ray accomplishes the following:
 2. Selects a value for that label that can satisfy all bundles.
 3. Applies the node-level scheduling strategy within the selected value.
 
-Currently, ``topology_strategy`` is at most a singleton list that may contain up to two keys:
+Currently, ``topology_strategy`` must be a list containing at most one dictionary, which can have up to two keys:
 
 - The special key ``ray.io/node-id`` sets the **node-level** strategy and accepts any value
   in ``{"PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"}``. If you omit it, the node-level
