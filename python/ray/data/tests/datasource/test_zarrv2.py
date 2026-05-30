@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 from pathlib import Path
+from typing import Any, cast
 
 import fsspec
 import numpy as np
@@ -13,9 +15,6 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray.data._internal.datasource import zarrv2_datasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
-
-import logging
-from typing import Any, cast
 
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
