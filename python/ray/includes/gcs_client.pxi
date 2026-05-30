@@ -278,6 +278,13 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeInfo methods
     #############################################################
+    def is_gcs_leader(self) -> bool:
+        try:
+            self.check_alive([], timeout=2)
+        except Exception:
+            pass
+        return self.inner.get().Nodes().IsGcsLeader()
+
     def check_alive(
         self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:

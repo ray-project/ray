@@ -518,6 +518,8 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors,
             optional[int64_t] limit) const
 
+        c_bool IsGcsLeader() const
+
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,

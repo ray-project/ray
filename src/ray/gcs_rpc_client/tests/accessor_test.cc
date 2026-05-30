@@ -85,5 +85,18 @@ TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   ASSERT_EQ(cached_node->death_info().reason_message(), "Test termination reason");
 }
 
+TEST(NodeInfoAccessorTest, TestIsGcsLeaderCaching) {
+  NodeInfoAccessor accessor;
+  // By default, leadership should be assumed true.
+  ASSERT_TRUE(accessor.IsGcsLeader());
+
+  // Verify manual updates modify the leadership status correctly.
+  accessor.is_gcs_leader_.store(false);
+  ASSERT_FALSE(accessor.IsGcsLeader());
+
+  accessor.is_gcs_leader_.store(true);
+  ASSERT_TRUE(accessor.IsGcsLeader());
+}
+
 }  // namespace gcs
 }  // namespace ray

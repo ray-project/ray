@@ -1022,6 +1022,23 @@ class ReportHead(SubprocessModule):
 
         return aiohttp.web.HTTPServiceUnavailable(reason="Health check failed")
 
+    @routes.get("/api/gcs_readiness")
+    async def readiness_check(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        try:
+            ready = await self._health_checker.check_gcs_readiness()
+            if ready is True:
+                return aiohttp.web.Response(
+                    text="success",
+                    content_type="application/text",
+                )
+        except Exception as e:
+            return aiohttp.web.HTTPServiceUnavailable(
+                reason=f"Readiness check failed: {e}"
+            )
+
+        return aiohttp.web.HTTPServiceUnavailable(reason="Readiness check failed")
+
+
     @routes.get("/api/prometheus/sd")
     async def prometheus_service_discovery(self, req) -> aiohttp.web.Response:
         """

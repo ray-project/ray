@@ -293,6 +293,7 @@ class HttpServerDashboardHead:
         # paths/endpoints that should not be directed when RAY_API_PROXY_URL_ENV_VAR is set
         ignored_path = (
             "/api/gcs_healthz",
+            "/api/gcs_readiness",
             "/usage_stats_enabled",
             "/api/healthz",
             "/api/local_raylet_healthz",
@@ -433,6 +434,7 @@ class HttpServerDashboardHead:
             "/api/authenticate",  # Token authentication endpoint
             "/api/healthz",  # General healthcheck
             "/api/gcs_healthz",  # GCS health check
+            "/api/gcs_readiness",  # GCS readiness check (leadership)
             "/api/local_raylet_healthz",  # Raylet health check
             "/-/healthz",  # Serve health check
         }
