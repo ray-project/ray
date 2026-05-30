@@ -737,8 +737,8 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 .. warning::
 
   Topology aware scheduling is an **alpha** feature. It's actively being iterated on and
-  the API surface may change. Ray currently supports only ``STRICT_PACK`` for topology labels, 
-  and one topology label. Support for additional strategies and multi-level topologies is planned.
+  the API surface may change. Ray currently supports only a single topology label with the
+  ``STRICT_PACK`` strategy. Support for additional strategies and multi-level topologies is planned.
 
 Why topology aware scheduling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
