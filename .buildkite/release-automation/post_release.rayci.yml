@@ -6,24 +6,18 @@ steps:
     key: block-trigger-cursor-template-upgrade
     depends_on: []
     fields:
-      - text: "Template name"
-        key: "template-name"
-        hint: "Name of the template to upgrade"
-        required: true
       - text: "Ray version"
         key: "ray-version"
         hint: "e.g. 2.45.0"
         required: true
 
-  - label: "Trigger Cursor template upgrade workflow"
+  - label: "Generate Cursor template upgrade steps"
     key: trigger-cursor-template-upgrade
     depends_on:
       - block-trigger-cursor-template-upgrade
     instance_type: small_branch
     mount_buildkite_agent: true
     commands:
-      - export TEMPLATE_NAME="$(buildkite-agent meta-data get template-name)"
       - export RAY_VERSION="$(buildkite-agent meta-data get ray-version)"
-      - export CURSOR_WEBHOOK_URL="$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-webhook-url --query SecretString --output text | tr -d '\n\r')"
-      - export CURSOR_API_KEY="$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/cursor-template-upgrade-api-key --query SecretString --output text | tr -d '\n\r')"
-      - 'curl -sSf -X POST "$$CURSOR_WEBHOOK_URL" -H "Authorization: Bearer $$CURSOR_API_KEY" -H "Content-Type: application/json" -d "{\"template_name\":\"$$TEMPLATE_NAME\",\"ray_version\":\"$$RAY_VERSION\"}"'
+      - uv pip install --system pyyaml
+      - python .buildkite/release-automation/gen_cursor_template_upgrade.py | buildkite-agent pipeline upload --no-interpolation
