@@ -1029,7 +1029,7 @@ datasketches==5.2.0 \
     --hash=sha256:fbd6eab5af078eb65d678bf27fc468097a1c5db07800ac537a75fd983c437e57
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
+    #   -r docker/base-extra/requirements.in
 debugpy==1.8.0 \
     --hash=sha256:125b9a637e013f9faac0a3d6a82bd17c8b5d2c875fb6b7e2772c5aba6d082332 \
     --hash=sha256:12af2c55b419521e33d5fb21bd022df0b5eb267c3e178f1d374a63a2a6bdccd0 \
