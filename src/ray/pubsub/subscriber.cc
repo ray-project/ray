@@ -14,13 +14,10 @@
 
 #include "ray/pubsub/subscriber.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "ray/util/time.h"
 
 namespace ray {
 
@@ -119,7 +116,7 @@ bool SubscriberChannel::CheckNoLeaks() const {
 }
 
 void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_address,
-                                               rpc::PubMessage &&pub_message) {
+                                               rpc::PubMessage &&pub_message) const {
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -133,9 +130,9 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
       << "Message from " << rpc::ChannelType_Name(channel_type) << ", this channel is "
       << rpc::ChannelType_Name(channel_type_);
 
-  cum_published_messages_++;
   auto maybe_subscription_callback =
-      GetAndRecordSubscriptionItemCallback(publisher_address, key_id, current_time_ms());
+      GetSubscriptionItemCallback(publisher_address, key_id);
+  cum_published_messages_++;
   if (!maybe_subscription_callback.has_value()) {
     return;
   }
@@ -148,51 +145,6 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
        msg = std::move(pub_message)]() mutable  // allow data to be moved
       { subscription_callback(std::move(msg)); },
       "Subscriber.HandlePublishedMessage_" + channel_name);
-}
-
-std::string SubscriberChannel::LastNotificationDebugString(
-    const UniqueID &publisher_id) const {
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    return "no active subscriptions";
-  }
-
-  const auto &subscriptions = subscription_it->second;
-  const auto now_ms = current_time_ms();
-  auto age_string = [now_ms](int64_t last_published_message_ms) {
-    if (last_published_message_ms == 0) {
-      return std::string("never");
-    }
-    const int64_t age = now_ms - last_published_message_ms;
-    if (age < 0) {
-      return std::string("clock skew detected");
-    }
-    return std::to_string(age) + "ms ago";
-  };
-
-  std::stringstream result;
-  bool wrote_subscription_state = false;
-  if (subscriptions.all_entities_subscription != nullptr) {
-    result << "all entities last notified "
-           << age_string(
-                  subscriptions.all_entities_subscription->last_published_message_ms);
-    wrote_subscription_state = true;
-  }
-
-  if (!subscriptions.per_entity_subscription.empty()) {
-    if (wrote_subscription_state) {
-      result << ", ";
-    }
-    int64_t newest_notification_ms = 0;
-    for (const auto &subscription : subscriptions.per_entity_subscription) {
-      newest_notification_ms =
-          std::max(newest_notification_ms, subscription.second.last_published_message_ms);
-    }
-    result << subscriptions.per_entity_subscription.size()
-           << " entity subscriptions, newest last notified "
-           << age_string(newest_notification_ms);
-  }
-  return result.str();
 }
 
 void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
@@ -263,10 +215,6 @@ std::string SubscriberChannel::DebugString() const {
   result << "\n- cumulative subscribe requests: " << cum_subscribe_requests_;
   result << "\n- cumulative unsubscribe requests: " << cum_unsubscribe_requests_;
   result << "\n- active subscribed publishers: " << subscription_map_.size();
-  for (const auto &subscription : subscription_map_) {
-    result << "\n  - publisher " << subscription.first.Hex() << ": "
-           << LastNotificationDebugString(subscription.first);
-  }
   result << "\n- cumulative published messages: " << cum_published_messages_;
   result << "\n- cumulative processed messages: " << cum_processed_messages_;
   return result.str();
@@ -388,22 +336,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     const auto &last_publisher_id = processed_sequences_[publisher_id].first;
     if (reply_publisher_id != last_publisher_id) {
       if (last_publisher_id != kDefaultUniqueID) {
-        std::stringstream subscription_state;
-        const google::protobuf::EnumDescriptor *descriptor =
-            rpc::ChannelType_descriptor();
-        for (const auto &channel_it : channels_) {
-          const auto *value_desc = descriptor->FindValueByNumber(channel_it.first);
-          std::string channel_name =
-              value_desc ? value_desc->name()
-                         : std::to_string(static_cast<int>(channel_it.first));
-          subscription_state << "\n- " << channel_name << ": "
-                             << channel_it.second->LastNotificationDebugString(
-                                    publisher_id);
-        }
         RAY_LOG(INFO) << "Received publisher_id " << reply_publisher_id.Hex()
                       << " is different from last seen publisher_id " << last_publisher_id
-                      << ", this can only happen when gcs failsover. "
-                      << "Subscription notification state:" << subscription_state.str();
+                      << ", this can only happen when gcs failsover.";
       }
       // reset publisher_id and processed_sequence if the publisher_id changes.
       processed_sequences_[publisher_id] = {reply_publisher_id, 0};

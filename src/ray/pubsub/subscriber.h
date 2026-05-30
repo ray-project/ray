@@ -46,9 +46,6 @@ struct SubscriptionInfo {
 
   // Callback that runs after a polling request fails. The input is the failure status.
   SubscriptionFailureCallback failure_cb;
-
-  // The last time a message was processed for this subscription.
-  int64_t last_published_message_ms = 0;
 };
 
 /// All subscription info for the publisher.
@@ -109,7 +106,7 @@ class SubscriberChannel {
   /// \param publisher_address The address of the publisher.
   /// \param pub_message The message to handle from the publisher.
   void HandlePublishedMessage(const rpc::Address &publisher_address,
-                              rpc::PubMessage &&pub_message);
+                              rpc::PubMessage &&pub_message) const;
 
   /// Handle the RPC failure of the given publisher.
   /// Note that this will ensure that the callback is running on a designated IO service.
@@ -137,27 +134,6 @@ class SubscriberChannel {
   /// Return the statistics of the specific channel.
   std::string DebugString() const;
 
-  /// Return last-notification diagnostics for a publisher on this channel.
-  std::string LastNotificationDebugString(const UniqueID &publisher_id) const;
-
-  /// Test only. Return the last notification timestamp for an entity subscription.
-  int64_t GetLastPublishedMessageMsForTest(const rpc::Address &publisher_address,
-                                           const std::string &key_id) const {
-    const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
-    auto subscription_it = subscription_map_.find(publisher_id);
-    if (subscription_it == subscription_map_.end()) {
-      return 0;
-    }
-    if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->last_published_message_ms;
-    }
-    auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
-    if (callback_it == subscription_it->second.per_entity_subscription.end()) {
-      return 0;
-    }
-    return callback_it->second.last_published_message_ms;
-  }
-
  protected:
   /// Invoke the publisher failure callback to the designated IO service for the given key
   /// id. \return Return true if the given key id needs to be unsubscribed. False
@@ -168,25 +144,20 @@ class SubscriberChannel {
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
-  std::optional<SubscriptionItemCallback> GetAndRecordSubscriptionItemCallback(
-      const rpc::Address &publisher_address,
-      const std::string &key_id,
-      int64_t last_published_message_ms) {
+  std::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
+      const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
     if (subscription_it == subscription_map_.end()) {
       return std::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      subscription_it->second.all_entities_subscription->last_published_message_ms =
-          last_published_message_ms;
       return subscription_it->second.all_entities_subscription->item_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
       return std::nullopt;
     }
-    callback_it->second.last_published_message_ms = last_published_message_ms;
     return callback_it->second.item_cb;
   }
 
@@ -274,18 +245,6 @@ class Subscriber : public SubscriberInterface {
   bool IsSubscribed(rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,
                     const std::string &key_id) const override;
-
-  /// Test only. Return the last notification timestamp for an entity subscription.
-  int64_t GetLastPublishedMessageMsForTest(rpc::ChannelType channel_type,
-                                           const rpc::Address &publisher_address,
-                                           const std::string &key_id) const {
-    absl::MutexLock lock(&mutex_);
-    auto *channel = Channel(channel_type);
-    if (channel == nullptr) {
-      return 0;
-    }
-    return channel->GetLastPublishedMessageMsForTest(publisher_address, key_id);
-  }
 
   /// Return the Channel of the given channel type. Subscriber keeps ownership.
   SubscriberChannel *Channel(const rpc::ChannelType channel_type) const
