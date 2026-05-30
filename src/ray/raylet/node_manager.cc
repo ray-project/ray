@@ -32,7 +32,6 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
-#include "absl/time/clock.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
@@ -57,6 +56,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
@@ -64,7 +64,6 @@
 #include "ray/util/process.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/string_utils.h"
-#include "ray/util/time.h"
 
 namespace ray::raylet {
 
@@ -192,7 +191,8 @@ NodeManager::NodeManager(
     local_stream_socket socket,
     ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
     ray::observability::MetricInterface
-        &node_manager_unexpected_worker_failure_total_count)
+        &node_manager_unexpected_worker_failure_total_count,
+    ClockInterface &clock)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -230,8 +230,8 @@ NodeManager::NodeManager(
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       plasma_store_usage_trigger_gc_threshold_(
           RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
-      local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
+      local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9, clock),
+      global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9, clock),
       memory_manager_worker_eviction_total_count_(
           memory_manager_worker_eviction_total_count),
       node_manager_unexpected_worker_failure_total_count_(
@@ -250,6 +250,7 @@ NodeManager::NodeManager(
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
+      clock_(clock),
       acceptor_(std::move(acceptor)),
       socket_(std::move(socket)) {
   RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
@@ -293,7 +294,8 @@ NodeManager::NodeManager(
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      shutdown_raylet_gracefully_);
+      shutdown_raylet_gracefully_,
+      clock_);
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
@@ -417,8 +419,7 @@ void NodeManager::RegisterGcs() {
       },
       RayConfig::instance().debug_dump_period_milliseconds(),
       "NodeManager.deadline_timer.debug_state_dump");
-  uint64_t now_ms = current_time_ms();
-  last_metrics_recorded_at_ms_ = now_ms;
+  last_metrics_recorded_at_ = clock_.SteadyNow();
   periodical_runner_->RunFnPeriodically([this] { RecordMetrics(); },
                                         record_metrics_period_ms_,
                                         "NodeManager.deadline_timer.record_metrics");
@@ -1234,7 +1235,8 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                worker_type,
                                worker_ip_address,
                                client,
-                               client_call_manager_));
+                               client_call_manager_,
+                               clock_));
 
   std::function<void(Status, int)> send_reply_callback;
   send_reply_callback = [this, client](Status status, int assigned_port) {
@@ -1512,8 +1514,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                 .WithField("node_id", self_node_id_.Hex())
                 .WithField("job_id", worker->GetAssignedJobId().Hex())
             << error_message_str;
-        auto error_data = gcs::CreateErrorTableData(
-            type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
+        auto error_data =
+            gcs::CreateErrorTableData(type, error_message_str, clock_.Now(), job_id);
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
 
         const RayLease &ray_lease = worker->GetGrantedLease();
@@ -2283,49 +2285,6 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::MarkObjectsAsFailed(
-    const ErrorType &error_type,
-    const std::vector<rpc::ObjectReference> &objects_to_fail,
-    const JobID &job_id) {
-  // TODO(swang): Ideally we should return the error directly to the client
-  // that needs this object instead of storing the object in plasma, which is
-  // not guaranteed to succeed. This avoids hanging the client if plasma is not
-  // reachable.
-  const std::string meta = std::to_string(static_cast<int>(error_type));
-  for (const auto &ref : objects_to_fail) {
-    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Mark the object as failed due to " << error_type;
-    std::shared_ptr<Buffer> data;
-    Status status;
-    status = store_client_->TryCreateImmediately(
-        object_id,
-        ref.owner_address(),
-        0,
-        reinterpret_cast<const uint8_t *>(meta.c_str()),
-        meta.length(),
-        &data,
-        plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
-    if (status.ok()) {
-      status = store_client_->Seal(object_id);
-    }
-    if (!status.ok() && !status.IsObjectExists()) {
-      RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
-      // If we failed to save the error code, log a warning and push an error message
-      // to the driver.
-      std::ostringstream stream;
-      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
-             << " error code to object " << object_id << ". Anyone who's getting this"
-             << " object may hang forever.";
-      std::string error_message = stream.str();
-      RAY_LOG(ERROR) << error_message;
-      auto error_data = gcs::CreateErrorTableData(
-          "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
-      gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
-    }
-  }
-}
-
 void NodeManager::HandleNotifyWorkerBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (!worker || worker->IsBlocked() || worker->GetGrantedLeaseId().IsNil()) {
@@ -2562,7 +2521,7 @@ const NodeManagerConfig &NodeManager::GetInitialConfig() const { return initial_
 
 std::string NodeManager::DebugString() const {
   std::stringstream result;
-  uint64_t now_ms = current_time_ms();
+  auto debug_start = clock_.SteadyNow();
   result << "NodeManager:";
   result << "\nNode ID: " << self_node_id_;
   result << "\nNode name: " << self_node_name_;
@@ -2586,7 +2545,10 @@ std::string NodeManager::DebugString() const {
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats()->StatsString();
 
-  result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
+  result << "\nDebugString() time ms: "
+         << std::chrono::duration_cast<std::chrono::milliseconds>(clock_.SteadyNow() -
+                                                                  debug_start)
+                .count();
   return result.str();
 }
 
@@ -2914,9 +2876,8 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   }
 
   // Trigger local GC if needed.
-  const bool local_gc_trigger =
-      absl::GetCurrentTimeNanos() - local_gc_throttler_.LastRunTime() >
-      local_gc_interval_ns_;
+  const bool local_gc_trigger = clock_.SteadyNow() - local_gc_throttler_.LastRunTime() >
+                                std::chrono::nanoseconds(local_gc_interval_ns_);
   if ((local_gc_triggered_by_global_gc_ || local_gc_trigger) &&
       local_gc_throttler_.CheckAndUpdateIfPossible()) {
     auto all_workers = worker_pool_.GetAllRegisteredWorkers();
@@ -3004,9 +2965,11 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   local_object_manager_.RecordMetrics();
 
-  uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
-  last_metrics_recorded_at_ms_ = current_time;
+  auto now = clock_.SteadyNow();
+  uint64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             now - last_metrics_recorded_at_)
+                             .count();
+  last_metrics_recorded_at_ = now;
   object_directory_.RecordMetrics(duration_ms);
   lease_dependency_manager_.RecordMetrics();
 }
@@ -3394,7 +3357,7 @@ void NodeManager::SetWorkerFailureReason(const LeaseID &lease_id,
                                          const rpc::RayErrorInfo &failure_reason,
                                          bool should_retry) {
   RAY_LOG(DEBUG).WithField(lease_id) << "set failure reason for lease ";
-  ray::TaskFailureEntry entry(failure_reason, should_retry);
+  ray::TaskFailureEntry entry(failure_reason, should_retry, clock_);
   auto result = worker_failure_reasons_.emplace(lease_id, std::move(entry));
   if (!result.second) {
     RAY_LOG(WARNING).WithField(lease_id)
@@ -3405,11 +3368,11 @@ void NodeManager::SetWorkerFailureReason(const LeaseID &lease_id,
 
 void NodeManager::GCWorkerFailureReason() {
   for (const auto &entry : worker_failure_reasons_) {
-    auto duration = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - entry.second.creation_time_)
-            .count());
-    if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
+    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           clock_.SteadyNow() - entry.second.creation_time_)
+                           .count();
+    if (duration_ms >
+        static_cast<int64_t>(RayConfig::instance().task_failure_entry_ttl_ms())) {
       RAY_LOG(INFO).WithField(entry.first)
           << "Removing worker failure reason since it expired";
       worker_failure_reasons_.erase(entry.first);

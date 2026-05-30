@@ -38,13 +38,14 @@ class PrometheusClient:
             [f"{k}={quote(str(v), safe='')}" for k, v in kwargs.items()]
         )
         logger.debug(f"Running Prometheus query {url}")
-        async with self.http_session.get(url) as resp:
-            for _ in range(RETRIES):
+        for attempt in range(RETRIES):
+            async with self.http_session.get(url) as resp:
                 if resp.status == 200:
                     prom_data = await resp.json()
                     return prom_data["data"]["result"]
-                time.sleep(1)
-            return None
+            if attempt < RETRIES - 1:
+                await asyncio.sleep(1)
+        return None
 
     async def close(self):
         await self.http_session.close()
