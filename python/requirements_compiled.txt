@@ -1082,7 +1082,7 @@ markupsafe==2.1.3
     #   mako
     #   nbconvert
     #   werkzeug
-matplotlib==3.7.4
+matplotlib==3.9.4
     # via
     #   -r python/requirements/ml/tune-test-requirements.txt
     #   mlflow
