@@ -355,7 +355,9 @@ class _AutoscalingCoordinatorActor:
         nodes = sorted(nodes, key=lambda node: node.get("NodeID", ""))
         cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = {}
         for node in nodes:
-            subcluster = node.get("Labels", {}).get(self._subcluster_label_key)
+            # Safeguard against case where the value of Labels is None.
+            labels = node.get("Labels") or {}
+            subcluster = labels.get(self._subcluster_label_key)
             cluster_node_resources.setdefault(subcluster, []).append(node["Resources"])
         if cluster_node_resources == self._cluster_node_resources:
             return False
