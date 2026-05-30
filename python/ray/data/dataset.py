@@ -1668,7 +1668,11 @@ class Dataset:
                 # expr is an Expr object (predicate expression)
                 predicate_expr = expr
 
-            filter_compute = TaskPoolStrategy(size=concurrency)
+            filter_compute = get_compute_strategy(
+                fn=None,
+                compute=compute,
+                concurrency=concurrency,
+            )
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
@@ -5962,6 +5966,20 @@ class Dataset:
                 ...
                 {'image': array([[[[...]]]], dtype=uint8)}
 
+        .. note::
+
+            Breaking out of the for-loop above shuts the streaming executor
+            down so it stops producing blocks into the object store. If you
+            keep your own reference to the iterator (``it = iter(...)``),
+            cleanup is deferred until that reference is dropped — call
+            ``it.close()`` to release resources eagerly.
+
+            Some libraries (for example PyTorch Lightning's
+            ``limit_train_batches``) hold an ``iter()`` reference
+            internally to cap how many batches are consumed. In those
+            cases prefer ``ds.limit(n)`` on the dataset so iteration ends
+            naturally after ``n`` rows.
+
         Time complexity: O(1)
 
         Args:
@@ -6113,7 +6131,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=CD_API_GROUP)
     def iter_jax_batches(
         self,
         *,
@@ -6765,6 +6783,9 @@ class Dataset:
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_df = block_to_df.options(label_selector=label_selector)
         pandas_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6801,6 +6822,9 @@ class Dataset:
             A list of remote NumPy ndarrays created from this dataset.
         """
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_ndarray = block_to_ndarray.options(label_selector=label_selector)
         numpy_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6847,6 +6871,9 @@ class Dataset:
             return block_refs
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
@@ -7424,6 +7451,9 @@ class Dataset:
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            get_num_rows = get_num_rows.options(label_selector=label_selector)
         num_rows = []
         for ref_bundle in self.iter_internal_ref_bundles():
             for block_ref in ref_bundle.block_refs:

@@ -124,6 +124,12 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
 
 @pytest.mark.asyncio
 async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
+    # Simulate vLLM's resolved state when the user sets `max_num_seqs=100`:
+    # the wrapper owns the resolution of `max_pending_requests`, and the UDF
+    # reads the resolved value back.
+    expected_max_pending_requests = math.ceil(100 * 1.1)
+    mock_vllm_wrapper.return_value.max_pending_requests = expected_max_pending_requests
+
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
         data_column="__data",
@@ -147,7 +153,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     assert udf.task_type == vLLMTaskType.GENERATE
     assert udf.engine_kwargs["task_type"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
-    assert udf.max_pending_requests == math.ceil(100 * 1.1)
+    assert udf.max_pending_requests == expected_max_pending_requests
 
     # Test batch processing
     batch = {
@@ -169,13 +175,16 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     assert responses[1]["prompt"] in ["Hello", "World"]
     assert responses[0]["prompt"] != responses[1]["prompt"]
 
-    # Verify the wrapper was constructed with correct arguments
+    # Verify the wrapper was constructed with correct arguments. The UDF
+    # passes `max_pending_requests=None` straight through when the caller
+    # doesn't supply it; the wrapper resolves the default from vLLM's
+    # resolved engine config.
     mock_vllm_wrapper.assert_called_once_with(
         model=model_llama_3_2_216M,
         model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
-        max_pending_requests=111,
+        max_pending_requests=None,
         task_type=vLLMTaskType.EMBED,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
@@ -403,9 +412,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     "pooling_params,tokenization_kwargs,expect_same_output",
     [
         ({}, None, True),
-        # Keep to verify backward compatibility
-        ({"truncate_prompt_tokens": 3}, None, False),
-        # Prefer truncation via tokenization_kwargs
+        # Truncation via tokenization_kwargs.
         (None, {"truncation": True, "max_length": 3}, False),
     ],
 )
@@ -464,20 +471,11 @@ async def test_vllm_wrapper_embed_pooling_params(
     wrapper.shutdown()
 
 
-@pytest.mark.parametrize(
-    "pooling_params,tokenization_kwargs",
-    [
-        # Keep to verify backward compatibility
-        ({"truncate_prompt_tokens": -1}, None),
-        # Preferred path: tokenization_kwargs truncation
-        (None, {"truncation": True, "max_length": 2048}),
-    ],
-    ids=["truncate_prompt_tokens_compat", "tokenization_kwargs"],
-)
 @pytest.mark.asyncio
-async def test_vllm_wrapper_embed_long_prompt(
-    model_opt_125m, pooling_params, tokenization_kwargs
-):
+async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
+    # Preferred path: tokenization_kwargs truncation.
+    pooling_params = None
+    tokenization_kwargs = {"truncation": True, "max_length": 2048}
     # Sufficiently long prompt to trigger truncation to max_model_len
     max_model_len = 2048
     prompt = "Hello! How's the weather?" * 10_000
@@ -563,14 +561,9 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     wrapper.shutdown()
 
 
-@pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
-    """Test the JSON output with xgrammar backend.
-
-    This test verifies both the new structured_outputs API and backward
-    compatibility with the deprecated guided_decoding parameter.
-    """
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
+    """Test JSON output with the structured_outputs sampling param."""
 
     class AnswerModel(BaseModel):
         answer: int
@@ -599,7 +592,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
-                param_key: {"json": json_schema},
+                "structured_outputs": {"json": json_schema},
             },
         },
     ]

@@ -1,7 +1,7 @@
-import importlib
 import json
+import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -487,6 +487,153 @@ def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
 # =============================================================================
 
 
+# max_concurrency=2 lets open_gate run alongside a gated create_or_update call;
+# otherwise the actor's single-threaded queue would deadlock.
+@ray.remote(max_concurrency=2)
+class _GatedStateActor:
+    """Mimics TrainStateActor but blocks create_or_update calls until released.
+
+    Used to verify that TrainStateManager.create_*/update_* calls with block=True
+    do not return until the state actor has finished processing the request.
+    """
+
+    def __init__(self):
+        self._runs = {}
+        self._run_attempts = defaultdict(dict)
+        self._gate_open = False
+
+    def open_gate(self):
+        self._gate_open = True
+
+    def _wait_for_gate(self):
+        while not self._gate_open:
+            time.sleep(0.01)
+
+    def create_or_update_train_run(self, run):
+        self._wait_for_gate()
+        self._runs[run.id] = run
+
+    def create_or_update_train_run_attempt(self, attempt):
+        self._wait_for_gate()
+        self._run_attempts[attempt.run_id][attempt.attempt_id] = attempt
+
+    def get_train_runs(self):
+        return self._runs
+
+    def get_train_run_attempts(self):
+        return self._run_attempts
+
+
+def test_create_train_run_blocks_for_caller_death_safety(
+    ray_start_regular, monkeypatch
+):
+    """create_train_run must not return until the state actor has finished
+    recording the run.
+
+    Without this, the controller could exit between .remote() submission and
+    the task being delivered to the state actor, losing the run entirely.
+    """
+    gated = _GatedStateActor.remote()
+    monkeypatch.setattr(
+        "ray.train.v2._internal.state.state_manager.get_or_create_state_actor",
+        lambda: gated,
+    )
+
+    manager = TrainStateManager()
+    finished = threading.Event()
+
+    def call():
+        manager.create_train_run(
+            id="test_run",
+            name="test",
+            job_id="job_1",
+            controller_actor_id="controller_1",
+            controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+            run_config=RunConfig(
+                name="test",
+                failure_config=FailureConfig(max_failures=1),
+                storage_path="s3://bucket/path",
+            ),
+            train_loop_config=None,
+            scaling_config=ScalingConfig(num_workers=1),
+            backend_config=BackendConfig(),
+            datasets={},
+            dataset_config=DataConfig(),
+        )
+        finished.set()
+
+    thread = threading.Thread(target=call)
+    thread.start()
+
+    # While the gate is closed, the manager must remain blocked.
+    finished.wait(timeout=1.0)
+    assert not finished.is_set(), (
+        "create_train_run returned before the state actor processed the "
+        "request — block=True is not enforcing caller-death safety."
+    )
+
+    # Opening the gate lets the state actor finish; the manager call unblocks.
+    ray.get(gated.open_gate.remote())
+    finished.wait(timeout=10)
+    assert finished.is_set()
+    thread.join()
+
+    runs = ray.get(gated.get_train_runs.remote())
+    assert "test_run" in runs
+
+
+def test_update_train_run_attempt_finished_blocks_for_caller_death_safety(
+    ray_start_regular, monkeypatch
+):
+    """update_train_run_attempt_finished must not return until the state actor
+    has recorded the terminal status.
+
+    Without blocking on terminal-status writes, the controller could exit with
+    the attempt still showing as RUNNING in the state actor.
+    """
+    gated = _GatedStateActor.remote()
+    monkeypatch.setattr(
+        "ray.train.v2._internal.state.state_manager.get_or_create_state_actor",
+        lambda: gated,
+    )
+
+    manager = TrainStateManager()
+    # Skip the create flow (which uses block=False for attempt creation) and
+    # seed the manager's in-memory state so the terminal update has something
+    # to act on.
+    manager._run_attempts["test_run"]["attempt_1"] = create_mock_train_run_attempt(
+        attempt_id="attempt_1",
+        run_id="test_run",
+        status=RunAttemptStatus.RUNNING,
+    )
+
+    finished = threading.Event()
+
+    def call():
+        manager.update_train_run_attempt_finished(
+            run_id="test_run", attempt_id="attempt_1"
+        )
+        finished.set()
+
+    thread = threading.Thread(target=call)
+    thread.start()
+
+    finished.wait(timeout=1.0)
+    assert not finished.is_set(), (
+        "update_train_run_attempt_finished returned before the state actor "
+        "processed the request — block=True is not enforcing caller-death "
+        "safety on terminal status."
+    )
+
+    ray.get(gated.open_gate.remote())
+    finished.wait(timeout=10)
+    assert finished.is_set()
+    thread.join()
+
+    attempts = ray.get(gated.get_train_run_attempts.remote())
+    assert attempts["test_run"]["attempt_1"].status == RunAttemptStatus.FINISHED
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -863,19 +1010,27 @@ def test_get_framework_version():
     assert list(versions.keys()) == ["ray"]
     assert versions["ray"] == ray.__version__
 
-    # Each framework should return ray + versions for all importable modules.
-    for framework in TrainingFramework:
-        versions = _get_framework_version(framework)
-        assert "ray" in versions
-        assert versions["ray"] == ray.__version__
+    # Mock importlib.import_module to prevent heavy imports
+    mock_versions = {
+        name: f"{name}-mock-1.2.3"
+        for framework in TrainingFramework
+        for name in framework.module_names()
+    }
 
-        for module_name in framework.module_names():
-            try:
-                module = importlib.import_module(module_name)
-                assert module_name in versions
-                assert versions[module_name] == module.__version__
-            except ModuleNotFoundError:
-                assert module_name not in versions
+    def mock_import(name):
+        module = MagicMock()
+        module.__version__ = mock_versions[name]
+        return module
+
+    with patch(
+        "ray.train.v2._internal.callbacks.state_manager.importlib"
+    ) as mock_importlib:
+        mock_importlib.import_module.side_effect = mock_import
+        for framework in TrainingFramework:
+            versions = _get_framework_version(framework)
+            assert versions["ray"] == ray.__version__
+            for module_name in framework.module_names():
+                assert versions[module_name] == mock_versions[module_name]
 
 
 def test_execution_options_to_model_defaults_and_custom():

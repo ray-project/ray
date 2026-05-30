@@ -348,7 +348,12 @@ class RunningReplica:
             accepted, num_ongoing_requests = await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
-            # TODO (#63254): Add error handling for actor-unavailable cleanup.
+            self._actor_handle.release_slot.remote(slot_token)
+            raise
+        except Exception:
+            # The actor may have reserved the slot before the reply was lost
+            # (e.g. ActorUnavailableError). `release_slot` is idempotent for unknown
+            # tokens, so this is safe even when the reservation never actually happened.
             self._actor_handle.release_slot.remote(slot_token)
             raise
 
@@ -403,10 +408,17 @@ class ReplicaSelection:
     _deployment_id: Optional[DeploymentID]
     _request_metadata: RequestMetadata
     _method_name: str
-    _slot_token: str  # Token for reserved slot
+    # Token to be used for replica reservation;
+    # Can be None when created via the pick-only path
+    _slot_token: Optional[str]
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
+
+    # Set by dispatch once the result's done-callback is wired up. Read by
+    # choose_replica's finally to decide whether to fire on_request_completed
+    # manually (only one of the two paths should fire it).
+    _completion_callback_registered: bool = field(default=False, init=False)
 
     @property
     def address(self) -> str:
@@ -442,9 +454,12 @@ class ReplicaSelection:
         """Internal: Release the reserved slot.
 
         Returns the replica's reported num_ongoing_requests after the release,
-        or None if dispatch already consumed the slot (and ``force`` is False).
+        or None if dispatch already consumed the slot (and ``force`` is False),
+        or None if this selection was created without a reservation.
         """
+        if self._slot_token is None:
+            return
         if self._dispatched and not force:
-            return None
+            return
 
         return await self._replica.release_slot(self._slot_token)
