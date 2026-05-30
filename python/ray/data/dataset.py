@@ -7953,13 +7953,18 @@ class _CacheMetadataIterator(OutputIterator):
             self._size_bytes += bundle.size_bytes()
             return bundle
         except StopIteration:
-            # Walk topology backwards to find the first available schema.
-            schema = next(reversed(self._topology.values()))._schema
+            # Get the last operator from the topology and retrieve the schema.
+            schema = (
+                next(reversed(self._topology.values()))._schema
+                if self._topology
+                else None
+            )
 
             dag = self._dataset._logical_plan.dag
             self._dataset._cache.set_num_rows(dag, self._num_rows)
             self._dataset._cache.set_size_bytes(dag, self._size_bytes)
-            self._dataset._cache.set_schema(dag, schema)
+            if schema:
+                self._dataset._cache.set_schema(dag, schema)
             raise
 
 
