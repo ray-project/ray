@@ -515,7 +515,8 @@ exclude_patterns = [
     # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
     # Keep the root README.* — train.rst's toctree and tutorials button both
     # link to /_collections/train/tutorials/README.
-    "_collections/train/tutorials/*/**/README.*",
+    "_collections/train/tutorials/*/README.*",  # one-level sidecars (getting-started, workload-patterns)
+    "_collections/train/tutorials/*/**/README.*",  # deeper sidecars, if any
     # Sidecar README.md files in fetched template dirs duplicate the canonical
     # notebook that the gallery / toctree already links to. Exclude to avoid
     # orphan warnings without losing reachable content.
