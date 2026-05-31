@@ -50,7 +50,7 @@ def cpu_percent():
             # `num-cpus: "0"` for KubeRay head nodes). Guard against dividing by
             # zero, which otherwise raises on every poll and spams the logs.
             num_cpus = get_num_cpus()
-            if num_cpus == 0:
+            if num_cpus <= 0:
                 cpu_percent = 0.0
             else:
                 cpu_percent = round(quotient * 100 / num_cpus, 1)
