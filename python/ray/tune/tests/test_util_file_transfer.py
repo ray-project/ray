@@ -11,6 +11,7 @@ from ray.exceptions import RayTaskError
 from ray.tune.utils.file_transfer import (
     _sync_dir_between_different_nodes,
     _sync_dir_on_same_node,
+    _unpack_dir,
 )
 
 
@@ -134,6 +135,19 @@ def test_sync_nodes_only_diff(ray_start_2_cpus, temp_data_dirs):
         assert len(files_in_tar) == 7  # 3 files, 4 dirs (including root)
 
     ray.get(unpack)  # Wait until finished for teardown
+
+
+def test_unpack_dir_rejects_symlink_member_path_traversal(tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        info = tarfile.TarInfo(name="../escaped")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "safe-target"
+        tar.addfile(info)
+
+    with pytest.raises(RuntimeError, match="attempts path traversal"):
+        _unpack_dir(stream, str(tmp_path))
 
 
 @pytest.mark.parametrize("exclude", [["subdir/*"], ["*/level1.txt"]])

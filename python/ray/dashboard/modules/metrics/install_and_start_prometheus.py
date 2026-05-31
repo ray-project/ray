@@ -67,7 +67,45 @@ def download_file(url, filename):
 def install_prometheus(file_path):
     try:
         with tarfile.open(file_path) as tar:
-            tar.extractall()
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(filter="data")
+            else:
+                # Python < 3.12 fallback: manual member validation
+                import os
+
+                abs_target = os.path.abspath(os.getcwd())
+                safe_members = []
+                for member in tar.getmembers():
+                    # Reject device files and FIFOs (matches data_filter)
+                    if member.isdev() or member.isfifo():
+                        raise RuntimeError(
+                            f"Tarfile member {member.name} is a special file"
+                        )
+                    member_path = os.path.abspath(
+                        os.path.join(abs_target, member.name)
+                    )
+                    if os.path.commonpath([abs_target, member_path]) != abs_target:
+                        raise RuntimeError(
+                            f"Tarfile member {member.name} attempts path traversal"
+                        )
+                    # Validate symlinks and hardlinks resolve within target
+                    if member.issym() or member.islnk():
+                        link_target = os.path.join(
+                            abs_target, member.linkname
+                        )
+                        if (
+                            os.path.commonpath(
+                                [abs_target, os.path.abspath(link_target)]
+                            )
+                            != abs_target
+                        ):
+                            raise RuntimeError(
+                                f"Tarfile member {member.name} link attempts path traversal"
+                        )
+                        safe_members.append(member)
+                        continue
+                    safe_members.append(member)
+                tar.extractall(members=safe_members)
         logging.info("Prometheus installed successfully.")
         return True
     except Exception as e:
