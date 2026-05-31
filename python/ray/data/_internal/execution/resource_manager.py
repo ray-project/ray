@@ -284,7 +284,7 @@ class ResourceManager:
         op_running_usage = op_running_usage.copy(object_store_memory=used_object_store)
 
         if isinstance(op, ReportsExtraResourceUsage):
-            op_usage.add(op.extra_resource_usage())
+            op_usage = op_usage.add(op.extra_resource_usage())
 
         # Apply the delta to the global totals: drop `op`'s previous
         # contribution (if it had one) and add the new one.
