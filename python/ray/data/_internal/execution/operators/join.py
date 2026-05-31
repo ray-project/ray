@@ -107,10 +107,13 @@ class JoiningAggregation(ShuffleAggregation):
         left_on = list(self._left_key_col_names)
         right_on = list(self._right_key_col_names)
 
+        # Preserve right-side keys when asymmetric so downstream ops can
+        # reference either name; symmetric joins keep the default coalesce.
+        coalesce_keys = left_on == right_on
+
         # Eagerly validate suffix conflicts so callers get a clear error instead
         # of the opaque PyArrow schema-merge error ('Field X exists 2 times').
-        # Skip for semi/anti joins: only one side's columns appear in the result,
-        # so overlapping non-key names between left and right are harmless.
+        # Skip for semi/anti joins: only one side's columns appear in the result.
         if self._join_type not in (
             JoinType.LEFT_SEMI,
             JoinType.LEFT_ANTI,
@@ -118,11 +121,9 @@ class JoiningAggregation(ShuffleAggregation):
             JoinType.RIGHT_ANTI,
         ):
             left_cols = set(left_table.schema.names)
-            # PyArrow drops right key columns from output (coalescing them into
-            # the left keys), so only right non-key columns can collide with
-            # left columns. Subtracting only right_on (not left_on) correctly
-            # handles asymmetric key names (left_on != right_on).
-            right_output_cols = set(right_table.schema.names) - set(right_on)
+            right_output_cols = set(right_table.schema.names)
+            if coalesce_keys:
+                right_output_cols -= set(right_on)
             collisions = left_cols & right_output_cols
             if (
                 self._left_columns_suffix is None
@@ -149,6 +150,7 @@ class JoiningAggregation(ShuffleAggregation):
             right_keys=right_on,
             left_suffix=self._left_columns_suffix,
             right_suffix=self._right_columns_suffix,
+            coalesce_keys=coalesce_keys,
         )
 
         # Add back unsupported columns

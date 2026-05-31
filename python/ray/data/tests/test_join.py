@@ -858,6 +858,49 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     )
 
 
+def test_asymmetric_join_keys_preserved_in_output(ray_start_regular_shared_2_cpus):
+    """Asymmetric join keys (``left_on != right_on``) must both appear in the
+    output so downstream operators can reference either name."""
+    left = ray.data.range(5).map(lambda r: {"left_id": r["id"], "left_val": 0})
+    right = ray.data.range(5).map(lambda r: {"right_id": r["id"], "right_val": 0})
+
+    joined = left.join(
+        right,
+        join_type="inner",
+        num_partitions=4,
+        on=("left_id",),
+        right_on=("right_id",),
+    )
+
+    schema_names = set(joined.schema().names)
+    assert {"left_id", "right_id", "left_val", "right_val"} == schema_names
+    assert len(joined.select_columns(["right_id"]).take_all()) == 5
+
+
+def test_partial_symmetric_join_requires_suffixes(ray_start_regular_shared_2_cpus):
+    """Multi-key join where one pair is symmetric and another is not: without
+    suffixes the duplicate name must raise; with suffixes it is disambiguated."""
+    left = ray.data.from_items([{"id": i, "country": "US"} for i in range(3)])
+    right = ray.data.from_items([{"user_id": i, "country": "US"} for i in range(3)])
+    join_kwargs = dict(
+        join_type="inner",
+        num_partitions=2,
+        on=("id", "country"),
+        right_on=("user_id", "country"),
+    )
+
+    with pytest.raises(RayTaskError) as exc_info:
+        left.join(right, **join_kwargs).count()
+    assert "Left and right columns suffixes cannot be both None" in str(
+        exc_info.value.cause
+    )
+
+    joined = left.join(right, left_suffix="_l", right_suffix="_r", **join_kwargs)
+    assert {"id", "country_l", "user_id", "country_r"}.issubset(
+        set(joined.schema().names)
+    )
+
+
 def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cpus):
     """Regression test for https://github.com/ray-project/ray/issues/60013.
 
