@@ -145,9 +145,38 @@ def test_unpack_dir_rejects_symlink_member_path_traversal(tmp_path, monkeypatch)
         info.type = tarfile.SYMTYPE
         info.linkname = "safe-target"
         tar.addfile(info)
+    stream.seek(0)
 
     with pytest.raises(RuntimeError, match="attempts path traversal"):
         _unpack_dir(stream, str(tmp_path))
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="symlink extraction can require elevated permissions on Windows",
+)
+def test_unpack_dir_allows_symlink_target_relative_to_member_dir(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        file_info = tarfile.TarInfo(name="file")
+        data = b"safe"
+        file_info.size = len(data)
+        tar.addfile(file_info, io.BytesIO(data))
+
+        dir_info = tarfile.TarInfo(name="subdir")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        link_info = tarfile.TarInfo(name="subdir/link")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "../file"
+        tar.addfile(link_info)
+    stream.seek(0)
+
+    _unpack_dir(stream, str(tmp_path))
 
 
 @pytest.mark.parametrize("exclude", [["subdir/*"], ["*/level1.txt"]])

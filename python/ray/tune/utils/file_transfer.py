@@ -402,21 +402,35 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
                         member_path = os.path.abspath(
                             os.path.join(abs_target, member.name)
                         )
-                        if os.path.commonpath([abs_target, member_path]) != abs_target:
+                        try:
+                            is_unsafe = (
+                                os.path.commonpath([abs_target, member_path])
+                                != abs_target
+                            )
+                        except ValueError:
+                            is_unsafe = True
+                        if is_unsafe:
                             raise RuntimeError(
                                 f"Tarfile member {member.name} attempts path traversal"
                             )
                         # Validate symlinks and hardlinks resolve within target
                         if member.issym() or member.islnk():
-                            link_target = os.path.join(
-                                abs_target, member.linkname
+                            link_base = (
+                                os.path.dirname(member_path)
+                                if member.issym()
+                                else abs_target
                             )
-                            if (
-                                os.path.commonpath(
-                                    [abs_target, os.path.abspath(link_target)]
+                            link_target = os.path.abspath(
+                                os.path.join(link_base, member.linkname)
+                            )
+                            try:
+                                is_link_unsafe = (
+                                    os.path.commonpath([abs_target, link_target])
+                                    != abs_target
                                 )
-                                != abs_target
-                            ):
+                            except ValueError:
+                                is_link_unsafe = True
+                            if is_link_unsafe:
                                 raise RuntimeError(
                                     f"Tarfile member {member.name} link attempts path traversal"
                                 )
