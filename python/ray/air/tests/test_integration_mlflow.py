@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from mlflow.tracking import MlflowClient
+from pyarrow.fs import LocalFileSystem
 
 import ray
 from ray._private.dict import flatten_dict
@@ -17,8 +18,16 @@ from ray.train.torch import TorchTrainer
 from ray.tune import Tuner
 
 
+class MockStorage:
+    def __init__(self, storage_filesystem=None):
+        self.storage_filesystem = storage_filesystem or LocalFileSystem()
+
+
 class MockTrial(
-    namedtuple("MockTrial", ["config", "trial_name", "trial_id", "local_path"])
+    namedtuple(
+        "MockTrial",
+        ["config", "trial_name", "trial_id", "local_path", "path", "storage"],
+    )
 ):
     def __hash__(self):
         return hash(self.trial_id)
@@ -27,10 +36,35 @@ class MockTrial(
         return self.trial_name
 
 
+def make_mock_trial(
+    config,
+    trial_name="trial1",
+    trial_id=0,
+    local_path="local_artifact",
+    path="persistent_artifact",
+    storage=None,
+):
+    return MockTrial(
+        config,
+        trial_name,
+        trial_id,
+        local_path,
+        path,
+        storage or MockStorage(),
+    )
+
+
 class Mock_MLflowLoggerUtil(_MLflowLoggerUtil):
     def save_artifacts(self, dir, run_id):
         self.artifact_saved = True
         self.artifact_info = {"dir": dir, "run_id": run_id}
+        self.artifact_files = []
+        if os.path.isdir(dir):
+            for root, _, files in os.walk(dir):
+                self.artifact_files.extend(
+                    os.path.relpath(os.path.join(root, file), dir) for file in files
+                )
+            self.artifact_files.sort()
 
 
 def clear_env_vars():
@@ -181,7 +215,20 @@ class MLflowTest(unittest.TestCase):
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
-        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+        local_artifact_dir = tempfile.mkdtemp()
+        persistent_artifact_dir = tempfile.mkdtemp()
+        with open(os.path.join(local_artifact_dir, "result.json"), "w") as f:
+            f.write("{}")
+        os.makedirs(os.path.join(persistent_artifact_dir, "checkpoint_000001"))
+        with open(
+            os.path.join(persistent_artifact_dir, "checkpoint_000001", "data.pkl"), "w"
+        ) as f:
+            f.write("checkpoint")
+        trial = make_mock_trial(
+            trial_config,
+            local_path=local_artifact_dir,
+            path=persistent_artifact_dir,
+        )
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -229,9 +276,14 @@ class MLflowTest(unittest.TestCase):
         # Check that artifact is logged on termination.
         logger.on_trial_complete(0, [], trial)
         self.assertTrue(logger.mlflow_util.artifact_saved)
-        self.assertDictEqual(
-            logger.mlflow_util.artifact_info,
-            {"dir": "artifact", "run_id": run.info.run_id},
+        self.assertEqual(logger.mlflow_util.artifact_info["run_id"], run.info.run_id)
+        self.assertNotEqual(logger.mlflow_util.artifact_info["dir"], local_artifact_dir)
+        self.assertNotEqual(
+            logger.mlflow_util.artifact_info["dir"], persistent_artifact_dir
+        )
+        self.assertEqual(
+            logger.mlflow_util.artifact_files,
+            ["checkpoint_000001/data.pkl", "result.json"],
         )
 
         # Check if params are logged at the end.
@@ -242,7 +294,7 @@ class MLflowTest(unittest.TestCase):
     def testMlFlowLoggerLogging_logAtEnd(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}
-        trial = MockTrial(trial_config, "trial1", 0, "artifact")
+        trial = make_mock_trial(trial_config)
 
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri,
@@ -268,6 +320,119 @@ class MLflowTest(unittest.TestCase):
         logger.on_trial_complete(0, [], trial)
         run = logger.mlflow_util._mlflow.get_run(run_id=run.info.run_id)
         self.assertDictEqual(run.data.params, trial_config)
+
+    @patch("ray.air.integrations.mlflow._download_from_fs_path")
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    def testMlFlowLoggerDownloadsRemoteArtifacts(self, mock_download):
+        clear_env_vars()
+
+        def fake_download(local_path, **kwargs):
+            del kwargs
+            os.makedirs(os.path.join(local_path, "checkpoint_000001"))
+            with open(
+                os.path.join(local_path, "checkpoint_000001", "data.pkl"), "w"
+            ) as f:
+                f.write("checkpoint")
+
+        mock_download.side_effect = fake_download
+        trial_config = {"par1": "a", "par2": "b"}
+        remote_fs = MagicMock()
+        remote_fs.type_name = "mock_remote"
+        local_artifact_dir = tempfile.mkdtemp()
+        with open(os.path.join(local_artifact_dir, "result.json"), "w") as f:
+            f.write("{}")
+        trial = make_mock_trial(
+            trial_config,
+            local_path=local_artifact_dir,
+            path="remote/trial",
+            storage=MockStorage(remote_fs),
+        )
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_remote_artifacts",
+            save_artifact=True,
+        )
+        logger.setup()
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        run_id = logger._trial_runs[trial]
+
+        logger.on_trial_complete(0, [], trial)
+
+        mock_download.assert_called_once()
+        _, kwargs = mock_download.call_args
+        self.assertEqual(kwargs["fs"], remote_fs)
+        self.assertEqual(kwargs["fs_path"], "remote/trial")
+        self.assertFalse(kwargs["filelock"])
+        self.assertTrue(logger.mlflow_util.artifact_saved)
+        self.assertEqual(logger.mlflow_util.artifact_info["run_id"], run_id)
+        self.assertNotEqual(logger.mlflow_util.artifact_info["dir"], local_artifact_dir)
+        self.assertNotEqual(logger.mlflow_util.artifact_info["dir"], "remote/trial")
+        self.assertEqual(
+            logger.mlflow_util.artifact_files,
+            ["checkpoint_000001/data.pkl", "result.json"],
+        )
+
+    @patch("ray.air.integrations.mlflow._download_from_fs_path")
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    def testMlFlowLoggerHandlesMissingRemoteArtifacts(self, mock_download):
+        clear_env_vars()
+        mock_download.side_effect = FileNotFoundError
+        trial_config = {"par1": "a", "par2": "b"}
+        remote_fs = MagicMock()
+        remote_fs.type_name = "mock_remote"
+        local_artifact_dir = tempfile.mkdtemp()
+        with open(os.path.join(local_artifact_dir, "result.json"), "w") as f:
+            f.write("{}")
+        trial = make_mock_trial(
+            trial_config,
+            local_path=local_artifact_dir,
+            path="remote/trial",
+            storage=MockStorage(remote_fs),
+        )
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_missing_remote_artifacts",
+            save_artifact=True,
+        )
+        logger.setup()
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        logger.on_trial_complete(0, [], trial)
+
+        mock_download.assert_called_once()
+        self.assertTrue(logger.mlflow_util.artifact_saved)
+        self.assertEqual(logger.mlflow_util.artifact_files, ["result.json"])
+
+    @patch("ray.air.integrations.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    def testMlFlowLoggerSkipsLocalArtifactFile(self):
+        clear_env_vars()
+        trial_config = {"par1": "a", "par2": "b"}
+        local_artifact_dir = tempfile.mkdtemp()
+        with open(os.path.join(local_artifact_dir, "result.json"), "w") as f:
+            f.write("{}")
+        local_artifact_file = tempfile.NamedTemporaryFile(delete=False)
+        local_artifact_file.close()
+        trial = make_mock_trial(
+            trial_config,
+            local_path=local_artifact_file.name,
+            path=local_artifact_dir,
+        )
+
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name="test_local_artifact_file",
+            save_artifact=True,
+        )
+        logger.setup()
+        logger.on_trial_start(iteration=0, trials=[], trial=trial)
+        logger.on_trial_complete(0, [], trial)
+
+        self.assertTrue(logger.mlflow_util.artifact_saved)
+        self.assertEqual(logger.mlflow_util.artifact_files, ["result.json"])
 
     def testMlFlowSetupExplicit(self):
         clear_env_vars()

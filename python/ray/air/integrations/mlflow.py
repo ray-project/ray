@@ -1,4 +1,7 @@
 import logging
+import os
+import shutil
+import tempfile
 from types import ModuleType
 from typing import Dict, Optional, Union
 
@@ -6,6 +9,7 @@ import ray
 from ray.air._internal import usage as air_usage
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.constants import TRAINING_ITERATION
+from ray.train._internal.storage import _download_from_fs_path
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
@@ -226,7 +230,7 @@ class MLflowLoggerCallback(LoggerCallback):
             as tags on the run
         tracking_token: Tracking token used to authenticate with MLflow.
         save_artifact: If set to True, automatically save the entire
-            contents of the Tune local_dir as an artifact to the
+            contents of the Tune trial directory as an artifact to the
             corresponding run in MlFlow.
         log_params_on_trial_end: If set to True, log parameters to MLflow
             at the end of the trial instead of at the beginning
@@ -330,7 +334,7 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the artifact if set_artifact is set to True.
         if self.should_save_artifact:
-            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.local_path)
+            self._save_trial_artifacts(run_id=run_id, trial=trial)
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
@@ -341,3 +345,31 @@ class MLflowLoggerCallback(LoggerCallback):
             self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
         self.mlflow_util.end_run(run_id=run_id, status=status)
+
+    def _save_trial_artifacts(self, run_id: str, trial: "Trial"):
+        artifact_path = trial.path or trial.local_path
+        local_path = trial.local_path
+        fs = getattr(trial.storage, "storage_filesystem", None)
+
+        if local_path and local_path != artifact_path:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                self._copy_artifacts_to_local_dir(artifact_path, fs, tmpdir)
+                self._copy_artifacts_to_local_dir(local_path, None, tmpdir)
+                self.mlflow_util.save_artifacts(run_id=run_id, dir=tmpdir)
+            return
+
+        self.mlflow_util.save_artifacts(run_id=run_id, dir=artifact_path)
+
+    def _copy_artifacts_to_local_dir(self, path: str, fs, local_dir: str):
+        if fs and fs.type_name != "local":
+            try:
+                _download_from_fs_path(
+                    fs=fs,
+                    fs_path=path,
+                    local_path=local_dir,
+                    filelock=False,
+                )
+            except FileNotFoundError:
+                logger.debug("Trial artifact path %s does not exist.", path)
+        elif os.path.isdir(path):
+            shutil.copytree(path, local_dir, dirs_exist_ok=True)
