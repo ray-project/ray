@@ -673,6 +673,12 @@ class ReporterAgent(
             )
 
         if batch_data_points:
+            # Keep a single label schema for each histogram batch before
+            # recording the reconstructed data points.
+            all_keys = sorted({k for dp in batch_data_points for k in dp["tags"]})
+            for dp in batch_data_points:
+                tags = dp["tags"]
+                dp["tags"] = {k: tags.get(k, "") for k in all_keys}
             self._open_telemetry_metric_recorder.record_histogram_aggregated_batch(
                 metric.name,
                 batch_data_points,
