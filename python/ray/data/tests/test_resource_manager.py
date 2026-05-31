@@ -431,6 +431,108 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 1
 
+    def test_incremental_usages_match_full_recompute(self, restore_data_context):
+        """`update_usages_for_ops` must produce the same per-op and global usages
+        as a from-scratch `update_usages`.
+
+        Two resource managers wrap the same topology (sharing the operators'
+        metrics). After each metric mutation, one is refreshed with a full
+        recompute and the other with an incremental update for the mutated
+        operator; their usages must stay identical.
+        """
+        input = make_ref_bundles([[x] for x in range(1)])[0]
+        block_ref, block_meta = input.blocks[0]
+        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
+
+        o1 = InputDataBuffer(DataContext.get_current(), [input])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
+        ray.data.DataContext.get_current().target_max_block_size = 2
+
+        def make_rm():
+            return ResourceManager(
+                topo,
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+            )
+
+        rm_full = make_rm()
+        rm_incr = make_rm()
+
+        def assert_same():
+            assert rm_incr.get_global_usage() == rm_full.get_global_usage()
+            assert (
+                rm_incr.get_global_running_usage() == rm_full.get_global_running_usage()
+            )
+            assert (
+                rm_incr.get_global_pending_usage() == rm_full.get_global_pending_usage()
+            )
+            for op in topo:
+                assert rm_incr.get_op_usage(op) == rm_full.get_op_usage(op), op
+
+        # Initial state: both compute from scratch.
+        rm_full.update_usages()
+        rm_incr.update_usages()
+        assert_same()
+
+        # Each step mutates one operator's metrics; the full manager recomputes
+        # everything while the incremental manager only updates the mutated op
+        # (and, internally, its upstream dependencies).
+        def step(changed_op, mutate):
+            mutate()
+            rm_full.update_usages()
+            rm_incr.update_usages_for_ops([changed_op])
+            assert_same()
+
+        step(o2, lambda: o2.metrics.on_input_queued(input, input_index=0))
+
+        def submit_o2():
+            o2.metrics.on_input_dequeued(input, input_index=0)
+            o2.metrics.on_task_submitted(0, input)
+
+        step(o2, submit_o2)
+
+        def finish_o2():
+            o2.metrics.on_output_queued(input)
+            o2.metrics.on_task_finished(
+                0,
+                None,
+                TaskExecWorkerStats(task_wall_time_s=0.0),
+                TaskExecDriverStats(task_output_backpressure_s=0),
+            )
+
+        step(o2, finish_o2)
+
+        def move_o2_output_external():
+            o2.metrics.on_output_dequeued(input)
+            topo[o2].output_queue.append(input)
+
+        step(o2, move_o2_output_external)
+
+        o3_input = topo[o2].output_queue.pop()
+        step(o3, lambda: o3.metrics.on_input_queued(o3_input, input_index=0))
+
+        def submit_o3():
+            o3.metrics.on_input_dequeued(o3_input, input_index=0)
+            o3.metrics.on_task_submitted(0, o3_input)
+
+        step(o3, submit_o3)
+
+        def finish_o3():
+            o3.metrics.on_output_queued(o3_input)
+            o3.metrics.on_task_finished(
+                0,
+                None,
+                TaskExecWorkerStats(task_wall_time_s=0.0),
+                TaskExecDriverStats(task_output_backpressure_s=0),
+            )
+
+        step(o3, finish_o3)
+
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
         o1 = InputDataBuffer(DataContext.get_current(), [])

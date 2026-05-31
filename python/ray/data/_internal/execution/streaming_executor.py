@@ -503,7 +503,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
             topology[op].dispatch_next_task()
 
-            self._resource_manager.update_usages()
+            # Only `op` (and its upstream dependencies) changed as a result of
+            # dispatching, so incrementally update their usages instead of
+            # recomputing every operator from scratch.
+            self._resource_manager.update_usages_for_ops([op])
 
             i += 1
             if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:

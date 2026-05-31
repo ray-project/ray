@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
@@ -209,10 +209,13 @@ class ResourceManager:
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
     def update_usages(self):
-        """Recalculate resource usages."""
-        # TODO(hchen): This method will be called frequently during the execution loop.
-        # And some computations are redundant. We should either remove redundant
-        # computations or remove this method entirely and compute usages on demand.
+        """Recalculate resource usages for all operators from scratch.
+
+        This is the full recompute. For the common case where only a few
+        operators changed (e.g. after dispatching a single task), prefer
+        `update_usages_for_ops`, which incrementally updates just the affected
+        operators and the global totals.
+        """
         self._global_usage = ExecutionResources(0, 0, 0)
         self._global_running_usage = ExecutionResources(0, 0, 0)
         self._global_pending_usage = ExecutionResources(0, 0, 0)
@@ -220,48 +223,91 @@ class ResourceManager:
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
 
-        # Iterate from last to first operator.
-        for op, state in reversed(self._topology.items()):
-            # Update `self._op_usages`, `self._op_running_usages`,
-            # and `self._op_pending_usages`.
-            op_usage = op.current_logical_usage()
-            op_running_usage = op.running_logical_usage()
-            op_pending_usage = op.pending_logical_usage()
-
-            assert not op_usage.object_store_memory
-            assert not op_running_usage.object_store_memory
-            assert not op_pending_usage.object_store_memory
-
-            used_object_store = self._estimate_object_store_memory_usage(op, state)
-
-            op_usage = op_usage.copy(object_store_memory=used_object_store)
-            op_running_usage = op_running_usage.copy(
-                object_store_memory=used_object_store
-            )
-
-            if isinstance(op, ReportsExtraResourceUsage):
-                op_usage.add(op.extra_resource_usage())
-
-            self._op_usages[op] = op_usage
-            self._op_running_usages[op] = op_running_usage
-            self._op_pending_usages[op] = op_pending_usage
-
-            # Update `self._global_usage`, `self._global_running_usage`,
-            # and `self._global_pending_usage`.
-            self._global_usage = self._global_usage.add(op_usage)
-            self._global_running_usage = self._global_running_usage.add(
-                op_running_usage
-            )
-            self._global_pending_usage = self._global_pending_usage.add(
-                op_pending_usage
-            )
-
-            # Update operator's object store usage, which is used by
-            # DatasetStats and updated on the Ray Data dashboard.
-            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+        # Iterate from last to first operator. The order doesn't affect the
+        # result (each op's usage is a function of its own and its downstream
+        # ops' metrics, not of other ops' usage entries).
+        for op in reversed(self._topology.keys()):
+            self._recompute_op_usage(op)
 
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
+
+    def update_usages_for_ops(self, ops: Iterable["PhysicalOperator"]):
+        """Incrementally update resource usages for the given operators.
+
+        This recomputes only the usage of the operators that actually changed,
+        applying the deltas to the global totals, instead of recomputing every
+        operator from scratch as `update_usages` does. It produces the same
+        per-op and global usages as a full recompute, provided the cached state
+        is in sync (the streaming executor reconciles it with a full
+        `update_usages` at the start of every scheduling-loop step).
+
+        For each changed operator we also recompute its upstream input
+        dependencies: an operator's object store memory estimate
+        (`_estimate_object_store_memory_usage`) reads its *downstream* ops'
+        input-queue metrics, so changing an operator invalidates the estimates
+        of the operators feeding into it.
+        """
+        dirty: Set["PhysicalOperator"] = set()
+        for op in ops:
+            dirty.add(op)
+            dirty.update(op.input_dependencies)
+
+        for op in dirty:
+            self._recompute_op_usage(op)
+
+        if self._op_resource_allocator is not None:
+            self._update_allocated_budgets()
+
+    def _recompute_op_usage(self, op: "PhysicalOperator"):
+        """Recompute a single operator's usage entries and apply the delta to
+        the global totals.
+
+        Subtracts the operator's previously-recorded usage from the global
+        totals (if any) and adds the freshly-computed usage, so the globals
+        stay consistent whether this is called for one operator or for all.
+        """
+        state = self._topology[op]
+
+        # Compute `op`'s current, running, and pending usage.
+        op_usage = op.current_logical_usage()
+        op_running_usage = op.running_logical_usage()
+        op_pending_usage = op.pending_logical_usage()
+
+        assert not op_usage.object_store_memory
+        assert not op_running_usage.object_store_memory
+        assert not op_pending_usage.object_store_memory
+
+        used_object_store = self._estimate_object_store_memory_usage(op, state)
+
+        op_usage = op_usage.copy(object_store_memory=used_object_store)
+        op_running_usage = op_running_usage.copy(object_store_memory=used_object_store)
+
+        if isinstance(op, ReportsExtraResourceUsage):
+            op_usage.add(op.extra_resource_usage())
+
+        # Apply the delta to the global totals: drop `op`'s previous
+        # contribution (if it had one) and add the new one.
+        prev_usage = self._op_usages.get(op)
+        if prev_usage is not None:
+            self._global_usage = self._global_usage.subtract(prev_usage)
+            self._global_running_usage = self._global_running_usage.subtract(
+                self._op_running_usages[op]
+            )
+            self._global_pending_usage = self._global_pending_usage.subtract(
+                self._op_pending_usages[op]
+            )
+        self._global_usage = self._global_usage.add(op_usage)
+        self._global_running_usage = self._global_running_usage.add(op_running_usage)
+        self._global_pending_usage = self._global_pending_usage.add(op_pending_usage)
+
+        self._op_usages[op] = op_usage
+        self._op_running_usages[op] = op_running_usage
+        self._op_pending_usages[op] = op_pending_usage
+
+        # Update operator's object store usage, which is used by
+        # DatasetStats and updated on the Ray Data dashboard.
+        op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
