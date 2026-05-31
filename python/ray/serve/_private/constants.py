@@ -675,6 +675,11 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
+# Stopped replicas to retain per deployment for dashboard log access. 0 disables.
+RAY_SERVE_RETAINED_DEAD_REPLICAS = get_env_int_non_negative(
+    "RAY_SERVE_RETAINED_DEAD_REPLICAS", 10
+)
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
 NO_ROUTES_MESSAGE = "Route table is not populated yet."
