@@ -145,9 +145,112 @@ def test_unpack_dir_rejects_symlink_member_path_traversal(tmp_path, monkeypatch)
         info.type = tarfile.SYMTYPE
         info.linkname = "safe-target"
         tar.addfile(info)
+    stream.seek(0)
 
     with pytest.raises(RuntimeError, match="attempts path traversal"):
         _unpack_dir(stream, str(tmp_path))
+
+
+def test_unpack_dir_rejects_link_members(tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        file_info = tarfile.TarInfo(name="file")
+        data = b"safe"
+        file_info.size = len(data)
+        tar.addfile(file_info, io.BytesIO(data))
+
+        dir_info = tarfile.TarInfo(name="subdir")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        link_info = tarfile.TarInfo(name="subdir/link")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "../file"
+        tar.addfile(link_info)
+    stream.seek(0)
+
+    with pytest.raises(RuntimeError, match="is a link"):
+        _unpack_dir(stream, str(tmp_path))
+
+
+def test_unpack_dir_rejects_symlink_then_traversal(tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        dir_info = tarfile.TarInfo(name="a")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        link_info = tarfile.TarInfo(name="a/b")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = ".."
+        tar.addfile(link_info)
+
+        file_info = tarfile.TarInfo(name="a/b/../../escaped")
+        data = b"unsafe"
+        file_info.size = len(data)
+        tar.addfile(file_info, io.BytesIO(data))
+    stream.seek(0)
+
+    with pytest.raises(RuntimeError, match="is a link"):
+        _unpack_dir(stream, str(tmp_path))
+
+    assert not (tmp_path.parent / "escaped").exists()
+
+
+def test_unpack_dir_preserves_mtime_in_fallback(tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    stream = io.BytesIO()
+    dir_mtime = 1_700_000_001
+    file_mtime = 1_700_000_123
+    data = b"incremental sync"
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        dir_info = tarfile.TarInfo(name="nested")
+        dir_info.type = tarfile.DIRTYPE
+        dir_info.mode = 0o755
+        dir_info.mtime = dir_mtime
+        tar.addfile(dir_info)
+
+        file_info = tarfile.TarInfo(name="nested/checkpoint")
+        file_info.size = len(data)
+        file_info.mtime = file_mtime
+        tar.addfile(file_info, io.BytesIO(data))
+    stream.seek(0)
+
+    _unpack_dir(stream, str(tmp_path))
+
+    assert int(os.path.getmtime(tmp_path / "nested")) == dir_mtime
+    assert int(os.path.getmtime(tmp_path / "nested" / "checkpoint")) == file_mtime
+
+
+def test_unpack_dir_applies_directory_modes_deepest_first(tmp_path, monkeypatch):
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+    chmod_calls = []
+
+    def record_chmod(path, mode):
+        chmod_calls.append((os.path.relpath(path, tmp_path), mode))
+
+    monkeypatch.setattr(os, "chmod", record_chmod)
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as tar:
+        child_info = tarfile.TarInfo(name="parent/child")
+        child_info.type = tarfile.DIRTYPE
+        child_info.mode = 0o755
+        tar.addfile(child_info)
+
+        parent_info = tarfile.TarInfo(name="parent")
+        parent_info.type = tarfile.DIRTYPE
+        parent_info.mode = 0o600
+        tar.addfile(parent_info)
+    stream.seek(0)
+
+    _unpack_dir(stream, str(tmp_path))
+
+    assert chmod_calls[-2:] == [
+        (os.path.join("parent", "child"), 0o755),
+        ("parent", 0o600),
+    ]
 
 
 @pytest.mark.parametrize("exclude", [["subdir/*"], ["*/level1.txt"]])

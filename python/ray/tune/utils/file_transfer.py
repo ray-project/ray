@@ -6,6 +6,7 @@ import tarfile
 from typing import Dict, Generator, List, Optional, Tuple, Union
 
 import ray
+from ray._private.tar_utils import safe_extract_tar
 from ray.air._internal.filelock import TempFileLock
 from ray.air.util.node import _force_on_node, _get_node_id_from_node_ip
 from ray.util.annotations import DeveloperAPI
@@ -387,43 +388,7 @@ def _unpack_dir(stream: io.BytesIO, target_dir: str, *, _retry: bool = True) -> 
         # will be thrown.
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             with tarfile.open(fileobj=stream) as tar:
-                if hasattr(tarfile, "data_filter"):
-                    tar.extractall(target_dir, filter="data")
-                else:
-                    # Python < 3.12 fallback: manual member validation
-                    abs_target = os.path.abspath(target_dir)
-                    safe_members = []
-                    for member in tar.getmembers():
-                        # Reject device files and FIFOs (matches data_filter)
-                        if member.isdev() or member.isfifo():
-                            raise RuntimeError(
-                                f"Tarfile member {member.name} is a special file"
-                            )
-                        member_path = os.path.abspath(
-                            os.path.join(abs_target, member.name)
-                        )
-                        if os.path.commonpath([abs_target, member_path]) != abs_target:
-                            raise RuntimeError(
-                                f"Tarfile member {member.name} attempts path traversal"
-                            )
-                        # Validate symlinks and hardlinks resolve within target
-                        if member.issym() or member.islnk():
-                            link_target = os.path.join(
-                                abs_target, member.linkname
-                            )
-                            if (
-                                os.path.commonpath(
-                                    [abs_target, os.path.abspath(link_target)]
-                                )
-                                != abs_target
-                            ):
-                                raise RuntimeError(
-                                    f"Tarfile member {member.name} link attempts path traversal"
-                                )
-                            safe_members.append(member)
-                            continue
-                        safe_members.append(member)
-                    tar.extractall(target_dir, members=safe_members)
+                safe_extract_tar(tar, target_dir)
     except TimeoutError:
         # wait, but do not do anything
         with TempFileLock(f"{target_dir}.lock"):
