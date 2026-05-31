@@ -139,6 +139,147 @@ def _trace_back_refs(intermediates: list, label: str = ""):
                     print(f"    -> {type(r).__name__}")
 
 
+def _make_udf_batch_fn(udf, batch_size=8, batch_format="numpy"):
+    return BatchMapTransformFn(
+        _generate_transform_fn_for_map_batches(udf),
+        is_udf=True,
+        batch_size=batch_size,
+        batch_format=batch_format,
+        output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
+    )
+
+
+def test_combine_merges_compatible_pair():
+    fn1 = _make_udf_batch_fn(lambda b: b)
+    fn2 = _make_udf_batch_fn(lambda b: b)
+    result = MapTransformer._combine_transformations([fn1], [fn2])
+    assert len(result) == 1
+    assert isinstance(result[0], BatchMapTransformFn)
+    assert len(result[0]._component_reprs) == 2
+
+
+@pytest.mark.parametrize(
+    "kw_up,kw_down",
+    [
+        # mismatched batch_format
+        ({"batch_format": "numpy"}, {"batch_format": "pandas"}),
+        # mismatched batch_size
+        ({"batch_size": 4}, {"batch_size": 8}),
+        # auto batch_size (upstream)
+        ({"batch_size": "auto"}, {"batch_size": 8}),
+        # auto batch_size (downstream)
+        ({"batch_size": 8}, {"batch_size": "auto"}),
+    ],
+)
+def test_combine_no_merge_mismatched(kw_up, kw_down):
+    defaults = {"batch_size": 8, "batch_format": "numpy"}
+    fn1 = _make_udf_batch_fn(lambda b: b, **{**defaults, **kw_up})
+    fn2 = _make_udf_batch_fn(lambda b: b, **{**defaults, **kw_down})
+    result = MapTransformer._combine_transformations([fn1], [fn2])
+    assert len(result) == 2
+
+
+def test_combine_three_compatible_fns_fully_merge():
+    fns = [_make_udf_batch_fn(lambda b: b) for _ in range(3)]
+    result = MapTransformer._combine_transformations(fns[:2], fns[2:])
+    assert len(result) == 1
+    assert len(result[0]._component_reprs) == 3
+
+
+def test_combine_partial_merge():
+    fn_numpy_1 = _make_udf_batch_fn(lambda b: b, batch_format="numpy")
+    fn_numpy_2 = _make_udf_batch_fn(lambda b: b, batch_format="numpy")
+    fn_pandas = _make_udf_batch_fn(lambda b: b, batch_format="pandas")
+    result = MapTransformer._combine_transformations(
+        [fn_numpy_1, fn_numpy_2], [fn_pandas]
+    )
+    assert len(result) == 2
+    assert len(result[0]._component_reprs) == 2
+    assert getattr(result[1], "_component_reprs", None) is None
+
+
+def test_is_udf_false_prevents_merge():
+    fn_udf = _make_udf_batch_fn(lambda b: b)
+    fn_internal = BatchMapTransformFn(
+        lambda batches, ctx: (b for b in batches),
+        is_udf=False,
+        batch_size=8,
+        batch_format="numpy",
+        output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
+    )
+    assert len(MapTransformer._combine_transformations([fn_udf], [fn_internal])) == 2
+    assert len(MapTransformer._combine_transformations([fn_internal], [fn_udf])) == 2
+
+
+def test_merge_eliminates_batch_blocks_calls():
+    # batch_blocks is imported as a local name in map_transformer; patch there.
+    import ray.data._internal.execution.operators.map_transformer as mt_mod
+    from ray.data._internal.block_batching.block_batching import (
+        batch_blocks as real_batch_blocks,
+    )
+
+    call_count = []
+
+    def counting_batch_blocks(*args, **kwargs):
+        call_count.append(1)
+        return real_batch_blocks(*args, **kwargs)
+
+    fns = [_make_udf_batch_fn(lambda b: b) for _ in range(3)]
+    transformer = MapTransformer(fns)
+    assert len(transformer.get_transform_fns()) == 1, "3 compatible fns should merge to 1"
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    input_block = pd.DataFrame({"x": list(range(8))})
+
+    original = mt_mod.batch_blocks
+    mt_mod.batch_blocks = counting_batch_blocks
+    try:
+        list(transformer.apply_transform([input_block], ctx))
+    finally:
+        mt_mod.batch_blocks = original
+
+    assert len(call_count) == 1, (
+        f"Expected 1 batch_blocks call for 3 merged fns, got {len(call_count)}. "
+        "Without merge, 3 separate fns would call batch_blocks 3 times."
+    )
+
+
+def test_merge_correctness_matches_reference():
+    import numpy as np
+
+    def double(batch):
+        return {k: v * 2 for k, v in batch.items()}
+
+    def add_one(batch):
+        return {k: v + 1 for k, v in batch.items()}
+
+    merged_transformer = MapTransformer(
+        [_make_udf_batch_fn(double), _make_udf_batch_fn(add_one)]
+    )
+    assert len(merged_transformer.get_transform_fns()) == 1
+
+    ref_transformer = MapTransformer([_make_udf_batch_fn(lambda b: add_one(double(b)))])
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    input_block = pd.DataFrame({"x": list(range(16))})
+
+    def collect(t):
+        return pd.concat(
+            [BlockAccessor.for_block(b).to_pandas() for b in t.apply_transform([input_block], ctx)]
+        ).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(collect(merged_transformer), collect(ref_transformer))
+
+
+def test_merged_repr_shows_components():
+    fn1 = _make_udf_batch_fn(lambda b: b)
+    fn2 = _make_udf_batch_fn(lambda b: b)
+    result = MapTransformer._combine_transformations([fn1], [fn2])
+    r = repr(result[0])
+    assert "MergedBatchMapTransformFn" in r
+    assert "->" in r
+
+
 if __name__ == "__main__":
     import sys
 

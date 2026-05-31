@@ -269,8 +269,18 @@ class MapTransformer:
     @classmethod
     def _combine_transformations(
         cls, ones: List[MapTransformFn], others: List[MapTransformFn]
-    ) -> list[Any]:
-        return ones + others
+    ) -> List[MapTransformFn]:
+        combined: List[MapTransformFn] = ones + others
+        result: List[MapTransformFn] = []
+        i = 0
+        while i < len(combined):
+            fn = combined[i]
+            while i + 1 < len(combined) and _can_merge_batch_fns(fn, combined[i + 1]):
+                fn = _merge_two_batch_fns(fn, combined[i + 1])
+                i += 1
+            result.append(fn)
+            i += 1
+        return result
 
     def udf_time_s(self, reset: bool) -> float:
         cur_time_s = self._udf_time_s
@@ -399,7 +409,70 @@ class BatchMapTransformFn(MapTransformFn):
         return self._shape_blocks(results)
 
     def __repr__(self) -> str:
+        component_reprs = getattr(self, "_component_reprs", None)
+        if component_reprs:
+            inner = " -> ".join(component_reprs)
+            return (
+                f"MergedBatchMapTransformFn([{inner}], "
+                f"{self._batch_format=}, {self._batch_size=})"
+            )
         return f"BatchMapTransformFn({self._batch_fn=}, {self._batch_format=}, {self._batch_size=}, {self._zero_copy_batch=})"
+
+
+def _can_merge_batch_fns(fn_up: MapTransformFn, fn_down: MapTransformFn) -> bool:
+    """Return True iff fn_up and fn_down can be merged into a single BatchMapTransformFn.
+
+    Two adjacent BatchMapTransformFns are compatible when both are UDFs with the same
+    batch_format and batch_size (excluding "auto", which depends on data shape).
+    """
+    if not (
+        isinstance(fn_up, BatchMapTransformFn)
+        and isinstance(fn_down, BatchMapTransformFn)
+    ):
+        return False
+    if not (fn_up._is_udf and fn_down._is_udf):
+        return False
+    if fn_up._batch_format != fn_down._batch_format:
+        return False
+    if fn_up._batch_size == "auto" or fn_down._batch_size == "auto":
+        return False
+    return fn_up._batch_size == fn_down._batch_size
+
+
+def _merge_two_batch_fns(
+    fn_up: BatchMapTransformFn,
+    fn_down: BatchMapTransformFn,
+) -> BatchMapTransformFn:
+    """Merge two compatible BatchMapTransformFns, eliminating the intermediate
+    BlockOutputBuffer→batch_blocks round-trip between them.
+
+    The merged fn uses fn_up's _pre_process (batch_size, batch_format, zero_copy_batch)
+    and fn_down's _post_process (output_block_size_option), chaining the two UDFs
+    directly at the batch level.
+    """
+    up_batch_fn = fn_up._batch_fn
+    down_batch_fn = fn_down._batch_fn
+
+    def merged_batch_fn(
+        batches: Iterable[DataBatch], ctx: TaskContext
+    ) -> Iterable[DataBatch]:
+        return down_batch_fn(up_batch_fn(batches, ctx), ctx)
+
+    merged = BatchMapTransformFn(
+        merged_batch_fn,
+        is_udf=True,
+        batch_size=fn_up._batch_size,
+        batch_format=fn_up._batch_format,
+        zero_copy_batch=fn_up._zero_copy_batch,
+        output_block_size_option=fn_down._output_block_size_option,
+        target_batch_size_bytes=fn_up._target_batch_size_bytes,
+    )
+    merged._component_reprs = (
+        getattr(fn_up, "_component_reprs", None) or [repr(fn_up)]
+    ) + (
+        getattr(fn_down, "_component_reprs", None) or [repr(fn_down)]
+    )
+    return merged
 
 
 class BlockMapTransformFn(MapTransformFn):
