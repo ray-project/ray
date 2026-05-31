@@ -254,14 +254,20 @@ class ExecutionResources:
             ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
         """
+        # Quantize on access so accumulated float drift (e.g. a budget
+        # produced by chained add/subtract) doesn't flip the result. This
+        # keeps `satisfies_limit` consistent with `__eq__`/`is_zero`/
+        # `is_non_negative`, which also compare quantized values; otherwise
+        # two structs equal under `__eq__` could disagree here, causing
+        # `can_submit_new_task` to spuriously reject a task whose usage
+        # drifted ~1e-15 above the budget.
+        cpu, gpu, osm, mem = self._quantized_key()
+        lcpu, lgpu, losm, lmem = limit._quantized_key()
         return (
-            self.cpu <= limit.cpu
-            and self.gpu <= limit.gpu
-            and (
-                ignore_object_store_memory
-                or self.object_store_memory <= limit.object_store_memory
-            )
-            and self.memory <= limit.memory
+            cpu <= lcpu
+            and gpu <= lgpu
+            and (ignore_object_store_memory or osm <= losm)
+            and mem <= lmem
         )
 
     def scale(self, f: float) -> "ExecutionResources":

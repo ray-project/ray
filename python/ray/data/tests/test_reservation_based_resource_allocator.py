@@ -1172,27 +1172,27 @@ class TestReservationOpResourceAllocator:
         |     | (used/remaining) | _op_outputs      | resources    |
         |     |                  | (used/remaining) |              |
         +-----+------------------+------------------+--------------+
-        | op6 | 213/0            | 200/13           | 300-213=87   |
-        +-----+------------------+------------------+--------------+
-        | op8 | 50/163           | 50/163           | 0            |
-        +-----+------------------+------------------+--------------+
+        | op6 | 212.5/0          | 200/12.5         | 300-212.5=87.5 |
+        +-----+------------------+------------------+----------------+
+        | op8 | 50/162.5         | 50/162.5         | 0              |
+        +-----+------------------+------------------+----------------+
         """
         assert set(allocator._op_budgets.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
-            cpu=3.75, object_store_memory=213
+            cpu=3.75, object_store_memory=212.5
         )
         assert allocator._op_reserved[o8] == ExecutionResources(
-            cpu=3.75, object_store_memory=213
+            cpu=3.75, object_store_memory=212.5
         )
-        assert allocator._reserved_for_op_outputs[o6] == 212
-        assert allocator._reserved_for_op_outputs[o8] == 212
+        assert allocator._reserved_for_op_outputs[o6] == 212.5
+        assert allocator._reserved_for_op_outputs[o8] == 212.5
         assert allocator._total_shared == ExecutionResources(
             cpu=7.5, object_store_memory=850
         )
-        # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
+        # object_store_memory budget = 0 + (850 - 87.5) / 2 = 381.25
         assert allocator._op_budgets[o6] == ExecutionResources(
-            cpu=5.5, object_store_memory=381
+            cpu=5.5, object_store_memory=381.25
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
