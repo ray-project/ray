@@ -356,6 +356,67 @@ class TestActorPool(unittest.TestCase):
             tasks_in_flight=0,
         )
 
+    def test_dead_actor_released_from_pool(self):
+        # Test that a permanently DEAD actor is removed from the pool.
+        pool = self._create_actor_pool(min_size=1, max_size=1, max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+        assert self._assign_actor(pool) == actor
+        assert pool.num_running_actors() == 1
+        assert pool.num_active_actors() == 1
+
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.DEAD,
+        ):
+            pool.refresh_actor_state()
+
+        assert pool.current_size() == 0
+        assert pool.num_running_actors() == 0
+        assert pool.num_active_actors() == 0
+
+    def test_dead_restarting_actor_released_from_pool(self):
+        # Test that RESTARTING -> DEAD transitions release counters cleanly.
+        pool = self._create_actor_pool(min_size=1, max_size=1, max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
+        ):
+            pool.refresh_actor_state()
+        assert pool.num_restarting_actors() == 1
+
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.DEAD,
+        ):
+            pool.refresh_actor_state()
+
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_running_actors() == 0
+        assert pool.current_size() == 0
+
+    def test_on_task_completed_after_dead_actor_released(self):
+        # Test that on_task_completed is a no-op for already-released actors.
+        pool = self._create_actor_pool(min_size=1, max_size=1, max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+        assert self._assign_actor(pool) == actor
+
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.DEAD,
+        ):
+            pool.refresh_actor_state()
+        assert pool.num_running_actors() == 0
+
+        pool.on_task_completed(actor)
+        assert pool.num_running_actors() == 0
+        assert pool.num_active_actors() == 0
+
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
         pool = self._create_actor_pool(max_tasks_in_flight=999)
@@ -1303,6 +1364,47 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
     assert actor_pool_map_op.has_completed()
+
+
+def test_dead_actor_replaced_in_fixed_size_pool(shutdown_only, restore_data_context):
+    """Test that a fixed-size actor pool replaces a permanently dead actor."""
+    import concurrent.futures
+
+    ray.init(num_cpus=2)
+    ray.data.DataContext.get_current().max_errored_blocks = -1
+
+    class DyingPredictor:
+        def __init__(self):
+            self.counter = 0
+
+        def __call__(self, batch):
+            import sys
+
+            self.counter += 1
+            if self.counter == 3:
+                sys.exit(0)
+            batch["output"] = [x * 2 for x in batch["data"]]
+            return batch
+
+    def run():
+        return (
+            ray.data.from_items([{"data": i} for i in range(100)])
+            .map_batches(
+                DyingPredictor,
+                batch_size=1,
+                compute=ray.data.ActorPoolStrategy(size=1),
+            )
+            .take_all()
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(run)
+        try:
+            result = future.result(timeout=120)
+        except concurrent.futures.TimeoutError:
+            pytest.fail("Pipeline hung; dead actor was not released from the pool")
+
+    assert len(result) > 0
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
