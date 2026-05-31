@@ -27,6 +27,7 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
+    ReservationOpResourceAllocator,
     ResourceManager,
     create_resource_allocator,
 )
@@ -630,6 +631,109 @@ class TestResourceManager:
         completed_ops_usage = resource_manager._get_completed_ops_usage()
 
         assert completed_ops_usage == ExecutionResources(cpu=8, object_store_memory=400)
+
+    def test_completed_ops_set_is_cached_and_invalidated(self, restore_data_context):
+        """The completed-ops *set* is computed once and reused until
+        `update_usages` invalidates it, but the summed usage still reflects the
+        current per-op usages on every call."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=2, object_store_memory=50),
+            o3: ExecutionResources.zero(),
+        }
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+
+        compute_calls = 0
+        real_compute = resource_manager._compute_completed_ops
+
+        def counting_compute():
+            nonlocal compute_calls
+            compute_calls += 1
+            return real_compute()
+
+        resource_manager._compute_completed_ops = counting_compute
+
+        # First access computes the set; second reuses it.
+        assert resource_manager._get_completed_ops_usage() == ExecutionResources(
+            cpu=2, object_store_memory=50
+        )
+        assert compute_calls == 1
+        resource_manager._get_completed_ops_usage()
+        assert compute_calls == 1
+
+        # The summed usage reflects current usages even on a cache hit (e.g. a
+        # completed op's output draining).
+        op_usages[o2] = ExecutionResources(cpu=2, object_store_memory=20)
+        assert resource_manager._get_completed_ops_usage() == ExecutionResources(
+            cpu=2, object_store_memory=20
+        )
+        assert compute_calls == 1
+
+        # A full `update_usages` invalidates the set, forcing a recompute.
+        resource_manager.update_usages()
+        resource_manager._get_completed_ops_usage()
+        assert compute_calls == 2
+
+    def test_reservation_cache_reused_and_invalidated(self, restore_data_context):
+        """`_update_reservation` reuses the cached reservation when neither the
+        limits nor the eligible-op set change, and recomputes otherwise."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+        )
+        # `update_budgets` reads each op's usage; mock it so we can drive the
+        # allocator directly without running a full `update_usages`.
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
+        allocator.update_budgets(limits=limits)
+        reserved_before = dict(allocator._op_reserved)
+        assert reserved_before  # sanity: some ops are eligible
+
+        # A recompute clears `_op_reserved`; a sentinel surviving a same-input
+        # call proves the cached path was taken.
+        sentinel = object()
+        allocator._op_reserved[sentinel] = "x"
+        allocator.update_budgets(limits=limits)
+        assert sentinel in allocator._op_reserved  # cache hit
+
+        # Changing the limits invalidates the cache and recomputes.
+        allocator.update_budgets(
+            limits=ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
+        )
+        assert sentinel not in allocator._op_reserved  # recomputed
+
+        # Changing the eligible-op set (an op completes) also recomputes.
+        allocator.update_budgets(limits=limits)  # repopulate cache for `limits`
+        allocator._op_reserved[sentinel] = "x"
+        o3.mark_execution_finished()
+        allocator.update_budgets(limits=limits)
+        assert sentinel not in allocator._op_reserved  # recomputed
 
     def test_external_consumer_bytes_attributed_to_terminal_operator(
         self, restore_data_context
