@@ -239,5 +239,35 @@ def test_telemetry_reports_fixed_num_replicas(disable_placement_bundles):
     assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS] == "4"
 
 
+def test_telemetry_reports_auto_num_replicas(disable_placement_bundles):
+    """num_replicas="auto" is reported as autoscaling, not dropped."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        recorder.record.remote(key, value)
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="auto_replicas_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+        deployment_config=dict(num_replicas="auto"),
+    )
+    config._set_model_architecture(model_architecture="auto_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    # Recorded as autoscaling with an integer replica count (not the string "auto").
+    assert telemetry[TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS] == "auto_arch"
+    assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS].isdigit()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

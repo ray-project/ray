@@ -120,22 +120,33 @@ class TelemetryAgent:
         from ray._common.constants import HEAD_NODE_RESOURCE_NAME
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-        # get_if_exists makes creation atomic across concurrent drivers.
-        self.remote_telemetry_agent = _TelemetryAgent.options(
-            name=LLM_BATCH_TELEMETRY_ACTOR_NAME,
-            namespace=LLM_BATCH_TELEMETRY_NAMESPACE,
-            get_if_exists=True,
-            # Ensure the actor is created on the head node.
-            resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-            # Ensure the actor is not scheduled with the existing placement group.
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
-        ).remote()
+        # Creation must never break processor construction, so swallow failures
+        # (e.g. Ray not initialized, transient GCS issues) and degrade to a no-op.
+        try:
+            # get_if_exists makes creation atomic across concurrent drivers.
+            self.remote_telemetry_agent = _TelemetryAgent.options(
+                name=LLM_BATCH_TELEMETRY_ACTOR_NAME,
+                namespace=LLM_BATCH_TELEMETRY_NAMESPACE,
+                get_if_exists=True,
+                # Ensure the actor is created on the head node.
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+                # Ensure the actor is not scheduled with the existing placement group.
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=None
+                ),
+            ).remote()
+        except Exception:
+            self.remote_telemetry_agent = None
+            logger.exception("Failed to initialize LLM batch telemetry agent")
 
     def _update_record_tag_func(self, record_tag_func: Callable):
-        self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)
+        if self.remote_telemetry_agent is not None:
+            self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)
 
     def push_telemetry_report(self, telemetry: BatchModelTelemetry):
         # Telemetry must never break processor construction.
+        if self.remote_telemetry_agent is None:
+            return
         try:
             ray.get(self.remote_telemetry_agent.record.remote(telemetry))
         except Exception:

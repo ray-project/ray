@@ -301,21 +301,31 @@ def _push_model_telemetry(
         )
         initial_num_lora_adapters = len(lora_model_ids)
 
-    use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
+    deployment_config = model.deployment_config
+    autoscaling_config = deployment_config.get("autoscaling_config")
+    if deployment_config.get("num_replicas") == "auto":
+        # "auto" resolves to an autoscaling config; mirror LLMConfig validation
+        # since the stored deployment_config keeps the literal "auto".
+        from ray.serve._private.config import handle_num_replicas_auto
+
+        _, autoscaling_config = handle_num_replicas_auto(
+            deployment_config.get("max_ongoing_requests"), autoscaling_config
+        )
+
+    use_autoscaling = autoscaling_config is not None
     if use_autoscaling:
         from ray.serve.config import AutoscalingConfig
 
-        autoscaling_config = AutoscalingConfig(
-            **model.deployment_config["autoscaling_config"]
-        )
+        if isinstance(autoscaling_config, dict):
+            autoscaling_config = AutoscalingConfig(**autoscaling_config)
         num_replicas = (
             autoscaling_config.initial_replicas or autoscaling_config.min_replicas
         )
         min_replicas = autoscaling_config.min_replicas
         max_replicas = autoscaling_config.max_replicas
     else:
-        # Fixed replica count; honor the configured value rather than assuming 1.
-        num_replicas = model.deployment_config.get("num_replicas", 1)
+        # Fixed replica count; honor the configured value, defaulting to 1.
+        num_replicas = deployment_config.get("num_replicas") or 1
         min_replicas = max_replicas = num_replicas
 
     engine_config = model.get_engine_config()
