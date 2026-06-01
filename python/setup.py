@@ -218,12 +218,7 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    # pandas 3.0 requires Python >= 3.11, so we only raise the floor there and
-    # keep the 2.x line for Python 3.10.
-    pandas_deps = [
-        "pandas >= 2.2.3, <3; python_version < '3.11'",
-        "pandas >= 3.0.0; python_version >= '3.11'",
-    ]
+    pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
         "pyarrow >= 17.0.0",
@@ -252,7 +247,7 @@ if setup_spec.type == SetupType.RAY:
         ],
         "data": [
             numpy_dep,
-            *pandas_deps,
+            pandas_dep,
             *pyarrow_deps,
             "fsspec",
         ],
