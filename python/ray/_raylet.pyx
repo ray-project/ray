@@ -2607,22 +2607,26 @@ def maybe_initialize_job_config():
             # The runtime_env agent extracts GCS packages to:
             #   <resources_dir>/working_dir_files/<pkg_name>/
             # The first entry in PYTHONPATH is this resolved local path.
+            # Normalize the path so trailing slashes and platform-specific
+            # separators (e.g. mixed '/' and '\\' on Windows) don't break
+            # the sibling-directory comparison below.
             _actor_working_dir_local = None
             if _actor_working_dir_uri:
                 _pythonpath = os.environ.get("PYTHONPATH", "")
                 if _pythonpath:
                     _first_path = _pythonpath.split(os.pathsep)[0]
                     if os.path.isdir(_first_path):
-                        _actor_working_dir_local = _first_path
+                        _actor_working_dir_local = os.path.normpath(_first_path)
 
             for p in py_driver_sys_path:
                 # Skip the job-level working_dir path if this actor has its
                 # own different working_dir set via runtime_env.
-                if (_actor_working_dir_local
-                        and p != _actor_working_dir_local
-                        and os.path.dirname(p) == os.path.dirname(
-                            _actor_working_dir_local)):
-                    continue
+                if _actor_working_dir_local:
+                    _norm_p = os.path.normpath(p)
+                    if (_norm_p != _actor_working_dir_local
+                            and os.path.dirname(_norm_p) == os.path.dirname(
+                                _actor_working_dir_local)):
+                        continue
                 sys.path.insert(0, p)
 
         # Cache and set the current job id.
