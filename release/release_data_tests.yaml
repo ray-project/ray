@@ -540,6 +540,24 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches pandas
 
+# Control for iter_batches_pandas: identical config on Python 3.11 but WITHOUT
+# the pandas-3.0 post_build_script, so it runs the image's pinned pandas 2.x.
+# Pair the two results for an apples-to-apples pandas 2.x vs 3.0 comparison on
+# the same release infra (same cluster, data, and consume path).
+- name: "iter_batches_pandas_pd2_control"
+  python: "3.11"
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: cpu
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches pandas
+
 - name: to_tf
   python: "3.10"
   cluster:
