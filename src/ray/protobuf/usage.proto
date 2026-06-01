@@ -223,10 +223,11 @@ enum TagKey {
   // Whether or not multiple applications are getting deployed in the
   // cluster ("1" if used).
   LLM_SERVE_SERVE_MULTIPLE_APPS = 601;
-  // Comma separated list of models that supports json mode.
-  LLM_SERVE_JSON_MODE_MODELS = 602;
-  // Comma separated list of number of replicas that supports json mode.
-  LLM_SERVE_JSON_MODE_NUM_REPLICAS = 603;
+  // 602, 603 were JSON_MODE_MODELS / JSON_MODE_NUM_REPLICAS. JSON/structured
+  // output is a per-request feature with no deployment-time toggle, so these
+  // duplicated MODELS/NUM_REPLICAS and are no longer recorded.
+  reserved 602, 603;
+  reserved "LLM_SERVE_JSON_MODE_MODELS", "LLM_SERVE_JSON_MODE_NUM_REPLICAS";
   // Comma separated list of models that supports LoRA.
   LLM_SERVE_LORA_BASE_MODELS = 604;
   // Comma separated list of initial number of LoRA adapters.
@@ -261,7 +262,7 @@ enum TagKey {
   // Comma separated list of accelerator types used to build processor.
   // Example: "A10G,L40S"
   LLM_BATCH_ACCELERATOR_TYPE = 617;
-  // Comma separated list of numbers of workers for data parallelism.
+  // Comma separated list of concurrency values used to build processor.
   // Example: "4"
   LLM_BATCH_CONCURRENCY = 618;
   // Comma separated list of task types used to build vLLM engine processor.

@@ -360,6 +360,7 @@ def build_vllm_engine_processor(
                 "pipeline_parallel_size", 1
             ),
             tensor_parallel_size=config.engine_kwargs.get("tensor_parallel_size", 1),
+            data_parallel_size=config.engine_kwargs.get("data_parallel_size", 1),
         )
     )
 

@@ -35,6 +35,7 @@ def test_push_telemetry_report():
         recorder.record.remote(key, value)
 
     telemetry_agent = get_or_create_telemetry_agent()
+    ray.get(telemetry_agent.remote_telemetry_agent._reset.remote())
     telemetry_agent._update_record_tag_func(record_tag_func)
 
     config = vLLMEngineProcessorConfig(
@@ -73,13 +74,13 @@ def test_push_telemetry_report():
     assert telemetry == {
         TagKey.LLM_BATCH_PROCESSOR_CONFIG_NAME: "vLLMEngineProcessorConfig,HttpRequestProcessorConfig",
         TagKey.LLM_BATCH_MODEL_ARCHITECTURE: "OPTForCausalLM,",
-        TagKey.LLM_BATCH_SIZE: "64,0",
+        TagKey.LLM_BATCH_SIZE: "64,64",
         TagKey.LLM_BATCH_ACCELERATOR_TYPE: "A10G,",
         TagKey.LLM_BATCH_CONCURRENCY: "4,4",
         TagKey.LLM_BATCH_TASK_TYPE: "generate,",
         TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,0",
         TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,0",
-        TagKey.LLM_BATCH_DATA_PARALLEL_SIZE: "0,0",
+        TagKey.LLM_BATCH_DATA_PARALLEL_SIZE: "1,0",
     }, f"actual telemetry: {telemetry}"
 
 

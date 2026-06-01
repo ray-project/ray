@@ -124,6 +124,7 @@ def build_http_request_processor(
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
             processor_config_name=type(config).__name__,
+            batch_size=config.batch_size,
             concurrency=config.concurrency,
         )
     )
