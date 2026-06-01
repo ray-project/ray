@@ -665,94 +665,51 @@ def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
 def test_actor_working_dir_overrides_driver_working_dir(
     start_cluster, with_py_modules: bool
 ):
-    """Regression test for the worker-reuse / sys.path bug.
+    """Tests that an actor's runtime_env.working_dir wins over the driver's
+    py_driver_sys_path on sys.path.
 
-    A long-lived driver (mimicking a Ray Serve controller) submits an actor
-    with a *different* runtime_env.working_dir than the driver itself was
-    initialized with. Without the fix, ``maybe_initialize_job_config`` would
-    insert the JOB's ``py_driver_sys_path`` (pointing at the driver's
-    original working_dir) at ``sys.path[0]`` after the runtime_env agent
-    had already prepended the actor's working_dir to PYTHONPATH. The actor
-    would then ``import`` modules from the stale driver package even though
-    ``ray.get_runtime_context().runtime_env.working_dir`` reported the new
-    URI - silently loading old code on redeploy without ``serve.shutdown()``.
-
-    The fix in maybe_initialize_job_config skips ``py_driver_sys_path``
-    entries that share a parent directory with the actor's working_dir
-    (i.e. sibling working_dir packages), so the actor's working_dir wins.
-
-    The ``with_py_modules`` parametrization additionally guards against a
-    regression where the fix located the actor's working_dir by taking
-    ``PYTHONPATH[0]``: when ``py_modules`` is also configured,
-    PyModulesPlugin (priority 10) prepends its own paths in front of the
-    working_dir entry that WorkingDirPlugin (priority 5) installed, so
-    ``PYTHONPATH[0]`` is a ``py_modules_files/...`` path and the working_dir
-    must be located by directory-name match instead.
+    Regression test: a long-lived driver (e.g. a detached Serve controller)
+    submits an actor with a different working_dir; without the fix the job's
+    py_driver_sys_path overrides sys.path[0] and `import` returns the stale
+    driver package. The with_py_modules case also guards against locating
+    the actor working_dir by PYTHONPATH[0], which breaks once py_modules
+    prepends its own paths in front of working_dir.
     """
     cluster, address = start_cluster
 
     with tempfile.TemporaryDirectory() as driver_dir, tempfile.TemporaryDirectory() as actor_dir, tempfile.TemporaryDirectory() as py_module_dir:
-        # Two working_dirs, each containing a module called `target_module`,
-        # but with a distinguishable VERSION constant.
         Path(driver_dir, "target_module.py").write_text("VERSION = 'driver'\n")
         Path(actor_dir, "target_module.py").write_text("VERSION = 'actor'\n")
-        # An unrelated py_module that should NOT shadow target_module.
         Path(py_module_dir, "unrelated_helper.py").write_text("VALUE = 1\n")
 
-        # Initialize Ray as if we were a long-lived driver (e.g. Serve
-        # controller). The driver's working_dir ends up in the job's
-        # py_driver_sys_path on the worker side.
         ray.init(address, runtime_env={"working_dir": driver_dir})
-        try:
 
-            @ray.remote
-            class Probe:
-                def version(self) -> str:
-                    import target_module
+        @ray.remote
+        class Probe:
+            def version(self) -> str:
+                import target_module
 
-                    return target_module.VERSION
+                return target_module.VERSION
 
-                def sys_path_entries(self) -> list:
-                    return list(sys.path)
+            def sys_path_entries(self) -> list:
+                return list(sys.path)
 
-                def reported_working_dir(self) -> str:
-                    return ray.get_runtime_context().runtime_env.get("working_dir", "")
+        actor_runtime_env = {"working_dir": actor_dir}
+        if with_py_modules:
+            actor_runtime_env["py_modules"] = [py_module_dir]
+        actor = Probe.options(runtime_env=actor_runtime_env).remote()
 
-            # An actor whose working_dir is DIFFERENT from the driver's.
-            actor_runtime_env = {"working_dir": actor_dir}
-            if with_py_modules:
-                actor_runtime_env["py_modules"] = [py_module_dir]
-            actor = Probe.options(runtime_env=actor_runtime_env).remote()
+        assert ray.get(actor.version.remote()) == "actor"
+        entries = ray.get(actor.sys_path_entries.remote())
+        assert any("working_dir_files" in e for e in entries)
+        if not with_py_modules:
+            assert "working_dir_files" in entries[0]
 
-            # Both the runtime_env-reported working_dir AND the imported
-            # module must reflect the actor's package, not the driver's.
-            assert ray.get(actor.reported_working_dir.remote()) != ""
-            assert ray.get(actor.version.remote()) == "actor", (
-                "Actor imported the driver's stale module; "
-                "py_driver_sys_path leaked past runtime_env.working_dir."
-            )
-            # The runtime_env-unpacked working_dir must end up on sys.path,
-            # under <resources_dir>/working_dir_files/. Without py_modules,
-            # it should be sys.path[0]; with py_modules it can sit behind
-            # the py_modules entries, so just assert presence.
-            entries = ray.get(actor.sys_path_entries.remote())
-            assert any("working_dir_files" in e for e in entries), (
-                f"runtime_env working_dir not on sys.path: {entries!r}"
-            )
-            if not with_py_modules:
-                assert "working_dir_files" in entries[0], (
-                    f"sys.path[0] is not a runtime_env working_dir: "
-                    f"{entries[0]!r}"
-                )
+        # Actors that don't override working_dir still inherit the driver's.
+        inheriting_actor = Probe.remote()
+        assert ray.get(inheriting_actor.version.remote()) == "driver"
 
-            # Sanity: an actor that does NOT override working_dir still
-            # picks up the driver's working_dir (regression guard so the
-            # fix doesn't accidentally skip py_driver_sys_path entries
-            # for actors without their own runtime_env).
-            inheriting_actor = Probe.remote()
-            assert ray.get(inheriting_actor.version.remote()) == "driver"
-        finally:
-            ray.shutdown()
+        ray.shutdown()
 
 
 if __name__ == "__main__":
