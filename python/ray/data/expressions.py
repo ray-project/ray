@@ -279,6 +279,21 @@ def _eval_kernel_type(
     return result.type
 
 
+def _is_pyarrow_convertible(expr: "Expr") -> bool:
+    """Return True if ``expr`` can be lowered to a PyArrow compute expression.
+
+    Used by predicate pushdown to decide whether a filter can be pushed into a
+    datasource (which evaluates the predicate via PyArrow). UDFs and other
+    Python-only expressions are not convertible and must stay as a ``Filter``
+    operator that evaluates them in Python.
+    """
+    try:
+        expr.to_pyarrow()
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class Expr(ABC):

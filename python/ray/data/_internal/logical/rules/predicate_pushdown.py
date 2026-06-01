@@ -24,7 +24,7 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
-from ray.data.expressions import Expr, col
+from ray.data.expressions import Expr, _is_pyarrow_convertible, col
 
 __all__ = [
     "PredicatePushdown",
@@ -199,6 +199,12 @@ class PredicatePushdown(Rule):
             isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
             and input_op.supports_predicate_pushdown()
         ):
+            # Datasources evaluate pushed predicates via PyArrow. A predicate
+            # that can't be lowered to PyArrow (e.g. it contains a UDF) must
+            # not be pushed down
+            if not _is_pyarrow_convertible(predicate_expr):
+                return filter_op
+
             result_op = input_op.apply_predicate(predicate_expr)
 
             # If the operator is unchanged (e.g., predicate references partition columns

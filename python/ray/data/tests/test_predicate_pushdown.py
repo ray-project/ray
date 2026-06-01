@@ -23,7 +23,8 @@ from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.expressions import col, lit
+from ray.data.datatype import DataType
+from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
@@ -125,6 +126,45 @@ def test_filter_with_expressions(parquet_ds):
         "",  # Pushed down to read, no additional operators
         filtered_udf_data,
     )
+
+
+def test_filter_with_udf_expression_not_pushed_down(parquet_ds):
+    """A UDF based filter expression must not be pushed into the datasource."""
+
+    @udf(return_dtype=DataType.bool())
+    def greater_than_five(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    filtered_ds = parquet_ds.filter(expr=greater_than_five(col("sepal.length")))
+
+    filtered_data = filtered_ds.take_all()
+    assert filtered_ds.count() == 118
+    assert all(record["sepal.length"] > 5.0 for record in filtered_data)
+
+    optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
+    assert plan_has_operator(optimized_plan, Filter)
+
+
+def test_filter_mixed_udf_and_expression(parquet_ds):
+    """A convertible predicate may push down while a UDF predicate stays."""
+
+    @udf(return_dtype=DataType.bool())
+    def greater_than_five(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    filtered_ds = parquet_ds.filter(
+        expr=greater_than_five(col("sepal.length"))
+    ).filter(expr=col("sepal.width") > lit(3.0))
+
+    filtered_data = filtered_ds.take_all()
+    assert all(
+        record["sepal.length"] > 5.0 and record["sepal.width"] > 3.0
+        for record in filtered_data
+    )
+
+    optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
+    # The UDF filter can't be pushed down, so a Filter must survive
+    assert plan_has_operator(optimized_plan, Filter)
 
 
 def test_filter_pushdown_source_and_op(ray_start_regular_shared):
