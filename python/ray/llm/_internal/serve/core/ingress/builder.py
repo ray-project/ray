@@ -22,6 +22,9 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    record_direct_streaming_enabled,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -64,6 +67,8 @@ def _build_direct_streaming_llm_deployment(
     Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise
     leave their configured value untouched.
     """
+    # Single chokepoint for direct streaming across the OpenAI, DP, and PD builders.
+    record_direct_streaming_enabled()
     server_cls = deployment_cls or llm_config.server_cls or LLMServer
     return build_llm_deployment(
         llm_config,

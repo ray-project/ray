@@ -40,6 +40,7 @@ class TelemetryTags(str, Enum):
     LLM_SERVE_MODELS = "LLM_SERVE_MODELS"
     LLM_SERVE_GPU_TYPE = "LLM_SERVE_GPU_TYPE"
     LLM_SERVE_NUM_GPUS = "LLM_SERVE_NUM_GPUS"
+    LLM_SERVE_DIRECT_STREAMING_ENABLED = "LLM_SERVE_DIRECT_STREAMING_ENABLED"
 
 
 class TelemetryModel(BaseModelExtended):
@@ -239,6 +240,24 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     telemetry_agent = _retry_get_telemetry_agent()
     assert telemetry_agent is not None
     ray.get(telemetry_agent.record.remote(model))
+
+
+def record_direct_streaming_enabled() -> None:
+    """Record that LLM direct streaming (engine-native ASGI ingress) is enabled.
+
+    Direct streaming is an app-level opt-in (RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING)
+    rather than a per-model property, so it is recorded directly at app build time
+    instead of going through the per-model TelemetryAgent.
+    """
+    from ray._common.usage.usage_lib import TagKey
+
+    try:
+        record_extra_usage_tag(
+            TagKey.Value(TelemetryTags.LLM_SERVE_DIRECT_STREAMING_ENABLED), "1"
+        )
+    except ValueError:
+        # Tag missing from the installed usage proto; skip rather than fail build.
+        pass
 
 
 class HardwareUsage:
