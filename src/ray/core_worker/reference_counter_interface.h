@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
