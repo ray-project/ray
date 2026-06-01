@@ -241,13 +241,6 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
     ray.get(telemetry_agent.record.remote(model))
 
 
-def record_direct_streaming_enabled() -> None:
-    """Record that LLM direct streaming is enabled (app-level, not per-model)."""
-    from ray._common.usage.usage_lib import TagKey
-
-    record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
-
-
 class HardwareUsage:
     """Hardware usage class to report telemetry."""
 

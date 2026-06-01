@@ -15,6 +15,7 @@ from typing import (
 
 import ray
 from ray import serve
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
@@ -32,7 +33,6 @@ from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestI
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
-    record_direct_streaming_enabled,
 )
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import (
@@ -275,7 +275,8 @@ class LLMServer(LLMServerProtocol):
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
         if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-            record_direct_streaming_enabled()
+            # Track direct streaming adoption (app-level, not per-model).
+            record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""

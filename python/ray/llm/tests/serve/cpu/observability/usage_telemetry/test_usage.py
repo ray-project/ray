@@ -10,13 +10,11 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.observability.usage_telemetry import usage as usage_module
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     HardwareUsage,
     _get_or_create_telemetry_agent,
     _retry_get_telemetry_agent,
     push_telemetry_report_for_all_models,
-    record_direct_streaming_enabled,
 )
 
 
@@ -182,19 +180,6 @@ def test_infer_gpu_from_hardware():
 
     result = HardwareUsage(fake_get_gpu_type).infer_gpu_from_hardware()
     assert result == "UNSPECIFIED"
-
-
-def test_record_direct_streaming_enabled(monkeypatch):
-    recorded = []
-    monkeypatch.setattr(
-        usage_module,
-        "record_extra_usage_tag",
-        lambda key, value: recorded.append((key, value)),
-    )
-
-    record_direct_streaming_enabled()
-
-    assert recorded == [(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")]
 
 
 if __name__ == "__main__":
