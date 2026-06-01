@@ -1787,7 +1787,7 @@ class Node:
         if object_spilling_config:
             object_spilling_config = json.loads(object_spilling_config)
             if object_spilling_config.get("type") == "hdfs":
-                # Destroy HDFS spill dirs in a child process to avoid JVM crash 
+                # Destroy HDFS spill dirs in a child process to avoid JVM crash
                 # in head when pyarrow jvm already started.
                 hdfs_destroy_script = textwrap.dedent(
                     """

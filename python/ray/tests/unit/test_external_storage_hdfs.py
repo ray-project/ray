@@ -286,3 +286,9 @@ def test_hdfs_destroy_external_storage():
 
     expected_spill_dir = f"/user/ray/spill/{DEFAULT_OBJECT_PREFIX}_test-node-id"
     mock_fs.delete_dir.assert_called_once_with(expected_spill_dir)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
