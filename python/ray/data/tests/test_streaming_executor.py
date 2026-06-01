@@ -1180,21 +1180,27 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
         assert isinstance(datasink, ParquetDatasink)
         assert datasink.unresolved_path == output_path
     else:
-        assert len(_executor._topology) == 2
+        # V1 inserts a ``SplitBlocks`` after the read to hit the target
+        # number of output blocks, which prevents the read from fusing
+        # with the downstream ``Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
         assert isinstance(physical_ops[1], MapOperator)
-        logical_ops = physical_ops[1]._logical_operators
+        assert isinstance(physical_ops[2], MapOperator)
 
-        assert len(logical_ops) == 3
-        assert isinstance(logical_ops[0], Read)
-        datasource = logical_ops[0].datasource
+        read_logical_ops = physical_ops[1]._logical_operators
+        assert len(read_logical_ops) == 1
+        assert isinstance(read_logical_ops[0], Read)
+        datasource = read_logical_ops[0].datasource
         assert isinstance(datasource, ParquetDatasource)
         assert datasource._source_paths == input_path
 
-        assert isinstance(logical_ops[1], MapRows)
-        assert logical_ops[1].fn == udf
+        map_write_logical_ops = physical_ops[2]._logical_operators
+        assert len(map_write_logical_ops) == 2
+        assert isinstance(map_write_logical_ops[0], MapRows)
+        assert map_write_logical_ops[0].fn == udf
 
-        assert isinstance(logical_ops[2], Write)
-        datasink = logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(map_write_logical_ops[1], Write)
+        datasink = map_write_logical_ops[1].datasink_or_legacy_datasource
         assert isinstance(datasink, ParquetDatasink)
         assert datasink.unresolved_path == output_path
 
