@@ -2484,6 +2484,63 @@ def is_initialized() -> bool:
     return ray._private.worker.global_worker.connected
 
 
+@PublicAPI
+def is_cluster_running(address: Optional[str] = None) -> bool:
+    """Check if a Ray cluster is running, without needing to call ray.init().
+
+    Unlike :func:`ray.is_initialized`, which checks whether this process has
+    connected to a Ray cluster via :func:`ray.init`, this function detects
+    whether a Ray cluster is running externally. It can be used to decide
+    whether to start a new cluster or connect to an existing one.
+
+    When no ``address`` is provided, this function scans for local raylet
+    processes to detect any locally running Ray cluster. When an ``address``
+    is provided, it attempts to connect to the GCS server at that address to
+    verify the cluster is alive.
+
+    Examples:
+
+        Check if any local Ray cluster is running:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            if ray.is_cluster_running():
+                ray.init(address="auto")
+            else:
+                ray.init()  # Start a new local cluster
+
+        Check if a specific cluster is reachable:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            if ray.is_cluster_running(address="192.168.1.100:6379"):
+                ray.init(address="192.168.1.100:6379")
+
+    Args:
+        address: The address of the Ray cluster to check (in ``host:port``
+            format). If None, auto-detect any Ray cluster running on the
+            local machine by scanning for raylet processes.
+
+    Returns:
+        True if a running Ray cluster is detected, False otherwise.
+    """
+    if address is not None:
+        try:
+            gcs_client = ray._raylet.GcsClient(address=address)
+            gcs_client.check_alive([], timeout=5)
+            return True
+        except Exception:
+            return False
+    else:
+        return len(services.find_gcs_addresses()) > 0
+
+
 @with_connect_or_shutdown_lock
 def connect(
     node,

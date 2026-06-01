@@ -16,6 +16,7 @@ def test_api_functions():
     PYTHON_API = [
         "init",
         "is_initialized",
+        "is_cluster_running",
         "remote",
         "get",
         "wait",
