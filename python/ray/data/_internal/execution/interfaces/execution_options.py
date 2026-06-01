@@ -15,6 +15,14 @@ class ExecutionResources:
     set `default_to_inf` to True to create an object that represents resource limits.
     """
 
+    # Cached singletons for the two most common constants. `zero()` and `inf()`
+    # are called all over the scheduler hot path (e.g. `.max(zero())`), and the
+    # instances are immutable in practice -- every arithmetic op returns a new
+    # object and there are no setters -- so a single shared instance is safe and
+    # avoids the per-call allocation.
+    _ZERO_SINGLETON: Optional["ExecutionResources"] = None
+    _INF_SINGLETON: Optional["ExecutionResources"] = None
+
     def __init__(
         self,
         cpu: Optional[float] = None,
@@ -143,13 +151,25 @@ class ExecutionResources:
 
     @classmethod
     def zero(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with zero resources."""
-        return ExecutionResources(0.0, 0.0, 0.0, 0.0)
+        """Returns an ExecutionResources object with zero resources.
+
+        Returns a cached, shared singleton (safe because instances are
+        immutable in practice).
+        """
+        if cls._ZERO_SINGLETON is None:
+            cls._ZERO_SINGLETON = ExecutionResources(0.0, 0.0, 0.0, 0.0)
+        return cls._ZERO_SINGLETON
 
     @classmethod
     def inf(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with infinite resources."""
-        return ExecutionResources.for_limits()
+        """Returns an ExecutionResources object with infinite resources.
+
+        Returns a cached, shared singleton (safe because instances are
+        immutable in practice).
+        """
+        if cls._INF_SINGLETON is None:
+            cls._INF_SINGLETON = ExecutionResources.for_limits()
+        return cls._INF_SINGLETON
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
