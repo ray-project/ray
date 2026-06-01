@@ -1,12 +1,12 @@
 """Tests for ray.is_cluster_running() public API."""
 
 import sys
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
-from typing import Optional
 
 
 def _is_cluster_running_impl(address: Optional[str] = None) -> bool:
