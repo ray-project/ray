@@ -243,29 +243,17 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
 
 
 def record_direct_streaming_enabled() -> None:
-    """Record that LLM direct streaming (engine-native ASGI ingress) is enabled.
-
-    Direct streaming is an app-level opt-in (RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING)
-    rather than a per-model property, so it is recorded as a standalone tag instead
-    of going through the per-model TelemetryAgent. Called from the replica on engine
-    start, like the other LLM usage tags. The tag is idempotent (last-write-wins),
-    so re-recording on every replica restart is harmless.
-    """
+    """Record that LLM direct streaming is enabled (app-level, not per-model)."""
     from ray._common.usage.usage_lib import TagKey
 
     try:
-        # record_extra_usage_tag is already best-effort: it no-ops before ray
-        # init and swallows GCS/KV write errors internally. The only thing that
-        # escapes here is TagKey.Value() raising on a usage proto that hasn't
-        # been regenerated with the new tag, which we skip. Any other (unexpected)
-        # error propagates so real bugs surface.
+        # Narrow catch: record_extra_usage_tag is already best-effort, so only a
+        # not-yet-regenerated proto raises here; real bugs still propagate.
         record_extra_usage_tag(
             TagKey.Value(TelemetryTags.LLM_SERVE_DIRECT_STREAMING_ENABLED), "1"
         )
     except ValueError:
-        logger.debug(
-            "Skipping direct streaming telemetry: tag missing from usage proto."
-        )
+        logger.debug("Skipping direct streaming telemetry: tag missing from proto.")
 
 
 class HardwareUsage:
