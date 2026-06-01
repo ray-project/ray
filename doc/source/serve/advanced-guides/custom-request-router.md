@@ -176,10 +176,12 @@ requests are routed in arrival order.
 
 ### When to use
 Use the round-robin router when you want a predictable, even distribution
-across replicas and don't need queue-length or locality-aware decisions. It
+across replicas and don't need load-aware or locality-aware decisions. It
 fits stateless workloads with roughly uniform per-request latency. Unlike
-the default power-of-two-choices router, the round-robin router doesn't react
-to queue depth and can pile up requests behind a slow replica before falling back.
+the default power-of-two-choices router, the round-robin router doesn't compare
+replicas by their number of ongoing requests. It only skips a replica once it reaches
+`max_ongoing_requests`. Therefore, requests can pile up behind a slow replica
+before it falls back to the next one.
 
 ### Example
 Reference the router by import path through
