@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
@@ -781,6 +781,22 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # static config), so we can skip recomputing it when neither changed.
         self._cached_reservation_limits: Optional[ExecutionResources] = None
         self._cached_reservation_eligible_ops: Optional[List[PhysicalOperator]] = None
+        # Cached `op.min_max_resource_requirements()` per operator. These are
+        # derived from static operator config (e.g. actor-pool min/max size and
+        # per-task/actor resources), so they're computed once per operator.
+        self._op_min_max_cache: Dict[
+            PhysicalOperator, Tuple[ExecutionResources, ExecutionResources]
+        ] = {}
+
+    def _op_min_max_resources(
+        self, op: PhysicalOperator
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Cached `op.min_max_resource_requirements()` (static config)."""
+        cached = self._op_min_max_cache.get(op)
+        if cached is None:
+            cached = op.min_max_resource_requirements()
+            self._op_min_max_cache[op] = cached
+        return cached
 
     def _update_reservation(self, limits: ExecutionResources):
         eligible_ops = self._resource_manager.get_eligible_ops()
@@ -824,7 +840,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             reserved_for_tasks = default_reserved.subtract(reserved_for_outputs)
 
-            min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
+            min_resource_usage, max_resource_usage = self._op_min_max_resources(op)
 
             if min_resource_usage is not None:
                 reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
@@ -995,7 +1011,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Cap op_shared so that total allocation doesn't exceed max_resource_usage.
             # Total allocation = max(total_reserved, op_usage) + op_shared
             # This ensures excess resources stay in remaining_shared for other operators.
-            _, max_resource_usage = op.min_max_resource_requirements()
+            _, max_resource_usage = self._op_min_max_resources(op)
             if max_resource_usage != ExecutionResources.inf():
                 total_reserved = self._get_total_reserved(op)
                 op_usage = self._resource_manager.get_op_usage(op)
@@ -1019,7 +1035,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # This can happen when some ops have their shared allocation capped.
         if eligible_ops and not remaining_shared.is_zero():
             for op in reversed(eligible_ops):
-                _, max_resource_usage = op.min_max_resource_requirements()
+                _, max_resource_usage = self._op_min_max_resources(op)
                 if max_resource_usage == ExecutionResources.inf():
                     self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
                     break
