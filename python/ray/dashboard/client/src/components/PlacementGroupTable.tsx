@@ -223,8 +223,8 @@ const PlacementGroupTable = ({
                         </div>
                         <div>
                           <b>assignment:</b>{" "}
-                          {topology_assignments ?
-                            JSON.stringify(
+                          {topology_assignments
+                            ? JSON.stringify(
                                 topology_assignments[0].assignments,
                               )
                             : "-"}
