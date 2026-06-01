@@ -9,7 +9,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -580,7 +580,7 @@ def process_completed_tasks(
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
     output_backpressure_guard: OutputBackpressureGuard,
-) -> int:
+) -> Tuple[int, Set[PhysicalOperator]]:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
 
@@ -593,7 +593,9 @@ def process_completed_tasks(
             backpressure. Bumps a fully-throttled output limit (0 bytes) to
             1 byte when the guard signals a stall.
     Returns:
-        The number of errored blocks.
+        A tuple of (number of errored blocks, set of operators whose tasks
+        completed this call). The caller refreshes the resource-usage cache
+        for the returned operators via `update_usages_for_op`.
     """
 
     # All active tasks, keyed by their waitables.
@@ -639,6 +641,10 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+    # Operators whose tasks completed this call. Their running/pending usage
+    # and object-store accounting changed, so the caller refreshes only these
+    # ops' cache slots instead of recomputing every operator.
+    completed_ops: Set[PhysicalOperator] = set()
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -658,6 +664,7 @@ def process_completed_tasks(
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
+            completed_ops.add(state.op)
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
@@ -709,7 +716,7 @@ def process_completed_tasks(
         while op.has_next():
             op_state.add_output(op.get_next())
 
-    return num_errored_blocks
+    return num_errored_blocks, completed_ops
 
 
 def update_operator_states(topology: Topology) -> None:

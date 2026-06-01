@@ -144,13 +144,6 @@ class ResourceManager:
             )
         )
 
-        # Wire each operator back to this manager so it can push incremental
-        # refreshes via `notify_resource_usage_changed` whenever its
-        # resource usage mutates (dispatch / completion / actor pool
-        # lifecycle / etc.).
-        for op in self._topology:
-            op.set_resource_manager(self)
-
     @property
     def has_external_consumer(self) -> bool:
         """Return whether there is any external consumer."""
@@ -218,10 +211,12 @@ class ResourceManager:
     def update_usages(self):
         """Recalculate resource usages for every operator from scratch.
 
-        Called at the start of each scheduling-loop iteration and after
-        `process_completed_tasks`. The per-dispatch hot path uses
-        `update_usages_for_op` instead, which only refreshes the slot of
-        the single op whose state changed.
+        Called once at the start of each scheduling-loop iteration as the
+        source-of-truth resync (it catches usage changes from sources
+        outside the completion / dispatch phases, e.g. actor-pool
+        autoscaling and restart transitions). The completion and dispatch
+        phases use `update_usages_for_op` to refresh only the ops they
+        touch.
         """
         self._global_usage = ExecutionResources.zero()
         self._global_running_usage = ExecutionResources.zero()
@@ -245,15 +240,16 @@ class ResourceManager:
             self._update_allocated_budgets()
 
     def update_usages_for_op(self, op: "PhysicalOperator"):
-        """Incremental update after a dispatch on `op`.
+        """Incremental update after `op`'s state changed (a dispatch on
+        `op`, or a task of `op` completing).
 
         Refreshes the affected ops' slots in `_op_*_usages` and applies
-        the deltas to `_global_*_usage`. The dispatched op's slot
-        changes (new pending task / running task), and its immediate
-        upstream's obj_store accounting changes (a bundle was popped
-        from the upstream's outqueue and given to `op` as input).
-        Other ops' cached slots are untouched. O(1 + N_input_deps)
-        per call vs the O(N_ops) full re-derivation.
+        the deltas to `_global_*_usage`. `op`'s own slot changes (new /
+        finished pending/running task, grown/shrunk obj_store queues),
+        and its immediate upstream's obj_store accounting changes (a
+        bundle was popped from the upstream's outqueue and given to `op`
+        as input). Other ops' cached slots are untouched.
+        O(1 + N_input_deps) per call vs the O(N_ops) full re-derivation.
 
         Falls back to the full recompute when the op has no cached
         slot yet (i.e., it hasn't been seen by `update_usages` once).
@@ -915,7 +911,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # the inputs match the previous call.
         eligible_ops = self._resource_manager.get_eligible_ops()
         if (
-            self._cached_reservation_limits != limits
+            # First call: nothing cached yet (and `None != limits` would
+            # raise inside `ExecutionResources.__eq__`), so always recompute.
+            self._cached_reservation_limits is None
+            or self._cached_reservation_limits != limits
             or self._cached_reservation_eligible_ops != eligible_ops
         ):
             self._update_reservation(limits)

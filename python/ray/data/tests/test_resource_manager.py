@@ -425,9 +425,10 @@ class TestResourceManager:
             == rm_incremental.get_global_pending_usage()
         )
 
-    def test_notify_resource_usage_changed_refreshes_cache(self):
-        """`notify_resource_usage_changed` on a bound op should refresh
-        that op's slot in the manager's cache + delta the globals."""
+    def test_update_usages_for_op_refreshes_after_completion(self):
+        """`update_usages_for_op` (what the completion phase calls for each
+        op whose task finished) refreshes that op's slot + deltas the
+        globals without recomputing every operator."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
@@ -458,10 +459,6 @@ class TestResourceManager:
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
 
-        # Each op is bound back to the manager.
-        for op in [o1, o2, o3]:
-            assert op._resource_manager is resource_manager
-
         baseline_global_cpu = resource_manager.get_global_usage().cpu
 
         # Simulate o3 finishing a task: its current_logical_usage drops.
@@ -472,21 +469,13 @@ class TestResourceManager:
             return_value=ExecutionResources(cpu=0, gpu=0, memory=0)
         )
 
-        # The hook is what an op-internal mutation site would call.
-        o3.notify_resource_usage_changed()
+        # This is what the completion phase calls for each completed op.
+        resource_manager.update_usages_for_op(o3)
 
-        # The manager's cache reflects the new state without anyone
-        # calling update_usages() explicitly.
+        # The manager's cache reflects the new state without a full
+        # `update_usages()` recompute.
         assert resource_manager.get_op_usage(o3).cpu == 0
         assert resource_manager.get_global_usage().cpu == baseline_global_cpu - 1
-
-    def test_notify_resource_usage_changed_unbound_is_noop(self):
-        """The hook is a no-op when no manager is bound (during construction,
-        in unit tests, etc.)."""
-        op = InputDataBuffer(DataContext.get_current(), [])
-        assert op._resource_manager is None
-        # Should not raise.
-        op.notify_resource_usage_changed()
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]

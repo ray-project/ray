@@ -468,11 +468,14 @@ class StreamingExecutor(Executor, threading.Thread):
         Returns:
             True if we should continue running the scheduling loop.
         """
+        # Source-of-truth resync at the start of each iteration: catches
+        # usage changes from sources outside the completion / dispatch
+        # phases (e.g. actor-pool autoscaling and restart transitions).
         self._resource_manager.update_usages()
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        num_errored_blocks = process_completed_tasks(
+        num_errored_blocks, completed_ops = process_completed_tasks(
             topology,
             self._backpressure_policies,
             self._max_errored_blocks,
@@ -482,7 +485,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
 
-        self._resource_manager.update_usages()
+        # Only the ops whose tasks just completed changed their usage, so
+        # refresh just those slots incrementally rather than recomputing
+        # every operator.
+        for op in completed_ops:
+            self._resource_manager.update_usages_for_op(op)
         # Dispatch as many operators as we can for completed tasks.
         self._report_current_usage()
 

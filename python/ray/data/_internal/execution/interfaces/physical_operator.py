@@ -37,7 +37,6 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -422,35 +421,9 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
-        # Bound by `ResourceManager` at executor startup so the op can
-        # push incremental refreshes back into the cache when its
-        # resource usage changes (see `notify_resource_usage_changed`).
-        self._resource_manager: Optional["ResourceManager"] = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
-
-    def set_resource_manager(self, resource_manager: "ResourceManager") -> None:
-        """Bind the executor's `ResourceManager` so this op can push
-        incremental refreshes via `notify_resource_usage_changed`.
-        Called once by the executor at topology setup time.
-        """
-        self._resource_manager = resource_manager
-
-    def notify_resource_usage_changed(self) -> None:
-        """Notify the bound `ResourceManager` that this op's resource
-        usage just changed. The manager refreshes this op's slot in its
-        cached `_op_*_usages` and applies the delta to the live
-        `_global_*_usage` aggregates. O(1 + N_input_deps) per call.
-
-        Subclasses should call this from every site that mutates their
-        reported logical / running / pending usage or object-store
-        accounting — e.g., after dispatching a task, after a task
-        completes, or when an actor pool grows / shrinks. No-op if no
-        manager is bound (during construction, in tests).
-        """
-        if self._resource_manager is not None:
-            self._resource_manager.update_usages_for_op(self)
 
     @property
     def id(self) -> str:

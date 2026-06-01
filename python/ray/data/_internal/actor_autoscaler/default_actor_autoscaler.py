@@ -48,10 +48,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 actor_pool.scale(
                     self._derive_target_scaling_config(actor_pool, op, state)
                 )
-            if actor_pools:
-                # Scaling may have added / removed actors, shifting cpu/gpu/memory
-                # between pending and running usage. Refresh this op's cache slot.
-                op.notify_resource_usage_changed()
 
     def _derive_target_scaling_config(
         self,

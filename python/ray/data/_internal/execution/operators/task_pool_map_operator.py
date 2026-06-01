@@ -153,13 +153,8 @@ class TaskPoolMapOperator(MapOperator):
             self._current_logical_usage = self._current_logical_usage.subtract(
                 logical_usage
             )
-            self.notify_resource_usage_changed()
 
         self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
-        # Fire AFTER `_submit_data_task` so the on_task_submitted bump
-        # to `num_tasks_running` (and thus `obj_store_mem_pending_task_outputs`)
-        # is reflected in the refresh.
-        self.notify_resource_usage_changed()
 
     def progress_str(self) -> str:
         return ""
