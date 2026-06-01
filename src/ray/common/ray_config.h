@@ -18,7 +18,6 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "absl/strings/escaping.h"

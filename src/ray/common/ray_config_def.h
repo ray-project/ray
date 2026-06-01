@@ -408,19 +408,13 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           std::max(1U,
-                    static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit(
-                        std::string(ray::CpuMonitorUtils::kRootCgroupPath))) /
-                        4U))
+           static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U);
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
 /// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
-           std::max(1U,
-                    static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit(
-                        std::string(ray::CpuMonitorUtils::kRootCgroupPath))) /
-                        4U))
+           static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U);
 
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
@@ -988,22 +982,14 @@ RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
-RAY_CONFIG(int64_t,
-           num_server_call_thread,
-           std::max<int64_t>(1,
-                             ray::CpuMonitorUtils::GetCpuLimit(
-                                 std::string(ray::CpuMonitorUtils::kRootCgroupPath)) /
-                                 4))
+RAY_CONFIG(int64_t, num_server_call_thread, ray::CpuMonitorUtils::GetCpuLimit() / 4);
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           ray::CpuMonitorUtils::GetCpuLimit(
-               std::string(ray::CpuMonitorUtils::kRootCgroupPath)) >= 8
-               ? 2
-               : 1);
+           ray::CpuMonitorUtils::GetCpuLimit() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.

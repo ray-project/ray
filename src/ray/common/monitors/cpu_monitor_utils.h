@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include "ray/common/status.h"
 
@@ -37,7 +38,8 @@ class CpuMonitorUtils {
    * @return The number of CPUs the cgroup is limited to, or physical_cores if
    *         no limit is set.
    */
-  static int64_t GetCpuLimit(const std::string &root_cgroup_path);
+  static int64_t GetCpuLimit(
+      const std::string &root_cgroup_path = std::string(kRootCgroupPath));
 
  private:
   using CpuCountOr = StatusSetOr<int64_t, StatusT::NotFound, StatusT::Invalid>;

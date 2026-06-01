@@ -16,49 +16,50 @@
 
 #include <algorithm>
 #include <cmath>
-#include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 int64_t CpuMonitorUtils::GetCpuLimit(const std::string &root_cgroup_path) {
-  std::string cgroupV2CpuMaxPath =
+  std::string cgroupv2_cpu_max_path =
       absl::StrCat(root_cgroup_path, "/", kCgroupsV2CpuMaxPath);
-  std::string cgroupV1CpuQuotaPath =
+  std::string cgroupv1_cpu_quota_path =
       absl::StrCat(root_cgroup_path, "/", kCgroupsV1CpuQuotaPath);
-  std::string cgroupV1CpuPeriodPath =
+  std::string cgroupv1_cpu_period_path =
       absl::StrCat(root_cgroup_path, "/", kCgroupsV1CpuPeriodPath);
 
-  CpuCountOr cpu_count = GetCpuCountV2(cgroupV2CpuMaxPath);
+  CpuCountOr cpu_count = GetCpuCountV2(cgroupv2_cpu_max_path);
+  std::string cgroupv2_error;
+  std::string cgroupv1_error;
   if (cpu_count.has_value()) {
     return std::max<int64_t>(1, cpu_count.value());
   }
-  RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
-                                 cgroupV2CpuMaxPath,
-                                 ", error: ",
-                                 cpu_count.message(),
-                                 ". Is the cgroupv2 cpu limit expected to be set? "
-                                 "Falling back to cgroupv1.");
-
-  cpu_count = GetCpuCountV1(cgroupV1CpuQuotaPath, cgroupV1CpuPeriodPath);
+  cgroupv2_error = cpu_count.message();
+  cpu_count = GetCpuCountV1(cgroupv1_cpu_quota_path, cgroupv1_cpu_period_path);
   if (cpu_count.has_value()) {
     return std::max<int64_t>(1, cpu_count.value());
   }
-  RAY_LOG(DEBUG) << absl::StrCat("Failed to get CPU count for: ",
-                                 cgroupV1CpuQuotaPath,
-                                 ", ",
-                                 cgroupV1CpuPeriodPath,
-                                 ", error: ",
-                                 cpu_count.message(),
-                                 ". Is the cgroupv1 cpu limit expected to be set? "
-                                 "Falling back to physical cores.");
+  cgroupv1_error = cpu_count.message();
 
+  if (cpu_count.has_error()) {
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "Failed to get CPU count from cgroup for both cgroupv1 and cgroupv2: "
+        "cgroupv2 cpu max path: %s, error: %s, "
+        "cgroupv1 cpu quota path: %s, cpu period path: %s, error: %s. "
+        "Falling back to physical cores.",
+        cgroupv2_cpu_max_path,
+        cgroupv2_error,
+        cgroupv1_cpu_quota_path,
+        cgroupv1_cpu_period_path,
+        cgroupv1_error);
+  }
   return std::thread::hardware_concurrency();
 }
 

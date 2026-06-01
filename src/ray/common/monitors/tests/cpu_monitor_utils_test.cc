@@ -24,6 +24,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/status_or.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 
