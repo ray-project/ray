@@ -1093,14 +1093,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             ]
 
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        logger.debug(
-            "Scheduling for request: resource_request={}, gang_resource_request={}, "
-            "cluster_constraint={}".format(
-                ResourceRequestUtil.to_dict_list(request.resource_requests),
-                ProtobufUtil.to_dict_list(request.gang_resource_requests),
-                ProtobufUtil.to_dict_list(request.cluster_resource_constraints),
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Scheduling for request: resource_request={}, gang_resource_request={}, "
+                "cluster_constraint={}".format(
+                    ResourceRequestUtil.to_dict_list(request.resource_requests),
+                    ProtobufUtil.to_dict_list(request.gang_resource_requests),
+                    ProtobufUtil.to_dict_list(request.cluster_resource_constraints),
+                )
             )
-        )
 
         ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(request)
 
@@ -1868,11 +1869,12 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # No nodes can schedule any of the requests.
         if len(results) == 0:
-            logger.debug(
-                "No nodes can schedule the requests: {}, for nodes: {}".format(
-                    ResourceRequestUtil.to_dict_list(requests), nodes
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "No nodes can schedule the requests: {}, for nodes: {}".format(
+                        ResourceRequestUtil.to_dict_list(requests), nodes
+                    )
                 )
-            )
             return None, requests, nodes
 
         # Sort the results by score.
@@ -1888,13 +1890,14 @@ class ResourceDemandScheduler(IResourceScheduler):
         best_result = results[0]
         # Remove the best node from the nodes.
         nodes.pop(best_result.idx)
-        logger.debug(
-            "Best node: {}, score: {}, remaining requests: {}".format(
-                best_result.node,
-                best_result.score,
-                ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Best node: {}, score: {}, remaining requests: {}".format(
+                    best_result.node,
+                    best_result.score,
+                    ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+                )
             )
-        )
         return best_result.node, best_result.infeasible_requests, nodes
 
     @staticmethod
