@@ -999,6 +999,7 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                     "grpc_fallback_server": self.grpc_fallback_server,  # used for handling ListApplications
+                    "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
                 }
             )
 
