@@ -31,7 +31,6 @@ from ray.data.expressions import (
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
-
     from ray.data.block import Schema
 
 __all__ = [
@@ -361,8 +360,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        # Eagerly expand ``StarExpr`` when the input schema is known. This
-        # is DataFusion's ``Projection::try_new`` pattern: by the time
+        # Eagerly expand ``StarExpr`` when the input schema is known. By the time
         # optimizer rules see this op, the projection list contains only
         # explicit ``col()`` and computed expressions, no ``StarExpr``.
         # When the input schema is opaque (e.g., upstream UDF map), the
