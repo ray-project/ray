@@ -56,7 +56,7 @@ class Metric:
         if labelnames is not None:
             if tag_keys is not None:
                 raise ValueError("Cannot specify both tag_keys and labelnames.")
-            tag_keys = labelnames
+            tag_keys = tuple(labelnames)
 
         # Metrics with invalid names will be discarded and will not be collected
         # by Prometheus.
@@ -115,20 +115,42 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def labels(self, **kwargs: str) -> "Metric":
+    def labels(self, *args: str, **kwargs: str) -> "Metric":
         """Return a metric bound to the specified tags (labels).
 
         This is provided for compatibility with the prometheus_client API.
 
         Args:
+            *args: Positional tag values in the order of tag_keys.
             **kwargs: The tags to bind to the metric.
 
         Returns:
             A bound metric that can be used to record values without specifying tags.
         """
-        import copy
 
-        bound_metric = copy.copy(self)
+        if args and kwargs:
+            raise ValueError("Cannot mix positional and keyword arguments.")
+
+        if args:
+            if len(args) != len(self._tag_keys):
+                raise ValueError(
+                    f"Expected {len(self._tag_keys)} label values, got {len(args)}"
+                )
+            kwargs = dict(zip(self._tag_keys, args))
+        elif kwargs:
+            if len(kwargs) != len(self._tag_keys):
+                raise ValueError(
+                    f"Expected {len(self._tag_keys)} label values, got {len(kwargs)}"
+                )
+
+        for key, val in kwargs.items():
+            if key not in self._tag_keys:
+                raise ValueError(f"Unrecognized tag key {key}.")
+            if not isinstance(val, str):
+                raise TypeError(f"Tag values must be str, got {type(val)}.")
+
+        bound_metric = self.__class__.__new__(self.__class__)
+        bound_metric.__dict__.update(self.__dict__)
         bound_metric._default_tags = {**self._default_tags, **kwargs}
         return bound_metric
 

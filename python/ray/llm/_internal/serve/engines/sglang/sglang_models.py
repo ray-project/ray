@@ -49,7 +49,7 @@ class SGLangPauseConfig(BaseModel):
     mode: Literal["abort", "wait", "keep"] = "abort"
     """Pause mode:
     - "abort" (default): Abort all in-flight requests immediately.
-    - "wait": Wait for in-flight requests to complete before pausing.
+    - "wait": Retract running requests to the waiting queue (SGLang "retract").
     - "keep": Freeze requests in queue; they resume on continue_generation().
     """
 

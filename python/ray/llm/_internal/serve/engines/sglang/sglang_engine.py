@@ -234,7 +234,12 @@ class SGLangServer:
     ) -> dict[str, Any]:
         """Run generation and return raw engine output payload."""
         generate_kwargs = self._build_generate_kwargs(request, prompt, stream=False)
-        return await self.engine.async_generate(**generate_kwargs)
+        request_id = generate_kwargs.setdefault("request_id", uuid.uuid4().hex)
+        self._active_request_ids.add(request_id)
+        try:
+            return await self.engine.async_generate(**generate_kwargs)
+        finally:
+            self._active_request_ids.discard(request_id)
 
     @staticmethod
     def _extract_generation_metadata(raw: dict[str, Any]) -> dict[str, Any]:
@@ -301,23 +306,28 @@ class SGLangServer:
         tracks the previous text and yields only the incremental delta.
         """
         generate_kwargs = self._build_generate_kwargs(request, prompt, stream=True)
-        stream = await self.engine.async_generate(**generate_kwargs)
+        request_id = generate_kwargs.setdefault("request_id", uuid.uuid4().hex)
+        self._active_request_ids.add(request_id)
+        try:
+            stream = await self.engine.async_generate(**generate_kwargs)
 
-        previous_text = ""
-        async for chunk in stream:
-            text = chunk.get("text", "")
-            meta = chunk.get("meta_info", {}) or {}
+            previous_text = ""
+            async for chunk in stream:
+                text = chunk.get("text", "")
+                meta = chunk.get("meta_info", {}) or {}
 
-            delta_text = text[len(previous_text) :]
-            previous_text = text
+                delta_text = text[len(previous_text) :]
+                previous_text = text
 
-            finish_reason_info = meta.get("finish_reason", None)
-            finish_reason = (
-                self._parse_finish_reason(finish_reason_info)
-                if finish_reason_info is not None
-                else None
-            )
-            yield delta_text, finish_reason
+                finish_reason_info = meta.get("finish_reason", None)
+                finish_reason = (
+                    self._parse_finish_reason(finish_reason_info)
+                    if finish_reason_info is not None
+                    else None
+                )
+                yield delta_text, finish_reason
+        finally:
+            self._active_request_ids.discard(request_id)
 
     @staticmethod
     def _build_sse_chunk(
@@ -584,21 +594,27 @@ class SGLangServer:
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the SGLang engine to sleep."""
-        _ = SGLangSleepConfig(**kwargs)
+        config = SGLangSleepConfig(**kwargs)
+        if not hasattr(self.engine, "release_memory_occupation"):
+            raise NotImplementedError(
+                "sleep is not supported on this SGLang version (release_memory_occupation is missing)"
+            )
+        self.engine.release_memory_occupation(level=config.level)
         self._is_sleeping = True
-        if hasattr(self.engine, "release_memory_occupation"):
-            self.engine.release_memory_occupation()
 
     async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the SGLang engine from sleep mode."""
         config = SGLangWakeupConfig(**kwargs)
+        if not hasattr(self.engine, "resume_memory_occupation"):
+            raise NotImplementedError(
+                "wakeup is not supported on this SGLang version (resume_memory_occupation is missing)"
+            )
+        try:
+            self.engine.resume_memory_occupation(tags=config.tags)
+        except TypeError:
+            # If the installed SGLang version doesn't support tags
+            self.engine.resume_memory_occupation()
         self._is_sleeping = False
-        if hasattr(self.engine, "resume_memory_occupation"):
-            try:
-                self.engine.resume_memory_occupation(tags=config.tags)
-            except TypeError:
-                # If the installed SGLang version doesn't support tags
-                self.engine.resume_memory_occupation()
 
     async def is_sleeping(self) -> bool:
         """Check whether the engine is currently sleeping."""
@@ -607,9 +623,14 @@ class SGLangServer:
     async def pause(self, **kwargs: Any) -> None:
         """Pause the engine."""
         config = SGLangPauseConfig(**kwargs)
+        if not hasattr(self.engine, "pause_generation"):
+            raise NotImplementedError(
+                "pause is not supported on this SGLang version (pause_generation is missing)"
+            )
+
+        mode_mapping = {"wait": "retract", "keep": "in_place", "abort": "abort"}
+        self.engine.pause_generation(mode=mode_mapping.get(config.mode, "abort"))
         self._is_paused = True
-        if hasattr(self.engine, "pause_generation"):
-            self.engine.pause_generation()
 
         if config.mode == "abort":
             if hasattr(self.engine, "abort_request"):
@@ -621,11 +642,17 @@ class SGLangServer:
                             f"Failed to abort request {rid} during pause: {e}"
                         )
 
+        if config.clear_cache and config.mode != "keep":
+            await self.reset_prefix_cache()
+
     async def resume(self, **kwargs: Any) -> None:
         """Resume the engine."""
+        if not hasattr(self.engine, "continue_generation"):
+            raise NotImplementedError(
+                "resume is not supported on this SGLang version (continue_generation is missing)"
+            )
+        self.engine.continue_generation()
         self._is_paused = False
-        if hasattr(self.engine, "continue_generation"):
-            self.engine.continue_generation()
 
     async def is_paused(self) -> bool:
         """Check whether the engine is currently paused."""
