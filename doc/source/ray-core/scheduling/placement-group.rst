@@ -738,9 +738,8 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 
   Topology aware scheduling is an **alpha** feature. It's actively being iterated on and
   the API surface may change. Ray currently only supports defining one topology label and 
-  one node level strategy (same as current strategy= implementation). For topology labels, 
-  Ray currently supports only ``STRICT_PACK``. Support for additional strategies and 
-  multi-level topologies is planned.
+  one node level strategy (described below). For topology labels, Ray currently supports 
+  only ``STRICT_PACK``. Support for additional strategies and multi-level topologies is planned.
 
 Why topology aware scheduling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -776,7 +775,7 @@ Pass ``topology_strategy=`` to :func:`ray.util.placement_group` to enable topolo
 placement. The argument is a list of topology levels, where each level is a dict that maps a
 label key to the placement strategy used at that level.
 
-Currently, ``topology_strategy`` is at most a list with one dictionrary that may contain up 
+Currently, ``topology_strategy`` is at most a list with one dictionary that may contain up 
 to two keys:
 
 - The special key ``ray.io/node-id`` sets the **node-level** strategy and accepts any value
