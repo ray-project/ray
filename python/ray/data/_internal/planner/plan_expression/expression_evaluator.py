@@ -32,6 +32,7 @@ from ray.data.expressions import (
     UUIDExpr,
     _ExprVisitor,
     col,
+    is_rename_expr,
 )
 
 logger = logging.getLogger(__name__)
@@ -858,12 +859,7 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         for expr in projection_exprs[1:]:
             # e.g. ``col(source)._rename(new_name)`` — bucket by ``source`` for column order.
             # ``rename_exprs_by_source``: input column name -> that rename ``AliasExpr``.
-            if (
-                isinstance(expr, AliasExpr)
-                and expr._is_rename
-                and isinstance(expr.expr, ColumnExpr)
-                and expr.expr.name in input_column_rename_map
-            ):
+            if is_rename_expr(expr) and expr.expr.name in input_column_rename_map:
                 rename_exprs_by_source[expr.expr.name] = expr
             else:
                 extra_exprs.append(expr)

@@ -14,9 +14,9 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data.expressions import (
     AliasExpr,
-    ColumnExpr,
     Expr,
     StarExpr,
+    is_rename_expr,
 )
 
 __all__ = [
@@ -383,24 +383,14 @@ def _extract_input_columns_renaming_mapping(
         [
             _get_renaming_mapping(expr)
             for expr in _filter_out_star(projection_exprs)
-            if _is_renaming_expr(expr)
+            if is_rename_expr(expr)
         ]
     )
 
 
 def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
-    assert _is_renaming_expr(expr)
+    assert is_rename_expr(expr)
 
     alias: AliasExpr = expr
 
     return alias.expr.name, alias.name
-
-
-def _is_renaming_expr(expr: Expr) -> bool:
-    is_renaming = isinstance(expr, AliasExpr) and expr._is_rename
-
-    assert not is_renaming or isinstance(
-        expr.expr, ColumnExpr
-    ), f"Renaming expression expected to be of the shape alias(col('source'), 'target') (got {expr})"
-
-    return is_renaming
