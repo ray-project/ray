@@ -1220,5 +1220,38 @@ def test_invalid_system_metric_names(caplog):
         MetricsAgentGauge("name.cannot.have.dots", "", "", [])
 
 
+def test_prometheus_api_compatibility():
+    # Test labelnames alias
+    counter = Counter(
+        "test_prometheus_counter", description="desc", labelnames=("method", "endpoint")
+    )
+
+    # Test labels() chaining and recording
+    bound_counter = counter.labels(method="get", endpoint="/")
+    assert bound_counter._default_tags == {"method": "get", "endpoint": "/"}
+
+    # Verify the bounds apply
+    # Metrics normally need to be used within Ray but the tags logic is purely in Python
+    # However we can call inc() directly, the cython metric handles the rest or ignores if discarded
+    bound_counter.inc(1.0)
+
+    # Test Gauge and Histogram
+    gauge = Gauge("test_prometheus_gauge", labelnames=("method",))
+    bound_gauge = gauge.labels(method="post")
+    bound_gauge.set(2.0)
+
+    hist = Histogram(
+        "test_prometheus_hist", boundaries=[1.0, 2.0], labelnames=("method",)
+    )
+    bound_hist = hist.labels(method="put")
+    bound_hist.observe(1.5)
+
+    # Validate that mixing tag_keys and labelnames raises an error
+    with pytest.raises(
+        ValueError, match="Cannot specify both tag_keys and labelnames."
+    ):
+        Counter("test_error", tag_keys=("a",), labelnames=("b",))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -51,7 +51,13 @@ class Metric:
         name: str,
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
+        labelnames: Optional[Tuple[str, ...]] = None,
     ):
+        if labelnames is not None:
+            if tag_keys is not None:
+                raise ValueError("Cannot specify both tag_keys and labelnames.")
+            tag_keys = labelnames
+
         # Metrics with invalid names will be discarded and will not be collected
         # by Prometheus.
         self._discard_metric = _is_invalid_metric_name(name)
@@ -108,6 +114,23 @@ class Metric:
 
         self._default_tags = default_tags
         return self
+
+    def labels(self, **kwargs: str) -> "Metric":
+        """Return a metric bound to the specified tags (labels).
+
+        This is provided for compatibility with the prometheus_client API.
+
+        Args:
+            **kwargs: The tags to bind to the metric.
+
+        Returns:
+            A bound metric that can be used to record values without specifying tags.
+        """
+        import copy
+
+        bound_metric = copy.copy(self)
+        bound_metric._default_tags = {**self._default_tags, **kwargs}
+        return bound_metric
 
     def _record(
         self,
@@ -188,6 +211,7 @@ class Counter(Metric):
         name: Name of the metric.
         description: Description of the metric.
         tag_keys: Tag keys of the metric.
+        labelnames: An alias for tag_keys. Provided for prometheus_client compatibility.
     """
 
     def __init__(
@@ -195,8 +219,9 @@ class Counter(Metric):
         name: str,
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
+        labelnames: Optional[Tuple[str, ...]] = None,
     ):
-        super().__init__(name, description, tag_keys)
+        super().__init__(name, description, tag_keys, labelnames)
         if self._discard_metric:
             self._metric = None
         else:
@@ -253,6 +278,7 @@ class Histogram(Metric):
         description: Description of the metric.
         boundaries: Boundaries of histogram buckets.
         tag_keys: Tag keys of the metric.
+        labelnames: An alias for tag_keys. Provided for prometheus_client compatibility.
     """
 
     def __init__(
@@ -261,8 +287,9 @@ class Histogram(Metric):
         description: str = "",
         boundaries: List[float] = None,
         tag_keys: Optional[Tuple[str, ...]] = None,
+        labelnames: Optional[Tuple[str, ...]] = None,
     ):
-        super().__init__(name, description, tag_keys)
+        super().__init__(name, description, tag_keys, labelnames)
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
                 "boundaries argument should be provided when using "
@@ -329,6 +356,7 @@ class Gauge(Metric):
         name: Name of the metric.
         description: Description of the metric.
         tag_keys: Tag keys of the metric.
+        labelnames: An alias for tag_keys. Provided for prometheus_client compatibility.
     """
 
     def __init__(
@@ -336,8 +364,9 @@ class Gauge(Metric):
         name: str,
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
+        labelnames: Optional[Tuple[str, ...]] = None,
     ):
-        super().__init__(name, description, tag_keys)
+        super().__init__(name, description, tag_keys, labelnames)
         if self._discard_metric:
             self._metric = None
         else:
