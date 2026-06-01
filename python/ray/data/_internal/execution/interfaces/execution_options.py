@@ -38,17 +38,19 @@ class ExecutionResources:
             memory: Amount of logical memory in bytes.
         """
 
-        # Coalesce missing values to 0 so the fields are always plain floats
-        # (never None) -- the getters then need no fallback. Values are stored
-        # at native precision; quantization to Ray Core's fractional-resource
-        # granularity happens at the `to_resource_dict()` boundary, and
-        # equality/zero/non-negative checks quantize lazily via
-        # `_quantized_key()` (cached per instance after first access). Rounding
-        # on every construction was a per-arithmetic-op hotspot.
-        self._cpu: float = safe_or(cpu, 0.0)
-        self._gpu: float = safe_or(gpu, 0.0)
-        self._object_store_memory: float = safe_or(object_store_memory, 0.0)
-        self._memory: float = safe_or(memory, 0.0)
+        # Store at native precision. None means "unspecified" -- this sentinel
+        # is load-bearing: `ExecutionOptions.resource_limits` reads these raw
+        # fields and feeds them to `for_limits()`, which maps None (not 0) to an
+        # unlimited (inf) limit. So we must NOT coalesce None -> 0 here.
+        #
+        # Quantization to Ray Core's fractional-resource granularity happens at
+        # the `to_resource_dict()` boundary; equality/zero/non-negative checks
+        # quantize lazily via `_quantized_key()` (cached per instance after the
+        # first access). Rounding on every construction was a per-op hotspot.
+        self._cpu: Optional[float] = cpu
+        self._gpu: Optional[float] = gpu
+        self._object_store_memory: Optional[float] = object_store_memory
+        self._memory: Optional[float] = memory
         self._quantized: Optional[Tuple[float, float, float, float]] = None
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -128,19 +130,19 @@ class ExecutionResources:
 
     @property
     def cpu(self) -> float:
-        return self._cpu
+        return self._cpu or 0.0
 
     @property
     def gpu(self) -> float:
-        return self._gpu
+        return self._gpu or 0.0
 
     @property
     def object_store_memory(self) -> float:
-        return self._object_store_memory
+        return self._object_store_memory or 0
 
     @property
     def memory(self) -> float:
-        return self._memory
+        return self._memory or 0
 
     def __repr__(self):
         return (
