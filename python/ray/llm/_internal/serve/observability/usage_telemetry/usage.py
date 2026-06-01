@@ -40,7 +40,6 @@ class TelemetryTags(str, Enum):
     LLM_SERVE_MODELS = "LLM_SERVE_MODELS"
     LLM_SERVE_GPU_TYPE = "LLM_SERVE_GPU_TYPE"
     LLM_SERVE_NUM_GPUS = "LLM_SERVE_NUM_GPUS"
-    LLM_SERVE_DIRECT_STREAMING_ENABLED = "LLM_SERVE_DIRECT_STREAMING_ENABLED"
 
 
 class TelemetryModel(BaseModelExtended):
@@ -246,14 +245,7 @@ def record_direct_streaming_enabled() -> None:
     """Record that LLM direct streaming is enabled (app-level, not per-model)."""
     from ray._common.usage.usage_lib import TagKey
 
-    try:
-        # Narrow catch: record_extra_usage_tag is already best-effort, so only a
-        # not-yet-regenerated proto raises here; real bugs still propagate.
-        record_extra_usage_tag(
-            TagKey.Value(TelemetryTags.LLM_SERVE_DIRECT_STREAMING_ENABLED), "1"
-        )
-    except ValueError:
-        logger.debug("Skipping direct streaming telemetry: tag missing from proto.")
+    record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
 
 
 class HardwareUsage:
