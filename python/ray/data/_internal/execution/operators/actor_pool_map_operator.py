@@ -399,7 +399,7 @@ class ActorPoolMapOperator(MapOperator):
             self._bundle_queue.remove(bundle)
 
             self._metrics.on_input_dequeued(bundle, input_index=0)
-            input_blocks = [block for block, _ in bundle.blocks]
+            input_blocks = [entry.ref for entry in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
             ctx = TaskContext(
