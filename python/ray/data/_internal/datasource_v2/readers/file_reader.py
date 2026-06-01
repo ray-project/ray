@@ -45,6 +45,13 @@ _DEFAULT_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
 
 ROW_HASH_COLUMN_NAME = "row_hash"
 
+# Emit one greppable per-read-task summary line (batch size, block count, block
+# sizes, read throughput) for benchmarking the read path. Enabled by default on
+# this benchmarking branch; set RAY_ITER_BENCH_LOG=0 to disable. Uses
+# print(flush=True) so the line reaches the driver stdout (and CI logs) from
+# remote read tasks via Ray's log-to-driver tailing.
+_ITER_BENCH_LOG = bool(env_integer("RAY_ITER_BENCH_LOG", 1))
+
 
 class FileFormat(str, Enum):
     PARQUET = "parquet"
@@ -252,6 +259,14 @@ class FileReader(Reader[FileManifest]):
         }
         scanner_kwargs.update(self._arrow_scanner_kwargs())
 
+        # [ITER_BENCH] Per-read-task counters (see _ITER_BENCH_LOG).
+        if _ITER_BENCH_LOG:
+            import time as _time
+
+            _ib_t0 = _time.perf_counter()
+            _ib_blocks = _ib_rows = _ib_bytes = 0
+            _ib_paths: Set[str] = set()
+
         rows_read = 0
         for table, fragment_path, fragment_row_offset in self._read_fragment_batches(
             dataset, scanner_kwargs, input_split
@@ -324,7 +339,30 @@ class FileReader(Reader[FileManifest]):
 
             self._on_batch_read(table)
             rows_read += len(table)
+
+            if _ITER_BENCH_LOG:
+                _ib_blocks += 1
+                _ib_rows += table.num_rows
+                _ib_bytes += table.nbytes
+                _ib_paths.add(fragment_path)
+
             yield table
+
+        if _ITER_BENCH_LOG:
+            # One summary line per read task: read throughput / block sizing /
+            # batch sizing, for diffing the read path across implementations.
+            _ib_elapsed = _time.perf_counter() - _ib_t0
+            print(
+                f"[ITER_BENCH] impl=oss phase=read_task "
+                f"path={paths[0] if paths else ''} num_paths={len(_ib_paths)} "
+                f"batch_size={scanner_kwargs.get('batch_size')} "
+                f"num_blocks={_ib_blocks} rows={_ib_rows} bytes={_ib_bytes} "
+                f"elapsed_s={_ib_elapsed:.3f} "
+                f"rows_per_block={(_ib_rows / _ib_blocks) if _ib_blocks else 0:.0f} "
+                f"bytes_per_block={(_ib_bytes / _ib_blocks) if _ib_blocks else 0:.0f} "
+                f"mb_per_s={(_ib_bytes / 1e6 / _ib_elapsed) if _ib_elapsed > 0 else 0.0:.2f}",
+                flush=True,
+            )
 
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Return the batch size to use for scanning.
