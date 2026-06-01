@@ -38,16 +38,29 @@ class ExecutionResources:
             memory: Amount of logical memory in bytes.
         """
 
-        # Values are stored at native precision; quantization to Ray Core's
-        # fractional-resource granularity happens at the `to_resource_dict()`
-        # boundary, and equality/zero/non-negative checks quantize lazily
-        # via `_quantized_key()` (cached per instance after first access).
-        # Rounding on every construction was a per-arithmetic-op hotspot.
-        self._cpu: Optional[float] = cpu
-        self._gpu: Optional[float] = gpu
-        self._object_store_memory: Optional[float] = object_store_memory
-        self._memory: Optional[float] = memory
+        # Coalesce missing values to 0 so the fields are always plain floats
+        # (never None) -- the getters then need no fallback. Values are stored
+        # at native precision; quantization to Ray Core's fractional-resource
+        # granularity happens at the `to_resource_dict()` boundary, and
+        # equality/zero/non-negative checks quantize lazily via
+        # `_quantized_key()` (cached per instance after first access). Rounding
+        # on every construction was a per-arithmetic-op hotspot.
+        self._cpu: float = safe_or(cpu, 0.0)
+        self._gpu: float = safe_or(gpu, 0.0)
+        self._object_store_memory: float = safe_or(object_store_memory, 0.0)
+        self._memory: float = safe_or(memory, 0.0)
         self._quantized: Optional[Tuple[float, float, float, float]] = None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # ExecutionResources is immutable: the resource fields are set once in
+        # `__init__` and never mutated. That is what makes the lazy
+        # `_quantized` cache and the shared `zero()`/`inf()` singletons safe.
+        # Only the `_quantized` cache slot may transition (None -> tuple).
+        if name != "_quantized" and name in self.__dict__:
+            raise AttributeError(
+                f"ExecutionResources is immutable; cannot reassign {name!r}"
+            )
+        super().__setattr__(name, value)
 
     def _quantized_key(self) -> Tuple[float, float, float, float]:
         """Return the (cpu, gpu, object_store_memory, memory) tuple quantized
@@ -115,19 +128,19 @@ class ExecutionResources:
 
     @property
     def cpu(self) -> float:
-        return self._cpu or 0.0
+        return self._cpu
 
     @property
     def gpu(self) -> float:
-        return self._gpu or 0.0
+        return self._gpu
 
     @property
     def object_store_memory(self) -> float:
-        return self._object_store_memory or 0
+        return self._object_store_memory
 
     @property
     def memory(self) -> float:
-        return self._memory or 0
+        return self._memory
 
     def __repr__(self):
         return (
@@ -136,7 +149,9 @@ class ExecutionResources:
             f"memory={self.memory_str()})"
         )
 
-    def __eq__(self, other: "ExecutionResources") -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ExecutionResources):
+            return NotImplemented
         # Quantize on access to absorb accumulated float drift from chained
         # arithmetic (cpu/gpu: ~1e-15 per op; memory: up to ~1e-4 over 1M ops
         # on byte-magnitude floats). Matches the legacy behavior, just paid
