@@ -41,6 +41,14 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
+from ray.llm._internal.serve.engines.sglang.sglang_models import (
+    SGLangPauseConfig,
+    SGLangSleepConfig,
+    SGLangWakeupConfig,
+)
+from ray.llm._internal.serve.observability.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class SGLangServer:
@@ -71,6 +79,10 @@ class SGLangServer:
             self.engine = sglang.Engine(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
+
+        self._is_sleeping = False
+        self._is_paused = False
+        self._active_request_ids = set()
 
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
@@ -222,7 +234,12 @@ class SGLangServer:
     ) -> dict[str, Any]:
         """Run generation and return raw engine output payload."""
         generate_kwargs = self._build_generate_kwargs(request, prompt, stream=False)
-        return await self.engine.async_generate(**generate_kwargs)
+        rid = generate_kwargs.setdefault("rid", uuid.uuid4().hex)
+        self._active_request_ids.add(rid)
+        try:
+            return await self.engine.async_generate(**generate_kwargs)
+        finally:
+            self._active_request_ids.discard(rid)
 
     @staticmethod
     def _extract_generation_metadata(raw: dict[str, Any]) -> dict[str, Any]:
@@ -289,23 +306,28 @@ class SGLangServer:
         tracks the previous text and yields only the incremental delta.
         """
         generate_kwargs = self._build_generate_kwargs(request, prompt, stream=True)
-        stream = await self.engine.async_generate(**generate_kwargs)
+        rid = generate_kwargs.setdefault("rid", uuid.uuid4().hex)
+        self._active_request_ids.add(rid)
+        try:
+            stream = await self.engine.async_generate(**generate_kwargs)
 
-        previous_text = ""
-        async for chunk in stream:
-            text = chunk.get("text", "")
-            meta = chunk.get("meta_info", {}) or {}
+            previous_text = ""
+            async for chunk in stream:
+                text = chunk.get("text", "")
+                meta = chunk.get("meta_info", {}) or {}
 
-            delta_text = text[len(previous_text) :]
-            previous_text = text
+                delta_text = text[len(previous_text) :]
+                previous_text = text
 
-            finish_reason_info = meta.get("finish_reason", None)
-            finish_reason = (
-                self._parse_finish_reason(finish_reason_info)
-                if finish_reason_info is not None
-                else None
-            )
-            yield delta_text, finish_reason
+                finish_reason_info = meta.get("finish_reason", None)
+                finish_reason = (
+                    self._parse_finish_reason(finish_reason_info)
+                    if finish_reason_info is not None
+                    else None
+                )
+                yield delta_text, finish_reason
+        finally:
+            self._active_request_ids.discard(rid)
 
     @staticmethod
     def _build_sse_chunk(
@@ -565,6 +587,85 @@ class SGLangServer:
         prompt = tokenizer.decode(request.tokens)
 
         yield DetokenizeResponse(text=prompt)
+
+    async def reset_prefix_cache(self) -> None:
+        if hasattr(self.engine, "flush_cache"):
+            self.engine.flush_cache()
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the SGLang engine to sleep."""
+        config = SGLangSleepConfig(**kwargs)
+        if hasattr(self.engine, "release_memory_occupation"):
+            try:
+                self.engine.release_memory_occupation(level=config.level)
+            except TypeError:
+                # If the installed SGLang version doesn't support level
+                self.engine.release_memory_occupation()
+        self._is_sleeping = True
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the SGLang engine from sleep mode."""
+        config = SGLangWakeupConfig(**kwargs)
+        if hasattr(self.engine, "resume_memory_occupation"):
+            try:
+                self.engine.resume_memory_occupation(tags=config.tags)
+            except TypeError:
+                # If the installed SGLang version doesn't support tags
+                self.engine.resume_memory_occupation()
+        self._is_sleeping = False
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping."""
+        return self._is_sleeping
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause the engine."""
+        config = SGLangPauseConfig(**kwargs)
+        if hasattr(self.engine, "pause_generation"):
+            mode_mapping = {"wait": "retract", "keep": "in_place", "abort": "abort"}
+            self.engine.pause_generation(mode=mode_mapping.get(config.mode, "abort"))
+
+        if config.mode == "abort":
+            if hasattr(self.engine, "abort_request"):
+                for rid in list(self._active_request_ids):
+                    try:
+                        self.engine.abort_request(rid)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to abort request {rid} during pause: {e}"
+                        )
+
+        if config.clear_cache and config.mode != "keep":
+            await self.reset_prefix_cache()
+
+        self._is_paused = True
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume the engine."""
+        if hasattr(self.engine, "continue_generation"):
+            self.engine.continue_generation()
+        self._is_paused = False
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused."""
+        return self._is_paused
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers."""
+        kwargs = kwargs or {}
+        if hasattr(self.engine, "collective_rpc"):
+            return self.engine.collective_rpc(
+                method, args=args, kwargs=kwargs, timeout=timeout
+            )
+        raise NotImplementedError(
+            "collective_rpc is not implemented or supported on this SGLang version"
+        )
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config

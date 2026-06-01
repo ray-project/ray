@@ -31,7 +31,7 @@ class WeightSyncManager:
             model: The PyTorch neural network model whose weights will be updated.
         """
         self.model = model
-        self.current_version = 0
+        self.current_version = -1
         # Protects the version check → weight load → version commit critical section
         # against TOCTOU races in actors running with max_concurrency > 1.
         self._lock = threading.Lock()
