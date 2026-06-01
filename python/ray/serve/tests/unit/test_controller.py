@@ -1,9 +1,13 @@
+import os
 from copy import deepcopy
+from unittest import mock
 
 import pytest
 
+from ray.serve._private import controller as controller_module
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
@@ -712,6 +716,32 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+def test_log_serve_env_vars_logs_only_serve_prefixed(monkeypatch):
+    monkeypatch.setenv("RAY_SERVE_FOO", "1")
+    monkeypatch.setenv("RAY_SERVE_BAR", "abc")
+    monkeypatch.setenv("RAY_OTHER", "ignored")
+
+    with mock.patch.object(controller_module, "logger") as mock_logger:
+        ServeController._log_serve_env_vars(None)
+
+    mock_logger.info.assert_called_once()
+    logged = mock_logger.info.call_args.args[0]
+    assert "RAY_SERVE_BAR=abc" in logged
+    assert "RAY_SERVE_FOO=1" in logged
+    assert "RAY_OTHER" not in logged
+
+
+def test_log_serve_env_vars_no_op_when_unset(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("RAY_SERVE"):
+            monkeypatch.delenv(key, raising=False)
+
+    with mock.patch.object(controller_module, "logger") as mock_logger:
+        ServeController._log_serve_env_vars(None)
+
+    mock_logger.info.assert_not_called()
 
 
 if __name__ == "__main__":

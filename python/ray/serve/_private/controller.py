@@ -180,6 +180,8 @@ class ServeController:
             global_logging_config = pickle.loads(log_config_checkpoint)
         self.reconfigure_global_logging_config(global_logging_config)
 
+        self._log_serve_env_vars()
+
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
@@ -304,6 +306,19 @@ class ServeController:
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
+
+    def _log_serve_env_vars(self) -> None:
+        """Log all RAY_SERVE* env var overrides at controller startup.
+
+        Reads os.environ directly (not constants.py) so vars that aren't declared
+        as module constants are still captured for debugging.
+        """
+        serve_env_vars = {
+            k: v for k, v in sorted(os.environ.items()) if k.startswith("RAY_SERVE")
+        }
+        if serve_env_vars:
+            overrides = ", ".join(f"{k}={v}" for k, v in serve_env_vars.items())
+            logger.info(f"Serve environment overrides: {overrides}")
 
     def _log_throughput_opt_message(self) -> None:
         msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
