@@ -20,9 +20,10 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/compat.h"
 #include "ray/util/fake_process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -35,13 +36,15 @@ class MockWorker : public WorkerInterface {
  public:
   MockWorker(WorkerID worker_id,
              int port,
+             ClockInterface &clock,
              int runtime_env_hash = 0,
              pid_t worker_process_pid = -1)
       : worker_id_(worker_id),
         port_(port),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)),
-        proc_(std::make_unique<FakeProcess>(worker_process_pid)) {}
+        proc_(std::make_unique<FakeProcess>(worker_process_pid)),
+        clock_(clock) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -53,7 +56,7 @@ class MockWorker : public WorkerInterface {
 
   void GrantLease(const RayLease &granted_lease) override {
     lease_ = granted_lease;
-    lease_grant_time_ = absl::Now();
+    last_lease_grant_time_ = clock_.Now();
     root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
@@ -66,7 +69,9 @@ class MockWorker : public WorkerInterface {
 
   const RayLease &GetGrantedLease() const override { return lease_.value(); }
 
-  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return last_lease_grant_time_;
+  };
 
   std::optional<bool> GetIsGpu() const override { return is_gpu_; }
 
@@ -198,7 +203,7 @@ class MockWorker : public WorkerInterface {
   BundleID bundle_id_;
   bool blocked_ = false;
   std::optional<RayLease> lease_;
-  absl::Time lease_grant_time_;
+  std::optional<absl::Time> last_lease_grant_time_;
   int runtime_env_hash_;
   LeaseID lease_id_;
   JobID job_id_;
@@ -206,6 +211,7 @@ class MockWorker : public WorkerInterface {
   std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
+  ClockInterface &clock_;
 };
 
 /**
@@ -217,6 +223,7 @@ class MockWorker : public WorkerInterface {
  * @param port The port number for the worker.
  * @param task_type The type of task to create.
  * Only supports NORMAL_TASK and ACTOR_CREATION_TASK.
+ * @param clock The clock the worker uses to timestamp lease grants.
  * @param worker_process_pid The PID of the fake worker process. Defaults to -1.
  * @return A shared pointer to the created worker.
  */
@@ -224,6 +231,7 @@ inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
                                                          int32_t max_retries,
                                                          int32_t port,
                                                          rpc::TaskType task_type,
+                                                         ClockInterface &clock,
                                                          pid_t worker_process_pid = -1) {
   rpc::LeaseSpec message;
   message.set_lease_id(LeaseID::FromRandom().Binary());
@@ -242,15 +250,16 @@ inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
   LeaseSpecification lease_spec(message);
   RayLease lease(lease_spec);
   std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
-      ray::WorkerID::FromRandom(), port, 0, worker_process_pid);
+      ray::WorkerID::FromRandom(), port, clock, 0, worker_process_pid);
   worker->GrantLease(lease);
   return worker;
 }
 
 inline std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
+                                                                ClockInterface &clock,
                                                                 pid_t pid = -1) {
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
+      std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, clock, 0, pid);
   return worker;
 }
 

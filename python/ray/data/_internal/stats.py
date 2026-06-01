@@ -40,7 +40,7 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     get_dataset_metadata_exporter,
 )
-from ray.data._internal.util import MiB, capfirst
+from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
@@ -511,6 +511,8 @@ class _StatsActor:
         metrics = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
+                continue
+            if metric.metrics_type == MetricsType.Unsupported:
                 continue
             metric_name = f"data_{metric.name}"
             metric_description = metric.description
@@ -1153,11 +1155,16 @@ class DatasetStats:
                 # Single operator scenario: input rows = total output from all parent nodes
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
-        streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.get()
-            if self.streaming_exec_schedule_s
-            else 0
-        )
+        # Keep ``streaming_exec_schedule_s`` as the total wall-clock time so
+        # ``runtime_metrics()`` can still divide by total_wall_time and
+        # produce a meaningful percentage. Per-iteration avg/max are
+        # exposed separately. ``StreamingExecutor._generate_stats``
+        # always assigns a ``Timer`` (never ``None``), so this call site
+        # needs no guard.
+        schedule_timer = self.streaming_exec_schedule_s
+        streaming_exec_schedule_s = schedule_timer.get()
+        streaming_exec_schedule_avg_s = schedule_timer.avg()
+        streaming_exec_schedule_max_s = schedule_timer.max()
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1171,6 +1178,8 @@ class DatasetStats:
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
             streaming_exec_schedule_s,
+            streaming_exec_schedule_avg_s,
+            streaming_exec_schedule_max_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1206,6 +1215,8 @@ class DatasetStatsSummary:
     global_bytes_restored: int
     dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
+    streaming_exec_schedule_avg_s: float
+    streaming_exec_schedule_max_s: float
 
     def to_string(
         self,
@@ -1429,17 +1440,6 @@ class DatasetStatsSummary:
             ss.cpu_time.sum if ss.cpu_time else 0 for ss in self.operators_stats
         )
 
-    def get_max_heap_memory(self) -> float:
-        parent_memory = [p.get_max_heap_memory() for p in self.parents]
-        parent_max = max(parent_memory) if parent_memory else 0
-        if not self.operators_stats:
-            return parent_max
-
-        return max(
-            parent_max,
-            *[ss.memory.max if ss.memory else 0 for ss in self.operators_stats],
-        )
-
 
 @dataclass
 class OperatorStatsSummary:
@@ -1459,7 +1459,6 @@ class OperatorStatsSummary:
     wall_time: Optional[StatsSummary] = None
     cpu_time: Optional[StatsSummary] = None
     udf_time: Optional[StatsSummary] = None
-    memory: Optional[StatsSummary] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1508,7 +1507,6 @@ class OperatorStatsSummary:
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
         udf_time_acc: _StatsAccumulator = _StatsAccumulator()
-        memory_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1531,7 +1529,6 @@ class OperatorStatsSummary:
                     cpu_time_acc.add(es.cpu_time_s)
                 if es.udf_time_s is not None:
                     udf_time_acc.add(es.udf_time_s)
-                memory_acc.add((es.max_uss_bytes or 0) / MiB)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1575,7 +1572,6 @@ class OperatorStatsSummary:
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
         udf_stats = udf_time_acc.get()
-        memory_stats = memory_acc.get(round_digits=2)
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1602,7 +1598,6 @@ class OperatorStatsSummary:
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
             udf_time=udf_stats,
-            memory=memory_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1646,14 +1641,6 @@ class OperatorStatsSummary:
                 fmt(self.udf_time.max),
                 fmt(self.udf_time.mean),
                 fmt(self.udf_time.sum),
-            )
-
-        if self.memory:
-            out += indent
-            out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
-                self.memory.min,
-                self.memory.max,
-                int(self.memory.mean),
             )
 
         if self.output_num_rows:
@@ -1748,7 +1735,6 @@ class OperatorStatsSummary:
             f"{indent}   block_execution_summary_str={self.block_execution_summary_str}"
             f"{indent}   wall_time={_fmt_dict(self.wall_time)},\n"
             f"{indent}   cpu_time={_fmt_dict(self.cpu_time)},\n"
-            f"{indent}   memory={_fmt_dict(self.memory, include_sum=False)},\n"
             f"{indent}   output_num_rows={_fmt_dict(self.output_num_rows)},\n"
             f"{indent}   output_size_bytes={_fmt_dict(self.output_size_bytes)},\n"
             f"{indent}   node_count={_fmt_dict(self.node_count, include_sum=False, include_count=True)},\n"

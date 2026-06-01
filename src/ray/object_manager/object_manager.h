@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/chunk_object_reader.h"
@@ -103,6 +103,11 @@ class ObjectManagerInterface {
                         BundlePriority prio,
                         const TaskMetricsKey &task_key) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  /// Mark the specified object as failed with the given error type.
+  ///
+  /// \param object_id The object id to store error message into.
+  /// \param error_type The type of the error that caused this task to fail.
+  virtual void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual int64_t PullManagerNumInactivePullsByTaskName(
       const TaskMetricsKey &task_key) const = 0;
@@ -188,7 +193,6 @@ class ObjectManager : public ObjectManagerInterface,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
       const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
       std::unique_ptr<ObjectStoreRunner> object_store_internal,
       std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
@@ -235,6 +239,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
+  void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override;
+
   /// Free a list of objects from object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
@@ -277,7 +283,7 @@ class ObjectManager : public ObjectManagerInterface,
   }
 
  private:
-  friend class TestObjectManager;
+  friend class ObjectManagerTest;
   friend uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager);
 
   /// Spread the Free request to all objects managers.

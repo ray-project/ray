@@ -25,7 +25,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -38,6 +38,7 @@
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -113,7 +114,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
       ray::observability::MetricInterface &gcs_actor_by_state_gauge,
-      pubsub::ObservabilityPublisher *observability_publisher);
+      pubsub::ObservabilityPublisher *observability_publisher,
+      ClockInterface &clock);
 
   ~GcsActorManager() override;
 
@@ -272,7 +274,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       bool all_namespaces, const std::string &ray_namespace) const;
 
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
-      const ray::gcs::GcsActor *actor, std::shared_ptr<const rpc::GcsNodeInfo> node);
+      const ray::rpc::ActorTableData *actor_data,
+      std::shared_ptr<const rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
     explicit Owner(rpc::Address address) : address_(std::move(address)) {}
@@ -354,11 +357,12 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
                                const rpc::ActorDeathCause &death_cause,
                                bool force_kill = true);
 
-  /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
-  /// evicted.
+  /// Add a lightweight observability snapshot of a destroyed actor to the cache.
+  /// If the cache is at `RAY_maximum_gcs_destroyed_actor_cached_count`, the oldest
+  /// entry is evicted.
   ///
-  /// \param actor The actor to be killed.
-  void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
+  /// \param actor The killed actor to snapshot.
+  void AddDestroyedActorObservabilityData(const GcsActor &actor);
 
   rpc::ActorTableData GenActorDataOnlyWithStates(const rpc::ActorTableData &actor) {
     rpc::ActorTableData actor_delta;
@@ -391,14 +395,18 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param lease_id The lease id of actor creation task to be cancelled.
   void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor);
 
-  /// Get the alive or dead actor of the actor id.
-  /// NOTE: The return value is not meant to be passed to other scope.
-  /// This return value should be used only for a short-time usage.
+  /// Best-effort lookup of an actor's `ActorTableData` by id. Returns data from
+  /// either `registered_actors_` (live actors) or `destroyed_actor_observability_data_`
+  /// (dead actors), or `nullptr` if the actor is unknown.
+  ///
+  /// The caller borrows the pointer — do not delete it, and do not hold onto it
+  /// past the current handler. It becomes invalid if `registered_actors_` or
+  /// `destroyed_actor_observability_data_` are modified.
   ///
   /// \param actor_id The id of the actor.
-  /// \return Actor instance. The nullptr if the actor doesn't exist.
-  ///
-  const GcsActor *GetActor(const ActorID &actor_id) const;
+  /// \return Pointer to the actor's table data, or nullptr if the actor doesn't
+  /// exist in either map.
+  const rpc::ActorTableData *GetActorTableData(const ActorID &actor_id) const;
 
   /// Remove a pending actor.
   ///
@@ -451,11 +459,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// All registered actors (unresolved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
-  /// All destroyed actors.
-  absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> destroyed_actors_;
+  /// Lightweight observability snapshots of destroyed actors. Stores only
+  /// `ActorTableData` (not the full `GcsActor` with `task_spec_`/`lease_spec_`)
+  /// so that the heavy heap state is freed when `registered_actors_` releases
+  /// its `shared_ptr`.
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> destroyed_actor_observability_data_;
   /// The actors are sorted according to the timestamp, and the oldest is at the head of
   /// the list.
-  std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_list_;
+  std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_observability_list_;
   /// Maps actor names to their actor ID for lookups by name, first keyed by their
   /// namespace.
   absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, ActorID>>
@@ -511,6 +522,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       actor_state_counter_;
   ray::observability::MetricInterface &actor_by_state_gauge_;
   ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
+  ClockInterface &clock_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t lifetime_num_created_actors_ = 0;
@@ -540,6 +552,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
   FRIEND_TEST(GcsActorManagerTest, TestBasic);
   FRIEND_TEST(GcsActorManagerTest, TestDeadCount);
+  FRIEND_TEST(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter);
   FRIEND_TEST(GcsActorManagerTest, TestSchedulingFailed);
   FRIEND_TEST(GcsActorManagerTest, TestWorkerFailure);
   FRIEND_TEST(GcsActorManagerTest, TestNodeFailure);

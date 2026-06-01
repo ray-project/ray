@@ -10,7 +10,11 @@ import requests
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
-from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    remove_placement_group,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -259,9 +263,13 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
+DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S: float = 100.0
+
+
 def reserve_tpu_slice(
     topology: str,
     accelerator_type: str,
+    timeout_s: Optional[float] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
 ) -> Optional[Tuple[str, PlacementGroup]]:
     """Reserves a TPU slice using its head resource and returns the slice name.
     This enables gang scheduling of training workers with multi-host TPUs.
@@ -270,10 +278,19 @@ def reserve_tpu_slice(
     Args:
         topology: The TPU topology string (e.g. "2x2x2").
         accelerator_type: The accelerator type of the node (e.g. "TPU-V4").
+        timeout_s: The maximum time in seconds to wait for the TPU head
+            placement group to become ready. The head reservation must succeed
+            before the slice name can be retrieved, so this call is necessarily
+            blocking. Defaults to ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
+            Pass ``None`` to wait indefinitely.
 
     Returns:
         A tuple of a string representing a unique TPU slice name and the placement
         group handle reserving the TPU head.
+
+    Raises:
+        TimeoutError: If the TPU head placement group does not become ready
+            within ``timeout_s`` seconds.
     """
     pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
     if pod_type is None:
@@ -289,16 +306,28 @@ def reserve_tpu_slice(
         bundle_label_selector=[head_label_selector],
     )
 
-    logger.debug("Waiting to reserve multi-host slice head.")
-    timeout = 100
-    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout)
+    logger.debug(
+        "Waiting up to %s seconds to reserve multi-host slice head.", timeout_s
+    )
+    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout_s)
 
     if not ready:
+        # Clean up the pending head reservation so that resources are not
+        # held while the caller decides whether to retry.
+        try:
+            remove_placement_group(head_placement_group)
+        except Exception:
+            logger.exception(
+                "Failed to clean up pending TPU head placement group after timeout."
+            )
         raise TimeoutError(
-            "Failed to reserve TPU head for slice with shape: {}. "
-            "Ensure your cluster has sufficient resources. Requesting TPU "
-            "head node with labels: {}. Current resources: {}".format(
-                pod_type, head_label_selector, ray.available_resources()
+            "Failed to reserve TPU head for slice with shape: {} after {} "
+            "seconds. Ensure your cluster has sufficient resources. Requesting "
+            "TPU head node with labels: {}. Current resources: {}".format(
+                pod_type,
+                timeout_s,
+                head_label_selector,
+                ray.available_resources(),
             )
         )
 
@@ -349,9 +378,16 @@ class TPUAcceleratorManager(AcceleratorManager):
         Returns:
             The number of TPUs if any were detected, otherwise 0.
         """
-        accel_files = glob.glob("/dev/accel*")
-        if accel_files:
-            return len(accel_files)
+        # Real TPU chips are exposed as character devices at /dev/accel0,
+        # /dev/accel1, etc. NVIDIA drivers 570.x and later (Blackwell-class
+        # GPUs such as the RTX 5090) instead create /dev/accel as a *directory*
+        # containing /dev/accel/accel0, which the non-recursive glob below
+        # would otherwise miscount as a TPU chip. Filter directory entries out
+        # so both GKE and GCE TPU detection keep working while rejecting the
+        # NVIDIA false positive.
+        accel_chips = [p for p in glob.glob("/dev/accel*") if not os.path.isdir(p)]
+        if accel_chips:
+            return len(accel_chips)
 
         try:
             vfio_entries = os.listdir("/dev/vfio")

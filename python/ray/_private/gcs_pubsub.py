@@ -106,7 +106,7 @@ class _AioSubscriber(_SubscriberBase):
         if pubsub_channel_type in _OBSERVABILITY_PUBSUB_CHANNELS:
             self._stub = gcs_service_pb2_grpc.ObservabilityPubSubServiceStub(channel)
         else:
-            self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+            self._stub = gcs_service_pb2_grpc.ControlPlanePubSubGcsServiceStub(channel)
 
         # Type of the channel.
         self._channel = pubsub_channel_type

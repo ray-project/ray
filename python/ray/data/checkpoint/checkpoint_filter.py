@@ -19,6 +19,7 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
 from ray.data.checkpoint.util import build_pending_checkpoint_trie
+from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
 
@@ -87,7 +88,9 @@ def _clean_pending_checkpoints_task(
     def _clean() -> int:
         # 1. List all files in checkpoint dir, find pending ones
         ckpt_files = checkpoint_filesystem.get_file_info(
-            FileSelector(checkpoint_path_unwrapped, recursive=False)
+            FileSelector(
+                checkpoint_path_unwrapped, recursive=False, allow_not_found=True
+            )
         )
         pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
         pending_file_paths = [
@@ -130,10 +133,10 @@ def _clean_pending_checkpoints_task(
 
 
 @ray.remote(num_returns=2)
-def convert_checkpointed_ids(
+def convert_and_sort_checkpointed_ids(
     checkpointed_ids_arrow: Block, id_column: str
 ) -> Tuple[np.ndarray, int]:
-    """Convert checkpointed IDs from pyarrow.Table to np.ndarray.
+    """Convert checkpointed IDs from pyarrow.Table to sorted np.ndarray.
 
     Args:
         checkpointed_ids_arrow: A pyarrow.Table containing the checkpointed
@@ -142,8 +145,8 @@ def convert_checkpointed_ids(
 
     Returns:
         A tuple of:
-        - The checkpointed IDs of type numpy.ndarray, which can be passed
-          directly to each checkpoint filter actor.
+        - The sorted checkpointed IDs of type numpy.ndarray, which can be
+          passed directly to each checkpoint filter actor.
         - The size (bytes) of the ndarray, which can be used to determine
           the `ray_remote_args` of each checkpoint filter actor.
     """
@@ -151,11 +154,13 @@ def convert_checkpointed_ids(
 
     try:
         if checkpointed_ids_arrow.num_rows != 0:
-            checkpointed_ids_ndarray = transform_pyarrow.to_numpy(
-                checkpointed_ids_arrow[id_column], zero_copy_only=False
+            checkpointed_ids_ndarray = np.sort(
+                transform_pyarrow.to_numpy(
+                    checkpointed_ids_arrow[id_column], zero_copy_only=False
+                )
             )
     except Exception as e:
-        raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
+        raise RuntimeError(f"Failed to convert and sort checkpointed IDs: {e}")
 
     checkpoint_size = _numpy_size(checkpointed_ids_ndarray)
     return checkpointed_ids_ndarray, checkpoint_size
@@ -164,11 +169,21 @@ def convert_checkpointed_ids(
 class CheckpointManager(abc.ABC):
     """Manage checkpoint data."""
 
-    def __init__(self, checkpoint_config: CheckpointConfig):
+    def __init__(
+        self,
+        checkpoint_config: CheckpointConfig,
+        data_context: DataContext,
+    ):
         """Initialize the CheckpointManager.
 
         Args:
             checkpoint_config: the checkpoint config.
+            data_context: the DataContext snapshot whose ``execution_options``
+                should govern the Ray tasks fired during checkpoint loading
+                and pending-checkpoint cleanup. Pass the dataset's
+                ``_context`` (not ``DataContext.get_current()``) so the
+                label_selector and other execution options stay consistent
+                with the rest of materialize.
         """
         self.checkpoint_path = checkpoint_config.checkpoint_path
         self.filesystem = checkpoint_config.filesystem
@@ -179,6 +194,7 @@ class CheckpointManager(abc.ABC):
         self.checkpoint_path_unwrapped = _unwrap_protocol(
             checkpoint_config.checkpoint_path
         )
+        self._data_context = data_context
 
     def load_checkpoint(
         self,
@@ -212,6 +228,24 @@ class CheckpointManager(abc.ABC):
         # Clean up pending checkpoints before loading (runs as a Ray task)
         if data_file_dir is not None:
             self._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
+
+        # If the checkpoint directory has no remaining data files (e.g., all
+        # entries were pending checkpoints that were just cleaned up), skip
+        # the inner ``read_parquet``. V2's ``read_parquet`` raises on empty
+        # directories while V1 returned a zero-row dataset; this pre-check
+        # keeps ``load_checkpoint`` behaving the same under both.
+        # Recurse when a partition filter is configured because committed
+        # files live under Hive-partitioned subdirectories rather than at
+        # the top level.
+        entries = self.filesystem.get_file_info(
+            FileSelector(
+                self.checkpoint_path_unwrapped,
+                recursive=self.checkpoint_path_partition_filter is not None,
+                allow_not_found=True,
+            )
+        )
+        if not any(f.type == FileType.File for f in entries):
+            return None, 0
 
         # Load the checkpoint data
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
@@ -250,13 +284,18 @@ class CheckpointManager(abc.ABC):
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 
-        # convert arrow-typed ids to numpy-typed ids.
+        # Convert arrow-typed ids to sorted numpy-typed ids.
         # Note: the convert is very time-consuming.
         # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
-        checkpointed_ids_ref, checkpoint_size_ref = convert_checkpointed_ids.remote(
-            block_ref, self.id_column
-        )
+        ctx_label_selector = self._data_context.execution_options.label_selector
+        task = convert_and_sort_checkpointed_ids
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
+        (
+            checkpointed_ids_ref,
+            checkpoint_size_ref,
+        ) = task.remote(block_ref, self.id_column)
 
         checkpoint_size = ray.get(checkpoint_size_ref)
 
@@ -291,9 +330,13 @@ class CheckpointManager(abc.ABC):
             return
         if data_file_filesystem is None:
             data_file_filesystem = self.filesystem
+        ctx_label_selector = self._data_context.execution_options.label_selector
+        task = _clean_pending_checkpoints_task
+        if ctx_label_selector:
+            task = task.options(label_selector=ctx_label_selector)
         try:
             cleaned_count = ray.get(
-                _clean_pending_checkpoints_task.remote(
+                task.remote(
                     self.checkpoint_path_unwrapped,
                     self.filesystem,
                     _unwrap_protocol(data_file_dir),
@@ -306,12 +349,14 @@ class CheckpointManager(abc.ABC):
             logger.exception("Failed to clean up pending checkpoints")
             raise
 
-    @abc.abstractmethod
     def _preprocess_data_pipeline(
         self, checkpoint_ds: ray.data.Dataset
     ) -> ray.data.Dataset:
-        """Pre-process the checkpoint dataset. To be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement this method")
+        """Pre-process the checkpoint dataset.
+
+        Subclasses can override this method for custom processing.
+        """
+        return checkpoint_ds
 
     def _validate_loaded_checkpoint(
         self, schema: Schema, metadata: BlockMetadata
@@ -322,22 +367,6 @@ class CheckpointManager(abc.ABC):
 
 class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
-
-    def _preprocess_data_pipeline(
-        self, checkpoint_ds: ray.data.Dataset
-    ) -> ray.data.Dataset:
-        """In the pre-process data pipeline,
-            - Sort by the IDs, as `filter_rows_for_block` will perform binary search on the
-              checkpointed IDs during restore.
-
-        Args:
-            checkpoint_ds: The checkpoint dataset to pre-process
-
-        Returns:
-            The pre-processed checkpoint dataset
-        """
-        # Sort by the ID column.
-        return checkpoint_ds.sort(self.id_column)
 
 
 class CheckpointFilter(abc.ABC):

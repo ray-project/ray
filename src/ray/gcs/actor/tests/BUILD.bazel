@@ -11,7 +11,8 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:runtime_env",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
@@ -24,6 +25,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/util:clock",
     ],
 )
 

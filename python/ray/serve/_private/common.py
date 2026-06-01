@@ -188,6 +188,7 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
@@ -789,6 +790,9 @@ class RequestMetadata:
     # Multiplexed model ID.
     multiplexed_model_id: str = ""
 
+    # Session ID.
+    session_id: str = ""
+
     # If this request expects a streaming response.
     is_streaming: bool = False
 
@@ -816,6 +820,9 @@ class RequestMetadata:
     # gRPC serialization options
     request_serialization: str = "cloudpickle"
     response_serialization: str = "cloudpickle"
+
+    # Token for a replica-side slot reserved by choose_replica().
+    _reserved_slot_token: Optional[str] = None
 
     @property
     def is_http_request(self) -> bool:
