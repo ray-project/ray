@@ -1123,9 +1123,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 logger.info(
                     f"Pack scheduling could not place {replica_id} "
                     f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}): "
-                    f"no node with sufficient resources."
+                    f"no node with sufficient resources. "
+                    f"Falling back to default scheduling."
                 )
-            return None
 
         succeeded = self._schedule_replica(
             scheduling_request,
@@ -1133,20 +1133,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             target_node_id=target_node,
         )
 
-        if succeeded:
+        if succeeded and target_node is not None:
             self._logged_pack_placement_failures.discard(replica_id)
             logger.info(
                 f"Pack scheduled {replica_id} "
                 f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
                 f"onto node {target_node}."
             )
-        elif replica_id not in self._logged_pack_placement_failures:
-            self._logged_pack_placement_failures.add(replica_id)
-            logger.info(
-                f"Pack scheduling failed to launch {replica_id} "
-                f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
-                f"on node {target_node}."
-            )
+        elif not succeeded and target_node is not None:
+            if replica_id not in self._logged_pack_placement_failures:
+                self._logged_pack_placement_failures.add(replica_id)
+                logger.info(
+                    f"Pack scheduling failed to launch {replica_id} "
+                    f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
+                    f"on node {target_node}."
+                )
 
         return target_node if succeeded else None
 
