@@ -40,8 +40,8 @@ class TestIsClusterRunningWithAddress:
 
     def test_unreachable_address_returns_false(self):
         """When the specified address is unreachable, should return False."""
-        # Use a non-routable address to guarantee failure
-        assert ray.is_cluster_running(address="192.0.2.1:6379") is False
+        # Use a closed local port to guarantee immediate failure without waiting for timeout
+        assert ray.is_cluster_running(address="127.0.0.1:59999") is False
 
     def test_reachable_address_returns_true(self):
         """When GcsClient.check_alive succeeds, should return True."""

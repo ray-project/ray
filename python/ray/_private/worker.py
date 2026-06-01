@@ -2535,6 +2535,8 @@ def is_cluster_running(address: Optional[str] = None) -> bool:
             gcs_client = ray._raylet.GcsClient(address=address)
             gcs_client.check_alive([], timeout=5)
             return True
+        except (TypeError, AttributeError):
+            raise
         except Exception:
             return False
     else:
