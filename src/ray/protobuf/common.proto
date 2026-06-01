@@ -662,6 +662,9 @@ message TaskInfoEntry {
   map<string, string> label_selector = 28;
 
   optional FallbackStrategy fallback_strategy = 29;
+  // True if this task creates a detached actor. Only meaningful when
+  // type == ACTOR_CREATION_TASK; defaults to false otherwise.
+  bool is_detached_actor = 30;
 }
 
 message TaskAttempt {
@@ -835,6 +838,9 @@ message ActorTaskSpec {
   bytes actor_creation_dummy_object_id = 4;
   // Per-concurrency-group sequence number for ordering tasks within each group.
   uint64 concurrency_group_sequence_number = 5;
+  // True if the target actor was created with lifetime="detached". Set by the
+  // caller from its ActorHandle at task submission time.
+  bool is_detached_actor = 6;
 }
 
 // Represents a task, including task spec.

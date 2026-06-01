@@ -513,7 +513,13 @@ bool TaskSpecification::IsAsyncioActor() const {
 }
 
 bool TaskSpecification::IsDetachedActor() const {
-  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
+  if (IsActorCreationTask()) {
+    return message_->actor_creation_task_spec().is_detached();
+  }
+  if (IsActorTask()) {
+    return message_->actor_task_spec().is_detached_actor();
+  }
+  return false;
 }
 
 std::string TaskSpecification::DebugString() const {
