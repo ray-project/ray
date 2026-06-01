@@ -19,7 +19,7 @@ from ray.data._internal.block_batching.iter_batches import (
     restore_original_order,
 )
 from ray.data._internal.block_batching.util import WaitBlockPrefetcher
-from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
@@ -36,7 +36,9 @@ def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
         )
         schema = block.schema
         yield RefBundle(
-            blocks=((ray.put(block), metadata),), owns_blocks=True, schema=schema
+            blocks=(BlockEntry(ray.put(block), metadata),),
+            owns_blocks=True,
+            schema=schema,
         )
 
 
@@ -239,7 +241,7 @@ def _ref_bundles_with_size(
         )
         schema = block.schema
         yield RefBundle(
-            blocks=((ray.put(block), metadata),),
+            blocks=(BlockEntry(ray.put(block), metadata),),
             owns_blocks=True,
             schema=schema,
         )

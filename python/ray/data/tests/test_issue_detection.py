@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     RefBundle,
     TaskExecDriverStats,
 )
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -161,7 +162,9 @@ class TestHangingExecutionIssueDetector:
             num_rows=1, size_bytes=1, exec_stats=None, input_files=None
         )
         input_bundle = RefBundle(
-            blocks=((block_ref, metadata),), owns_blocks=True, schema=None
+            blocks=(BlockEntry(block_ref, metadata),),
+            owns_blocks=True,
+            schema=None,
         )
 
         mock_perf_counter.return_value = 0.0

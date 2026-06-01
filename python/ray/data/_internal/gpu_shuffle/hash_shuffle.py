@@ -18,6 +18,7 @@ from ray.actor import ActorHandle
 from ray.data import ExecutionOptions
 from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -516,7 +517,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._insert_tasks[task_idx] = task
             self._shuffle_metrics.on_task_submitted(
                 task_idx,
-                RefBundle([(block_ref, metadata)], schema=None, owns_blocks=False),
+                RefBundle(
+                    [BlockEntry(block_ref, metadata)],
+                    schema=None,
+                    owns_blocks=False,
+                ),
                 task_id=task.get_task_id(),
             )
 

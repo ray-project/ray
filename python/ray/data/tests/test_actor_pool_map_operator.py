@@ -34,7 +34,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorPool,
@@ -983,7 +983,9 @@ def _create_bundle_with_single_row(row):
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
     schema = BlockAccessor.for_block(block).schema()
-    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+    return RefBundle(
+        [BlockEntry(block_ref, metadata)], owns_blocks=False, schema=schema
+    )
 
 
 @pytest.mark.parametrize("min_rows_per_bundle", [2, None])
@@ -1292,7 +1294,9 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
         num_rows=None, size_bytes=1, exec_stats=None, input_files=None
     )
     ref_bundle = RefBundle(
-        blocks=[(block_ref, block_metadata)], schema=None, owns_blocks=True
+        blocks=[BlockEntry(block_ref, block_metadata)],
+        schema=None,
+        owns_blocks=True,
     )
     topology[upstream_op].add_output(ref_bundle)
 

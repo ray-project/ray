@@ -279,8 +279,8 @@ class CheckpointManager(abc.ABC):
         ref_bundle: RefBundle = ref_bundles[0]
         schema: Schema = ref_bundle.schema
         assert len(ref_bundle.blocks) == 1
-        block_ref: ObjectRef[Block] = ref_bundle.blocks[0][0]
-        metadata: BlockMetadata = ref_bundle.blocks[0][1]
+        block_ref: ObjectRef[Block] = ref_bundle.blocks[0].ref
+        metadata: BlockMetadata = ref_bundle.blocks[0].metadata
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 

@@ -575,8 +575,8 @@ def test_iter_internal_ref_bundles(ray_start_regular_shared):
     out = []
     ref_bundle_count = 0
     for ref_bundle in iter_ref_bundles:
-        for block_ref, block_md in ref_bundle.blocks:
-            b = ray.get(block_ref)
+        for entry in ref_bundle.blocks:
+            b = ray.get(entry.ref)
             out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
         ref_bundle_count += 1
     out = sorted(out)

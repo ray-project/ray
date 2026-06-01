@@ -13,7 +13,7 @@ import pytest
 
 import ray
 from ray.data._internal.equalize import _equalize
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -101,7 +101,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata())
         schema = BlockAccessor.for_block(block).schema()
-        blk = (blocks[-1], metadata[-1])
+        blk = BlockEntry(blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True, schema=schema))
         total_rows += block_size
 
@@ -507,15 +507,17 @@ def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetada
 def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
     schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
-        [_create_block_and_metadata(block) for block in blocks],
+        [BlockEntry(*_create_block_and_metadata(block)) for block in blocks],
         owns_blocks=True,
         schema=schema,
     )
 
 
 def _create_blocks_with_metadata(blocks):
+    # Returns the legacy 2-tuple shape (BlockPartition) consumed by the
+    # split helpers in ``ray.data._internal.split``.
     bundle = _create_bundle(blocks)
-    return list(bundle.blocks)
+    return [(entry.ref, entry.metadata) for entry in bundle.blocks]
 
 
 def test_split_single_block(ray_start_regular_shared_2_cpus):
