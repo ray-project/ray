@@ -1818,16 +1818,19 @@ class Node:
                         env=env,
                         timeout=60,
                     )
-                except subprocess.TimeoutExpired:
-                    logger.warning(
-                        "Timed out destroying HDFS external storage during shutdown."
-                    )
-                else:
                     if result.returncode != 0:
                         logger.warning(
                             f"Failed to destroy HDFS external storage. "
                             f"Exit code: {result.returncode}"
                         )
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        "Timed out destroying HDFS external storage during shutdown."
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to destroy HDFS external storage during shutdown."
+                    )
                 return
 
             from ray._private import external_storage
