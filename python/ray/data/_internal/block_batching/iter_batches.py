@@ -9,6 +9,8 @@ from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
+    _ib_format_percentiles,
+    _ib_reset_format_durations,
     blocks_to_batches,
     collate,
     finalize_batches,
@@ -258,6 +260,8 @@ class BatchIterator:
 
         self.before_epoch_start()
 
+        if _ITER_BENCH_LOG:
+            _ib_reset_format_durations()
         _ib_t0 = time.perf_counter() if _ITER_BENCH_LOG else 0.0
         _ib_batches = _ib_rows = 0
 
@@ -281,6 +285,7 @@ class BatchIterator:
         if _ITER_BENCH_LOG:
             _ib_wall = time.perf_counter() - _ib_t0
             s = self._stats
+            fp = _ib_format_percentiles()
             print(
                 f"[ITER_BENCH] impl=oss phase=consume "
                 f"batches={_ib_batches} rows={_ib_rows} wall_s={_ib_wall:.3f} "
@@ -291,7 +296,13 @@ class BatchIterator:
                 f"finalize_s={_ib_timer_seconds(s, 'iter_finalize_batch_s'):.3f} "
                 f"user_s={_ib_timer_seconds(s, 'iter_user_s'):.3f} "
                 f"ttfb_s={_ib_timer_seconds(s, 'iter_time_to_first_batch_s'):.3f} "
-                f"rows_per_s={(_ib_rows / _ib_wall) if _ib_wall > 0 else 0:.0f}",
+                f"rows_per_s={(_ib_rows / _ib_wall) if _ib_wall > 0 else 0:.0f} "
+                f"format_n={fp.get('n', 0)} "
+                f"format_p50_ms={fp.get('p50_ms', 0):.4f} "
+                f"format_p95_ms={fp.get('p95_ms', 0):.4f} "
+                f"format_p99_ms={fp.get('p99_ms', 0):.4f} "
+                f"format_max_ms={fp.get('max_ms', 0):.4f} "
+                f"format_mean_ms={fp.get('mean_ms', 0):.4f}",
                 flush=True,
             )
 

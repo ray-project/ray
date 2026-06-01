@@ -1,5 +1,6 @@
 import argparse
 import functools
+import time
 import uuid
 from typing import Callable
 
@@ -32,6 +33,18 @@ def parse_args() -> argparse.Namespace:
     )
     consume_group.add_argument("--write", action="store_true")
 
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help=(
+            "Number of independent read+consume trials to run back-to-back. "
+            "Each trial re-reads and re-consumes the dataset, emitting its own "
+            "[ITER_BENCH] phase=consume line so run-to-run variance can be "
+            "characterized."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -42,8 +55,16 @@ def main(args):
         read_fn = get_read_fn(args)
         consume_fn = get_consume_fn(args)
 
-        ds = read_fn(args.path)
-        consume_fn(ds)
+        for trial in range(args.repeat):
+            ds = read_fn(args.path)
+            trial_start = time.perf_counter()
+            consume_fn(ds)
+            trial_elapsed = time.perf_counter() - trial_start
+            print(
+                f"[ITER_BENCH] phase=trial trial={trial} "
+                f"repeat={args.repeat} elapsed_s={trial_elapsed:.3f}",
+                flush=True,
+            )
 
         # Report arguments for the benchmark.
         return vars(args)

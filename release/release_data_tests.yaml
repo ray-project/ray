@@ -513,11 +513,11 @@
       format: [numpy, pandas, pyarrow]
 
   run:
-    timeout: 2400
+    timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
-      --iter-batches {{format}}
+      --iter-batches {{format}} --repeat 5
 
 - name: to_tf
   python: "3.10"

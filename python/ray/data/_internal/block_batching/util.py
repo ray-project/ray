@@ -2,10 +2,12 @@ import dataclasses
 import functools
 import logging
 import threading
+import time
 from contextlib import nullcontext
 from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
 
 import ray
+from ray._common.utils import env_integer
 from ray.actor import ActorHandle
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
@@ -22,6 +24,42 @@ logger = logging.getLogger(__name__)
 
 I = TypeVar("I")
 O = TypeVar("O")
+
+# Per-batch Arrow->batch-format (e.g. pandas) conversion durations in seconds,
+# for percentile reporting in the consume summary. Reset per iteration by the
+# BatchIterator. Enabled by default on this benchmarking branch.
+_ITER_BENCH_LOG = bool(env_integer("RAY_ITER_BENCH_LOG", 1))
+_ib_format_durations: List[float] = []
+_ib_format_lock = threading.Lock()
+
+
+def _ib_reset_format_durations() -> None:
+    if _ITER_BENCH_LOG:
+        with _ib_format_lock:
+            _ib_format_durations.clear()
+
+
+def _ib_format_percentiles() -> dict:
+    """Nearest-rank p50/p95/p99/max/mean (ms) of per-batch format durations."""
+    if not _ITER_BENCH_LOG:
+        return {}
+    with _ib_format_lock:
+        data = sorted(_ib_format_durations)
+    n = len(data)
+    if n == 0:
+        return {}
+
+    def _p(q: float) -> float:
+        return data[min(n - 1, max(0, int(q * n)))]
+
+    return {
+        "n": n,
+        "p50_ms": _p(0.50) * 1e3,
+        "p95_ms": _p(0.95) * 1e3,
+        "p99_ms": _p(0.99) * 1e3,
+        "max_ms": data[-1] * 1e3,
+        "mean_ms": (sum(data) / n) * 1e3,
+    }
 
 
 class _MappingIterator(Iterator[O], Generic[I, O]):
@@ -194,12 +232,16 @@ def _format_batch(
     stats: Optional[DatasetStats],
     ensure_copy: bool = False,
 ) -> Batch:
+    _ib_t0 = time.perf_counter() if _ITER_BENCH_LOG else 0.0
     with stats.iter_format_batch_s.timer() if stats else nullcontext():
         formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
             batch_format
         )
         if ensure_copy:
             formatted_data = _copy_batch(formatted_data)
+    if _ITER_BENCH_LOG:
+        with _ib_format_lock:
+            _ib_format_durations.append(time.perf_counter() - _ib_t0)
     return dataclasses.replace(batch, data=formatted_data)
 
 
