@@ -1370,6 +1370,7 @@ def test_dead_actor_replaced_in_fixed_size_pool(shutdown_only, restore_data_cont
     """Test that a fixed-size actor pool replaces a permanently dead actor."""
     import concurrent.futures
 
+    ray.shutdown()
     ray.init(num_cpus=2)
     ray.data.DataContext.get_current().max_errored_blocks = -1
 
