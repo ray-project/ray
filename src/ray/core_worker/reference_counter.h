@@ -77,9 +77,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &return_ids,
-      const std::vector<ObjectID> &argument_ids_to_add,
-      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
+      absl::Span<const ObjectID> return_ids,
+      absl::Span<const ObjectID> argument_ids_to_add,
+      absl::Span<const ObjectID> argument_ids_to_remove = {},
       std::vector<ObjectID> *deleted = nullptr) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids) override
@@ -547,7 +547,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// being dependencies to a submitted task. This should be called when
   /// inlined dependencies are inlined or when the task finishes for plasma
   /// dependencies.
-  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &argument_ids,
+  void RemoveSubmittedTaskReferences(absl::Span<const ObjectID> argument_ids,
                                      bool release_lineage,
                                      std::vector<ObjectID> *deleted)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);

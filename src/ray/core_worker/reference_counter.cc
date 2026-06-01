@@ -491,9 +491,9 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> &return_ids,
-    const std::vector<ObjectID> &argument_ids_to_add,
-    const std::vector<ObjectID> &argument_ids_to_remove,
+    absl::Span<const ObjectID> return_ids,
+    absl::Span<const ObjectID> argument_ids_to_add,
+    absl::Span<const ObjectID> argument_ids_to_remove,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
@@ -603,7 +603,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids,
+    absl::Span<const ObjectID> argument_ids,
     bool release_lineage,
     std::vector<ObjectID> *deleted) {
   for (const ObjectID &argument_id : argument_ids) {

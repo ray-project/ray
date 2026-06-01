@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
@@ -120,9 +122,9 @@ class ReferenceCounterInterface {
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   virtual void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &return_ids,
-      const std::vector<ObjectID> &argument_ids_to_add,
-      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
+      absl::Span<const ObjectID> return_ids,
+      absl::Span<const ObjectID> argument_ids_to_add,
+      absl::Span<const ObjectID> argument_ids_to_remove = {},
       std::vector<ObjectID> *deleted = nullptr) = 0;
 
   /// Add references for the object dependencies of a resubmitted task. This

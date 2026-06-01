@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
@@ -245,7 +246,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                  << " retries, " << max_oom_retries << " oom retries";
 
   // Add references for the dependencies to the task.
-  std::vector<ObjectID> task_deps;
+  absl::InlinedVector<ObjectID, 8> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       task_deps.push_back(spec.ArgObjectId(i));
@@ -268,7 +269,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   size_t num_returns = spec.NumReturns();
   std::vector<rpc::ObjectReference> returned_refs;
   returned_refs.reserve(num_returns);
-  std::vector<ObjectID> return_ids;
+  absl::InlinedVector<ObjectID, 4> return_ids;
   return_ids.reserve(num_returns);
   auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
