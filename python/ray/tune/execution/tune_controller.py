@@ -2125,8 +2125,10 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     # SearchGenerator(ConcurrencyLimiter(searcher, max_concurrent=N)).
     if not isinstance(search_alg, BasicVariantGenerator):
         searcher = getattr(search_alg, "searcher", None)
-        if isinstance(searcher, ConcurrencyLimiter):
-            return searcher.max_concurrent
+        while searcher:
+            if isinstance(searcher, ConcurrencyLimiter):
+                return searcher.max_concurrent
+            searcher = getattr(searcher, "searcher", None)
         return 1
 
     # Allow up to at least 200 pending trials to trigger fast autoscaling

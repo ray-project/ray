@@ -406,6 +406,12 @@ class TestGetMaxPendingTrials:
         sg = SearchGenerator(limited)
         assert _get_max_pending_trials(sg) == 8
 
+    def test_search_generator_with_nested_concurrency_limiter(self):
+        limited = ConcurrencyLimiter(_MockSearcher(), max_concurrent=8)
+        repeater = Repeater(limited, repeat=3, set_index=False)
+        sg = SearchGenerator(repeater)
+        assert _get_max_pending_trials(sg) == 8
+
     @pytest.mark.parametrize("max_concurrent", [1, 4, 16])
     def test_various_concurrency_values(self, max_concurrent):
         limited = ConcurrencyLimiter(_MockSearcher(), max_concurrent=max_concurrent)
