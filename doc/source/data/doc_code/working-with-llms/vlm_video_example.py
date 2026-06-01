@@ -63,7 +63,7 @@ video_processor_config = vLLMEngineProcessorConfig(
         "model_config_kwargs": dict(
             # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
             allowed_local_media_path="/tmp",
-            media_io_kwargs={"video": {"num_frames": 60, "fps": 2}},
+            media_io_kwargs={"video": {"num_frames": 20, "fps": 2}},
         ),
     },
     chat_template_stage=True,
@@ -196,7 +196,7 @@ def create_vlm_video_config():
             "model_config_kwargs": dict(
                 # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
                 allowed_local_media_path="/tmp",
-                media_io_kwargs={"video": {"num_frames": 60, "fps": 2}},
+                media_io_kwargs={"video": {"num_frames": 20, "fps": 2}},
             ),
         },
         chat_template_stage=True,
