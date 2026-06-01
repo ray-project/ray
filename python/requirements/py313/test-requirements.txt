@@ -15,10 +15,7 @@ boto3==1.29.7
 cloudpickle==3.1.1
 tornado>=6.2.0
 cython==0.29.37
-# Bumped to >=0.133.0 for the starlette 1.0.1 security update (FastAPI <0.133
-# caps starlette<1.0). FastAPI 0.125+ removed pydantic.v1 model support in
-# route handlers; Ray's Serve tests use native pydantic v2 models, so this is
-# safe.
+# Bumped to >=0.133.0 for the starlette 1.0.1 security update
 fastapi>=0.133.0
 # asgiref 3.10+ reworked async-to-sync adapters; Serve's direct-ingress
 # request timeout / disconnect handling regresses on 3.11 — fails
