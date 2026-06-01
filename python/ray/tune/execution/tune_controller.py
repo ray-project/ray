@@ -47,7 +47,11 @@ from ray.tune.result import (
     TRIAL_INFO,
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
+from ray.tune.search import (
+    BasicVariantGenerator,
+    ConcurrencyLimiter,
+    SearchAlgorithm,
+)
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.tune_config import ResumeConfig
 from ray.tune.utils import flatten_dict, warn_if_slow
@@ -2116,10 +2120,13 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
 
     # Else, auto detect.
 
-    # Only BasicVariantGenerator supports > 1 pending trials.
-    # This is because we don't want to generate too many trials
-    # before we fit the searcher model.
+    # For custom searchers, respect max_concurrent_trials if the user set it.
+    # When max_concurrent_trials is specified, the searcher is wrapped in
+    # SearchGenerator(ConcurrencyLimiter(searcher, max_concurrent=N)).
     if not isinstance(search_alg, BasicVariantGenerator):
+        searcher = getattr(search_alg, "searcher", None)
+        if isinstance(searcher, ConcurrencyLimiter):
+            return searcher.max_concurrent
         return 1
 
     # Allow up to at least 200 pending trials to trigger fast autoscaling

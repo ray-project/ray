@@ -10,11 +10,11 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.train.tests.util import mock_storage_context
 from ray.tune import Experiment, PlacementGroupFactory
-from ray.tune.execution.tune_controller import TuneController
+from ray.tune.execution.tune_controller import TuneController, _get_max_pending_trials
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import ConcurrencyLimiter, Repeater, Searcher, SearchGenerator
-from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.search._mock import _MockSearcher, _MockSuggestionAlgorithm
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
@@ -378,6 +378,47 @@ def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
     evaluated = [t.evaluated_params["test_variable"] for t in runner2.get_trials()]
     count = Counter(evaluated)
     assert all(v <= 3 for v in count.values())
+
+
+class TestGetMaxPendingTrials:
+    """Tests for _get_max_pending_trials with custom searchers."""
+
+    def setup_method(self):
+        self._orig = os.environ.pop("TUNE_MAX_PENDING_TRIALS_PG", None)
+
+    def teardown_method(self):
+        if self._orig is not None:
+            os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = self._orig
+        else:
+            os.environ.pop("TUNE_MAX_PENDING_TRIALS_PG", None)
+
+    def test_env_var_override(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "42"
+        sg = SearchGenerator(_MockSearcher())
+        assert _get_max_pending_trials(sg) == 42
+
+    def test_search_generator_without_concurrency_limiter(self):
+        sg = SearchGenerator(_MockSearcher())
+        assert _get_max_pending_trials(sg) == 1
+
+    def test_search_generator_with_concurrency_limiter(self):
+        limited = ConcurrencyLimiter(_MockSearcher(), max_concurrent=8)
+        sg = SearchGenerator(limited)
+        assert _get_max_pending_trials(sg) == 8
+
+    @pytest.mark.parametrize("max_concurrent", [1, 4, 16])
+    def test_various_concurrency_values(self, max_concurrent):
+        limited = ConcurrencyLimiter(_MockSearcher(), max_concurrent=max_concurrent)
+        sg = SearchGenerator(limited)
+        assert _get_max_pending_trials(sg) == max_concurrent
+
+    def test_mock_suggestion_algorithm_with_concurrency(self):
+        mock_alg = _MockSuggestionAlgorithm(max_concurrent=5)
+        assert _get_max_pending_trials(mock_alg) == 5
+
+    def test_mock_suggestion_algorithm_without_concurrency(self):
+        mock_alg = _MockSuggestionAlgorithm()
+        assert _get_max_pending_trials(mock_alg) == 1
 
 
 if __name__ == "__main__":
