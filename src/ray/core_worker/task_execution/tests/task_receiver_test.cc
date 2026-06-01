@@ -139,6 +139,9 @@ class TaskReceiverTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
     receiver_ = std::make_unique<TaskReceiver>(
+        // Tests share one io_context; in production io_service_ and
+        // task_execution_service_ are distinct.
+        task_execution_service_,
         task_execution_service_,
         task_event_buffer_,
         execute_task,

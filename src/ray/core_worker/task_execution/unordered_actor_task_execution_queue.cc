@@ -26,6 +26,7 @@ namespace ray {
 namespace core {
 
 UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
+    instrumented_io_context &io_service,
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
@@ -34,7 +35,8 @@ UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
-    : task_execution_service_(task_execution_service),
+    : io_service_(io_service),
+      task_execution_service_(task_execution_service),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
@@ -158,7 +160,13 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                            request.FunctionDescriptor());
     if (pool == nullptr) {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
+      // No concurrency-group pool: post the user task body onto
+      // task_execution_service_ so it never blocks io_service_.
+      task_execution_service_.post(
+          [this, request = std::move(request), task_id]() mutable {
+            AcceptRequestOrRejectIfCanceled(task_id, request);
+          },
+          "UnorderedActorTaskExecutionQueue.AcceptRequest");
     } else {
       pool->Post([this, request = std::move(request), task_id]() mutable {
         AcceptRequestOrRejectIfCanceled(task_id, request);
@@ -239,7 +247,9 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   }
 
   if (request_to_run.has_value()) {
-    task_execution_service_.post(
+    // Post the deferred RunRequest to io_service_ — that's where the queue's
+    // bookkeeping (and waiter callback) lives now.
+    io_service_.post(
         [this, request = std::move(*request_to_run)]() mutable {
           RunRequest(std::move(request));
         },

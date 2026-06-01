@@ -220,6 +220,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                    allow_out_of_order_execution_
                        ? std::unique_ptr<ActorTaskExecutionQueueInterface>(
                              std::make_unique<UnorderedActorTaskExecutionQueue>(
+                                 io_service_,
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,
@@ -230,6 +231,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                  concurrency_groups_))
                        : std::unique_ptr<ActorTaskExecutionQueueInterface>(
                              std::make_unique<OrderedActorTaskExecutionQueue>(
+                                 io_service_,
                                  task_execution_service_,
                                  waiter_,
                                  task_event_buffer_,

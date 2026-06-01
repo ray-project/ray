@@ -23,12 +23,14 @@ namespace ray {
 namespace core {
 
 OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
+    instrumented_io_context &io_service,
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds)
-    : task_execution_service_(task_execution_service),
+    : io_service_(io_service),
+      task_execution_service_(task_execution_service),
       reorder_wait_seconds_(reorder_wait_seconds),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
@@ -76,8 +78,11 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   // Make a copy of the task spec because `task` is moved below.
   TaskSpecification task_spec = task.TaskSpec();
   const std::string &group = task_spec.ConcurrencyGroupName();
-  auto [iter, _] = group_states_.try_emplace(
-      group, ConcurrencyGroupOrderingState(task_execution_service_));
+  // wait_timer_ is bound to io_service_ because the queue's bookkeeping
+  // (and therefore the timer's manipulation: expires_from_now / async_wait /
+  // cancel + the expiry handler) all run on io_service_.
+  auto [iter, _] =
+      group_states_.try_emplace(group, ConcurrencyGroupOrderingState(io_service_));
   auto &group_state = iter->second;
 
   if (client_processed_up_to >= group_state.next_seq_no) {
@@ -291,7 +296,14 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
   if (pool == nullptr) {
-    AcceptRequestOrRejectIfCanceled(task_id, request);
+    // No concurrency-group pool: post the user task body onto
+    // task_execution_service_ so it never blocks io_service_ (which runs the
+    // gRPC handlers and the queue's bookkeeping).
+    task_execution_service_.post(
+        [this, request = std::move(request), task_id]() mutable {
+          AcceptRequestOrRejectIfCanceled(task_id, request);
+        },
+        "OrderedActorTaskExecutionQueue.AcceptRequest");
   } else {
     pool->Post([this, request = std::move(request), task_id]() mutable {
       AcceptRequestOrRejectIfCanceled(task_id, request);

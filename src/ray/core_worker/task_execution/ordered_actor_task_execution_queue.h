@@ -38,7 +38,16 @@ namespace core {
 /// See core_worker.proto for a description of the ordering protocol.
 class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
+  /// \param io_service The io_context this queue's bookkeeping runs on (e.g. the
+  ///   gRPC handler thread / CoreWorker's io_service_). Used for: timer binding,
+  ///   re-posts of bookkeeping work, and the thread enforced by
+  ///   `RAY_CHECK(this_thread == main_thread_id_)`. Constructed-on-this-thread.
+  /// \param task_execution_service The io_context that user task bodies
+  ///   (`request.Execute()`) are posted to when no concurrency-group thread pool
+  ///   is available. Decoupled from `io_service` so a long-running user task
+  ///   never blocks bookkeeping / arg-fetch IPCs on `io_service`.
   OrderedActorTaskExecutionQueue(
+      instrumented_io_context &io_service,
       instrumented_io_context &task_execution_service,
       ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
@@ -88,6 +97,13 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
     boost::asio::deadline_timer wait_timer_;
   };
 
+  /// io_context the queue's bookkeeping runs on (timer, EnqueueTask /
+  /// ExecuteQueuedTasks, waiter callbacks). Same context as CoreWorker's
+  /// io_service_ — i.e. the gRPC handler thread.
+  instrumented_io_context &io_service_;
+
+  /// io_context user task bodies are posted to when no concurrency-group pool
+  /// is available. See ctor doc.
   instrumented_io_context &task_execution_service_;
 
   /// Max time in seconds to wait for an earlier seq no to arrive.
