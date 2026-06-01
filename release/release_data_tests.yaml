@@ -529,6 +529,9 @@
     anyscale_sdk_2026: true
     byod:
       type: cpu
+      # Override the pandas 2.x baked into the image by requirements_compiled
+      # so this benchmark actually runs against pandas 3.0.
+      post_build_script: byod_install_pandas3.sh
 
   run:
     timeout: 2400
