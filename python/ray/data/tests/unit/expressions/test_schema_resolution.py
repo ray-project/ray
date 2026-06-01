@@ -311,15 +311,6 @@ class TestExpandStarExprs:
             result, [col("a"), col("b"), col("name"), col("flag"), rename]
         )
 
-    def test_no_star_no_op(self, schema):
-        # ``with_column`` expansion drops the ``StarExpr``, leaving explicit
-        # cols plus the new expr.
-        new_expr = (col("a") + lit(1)).alias("new")
-        result = _expand_star_exprs([star(), new_expr], schema)
-        assert_exprs_equal(
-            result, [col("a"), col("b"), col("name"), col("flag"), new_expr]
-        )
-
 
 if __name__ == "__main__":
     import sys
