@@ -199,8 +199,11 @@ class TestAggregate:
 
 class TestNAry:
     def test_union(self, ray_start_regular_shared_2_cpus, parquet_path):
-        ds_a = ray.data.read_parquet(str(parquet_path))
-        ds_b = ray.data.read_parquet(str(parquet_path))
+        # Disjoint-but-overlapping column sets exercise the schema
+        # unification: ``a`` only in the first input, ``k`` only in the
+        # second, ``b`` shared. The output is the merged superset.
+        ds_a = ray.data.read_parquet(str(parquet_path)).select_columns(["a", "b"])
+        ds_b = ray.data.read_parquet(str(parquet_path)).select_columns(["b", "k"])
         ds = ds_a.union(ds_b)
         assert _static_schema(ds) == pa.schema(
             [

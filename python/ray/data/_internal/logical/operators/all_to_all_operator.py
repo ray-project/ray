@@ -1,5 +1,5 @@
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -15,7 +15,6 @@ from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-
     from ray.data.block import Schema
 
 __all__ = [
@@ -239,7 +238,7 @@ class Sort(
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
-    key: Optional[Union[str, List[str]]]
+    key: Optional[str | List[str]]
     aggs: List[AggregateFn]
     num_partitions: Optional[int] = None
     batch_format: Optional[str] = "default"

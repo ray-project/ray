@@ -348,13 +348,28 @@ def _agg_output_field(
     name: str,
     input_schema: "pa.Schema",
     target_col: Optional[str],
-    kernel: Callable[[Any], Any],
+    pyarrow_kernel: Callable[[pa.Array], pa.Scalar],
 ) -> Optional["pa.Field"]:
     """Compute the output field of a scalar reduction aggregator by running
     its PyArrow compute kernel on an empty array of the target column's type.
 
-    Returns ``None`` if the target column is missing or the kernel rejects
-    the column's type (e.g., ``pc.sum`` on a string column).
+    Args:
+        name: Name of the *output* column the aggregation produces (the
+            aggregator's alias, e.g. ``"sum(a)"`` or a user-supplied
+            ``alias_name``). This becomes the name of the returned field.
+        input_schema: Schema of the aggregator's input (pre-aggregation)
+            blocks, used to look up the target column's type.
+        target_col: Name of the *input* column being aggregated (the ``on=``
+            argument). This is the column the kernel reads, not the group-by
+            key. ``None`` for aggregations that don't read a column (e.g.
+            ``Count()`` over rows), in which case the type can't be inferred.
+        pyarrow_kernel: The PyArrow compute kernel implementing the reduction
+            (e.g. ``pc.sum``), run on an empty array to derive the output type.
+
+    Returns:
+        The output ``pa.Field`` (``name`` with the inferred type), or ``None``
+        if ``target_col`` is ``None``/missing or the pyarrow_kernel rejects the
+        column's type (e.g., ``pc.sum`` on a string column).
     """
     if target_col is None:
         return None
@@ -363,12 +378,13 @@ def _agg_output_field(
     except (KeyError, ValueError):
         return None
     try:
-        result = kernel(pa.array([], type=in_type))
-    except Exception:
+        result = pyarrow_kernel(pa.array([], type=in_type))
+    except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
+        # The kernel has no implementation for this column's type
+        # (e.g. ``pc.sum`` on a string/struct/list column). Fall back to
+        # an unresolved schema rather than masking a real error.
         return None
-    out_type = getattr(result, "type", None)
-    if out_type is None:
-        return None
+    out_type = result.type
     return pa.field(name, out_type, nullable=True)
 
 
@@ -961,14 +977,15 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
         return max(current_accumulator, new)
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
-        # AbsMax preserves the input column type (just takes abs of max/min).
-        if self._target_col_name is None:
-            return None
-        try:
-            field = input_schema.field(self._target_col_name)
-        except (KeyError, ValueError):
-            return None
-        return pa.field(self.name, field.type, nullable=True)
+        # AbsMax = max(abs(x)). Compose abs + max into a single kernel so the
+        # output type (and the type-support check) come from the same pyarrow
+        # kernels, returning None for types abs/max reject (e.g. strings).
+        return _agg_output_field(
+            self.name,
+            input_schema,
+            self._target_col_name,
+            lambda a: pc.max(pc.abs(a)),
+        )
 
 
 @PublicAPI

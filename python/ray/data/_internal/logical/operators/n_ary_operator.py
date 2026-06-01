@@ -124,9 +124,9 @@ class Zip(NAry):
         from ray.data.block import BlockAccessor
 
         input_schemas = [op.infer_schema() for op in self.input_dependencies]
-        if not input_schemas or any(s is None for s in input_schemas):
-            return None
-        if not all(isinstance(s, pa.Schema) for s in input_schemas):
+        if not input_schemas or not all(
+            isinstance(s, pa.Schema) for s in input_schemas
+        ):
             return None
         try:
             combined = input_schemas[0].empty_table()

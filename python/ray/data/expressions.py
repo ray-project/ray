@@ -268,8 +268,7 @@ def _eval_kernel_type(
     )
 
     op_fn = _ARROW_EXPR_OPS_MAP.get(op)
-    if op_fn is None:
-        return None
+    assert op_fn is not None, f"Operation not supported: {op}"
 
     try:
         empty_arrays = [pyarrow.array([], type=t) for t in operand_types]
@@ -277,7 +276,7 @@ def _eval_kernel_type(
     except Exception:
         return None
 
-    return getattr(result, "type", None)
+    return result.type
 
 
 @DeveloperAPI(stability="alpha")
@@ -1298,9 +1297,6 @@ class UDFExpr(Expr):
             )
         )
 
-    # ``get_type`` is inherited from ``Expr``: ``data_type`` is the
-    # user-declared ``return_dtype`` from the ``@udf(...)`` decorator.
-
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
@@ -1847,9 +1843,6 @@ def exprlist_to_fields(
         A list of ``pa.Field`` in projection order, or ``None`` if
         any expression is unresolvable.
     """
-    if input_schema is None:
-        return None
-
     # Bucket the projection list: rename AliasExprs substitute for their
     # source column during StarExpr expansion (preserving on-disk column
     # order, matching runtime ``eval_projection``); non-rename exprs are
