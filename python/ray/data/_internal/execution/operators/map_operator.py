@@ -63,7 +63,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -97,7 +97,10 @@ def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     return sample_accessor.to_arrow().schema
 
 
-def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
+def _get_schema_from_bundle(
+    bundle: RefBundle,
+    label_selector: Optional[Dict[str, str]] = None,
+) -> Optional["pa.Schema"]:
     """Extract PyArrow schema from a RefBundle.
 
     For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
@@ -129,7 +132,10 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
         if not bundle.blocks:
             return None
         block_ref = bundle.blocks[0].ref
-        schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+        task = _get_arrow_schema_from_block
+        if label_selector:
+            task = task.options(label_selector=label_selector)
+        schema_ref = task.remote(block_ref)
         return ray.get(schema_ref)
 
     return None
@@ -239,7 +245,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         (e.g., schema evolution for Iceberg writes via on_write_start).
         """
         if not self._on_start_called and self._on_start is not None:
-            schema = _get_schema_from_bundle(bundled_input)
+            schema = _get_schema_from_bundle(
+                bundled_input,
+                label_selector=self.data_context.execution_options.label_selector,
+            )
             self._on_start(schema)
             self._on_start_called = True
             # Note: _map_transformer_ref is lazily initialized, so no need to
@@ -481,6 +490,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        ray_remote_args = merge_label_selector(
+            ray_remote_args, self.data_context.execution_options.label_selector
+        )
         return ray_remote_args
 
     @abstractmethod

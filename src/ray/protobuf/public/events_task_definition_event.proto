@@ -48,4 +48,7 @@ message TaskDefinitionEvent {
   // The key-value label constraints of the node to schedule this task on.
   map<string, string> label_selector = 15;
   optional FallbackStrategy fallback_strategy = 16;
+  // True if this task creates a detached actor. Only meaningful when
+  // task_type == ACTOR_CREATION_TASK; defaults to false otherwise.
+  bool is_detached_actor = 17;
 }

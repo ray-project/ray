@@ -1669,6 +1669,41 @@ def test_map_worker_repr_handles_uninitialized_src_fn_name():
     assert repr(worker) == "MapWorker(TestFunction)"
 
 
+def test_merge_ray_remote_args_inject_context_label_selector(restore_data_context):
+    """ExecutionOptions.label_selector should propagate to actor remote args."""
+    data_context = ray.data.DataContext.get_current()
+    data_context.execution_options.label_selector = {"subcluster": "train"}
+
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        ray_remote_args={"num_cpus": 1},
+    )
+    merged = op._merge_ray_remote_args()
+    assert merged["label_selector"] == {"subcluster": "train"}
+
+
+def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
+    """Operator-level label_selector wins on key conflict."""
+    data_context = ray.data.DataContext.get_current()
+    data_context.execution_options.label_selector = {"subcluster": "train"}
+
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        ray_remote_args={
+            "num_cpus": 1,
+            "label_selector": {"subcluster": "val", "node": "X"},
+        },
+    )
+    merged = op._merge_ray_remote_args()
+    assert merged["label_selector"] == {"subcluster": "val", "node": "X"}
+
+
 if __name__ == "__main__":
     import sys
 

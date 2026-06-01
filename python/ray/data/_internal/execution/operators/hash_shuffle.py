@@ -694,6 +694,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     ),
                 ),
             }
+            label_selector = self._data_context.execution_options.label_selector
+            if label_selector:
+                shuffle_task_resource_bundle["label_selector"] = label_selector
 
             cur_shuffle_task_idx = self._next_shuffle_tasks_idx
             self._next_shuffle_tasks_idx += 1
@@ -1194,6 +1197,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             # blocking scenario.
             "allow_out_of_order_execution": True,
         }
+
+        label_selector = self._data_context.execution_options.label_selector
+        if label_selector:
+            remote_args["label_selector"] = label_selector
 
         return remote_args
 

@@ -70,9 +70,11 @@ class LimitOperator(OneToOneOperator):
                     )
                     return block, metadata
 
-                block, metadata_ref = cached_remote_fn(
-                    slice_fn, num_cpus=0, num_returns=2
-                ).remote(
+                slice_task = cached_remote_fn(slice_fn, num_cpus=0, num_returns=2)
+                label_selector = self.data_context.execution_options.label_selector
+                if label_selector:
+                    slice_task = slice_task.options(label_selector=label_selector)
+                block, metadata_ref = slice_task.remote(
                     block,
                     metadata,
                     self._limit - self._consumed_rows,
