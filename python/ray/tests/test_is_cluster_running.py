@@ -8,8 +8,10 @@ import pytest
 import ray
 from typing import Optional
 
+
 def _is_cluster_running_impl(address: Optional[str] = None) -> bool:
     import ray._private.services as services
+
     if address is not None:
         try:
             gcs_client = ray._raylet.GcsClient(address=address)
@@ -22,6 +24,7 @@ def _is_cluster_running_impl(address: Optional[str] = None) -> bool:
     else:
         services.find_gcs_addresses.cache_clear()
         return len(services.find_gcs_addresses()) > 0
+
 
 ray.is_cluster_running = _is_cluster_running_impl
 
@@ -116,7 +119,6 @@ class TestIsClusterRunningDoesNotRequireInit:
             mock_find.cache_clear = MagicMock()
             ray.is_cluster_running()
             mock_find.cache_clear.assert_called_once()
-
 
 
 class TestIsClusterRunningIntegration:
