@@ -359,13 +359,6 @@ def test_ray_init_with_runtime_env_as_object(
 
 
 def test_shutdown_wait_for_processes(shutdown_only):
-    """``ray.shutdown(wait_for_processes=True)`` blocks until the subprocesses
-    started by ``ray.init()`` (raylet, GCS, dashboard, etc.) have exited.
-
-    Regression test for a Windows flake where the next ``ray.init()`` raced the
-    previous, still-terminating raylet and failed to register the driver. See
-    https://github.com/ray-project/ray/pull/63655.
-    """
     ray.init()
     node = ray._private.worker._global_node
     procs = [proc for _, proc in node.live_processes()]
@@ -376,10 +369,7 @@ def test_shutdown_wait_for_processes(shutdown_only):
     ) as mock_kill:
         ray.shutdown(wait_for_processes=True)
 
-    # The flag must be threaded through to kill_all_processes...
     assert mock_kill.call_args.kwargs.get("wait") is True
-    # ...and every subprocess must have actually exited by the time
-    # ray.shutdown() returns (poll() returns the exit code, not None).
     assert all(proc.poll() is not None for proc in procs)
 
 

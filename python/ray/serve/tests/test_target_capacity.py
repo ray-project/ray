@@ -46,7 +46,7 @@ def shutdown_ray_and_serve():
     if ray.is_initialized():
         # wait_for_processes=True blocks until the raylet/GCS/etc. subprocesses
         # have fully exited, so the next test's serve.start() (which calls
-        # ray.init()) doesn't race a still-terminating raylet on Windows.
+        # ray.init()) doesn't race a still-terminating raylet.
         ray.shutdown(wait_for_processes=True)
     yield
     serve.shutdown()

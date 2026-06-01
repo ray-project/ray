@@ -92,7 +92,7 @@ def ray_instance(request):
     serve.shutdown()
     # wait_for_processes=True blocks until the raylet/GCS/etc. subprocesses
     # have fully exited. Without it, this teardown races the next test's
-    # ray.init() and the new raylet can fail to register the driver on Windows.
+    # ray.init() and the new raylet can fail to register the driver.
     ray.shutdown(wait_for_processes=True)
 
     os.environ.clear()
