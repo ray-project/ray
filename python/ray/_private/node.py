@@ -1808,9 +1808,7 @@ class Node:
                     """
                 )
                 env = os.environ.copy()
-                env["RAY_HDFS_DESTROY_CONFIG"] = json.dumps(
-                    object_spilling_config
-                )
+                env["RAY_HDFS_DESTROY_CONFIG"] = json.dumps(object_spilling_config)
                 env["RAY_HDFS_DESTROY_NODE_ID"] = self._node_id
                 try:
                     result = subprocess.run(

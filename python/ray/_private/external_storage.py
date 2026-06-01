@@ -588,8 +588,7 @@ class ExternalStorageHDFSImpl(ExternalStorage):
             import pyarrow.fs as pa_fs
         except ImportError as e:
             raise ImportError(
-                "HDFS object spilling requires pyarrow. "
-                f"Original error: {e}"
+                "HDFS object spilling requires pyarrow. " f"Original error: {e}"
             )
 
         if uri is None:
