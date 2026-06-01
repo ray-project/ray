@@ -546,6 +546,7 @@ py_test_module_list(
         "test_gcs_pubsub.py",
         "test_grpc_client_credentials.py",
         "test_ids.py",
+        "test_is_cluster_running.py",
         "test_kill_raylet_signal_log.py",
         "test_list_actors.py",
         "test_list_actors_2.py",
