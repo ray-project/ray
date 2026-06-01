@@ -15,6 +15,14 @@ class ExecutionResources:
     set `default_to_inf` to True to create an object that represents resource limits.
     """
 
+    # Cached singletons for the two most common constants. `zero()` and `inf()`
+    # are called all over the scheduler hot path (e.g. `.max(zero())`), and the
+    # instances are immutable in practice -- every arithmetic op returns a new
+    # object and there are no setters -- so a single shared instance is safe and
+    # avoids the per-call allocation.
+    _ZERO_SINGLETON: Optional["ExecutionResources"] = None
+    _INF_SINGLETON: Optional["ExecutionResources"] = None
+
     def __init__(
         self,
         cpu: Optional[float] = None,
@@ -30,12 +38,32 @@ class ExecutionResources:
             memory: Amount of logical memory in bytes.
         """
 
-        # NOTE: Ray Core allocates fractional resources in up to 5th decimal
-        #       digit, hence we round the values here up to it
-        self._cpu: Optional[float] = safe_round(cpu, 5)
-        self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
-        self._memory: Optional[float] = safe_round(memory, 0)
+        # Values are stored at native precision; quantization to Ray Core's
+        # fractional-resource granularity happens at the `to_resource_dict()`
+        # boundary, and equality/zero/non-negative checks quantize lazily
+        # via `_quantized_key()` (cached per instance after first access).
+        # Rounding on every construction was a per-arithmetic-op hotspot.
+        self._cpu: Optional[float] = cpu
+        self._gpu: Optional[float] = gpu
+        self._object_store_memory: Optional[float] = object_store_memory
+        self._memory: Optional[float] = memory
+        self._quantized: Optional[tuple] = None
+
+    def _quantized_key(self) -> tuple:
+        """Return the (cpu, gpu, object_store_memory, memory) tuple quantized
+        to Ray Core's fractional-resource granularity. Lazy-cached on the
+        instance after the first call.
+        """
+        key = self._quantized
+        if key is None:
+            key = (
+                safe_round(self.cpu, 5),
+                safe_round(self.gpu, 5),
+                safe_round(self.object_store_memory, 0),
+                safe_round(self.memory, 0),
+            )
+            self._quantized = key
+        return key
 
     @classmethod
     def from_resource_dict(
@@ -51,12 +79,18 @@ class ExecutionResources:
         )
 
     def to_resource_dict(self) -> Dict[str, float]:
-        """Convert this ExecutionResources object to a resource dict."""
+        """Convert this ExecutionResources object to a resource dict.
+
+        Values are quantized to Ray Core's fractional-resource granularity
+        (5 decimal digits for cpu/gpu, integer bytes for memory) so the
+        output is suitable for passing back to Ray Core via ``.options(...)``.
+        """
+        cpu, gpu, osm, mem = self._quantized_key()
         return {
-            "CPU": self.cpu,
-            "GPU": self.gpu,
-            "object_store_memory": self.object_store_memory,
-            "memory": self.memory,
+            "CPU": cpu,
+            "GPU": gpu,
+            "object_store_memory": osm,
+            "memory": mem,
         }
 
     @classmethod
@@ -105,50 +139,49 @@ class ExecutionResources:
         )
 
     def __eq__(self, other: "ExecutionResources") -> bool:
-        return (
-            self.cpu == other.cpu
-            and self.gpu == other.gpu
-            and self.object_store_memory == other.object_store_memory
-            and self.memory == other.memory
-        )
+        # Quantize on access to absorb accumulated float drift from chained
+        # arithmetic (cpu/gpu: ~1e-15 per op; memory: up to ~1e-4 over 1M ops
+        # on byte-magnitude floats). Matches the legacy behavior, just paid
+        # lazily at comparison time rather than per construction.
+        return self._quantized_key() == other._quantized_key()
 
     def __hash__(self) -> int:
-        return hash(
-            (
-                self.cpu,
-                self.gpu,
-                self.object_store_memory,
-                self.memory,
-            )
-        )
+        # Quantize so equal-under-`__eq__` instances hash equally.
+        return hash(self._quantized_key())
 
     @classmethod
     def zero(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with zero resources."""
-        return ExecutionResources(0.0, 0.0, 0.0, 0.0)
+        """Returns an ExecutionResources object with zero resources.
+
+        Returns a cached, shared singleton (safe because instances are
+        immutable in practice).
+        """
+        if cls._ZERO_SINGLETON is None:
+            cls._ZERO_SINGLETON = ExecutionResources(0.0, 0.0, 0.0, 0.0)
+        return cls._ZERO_SINGLETON
 
     @classmethod
     def inf(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with infinite resources."""
-        return ExecutionResources.for_limits()
+        """Returns an ExecutionResources object with infinite resources.
+
+        Returns a cached, shared singleton (safe because instances are
+        immutable in practice).
+        """
+        if cls._INF_SINGLETON is None:
+            cls._INF_SINGLETON = ExecutionResources.for_limits()
+        return cls._INF_SINGLETON
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
-        return (
-            self.cpu == 0.0
-            and self.gpu == 0.0
-            and self.object_store_memory == 0.0
-            and self.memory == 0.0
-        )
+        # Quantize so accumulated float drift doesn't flip the result.
+        cpu, gpu, osm, mem = self._quantized_key()
+        return cpu == 0.0 and gpu == 0.0 and osm == 0.0 and mem == 0.0
 
     def is_non_negative(self) -> bool:
         """Returns True if all resources are non-negative."""
-        return (
-            self.cpu >= 0
-            and self.gpu >= 0
-            and self.object_store_memory >= 0
-            and self.memory >= 0
-        )
+        # Quantize so accumulated float drift doesn't flip the result.
+        cpu, gpu, osm, mem = self._quantized_key()
+        return cpu >= 0 and gpu >= 0 and osm >= 0 and mem >= 0
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
@@ -241,14 +274,20 @@ class ExecutionResources:
             ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
         """
+        # Quantize on access so accumulated float drift (e.g. a budget
+        # produced by chained add/subtract) doesn't flip the result. This
+        # keeps `satisfies_limit` consistent with `__eq__`/`is_zero`/
+        # `is_non_negative`, which also compare quantized values; otherwise
+        # two structs equal under `__eq__` could disagree here, causing
+        # `can_submit_new_task` to spuriously reject a task whose usage
+        # drifted ~1e-15 above the budget.
+        cpu, gpu, osm, mem = self._quantized_key()
+        lcpu, lgpu, losm, lmem = limit._quantized_key()
         return (
-            self.cpu <= limit.cpu
-            and self.gpu <= limit.gpu
-            and (
-                ignore_object_store_memory
-                or self.object_store_memory <= limit.object_store_memory
-            )
-            and self.memory <= limit.memory
+            cpu <= lcpu
+            and gpu <= lgpu
+            and (ignore_object_store_memory or osm <= losm)
+            and mem <= lmem
         )
 
     def scale(self, f: float) -> "ExecutionResources":
