@@ -11,11 +11,9 @@ import pytest
 
 from ray.data.datatype import DataType
 from ray.data.expressions import (
-    ColumnExpr,
     DownloadExpr,
     MonotonicallyIncreasingIdExpr,
     RandomExpr,
-    StarExpr,
     UDFExpr,
     UUIDExpr,
     _expand_star_exprs,
@@ -25,6 +23,7 @@ from ray.data.expressions import (
     star,
     udf,
 )
+from ray.data.tests.util import assert_exprs_equal
 
 
 @pytest.fixture
@@ -282,30 +281,25 @@ class TestExpandStarExprs:
     def test_simple_star(self, schema):
         # ``[star()]`` -> one ``col()`` per input column.
         result = _expand_star_exprs([star()], schema)
-        assert [type(e) for e in result] == [ColumnExpr] * 4
-        assert [e.name for e in result] == ["a", "b", "name", "flag"]
+        assert_exprs_equal(result, [col("a"), col("b"), col("name"), col("flag")])
 
     def test_star_with_with_column(self, schema):
         # ``with_column``-style: ``[star(), expr.alias("new")]`` expands
         # to ``[col(a), col(b), col(name), col(flag), expr.alias("new")]``.
         new_expr = (col("a") + col("b")).alias("new")
         result = _expand_star_exprs([star(), new_expr], schema)
-        assert len(result) == 5
-        assert [e.name for e in result[:4]] == ["a", "b", "name", "flag"]
-        assert result[-1] is new_expr
+        assert_exprs_equal(
+            result, [col("a"), col("b"), col("name"), col("flag"), new_expr]
+        )
 
     def test_star_with_rename(self, schema):
-        # ``rename_columns({"a": "renamed_a"})``: ``[star(), col(a)._rename("renamed_a")]``
-        # -> ``[col(a)._rename("renamed_a"), col(b), col(name), col(flag)]``.
-        # The rename substitutes for its source column *in place* (matching
-        # runtime ``eval_projection`` / ``exprlist_to_fields``), so output
-        # column order is preserved rather than moving the renamed column
-        # to the end.
+        # ``rename_columns({"a": "renamed_a"})``: the rename substitutes for
+        # its source column *in place* (matching runtime ``eval_projection``
+        # / ``exprlist_to_fields``), so ``a`` becomes ``renamed_a`` at
+        # position 0 rather than moving to the end.
         rename = col("a")._rename("renamed_a")
         result = _expand_star_exprs([star(), rename], schema)
-        assert len(result) == 4
-        assert result[0] is rename
-        assert [e.name for e in result[1:]] == ["b", "name", "flag"]
+        assert_exprs_equal(result, [rename, col("b"), col("name"), col("flag")])
 
     def test_star_with_rename_source_missing(self, schema):
         # A rename whose source column isn't in the input schema stays in
@@ -313,15 +307,18 @@ class TestExpandStarExprs:
         # runtime instead of being silently dropped.
         rename = col("missing")._rename("renamed")
         result = _expand_star_exprs([star(), rename], schema)
-        assert len(result) == 5
-        assert [e.name for e in result[:4]] == ["a", "b", "name", "flag"]
-        assert result[-1] is rename
+        assert_exprs_equal(
+            result, [col("a"), col("b"), col("name"), col("flag"), rename]
+        )
 
     def test_no_star_no_op(self, schema):
-        # Verify ``StarExpr`` is gone from the result of ``with_column``
-        # expansion.
-        result = _expand_star_exprs([star(), (col("a") + lit(1)).alias("new")], schema)
-        assert not any(isinstance(e, StarExpr) for e in result)
+        # ``with_column`` expansion drops the ``StarExpr``, leaving explicit
+        # cols plus the new expr.
+        new_expr = (col("a") + lit(1)).alias("new")
+        result = _expand_star_exprs([star(), new_expr], schema)
+        assert_exprs_equal(
+            result, [col("a"), col("b"), col("name"), col("flag"), new_expr]
+        )
 
 
 if __name__ == "__main__":

@@ -18,8 +18,9 @@ import pytest
 import ray
 from ray.data._internal.logical.operators import Project
 from ray.data.aggregate import Count, Max, Mean, Min, Sum
-from ray.data.expressions import StarExpr, col, lit
+from ray.data.expressions import col, lit, star
 from ray.data.tests.conftest import *  # noqa: F401,F403
+from ray.data.tests.util import assert_exprs_equal
 
 
 @pytest.fixture(scope="module")
@@ -353,9 +354,12 @@ class TestEagerStarExpansion:
         )
         project = ds._logical_plan.dag
         assert isinstance(project, Project)
-        assert not any(isinstance(e, StarExpr) for e in project.exprs)
-        # Names should be input columns + the new aliased column.
-        assert [e.name for e in project.exprs] == ["a", "b", "k", "new"]
+        # Star expanded to explicit input cols + the new aliased expr; no
+        # ``StarExpr`` remains on this typed chain.
+        assert_exprs_equal(
+            project.exprs,
+            [col("a"), col("b"), col("k"), (col("a") + lit(10)).alias("new")],
+        )
 
     def test_rename_columns_expands_star(
         self, ray_start_regular_shared_2_cpus, parquet_path
@@ -363,11 +367,10 @@ class TestEagerStarExpansion:
         ds = ray.data.read_parquet(str(parquet_path)).rename_columns({"a": "A"})
         project = ds._logical_plan.dag
         assert isinstance(project, Project)
-        assert not any(isinstance(e, StarExpr) for e in project.exprs)
-        # The rename AliasExpr "A" substitutes for its source column "a"
-        # *in place* (position preserved), matching runtime
-        # ``eval_projection`` / ``exprlist_to_fields`` ordering.
-        assert [e.name for e in project.exprs] == ["A", "b", "k"]
+        # The rename AliasExpr substitutes for its source column "a" *in
+        # place* (position preserved), matching runtime ``eval_projection``
+        # / ``exprlist_to_fields`` ordering.
+        assert_exprs_equal(project.exprs, [col("a")._rename("A"), col("b"), col("k")])
 
     def test_udf_chain_preserves_star(
         self, ray_start_regular_shared_2_cpus, parquet_path
@@ -381,7 +384,7 @@ class TestEagerStarExpansion:
         )
         project = ds._logical_plan.dag
         assert isinstance(project, Project)
-        assert any(isinstance(e, StarExpr) for e in project.exprs)
+        assert_exprs_equal(project.exprs, [star(), (col("a") + lit(10)).alias("new")])
 
 
 if __name__ == "__main__":
