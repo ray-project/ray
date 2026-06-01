@@ -521,10 +521,14 @@
 
 # Pinned to Python 3.11 to exercise the pandas 3.0 floor (pandas 3.0 requires
 # Python >= 3.11). See the pandas dependency markers in python/setup.py.
+# Uses the 'cpu' BYOD type because the default 'gpu' image is locked to
+# Python 3.10 (see validate_byod_type in release/ray_release/config.py).
 - name: "iter_batches_pandas"
   python: "3.11"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      type: cpu
 
   run:
     timeout: 2400
