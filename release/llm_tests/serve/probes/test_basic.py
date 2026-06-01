@@ -249,9 +249,12 @@ async def test_non_existent_model(
     with pytest.raises(error_type) as e:
         await querier.query(bad_model_id, stream, chat, **params)
 
-    assert "Could not find" in str(
-        e.value
-    ), f'Exception {e.value} for missing model must mention "Could not find".'
+    # OpenAiIngress wraps with "Could not find"; vLLM's native ASGI app
+    # (used under RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING) says "does not exist".
+    msg = str(e.value)
+    assert (
+        "Could not find" in msg or "does not exist" in msg
+    ), f'Exception {e.value} for missing model must mention "Could not find" or "does not exist".'
 
 
 @pytest.mark.parametrize("model", model_loader.completions_only_model_ids())

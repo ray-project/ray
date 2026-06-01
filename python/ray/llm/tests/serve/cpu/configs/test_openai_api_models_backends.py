@@ -12,15 +12,33 @@ _OAI_MODELS_MOD = "ray.llm._internal.serve.core.configs.openai_api_models"
 
 
 class _VLLMImportBlocker:
-    """Meta-path finder that makes every ``vllm.*`` import raise."""
+    """Meta-path finder that simulates vLLM not being installed.
 
-    def find_module(self, fullname, path=None):
+    Raises ModuleNotFoundError with .name set to mirror what Python raises
+    when a package is genuinely absent, so raise_llm_engine_import_error
+    can distinguish "not installed" from "installed but broken".
+    """
+
+    def find_spec(self, fullname, path=None, target=None):
         if fullname == "vllm" or fullname.startswith("vllm."):
-            return self
+            err = ModuleNotFoundError(f"Mocked: {fullname} is not installed")
+            err.name = fullname
+            raise err
         return None
 
-    def load_module(self, fullname):
-        raise ImportError(f"Mocked: {fullname} is not installed")
+
+class _VLLMBrokenInstallBlocker:
+    """Meta-path finder that simulates vLLM installed but broken at runtime
+    (e.g. missing libcudart.so or a missing transitive dependency).
+    """
+
+    def __init__(self, error: ImportError):
+        self._error = error
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "vllm" or fullname.startswith("vllm."):
+            raise self._error
+        return None
 
 
 class TestVLLMBackend:
@@ -59,10 +77,8 @@ class TestVLLMBackend:
 
         assert "request_id" in TranscriptionRequest.model_fields
 
-    def test_import_error_when_vllm_blocked(self):
-        """SGLang is not installed here either, so blocking vLLM means neither
-        backend is available."""
-        blocker = _VLLMImportBlocker()
+    def _reload_oai_models_with_blocker(self, blocker):
+        """Helper: evict vllm + the target module, install blocker, reimport."""
         saved = {
             k: sys.modules.pop(k)
             for k in list(sys.modules)
@@ -71,12 +87,36 @@ class TestVLLMBackend:
         sys.modules.pop(_OAI_MODELS_MOD, None)
         sys.meta_path.insert(0, blocker)
         try:
-            with pytest.raises(ImportError, match="Neither vLLM nor SGLang"):
-                importlib.import_module(_OAI_MODELS_MOD)
+            importlib.import_module(_OAI_MODELS_MOD)
         finally:
             sys.meta_path.remove(blocker)
             sys.modules.pop(_OAI_MODELS_MOD, None)
             sys.modules.update(saved)
+
+    def test_import_error_when_vllm_blocked(self):
+        """SGLang is not installed here either, so blocking vLLM means neither
+        backend is available."""
+        with pytest.raises(ImportError, match="Neither vLLM nor SGLang"):
+            self._reload_oai_models_with_blocker(_VLLMImportBlocker())
+
+    def test_vllm_installed_but_broken_cuda(self):
+        """Plain ImportError (e.g. missing libcudart.so) → clear message that
+        vLLM is installed but failed to load, not 'not installed'."""
+        cuda_err = ImportError(
+            "libcudart.so.12: cannot open shared object file: No such file or directory"
+        )
+        blocker = _VLLMBrokenInstallBlocker(cuda_err)
+        with pytest.raises(ImportError, match="vLLM is installed but failed to import"):
+            self._reload_oai_models_with_blocker(blocker)
+
+    def test_vllm_installed_but_missing_transitive_dep(self):
+        """ModuleNotFoundError for a *dependency* of vLLM (not vllm itself)
+        must also be reported as 'installed but broken', not 'not installed'."""
+        dep_err = ModuleNotFoundError("No module named 'msgpack'")
+        dep_err.name = "msgpack"
+        blocker = _VLLMBrokenInstallBlocker(dep_err)
+        with pytest.raises(ImportError, match="vLLM is installed but failed to import"):
+            self._reload_oai_models_with_blocker(blocker)
 
 
 class TestSanitizeChatCompletionRequest:

@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {
@@ -159,7 +159,6 @@ void LocalObjectManager::FlushFreeObjects() {
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  last_free_objects_at_ms_ = current_time_ms();
 }
 
 bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
@@ -217,7 +216,7 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
-  if (idx == objects_pending_spill_.size() && bytes_to_spill < min_spilling_size_ &&
+  if (idx == pinned_objects_.size() && bytes_to_spill < min_spilling_size_ &&
       !objects_pending_spill_.empty()) {
     // 1. We've gone through all objects and it didn't hit max_fused_object_count_.
     // 2. The total size of the current objects is less than min_spilling_size.
@@ -230,14 +229,14 @@ bool LocalObjectManager::TryToSpillObjects() {
   }
   RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill << " num objects "
                  << objects_to_spill.size();
-  auto start_time = absl::GetCurrentTimeNanos();
+  auto start_time = clock_.NowUnixNanos();
   SpillObjectsInternal(
       objects_to_spill,
       [this, bytes_to_spill, objects_to_spill, start_time](const Status &status) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
         } else {
-          auto now = absl::GetCurrentTimeNanos();
+          auto now = clock_.NowUnixNanos();
           RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
                          << (now - start_time) / 1e6 << "ms";
           // Adjust throughput timing to account for concurrent spill operations.
@@ -476,7 +475,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   num_bytes_pending_restore_ += object_size;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_size, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
-    auto start_time = absl::GetCurrentTimeNanos();
+    auto start_time = clock_.NowUnixNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(object_url);
@@ -492,7 +491,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
-            auto now = absl::GetCurrentTimeNanos();
+            auto now = clock_.NowUnixNanos();
             auto restored_bytes = r.bytes_restored_total();
             RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
                            << (now - start_time) / 1e6 << "ms. Object id:" << object_id;

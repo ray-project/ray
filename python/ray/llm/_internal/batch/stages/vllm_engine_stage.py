@@ -17,7 +17,7 @@ import torch
 from pydantic import BaseModel, Field, root_validator
 
 if TYPE_CHECKING:
-    from vllm.multimodal import MultiModalDataDict
+    from vllm.inputs import MultiModalDataDict
 else:
     MultiModalDataDict = Any
 
@@ -209,6 +209,11 @@ class vLLMEngineWrapper:
     Args:
         *args: The positional arguments for the engine.
         max_pending_requests: The maximum number of pending requests in the queue.
+            If None, it will be auto-resolved to
+            ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)`` using values
+            from vLLM's resolved engine config (so the default tracks vLLM's
+            GPU-dependent ``max_num_seqs``). Pass a non-positive value (e.g.
+            ``-1``) to disable the semaphore entirely.
         dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
         log_engine_metrics: Whether to export vLLM metrics to Ray's Prometheus endpoint.
         **kwargs: The keyword arguments for the engine.
@@ -217,7 +222,7 @@ class vLLMEngineWrapper:
     def __init__(
         self,
         idx_in_batch_column: str,
-        max_pending_requests: int = -1,
+        max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         log_engine_metrics: bool = True,
         **kwargs,
@@ -225,8 +230,6 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        self._guided_decoding_warning_logged = False
-        self._truncate_prompt_tokens_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -294,8 +297,29 @@ class vLLMEngineWrapper:
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
+        # When the caller did not specify a limit, derive it from the resolved
+        # vLLM config rather than from raw engine_kwargs. vLLM's default
+        # `max_num_seqs` is GPU-dependent (e.g. 256 on A10G/A100, 1024 on H100),
+        # so reading from `scheduler_config` avoids silently capping the
+        # semaphore below vLLM's actual capacity.
+        scheduler_config = self._vllm_config.scheduler_config
+        parallel_config = self._vllm_config.parallel_config
+        engine_capacity = (
+            scheduler_config.max_num_seqs * parallel_config.pipeline_parallel_size
+        )
+        if max_pending_requests is None:
+            max_pending_requests = math.ceil(engine_capacity * 1.1)
+        elif 0 < max_pending_requests < engine_capacity:
+            logger.warning(
+                "max_pending_requests (%d) < max_num_seqs * pipeline_parallel_size "
+                "(%d); may underutilize vLLM. Consider >=%d, or <=0 to disable.",
+                max_pending_requests,
+                engine_capacity,
+                math.ceil(engine_capacity * 1.1),
+            )
         self.max_pending_requests = max_pending_requests
         if self.max_pending_requests > 0:
+            logger.info("Max pending requests is set to %d", self.max_pending_requests)
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
             self.semaphore = asyncio.NullContext()
@@ -395,26 +419,10 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             structured_outputs_config = None
-            # Handle new structured_outputs parameter (preferred)
             if "structured_outputs" in sampling_params:
                 structured_outputs_config = maybe_convert_ndarray_to_list(
                     sampling_params.pop("structured_outputs")
                 )
-                # Remove guided_decoding if present to avoid passing it to SamplingParams
-                sampling_params.pop("guided_decoding", None)
-            # Handle legacy guided_decoding parameter for backward compatibility
-            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
-            elif "guided_decoding" in sampling_params:
-                structured_outputs_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("guided_decoding")
-                )
-                # Log deprecation warning only once to avoid log spam
-                if not self._guided_decoding_warning_logged:
-                    logger.warning(
-                        "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_outputs' in sampling_params instead."
-                    )
-                    self._guided_decoding_warning_logged = True
 
             if structured_outputs_config:
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
@@ -434,27 +442,6 @@ class vLLMEngineWrapper:
             pooling_params = maybe_convert_ndarray_to_list(
                 row.pop("pooling_params", {})
             )
-
-            # vLLM 0.16.0 deprecates truncate_prompt_tokens in PoolingParams.
-            # truncate_prompt_tokens must be passed via tokenization_kwargs instead.
-            # TODO (jeffreywang): Remove this in Ray 2.56.0.
-            if "truncate_prompt_tokens" in pooling_params:
-                truncate_value = pooling_params.pop("truncate_prompt_tokens")
-                if not self._truncate_prompt_tokens_warning_logged:
-                    logger.warning(
-                        "Setting truncate_prompt_tokens in pooling_params is "
-                        "deprecated. Please pass "
-                        "tokenization_kwargs={'truncation': True, "
-                        "'max_length': N} via the tokenization_kwargs column instead."
-                    )
-                    self._truncate_prompt_tokens_warning_logged = True
-                if truncate_value == -1:
-                    truncate_value = self._vllm_config.model_config.max_model_len
-
-                if tokenization_kwargs is None:
-                    tokenization_kwargs = {}
-                tokenization_kwargs.setdefault("truncation", True)
-                tokenization_kwargs.setdefault("max_length", truncate_value)
 
             params = vllm.PoolingParams(
                 **pooling_params,
@@ -612,7 +599,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             max_pending_requests: The maximum number of pending requests. If None,
-                it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
+                it will be set to ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)``,
+                where ``max_num_seqs`` and ``pipeline_parallel_size`` are read from
+                vLLM's resolved engine config (so the default tracks vLLM's
+                GPU-dependent ``max_num_seqs``, not a hardcoded value).
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
             should_continue_on_error: If True, continue processing when inference fails for
@@ -628,14 +618,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Setup vLLM engine kwargs.
         self.task_type = task_type
         self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
-
-        # Set up the max pending requests.
-        pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
-        self.max_pending_requests = max_pending_requests or math.ceil(
-            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
-        )
-        if self.max_pending_requests > 0:
-            logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
         exclude_safetensors = (
             self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
@@ -662,11 +644,14 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             enable_log_requests=False,
-            max_pending_requests=self.max_pending_requests,
+            max_pending_requests=max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             log_engine_metrics=log_engine_metrics,
             **self.engine_kwargs,
         )
+        # The wrapper resolves a None into a concrete value using vLLM's
+        # resolved engine config; surface that back on the UDF.
+        self.max_pending_requests = self.llm.max_pending_requests
 
         max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
         if batch_size * max_concurrent_batches < max_num_seqs:

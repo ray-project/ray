@@ -118,8 +118,7 @@ def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
         .map(lambda x: x)
     )
 
-    execution_plan = ds._plan
-    physical_plan, _ = get_execution_plan(execution_plan._logical_plan)
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
 
     # Use StreamingExecutor directly to have access to the actual topology
     executor = StreamingExecutor(DataContext.get_current())
@@ -135,11 +134,13 @@ def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
         total_rows == 5
     ), f"Expected exactly 5 rows after limit(5), but got {total_rows}"
 
-    # Find the ReadParquet operator's OpState
+    # Find the parquet read operator's OpState. Covers both the V1
+    # ``ReadParquet`` op name and the V2 ``ReadFilesParquet{V2,}`` name
+    # under the ``DataContext.use_datasource_v2`` path.
     topology = executor._topology
     read_parquet_op_state = None
     for op, op_state in topology.items():
-        if "ReadParquet" in op.name:
+        if "Parquet" in op.name and ("Read" in op.name or "ReadFiles" in op.name):
             read_parquet_op_state = op_state
             break
 
