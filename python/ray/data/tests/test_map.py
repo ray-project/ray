@@ -668,12 +668,49 @@ def test_drop_columns(
         assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
         assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == []
         assert ds.drop_columns(["col1", "col2"]).take(1) == [{"col3": 3}]
-        # Test dropping non-existent column
-        with pytest.raises((UserCodeException, KeyError)):
-            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
     with pytest.raises(ValueError, match="drop_columns expects unique column names"):
         ds1.drop_columns(["col1", "col2", "col2"])
+
+
+@pytest.mark.parametrize(
+    "source,eager",
+    [
+        # Parquet source: input ``pa.Schema`` is known, so ``drop_columns``
+        # raises immediately at the call site.
+        ("parquet", True),
+        # ``from_pandas`` source: input schema is a ``PandasBlockSchema``,
+        # not a ``pa.Schema``, so the typed-chain reshape is skipped and
+        # the error surfaces inside ``materialize`` as a
+        # ``UserCodeException`` wrapping the PyArrow ``KeyError``.
+        ("pandas", False),
+        # UDF chain: input schema is opaque downstream of ``map_batches``,
+        # same fallback as ``pandas``.
+        ("udf", False),
+    ],
+)
+def test_drop_columns_missing_column_raises(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    source,
+    eager,
+):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    if source == "parquet":
+        ray.data.from_pandas(df).write_parquet(str(tmp_path))
+        ds = ray.data.read_parquet(str(tmp_path))
+    elif source == "pandas":
+        ds = ray.data.from_pandas(df)
+    else:
+        ds = ray.data.from_pandas(df).map_batches(lambda b: b)
+
+    if eager:
+        with pytest.raises(KeyError, match="not found in dataset schema"):
+            ds.drop_columns(["dummy_col", "col1", "col2"])
+    else:
+        with pytest.raises((UserCodeException, KeyError)):
+            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
 def test_select_rename_columns(

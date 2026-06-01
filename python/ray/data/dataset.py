@@ -1133,7 +1133,10 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception is raised. Column names must be unique.
+                an exception is raised. Column names must be unique. When the
+                input schema is known statically, missing columns are reported
+                at the ``drop_columns`` call; otherwise the error surfaces
+                during materialization.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -1143,10 +1146,37 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the specified columns removed.
         """  # noqa: E501
+        import pyarrow as pa
 
         if len(cols) != len(set(cols)):
             raise ValueError(f"drop_columns expects unique column names, got: {cols}")
 
+        # When the input schema is known, reshape into a ``Project`` over the
+        # surviving columns so the typed schema chain stays intact and
+        # ``Dataset.schema()`` resolves without a ``limit(1)`` execution.
+        # When ``keep`` is empty (all columns dropped), fall through to the
+        # ``MapBatches`` path — ``select_columns([])`` would yield an
+        # internal ``__bsp_stub`` placeholder column, but the empty-table
+        # semantics of ``pyarrow.Table.drop(all_columns)`` are what users
+        # expect from ``drop_columns``.
+        input_schema = self._logical_plan.dag.infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            missing = [c for c in cols if c not in input_schema.names]
+            if missing:
+                raise KeyError(
+                    f"drop_columns: column(s) not found in dataset schema: "
+                    f"{missing}. Available columns: {input_schema.names}"
+                )
+            keep = [c for c in input_schema.names if c not in cols]
+            if keep:
+                return self.select_columns(
+                    keep,
+                    compute=compute,
+                    concurrency=concurrency,
+                    **ray_remote_args,
+                )
+
+        # Fallback: input schema unknown (UDF chain) or all columns dropped.
         def drop_columns(batch):
             return batch.drop(cols)
 
