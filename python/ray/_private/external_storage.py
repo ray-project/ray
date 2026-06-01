@@ -737,7 +737,6 @@ class ExternalStorageHDFSImpl(ExternalStorage):
                 logger.debug(f"Failed to delete spilled object {path}: {e}")
 
     def destroy_external_storage(self):
-        self._ensure_fs()
         for spill_dir in self._spill_dirs:
             try:
                 self._fs.delete_dir(spill_dir)
