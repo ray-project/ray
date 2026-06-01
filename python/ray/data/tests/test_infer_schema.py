@@ -364,9 +364,10 @@ class TestEagerStarExpansion:
         project = ds._logical_plan.dag
         assert isinstance(project, Project)
         assert not any(isinstance(e, StarExpr) for e in project.exprs)
-        # "a" is removed from star expansion (rename source); "A" appears
-        # at the end as the rename AliasExpr.
-        assert [e.name for e in project.exprs] == ["b", "k", "A"]
+        # The rename AliasExpr "A" substitutes for its source column "a"
+        # *in place* (position preserved), matching runtime
+        # ``eval_projection`` / ``exprlist_to_fields`` ordering.
+        assert [e.name for e in project.exprs] == ["A", "b", "k"]
 
     def test_udf_chain_preserves_star(
         self, ray_start_regular_shared_2_cpus, parquet_path

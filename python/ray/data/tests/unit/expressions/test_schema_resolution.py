@@ -296,11 +296,25 @@ class TestExpandStarExprs:
 
     def test_star_with_rename(self, schema):
         # ``rename_columns({"a": "renamed_a"})``: ``[star(), col(a)._rename("renamed_a")]``
-        # -> ``[col(b), col(name), col(flag), col(a)._rename("renamed_a")]``.
+        # -> ``[col(a)._rename("renamed_a"), col(b), col(name), col(flag)]``.
+        # The rename substitutes for its source column *in place* (matching
+        # runtime ``eval_projection`` / ``exprlist_to_fields``), so output
+        # column order is preserved rather than moving the renamed column
+        # to the end.
         rename = col("a")._rename("renamed_a")
         result = _expand_star_exprs([star(), rename], schema)
         assert len(result) == 4
-        assert [e.name for e in result[:3]] == ["b", "name", "flag"]
+        assert result[0] is rename
+        assert [e.name for e in result[1:]] == ["b", "name", "flag"]
+
+    def test_star_with_rename_source_missing(self, schema):
+        # A rename whose source column isn't in the input schema stays in
+        # its trailing position so it still errors ("column not found") at
+        # runtime instead of being silently dropped.
+        rename = col("missing")._rename("renamed")
+        result = _expand_star_exprs([star(), rename], schema)
+        assert len(result) == 5
+        assert [e.name for e in result[:4]] == ["a", "b", "name", "flag"]
         assert result[-1] is rename
 
     def test_no_star_no_op(self, schema):
