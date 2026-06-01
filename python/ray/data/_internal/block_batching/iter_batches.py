@@ -27,6 +27,20 @@ DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
     "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
 )
 
+# Emit one driver-side consume-phase summary per iteration so the Arrow->pandas
+# conversion vs block-wait breakdown can be diffed across read implementations.
+# Enabled by default on this benchmarking branch; set RAY_ITER_BENCH_LOG=0 to
+# disable.
+_ITER_BENCH_LOG = bool(env_integer("RAY_ITER_BENCH_LOG", 1))
+
+
+def _ib_timer_seconds(stats, name: str) -> float:
+    """Best-effort read of an accumulated DatasetStats Timer in seconds."""
+    try:
+        return getattr(stats, name).get()
+    except Exception:
+        return 0.0
+
 
 class BatchIterator:
     """Defines an iterator pipeline to convert a stream of block object references
@@ -244,6 +258,9 @@ class BatchIterator:
 
         self.before_epoch_start()
 
+        _ib_t0 = time.perf_counter() if _ITER_BENCH_LOG else 0.0
+        _ib_batches = _ib_rows = 0
+
         while True:
             with self.get_next_batch_context():
                 try:
@@ -251,9 +268,32 @@ class BatchIterator:
                 except StopIteration:
                     break
             with self.yield_batch_context(batch):
+                if _ITER_BENCH_LOG:
+                    _ib_batches += 1
+                    try:
+                        _ib_rows += len(batch.data)
+                    except Exception:
+                        pass
                 yield batch.data
 
         self.after_epoch_end()
+
+        if _ITER_BENCH_LOG:
+            _ib_wall = time.perf_counter() - _ib_t0
+            s = self._stats
+            print(
+                f"[ITER_BENCH] impl=oss phase=consume "
+                f"batches={_ib_batches} rows={_ib_rows} wall_s={_ib_wall:.3f} "
+                f"blocked_s={_ib_timer_seconds(s, 'iter_total_blocked_s'):.3f} "
+                f"get_ref_bundles_s={_ib_timer_seconds(s, 'iter_get_ref_bundles_s'):.3f} "
+                f"format_s={_ib_timer_seconds(s, 'iter_format_batch_s'):.3f} "
+                f"collate_s={_ib_timer_seconds(s, 'iter_collate_batch_s'):.3f} "
+                f"finalize_s={_ib_timer_seconds(s, 'iter_finalize_batch_s'):.3f} "
+                f"user_s={_ib_timer_seconds(s, 'iter_user_s'):.3f} "
+                f"ttfb_s={_ib_timer_seconds(s, 'iter_time_to_first_batch_s'):.3f} "
+                f"rows_per_s={(_ib_rows / _ib_wall) if _ib_wall > 0 else 0:.0f}",
+                flush=True,
+            )
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()
