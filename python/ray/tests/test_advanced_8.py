@@ -584,7 +584,9 @@ def test_k8s_cpu_percent_zero_num_cpus():
         "ray.dashboard.k8s_utils.last_system_usage", None
     ), mock.patch(
         "ray.dashboard.k8s_utils.last_cpu_usage", None
-    ), mock.patch.object(k8s_utils, "logger") as mock_logger:
+    ), mock.patch.object(
+        k8s_utils, "logger"
+    ) as mock_logger:
         # First call has no delta yet and returns 0.0.
         assert k8s_utils.cpu_percent() == 0.0
         # Second call hits the division path; with 0 CPUs it must still return
