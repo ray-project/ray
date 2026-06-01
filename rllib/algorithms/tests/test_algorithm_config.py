@@ -455,6 +455,39 @@ class TestAlgorithmConfig(unittest.TestCase):
                 1,
             )
 
+    def test_to_dict_roundtrip_new_api_stack(self):
+        """Tests that to_dict() correctly outputs and round-trips New API stack batch sizes."""
+        from ray.rllib.algorithms.ppo import PPOConfig
+
+        # 1. Create a config on the New API Stack
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .training(train_batch_size_per_learner=123)
+        )
+
+        expected_total = config.total_train_batch_size
+
+        # 2. Export to dictionary
+        config_dict = config.to_dict()
+
+        # Verify our fix correctly populated the dictionary
+        self.assertEqual(config_dict["train_batch_size"], expected_total)
+        self.assertEqual(config_dict["train_batch_size_per_learner"], 123)
+        
+        # Verify we did NOT inject the read-only property to prevent round-trip crashes
+        self.assertNotIn("total_train_batch_size", config_dict)
+
+        # 3. Roundtrip: Create a new config and update from the dictionary
+        new_config = PPOConfig().update_from_dict(config_dict)
+
+        # Verify the object successfully restored its dynamic state without crashing
+        self.assertEqual(new_config.train_batch_size_per_learner, 123)
+        self.assertEqual(new_config.total_train_batch_size, expected_total)
+
 
 if __name__ == "__main__":
     import sys
