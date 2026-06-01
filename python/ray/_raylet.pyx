@@ -2604,9 +2604,14 @@ def maybe_initialize_job_config():
                 pass
 
             # Resolve the actor's working_dir URI to a local path.
-            # The runtime_env agent extracts GCS packages to:
+            # The runtime_env agent extracts working_dir packages under
             #   <resources_dir>/working_dir_files/<pkg_name>/
-            # The first entry in PYTHONPATH is this resolved local path.
+            # (see WorkingDirPlugin._resources_dir). We can't simply take
+            # PYTHONPATH[0] because when the actor also sets py_modules,
+            # PyModulesPlugin prepends its own paths in front of the
+            # working_dir entry. Scan the PYTHONPATH entries and pick the
+            # one whose normalized path contains a "working_dir_files"
+            # segment instead.
             # Normalize the path so trailing slashes and platform-specific
             # separators (e.g. mixed '/' and '\\' on Windows) don't break
             # the sibling-directory comparison below.
@@ -2614,9 +2619,13 @@ def maybe_initialize_job_config():
             if _actor_working_dir_uri:
                 _pythonpath = os.environ.get("PYTHONPATH", "")
                 if _pythonpath:
-                    _first_path = _pythonpath.split(os.pathsep)[0]
-                    if os.path.isdir(_first_path):
-                        _actor_working_dir_local = os.path.normpath(_first_path)
+                    for _entry in _pythonpath.split(os.pathsep):
+                        if not _entry or not os.path.isdir(_entry):
+                            continue
+                        _norm_entry = os.path.normpath(_entry)
+                        if "working_dir_files" in _norm_entry.split(os.sep):
+                            _actor_working_dir_local = _norm_entry
+                            break
 
             for p in py_driver_sys_path:
                 # Skip the job-level working_dir path if this actor has its
