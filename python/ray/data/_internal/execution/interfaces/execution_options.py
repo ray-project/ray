@@ -1,7 +1,7 @@
 import math
 import os
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -47,23 +47,21 @@ class ExecutionResources:
         self._gpu: Optional[float] = gpu
         self._object_store_memory: Optional[float] = object_store_memory
         self._memory: Optional[float] = memory
-        self._quantized: Optional[tuple] = None
+        self._quantized: Optional[Tuple[float, float, float, float]] = None
 
-    def _quantized_key(self) -> tuple:
+    def _quantized_key(self) -> Tuple[float, float, float, float]:
         """Return the (cpu, gpu, object_store_memory, memory) tuple quantized
         to Ray Core's fractional-resource granularity. Lazy-cached on the
         instance after the first call.
         """
-        key = self._quantized
-        if key is None:
-            key = (
+        if self._quantized is None:
+            self._quantized = (
                 safe_round(self.cpu, 5),
                 safe_round(self.gpu, 5),
                 safe_round(self.object_store_memory, 0),
                 safe_round(self.memory, 0),
             )
-            self._quantized = key
-        return key
+        return self._quantized
 
     @classmethod
     def from_resource_dict(
