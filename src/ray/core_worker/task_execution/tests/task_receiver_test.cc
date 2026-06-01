@@ -189,19 +189,28 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 
   int callback_count = 0;
 
+  // Replies are passed by pointer into QueueTaskForExecution and accessed by
+  // the actor queue's posted Execute() handler (which runs on
+  // task_execution_service_ — via the no-pool post path). They must therefore
+  // outlive StartIOService() below. Declare them at function scope so they're
+  // alive through the whole test (in production, gRPC manages reply lifetime).
+  rpc::PushTaskReply reply0;
+  rpc::PushTaskReply reply1;
+  rpc::PushTaskReply reply2;
+  rpc::PushTaskReply reply3;
+
   // Push a task request with actor counter 0. This should succeed
   // on the receiver.
   {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply0, reply_callback);
   }
 
   // Push a task request with actor counter 1. This should succeed
@@ -209,14 +218,13 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   {
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, curr_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply1, reply_callback);
   }
 
   // Create another request with the same caller id, but a different worker id,
@@ -228,14 +236,13 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
     worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 0, worker_id, caller_id, new_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply2, reply_callback);
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
@@ -244,14 +251,13 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
     worker_id = WorkerID::FromRandom();
     auto request =
         CreatePushTaskRequestHelper(actor_id, 1, worker_id, caller_id, old_timestamp);
-    rpc::PushTaskReply reply;
     auto reply_callback = [&callback_count](Status status,
                                             std::function<void()> success,
                                             std::function<void()> failure) {
       ++callback_count;
       ASSERT_TRUE(!status.ok());
     };
-    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply3, reply_callback);
   }
 
   StartIOService();
