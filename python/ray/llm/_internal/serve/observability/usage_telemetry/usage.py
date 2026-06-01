@@ -252,12 +252,18 @@ def record_direct_streaming_enabled() -> None:
     from ray._common.usage.usage_lib import TagKey
 
     try:
+        # record_extra_usage_tag is already best-effort: it no-ops before ray
+        # init and swallows GCS/KV write errors internally. The only thing that
+        # escapes here is TagKey.Value() raising on a usage proto that hasn't
+        # been regenerated with the new tag, which we skip rather than fail the
+        # build. Any other (unexpected) error propagates so real bugs surface.
         record_extra_usage_tag(
             TagKey.Value(TelemetryTags.LLM_SERVE_DIRECT_STREAMING_ENABLED), "1"
         )
     except ValueError:
-        # Tag missing from the installed usage proto; skip rather than fail build.
-        pass
+        logger.debug(
+            "Skipping direct streaming telemetry: tag missing from usage proto."
+        )
 
 
 class HardwareUsage:
