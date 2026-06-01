@@ -275,7 +275,8 @@ class LLMServer(LLMServerProtocol):
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
         if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-            # Track direct streaming adoption (app-level, not per-model).
+            # Cluster-wide adoption signal: written from each replica on engine
+            # start, but last-write-wins so it reports one value per cluster.
             record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
