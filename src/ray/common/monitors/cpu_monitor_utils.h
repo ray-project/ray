@@ -18,8 +18,6 @@
 #include <string>
 #include <string_view>
 
-#include "ray/common/status.h"
-
 namespace ray {
 
 class CpuMonitorUtils {
@@ -40,35 +38,6 @@ class CpuMonitorUtils {
    */
   static int64_t GetCpuLimit(
       const std::string &root_cgroup_path = std::string(kRootCgroupPath));
-
- private:
-  using CpuCountOr = StatusSetOr<int64_t, StatusT::NotFound, StatusT::Invalid>;
-
-  /**
-   * @brief Gets the cgroup v2 cpu limit from the given file path.
-   *
-   * @param cpu_max_path File path to the cpu.max file tracking the
-   *        CPU limit for the cgroup.
-   *        https://docs.kernel.org/scheduler/sched-bwc.html
-   * @return The number of CPUs the cgroup is limited to. If the cpu is fractional,
-   *         it is rounded up to the nearest integer. Returns StatusT::NotFound if the
-   *         file cannot be read, or StatusT::Invalid if it contains invalid values.
-   */
-  static CpuCountOr GetCpuCountV2(const std::string &cpu_max_path);
-
-  /**
-   * @brief Gets the cgroup v1 cpu count from the given quota and period files.
-   *
-   * @param cfs_quota_path File path to the cpu.cfs_quota_us file. A value of -1
-   *        means no cpu limit is set.
-   * @param cfs_period_path File path to the cpu.cfs_period_us file.
-   * @return The number of CPUs the cgroup is limited to. If the cpu is fractional,
-   *         it is rounded up to the nearest integer. Returns StatusT::NotFound if the
-   *         either file cannot be read, or StatusT::Invalid if a file contains
-   *         invalid values.
-   */
-  static CpuCountOr GetCpuCountV1(const std::string &cfs_quota_path,
-                                  const std::string &cfs_period_path);
 };
 
 }  // namespace ray
