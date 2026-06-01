@@ -703,15 +703,10 @@ def test_actor_working_dir_overrides_driver_working_dir(start_cluster):
                     return sys.path[0]
 
                 def reported_working_dir(self) -> str:
-                    return (
-                        ray.get_runtime_context()
-                        .runtime_env.get("working_dir", "")
-                    )
+                    return ray.get_runtime_context().runtime_env.get("working_dir", "")
 
             # An actor whose working_dir is DIFFERENT from the driver's.
-            actor = Probe.options(
-                runtime_env={"working_dir": actor_dir}
-            ).remote()
+            actor = Probe.options(runtime_env={"working_dir": actor_dir}).remote()
 
             # Both the runtime_env-reported working_dir AND the imported
             # module must reflect the actor's package, not the driver's.
@@ -723,9 +718,9 @@ def test_actor_working_dir_overrides_driver_working_dir(start_cluster):
             # sys.path[0] should be the runtime_env-unpacked working_dir,
             # which lives under <resources_dir>/working_dir_files/.
             head = ray.get(actor.sys_path_head.remote())
-            assert "working_dir_files" in head, (
-                f"sys.path[0] is not a runtime_env working_dir: {head!r}"
-            )
+            assert (
+                "working_dir_files" in head
+            ), f"sys.path[0] is not a runtime_env working_dir: {head!r}"
 
             # Sanity: an actor that does NOT override working_dir still
             # picks up the driver's working_dir (regression guard so the
