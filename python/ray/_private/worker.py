@@ -2542,6 +2542,7 @@ def is_cluster_running(address: Optional[str] = None) -> bool:
         except Exception:
             return False
     else:
+        services.find_gcs_addresses.cache_clear()
         return len(services.find_gcs_addresses()) > 0
 
 

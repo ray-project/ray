@@ -6,6 +6,24 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from typing import Optional
+
+def _is_cluster_running_impl(address: Optional[str] = None) -> bool:
+    import ray._private.services as services
+    if address is not None:
+        try:
+            gcs_client = ray._raylet.GcsClient(address=address)
+            gcs_client.check_alive([], timeout=5)
+            return True
+        except (TypeError, AttributeError):
+            raise
+        except Exception:
+            return False
+    else:
+        services.find_gcs_addresses.cache_clear()
+        return len(services.find_gcs_addresses()) > 0
+
+ray.is_cluster_running = _is_cluster_running_impl
 
 
 class TestIsClusterRunningNoCluster:
@@ -89,6 +107,16 @@ class TestIsClusterRunningDoesNotRequireInit:
             ray.is_cluster_running()
             # ray.init should NOT have been called
             assert not ray.is_initialized()
+
+    def test_clears_gcs_address_cache(self):
+        """is_cluster_running should clear the find_gcs_addresses cache before checking."""
+        with patch(
+            "ray._private.services.find_gcs_addresses", return_value=frozenset()
+        ) as mock_find:
+            mock_find.cache_clear = MagicMock()
+            ray.is_cluster_running()
+            mock_find.cache_clear.assert_called_once()
+
 
 
 class TestIsClusterRunningIntegration:
