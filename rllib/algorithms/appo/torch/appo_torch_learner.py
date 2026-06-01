@@ -180,8 +180,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             * torch.clip(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
-        # IS-ratio diagnostics (ports `mean_IS` / `var_IS` from the old TF policy);
-        # restricted to valid timesteps via the loss mask.
+        # IS-ratio diagnostics; restricted to valid timesteps via loss mask.
         mean_is_ratio = torch.sum(is_ratio * loss_mask_time_major) / size_loss_mask
         var_is_ratio = (
             torch.sum(torch.square(is_ratio - mean_is_ratio) * loss_mask_time_major)
