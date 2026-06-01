@@ -52,6 +52,39 @@ ROW_HASH_COLUMN_NAME = "row_hash"
 # remote read tasks via Ray's log-to-driver tailing.
 _ITER_BENCH_LOG = bool(env_integer("RAY_ITER_BENCH_LOG", 1))
 
+# One-shot guard so the block-schema dump fires once per worker process.
+_ib_schema_logged = False
+
+
+def _ib_log_block_schema(impl: str, table) -> None:
+    """One-shot dump of an emitted block's Arrow type/chunk layout and the
+    resulting pandas dtypes, so the Arrow->pandas conversion cost can be
+    explained when block byte/row counts are identical across implementations.
+    """
+    global _ib_schema_logged
+    if _ib_schema_logged or not _ITER_BENCH_LOG:
+        return
+    _ib_schema_logged = True
+    try:
+        cols = []
+        for i in range(table.num_columns):
+            field = table.schema.field(i)
+            nchunks = getattr(table.column(i), "num_chunks", 1)
+            cols.append(f"{field.name}={field.type}/chunks={nchunks}")
+        try:
+            pdf = table.slice(0, min(8, table.num_rows)).to_pandas()
+            dtypes = ",".join(f"{c}:{t}" for c, t in pdf.dtypes.items())
+        except Exception:
+            dtypes = "n/a"
+        print(
+            f"[ITER_BENCH] impl={impl} phase=block_schema "
+            f"num_rows={table.num_rows} num_cols={table.num_columns} "
+            f"arrow=[{' '.join(cols)}] pandas=[{dtypes}]",
+            flush=True,
+        )
+    except Exception:
+        pass
+
 
 class FileFormat(str, Enum):
     PARQUET = "parquet"
@@ -345,6 +378,7 @@ class FileReader(Reader[FileManifest]):
                 _ib_rows += table.num_rows
                 _ib_bytes += table.nbytes
                 _ib_paths.add(fragment_path)
+                _ib_log_block_schema("oss", table)
 
             yield table
 
