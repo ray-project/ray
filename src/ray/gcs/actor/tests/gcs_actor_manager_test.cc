@@ -2541,7 +2541,9 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
       *fake_ray_event_recorder_,
       "test_session_name",
       fake_actor_by_state_gauge_,
-      fake_gcs_actor_by_state_gauge_);
+      fake_gcs_actor_by_state_gauge_,
+      observability_publisher_.get(),
+      clock_);
 
   // Step 7: Call Initialize() with the populated GcsInitData
   test_gcs_actor_manager->Initialize(gcs_init_data);
@@ -2643,7 +2645,9 @@ TEST_F(GcsActorManagerTest, TestInitializeDoesNotRestoreLocalRayletAddressForDea
       *fake_ray_event_recorder_,
       "test_session_name",
       fake_actor_by_state_gauge_,
-      fake_gcs_actor_by_state_gauge_);
+      fake_gcs_actor_by_state_gauge_,
+      observability_publisher_.get(),
+      clock_);
 
   // Step 7: Call Initialize() with the populated GcsInitData
   test_gcs_actor_manager->Initialize(gcs_init_data);
