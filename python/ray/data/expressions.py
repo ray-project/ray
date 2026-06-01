@@ -290,7 +290,7 @@ def _is_pyarrow_convertible(expr: "Expr") -> bool:
     try:
         expr.to_pyarrow()
         return True
-    except (TypeError, ValueError):
+    except Exception:
         return False
 
 
