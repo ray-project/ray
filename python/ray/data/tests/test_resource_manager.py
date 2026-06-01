@@ -735,6 +735,47 @@ class TestResourceManager:
         allocator.update_budgets(limits=limits)
         assert sentinel not in allocator._op_reserved  # recomputed
 
+    def test_min_max_resource_requirements_cached(self, restore_data_context):
+        """`min_max_resource_requirements()` is static config, so the allocator
+        computes it once per op and reuses it across `update_budgets` calls."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        calls = 0
+        real = o2.min_max_resource_requirements
+
+        def counting():
+            nonlocal calls
+            calls += 1
+            return real()
+
+        o2.min_max_resource_requirements = counting
+
+        limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
+        allocator.update_budgets(limits=limits)
+        assert calls == 1  # computed once across the reservation + budget loops
+
+        # Subsequent calls (same and different limits) reuse the cached value.
+        allocator.update_budgets(limits=limits)
+        allocator.update_budgets(
+            limits=ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
+        )
+        assert calls == 1
+
     def test_external_consumer_bytes_attributed_to_terminal_operator(
         self, restore_data_context
     ):
