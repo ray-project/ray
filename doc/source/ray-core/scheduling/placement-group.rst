@@ -737,8 +737,10 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 .. warning::
 
   Topology aware scheduling is an **alpha** feature. It's actively being iterated on and
-  the API surface may change. Ray currently supports only ``STRICT_PACK`` for topology labels, 
-  and one topology label. Support for additional strategies and multi-level topologies is planned.
+  the API surface may change. Ray currently only supports defining one topology label and 
+  one node level strategy (same as current strategy= implementation). For topology labels, 
+  Ray currently supports only ``STRICT_PACK``. Support for additional strategies and 
+  multi-level topologies is planned.
 
 Why topology aware scheduling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -771,8 +773,17 @@ How it works
 ~~~~~~~~~~~~
 
 Pass ``topology_strategy=`` to :func:`ray.util.placement_group` to enable topology-aware
-placement. The argument is a list of topology levels, where each level is a dict that maps a
-label key to the placement strategy used at that level.
+placement. The argument is a list of topology levels (currently only support for one element), 
+where each level is a dict that maps a label key to the placement strategy used at that level.
+
+Currently, ``topology_strategy`` is at most a list with one dictionary that may contain up 
+to two keys:
+
+- The special key ``ray.io/node-id`` sets the **node-level** strategy and accepts any value
+  in ``{"PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"}``. If you omit it, the node-level
+  strategy defaults to ``PACK``.
+- Any other key is a **topology label** that nodes have set (via ``ray start --labels`` or
+  your cluster configuration). Only ``STRICT_PACK`` is supported for these labels today.
 
 .. code-block:: python
 
@@ -794,16 +805,8 @@ With this, Ray accomplishes the following:
 2. Selects a value for that label that can satisfy all bundles.
 3. Applies the node-level scheduling strategy within the selected value.
 
-Currently, ``topology_strategy`` is at most a singleton list that may contain up to two keys:
-
-- The special key ``ray.io/node-id`` sets the **node-level** strategy and accepts any value
-  in ``{"PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"}``. If you omit it, the node-level
-  strategy defaults to ``PACK``.
-- Any other key is a **topology label** that nodes have set (via ``ray start --labels`` or
-  your cluster configuration). Only ``STRICT_PACK`` is supported for these labels today.
-
-For example, to STRICT_SPREAD bundles across distinct nodes while still STRICT_PACKing them
-onto a single rack (``ray.io/gpu-domain`` is each rack's **topology label**):
+Here is a following example to STRICT_SPREAD bundles across distinct nodes while still 
+STRICT_PACKing them onto a single rack (``ray.io/gpu-domain`` is each rack's **topology label**):
 
 .. code-block:: python
 
