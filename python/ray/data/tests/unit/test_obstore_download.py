@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from unittest.mock import MagicMock, patch
@@ -8,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
+from freezegun import freeze_time
 
 from ray.data._internal.planner._obstore_download import (
     _BUCKET_REGION_CACHE,
@@ -565,14 +565,13 @@ class TestS3FSSessionCredentialProvider:
 
     def test_refreshes_after_expiry(self):
         # Once expires_at passes, the next call must re-enter the session so
-        # rotated keys propagate to obstore. Use a tiny TTL to test quickly.
+        # rotated keys propagate to obstore.
         session = _sync_session("AKIA")
-        provider = _S3FSSessionCredentialProvider(
-            session, ttl=timedelta(microseconds=1)
-        )
-        asyncio.run(provider())
-        time.sleep(0.005)
-        asyncio.run(provider())
+        provider = _S3FSSessionCredentialProvider(session, ttl=timedelta(minutes=30))
+        with freeze_time() as frozen:
+            asyncio.run(provider())
+            frozen.tick(timedelta(minutes=31))
+            asyncio.run(provider())
         assert session.get_credentials.call_count == 2
 
     def test_uses_session_expiry_time(self):
