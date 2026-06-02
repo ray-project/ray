@@ -3158,11 +3158,16 @@ class DeploymentState:
     def _get_deployment_actors_configs(
         self, version: Optional[DeploymentVersion] = None
     ) -> List[DeploymentActorConfig]:
-        """Return deployment actor configs for the given version, or [] if None."""
+        """Return deployment actor configs for the given version, or [] if None.
+
+        Uses ``getattr`` so that ``DeploymentConfig`` instances deserialized from
+        legacy checkpoints (pre-``deployment_actors`` field) do not raise
+        ``AttributeError`` and crash ``ServeController.__init__`` during recovery.
+        """
         v = version if version is not None else self._target_state.version
         if v is None:
             return []
-        return v.deployment_config.deployment_actors or []
+        return getattr(v.deployment_config, "deployment_actors", None) or []
 
     def _deployment_actors_satisfied_for_target(self) -> bool:
         """True when every configured deployment-scoped actor is RUNNING for the target.
