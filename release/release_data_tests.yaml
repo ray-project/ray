@@ -528,7 +528,7 @@
     anyscale_sdk_2026: true
   matrix:
     setup:
-      batch_size: [32, 64, 128, 256, 1024, 4096]
+      batch_size: [32, 64, 128, 256, 512, 1024, 4096]
       mapper: ["on", "off"]
 
   run:
