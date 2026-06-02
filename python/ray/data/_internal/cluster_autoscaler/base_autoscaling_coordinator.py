@@ -22,6 +22,7 @@ class AutoscalingCoordinator(abc.ABC):
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
         label_selectors: Optional[List[Dict[str, str]]] = None,
+        subcluster_label_selector: Optional[Dict[str, str]] = None,
     ) -> None:
         """Request cluster resources.
 
@@ -40,6 +41,11 @@ class AutoscalingCoordinator(abc.ABC):
             label_selectors: Optional per-bundle label selectors, one per entry in
                 ``resources``. Forwarded to the autoscaler as
                 ``bundle_label_selectors``.
+            subcluster_label_selector: Optional requester-wide subcluster affiliation,
+                independent of ``resources``. When set, the requester is bucketed
+                into the matching subcluster (looked up via
+                ``subcluster_label_key``) for explicit and remaining-resources
+                allocation, even when ``resources`` is empty.
         """
         ...
 

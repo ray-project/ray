@@ -751,10 +751,11 @@ def test_v2_autoscaler_forwards_label_selector_per_bundle():
         {"subcluster": "training"},
         {"subcluster": "training"},
     ]
+    assert call_kwargs["subcluster_label_selector"] == {"subcluster": "training"}
 
 
 def test_v2_autoscaler_omits_label_selector_when_unset():
-    """No label_selector -> no per-bundle list (backwards compatible)."""
+    """No DataContext label_selector -> no per-bundle list, no affiliation."""
     mock_coord = Mock()
     with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
         autoscaler = DefaultClusterAutoscalerV2(
@@ -763,7 +764,29 @@ def test_v2_autoscaler_omits_label_selector_when_unset():
             autoscaling_coordinator=mock_coord,
         )
     autoscaler._send_resource_request([{"CPU": 1}])
-    assert mock_coord.request_resources.call_args.kwargs["label_selectors"] is None
+    kwargs = mock_coord.request_resources.call_args.kwargs
+    assert kwargs["label_selectors"] is None
+    assert kwargs["subcluster_label_selector"] is None
+
+
+def test_v2_autoscaler_forwards_label_selector_on_empty_request():
+    """Empty resource_request still carries the requester-wide
+    label_selector so the coordinator keeps this requester pinned to its
+    subcluster for remaining-resources eligibility."""
+    mock_coord = Mock()
+    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=Mock(),
+            execution_id="exec-1",
+            autoscaling_coordinator=mock_coord,
+            label_selector={"subcluster": "training"},
+        )
+    # The registration / idle path sends an empty resource list.
+    autoscaler._send_resource_request([])
+    kwargs = mock_coord.request_resources.call_args.kwargs
+    assert kwargs["resources"] == []
+    assert kwargs["label_selectors"] is None
+    assert kwargs["subcluster_label_selector"] == {"subcluster": "training"}
 
 
 def test_create_cluster_autoscaler_forwards_label_selector_and_key(monkeypatch):

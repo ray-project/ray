@@ -507,7 +507,7 @@ def test_fractional_bundles_are_forwarded_unchanged():
 
 
 def test_label_selectors_are_forwarded_to_sdk():
-    """Test that label selectors are forwarded to the autoscaler SDK."""
+    """Per-bundle label_selectors are forwarded as ``bundle_label_selectors``."""
     mock_send = Mock()
     coord = _AutoscalingCoordinatorActor(
         get_current_time=lambda: 0,
@@ -610,14 +610,14 @@ def test_label_selector_disjoint_requesters_dont_cross_talk():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 4}],
-        label_selectors=[{"subcluster": "training"}],
+        subcluster_label_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
     coord.request_resources(
         requester_id="val",
         resources=[{"CPU": 4}],
-        label_selectors=[{"subcluster": "validation"}],
+        subcluster_label_selector={"subcluster": "validation"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -631,22 +631,27 @@ def test_label_selector_disjoint_requesters_dont_cross_talk():
     assert sum(a["CPU"] for a in val if a != {"CPU": 4}) == 0
 
 
-def test_unlabeled_requester_cannot_use_labeled_nodes():
-    """An unlabeled requester's bundles fall in the ``None`` bucket and
-    must not consume capacity in any named subcluster."""
+def test_unlabeled_requester_only_sees_none_bucket():
+    """An unlabeled requester is only eligible for nodes in the ``None``
+    bucket (no subcluster label). It must not get explicit allocations or
+    leftover share from any labeled subcluster, even when it has
+    ``request_remaining=True``."""
     coord = _make_coordinator(LABELED_CLUSTER_NODES)
     coord.request_resources(
         requester_id="anon",
         resources=[{"CPU": 1}],
-        # No label_selectors -> bucket = None -> only the default-labeled node.
+        # No label_selector -> effective subcluster = None -> only the
+        # default-labeled node (2 CPU).
         expire_after_s=10,
         request_remaining=True,
     )
 
     alloc = coord.get_allocated_resources("anon")
     total_cpu = sum(a["CPU"] for a in alloc)
-    # Only the default-bucket node (2 CPU) is reachable.
-    assert total_cpu == 2
+    assert total_cpu == 2, (
+        f"unlabeled requester should only see the 2-CPU None bucket; got "
+        f"{total_cpu} (alloc={alloc})"
+    )
 
 
 def test_labeled_and_unlabeled_requesters_are_isolated():
@@ -654,7 +659,7 @@ def test_labeled_and_unlabeled_requesters_are_isolated():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 1}],
-        label_selectors=[{"subcluster": "training"}],
+        subcluster_label_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -674,25 +679,17 @@ def test_labeled_and_unlabeled_requesters_are_isolated():
 
 
 def test_label_selector_unmatched_yields_no_allocation():
-    """A bundle whose bucket has no matching nodes gets no allocation this
-    tick; the hint is still forwarded so the autoscaler can react."""
-    mock_send = Mock()
-    coord = _AutoscalingCoordinatorActor(
-        get_current_time=lambda: 0,
-        send_resources_request=mock_send,
-        get_cluster_nodes=lambda: LABELED_CLUSTER_NODES,
-    )
+    """A requester whose subcluster has no matching nodes gets no
+    allocation this tick."""
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
     coord.request_resources(
         requester_id="ghost",
         resources=[{"CPU": 1}],
-        label_selectors=[{"subcluster": "nonexistent"}],
+        subcluster_label_selector={"subcluster": "nonexistent"},
         expire_after_s=10,
         request_remaining=True,
     )
     assert coord.get_allocated_resources("ghost") == []
-    mock_send.assert_called_with(
-        [{"CPU": 1}], label_selectors=[{"subcluster": "nonexistent"}]
-    )
 
 
 def test_label_selector_partial_fit_when_demand_exceeds_capacity():
@@ -702,7 +699,7 @@ def test_label_selector_partial_fit_when_demand_exceeds_capacity():
     coord.request_resources(
         requester_id="val",
         resources=[{"CPU": 3}, {"CPU": 3}, {"CPU": 3}],
-        label_selectors=[{"subcluster": "validation"}] * 3,
+        subcluster_label_selector={"subcluster": "validation"},
         expire_after_s=10,
     )
     # Validation has one 4-CPU node; only the first 3-CPU bundle fits.
@@ -756,7 +753,7 @@ def test_full_tick_exercises_update_merge_reallocate():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 1}],
-        label_selectors=[{"subcluster": "training"}],
+        subcluster_label_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -779,6 +776,69 @@ def test_full_tick_exercises_update_merge_reallocate():
     train_total = sum(a["CPU"] for a in coord.get_allocated_resources("train"))
     # Now: 4 + 8 = 12 total; 1 explicit + 11 leftover.
     assert train_total == 12
+
+
+def test_per_bundle_label_selectors_drive_explicit_allocation():
+    """Trainer-style usage: per-bundle label_selectors alone determine each
+    bundle's subcluster for explicit allocation; no requester-wide
+    subcluster_label_selector required."""
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
+    coord.request_resources(
+        requester_id="trainer-style",
+        resources=[{"CPU": 4}, {"CPU": 3}],
+        label_selectors=[
+            {"subcluster": "training"},
+            {"subcluster": "validation"},
+        ],
+        expire_after_s=10,
+        # No request_remaining; the trainer never sets it.
+    )
+    alloc = coord.get_allocated_resources("trainer-style")
+    # First bundle goes to a training node (16 CPU available); second to
+    # the validation node (4 CPU available).
+    assert {"CPU": 4} in alloc
+    assert {"CPU": 3} in alloc
+
+
+def test_labeled_requester_with_empty_resources_stays_pinned():
+    """A labeled requester with empty resources + request_remaining=True is
+    eligible only for leftovers from its own subcluster."""
+    coord = _make_coordinator(LABELED_CLUSTER_NODES)
+
+    # Idle "train" requester: no bundles, still affiliated with training.
+    coord.request_resources(
+        requester_id="train_idle",
+        resources=[],
+        subcluster_label_selector={"subcluster": "training"},
+        expire_after_s=10,
+        request_remaining=True,
+    )
+    # Active "val" requester: asks for 2 CPU on validation. After explicit
+    # allocation, validation has 2 CPU of leftover.
+    coord.request_resources(
+        requester_id="val_active",
+        resources=[{"CPU": 2}],
+        subcluster_label_selector={"subcluster": "validation"},
+        expire_after_s=10,
+        request_remaining=True,
+    )
+
+    train_idle_alloc = coord.get_allocated_resources("train_idle")
+    val_active_alloc = coord.get_allocated_resources("val_active")
+
+    # Training bucket: 2 x 8 = 16 CPU, all leftover, all to train_idle.
+    train_idle_cpu = sum(a.get("CPU", 0) for a in train_idle_alloc)
+    assert train_idle_cpu == 16, (
+        f"train_idle should get exactly 16 CPU from training only, got "
+        f"{train_idle_cpu} (alloc={train_idle_alloc})"
+    )
+    # Validation bucket: 4 - 2 explicit = 2 leftover, all to val_active.
+    # Total = 2 explicit + 2 leftover = 4.
+    val_active_cpu = sum(a["CPU"] for a in val_active_alloc)
+    assert val_active_cpu == 4, (
+        f"val_active should get 2 explicit + 2 leftover = 4 CPU, got "
+        f"{val_active_cpu} (alloc={val_active_alloc})"
+    )
 
 
 def test_get_or_create_raises_on_mismatched_subcluster_label_key(
