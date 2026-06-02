@@ -1,9 +1,9 @@
 import json
 import os
 import pprint
+import shlex
 import sys
 import time
-import shlex
 from typing import Any, Dict, Optional, Tuple, Union
 
 import click

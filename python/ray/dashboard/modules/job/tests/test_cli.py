@@ -585,6 +585,66 @@ class TestStatus:
             mock_client_instance.get_job_info.assert_called_with("job_id")
 
 
+class TestEntrypointShellQuoting:
+    """Regression test for https://github.com/ray-project/ray/issues/56232.
+
+    `ray job submit` previously used `subprocess.list2cmdline` to join
+    entrypoint arguments. That function wraps arguments in double quotes,
+    which causes POSIX shells on the server to expand $VAR references.
+    The fix replaces it with `shlex.join`, which uses single quotes to
+    preserve shell variables as literal strings.
+    """
+
+    def test_entrypoint_preserves_shell_variables(self, mock_sdk_client):
+        """Ensure $VAR in entrypoint is single-quoted, not double-quoted."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--",
+                    "python",
+                    "-m",
+                    "launcher",
+                    "--config",
+                    "$CONFIG_PATH",
+                ],
+            )
+            check_exit_code(result, 0)
+            call_kwargs = mock_client_instance.submit_job.call_args
+            entrypoint = call_kwargs.kwargs["entrypoint"]
+
+            # shlex.join must single-quote the $VAR argument so that
+            # the server-side POSIX shell does NOT expand it.
+            assert "'$CONFIG_PATH'" in entrypoint, (
+                f"Expected single-quoted $CONFIG_PATH in entrypoint, "
+                f"got: {entrypoint!r}"
+            )
+            # Double quotes around $CONFIG_PATH would cause expansion.
+            assert '"$CONFIG_PATH"' not in entrypoint, (
+                f"Double-quoted $CONFIG_PATH would be expanded by the "
+                f"server shell, got: {entrypoint!r}"
+            )
+
+    def test_entrypoint_simple_args_not_over_quoted(self, mock_sdk_client):
+        """Simple arguments without special chars should not be quoted."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--", "echo", "hello"],
+            )
+            check_exit_code(result, 0)
+            call_kwargs = mock_client_instance.submit_job.call_args
+            entrypoint = call_kwargs.kwargs["entrypoint"]
+            assert entrypoint == "echo hello"
+
+
 if __name__ == "__main__":
     import sys
 
