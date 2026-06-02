@@ -6,21 +6,15 @@ time-to-first-batch, next-batch (fetch) time, train-step time, total
 runtime, throughput, peak object store usage. With ``--num-runs > 1``
 also reports mean ± stdev across runs.
 
-# Release-test configurations
-
-The corresponding release test entry is ``training_ingest_regression_test`` in
-``release/release_data_tests.yaml``, with four variations crossing two axes:
-
-Axis 1 — what's being measured:
-
+Release-test configurations:
 - ``peak_object_store_memory``: big batch + slow consumer (``--step-sleep-s=2.0``
   simulates a big-model training step dominated by ND-parallel collectives).
   Buffers fill under back-pressure so peak consumer-side object-store
   usage is the dominant signal. Cannot detect pipeline-throughput
   regressions (sleep dominates step time).
-- ``throughput_*``: same config without the sleep. Pipeline is the
+- ``throughput``: same config without the sleep. Pipeline is the
   rate-limiter so a pipeline-rate regression shows up. Cannot see the
-  object store usage signal (consumer pipeline queues stay empty when consumer is fast).
+  object store usage signal (consumer-side queues stay empty when consumer is fast).
 """
 
 import argparse
