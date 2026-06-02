@@ -394,6 +394,7 @@ class ParquetDatasource(Datasource):
         include_paths: bool = False,
         include_row_hash: bool = False,
         file_extensions: Optional[List[str]] = None,
+        ignore_missing_paths: bool = False,
     ):
         super().__init__()
         _check_pyarrow_version()
@@ -428,12 +429,19 @@ class ParquetDatasource(Datasource):
             filesystem,
             partition_filter=partition_filter,
             file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
         )
 
         if listed_files:
             paths, file_sizes = zip(*listed_files)
         else:
             paths, file_sizes = [], []
+
+        if ignore_missing_paths and len(paths) == 0:
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
 
         if dataset_kwargs is not None:
             logger.warning(

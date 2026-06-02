@@ -3253,6 +3253,47 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         mock_safe.assert_not_called()
 
 
+def test_read_parquet_ignore_missing_paths_true(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    path = os.path.join(tmp_path, "data.parquet")
+    table = pa.table({"id": [0, 1, 2]})
+    pq.write_table(table, path)
+
+    missing = os.path.join(tmp_path, "missing.parquet")
+    ds = ray.data.read_parquet([path, missing], ignore_missing_paths=True)
+
+    assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2]
+
+
+def test_read_parquet_ignore_missing_paths_false(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    path = os.path.join(tmp_path, "data.parquet")
+    pq.write_table(pa.table({"id": [0, 1, 2]}), path)
+
+    missing = os.path.join(tmp_path, "missing.parquet")
+    with pytest.raises(FileNotFoundError):
+        ray.data.read_parquet([path, missing], ignore_missing_paths=False).take_all()
+
+
+def test_read_parquet_ignore_missing_paths_all_missing(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    # When every path is missing and ``ignore_missing_paths=True``, the V1
+    # datasource raises, matching ``FileBasedDatasource``'s behavior for the
+    # other file-based readers. (The V2 datasource instead yields an empty
+    # dataset, consistent with its shared ``ListFiles`` empty-input handling.)
+    restore_data_context.use_datasource_v2 = False
+
+    missing1 = os.path.join(tmp_path, "missing1.parquet")
+    missing2 = os.path.join(tmp_path, "missing2.parquet")
+    with pytest.raises(ValueError):
+        ray.data.read_parquet(
+            [missing1, missing2], ignore_missing_paths=True
+        ).take_all()
+
+
 if __name__ == "__main__":
     import sys
 
