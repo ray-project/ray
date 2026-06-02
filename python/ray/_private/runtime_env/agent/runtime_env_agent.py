@@ -329,8 +329,6 @@ class RuntimeEnvAgent:
                 allocated_ids = list(request.allocated_instances[resource_name].ids)
                 allocated_ids_str = [str(i) for i in allocated_ids]
                 context.env_vars[env_var] = ",".join(allocated_ids_str)
-            else:
-                context.env_vars[env_var] = ""
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
