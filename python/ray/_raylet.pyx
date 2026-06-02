@@ -2182,7 +2182,6 @@ cdef execute_task_with_cancellation_handler(
         with current_task_id_lock:
             current_task_id = None
 
-        pass
 
 
     if execution_info.max_calls != 0:
