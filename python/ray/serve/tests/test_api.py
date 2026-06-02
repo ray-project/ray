@@ -443,6 +443,8 @@ def test_deploy_application_basic(serve_instance):
 
     # Test function deployment with app name
     f_handle = serve.run(f.bind(), name="app_f")
+    import time
+    time.sleep(60)
     assert f_handle.remote().result() == "got f"
     url = f"{get_application_url(app_name='app_f')}/"
     assert httpx.get(url).text == "got f"

@@ -1444,10 +1444,14 @@ class HAProxyManager(ProxyActorInterface):
                         if server.is_up:
                             ready_backends.add(backend)
                 ready_to_serve = all_backends == ready_backends
+                logger.info(
+                    f"Ready to serve: {ready_to_serve} with all_backends: {all_backends} and ready_backends: {ready_backends}.",
+                    extra={"log_to_stderr": True},
+                )
             except Exception:
                 pass
             if not ready_to_serve:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(5)
 
     def _is_draining(self) -> bool:
         """Whether is haproxy is in the draining status or not."""
