@@ -53,9 +53,7 @@ def test_grpc_backpressure(serve_instance):
         ray.get(_get_global_client()._controller.get_proxies.remote()).values()
     )[0]
     wait_for_condition(
-        lambda: ray.get(
-            proxy_handle._get_num_queued_requests_for_testing.remote("/")
-        )
+        lambda: ray.get(proxy_handle._get_num_queued_requests_for_testing.remote("/"))
         == 1
     )
 
