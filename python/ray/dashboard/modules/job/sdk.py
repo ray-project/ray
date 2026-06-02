@@ -515,8 +515,9 @@ class JobSubmissionClient(SubmissionClient):
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     yield msg.data
                 elif msg.type == aiohttp.WSMsgType.CLOSED:
-                    logger.debug(
-                        f"WebSocket closed for job {job_id} with close code {ws.close_code}"
+                    logger.info(
+                        f"WebSocket closed for job {job_id} with close code "
+                        f"{ws.close_code}"
                     )
                     if ws.close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
                         raise RuntimeError(
@@ -532,7 +533,8 @@ class JobSubmissionClient(SubmissionClient):
                             f"WebSocket error for job {job_id}: {ws.exception()}"
                         )
                     else:
-                        logger.debug(
-                            f"WebSocket error for job {job_id}, treating as normal close. Err: {ws.exception()}"
+                        logger.warning(
+                            f"WebSocket error for job {job_id}, treating as "
+                            f"normal close. Err: {ws.exception()!r}"
                         )
                         break
