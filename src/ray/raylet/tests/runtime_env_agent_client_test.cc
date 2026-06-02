@@ -308,6 +308,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvWithResources) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
