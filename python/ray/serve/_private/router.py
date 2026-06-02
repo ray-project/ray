@@ -1895,6 +1895,19 @@ class SingletonThreadRouter(Router):
 
 
 class SharedRouterLongPollClient:
+    """Process-wide LongPollClient shared by ``AsyncioRouter`` instances.
+
+    Cached by ``get_or_create`` keyed on ``(controller_handle, event_loop)``.
+    Note that ``ActorHandle.__hash__`` and ``__eq__`` are based on
+    ``_ray_actor_id``, so a fresh handle to a restarted controller (which
+    has a different ``actor_id``) misses the cache and produces a new
+    ``SharedRouterLongPollClient``. A *stale* handle, however, hits the
+    cached entry; if the underlying ``LongPollClient`` already entered
+    ``is_running=False`` because the controller died permanently, callers
+    that keep passing that same stale handle receive a dead instance.
+    Pass a freshly-resolved handle to bypass the stale-cache path.
+    """
+
     def __init__(self, controller_handle: ActorHandle, event_loop: AbstractEventLoop):
         self.controller_handler = controller_handle
         self.event_loop = event_loop

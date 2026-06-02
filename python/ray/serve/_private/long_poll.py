@@ -252,13 +252,25 @@ class LongPollClient:
         if isinstance(updates, (ray.exceptions.RayActorError)):
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
-            # exit.
-            logger.debug("LongPollClient failed to connect to host. Shutting down.")
+            # exit. It can also happen if the controller actor died
+            # permanently (e.g. ``__init__`` failed during GCS-FT
+            # recovery) — that case is silent under DEBUG, so log at
+            # WARNING with the actor_id and exception type to keep
+            # postmortems possible.
+            logger.warning(
+                "LongPollClient host_actor=%s died (%s). Shutting down; "
+                "no automatic reconnect.",
+                self.host_actor._actor_id.hex(),
+                type(updates).__name__,
+            )
             self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
-            logger.warning("LongPollClient connection failed, shutting down.")
+            logger.warning(
+                "LongPollClient host_actor=%s connection failed. Shutting down.",
+                self.host_actor._actor_id.hex(),
+            )
             self.is_running = False
             return
 

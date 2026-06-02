@@ -139,6 +139,28 @@ class ServeController:
     All other actors started by the controller are named, detached actors
     so they will not fate share with the controller if it crashes.
 
+    Restart semantics
+    -----------------
+    The controller is deployed with ``lifetime="detached"``,
+    ``max_restarts=-1``, and ``max_task_retries=-1``. As a result:
+
+    - Ordinary process death (OOM, head pod container restart, etc.) is
+      recovered transparently: the same ``actor_id`` comes back via Ray's
+      restart mechanism, and in-flight RPCs from long-lived consumers (e.g.
+      ``LongPollClient``) are retried automatically.
+    - If ``__init__`` raises (e.g. a checkpoint deserialization bug
+      surfaces during ``_recover_from_checkpoint``), Ray treats the actor
+      as permanently dead. A subsequent ``serve.start()`` then creates a
+      new ``ServeController`` instance with a new ``actor_id``.
+    - Any consumer that cached the previous handle
+      (``ProxyActor._long_poll_client``, ``HAProxyManager._long_poll_client``,
+      ``ServeControllerClient._controller``, etc.) is now holding a dead
+      handle. The next RPC raises ``RayActorError``/``ActorDiedError`` and
+      ``LongPollClient`` permanently shuts the client down without
+      auto-reconnect. Explicit re-acquisition (``serve.start()`` or
+      consumer process restart) is currently the only public recovery
+      path.
+
     The following guarantees are provided for state-changing calls to the
     controller:
         - If the call succeeds, the change was made and will be reflected in

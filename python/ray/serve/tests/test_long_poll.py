@@ -659,5 +659,69 @@ def test_long_poll_client_disable_propagates_to_host_log():
     assert "not running" in output.lower(), output
 
 
+def _make_host_actor_with_id(actor_id_bytes: bytes) -> MagicMock:
+    """Mock host_actor whose ``_actor_id.hex()`` returns a deterministic value."""
+    m = MagicMock()
+    m._actor_id = MagicMock()
+    m._actor_id.hex = lambda: actor_id_bytes.hex()
+    return m
+
+
+def test_process_update_logs_warning_with_actor_id_on_ray_actor_error():
+    """``_process_update`` emits WARNING (not DEBUG) on RayActorError.
+
+    Regression: the previous DEBUG log was invisible in production INFO-level
+    logging, leaving operators with zero direct evidence of a permanently
+    dead host actor. The WARNING line includes ``host_actor=<actor_id_hex>``
+    and the exception type, which together pin down the failure mode in a
+    postmortem (e.g. ``ActorDiedError`` vs a generic ``RayActorError``).
+    """
+    host_actor = _make_host_actor_with_id(b"A" * 16)
+    serve_logger = logging.getLogger("ray.serve")
+    serve_logger.setLevel(logging.WARNING)
+
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setLevel(logging.WARNING)
+    serve_logger.addHandler(handler)
+    loop = asyncio.new_event_loop()
+    try:
+        client = LongPollClient(host_actor, {}, call_in_event_loop=loop)
+        client._process_update(ray.exceptions.RayActorError())
+    finally:
+        loop.close()
+        serve_logger.removeHandler(handler)
+
+    output = buf.getvalue()
+    assert client.is_running is False
+    assert host_actor._actor_id.hex() in output, output
+    assert "RayActorError" in output, output
+    assert "died" in output.lower(), output
+
+
+def test_process_update_logs_warning_with_actor_id_on_connection_error():
+    """``_process_update`` emits WARNING with actor_id on ConnectionError."""
+    host_actor = _make_host_actor_with_id(b"B" * 16)
+    serve_logger = logging.getLogger("ray.serve")
+    serve_logger.setLevel(logging.WARNING)
+
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setLevel(logging.WARNING)
+    serve_logger.addHandler(handler)
+    loop = asyncio.new_event_loop()
+    try:
+        client = LongPollClient(host_actor, {}, call_in_event_loop=loop)
+        client._process_update(ConnectionError("network down"))
+    finally:
+        loop.close()
+        serve_logger.removeHandler(handler)
+
+    output = buf.getvalue()
+    assert client.is_running is False
+    assert host_actor._actor_id.hex() in output, output
+    assert "connection failed" in output.lower(), output
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
