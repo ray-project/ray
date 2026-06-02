@@ -322,6 +322,9 @@ class RuntimeEnvAgent:
             if not env_var:
                 continue
 
+            if env_var in context.env_vars:
+                continue
+
             if resource_name in request.allocated_instances:
                 allocated_ids = list(request.allocated_instances[resource_name].ids)
                 allocated_ids_str = [str(i) for i in allocated_ids]
