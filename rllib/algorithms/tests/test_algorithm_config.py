@@ -477,7 +477,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # Verify our fix correctly populated the dictionary
         self.assertEqual(config_dict["train_batch_size"], expected_total)
         self.assertEqual(config_dict["train_batch_size_per_learner"], 123)
-        
+
         # Verify we did NOT inject the read-only property to prevent round-trip crashes
         self.assertNotIn("total_train_batch_size", config_dict)
 
