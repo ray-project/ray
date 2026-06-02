@@ -149,7 +149,7 @@ When the caller [handles ReportGeneratorItemReturns](https://github.com/ray-proj
 2. Handle the reported return object using the same direct-return versus plasma-return logic as normal task returns.
 3. [Make the reported ObjectRef ready](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L821-L847). If a caller is [waiting in next(gen)](https://github.com/ray-project/ray/blob/ray-2.55.0/python/ray/_private/object_ref_generator.py#L188-L237) for this in-order yield index, that wait can now finish.
 
-The following diagram shows the reporting path for the first yielded value:
+The following diagram shows the reporting path for yielded values:
 
 ```
 Caller / owner process                             Executor worker
