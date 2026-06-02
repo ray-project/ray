@@ -665,7 +665,13 @@ bool LocalLeaseManager::PoppedWorkerHandler(
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
             absl::StrCat("Failed to startup worker after retrying ",
                          RayConfig::instance().pop_worker_max_retries(),
-                         " times."));
+                         " times. This is most often caused by errors in the worker's "
+                         "Python environment setup. For example, pip / uv install "
+                         "failures, a broken py_executable, or a dependency conflict in "
+                         "the cluster image. For additional context, please look at the "
+                         "raylet.err on node ",
+                         self_node_id_.Hex(),
+                         "."));
       } else {
         work->SetStateWaiting(cause);
       }
