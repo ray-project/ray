@@ -1,18 +1,45 @@
-"""Simplified single-file ResNet50 / ImageNet-parquet ingest+training benchmark.
+"""Single-file Ray Data + Ray Train ingest benchmark for iter-batches.
 
-Same workload shape as the release test
-``training_ingest_benchmark-task=image_classification.full_training.parquet``
-but in one file with five knobs. Edit the file directly to change the model,
-optimizer, transforms, batch size, or finalize behavior.
+Probes the iter-batches consumer pipeline under conditions that exercise
+both consumer-side memory and pipeline throughput. Reports per run:
+time-to-first-batch, next-batch (fetch) time, train-step time, total
+runtime, throughput, peak object store usage. With ``--num-runs > 1``
+also reports mean ± stdev across runs.
 
-Reports per run: time-to-first-batch, next-batch (fetch) time, train-step
-time, total runtime, throughput. With ``--num-runs > 1`` also reports
-mean ± stdev across runs.
+# Release-test configurations
 
-Usage:
-    RAY_TRAIN_V2_ENABLED=1 python simple_ingest_benchmark.py
-    RAY_TRAIN_V2_ENABLED=1 python simple_ingest_benchmark.py --num-runs=3
-    RAY_TRAIN_V2_ENABLED=1 python simple_ingest_benchmark.py \\
+The corresponding release test entry is ``training_ingest_regression_test`` in
+``release/release_data_tests.yaml``, with four variations crossing two
+axes:
+
+Axis 1 — what's being measured:
+
+- ``memory_*``: big batch + slow consumer (``--step-sleep-s=2.0``
+  simulates a big-model forward dominated by ND-parallel collectives).
+  Buffers fill under back-pressure so peak consumer-side object-store
+  usage is the dominant signal. Cannot detect pipeline-throughput
+  regressions (sleep dominates step time).
+- ``throughput_*``: same config without the sleep. Pipeline is the
+  rate-limiter so a pipeline-rate regression shows up. Cannot see the
+  memory-side signal (queues stay empty when consumer is fast).
+
+Axis 2 — pinning mode:
+
+- ``*_no_pin``: no ``--pin-memory``. Matches the ``iter_torch_batches``
+  API default; nightly frequency since this is what most users hit out
+  of the box.
+- ``*_pin``: ``--pin-memory``. The recommended setting for training
+  workloads; manual frequency since it's a secondary validation that
+  the same property holds under the recommended config.
+
+See ``release/train_tests/benchmark/INVESTIGATION_NOTES.md`` for
+headline numbers, acceptance thresholds, and the slot-accounting math.
+
+# Usage
+
+    RAY_TRAIN_V2_ENABLED=1 python training_ingest_regression_test.py
+    RAY_TRAIN_V2_ENABLED=1 python training_ingest_regression_test.py --num-runs=3
+    RAY_TRAIN_V2_ENABLED=1 python training_ingest_regression_test.py \\
         --num-workers=4 --limit-batches-per-worker=50 --prefetch-batches=2
 """
 
@@ -60,21 +87,16 @@ DEFAULT_BATCHES_PER_WORKER = 200
 DATA_URL = "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split_1t/train"
 
 
-# --- Workload variants ------------------------------------------------------
+# --- Workload variant -------------------------------------------------------
 #
-# `compute_bound`: ResNet-50 at batch=32. GPU work (~300 ms / step) dominates;
-# the data pipeline runs free behind it. Matches the existing release test.
-#
-# `data_bound`: a trivially small CNN at batch=2048. Per-step compute is ~5 ms,
-# while per-batch data is ~1.2 GB and the dataloader has to decode 2048
-# JPEGs. The critical path moves from GPU to "downstream of the model" —
-# H2D and/or decode/collate — depending on which is slower. This regime is
-# where PR1+PR2's buffer-depth and pinning choices actually affect
-# throughput, not just memory.
-
-
-def _make_resnet50() -> torch.nn.Module:
-    return torchvision.models.resnet50(weights=None)
+# `data_bound`: a trivially small CNN at batch=1024. Per-step compute is ~5 ms,
+# while per-batch data is ~588 MiB and the dataloader has to decode 1024
+# JPEGs. The critical path is downstream of the model — H2D and/or
+# decode/collate. This is the regime where iter-batches buffer depth and
+# pinning choices affect throughput AND peak object-store usage, so it's
+# the canonical config for measuring both. Use `--step-sleep-s=2.0` to
+# back-pressure the pipeline and exercise the peak-memory case;
+# `--step-sleep-s=0` for the throughput case.
 
 
 def _make_tiny_cnn() -> torch.nn.Module:
@@ -86,9 +108,33 @@ def _make_tiny_cnn() -> torch.nn.Module:
     )
 
 
+class _SleepingModel(torch.nn.Module):
+    """Wraps a base model and sleeps for ``sleep_s`` seconds inside
+    ``forward`` after running the wrapped module. Used to simulate a
+    slower model (e.g. a much larger model, or one whose forward/backward
+    is dominated by ND-parallel collective communication) without
+    actually consuming the GPU memory a real large model would need.
+
+    The sleep extends per-step wall-clock from the dataloader's
+    perspective, building back-pressure in the iter-batches queues — the
+    regime where consumer-side buffer size shows up in peak object-store
+    usage.
+    """
+
+    def __init__(self, base: torch.nn.Module, sleep_s: float) -> None:
+        super().__init__()
+        self.base = base
+        self.sleep_s = sleep_s
+
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        out = self.base(*args, **kwargs)
+        if self.sleep_s > 0:
+            time.sleep(self.sleep_s)
+        return out
+
+
 VARIANTS = {
-    "compute_bound": {"batch_size": 32, "make_model": _make_resnet50},
-    "data_bound": {"batch_size": 2048, "make_model": _make_tiny_cnn},
+    "data_bound": {"batch_size": 1024, "make_model": _make_tiny_cnn},
 }
 
 
@@ -211,7 +257,7 @@ def _make_profiler(enabled: bool, timestamp: str):
     from torch.profiler import ProfilerActivity, profile, schedule
 
     os.makedirs(TRACE_DIR, exist_ok=True)
-    trace_path = f"{TRACE_DIR}/simple_ingest_profile_{timestamp}.json"
+    trace_path = f"{TRACE_DIR}/training_ingest_profile_{timestamp}.json"
 
     def _on_trace_ready(p) -> None:
         p.export_chrome_trace(trace_path)
@@ -234,6 +280,8 @@ def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
     batch_size = variant["batch_size"]
 
     model = variant["make_model"]()
+    if config["step_sleep_s"] > 0:
+        model = _SleepingModel(model, config["step_sleep_s"])
     model = ray.train.torch.prepare_model(model)
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(
@@ -374,6 +422,7 @@ def run_once(args: argparse.Namespace) -> Dict[str, float]:
         "num_batches": num_batches_per_worker,
         "profile": args.profile,
         "trace_timestamp": trace_timestamp,
+        "step_sleep_s": args.step_sleep_s,
     }
 
     datasets = None
@@ -461,12 +510,12 @@ def main() -> None:
     p.add_argument(
         "--variant",
         choices=sorted(VARIANTS.keys()),
-        default="compute_bound",
+        default="data_bound",
         help=(
-            "compute_bound: ResNet-50 at batch=32, GPU work dominates "
-            "(~300 ms/step), data pipeline runs free behind it. "
-            "data_bound: tiny CNN at batch=2048, GPU compute is ~free, "
-            "critical path moves to H2D + decode/collate."
+            "data_bound: tiny CNN at batch=1024 (~588 MiB / batch). GPU "
+            "compute is ~free, critical path is H2D + decode/collate. "
+            "Combine with --step-sleep-s to simulate a slow consumer for "
+            "the peak-memory case."
         ),
     )
     p.add_argument("--num-workers", type=int, default=16)
@@ -484,6 +533,19 @@ def main() -> None:
     )
     p.add_argument("--prefetch-batches", type=int, default=4)
     p.add_argument("--pin-memory", action="store_true")
+    p.add_argument(
+        "--step-sleep-s",
+        type=float,
+        default=0.0,
+        help=(
+            "Sleep this many seconds inside model.forward() to simulate a "
+            "larger model (e.g. one whose forward/backward is dominated by "
+            "ND-parallel collectives) without actually consuming GPU memory. "
+            "Adds wall-clock to each step so back-pressure builds up in the "
+            "dataloader queues — the regime where consumer-side buffer size "
+            "shows up in peak object-store usage."
+        ),
+    )
     p.add_argument(
         "--manual-device-transfer",
         action="store_true",
@@ -509,7 +571,7 @@ def main() -> None:
         help=(
             "Record a PyTorch profiler trace on rank 0 and save as "
             f"Chrome/Perfetto JSON to {TRACE_DIR}/"
-            "simple_ingest_profile_<timestamp>.json. Each --num-runs "
+            "training_ingest_profile_<timestamp>.json. Each --num-runs "
             "iteration gets its own timestamp (YYYYMMDD_HHMMSS). Adds "
             "non-trivial overhead — do not use --profile runs for reading "
             "throughput numbers."
