@@ -134,6 +134,25 @@ class Resources(dict):
         return False
 
 
+def _format_resources_for_scheduling_log(resources: Resources) -> str:
+    """Compact resource summary for pack scheduling logs."""
+    priority_keys = list(Resources.CUSTOM_PRIORITY) + ["GPU", "CPU", "memory"]
+    seen = set()
+    parts = []
+    for key in priority_keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        val = resources.get(key)
+        if val:
+            parts.append(f"{key}={val:g}" if isinstance(val, float) else f"{key}={val}")
+    for key in sorted(set(resources.keys()) - seen):
+        val = resources.get(key)
+        if val:
+            parts.append(f"{key}={val:g}" if isinstance(val, float) else f"{key}={val}")
+    return ", ".join(parts) if parts else "none"
+
+
 class AvailableNodeResources(Resources):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -373,6 +392,10 @@ class DeploymentScheduler(ABC):
         # We know where those replicas are running.
         # {deployment_id: {replica_id: running_node_id}}
         self._running_replicas = defaultdict(dict)
+        # Dedupes pack scheduling order logs across control loops.
+        self._last_pack_schedule_order_log_key: Optional[tuple] = None
+        # Dedupes repeated pack placement failure logs for stuck replicas.
+        self._logged_pack_placement_failures: Set[ReplicaID] = set()
 
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
@@ -437,6 +460,7 @@ class DeploymentScheduler(ABC):
         self._launching_replicas[deployment_id].pop(replica_id, None)
         self._recovering_replicas[deployment_id].discard(replica_id)
         self._running_replicas[deployment_id].pop(replica_id, None)
+        self._logged_pack_placement_failures.discard(replica_id)
 
     def on_replica_running(self, replica_id: ReplicaID, node_id: str) -> None:
         """Called whenever a deployment replica is running with a known node id."""
@@ -978,6 +1002,31 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             reverse=True,
         )
 
+        if all_scheduling_requests:
+            order_log_key = tuple(r.replica_id for r in all_scheduling_requests)
+            if order_log_key != self._last_pack_schedule_order_log_key:
+                self._last_pack_schedule_order_log_key = order_log_key
+                if Resources.CUSTOM_PRIORITY:
+                    priority_desc = (
+                        f"{Resources.CUSTOM_PRIORITY} "
+                        f"(then GPU, CPU, memory, other custom)"
+                    )
+                else:
+                    priority_desc = (
+                        "GPU, CPU, memory, other custom "
+                        "(RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES unset)"
+                    )
+                order_desc = ", ".join(
+                    f"{r.replica_id.deployment_id.name}"
+                    f"[{_format_resources_for_scheduling_log(r.requested_resources)}]"
+                    for r in all_scheduling_requests
+                )
+                logger.info(
+                    f"Pack scheduling {len(all_scheduling_requests)} pending "
+                    f"replica(s). Resource priority: {priority_desc}. "
+                    f"Schedule order (first scheduled first): {order_desc}."
+                )
+
         # Fetch node labels for active nodes.
         active_nodes = self._cluster_node_info_cache.get_active_node_ids()
         all_node_labels = {
@@ -1066,11 +1115,39 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             if target_node:
                 break
 
+        replica_id = scheduling_request.replica_id
+
+        if target_node is None:
+            if replica_id not in self._logged_pack_placement_failures:
+                self._logged_pack_placement_failures.add(replica_id)
+                logger.info(
+                    f"Pack scheduling could not place {replica_id} "
+                    f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}): "
+                    f"no node with sufficient resources. "
+                    f"Falling back to default scheduling."
+                )
+
         succeeded = self._schedule_replica(
             scheduling_request,
             default_scheduling_strategy="DEFAULT",
             target_node_id=target_node,
         )
+
+        if succeeded and target_node is not None:
+            self._logged_pack_placement_failures.discard(replica_id)
+            logger.info(
+                f"Pack scheduled {replica_id} "
+                f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
+                f"onto node {target_node}."
+            )
+        elif not succeeded and target_node is not None:
+            if replica_id not in self._logged_pack_placement_failures:
+                self._logged_pack_placement_failures.add(replica_id)
+                logger.info(
+                    f"Pack scheduling failed to launch {replica_id} "
+                    f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
+                    f"on node {target_node}."
+                )
 
         return target_node if succeeded else None
 
