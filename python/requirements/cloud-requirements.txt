@@ -15,7 +15,7 @@ openlineage-python>=1.36.0
 # Anyscale CLI requirements
 boto3==1.29.7
 botocore==1.32.7
-aiohttp>=3.7.4.post0
+aiohttp>=3.13.4
 certifi>=2024.8.30
 Click>=7.0
 colorama
