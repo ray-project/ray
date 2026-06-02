@@ -201,6 +201,26 @@
   variations:
     - __suffix__: aws
 
+- name: hello_world_cu130
+  python: "{{array.python}}"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu130
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
 #######################
 # SSH sanity checks
 #######################
