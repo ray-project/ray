@@ -14,6 +14,8 @@ On each cycle the module:
   4. if ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` is set, POSTs the batch JSON
      to that URL (no auth; the receiver is expected to accept
      unauthenticated writes the same way ``usage-stats.ray.io`` does),
+     splitting the batch across multiple size-capped requests when it
+     exceeds the receiver's single-record limit (see ``_chunk_batch``),
   5. writes a status mirror to ``<session_dir>/databricks_telemetry_status.json``.
 
 The local file is always produced regardless of POST outcome — it is the
@@ -50,18 +52,30 @@ from ray.dashboard.modules.databricks_telemetry.constants import (
     DATABRICKS_TELEMETRY_ENABLED_ENV_VAR,
     DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR,
     DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR,
+    DATABRICKS_TELEMETRY_MAX_POST_BYTES_ENV_VAR,
     DEFAULT_INTERVAL_S,
+    DEFAULT_MAX_POST_BYTES,
     DEFAULT_POST_TIMEOUT_S,
     DEFAULT_PROMETHEUS_HOST,
     METRIC_ALLOWLIST,
     PROMETHEUS_HOST_ENV_VAR,
     SCHEMA_VERSION,
     STATUS_FILE,
+    TELEMETRY_SOURCE,
     MetricSpec,
 )
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
+
+# Compact JSON separators (no spaces). Used for the POST body and for chunk
+# size accounting so the two agree exactly to the byte. Also trims ~10% off
+# the wire size vs. the default ``", "`` / ``": "`` separators.
+_COMPACT_SEPARATORS = (",", ":")
+
+# Bytes held back from ``max_post_bytes`` when packing a chunk, so the
+# serialized request stays strictly under the cap despite any rounding.
+_CHUNK_SAFETY_MARGIN = 256
 
 
 # --- Env-var readers (evaluated per call so changes take effect) ---------
@@ -92,6 +106,22 @@ def _telemetry_endpoint() -> str:
     env var to a concrete URL.
     """
     return os.getenv(DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR, "").strip()
+
+
+def _max_post_bytes() -> int:
+    """Per-request body size cap used to chunk the batch POST.
+
+    Defaults to ``DEFAULT_MAX_POST_BYTES`` (sized for the Firehose-backed
+    receiver). A non-positive or unparseable override disables chunking by
+    falling back to the default.
+    """
+    try:
+        value = int(
+            os.getenv(DATABRICKS_TELEMETRY_MAX_POST_BYTES_ENV_VAR, DEFAULT_MAX_POST_BYTES)
+        )
+    except ValueError:
+        return DEFAULT_MAX_POST_BYTES
+    return value if value > 0 else DEFAULT_MAX_POST_BYTES
 
 
 # --- PromQL construction --------------------------------------------------
@@ -156,6 +186,62 @@ def _atomic_write_json(dir_path: str, file_name: str, data: Dict[str, Any]) -> N
     temp.rename(destination)
 
 
+# --- Batch chunking -------------------------------------------------------
+
+
+def _chunk_batch(batch: Dict[str, Any], max_bytes: int) -> List[Dict[str, Any]]:
+    """Split ``batch`` into one or more POST payloads, each <= ``max_bytes``.
+
+    Each chunk carries the full envelope (every batch field except
+    ``samples``) plus its slice of ``samples`` and ``chunk_index`` /
+    ``num_chunks`` so the receiver can reassemble the logical batch. A batch
+    with no samples yields a single empty chunk. A single sample row larger
+    than the byte budget cannot be split, so it is emitted in its own chunk
+    (which may exceed ``max_bytes``) rather than dropped — the caller logs
+    and posts it anyway.
+
+    Greedy O(n) packing: samples are serialized once and accumulated until
+    the next one would overflow the per-request budget.
+    """
+    envelope = {k: v for k, v in batch.items() if k != "samples"}
+    samples = batch.get("samples") or []
+
+    # Bytes consumed by the envelope, the chunk counters, and an empty
+    # ``samples`` array — i.e. everything that is not sample content. Sized
+    # with the same compact separators the POST body uses so the accounting
+    # is exact. ``num_chunks`` is stamped with a wide placeholder so adding
+    # its real (smaller-or-equal-width) value never grows the envelope.
+    overhead = len(
+        json.dumps(
+            {**envelope, "chunk_index": 0, "num_chunks": 999999, "samples": []},
+            separators=_COMPACT_SEPARATORS,
+        ).encode()
+    )
+    budget = max(1, max_bytes - overhead - _CHUNK_SAFETY_MARGIN)
+
+    groups: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    current_size = 0  # serialized bytes of accumulated sample content
+    for sample in samples:
+        s_size = len(json.dumps(sample, separators=_COMPACT_SEPARATORS).encode())
+        add = s_size + (1 if current else 0)  # +1 for the ``,`` separator
+        if current and current_size + add > budget:
+            groups.append(current)
+            current = []
+            current_size = 0
+            add = s_size
+        current.append(sample)
+        current_size += add
+    if current or not groups:
+        groups.append(current)
+
+    num_chunks = len(groups)
+    return [
+        {**envelope, "chunk_index": i, "num_chunks": num_chunks, "samples": group}
+        for i, group in enumerate(groups)
+    ]
+
+
 class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
     """Periodic Prometheus-aggregate collector.
 
@@ -181,6 +267,8 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
         self.last_post_ts_ms: Optional[int] = None
         self.last_post_status_code: Optional[int] = None
         self.last_post_error: Optional[str] = None
+        # Number of chunked requests the last cycle's batch was split into.
+        self.last_post_num_chunks: Optional[int] = None
 
     # --- POST --------------------------------------------------------
 
@@ -189,39 +277,75 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
 
         No-op when the env var is unset / empty (write-only mode).
 
-        Mirrors ``UsageStatsClient.report_usage_data``: unauthenticated
-        POST, ``Content-Type: application/json``, 10s timeout,
-        ``raise_for_status``. Caller does not raise on failure — the
-        local audit file has already been written and that is the
-        primary cycle outcome.
+        The batch is split by ``_chunk_batch`` so no single request exceeds
+        ``_max_post_bytes()`` (the receiver forwards each request to a
+        Firehose ``put_record`` call that hard-caps a record at ~1 MB). Each
+        chunk is an independent POST and is accounted independently in
+        ``total_post_success`` / ``total_post_failed``: a transient failure
+        on one chunk does not discard the rest, and the local audit file
+        (the whole batch) has already been written regardless.
+
+        Mirrors ``UsageStatsClient.report_usage_data`` otherwise:
+        unauthenticated POST, ``Content-Type: application/json``, 10s
+        timeout, ``raise_for_status``. Caller does not raise on failure.
         """
         endpoint = _telemetry_endpoint()
         if not endpoint:
             return
-        try:
-            resp = requests.post(
-                endpoint,
-                headers={"Content-Type": "application/json"},
-                json=batch,
-                timeout=DEFAULT_POST_TIMEOUT_S,
-            )
-            resp.raise_for_status()
-        except Exception as e:
-            response = getattr(e, "response", None)
-            self.last_post_status_code = getattr(response, "status_code", None)
-            self.last_post_error = str(e)
-            self.total_post_failed += 1
-            logger.info(
-                "Databricks telemetry POST failed (seq=%d, endpoint=%s): %s",
-                self.seq_no,
-                endpoint,
-                e,
-            )
-            return
-        self.last_post_status_code = resp.status_code
-        self.last_post_error = None
-        self.last_post_ts_ms = int(time.time() * 1000)
-        self.total_post_success += 1
+
+        max_bytes = _max_post_bytes()
+        chunks = _chunk_batch(batch, max_bytes)
+        self.last_post_num_chunks = len(chunks)
+
+        first_error: Optional[str] = None
+        last_status: Optional[int] = None
+        for chunk in chunks:
+            body = json.dumps(chunk, separators=_COMPACT_SEPARATORS).encode()
+            # Size check before sending. A chunk can legitimately exceed the
+            # cap only when it holds a single sample too large to split; post
+            # it anyway (the receiver will reject it) but surface the reason.
+            if len(body) > max_bytes:
+                logger.warning(
+                    "Databricks telemetry chunk %d/%d is %d bytes, over the "
+                    "%d-byte cap (single oversized sample); posting anyway",
+                    chunk["chunk_index"] + 1,
+                    chunk["num_chunks"],
+                    len(body),
+                    max_bytes,
+                )
+            try:
+                resp = requests.post(
+                    endpoint,
+                    headers={"Content-Type": "application/json"},
+                    data=body,
+                    timeout=DEFAULT_POST_TIMEOUT_S,
+                )
+                resp.raise_for_status()
+            except Exception as e:
+                response = getattr(e, "response", None)
+                last_status = getattr(response, "status_code", None)
+                if first_error is None:
+                    first_error = str(e)
+                self.total_post_failed += 1
+                logger.info(
+                    "Databricks telemetry POST failed "
+                    "(seq=%d, chunk=%d/%d, endpoint=%s): %s",
+                    self.seq_no,
+                    chunk["chunk_index"] + 1,
+                    chunk["num_chunks"],
+                    endpoint,
+                    e,
+                )
+                continue
+            last_status = resp.status_code
+            self.total_post_success += 1
+
+        self.last_post_status_code = last_status
+        if first_error is None:
+            self.last_post_error = None
+            self.last_post_ts_ms = int(time.time() * 1000)
+        else:
+            self.last_post_error = first_error
 
     # --- Prometheus query --------------------------------------------
 
@@ -309,14 +433,22 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
                     continue
                 samples.extend(self._flatten_result(spec, agg, result))
 
+        # v0.2 schema. Field names track the ``ray-project/telemetry``
+        # ``UsageStats`` conventions (``session_id``, ``seq_number``) and add
+        # the receiver-required ``source`` / ``collect_timestamp_ms``. The
+        # local audit file holds the whole batch as a single document; the
+        # POST path may split ``samples`` across multiple chunked requests
+        # (see ``_chunk_batch`` / ``_post_batch``).
         return {
             "schema_version": SCHEMA_VERSION,
-            "cluster_id": self.gcs_client.cluster_id.hex(),
+            "source": TELEMETRY_SOURCE,
+            "collect_timestamp_ms": eval_ts_ms,
+            "session_id": self.session_name,
+            "seq_number": self.seq_no,
             "ray_version": ray.__version__,
-            "session_name": self.session_name,
+            "cluster_id": self.gcs_client.cluster_id.hex(),
             "batch_window_start_ms": window_start_ms,
             "batch_window_end_ms": eval_ts_ms,
-            "seq_no": self.seq_no,
             "samples": samples,
         }
 
@@ -339,6 +471,8 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             "last_post_status_code": self.last_post_status_code,
             "last_post_error": self.last_post_error,
             "last_post_ts_ms": self.last_post_ts_ms,
+            "last_post_num_chunks": self.last_post_num_chunks,
+            "max_post_bytes": _max_post_bytes(),
             "allowlist": [spec.name for spec in METRIC_ALLOWLIST],
         }
 

@@ -25,6 +25,11 @@ DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_INTERVAL_S"
 # collector in write-only mode (the local audit file is still produced).
 DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENDPOINT"
 
+# Override for the per-request size cap used when chunking the batch POST.
+DATABRICKS_TELEMETRY_MAX_POST_BYTES_ENV_VAR = (
+    "RAY_DATABRICKS_TELEMETRY_MAX_POST_BYTES"
+)
+
 # Reused from the existing Grafana/Prometheus integration.
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 
@@ -36,6 +41,15 @@ DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 # POST timeout. Matches ``UsageStatsClient.report_usage_data``.
 DEFAULT_POST_TIMEOUT_S = 10
 
+# Max serialized bytes for a single POST request body. The telemetry
+# receiver (``ray-project/telemetry``) forwards each request to a Kinesis
+# Firehose ``put_record`` call, which hard-caps a single record at 1000 KiB
+# (1,024,000 bytes). The receiver also re-serializes the body and appends a
+# few fields (``server_receive_timestamp_ms``, CloudFront geo headers, a
+# trailing newline), so we leave headroom and chunk anything larger across
+# multiple POSTs. Override via the env var above for other receivers.
+DEFAULT_MAX_POST_BYTES = 900_000
+
 # --- Local output files ----------------------------------------------------
 
 # Operational status (success/failure counts, last error, allowlist).
@@ -46,7 +60,18 @@ STATUS_FILE = "databricks_telemetry_status.json"
 BATCH_FILE = "databricks_telemetry_latest_batch.json"
 
 # Wire format version. Bumped if the payload schema changes incompatibly.
-SCHEMA_VERSION = "0.1"
+#
+# 0.2: renamed ``session_name`` -> ``session_id`` and ``seq_no`` ->
+# ``seq_number`` to match the ``ray-project/telemetry`` ``UsageStats``
+# field conventions, added the required ``source`` and
+# ``collect_timestamp_ms`` fields, and added per-request ``chunk_index`` /
+# ``num_chunks`` so a batch that exceeds the receiver's single-record size
+# limit can be split across multiple POSTs and reassembled downstream.
+SCHEMA_VERSION = "0.2"
+
+# Value of the ``source`` field in every posted batch. Identifies the
+# producer to the telemetry receiver (mirrors ``UsageStats.source``).
+TELEMETRY_SOURCE = "databricks_telemetry"
 
 # --- Allowlist -------------------------------------------------------------
 
