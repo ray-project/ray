@@ -92,13 +92,9 @@ class PreemptionWatcher:
         """Map each node we host to all ranks in its failure domain.
 
         - Non-TPU (e.g. GPU) clusters: the failure domain is the node itself,
-          so a drain on a node flags only the ranks this job runs there. A node
-          may be shared with another workload, but those ranks are never in
-          ``node_to_ranks``, so they're naturally excluded.
+          so a drain on a node flags only the ranks this job runs there.
         - TPU multislice: every host in a slice is reclaimed atomically, so a
-          drain on any host is fate-shared with the rest. A TPU SPMD job fully
-          occupies its slice, so all slice hosts appear in ``node_to_ranks``;
-          we union ranks across the hosts sharing a slice label.
+          drain on any host is fate-shared with the rest.
         """
         per_node = {nid: sorted(set(ranks)) for nid, ranks in node_to_ranks.items()}
 
