@@ -453,8 +453,7 @@ def test_deploy_application_basic(serve_instance):
     url = f"{get_application_url(app_name='app_g')}"
     assert httpx.get(url).text == "got g"
 
-    # Test function deployment with app name and route_prefix set in deployment
-    # decorator
+    # Test function deployment with app name and route_prefix
     h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
     assert h_handle.remote().result() == "got h"
     url = f"{get_application_url(app_name='app_h')}"
