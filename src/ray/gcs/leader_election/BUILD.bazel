@@ -41,7 +41,10 @@ ray_cc_test(
     srcs = [
         "leader_elector_test.cc",
     ],
-    tags = ["small"],
+    tags = [
+        "small",
+        "team:core",
+    ],
     deps = [
         ":leader_election",
     ],
