@@ -15,6 +15,7 @@
 #pragma once
 
 #include <string>
+
 #include "ray/common/status.h"
 
 namespace ray {

@@ -17,8 +17,8 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/rpc/authentication:k8s_util",
         "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc/authentication:k8s_util",
         "//src/ray/util:logging",
         "@com_google_absl//absl/time",
         "@nlohmann_json",
@@ -33,7 +33,6 @@ ray_cc_test(
     tags = ["small"],
     deps = [
         ":leader_election",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -45,6 +44,5 @@ ray_cc_test(
     tags = ["small"],
     deps = [
         ":leader_election",
-        "@com_google_googletest//:gtest_main",
     ],
 )
