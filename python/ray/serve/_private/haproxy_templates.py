@@ -260,7 +260,7 @@ frontend grpc_frontend
     # ListApplications must aggregate across all apps, so it goes to the
     # head-node fallback Serve proxy rather than an individual replica.
     acl is_list_applications path /ray.serve.RayServeAPIService/ListApplications
-{%- if grpc_fallback_server %}
+{%- if grpc_fallback_backend_with_health_config %}
     use_backend grpc_fallback_backend if is_list_applications
 {%- else %}
     http-request return status 200 content-type application/grpc hdr grpc-status 14 hdr grpc-message "ListApplications is unavailable" if is_list_applications
@@ -280,12 +280,26 @@ frontend grpc_frontend
     default_backend default_grpc_backend
 {%- endif %}
 
-{%- if grpc_fallback_server %}
+{%- if grpc_fallback_backend_with_health_config %}
+{%- set backend = grpc_fallback_backend_with_health_config.backend %}
+{%- set hc = grpc_fallback_backend_with_health_config.health_config %}
+{%- if backend.servers %}
+{%- set server = backend.servers[0] %}
 backend grpc_fallback_backend
     mode http
     log global
+    # gRPC health check: POST a Healthz request over HTTP/2 and require the
+    # success marker in the response body. HAProxy can't inspect HTTP/2
+    # trailers (where gRPC carries grpc-status), so instead rely on the
+    # response body to contain the healthy message.
+    option httpchk
+    http-check connect proto h2
+    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr content-type application/grpc hdr te trailers body-lf "%{+bin}o%[bin(0000000000)]"
+    http-check expect string {{ healthy_message }}
+    {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to the fallback gRPC server.
-    server {{ grpc_fallback_server.name }} {{ grpc_fallback_server.host }}:{{ grpc_fallback_server.port }} proto h2 check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+{%- endif %}
 {%- endif %}
 {%- if grpc_backends|length != 1 %}
 backend default_grpc_backend
@@ -319,7 +333,7 @@ backend {{ backend.name or 'unknown' }}
     # response body to contain the healthy message.
     option httpchk
     http-check connect proto h2
-    http-check send meth POST uri /ray.serve.RayServeAPIService/Healthz ver HTTP/2.0 hdr content-type application/grpc hdr te trailers body "\x00\x00\x00\x00\x00"
+    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr content-type application/grpc hdr te trailers body-lf "%{+bin}o%[bin(0000000000)]"
     http-check expect string {{ healthy_message }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.

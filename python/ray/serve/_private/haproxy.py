@@ -405,8 +405,9 @@ class BackendConfig:
     # The interval between two consecutive health checks when the server is in the DOWN state
     health_check_downinter: Optional[str] = None
 
-    # Endpoint path that the health check mechanism will send a request to. It's typically an HTTP path.
-    health_check_path: Optional[str] = "/-/healthz"
+    # Endpoint path that the health check mechanism will send a request to.
+    http_health_check_path: Optional[str] = "/-/healthz"
+    grpc_health_check_path: Optional[str] = "/ray.serve.RayServeAPIService/Healthz"
 
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
@@ -460,10 +461,16 @@ class BackendConfig:
             else global_config.health_check_downinter
         )
         health_path = (
-            self.health_check_path
-            if self.health_check_path is not None
-            else global_config.health_check_path
+            self.http_health_check_path
+            if self.http_health_check_path is not None
+            else global_config.http_health_check_path
         )
+        if self.protocol == RequestProtocol.GRPC:
+            health_path = (
+                self.grpc_health_check_path
+                if self.grpc_health_check_path is not None
+                else global_config.grpc_health_check_path
+            )
 
         # Build default-server directive
         parts = []
@@ -550,7 +557,10 @@ class HAProxyConfig:
     # The interval between two consecutive health checks when the server is in the DOWN state
     health_check_downinter: Optional[str] = RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER
 
-    health_check_path: Optional[str] = "/-/healthz"  # For HTTP health checks
+    http_health_check_path: Optional[str] = "/-/healthz"  # For HTTP health checks
+    grpc_health_check_path: Optional[
+        str
+    ] = "/ray.serve.RayServeAPIService/Healthz"  # For gRPC health checks
 
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
 
@@ -710,6 +720,7 @@ class HAProxyApi(ProxyApi):
         # Standalone gRPC fallback server used for requests (e.g. ListApplications)
         # that can only be answered by the Serve proxy.
         self.grpc_fallback_server: Optional[ServerConfig] = None
+        self.grpc_fallback_backend: Optional[BackendConfig] = None
         self.config_file_path = config_file_path
         # Lock to prevent concurrent config modifications
         self._config_lock = asyncio.Lock()
@@ -972,6 +983,22 @@ class HAProxyApi(ProxyApi):
                 }
             )
 
+            # Generate the gRPC fallback backend with health check configuration, which only
+            # contains the head node serve proxy. This is only used for ListApplication requests
+            # since HAProxy can't construct the gRPC response itself, so it relies on the serve
+            # proxy to do so.
+            grpc_fallback_backend_with_health_config = None
+            if (
+                self.grpc_fallback_server is not None
+                and self.grpc_fallback_backend is not None
+            ):
+                grpc_fallback_backend_with_health_config = {
+                    "backend": self.grpc_fallback_backend,
+                    "health_config": self.grpc_fallback_backend.build_health_check_config(
+                        self.cfg
+                    ),
+                }
+
             config_template = env.from_string(HAPROXY_CONFIG_TEMPLATE)
             config_content = config_template.render(
                 {
@@ -998,7 +1025,7 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
-                    "grpc_fallback_server": self.grpc_fallback_server,  # used for handling ListApplications
+                    "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
                     "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
                 }
             )
@@ -1239,6 +1266,15 @@ class HAProxyApi(ProxyApi):
 
     def set_grpc_fallback_server(self, server: Optional[ServerConfig]) -> None:
         self.grpc_fallback_server = server
+        if server is not None:
+            self.grpc_fallback_backend = BackendConfig(
+                name="grpc_fallback_backend",
+                path_prefix="/",  # this is unused for grpc
+                protocol=RequestProtocol.GRPC,
+                servers=[server],
+            )
+        else:
+            self.grpc_fallback_backend = None
 
     async def is_running(self) -> bool:
         try:
