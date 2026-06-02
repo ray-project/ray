@@ -97,9 +97,7 @@ def test_replica_lifecycle_metric_tags_include_high_cardinality_by_default(
         "replica",
         "application",
     )
-    assert _get_replica_lifecycle_metric_tags("replica-id") == {
-        "replica": "replica-id"
-    }
+    assert _get_replica_lifecycle_metric_tags("replica-id") == {"replica": "replica-id"}
 
 
 def test_replica_lifecycle_metric_tags_exclude_high_cardinality(monkeypatch):
