@@ -279,7 +279,16 @@ class NodeHead(SubprocessModule):
                 )
                 for key in keys
             ]
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for key, result in zip(keys, results):
+                if isinstance(result, BaseException):
+                    logger.error(
+                        "Failed to delete KV entry for dead node %s (%s): %s",
+                        node_id,
+                        key,
+                        result,
+                        exc_info=result,
+                    )
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
