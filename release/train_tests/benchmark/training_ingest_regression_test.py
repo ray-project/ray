@@ -1,7 +1,7 @@
 """Single-file Ray Data + Ray Train ingest benchmark for iter-batches.
 
 Probes the iter-batches consumer pipeline under conditions that exercise
-both consumer-side memory and pipeline throughput. Reports per run:
+both consumer-side object store usage and pipeline throughput. Reports per run:
 time-to-first-batch, next-batch (fetch) time, train-step time, total
 runtime, throughput, peak object store usage. With ``--num-runs > 1``
 also reports mean ± stdev across runs.
@@ -9,38 +9,18 @@ also reports mean ± stdev across runs.
 # Release-test configurations
 
 The corresponding release test entry is ``training_ingest_regression_test`` in
-``release/release_data_tests.yaml``, with four variations crossing two
-axes:
+``release/release_data_tests.yaml``, with four variations crossing two axes:
 
 Axis 1 — what's being measured:
 
-- ``memory_*``: big batch + slow consumer (``--step-sleep-s=2.0``
-  simulates a big-model forward dominated by ND-parallel collectives).
+- ``peak_object_store_memory``: big batch + slow consumer (``--step-sleep-s=2.0``
+  simulates a big-model training step dominated by ND-parallel collectives).
   Buffers fill under back-pressure so peak consumer-side object-store
   usage is the dominant signal. Cannot detect pipeline-throughput
   regressions (sleep dominates step time).
 - ``throughput_*``: same config without the sleep. Pipeline is the
   rate-limiter so a pipeline-rate regression shows up. Cannot see the
-  memory-side signal (queues stay empty when consumer is fast).
-
-Axis 2 — pinning mode:
-
-- ``*_no_pin``: no ``--pin-memory``. Matches the ``iter_torch_batches``
-  API default; nightly frequency since this is what most users hit out
-  of the box.
-- ``*_pin``: ``--pin-memory``. The recommended setting for training
-  workloads; manual frequency since it's a secondary validation that
-  the same property holds under the recommended config.
-
-See ``release/train_tests/benchmark/INVESTIGATION_NOTES.md`` for
-headline numbers, acceptance thresholds, and the slot-accounting math.
-
-# Usage
-
-    RAY_TRAIN_V2_ENABLED=1 python training_ingest_regression_test.py
-    RAY_TRAIN_V2_ENABLED=1 python training_ingest_regression_test.py --num-runs=3
-    RAY_TRAIN_V2_ENABLED=1 python training_ingest_regression_test.py \\
-        --num-workers=4 --limit-batches-per-worker=50 --prefetch-batches=2
+  object store usage signal (consumer pipeline queues stay empty when consumer is fast).
 """
 
 import argparse
@@ -63,7 +43,6 @@ import ray.data
 import ray.train
 import ray.train.torch
 from ray._private.internal_api import get_state_from_address
-from ray.data.collate_fn import ArrowBatchCollateFn
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -78,28 +57,29 @@ from benchmark import (  # noqa: E402
     _get_spilled_bytes_total,
 )
 
-# Per-worker default batch count. Sized so per-step comparisons across
-# variants are like-for-like regardless of batch size.
+# Per-worker default batch count.
 DEFAULT_BATCHES_PER_WORKER = 200
 
-# The 1T dataset, sized so even the data_bound variant (200 × 2048 ×
-# num_workers rows per run) doesn't exhaust the source.
+# The 1T dataset, sized so a long run
+# (DEFAULT_BATCHES_PER_WORKER × BATCH_SIZE × num_workers rows per run)
+# doesn't exhaust the source.
 DATA_URL = "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split_1t/train"
 
 
-# --- Workload variant -------------------------------------------------------
+# --- Workload ---------------------------------------------------------------
 #
-# `data_bound`: a trivially small CNN at batch=1024. Per-step compute is ~5 ms,
-# while per-batch data is ~588 MiB and the dataloader has to decode 1024
-# JPEGs. The critical path is downstream of the model — H2D and/or
-# decode/collate. This is the regime where iter-batches buffer depth and
-# pinning choices affect throughput AND peak object-store usage, so it's
-# the canonical config for measuring both. Use `--step-sleep-s=2.0` to
-# back-pressure the pipeline and exercise the peak-memory case;
-# `--step-sleep-s=0` for the throughput case.
+# A trivially small CNN at batch=1024. Per-step compute is ~5 ms while
+# per-batch data is ~588 MiB and the dataloader has to decode 1024
+# JPEGs, so the critical path is downstream of the model — H2D and/or
+# decode/collate. This is the regime where iter-batches buffer depth
+# and pinning choices affect throughput AND peak object-store usage.
+# Use `--step-sleep-s=2.0` to back-pressure the pipeline and exercise
+# the peak-memory case; `--step-sleep-s=0` for the throughput case.
+
+BATCH_SIZE = 1024
 
 
-def _make_tiny_cnn() -> torch.nn.Module:
+def _make_model() -> torch.nn.Module:
     return torch.nn.Sequential(
         torch.nn.Conv2d(3, 4, kernel_size=3, stride=2),
         torch.nn.AdaptiveAvgPool2d(1),
@@ -133,11 +113,6 @@ class _SleepingModel(torch.nn.Module):
         return out
 
 
-VARIANTS = {
-    "data_bound": {"batch_size": 1024, "make_model": _make_tiny_cnn},
-}
-
-
 # --- Data preprocessing -----------------------------------------------------
 
 
@@ -154,49 +129,6 @@ def _make_transform():
     )
 
 
-# --- Optional: pinned-CPU collate (skip Ray Data's auto GPU transfer) ------
-#
-# Ray Data's default path is: DefaultCollateFn -> default_finalize_fn, where
-# the latter calls `move_tensors_to_device` against the train worker's GPU.
-# That means the outer iterator queue holds GPU tensors and H2D happens in
-# the dataloader thread before the train step gets the batch.
-#
-# This collate does Arrow -> pinned-CPU torch tensors and wraps them in a
-# dict-like class that is NOT a `Mapping` — so `is_tensor_batch_type` returns
-# False and `default_finalize_fn` is a no-op. The outer queue ends up
-# holding pinned CPU tensors; the train loop does `.to(device, non_blocking=True)`
-# itself, which is the canonical PyTorch pattern (pinned + non_blocking →
-# async H2D on the copy engine, overlapping with the previous step's compute).
-
-
-class _PinnedCpuBatch:
-    """Dict-like container around pinned CPU tensors. Supports
-    ``batch["image"]`` access so the train loop syntax matches the default
-    codepath, but is intentionally NOT a ``Mapping`` so that
-    ``is_tensor_batch_type`` returns False and Ray Data's
-    ``default_finalize_fn`` does not auto-move it to GPU."""
-
-    __slots__ = ("_tensors",)
-
-    def __init__(self, tensors: Dict[str, torch.Tensor]) -> None:
-        self._tensors = tensors
-
-    def __getitem__(self, key: str) -> torch.Tensor:
-        return self._tensors[key]
-
-
-class _PinnedCpuCollate(ArrowBatchCollateFn):
-    """Arrow -> pinned-CPU torch tensors. Defers H2D to the train loop."""
-
-    def __call__(self, batch: Any) -> _PinnedCpuBatch:
-        from ray.data.util.torch_utils import arrow_batch_to_tensors
-
-        # combine_chunks=True so the resulting tensors are contiguous and
-        # can be pinned in a single allocation.
-        tensors = arrow_batch_to_tensors(batch, combine_chunks=True, pin_memory=True)
-        return _PinnedCpuBatch(tensors)
-
-
 # --- Mock loader (upper-bound throughput) ----------------------------------
 #
 # Yields the same pre-allocated, pre-pinned batch every iteration. Removes
@@ -208,12 +140,10 @@ class _PinnedCpuCollate(ArrowBatchCollateFn):
 
 
 def _mock_loader(num_batches: int, batch_size: int):
-    batch = _PinnedCpuBatch(
-        {
-            "image": torch.randn(batch_size, 3, 224, 224).pin_memory(),
-            "label": torch.randint(0, 1000, (batch_size,)).pin_memory(),
-        }
-    )
+    batch = {
+        "image": torch.randn(batch_size, 3, 224, 224).pin_memory(),
+        "label": torch.randint(0, 1000, (batch_size,)).pin_memory(),
+    }
     for _ in range(num_batches):
         yield batch
 
@@ -276,10 +206,7 @@ def _make_profiler(enabled: bool, timestamp: str):
 def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
     device = ray.train.torch.get_device()
 
-    variant = VARIANTS[config["variant"]]
-    batch_size = variant["batch_size"]
-
-    model = variant["make_model"]()
+    model = _make_model()
     if config["step_sleep_s"] > 0:
         model = _SleepingModel(model, config["step_sleep_s"])
     model = ray.train.torch.prepare_model(model)
@@ -289,18 +216,10 @@ def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
     )
 
     if config["mock"]:
-        loader = _mock_loader(config["num_batches"], batch_size)
-    elif config["manual_device_transfer"]:
-        # Skip Ray Data's auto GPU finalize; train loop does H2D manually.
-        loader = ray.train.get_dataset_shard("train").iter_torch_batches(
-            batch_size=batch_size,
-            prefetch_batches=config["prefetch_batches"],
-            collate_fn=_PinnedCpuCollate(),
-            drop_last=True,
-        )
+        loader = _mock_loader(config["num_batches"], BATCH_SIZE)
     else:
         loader = ray.train.get_dataset_shard("train").iter_torch_batches(
-            batch_size=batch_size,
+            batch_size=BATCH_SIZE,
             prefetch_batches=config["prefetch_batches"],
             pin_memory=config["pin_memory"],
             drop_last=True,
@@ -367,7 +286,7 @@ def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
     # elapsed_time returns milliseconds; convert to seconds for consistency.
     step_times = [s.elapsed_time(e) / 1000.0 for s, e in step_events]
     num_batches = len(step_times)
-    total_rows = num_batches * batch_size
+    total_rows = num_batches * BATCH_SIZE
 
     def _pct(xs: List[float], p: float) -> float:
         if not xs:
@@ -414,10 +333,8 @@ def run_once(args: argparse.Namespace) -> Dict[str, float]:
     trace_timestamp = time.strftime("%Y%m%d_%H%M%S")
 
     train_loop_config = {
-        "variant": args.variant,
         "prefetch_batches": args.prefetch_batches,
         "pin_memory": args.pin_memory,
-        "manual_device_transfer": args.manual_device_transfer,
         "mock": args.mock,
         "num_batches": num_batches_per_worker,
         "profile": args.profile,
@@ -507,17 +424,6 @@ def _print_summary(runs: List[Dict[str, float]]) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument(
-        "--variant",
-        choices=sorted(VARIANTS.keys()),
-        default="data_bound",
-        help=(
-            "data_bound: tiny CNN at batch=1024 (~588 MiB / batch). GPU "
-            "compute is ~free, critical path is H2D + decode/collate. "
-            "Combine with --step-sleep-s to simulate a slow consumer for "
-            "the peak-memory case."
-        ),
-    )
     p.add_argument("--num-workers", type=int, default=16)
     p.add_argument("--num-runs", type=int, default=1)
     p.add_argument(
@@ -526,9 +432,7 @@ def main() -> None:
         default=DEFAULT_BATCHES_PER_WORKER,
         help=(
             "Number of batches each worker iterates. Total rows = "
-            "limit_batches_per_worker × batch_size × num_workers. Per-worker "
-            "batch count is held fixed across variants so per-step "
-            "comparisons are like-for-like."
+            "limit_batches_per_worker × batch_size × num_workers."
         ),
     )
     p.add_argument("--prefetch-batches", type=int, default=4)
@@ -544,16 +448,6 @@ def main() -> None:
             "Adds wall-clock to each step so back-pressure builds up in the "
             "dataloader queues — the regime where consumer-side buffer size "
             "shows up in peak object-store usage."
-        ),
-    )
-    p.add_argument(
-        "--manual-device-transfer",
-        action="store_true",
-        help=(
-            "Skip Ray Data's auto GPU finalize; produce pinned CPU tensors "
-            "and have the train loop do `.to(non_blocking=True)`. "
-            "Implies pin_memory=True via a custom collate, so --pin-memory "
-            "is ignored when this is set."
         ),
     )
     p.add_argument(
@@ -579,13 +473,11 @@ def main() -> None:
     )
     args = p.parse_args()
 
-    batch_size = VARIANTS[args.variant]["batch_size"]
     print(
-        f"config: variant={args.variant}  batch_size={batch_size}  "
+        f"config: batch_size={BATCH_SIZE}  "
         f"num_workers={args.num_workers}  "
         f"limit_batches_per_worker={args.limit_batches_per_worker}  "
         f"prefetch_batches={args.prefetch_batches}  pin_memory={args.pin_memory}  "
-        f"manual_device_transfer={args.manual_device_transfer}  "
         f"mock={args.mock}  profile={args.profile}"
     )
 
