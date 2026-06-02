@@ -21,6 +21,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.gpu_shuffle.hash_aggregate import (
+    GPUAggregateFn,
+    GPUHashAggregateActor,
     GPUHashAggregateOperator,
     _group_aggregate,
     build_gpu_aggregation_plan,
@@ -700,6 +702,14 @@ class TestGPUHashAggregatePlanning:
             "max(value)",
             "mean(value)",
         )
+        assert tuple(type(agg).__name__ for agg in plan._gpu_aggregates) == (
+            "GPUCount",
+            "GPUCount",
+            "GPUSum",
+            "GPUMin",
+            "GPUMax",
+            "GPUMean",
+        )
         assert "user_id" in plan.required_columns
         assert "value" in plan.required_columns
 
@@ -921,9 +931,9 @@ class TestGPUHashAggregatePlanning:
         with patch.dict("sys.modules", {"cudf": fake_cudf}):
             partial = plan.partial_aggregate(df, input_schema=schema)
 
-        sum_col = plan._specs[0].accumulator_columns[0]
-        mean_sum_col = plan._specs[1].accumulator_columns[0]
-        float_sum_col = plan._specs[2].accumulator_columns[0]
+        sum_col = plan.accumulator_columns[0]
+        mean_sum_col = plan.accumulator_columns[1]
+        float_sum_col = plan.accumulator_columns[4]
         group_zero = partial[partial["user_id"] == 0].iloc[0]
 
         assert str(partial[sum_col].dtype) == "int64"
@@ -1003,46 +1013,72 @@ class TestGPUHashAggregatePlanning:
             check_metadata=False,
         )
 
-    def test_custom_aggregation_spec_receives_input_schema(self):
-        class _CustomSpec(hash_aggregate.GPUAggregationSpec):
-            output_name: str = "custom(value)"
-            required_columns: Tuple[str, ...] = ("value",)
-            accumulator_columns: Tuple[str, ...] = ("acc",)
-
+    def test_custom_gpu_aggregate_fn_receives_input_schema(self):
+        class _CustomGPUAggregate(GPUAggregateFn):
             def __init__(self) -> None:
+                super().__init__(
+                    "custom(value)",
+                    zero_factory=lambda: 0,
+                    on="value",
+                    ignore_nulls=True,
+                )
                 self.seen_schema: Optional[pa.Schema] = None
 
-            def partial_aggregate(
+            def aggregate_block(self, block: Any) -> int:
+                return 0
+
+            def combine(self, current_accumulator: int, new: int) -> int:
+                return current_accumulator + new
+
+            def gpu_required_columns(self) -> Tuple[str, ...]:
+                return ("value",)
+
+            def gpu_accumulator_columns(
+                self, accumulator_prefix: str
+            ) -> Tuple[str, ...]:
+                return (f"{accumulator_prefix}_acc",)
+
+            def gpu_partial_aggregate(
                 self,
                 df: pd.DataFrame,
                 key_columns: Tuple[str, ...],
+                *,
+                output_name: str,
+                accumulator_prefix: str,
                 input_schema: Any = None,
             ) -> pd.DataFrame:
                 self.seen_schema = input_schema
                 return pd.DataFrame(
                     {
                         key_columns[0]: df[key_columns[0]],
-                        "acc": df["value"],
+                        self.gpu_accumulator_columns(accumulator_prefix)[0]: df[
+                            "value"
+                        ],
                     }
                 )
 
-            def final_aggregate(
-                self, df: pd.DataFrame, key_columns: Tuple[str, ...]
+            def gpu_final_aggregate(
+                self,
+                df: pd.DataFrame,
+                key_columns: Tuple[str, ...],
+                *,
+                output_name: str,
+                accumulator_prefix: str,
             ) -> pd.DataFrame:
+                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
                 return pd.DataFrame(
                     {
                         key_columns[0]: df[key_columns[0]],
-                        self.output_name: df["acc"],
+                        output_name: df[acc_col],
                     }
                 )
 
         fake_cudf = types.ModuleType("cudf")
         fake_cudf.DataFrame = pd.DataFrame
         schema = pa.schema([("user_id", pa.int64()), ("value", pa.int64())])
-        spec = _CustomSpec()
-        plan = hash_aggregate.GPUAggregationPlan(
-            ("user_id",), (spec,), input_schema=schema
-        )
+        gpu_agg = _CustomGPUAggregate()
+        plan = build_gpu_aggregation_plan(("user_id",), (gpu_agg,), input_schema=schema)
+        assert plan is not None
 
         with patch.dict("sys.modules", {"cudf": fake_cudf}):
             partial = plan.partial_aggregate(
@@ -1050,8 +1086,11 @@ class TestGPUHashAggregatePlanning:
                 input_schema=schema,
             )
 
-        assert spec.seen_schema is schema
-        assert partial.to_dict("list") == {"user_id": [1], "acc": [2]}
+        assert gpu_agg.seen_schema is schema
+        assert partial.to_dict("list") == {
+            "user_id": [1],
+            plan.accumulator_columns[0]: [2],
+        }
 
     def test_null_reductions_preserve_groups_and_accumulator_dtypes(self, monkeypatch):
         original_group_aggregate = hash_aggregate._group_aggregate
@@ -1081,7 +1120,7 @@ class TestGPUHashAggregatePlanning:
 
         plan = build_gpu_aggregation_plan(("user_id",), (Sum("value"),))
         assert plan is not None
-        spec = plan._specs[0]
+        acc_col = plan.accumulator_columns[0]
 
         df = pd.DataFrame(
             {
@@ -1089,13 +1128,11 @@ class TestGPUHashAggregatePlanning:
                 "value": pd.Series([None, None, None, None], dtype="Int64"),
             }
         )
-        partial = spec.partial_aggregate(df, ("user_id",))
-        assert str(partial[spec.accumulator_columns[0]].dtype) == "Int64"
+        partial = plan.partial_aggregate(df)
+        assert str(partial[acc_col].dtype) == "Int64"
 
         result = (
-            spec.final_aggregate(partial, ("user_id",))
-            .sort_values("user_id")
-            .reset_index(drop=True)
+            plan.final_aggregate(partial).sort_values("user_id").reset_index(drop=True)
         )
 
         assert result.to_dict("records") == [
@@ -1108,11 +1145,10 @@ class TestGPUHashAggregatePlanning:
             ("user_id",), (Count("value", ignore_nulls=True),)
         )
         assert count_plan is not None
-        count_spec = count_plan._specs[0]
 
-        count_partial = count_spec.partial_aggregate(df, ("user_id",))
+        count_partial = count_plan.partial_aggregate(df)
         count_result = (
-            count_spec.final_aggregate(count_partial, ("user_id",))
+            count_plan.final_aggregate(count_partial)
             .sort_values("user_id")
             .reset_index(drop=True)
         )
@@ -1539,6 +1575,111 @@ class TestGPUSingleRankRoundtrip:
             assert (
                 len(part_indices) == 1
             ), f"Key {key!r} was split across partitions {part_indices}"
+
+
+# ---------------------------------------------------------------------------
+# GPUHashAggregateActor — real GPU aggregate paths (conditional)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.gpu
+class TestGPUHashAggregateActorReal:
+    """Exercises GPU aggregate methods on actual hardware."""
+
+    def _make_setup_actor(self, aggregation_plan, total_nparts: int = 2):
+        actor = GPUHashAggregateActor.options(num_gpus=1).remote(
+            nranks=1,
+            total_nparts=total_nparts,
+            aggregation_plan=aggregation_plan,
+        )
+        _, root_address = ray.get(actor.setup_root.remote())
+        ray.get(actor.setup_worker.remote(root_address))
+        return actor
+
+    @staticmethod
+    def _collect_tables(actor) -> List[pa.Table]:
+        gen = actor.finish_and_extract.options(num_returns="streaming").remote()
+        return [
+            item for ref in gen for item in [ray.get(ref)] if isinstance(item, pa.Table)
+        ]
+
+    @staticmethod
+    def _collect_frame(actor) -> pd.DataFrame:
+        tables = TestGPUHashAggregateActorReal._collect_tables(actor)
+        frames = [table.to_pandas() for table in tables if table.num_rows > 0]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
+    def test_grouped_builtin_aggregates_real_gpu(self, ray_with_gpu):
+        plan = build_gpu_aggregation_plan(
+            ("group",),
+            (
+                Count(),
+                Count("value", ignore_nulls=True),
+                Sum("value"),
+                Min("value"),
+                Max("value"),
+                Mean("value"),
+            ),
+        )
+        assert plan is not None
+
+        table = pa.table(
+            {
+                "group": pa.array([0, 0, 1, 1, 1, 2], type=pa.int64()),
+                "value": pa.array([1, None, 2, 3, None, 10], type=pa.int64()),
+            }
+        )
+        actor = self._make_setup_actor(plan)
+        try:
+            assert ray.get(actor.insert_batch.remote(table)) == table.num_rows
+            result = (
+                self._collect_frame(actor).sort_values("group").reset_index(drop=True)
+            )
+        finally:
+            ray.kill(actor)
+
+        assert result["group"].tolist() == [0, 1, 2]
+        assert result["count()"].tolist() == [2, 3, 1]
+        assert result["count(value)"].tolist() == [1, 2, 1]
+        assert result["sum(value)"].tolist() == [1, 5, 10]
+        assert result["min(value)"].tolist() == [1, 2, 10]
+        assert result["max(value)"].tolist() == [1, 3, 10]
+        assert result["mean(value)"].tolist() == pytest.approx([1.0, 2.5, 10.0])
+
+    def test_global_builtin_aggregates_real_gpu(self, ray_with_gpu):
+        plan = build_gpu_aggregation_plan(
+            tuple(),
+            (
+                Count(),
+                Count("value", ignore_nulls=True),
+                Sum("value"),
+                Mean("value"),
+            ),
+        )
+        assert plan is not None
+
+        table = pa.table({"value": pa.array([1, None, 2, 5], type=pa.int64())})
+        actor = self._make_setup_actor(plan, total_nparts=1)
+        try:
+            assert ray.get(actor.insert_batch.remote(table)) == table.num_rows
+            result = self._collect_frame(actor)
+        finally:
+            ray.kill(actor)
+
+        assert result.columns.tolist() == [
+            "count()",
+            "count(value)",
+            "sum(value)",
+            "mean(value)",
+        ]
+        assert len(result) == 1
+        row = result.iloc[0].to_dict()
+        assert row["count()"] == 4
+        assert row["count(value)"] == 3
+        assert row["sum(value)"] == 8
+        assert row["mean(value)"] == pytest.approx(8 / 3)
 
 
 # ---------------------------------------------------------------------------

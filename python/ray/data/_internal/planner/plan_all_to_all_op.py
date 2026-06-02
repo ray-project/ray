@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -18,6 +19,8 @@ from ray.data._internal.planner.randomize_blocks import generate_randomize_block
 from ray.data._internal.planner.repartition import generate_repartition_fn
 from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext, ShuffleStrategy
+
+logger = logging.getLogger(__name__)
 
 
 def _plan_gpu_shuffle_repartition(
@@ -112,6 +115,12 @@ def _plan_gpu_shuffle_aggregate(
     )
     if aggregation_plan is None:
         # Fall back to CPU hash aggregate if GPU aggregation plan is not supported.
+        logger.warning(
+            "GPU aggregation plan is not supported for key=%s, aggs=%s, "
+            "falling back to CPU hash aggregate.",
+            logical_op.key,
+            logical_op.aggs,
+        )
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
 
     return GPUHashAggregateOperator(
