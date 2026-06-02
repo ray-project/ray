@@ -75,6 +75,12 @@ class ResultGrid:
         self,
         experiment_analysis: ExperimentAnalysis,
     ):
+        """Initialize a ``ResultGrid`` from an ``ExperimentAnalysis``.
+
+        Args:
+            experiment_analysis: The ``ExperimentAnalysis`` produced by the
+                completed Tune run, used to build the per-trial ``Result`` list.
+        """
         self._experiment_analysis = experiment_analysis
         self._results = [
             self._trial_to_result(trial) for trial in self._experiment_analysis.trials
@@ -136,6 +142,10 @@ class ResultGrid:
             filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
+
+        Returns:
+            The ``Result`` corresponding to the best trial under the given
+            metric, mode, and scope.
         """
         if len(self._experiment_analysis.trials) == 1:
             return self._trial_to_result(self._experiment_analysis.trials[0])

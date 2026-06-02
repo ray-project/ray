@@ -42,6 +42,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     hash_partition,
 )
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
@@ -693,6 +694,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     ),
                 ),
             }
+            label_selector = self._data_context.execution_options.label_selector
+            if label_selector:
+                shuffle_task_resource_bundle["label_selector"] = label_selector
 
             cur_shuffle_task_idx = self._next_shuffle_tasks_idx
             self._next_shuffle_tasks_idx += 1
@@ -754,7 +758,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 )
 
                 # Update Shuffle metrics on task output generated
-                blocks = [(task.get_waitable(), input_block_metadata)]
+                blocks = [BlockEntry(task.get_waitable(), input_block_metadata)]
                 # NOTE: schema doesn't matter because we are creating a ref bundle
                 # for metrics recording purposes
                 out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
@@ -795,7 +799,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             self._shuffle_metrics.on_task_submitted(
                 cur_shuffle_task_idx,
                 RefBundle(
-                    [(block_ref, block_metadata)], schema=None, owns_blocks=False
+                    [BlockEntry(block_ref, block_metadata)],
+                    schema=None,
+                    owns_blocks=False,
                 ),
                 task_id=task.get_task_id(),
             )
@@ -1191,6 +1197,10 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             # blocking scenario.
             "allow_out_of_order_execution": True,
         }
+
+        label_selector = self._data_context.execution_options.label_selector
+        if label_selector:
+            remote_args["label_selector"] = label_selector
 
         return remote_args
 
