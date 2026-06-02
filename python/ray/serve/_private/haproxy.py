@@ -1528,7 +1528,7 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy_start_task
             await self._haproxy.reload()
 
-    def _update_haproxy_backends(self) -> asyncio.Task:
+    async def _update_haproxy_backends(self) -> None:
         backend_configs = []
         for target_group in self._target_groups:
             fallback_target = None
@@ -1550,7 +1550,7 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
-        return self.event_loop.create_task(self._reload_haproxy())
+        await self._reload_haproxy()
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups
