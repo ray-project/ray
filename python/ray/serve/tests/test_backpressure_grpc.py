@@ -9,7 +9,6 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_url
-from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
@@ -48,25 +47,31 @@ def test_grpc_backpressure(serve_instance):
     assert len(pending) == 1
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
-    second_ref = do_request.remote("hi-2")
-    proxy_handle = list(
-        ray.get(_get_global_client()._controller.get_proxies.remote()).values()
-    )[0]
-    wait_for_condition(
-        lambda: ray.get(proxy_handle._get_num_queued_requests_for_testing.remote("/"))
-        == 1
-    )
+    num_requests = 10
+    burst_refs = [do_request.remote("hi-err") for _ in range(num_requests)]
 
-    for _ in range(10):
-        status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == grpc.StatusCode.RESOURCE_EXHAUSTED
-        assert text.startswith("Request dropped due to backpressure")
+    def num_rejected() -> int:
+        ready, _ = ray.wait(burst_refs, num_returns=len(burst_refs), timeout=0)
+        rejected = 0
+        for status_code, text in ray.get(ready):
+            if status_code == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                assert text.startswith("Request dropped due to backpressure")
+                rejected += 1
+        return rejected
 
-    # Send the signal; the first request will be unblocked and the second should
-    # subsequently get scheduled and executed.
+    # All but the single queued request should be rejected with backpressure.
+    wait_for_condition(lambda: num_rejected() == num_requests - 1)
+
+    # Send the signal; the ongoing request and the single queued request both
+    # get unblocked and complete successfully.
     ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == (grpc.StatusCode.OK, "hi-1")
-    assert ray.get(second_ref) == (grpc.StatusCode.OK, "hi-2")
+    num_ok = sum(
+        1
+        for status_code, _ in ray.get(burst_refs)
+        if status_code == grpc.StatusCode.OK
+    )
+    assert num_ok == 1
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
