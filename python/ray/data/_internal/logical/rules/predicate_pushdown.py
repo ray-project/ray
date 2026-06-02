@@ -95,13 +95,10 @@ class PredicatePushdown(Rule):
         - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
           (where 'b' is valid output created by a->b)
         """
-        from ray.data._internal.logical.rules.projection_pushdown import (
-            _is_renaming_expr,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
-        from ray.data.expressions import AliasExpr
+        from ray.data.expressions import AliasExpr, is_rename_expr
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
@@ -121,11 +118,11 @@ class PredicatePushdown(Rule):
                 new_names.add(expr.name)
 
                 # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
-                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                if expr.name in predicate_columns and not is_rename_expr(expr):
                     return False  # Computed column
 
                 # Track old names being renamed for later check
-                if _is_renaming_expr(expr):
+                if is_rename_expr(expr):
                     original_columns_being_renamed.add(expr.expr.name)
 
         # Check if filter references columns removed by explicit select
@@ -193,22 +190,15 @@ class PredicatePushdown(Rule):
         input_op = filter_op.input_dependencies[0]
         predicate_expr = filter_op.predicate_expr
 
-        # Case 1: Check if operator supports predicate pushdown (e.g., Read)
+        # Case 1: Check if operator supports predicate pushdown (e.g., Read).
+        # The read stage never renames columns (renaming is always carried
+        # by an ``AliasExpr`` in a ``Project`` operator above the read), so
+        # the predicate above the read is already in the same column
+        # namespace the scanner sees — no rebinding is required here.
         if (
             isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
             and input_op.supports_predicate_pushdown()
         ):
-            # Check if the operator has column renames that need rebinding
-            # This happens when projection pushdown has been applied
-            rename_map = input_op.get_column_renames()
-            if rename_map:
-                # Substitute the predicate to use original column names
-                # This is needed to ensure that the predicate expression can be pushed into the input operator.
-                predicate_expr = cls._substitute_predicate_columns(
-                    predicate_expr, rename_map
-                )
-
-            # Push the predicate down
             result_op = input_op.apply_predicate(predicate_expr)
 
             # If the operator is unchanged (e.g., predicate references partition columns
@@ -216,22 +206,6 @@ class PredicatePushdown(Rule):
             if result_op is input_op:
                 return filter_op
 
-            # If apply_predicate wrapped a residual in a Filter above the pushed-down
-            # op, that residual is in the original column namespace (we rewrote the
-            # whole predicate into it above). The pushed-down op still applies
-            # ``column_renames`` to its output blocks, so the Filter sees renamed
-            # columns at runtime — rebind the residual back to the renamed namespace.
-            if rename_map and isinstance(result_op, Filter):
-                inverse_rename_map = {new: old for old, new in rename_map.items()}
-                rebound = cls._substitute_predicate_columns(
-                    result_op.predicate_expr, inverse_rename_map
-                )
-                result_op = Filter(
-                    predicate_expr=rebound,
-                    input_dependencies=result_op.input_dependencies,
-                )
-
-            # Otherwise, return the result without the filter (predicate was pushed down)
             return result_op
 
         # Case 2: Check if operator allows predicates to pass through
