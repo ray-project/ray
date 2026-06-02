@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <cmath>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -1355,7 +1356,7 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
   }
   // Skip if resource requirements mismatch.
   if (worker.GetResourceRequirements() != pop_worker_request.resource_requirements_) {
-    return WorkerUnfitForLeaseReason::OTHERS;
+    return WorkerUnfitForLeaseReason::RESOURCE_MISMATCH;
   }
   // Skip if the startup allocated instances mismatch.
   bool allocated_instances_match = false;
@@ -1375,7 +1376,7 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
   }
 
   if (!allocated_instances_match) {
-    return WorkerUnfitForLeaseReason::OTHERS;
+    return WorkerUnfitForLeaseReason::ALLOCATED_INSTANCES_MISMATCH;
   }
   return WorkerUnfitForLeaseReason::NONE;
 }

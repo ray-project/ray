@@ -270,17 +270,21 @@ class WorkerInterface;
 class Worker;
 
 enum class WorkerUnfitForLeaseReason {
-  NONE = 0,                      // OK
-  ROOT_MISMATCH = 1,             // job ID or root detached actor ID mismatch
-  RUNTIME_ENV_MISMATCH = 2,      // runtime env hash mismatch
-  DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
-  OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
+  NONE = 0,                          // OK
+  ROOT_MISMATCH = 1,                 // job ID or root detached actor ID mismatch
+  RUNTIME_ENV_MISMATCH = 2,          // runtime env hash mismatch
+  DYNAMIC_OPTIONS_MISMATCH = 3,      // dynamic options mismatch
+  RESOURCE_MISMATCH = 4,             // resource requirements mismatch
+  ALLOCATED_INSTANCES_MISMATCH = 5,  // allocated instances mismatch
+  OTHERS = 6,                        // reasons we don't do stats for (e.g. language)
 };
 static constexpr std::string_view kWorkerUnfitForLeaseReasonDebugName[] = {
     "NONE",
     "ROOT_MISMATCH",
     "RUNTIME_ENV_MISMATCH",
     "DYNAMIC_OPTIONS_MISMATCH",
+    "RESOURCE_MISMATCH",
+    "ALLOCATED_INSTANCES_MISMATCH",
     "OTHERS",
 };
 
