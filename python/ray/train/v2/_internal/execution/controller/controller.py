@@ -190,12 +190,7 @@ class TrainController:
             else False
         )
 
-        # Register the preemption-observability callback when not in TorchFT
-        # mode. TorchFT handles peer loss via its own per-step quorum; the
-        # preemption watcher would interfere with its graceful-degrade path.
-        # Stage 1 of the preemption-handling design (observability only);
-        # gated behind ``RAY_TRAIN_ENABLE_PREEMPTION_WATCHER`` so the rollout
-        # has a quick rollback path.
+        # Register the preemption-observability callback when not in TorchFT mode.
         if not self._manages_replica_groups and ray_constants.env_bool(
             ENABLE_PREEMPTION_WATCHER_ENV_VAR,
             DEFAULT_ENABLE_PREEMPTION_WATCHER,

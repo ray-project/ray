@@ -1,10 +1,3 @@
-"""Lifecycle management for the preemption watcher.
-
-:class:`PreemptionCallback` spawns one :class:`PreemptionWatcher` per worker
-group and tears it down on shutdown. It is not registered when the worker
-group manages replica groups (TorchFT), which handles peer loss via its own
-per-step quorum.
-"""
 import logging
 import os
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -59,10 +52,6 @@ class PreemptionCallback(WorkerGroupCallback):
             )
             return
 
-        # max_restarts=-1 so a transient watcher crash doesn't silently end
-        # preemption observability — the actor's __init__ restarts the poll
-        # loop. Drain state is GCS-resident, so the first poll after a restart
-        # re-detects any in-progress drain.
         watcher_cls = ray.remote(num_cpus=0, max_restarts=-1)(PreemptionWatcher)
         self._watcher = watcher_cls.remote(
             node_to_ranks=node_to_ranks,

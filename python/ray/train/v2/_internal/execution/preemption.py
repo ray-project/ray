@@ -1,10 +1,3 @@
-"""Preemption data structures and the watcher actor.
-
-The :class:`PreemptionWatcher` polls Ray Core's ``get_draining_nodes`` on an
-interval, maps drained node IDs to affected ranks via a failure-domain map
-(TPU-slice-aware), and logs detected events. Its lifecycle is managed by
-``PreemptionCallback`` (see ``callbacks/preemption_callback.py``).
-"""
 import logging
 import threading
 from dataclasses import dataclass
@@ -25,17 +18,17 @@ class PreemptionInfo:
     """Information about an imminent preemption event.
 
     Attributes:
-        deadline: UNIX timestamp (seconds since epoch) by which the affected
-            nodes are expected to be reclaimed, or ``0.0`` when the source
-            reported no deadline.
-        preempted_ranks: Worker ranks (``world_rank``) whose nodes are being
-            reclaimed, expanded to all ranks in the same failure domain
-            (e.g., a fate-shared TPU slice). Sorted ascending.
+        deadline_ms: UNIX timestamp in milliseconds by which the affected nodes
+            are expected to be reclaimed, as reported by Ray Core's
+            ``get_draining_nodes``. ``0`` means the source reported no deadline.
+            (Divide by 1000 to compare against ``time.time()``.)
+        preempted_ranks: Worker `world_rank` whose nodes are being reclaimed, expanded to all ranks in the same failure domain
+            (e.g., all ranks in a fate-shared TPU slice). Sorted ascending.
         preempted_node_ids: Node IDs being reclaimed, hex-encoded as returned
             by Ray Core. Sorted lexicographically.
     """
 
-    deadline: float
+    deadline_ms: int
     preempted_ranks: List[int]
     preempted_node_ids: List[str]
 
@@ -47,7 +40,6 @@ DrainSource = Callable[[], Dict[str, int]]
 
 
 def _default_drain_source() -> Dict[str, int]:
-    # ray._private.state.state is the module-level GlobalState singleton.
     return ray._private.state.state.get_draining_nodes()
 
 
@@ -86,8 +78,6 @@ class PreemptionWatcher:
         self._last_drained: Dict[str, int] = {}
         self._latest_info: Optional[PreemptionInfo] = None
 
-        # Start the poll loop here (not via a separate RPC) so it resumes
-        # automatically if Ray restarts the actor.
         self._monitor_thread = threading.Thread(
             target=self._watch_loop,
             name="PreemptionWatcher",
@@ -95,25 +85,20 @@ class PreemptionWatcher:
         )
         self._monitor_thread.start()
 
-    # ------------------------------------------------------------------ #
-    # Failure-domain auto-detect
-    # ------------------------------------------------------------------ #
-
     @staticmethod
     def _build_failure_domain_map(
         node_to_ranks: Dict[str, List[int]],
     ) -> Dict[str, List[int]]:
-        """Map each node we care about to all ranks in its failure domain.
+        """Map each node we host to all ranks in its failure domain.
 
-        For non-TPU clusters the failure domain is just the node itself. For
-        TPU multislice, every host in a slice is reclaimed atomically, so a
-        drain on any host is fate-shared with the rest: we union ranks across
-        all hosts sharing a slice label (Ray Core attaches one to every TPU
-        node, exposed by :func:`ray.util.tpu.get_tpu_slice_name_from_node`).
-
-        The result includes entries for slice-mates we don't host: GKE may
-        surface a drain on a non-hosted slice-mate first, so we need to
-        recognize those drains too.
+        - Non-TPU (e.g. GPU) clusters: the failure domain is the node itself,
+          so a drain on a node flags only the ranks this job runs there. A node
+          may be shared with another workload, but those ranks are never in
+          ``node_to_ranks``, so they're naturally excluded.
+        - TPU multislice: every host in a slice is reclaimed atomically, so a
+          drain on any host is fate-shared with the rest. A TPU SPMD job fully
+          occupies its slice, so all slice hosts appear in ``node_to_ranks``;
+          we union ranks across the hosts sharing a slice label.
         """
         per_node = {nid: sorted(set(ranks)) for nid, ranks in node_to_ranks.items()}
 
@@ -127,48 +112,32 @@ class PreemptionWatcher:
             )
             return per_node
 
-        # node_id -> slice_label (or None). Includes nodes outside our worker
-        # group so we can union slice-mates.
+        # Slice label for each node we host (None for non-TPU nodes).
         node_to_slice: Dict[str, Optional[str]] = {
-            node["NodeID"]: get_tpu_slice_name_from_node(node) for node in all_nodes
+            node["NodeID"]: get_tpu_slice_name_from_node(node)
+            for node in all_nodes
+            if node["NodeID"] in node_to_ranks
         }
 
-        # Per slice we have at least one rank in: union of our ranks.
+        # Union our ranks per slice.
         slice_to_ranks: Dict[str, Set[int]] = {}
         for node_id, ranks in node_to_ranks.items():
             slice_label = node_to_slice.get(node_id)
             if slice_label:
                 slice_to_ranks.setdefault(slice_label, set()).update(ranks)
 
-        # Non-TPU cluster (or none of our nodes are on a slice): nothing to
-        # expand, so the failure domain is each node on its own.
+        # Non-TPU cluster (or none of our nodes are on a slice): per-node domains.
         if not slice_to_ranks:
             return per_node
 
-        # All node IDs in slices we care about (from the full cluster view).
-        slice_to_all_node_ids: Dict[str, Set[str]] = {}
-        for node_id, slice_label in node_to_slice.items():
-            if slice_label and slice_label in slice_to_ranks:
-                slice_to_all_node_ids.setdefault(slice_label, set()).add(node_id)
-
-        # WG nodes map to their per-slice union (or own ranks if non-TPU);
-        # then add the slice-mates we don't host, pointing at the same union.
         result: Dict[str, List[int]] = {}
         for node_id, ranks in node_to_ranks.items():
             slice_label = node_to_slice.get(node_id)
-            if slice_label and slice_label in slice_to_ranks:
+            if slice_label:
                 result[node_id] = sorted(slice_to_ranks[slice_label])
             else:
                 result[node_id] = sorted(set(ranks))
-        for slice_label, all_node_ids in slice_to_all_node_ids.items():
-            ranks_union = sorted(slice_to_ranks[slice_label])
-            for node_id in all_node_ids:
-                result.setdefault(node_id, ranks_union)
         return result
-
-    # ------------------------------------------------------------------ #
-    # Public API (exposed via the actor handle)
-    # ------------------------------------------------------------------ #
 
     def stop(self) -> None:
         """Signal the poll loop to exit and wait for the thread to join."""
@@ -181,10 +150,6 @@ class PreemptionWatcher:
         """Most recent :class:`PreemptionInfo` observed, or ``None``."""
         return self._latest_info
 
-    # ------------------------------------------------------------------ #
-    # Internal
-    # ------------------------------------------------------------------ #
-
     def _watch_loop(self) -> None:
         logger.debug(
             "PreemptionWatcher polling %d node(s) every %.1fs.",
@@ -192,20 +157,27 @@ class PreemptionWatcher:
             self._poll_interval_s,
         )
         while not self._stop_event.is_set():
-            try:
-                drained = self._drain_source()
-                # Only consider nodes in our failure domains; cluster-wide
-                # drains for other workloads are irrelevant.
-                relevant = {
-                    n: d for n, d in drained.items() if n in self._failure_domain_map
-                }
-                if relevant != self._last_drained:
-                    self._on_drain_change(relevant)
-                    self._last_drained = relevant
-            except Exception:
-                logger.warning("PreemptionWatcher poll failed", exc_info=True)
+            self._poll_once()
             self._stop_event.wait(timeout=self._poll_interval_s)
         logger.debug("PreemptionWatcher stopped.")
+
+    def _poll_once(self) -> None:
+        """Poll the drain source once and dispatch on change.
+
+        Per-poll exceptions are caught and logged so a transient GCS hiccup
+        doesn't kill the watcher loop.
+        """
+        try:
+            drained = self._drain_source()
+            # Filter out drains for nodes not in training run.
+            relevant = {
+                n: d for n, d in drained.items() if n in self._failure_domain_map
+            }
+            if relevant != self._last_drained:
+                self._on_drain_change(relevant)
+                self._last_drained = relevant
+        except Exception:
+            logger.warning("PreemptionWatcher poll failed", exc_info=True)
 
     def _on_drain_change(self, drained: Dict[str, int]) -> None:
         """Handle a change in the (already-filtered) drained-node set."""
@@ -221,13 +193,13 @@ class PreemptionWatcher:
             }
         )
 
-        # Earliest non-zero deadline wins; 0.0 means "unknown" (Ray Core's
-        # deadline_ms=0 convention) when no node reported a deadline.
+        # Earliest non-zero deadline wins; 0 means "unknown" when no node
+        # reported a deadline.
         nonzero_deadlines = [drained[n] for n in affected_node_ids if drained[n] > 0]
-        deadline = min(nonzero_deadlines) / 1000.0 if nonzero_deadlines else 0.0
+        deadline_ms = min(nonzero_deadlines) if nonzero_deadlines else 0
 
         info = PreemptionInfo(
-            deadline=deadline,
+            deadline_ms=deadline_ms,
             preempted_ranks=affected_ranks,
             preempted_node_ids=affected_node_ids,
         )
@@ -235,10 +207,10 @@ class PreemptionWatcher:
 
         logger.warning(
             "PreemptionWatcher: drain detected — "
-            "preempted_node_ids=%s, preempted_ranks=%s, deadline=%s",
+            "preempted_node_ids=%s, preempted_ranks=%s, deadline_ms=%s",
             affected_node_ids,
             affected_ranks,
-            deadline,
+            deadline_ms,
         )
-        # TODO(stage 2): fan out mark_preempt(info) to the worker actors here
+        # TODO(lehui): fan out mark_preempt(info) to the worker actors here
         # so the UDF can read it via ray.train.preemption_status().
