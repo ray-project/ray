@@ -4,10 +4,7 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    NodeIdStr,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
@@ -374,7 +371,7 @@ class SplitCoordinator:
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             schema = next_bundle.schema
-            block, metadata = next_bundle.blocks[-1]
+            last_entry = next_bundle.blocks[-1]
             next_bundle = RefBundle(
                 blocks=next_bundle.blocks[:-1],
                 schema=next_bundle.schema,
@@ -396,7 +393,7 @@ class SplitCoordinator:
 
                 # Track per-split row dispatch count.
                 self._num_rows_dispatched[output_split_idx] += (
-                    metadata.num_rows if metadata.num_rows else 0
+                    last_entry.metadata.num_rows if last_entry.metadata.num_rows else 0
                 )
                 num_rows_dispatched = self._num_rows_dispatched[output_split_idx]
 
@@ -409,7 +406,9 @@ class SplitCoordinator:
 
             returned_normally = True
             return RefBundle(
-                [(block, metadata)], schema=schema, owns_blocks=next_bundle.owns_blocks
+                [last_entry],
+                schema=schema,
+                owns_blocks=next_bundle.owns_blocks,
             )
         except StopIteration:
             with self._lock:

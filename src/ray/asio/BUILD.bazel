@@ -34,6 +34,22 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "io_context_monitor",
+    srcs = ["io_context_monitor.cc"],
+    hdrs = ["io_context_monitor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":instrumented_io_context",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "io_service_pool",
     srcs = ["io_service_pool.cc"],
     hdrs = ["io_service_pool.h"],
