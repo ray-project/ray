@@ -257,19 +257,23 @@ class LongPollClient:
             # recovery) — that case is silent under DEBUG, so log at
             # WARNING with the actor_id and exception type to keep
             # postmortems possible.
+            actor_id = getattr(self.host_actor, "_actor_id", None)
+            actor_id_hex = actor_id.hex() if hasattr(actor_id, "hex") else "unknown"
             logger.warning(
                 "LongPollClient host_actor=%s died (%s). Shutting down; "
                 "no automatic reconnect.",
-                self.host_actor._actor_id.hex(),
+                actor_id_hex,
                 type(updates).__name__,
             )
             self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
+            actor_id = getattr(self.host_actor, "_actor_id", None)
+            actor_id_hex = actor_id.hex() if hasattr(actor_id, "hex") else "unknown"
             logger.warning(
                 "LongPollClient host_actor=%s connection failed. Shutting down.",
-                self.host_actor._actor_id.hex(),
+                actor_id_hex,
             )
             self.is_running = False
             return

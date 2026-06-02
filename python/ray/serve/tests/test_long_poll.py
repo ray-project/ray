@@ -686,7 +686,9 @@ def test_process_update_logs_warning_with_actor_id_on_ray_actor_error():
     serve_logger.addHandler(handler)
     loop = asyncio.new_event_loop()
     try:
-        client = LongPollClient(host_actor, {}, call_in_event_loop=loop)
+        client = LongPollClient(
+            host_actor, {}, call_in_event_loop=loop, client_id="TestClient"
+        )
         client._process_update(ray.exceptions.RayActorError())
     finally:
         loop.close()
@@ -711,7 +713,9 @@ def test_process_update_logs_warning_with_actor_id_on_connection_error():
     serve_logger.addHandler(handler)
     loop = asyncio.new_event_loop()
     try:
-        client = LongPollClient(host_actor, {}, call_in_event_loop=loop)
+        client = LongPollClient(
+            host_actor, {}, call_in_event_loop=loop, client_id="TestClient"
+        )
         client._process_update(ConnectionError("network down"))
     finally:
         loop.close()
