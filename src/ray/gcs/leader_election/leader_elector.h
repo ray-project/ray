@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include "ray/common/status.h"
-
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -23,6 +21,8 @@
 #include <mutex>
 #include <string>
 #include <thread>
+
+#include "ray/common/status.h"
 #include "ray/gcs/leader_election/leader_election_client_interface.h"
 
 namespace ray {
@@ -82,7 +82,6 @@ class LeaderElector {
 
   // Watchdog loop to verify leader lease renewal deadline asynchronously.
   void WatchdogLoop();
-
 
   LeaderElectionConfig config_;
   // Flashed to true by GCS main thread to request background loops to exit gracefully.

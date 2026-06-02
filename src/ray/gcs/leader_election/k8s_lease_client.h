@@ -102,12 +102,13 @@ class K8sLeaseClient : public LeaderLeaseClientInterface {
       post_api_;
   std::function<Status(const std::string &, const nlohmann::json &, nlohmann::json &)>
       put_api_;
-  // The cached resourceVersion of the Lease object, used to execute the Direct-PUT
-  // fast-path optimization. When holding leadership, the client uses this cached version
-  // to perform renewals in exactly one HTTP PUT call (skipping the initial GET query).
+  // The cached full JSON record of the Lease object, used to execute the Direct-PUT
+  // fast-path optimization. When holding leadership, the client uses this cached record
+  // to perform renewals in exactly one HTTP PUT call (skipping the initial GET query)
+  // while preserving all metadata (labels, annotations, owner references).
   // This cache is cleared on any API errors (such as conflicts or timeouts) to force
   // a fallback to the standard GET-then-PUT flow.
-  std::string cached_resource_version_;
+  nlohmann::json cached_lease_record_;
 };
 
 }  // namespace gcs

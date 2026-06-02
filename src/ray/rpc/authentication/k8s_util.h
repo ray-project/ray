@@ -19,9 +19,8 @@
 #include <string>
 
 #include "nlohmann/json.hpp"
-#include "ray/rpc/authentication/authentication_token.h"
-
 #include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_token.h"
 
 namespace ray {
 namespace rpc {
@@ -48,8 +47,7 @@ Status K8sApiPost(const std::string &path,
 /// \param path The API path for the request.
 /// \param[out] response_json The JSON response from the API server.
 /// \return Status::OK() if the request was successful, otherwise error status.
-Status K8sApiGet(const std::string &path,
-                 nlohmann::json &response_json);
+Status K8sApiGet(const std::string &path, nlohmann::json &response_json);
 
 /// Performs an HTTP PUT request to the Kubernetes API server.
 /// \param path The API path for the request.

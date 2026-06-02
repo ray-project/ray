@@ -104,11 +104,7 @@ Status K8sLeaseClient::CreateLease(const std::string &holder_id,
   nlohmann::json create_resp;
   Status status = post_api_(post_path, create_req, create_resp);
   if (status.ok()) {
-    if (create_resp.contains("metadata") &&
-        create_resp["metadata"].contains("resourceVersion")) {
-      cached_resource_version_ =
-          create_resp["metadata"]["resourceVersion"].get<std::string>();
-    }
+    cached_lease_record_ = create_resp;
   }
   return status;
 }
@@ -120,6 +116,7 @@ Status K8sLeaseClient::UpdateLease(const LeaseMetadata &metadata,
   std::string now_str =
       absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", now, absl::UTCTimeZone());
   nlohmann::json update_req = metadata.lease_record;
+  update_req.erase("__api_server_date__");
   update_req["spec"]["holderIdentity"] = holder_id;
   update_req["spec"]["leaseDurationSeconds"] = ttl_seconds;
   update_req["spec"]["renewTime"] = now_str;
@@ -133,11 +130,7 @@ Status K8sLeaseClient::UpdateLease(const LeaseMetadata &metadata,
   nlohmann::json update_resp;
   Status status = put_api_(put_path, update_req, update_resp);
   if (status.ok()) {
-    if (update_resp.contains("metadata") &&
-        update_resp["metadata"].contains("resourceVersion")) {
-      cached_resource_version_ =
-          update_resp["metadata"]["resourceVersion"].get<std::string>();
-    }
+    cached_lease_record_ = update_resp;
   }
   return status;
 }
@@ -169,7 +162,7 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
                                   int ttl_seconds,
                                   std::string &current_leader) {
   auto metadata_or = GetLeaseMetadata();
-  if (metadata_or.IsNotFound()) {
+  if (metadata_or.status().IsNotFound()) {
     Status create_status = CreateLease(holder_id, ttl_seconds, absl::Now());
     if (create_status.ok()) {
       RAY_LOG(INFO) << "Successfully created Lease and acquired leadership.";
@@ -204,38 +197,29 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
 Status K8sLeaseClient::Renew(const std::string &holder_id,
                              int ttl_seconds,
                              std::string &current_leader) {
-  if (!cached_resource_version_.empty()) {
+  if (!cached_lease_record_.empty()) {
     absl::Time now = absl::Now();
     std::string now_str =
         absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", now, absl::UTCTimeZone());
-    nlohmann::json update_req = {{"apiVersion", "coordination.k8s.io/v1"},
-                                 {"kind", "Lease"},
-                                 {"metadata",
-                                  {{"name", lease_key_},
-                                   {"namespace", lease_namespace_},
-                                   {"resourceVersion", cached_resource_version_}}},
-                                 {"spec",
-                                  {{"holderIdentity", holder_id},
-                                   {"leaseDurationSeconds", ttl_seconds},
-                                   {"renewTime", now_str}}}};
+    nlohmann::json update_req = cached_lease_record_;
+    update_req.erase("__api_server_date__");
+    update_req["spec"]["holderIdentity"] = holder_id;
+    update_req["spec"]["leaseDurationSeconds"] = ttl_seconds;
+    update_req["spec"]["renewTime"] = now_str;
 
     std::string put_path = "/apis/coordination.k8s.io/v1/namespaces/" + lease_namespace_ +
                            "/leases/" + lease_key_;
     nlohmann::json response;
-    Status status = put_api_(put_path, update_req, response);
-    if (status.ok()) {
-      if (response.contains("metadata") &&
-          response["metadata"].contains("resourceVersion")) {
-        cached_resource_version_ =
-            response["metadata"]["resourceVersion"].get<std::string>();
-      }
+    Status update_status = put_api_(put_path, update_req, response);
+    if (update_status.ok()) {
+      cached_lease_record_ = response;
       current_leader = holder_id;
       return Status::OK();
     }
     // If direct PUT fails (due to resourceVersion mismatch/conflict, network error,
     // or request timeout), invalidate the cache and fall back to the slow-path
     // TryAcquire() (which performs a GET to refresh the resource version).
-    cached_resource_version_ = "";
+    cached_lease_record_ = nlohmann::json();
   }
 
   return TryAcquire(holder_id, ttl_seconds, current_leader);
@@ -256,6 +240,7 @@ void K8sLeaseClient::Release(const std::string &holder_id) {
 
   if (current_holder == holder_id) {
     nlohmann::json update_req = response;
+    update_req.erase("__api_server_date__");
     update_req["spec"]["holderIdentity"] = "";
     update_req["spec"]["renewTime"] = "1970-01-01T00:00:00Z";
 
