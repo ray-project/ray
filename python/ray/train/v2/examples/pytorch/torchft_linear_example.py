@@ -147,9 +147,9 @@ def train_func(config):
             weight = model.module.weight.detach().flatten().tolist()
             bias = model.module.bias.detach().flatten().tolist()
             result = {"loss": avg_loss, "weight": weight, "bias": bias, "step": step}
-            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                # TODO(tseah): remove this check once we support reporting with 1/2 workers.
-                if config.get("training_requires_all_workers", True):
+            # TODO(tseah): remove this check once we support reporting with 1/2 workers.
+            if config.get("training_requires_all_workers", True):
+                with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                     ray.train.report(
                         result,
                         checkpoint=ray.train.Checkpoint.from_directory(
