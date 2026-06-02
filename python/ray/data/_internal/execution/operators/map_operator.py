@@ -131,7 +131,7 @@ def _get_schema_from_bundle(
     if isinstance(schema, PandasBlockSchema):
         if not bundle.blocks:
             return None
-        block_ref, _ = bundle.blocks[0]
+        block_ref = bundle.blocks[0].ref
         task = _get_arrow_schema_from_block
         if label_selector:
             task = task.options(label_selector=label_selector)
