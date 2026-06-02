@@ -4,10 +4,11 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
+COPY python/requirements/llm/patches/vllm-trial-import-patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.20.0"
+ARG VLLM_SCRIPTS_REF="v0.22.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -35,8 +36,33 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
-# Export installed packages
-$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
+# Temporarily patch fixes from https://github.com/vllm-project/vllm/pull/39873
+# until the pinned vLLM release includes it.
+VLLM_IMPORT_UTILS_PATCH="$(pwd)/vllm-trial-import-patch"
+VLLM_SITE_PACKAGES="$(python - <<'PY'
+import site
+import sysconfig
+from pathlib import Path
+
+candidate_dirs = [
+    Path(sysconfig.get_paths()["purelib"]),
+    Path(sysconfig.get_paths()["platlib"]),
+    *(Path(path) for path in site.getsitepackages()),
+]
+
+for base_dir in dict.fromkeys(candidate_dirs):
+    import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
+    if import_utils.exists():
+        print(base_dir)
+        break
+else:
+    raise SystemExit("vLLM import_utils.py not found")
+PY
+)"
+(
+    cd "${VLLM_SITE_PACKAGES}"
+    git apply "${VLLM_IMPORT_UTILS_PATCH}"
+)
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
@@ -57,10 +83,17 @@ curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
 
+# Export installed packages
+$HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
+
 sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
 
-# Use the revamped ray executor backend in vLLM
-ENV VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1
+
+# vLLM 0.21.0 selects the FlashInfer top-k/top-p sampler during engine initialization
+# instead of the previous PyTorch-native/Triton sampling path. The FlashInfer sampler
+# introduces longer adds a large one-time engine initialization cost. To avoid performance
+# surprises, we disable the FlashInfer sampler by default.
+ENV VLLM_USE_FLASHINFER_SAMPLER=0

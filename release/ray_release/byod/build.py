@@ -10,7 +10,11 @@ from ray_release.logger import logger
 from ray_release.test import (
     Test,
 )
-from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
+
+# AZURE_REGISTRY_NAME import temporarily removed below: Azure image push is
+# disabled due to CI issues. Re-add `AZURE_REGISTRY_NAME` to the import below
+# when re-enabling the Azure tag/push block in build_anyscale_custom_byod_image.
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
@@ -65,9 +69,16 @@ def build_anyscale_custom_byod_image(
                 f"{image}<br/>",
             ],
         )
-    tag_without_registry = image.split("/")[-1]
-    azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
-    _tag_and_push(source=image, target=azure_tag)
+    # Azure tag-and-push for custom BYOD images temporarily disabled due to
+    # CI issues.
+    logger.info(
+        "Skipping Azure ACR tag/push for custom BYOD image %s: Azure image "
+        "push is temporarily disabled due to CI issues.",
+        image,
+    )
+    # tag_without_registry = image.split("/")[-1]
+    # azure_tag = f"{AZURE_REGISTRY_NAME}.azurecr.io/{tag_without_registry}"
+    # _tag_and_push(source=image, target=azure_tag)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> List[str]:
