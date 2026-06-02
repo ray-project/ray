@@ -319,7 +319,7 @@ backend {{ backend.name or 'unknown' }}
     # response body to contain the healthy message.
     option httpchk
     http-check connect proto h2
-    http-check send meth POST uri /ray.serve.RayServeAPIService/Healthz ver HTTP/2.0 hdr content-type application/grpc hdr te trailers
+    http-check send meth POST uri /ray.serve.RayServeAPIService/Healthz ver HTTP/2.0 hdr content-type application/grpc hdr te trailers body "\x00\x00\x00\x00\x00"
     http-check expect string {{ healthy_message }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
