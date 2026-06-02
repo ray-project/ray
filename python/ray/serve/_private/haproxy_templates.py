@@ -53,11 +53,14 @@ defaults
     option abortonclose
     option splice-request
     option splice-response
-    # On a retry, use a different slot (`1`). Retry only connect failures
-    # (nothing was sent → safe to replay); not backend 503s (deliberate
-    # backpressure) or empty-response (already reached the replica).
+    # On a retry, use a different slot (`1`). retry-on defaults to connect
+    # failures only (nothing was sent → safe to replay); override globally via
+    # RAY_SERVE_HAPROXY_RETRY_ON. Inherited by every backend.
     option redispatch 1
-    retry-on conn-failure
+    retry-on {{ config.retry_on }}
+    {%- if config.retries is not none %}
+    retries {{ config.retries }}
+    {%- endif %}
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
@@ -189,17 +192,9 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     # HAProxy holding unread server-side FINs under a burst while worker
     # threads are still routing other requests.
     http-reuse always
-    # use-server falls through to LB if the pinned server is DOWN. Combined
-    # with `retry-on` below (when configured), this lets HAProxy redispatch
-    # a slow-first-byte request to a different replica instead of head-of-
-    # line-blocking on the original pick.
-    option redispatch
-    {%- if config.ingress_retry_on %}
-    retry-on {{ config.ingress_retry_on }}
-    {%- endif %}
-    {%- if config.ingress_retries is not none %}
-    retries {{ config.ingress_retries }}
-    {%- endif %}
+    # Inherits the defaults block's `option redispatch 1` + retry-on, so a
+    # DOWN/slow pinned server falls through to a different replica instead of
+    # head-of-line-blocking on the original pick. One retry policy everywhere.
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}

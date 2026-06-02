@@ -292,9 +292,9 @@ defaults
     option abortonclose
     option splice-request
     option splice-response
-    # On a retry, use a different slot (`1`). Retry only connect failures
-    # (nothing was sent → safe to replay); not backend 503s (deliberate
-    # backpressure) or empty-response (already reached the replica).
+    # On a retry, use a different slot (`1`). retry-on defaults to connect
+    # failures only (nothing was sent → safe to replay); override globally via
+    # RAY_SERVE_HAPROXY_RETRY_ON. Inherited by every backend.
     option redispatch 1
     retry-on conn-failure
     # Set TCP_NODELAY on all connections
@@ -666,11 +666,11 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
         assert "X-Serve-Reason" in cfg, cfg
 
 
-def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
-    """When the three RAY_SERVE_HAPROXY_INGRESS_* env-var-derived fields are
-    set on HAProxyConfig, the corresponding HAProxy directives are emitted
-    into the ``-via-ingress-request-router`` backend. When unset, none of
-    them appear (backward-compat)."""
+def test_ingress_backend_inherits_global_retry_policy(haproxy_api_cleanup):
+    """The ``-via-ingress-request-router`` backend defines no retry directives
+    of its own — it inherits retry-on / retries / redispatch from the defaults
+    block (one policy everywhere). Only timeout server remains a per-ingress
+    override."""
     backends = {
         "llm": BackendConfig(
             name="llm",
@@ -703,13 +703,14 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
             with open(api.config_file_path) as f:
                 return f.read()
 
+    # retry-on is defined once (defaults block); the ingress backend inherits it.
     unset = render({})
-    # Defaults block always emits its own `retry-on conn-failure`; this
-    # test asserts the per-ingress-backend retry knobs only render when set.
+    assert "ingress-request-router" in unset  # backend still rendered
     assert unset.count("\n    retry-on ") == 1
     assert "\n    retries " not in unset
-    assert "ingress-request-router" in unset  # backend still rendered
 
+    # ingress retry knobs are inherited, not re-emitted in the ingress backend;
+    # only timeout server renders there as a per-ingress override.
     set_cfg = render(
         {
             "ingress_retry_on": "conn-failure empty-response response-timeout",
@@ -717,11 +718,41 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
             "ingress_timeout_server_s": 5,
         }
     )
-    # Defaults retry-on + ingress retry-on = 2 occurrences.
-    assert set_cfg.count("\n    retry-on ") == 2
-    assert "retry-on conn-failure empty-response response-timeout" in set_cfg
-    assert "\n    retries 4\n" in set_cfg
+    assert set_cfg.count("\n    retry-on ") == 1  # still only the defaults block
+    assert "empty-response" not in set_cfg
+    assert "\n    retries 4\n" not in set_cfg
     assert "\n    timeout server 5s\n" in set_cfg
+
+
+def test_global_retry_knobs_render(haproxy_api_cleanup):
+    """RAY_SERVE_HAPROXY_RETRY_ON / RETRIES drive the defaults block (inherited
+    by every backend). Defaults to `conn-failure` with no explicit `retries`."""
+
+    def render(overrides):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = HAProxyApi(
+                cfg=HAProxyConfig(
+                    socket_path=os.path.join(temp_dir, "admin.sock"), **overrides
+                ),
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                api.config_file_path,
+            ):
+                api._generate_config_file_internal()
+            with open(api.config_file_path) as f:
+                return f.read()
+
+    # Default: conn-failure only, no explicit retries line.
+    default_cfg = render({})
+    assert "\n    retry-on conn-failure\n" in default_cfg
+    assert "\n    retries " not in default_cfg
+
+    # Both knobs override the defaults block.
+    overridden = render({"retry_on": "conn-failure junk-response", "retries": 2})
+    assert "\n    retry-on conn-failure junk-response\n" in overridden
+    assert "\n    retries 2\n" in overridden
 
 
 @pytest.mark.parametrize("forward_body", [True, False])
