@@ -70,6 +70,14 @@ DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
 DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
     "RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES", (10) * (1024**3)
 )
+# The default buffer size between the physical memory limit enforced by resource isolation
+# and the logical memory limit available for scheduling user tasks. This buffer can be tuned
+# to allocate more or less memory room for tolerating passing in the wrong logical memory
+# estimate at the cost of lower memory utilization.
+DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES = env_integer(
+    "RAY_DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES",
+    500 * (1024**2),  # 500MiB
+)
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
@@ -271,7 +279,7 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
-
+RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
