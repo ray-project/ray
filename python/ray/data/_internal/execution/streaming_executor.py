@@ -441,13 +441,14 @@ class StreamingExecutor(Executor, threading.Thread):
             True if we should continue running the scheduling loop.
         """
         self._resource_manager.update_usages()
-        # Update the budget scheduler's max_bytes from current resource limits,
-        # since limits may not be populated at init time.
+        # Update the budget scheduler's resource limits, since they may not
+        # be populated at init time.
         if self._budget_scheduler is not None:
             limits = self._resource_manager.get_global_limits()
             max_bytes = int(limits.object_store_memory or 0)
-            if max_bytes > 0:
-                self._budget_scheduler.max_bytes = max_bytes
+            total_cpus = limits.cpu or 0
+            if max_bytes > 0 or total_cpus > 0:
+                self._budget_scheduler.update_limits(max_bytes, total_cpus)
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
@@ -594,9 +595,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _create_budget_scheduler(self) -> BudgetScheduler:
         """Create and initialize a BudgetScheduler from current resource limits."""
-        limits = self._resource_manager.get_global_limits()
-        max_bytes = int(limits.object_store_memory or 0)
-        available_cpus = limits.cpu or 1.0
+        import ray
+
+        # Use ray.cluster_resources() for initial values since the resource
+        # manager's limits may not be populated yet at init time.
+        cluster = ray.cluster_resources()
+        object_store_memory = cluster.get("object_store_memory", 0)
+        # Apply the same fraction the resource manager uses.
+        fraction = self._resource_manager._object_store_memory_limit_fraction
+        max_bytes = int(object_store_memory * fraction)
+        available_cpus = cluster.get("CPU", 1.0)
         scheduler = BudgetScheduler(
             max_bytes=max_bytes,
             available_cpus=available_cpus,

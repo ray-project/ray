@@ -98,6 +98,7 @@ class BudgetScheduler:
         ema_alpha: float = DEFAULT_EMA_ALPHA,
     ):
         self.max_bytes = max_bytes
+        self.total_cpus = available_cpus
         self.available_cpus = available_cpus
         self.ema_alpha = ema_alpha
 
@@ -113,6 +114,13 @@ class BudgetScheduler:
 
         # Monotonically increasing task id counter.
         self._next_task_id: int = 0
+
+    def update_limits(self, max_bytes: int, total_cpus: float) -> None:
+        """Update resource limits, preserving in-flight accounting."""
+        self.max_bytes = max_bytes
+        cpu_delta = total_cpus - self.total_cpus
+        self.total_cpus = total_cpus
+        self.available_cpus += cpu_delta
 
     def register_operator(
         self,
