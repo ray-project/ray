@@ -248,7 +248,19 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>
         {/* Empty because workers do not have an expand / unexpand button. */}
       </TableCell>
-      <TableCell align="center">{cmdline[0]}</TableCell>
+      <TableCell align="center">
+        <Link
+          component={RouterLink}
+          to={
+            coreWorker?.actorId &&
+            coreWorker.actorId !== "ffffffffffffffffffffffffffffffff"
+              ? `/actors/${coreWorker.actorId}`
+              : `/cluster/nodes/${nodeId}`
+          }
+        >
+          {cmdline?.[0] || "Unknown Worker"}
+        </Link>
+      </TableCell>
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
       </TableCell>
