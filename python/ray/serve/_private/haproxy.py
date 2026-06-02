@@ -10,6 +10,7 @@ import shutil
 import string
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -697,6 +698,13 @@ class HAProxyApi(ProxyApi):
         # without this a new incarnation would reuse — and (wb) truncate — the
         # previous one's log files. The actor PID changes on every restart.
         self._log_id: int = os.getpid()
+        # Debug ring of (stdout_path, stderr_path) for the most recently
+        # exited workers. Files for still-alive workers are never touched
+        # (their fds are still writing); once a worker exits its files are
+        # retired here and the oldest beyond the cap are deleted, so the
+        # file count stays bounded instead of growing with every reload.
+        self._retired_logs: "deque[Tuple[str, str]]" = deque()
+        self._max_retained_logs: int = 10
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -714,6 +722,10 @@ class HAProxyApi(ProxyApi):
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
 
+        # Sweep std-stream logs left by a previous incarnation on this node.
+        # No worker has spawned yet, so any match belongs to a dead actor.
+        self._sweep_stale_logs()
+
         # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
             server_state_dir = os.path.dirname(self.cfg.server_state_file)
@@ -730,6 +742,46 @@ class HAProxyApi(ProxyApi):
             ef.write("Internal Server Error")
 
         self.cfg.error_file_path = error_file_path
+
+    def _sweep_stale_logs(self) -> None:
+        """Delete std-stream log files left by a previous actor incarnation.
+
+        Called at init before any worker spawns, so every match belongs to a
+        dead actor (a crash-restart can't run the normal prune on its way out).
+        """
+        socket_path = Path(self.cfg.socket_path)
+        for pattern in (
+            f"{socket_path.name}.*.stdout.log",
+            f"{socket_path.name}.*.stderr.log",
+        ):
+            for stale in socket_path.parent.glob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+
+    def _prune_old_procs(self) -> None:
+        """Drop exited workers from ``_old_procs`` and bound their log files.
+
+        A still-alive (draining) worker is kept untouched — its fd is still
+        writing to its file. When a worker has exited, its (stdout, stderr)
+        files are retired into a fixed-size ring kept for post-mortem
+        debugging; files that fall off the end of the ring are deleted, so the
+        file count stays bounded instead of growing with every reload.
+        """
+        still_alive = []
+        for p in self._old_procs:
+            if p.returncode is None:
+                still_alive.append(p)
+                continue
+            self._retired_logs.append((p._stdout_path, p._stderr_path))
+            while len(self._retired_logs) > self._max_retained_logs:
+                for path in self._retired_logs.popleft():
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+        self._old_procs = still_alive
 
     def _is_running(self) -> bool:
         """Check if the HAProxy process is still running."""
@@ -803,9 +855,11 @@ class HAProxyApi(ProxyApi):
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process so we can ensure it's cleaned up during shutdown
+            # Track old process for shutdown cleanup, then prune exited ones so
+            # the list and the log files on disk stay bounded across reloads.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
+            self._prune_old_procs()
 
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
