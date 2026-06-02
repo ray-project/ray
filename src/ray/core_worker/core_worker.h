@@ -173,7 +173,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
-             instrumented_io_context &object_freed_callback_service,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -183,7 +182,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
-             boost::thread &object_freed_callback_thread,
              std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -1759,9 +1757,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
-  /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
-  instrumented_io_context &object_freed_callback_service_;
-
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
@@ -1787,9 +1782,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
-
-  // Thread running object_freed_callback_service_.
-  boost::thread &object_freed_callback_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;

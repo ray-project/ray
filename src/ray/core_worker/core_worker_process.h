@@ -162,15 +162,6 @@ class CoreWorkerProcessImpl {
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
-  /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
-  instrumented_io_context object_freed_callback_service_{
-      /*enable_lag_probe=*/false,
-      /*running_on_single_thread=*/true};
-
-  /// Keeps object_freed_callback_service_ alive.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      object_freed_callback_service_work_;
-
   /// Shared client call manager across all gRPC clients in the core worker process.
   /// This is used by the CoreWorker and the MetricsAgentClient.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -187,9 +178,6 @@ class CoreWorkerProcessImpl {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
-
-  /// Thread running object_freed_callback_service_.
-  boost::thread object_freed_callback_thread_;
 
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
