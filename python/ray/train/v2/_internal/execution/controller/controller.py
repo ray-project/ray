@@ -12,8 +12,10 @@ import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
+    DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+    ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
@@ -187,6 +189,22 @@ class TrainController:
             if train_run_context.backend_config
             else False
         )
+
+        # Register the preemption-observability callback when not in TorchFT
+        # mode. TorchFT handles peer loss via its own per-step quorum; the
+        # preemption watcher would interfere with its graceful-degrade path.
+        # Stage 1 of the preemption-handling design (observability only);
+        # gated behind ``RAY_TRAIN_ENABLE_PREEMPTION_WATCHER`` so the rollout
+        # has a quick rollback path.
+        if not self._manages_replica_groups and ray_constants.env_bool(
+            ENABLE_PREEMPTION_WATCHER_ENV_VAR,
+            DEFAULT_ENABLE_PREEMPTION_WATCHER,
+        ):
+            from ray.train.v2._internal.callbacks.preemption_callback import (
+                PreemptionCallback,
+            )
+
+            self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()

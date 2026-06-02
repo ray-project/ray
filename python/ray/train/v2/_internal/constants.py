@@ -58,6 +58,19 @@ CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR = (
 )
 DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S: float = 60
 
+# Feature flag for the preemption watcher. Default-on; provides a quick
+# rollback path if the watcher actor misbehaves in a cluster.
+ENABLE_PREEMPTION_WATCHER_ENV_VAR = "RAY_TRAIN_ENABLE_PREEMPTION_WATCHER"
+DEFAULT_ENABLE_PREEMPTION_WATCHER: bool = True
+
+# How often the preemption watcher polls Ray Core's drain state.
+PREEMPTION_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S"
+DEFAULT_PREEMPTION_POLL_INTERVAL_S: float = 5.0
+
+# How long to wait for the preemption watcher's poll thread to join / its
+# graceful stop RPC to return before the actor is force-killed.
+PREEMPTION_WATCHER_STOP_TIMEOUT_S: float = 5.0
+
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
 DEFAULT_ENABLE_PRINT_PATCH = True
