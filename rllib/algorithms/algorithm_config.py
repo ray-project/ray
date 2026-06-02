@@ -4273,9 +4273,11 @@ class AlgorithmConfig(_Config):
             return default_rl_module_spec
 
     @property
-    def train_batch_size_per_learner(self) -> int:
+    def train_batch_size_per_learner(self) -> Optional[int]:
         # If not set explicitly, try to infer the value.
         if self._train_batch_size_per_learner is None:
+            if self.train_batch_size is None:
+                return None
             return self.train_batch_size // (self.num_learners or 1)
         return self._train_batch_size_per_learner
 
@@ -4284,7 +4286,7 @@ class AlgorithmConfig(_Config):
         self._train_batch_size_per_learner = value
 
     @property
-    def total_train_batch_size(self) -> int:
+    def total_train_batch_size(self) -> Optional[int]:
         """Returns the effective total train batch size.
 
         New API stack: `train_batch_size_per_learner` * [effective num Learners].
@@ -4292,6 +4294,8 @@ class AlgorithmConfig(_Config):
         @OldAPIStack: User never touches `train_batch_size_per_learner` or
         `num_learners`) -> `train_batch_size`.
         """
+        if self.train_batch_size_per_learner is None:
+            return None
         return self.train_batch_size_per_learner * (self.num_learners or 1)
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
@@ -4754,7 +4758,6 @@ class AlgorithmConfig(_Config):
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
         for module_id in policy_dict | multi_rl_module_spec.rl_module_specs:
-
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.rl_module_specs[module_id]
             if inference_only and module_spec.learner_only:

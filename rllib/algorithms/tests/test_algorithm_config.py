@@ -474,12 +474,12 @@ class TestAlgorithmConfig(unittest.TestCase):
         # 2. Export to dictionary
         config_dict = config.to_dict()
 
-        # Verify our fix correctly populated the dictionary
+        # Verify our fix correctly populated the legacy batch size
         self.assertEqual(config_dict["train_batch_size"], expected_total)
-        self.assertEqual(config_dict["train_batch_size_per_learner"], 123)
 
-        # Verify we did NOT inject the read-only property to prevent round-trip crashes
+        # Verify we did NOT inject these properties to prevent round-trip crashes/formula breaking
         self.assertNotIn("total_train_batch_size", config_dict)
+        self.assertNotIn("train_batch_size_per_learner", config_dict)
 
         # 3. Roundtrip: Create a new config and update from the dictionary
         new_config = PPOConfig().update_from_dict(config_dict)
