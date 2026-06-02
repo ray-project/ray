@@ -39,16 +39,14 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     TerminateNodeError,
 )
 from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
-from ray.autoscaler.v2.utils import is_head_node
-from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 
 logger = logging.getLogger(__name__)
 
-# Annotation patched on the CR when cluster-idle fires; KubeRay operator acts on it.
-IDLE_TTL_EXPIRED_ANNOTATION = "ray.io/idle-ttl-expired"
+# Annotation the KubeRay operator acts on to terminate the cluster.
+NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
 
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
-IDLE_TERMINATION_SECONDS_KEY = "idleTerminationSeconds"
+NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
@@ -90,10 +88,10 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
-        # Monotonic anchor for when cluster-idle was first observed; None when not held.
-        self._cluster_idle_observed_since: Optional[float] = None
-        # Cluster-idle threshold (seconds) read from CR; None disables the feature.
-        self._idle_termination_seconds: Optional[float] = None
+        # Monotonic timestamp when no driver was first observed; None resets it.
+        self._no_driver_observed_since: Optional[float] = None
+        # No-driver timeout (seconds) from the CR; None disables the feature.
+        self._no_driver_timeout_seconds: Optional[float] = None
 
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
@@ -137,6 +135,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
+        self._evaluate_no_driver_termination()
         return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
@@ -474,19 +473,16 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
-        self._refresh_idle_termination_seconds()
+        self._refresh_no_driver_timeout_seconds()
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
 
-    def _refresh_idle_termination_seconds(self) -> None:
-        """Reads idleTerminationSeconds from the cached RayCluster spec.
-
-        Trusts the value as accepted by KubeRay's admission webhook
-        """
+    def _refresh_no_driver_timeout_seconds(self) -> None:
+        """Reads noDriverTimeoutSeconds from the RayCluster CR."""
         opts = self._ray_cluster["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
-        secs = opts.get(IDLE_TERMINATION_SECONDS_KEY)
-        self._idle_termination_seconds = float(secs) if secs is not None else None
+        secs = opts.get(NO_DRIVER_TIMEOUT_SECONDS_KEY)
+        self._no_driver_timeout_seconds = float(secs) if secs is not None else None
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -657,66 +653,32 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
 
-    def evaluate_cluster_idle(self, ray_state: ClusterResourceState) -> None:
-        """Drives the cluster-idle decision for this RayCluster.
+    def _evaluate_no_driver_termination(self) -> None:
+        """Patches the no-driver-TTL annotation once no driver held for the timeout.
 
-        Checks observable conditions, masks the signal if any user driver is
-        attached, and then promotes the signal once it has held for
-        ``self._idle_termination_seconds``. When promoted, patches the
-        RayCluster CR with the idle-TTL-expired annotation; the KubeRay
-        operator performs the terminal action.
-
-        Args:
-            ray_state: The current ``ClusterResourceState`` snapshot from GCS,
-                passed in by the reconciler to avoid a duplicate RPC.
+        Detached actors do not count as a driver.
         """
-        if self._idle_termination_seconds is None:
-            self._cluster_idle_observed_since = None
-            return
-
-        if not self._is_cluster_idle_observable(ray_state):
-            self._cluster_idle_observed_since = None
+        # Feature disabled or a driver is attached: reset the anchor.
+        if self._no_driver_timeout_seconds is None:
+            self._no_driver_observed_since = None
             return
         if self._has_active_user_drivers():
-            self._cluster_idle_observed_since = None
+            self._no_driver_observed_since = None
             return
 
+        # Anchor on the first loop with no driver, then dispatch once the
+        # no-driver window reaches the timeout.
         now = time.monotonic()
-        if self._cluster_idle_observed_since is None:
-            self._cluster_idle_observed_since = now
-        if now - self._cluster_idle_observed_since < self._idle_termination_seconds:
+        if self._no_driver_observed_since is None:
+            self._no_driver_observed_since = now
+        if now - self._no_driver_observed_since < self._no_driver_timeout_seconds:
             return
-        self._set_cluster_idle_annotation()
-
-    @staticmethod
-    def _is_cluster_idle_observable(ray_state: ClusterResourceState) -> bool:
-        """Returns True when every alive worker is raylet-idle and no demand pends.
-
-        Head is excluded because Ray-internal actors
-        are pinned there and keep it permanently busy.
-        """
-        for node in ray_state.node_states:
-            if node.status == NodeStatus.DEAD:
-                continue
-            if is_head_node(node):
-                continue
-            if node.idle_duration_ms == 0:
-                return False
-
-        if (
-            ray_state.pending_resource_requests
-            or ray_state.pending_gang_resource_requests
-            or ray_state.cluster_resource_constraints
-        ):
-            return False
-
-        return True
+        self._set_no_driver_annotation()
 
     def _has_active_user_drivers(self) -> bool:
         """Returns True when GCS reports any non-dashboard driver still alive.
 
-        Fails closed: a failed GCS query is treated as "drivers present" so
-        we never suspend a cluster whose driver activity we cannot confirm.
+        Fails closed: a failed GCS query is treated as drivers present.
         """
         try:
             jobs = self._gcs_client.get_all_job_info(
@@ -739,20 +701,20 @@ class KubeRayProvider(ICloudInstanceProvider):
             return True
         return False
 
-    def _set_cluster_idle_annotation(self) -> None:
-        """Sets `ray.io/idle-ttl-expired=true` on the RayCluster CR.
+    def _set_no_driver_annotation(self) -> None:
+        """Sets `ray.io/no-driver-ttl-expired=true` on the RayCluster CR.
 
-        Idempotent: skips PATCH when annotation already set, reading the CR
-        cached by ``_sync_with_api_server`` earlier in this reconcile loop.
-        Failures are logged and swallowed; the next reconcile retries.
+        Idempotent via the CR cached this reconcile loop; PATCH errors are swallowed.
         """
         annotations = self._ray_cluster.get("metadata", {}).get("annotations", {})
-        if annotations.get(IDLE_TTL_EXPIRED_ANNOTATION) == "true":
+        if annotations.get(NO_DRIVER_TTL_EXPIRED_ANNOTATION) == "true":
             return
 
         path = f"rayclusters/{self._cluster_name}"
         # Merge patch covers missing and present annotations in one call.
-        payload = {"metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}}
+        payload = {
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
+        }
         try:
             self._k8s_api_client.patch(
                 path,
@@ -762,14 +724,14 @@ class KubeRayProvider(ICloudInstanceProvider):
         except Exception:
             logger.exception(
                 "Failed to PATCH %s=true on RayCluster %s",
-                IDLE_TTL_EXPIRED_ANNOTATION,
+                NO_DRIVER_TTL_EXPIRED_ANNOTATION,
                 self._cluster_name,
             )
             return
 
         logger.info(
             "Set %s=true on RayCluster %s.",
-            IDLE_TTL_EXPIRED_ANNOTATION,
+            NO_DRIVER_TTL_EXPIRED_ANNOTATION,
             self._cluster_name,
         )
 

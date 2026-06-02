@@ -23,7 +23,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
-    IDLE_TTL_EXPIRED_ANNOTATION,
+    NO_DRIVER_TTL_EXPIRED_ANNOTATION,
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import (
@@ -37,13 +37,6 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeProviderAdapter,
     TerminateNodeError,
     logger,
-)
-from ray.core.generated.autoscaler_pb2 import (
-    ClusterResourceState,
-    NodeState,
-    NodeStatus,
-    ResourceRequest,
-    ResourceRequestByCount,
 )
 from ray.core.generated.instance_manager_pb2 import NodeKind
 from ray.tests.autoscaler_test_utils import MockProvider
@@ -395,8 +388,8 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
-        # In production _sync_with_api_server caches the CR before
-        # evaluate_cluster_idle reads it; mirror that for the idle tests.
+        # In production _sync_with_api_server caches the CR before the
+        # no-driver annotation is set; mirror that for the dispatch tests.
         self.provider._ray_cluster = raycluster_cr
 
     def test_get_nodes(self):
@@ -788,24 +781,24 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
-    def test_set_cluster_idle_annotation_adds_when_absent(self):
-        self.provider._set_cluster_idle_annotation()
+    def test_set_no_driver_annotation_adds_when_absent(self):
+        self.provider._set_no_driver_annotation()
         path = f"rayclusters/{self.provider._cluster_name}"
         patch = self.mock_client.get_patches(path)
         assert patch == {
-            "metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
         }
 
-    def test_set_cluster_idle_annotation_idempotent(self):
+    def test_set_no_driver_annotation_idempotent(self):
         self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
             "annotations", {}
-        )[IDLE_TTL_EXPIRED_ANNOTATION] = "true"
+        )[NO_DRIVER_TTL_EXPIRED_ANNOTATION] = "true"
 
-        self.provider._set_cluster_idle_annotation()
+        self.provider._set_no_driver_annotation()
         path = f"rayclusters/{self.provider._cluster_name}"
         assert path not in self.mock_client._patches
 
-    def test_set_cluster_idle_annotation_swallows_patch_failure(self):
+    def test_set_no_driver_annotation_swallows_patch_failure(self):
         path = f"rayclusters/{self.provider._cluster_name}"
 
         def failing_patch(*args, **kwargs):
@@ -813,78 +806,10 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
         self.mock_client.patch = failing_patch
         # Should not raise.
-        self.provider._set_cluster_idle_annotation()
+        self.provider._set_no_driver_annotation()
         assert path not in self.mock_client._patches
 
-    # --- Cluster-idle predicate + dispatch ---
-
-    @staticmethod
-    def _ray_state(
-        *,
-        head_idle_ms: int = 999_000,
-        worker_count: int = 0,
-        worker_type: str = "small-group",
-        worker_idle_ms: int = 999_000,
-        pending_resource_requests=None,
-    ) -> ClusterResourceState:
-        state = ClusterResourceState()
-        head = NodeState(
-            node_id=b"head",
-            ray_node_type_name="headgroup",
-            status=NodeStatus.IDLE if head_idle_ms > 0 else NodeStatus.RUNNING,
-            idle_duration_ms=head_idle_ms,
-        )
-        # is_head_node() detects head via the internal resource label.
-        head.total_resources["node:__internal_head__"] = 1.0
-        state.node_states.append(head)
-
-        for i in range(worker_count):
-            worker = NodeState(
-                node_id=f"w{i}".encode(),
-                ray_node_type_name=worker_type,
-                status=NodeStatus.IDLE if worker_idle_ms > 0 else NodeStatus.RUNNING,
-                idle_duration_ms=worker_idle_ms,
-            )
-            state.node_states.append(worker)
-
-        for req in pending_resource_requests or []:
-            state.pending_resource_requests.append(
-                ResourceRequestByCount(request=ResourceRequest(**req), count=1)
-            )
-        return state
-
-    def test_is_cluster_idle_observable_no_workers(self):
-        assert (
-            KubeRayProvider._is_cluster_idle_observable(self._ray_state(worker_count=0))
-            is True
-        )
-
-    def test_is_cluster_idle_observable_idle_workers_above_min(self):
-        # Worker count is irrelevant: idle workers above min are still idle.
-        assert (
-            KubeRayProvider._is_cluster_idle_observable(self._ray_state(worker_count=3))
-            is True
-        )
-
-    def test_is_cluster_idle_observable_worker_busy(self):
-        # A worker running work (idle_duration_ms == 0) keeps the cluster busy.
-        assert (
-            KubeRayProvider._is_cluster_idle_observable(
-                self._ray_state(worker_count=1, worker_idle_ms=0)
-            )
-            is False
-        )
-
-    def test_is_cluster_idle_observable_pending_demand(self):
-        assert (
-            KubeRayProvider._is_cluster_idle_observable(
-                self._ray_state(
-                    worker_count=0,
-                    pending_resource_requests=[{"resources_bundle": {"CPU": 1}}],
-                )
-            )
-            is False
-        )
+    # --- No-driver termination predicate + dispatch ---
 
     def _make_gcs(self, *jobs):
         class _Job:
@@ -927,74 +852,64 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._gcs_client = _FailingGcs()
         assert self.provider._has_active_user_drivers() is True
 
-    def test_evaluate_cluster_idle_disabled_when_threshold_none(self):
+    def test_evaluate_no_driver_termination_disabled_when_timeout_none(self):
         path = f"rayclusters/{self.provider._cluster_name}"
-        self.provider._idle_termination_seconds = None
-        self.provider.evaluate_cluster_idle(self._ray_state())
-        assert path not in self.mock_client._patches
-        assert self.provider._cluster_idle_observed_since is None
-
-    def test_evaluate_cluster_idle_waits_for_threshold(self):
         self.provider._gcs_client = self._make_gcs()  # no drivers
-        self.provider._idle_termination_seconds = 100.0
+        self.provider._no_driver_timeout_seconds = None
+        self.provider._evaluate_no_driver_termination()
+        assert path not in self.mock_client._patches
+        assert self.provider._no_driver_observed_since is None
+
+    def test_evaluate_no_driver_termination_waits_for_timeout(self):
+        self.provider._gcs_client = self._make_gcs()  # no drivers
+        self.provider._no_driver_timeout_seconds = 100.0
 
         def evaluate_at(t):
             with mock.patch("time.monotonic", return_value=t):
-                self.provider.evaluate_cluster_idle(self._ray_state())
+                self.provider._evaluate_no_driver_termination()
 
         path = f"rayclusters/{self.provider._cluster_name}"
         evaluate_at(0.0)
         assert path not in self.mock_client._patches  # anchored, not yet
         evaluate_at(50.0)
-        assert path not in self.mock_client._patches  # still below threshold
+        assert path not in self.mock_client._patches  # still below timeout
         evaluate_at(100.0)
         assert self.mock_client._patches.get(path) == {
-            "metadata": {"annotations": {IDLE_TTL_EXPIRED_ANNOTATION: "true"}}
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
         }
 
-    def test_evaluate_cluster_idle_resets_when_driver_attaches(self):
+    def test_evaluate_no_driver_termination_resets_when_driver_attaches(self):
         path = f"rayclusters/{self.provider._cluster_name}"
-        self.provider._idle_termination_seconds = 100.0
+        self.provider._no_driver_timeout_seconds = 100.0
 
         with mock.patch("time.monotonic", return_value=0.0):
             self.provider._gcs_client = self._make_gcs()  # no drivers
-            self.provider.evaluate_cluster_idle(self._ray_state())
-        assert self.provider._cluster_idle_observed_since == 0.0
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since == 0.0
 
         # Driver attaches → anchor cleared, no patch.
         with mock.patch("time.monotonic", return_value=50.0):
             self.provider._gcs_client = self._make_gcs((False, "python a.py"))
-            self.provider.evaluate_cluster_idle(self._ray_state())
-        assert self.provider._cluster_idle_observed_since is None
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since is None
         assert path not in self.mock_client._patches
 
-    def test_refresh_idle_termination_seconds_reads_value(self):
+    def test_refresh_no_driver_timeout_seconds_reads_value(self):
         self.provider._ray_cluster = {
-            "spec": {"autoscalerOptions": {"idleTerminationSeconds": 1800}}
+            "spec": {"autoscalerOptions": {"noDriverTimeoutSeconds": 1800}}
         }
-        self.provider._refresh_idle_termination_seconds()
-        assert self.provider._idle_termination_seconds == 1800.0
+        self.provider._refresh_no_driver_timeout_seconds()
+        assert self.provider._no_driver_timeout_seconds == 1800.0
 
-    def test_refresh_idle_termination_seconds_unset(self):
+    def test_refresh_no_driver_timeout_seconds_unset(self):
         self.provider._ray_cluster = {"spec": {"autoscalerOptions": {}}}
-        self.provider._refresh_idle_termination_seconds()
-        assert self.provider._idle_termination_seconds is None
+        self.provider._refresh_no_driver_timeout_seconds()
+        assert self.provider._no_driver_timeout_seconds is None
 
-    def test_refresh_idle_termination_seconds_no_autoscaler_options(self):
+    def test_refresh_no_driver_timeout_seconds_no_autoscaler_options(self):
         self.provider._ray_cluster = {"spec": {}}
-        self.provider._refresh_idle_termination_seconds()
-        assert self.provider._idle_termination_seconds is None
-
-    def test_evaluate_cluster_idle_idle_workers_above_min(self):
-        # Idle workers above min no longer block termination (no scale-down gate).
-        self.provider._gcs_client = self._make_gcs()  # no drivers
-        self.provider._idle_termination_seconds = 100.0
-
-        path = f"rayclusters/{self.provider._cluster_name}"
-        with mock.patch("time.monotonic", return_value=0.0):
-            self.provider.evaluate_cluster_idle(self._ray_state(worker_count=3))
-        assert self.provider._cluster_idle_observed_since == 0.0
-        assert path not in self.mock_client._patches
+        self.provider._refresh_no_driver_timeout_seconds()
+        assert self.provider._no_driver_timeout_seconds is None
 
     def test_scale_down_with_multi_host_group(self):
         """
