@@ -413,32 +413,30 @@ def prefetch_batches_locally(
         except StopIteration:
             break
 
-    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
     if stats:
         stats.iter_prefetched_bytes = sum(
-            metadata.size_bytes or 0 for _, metadata in sliding_window
+            entry.metadata.size_bytes or 0 for entry in sliding_window
         )
 
     while sliding_window:
-        block_ref, metadata = sliding_window.popleft()
-        current_window_size -= metadata.num_rows
+        entry = sliding_window.popleft()
+        current_window_size -= entry.metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 next_ref_bundle = get_next_ref_bundle()
-                for block_ref_and_md in next_ref_bundle.blocks:
-                    sliding_window.append(block_ref_and_md)
-                    current_window_size += block_ref_and_md[1].num_rows
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
+                for next_entry in next_ref_bundle.blocks:
+                    sliding_window.append(next_entry)
+                    current_window_size += next_entry.metadata.num_rows
+                prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
             except StopIteration:
                 pass
         if stats:
             stats.iter_prefetched_bytes = sum(
-                metadata.size_bytes or 0 for _, metadata in sliding_window
+                entry.metadata.size_bytes or 0 for entry in sliding_window
             )
-        yield block_ref
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        yield entry.ref
+        trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()
 
 

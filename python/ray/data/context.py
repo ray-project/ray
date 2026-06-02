@@ -77,7 +77,7 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
-DEFAULT_USE_DATASOURCE_V2 = True
+DEFAULT_USE_DATASOURCE_V2 = False
 
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).
@@ -1021,9 +1021,10 @@ class DataContext:
         2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
         3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
 
-        Note: `LoadCheckpointCallback` is NOT included here because it requires
-        a `CheckpointConfig` argument to be instantiated. It is conditionally added
-        later directly by the execution planner.
+        Note: `LoadCheckpointCallback` and `UsageCallback` are NOT included here
+        because they require constructor arguments (a `CheckpointConfig` and a
+        `LogicalPlan`, respectively). They are added directly by the execution
+        planner.
 
         Returns:
             A list of ExecutionCallback class types (not instances).
