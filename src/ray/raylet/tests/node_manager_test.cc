@@ -109,7 +109,8 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
     return {};
   }
 
-  std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const override {
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override {
     return {};
   }
 

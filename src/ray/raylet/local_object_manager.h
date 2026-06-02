@@ -216,7 +216,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
 
-  std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const override;
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override;
 
   std::string DebugString() const override;
 

@@ -638,6 +638,7 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// TODO(aaronscalene) will delete local_only=false and related dead code in #63213
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
@@ -751,7 +752,8 @@ std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
       [&worker_id](const ObjectInfo &info) { return info.owner_worker_id == worker_id; });
 }
 
-std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(const NodeID &node_id) const {
+std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
+    const NodeID &node_id) const {
   return GetLocalObjectsMatchedBy(
       [&node_id](const ObjectInfo &info) { return info.owner_node_id == node_id; });
 }

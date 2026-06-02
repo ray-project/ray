@@ -1365,9 +1365,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Send a FreeLocalObjects RPC to every raylet holding a copy of the object.
   ///
   /// \param object_id The object whose copies should be freed.
-  /// \param locations Nodes that hold a copy of the object. Must include
-  /// both the primary copy (the owner's `pinned_at_node_id_`) and any
-  /// secondary copies; the caller is expected to union these before calling.
+  /// \param locations List of all nodes that hold a copy of the object, including primary
+  /// and secondary copies.
   void SpreadFreeLocalObjects(const ObjectID &object_id,
                               const std::vector<NodeID> &locations);
 

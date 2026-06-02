@@ -72,7 +72,8 @@ class LocalObjectManagerInterface {
   virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
       const WorkerID &worker_id) const = 0;
 
-  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(const NodeID &node_id) const = 0;
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const = 0;
 
   virtual std::string DebugString() const = 0;
 };
