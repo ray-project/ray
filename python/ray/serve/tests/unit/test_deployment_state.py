@@ -36,6 +36,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
+from ray.serve._private import deployment_state as deployment_state_module
+from ray.serve._private import replica as replica_module
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
@@ -51,6 +53,8 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaStateContainer,
+    _get_replica_lifecycle_metric_tag_keys,
+    _get_replica_lifecycle_metric_tags,
 )
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
@@ -65,12 +69,89 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
+from ray.serve._private.replica import (
+    _get_replica_metric_default_tag_keys,
+    _get_replica_metric_default_tags,
+)
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
 TEST_DEPLOYMENT_ID_2 = DeploymentID(name="test_deployment_2", app_name="test_app")
+
+
+def test_replica_lifecycle_metric_tags_include_high_cardinality_by_default(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        deployment_state_module,
+        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
+        True,
+    )
+
+    assert _get_replica_lifecycle_metric_tag_keys() == (
+        "deployment",
+        "replica",
+        "application",
+    )
+    assert _get_replica_lifecycle_metric_tags("replica-id") == {
+        "replica": "replica-id"
+    }
+
+
+def test_replica_lifecycle_metric_tags_exclude_high_cardinality(monkeypatch):
+    monkeypatch.setattr(
+        deployment_state_module,
+        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
+        False,
+    )
+
+    assert _get_replica_lifecycle_metric_tag_keys() == (
+        "deployment",
+        "application",
+    )
+    assert _get_replica_lifecycle_metric_tags("replica-id") is None
+
+
+def test_replica_metric_default_tags_include_high_cardinality_by_default(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        replica_module,
+        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
+        True,
+    )
+
+    assert _get_replica_metric_default_tag_keys(("exception_name",)) == (
+        "deployment",
+        "replica",
+        "application",
+        "exception_name",
+    )
+    assert _get_replica_metric_default_tags(TEST_DEPLOYMENT_ID, "replica-id") == {
+        "deployment": "test_deployment",
+        "application": "test_app",
+        "replica": "replica-id",
+    }
+
+
+def test_replica_metric_default_tags_exclude_high_cardinality(monkeypatch):
+    monkeypatch.setattr(
+        replica_module,
+        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
+        False,
+    )
+
+    assert _get_replica_metric_default_tag_keys(("exception_name",)) == (
+        "deployment",
+        "application",
+        "exception_name",
+    )
+    assert _get_replica_metric_default_tags(TEST_DEPLOYMENT_ID, "replica-id") == {
+        "deployment": "test_deployment",
+        "application": "test_app",
+    }
 
 
 def deployment_info(

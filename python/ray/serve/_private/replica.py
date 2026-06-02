@@ -63,6 +63,7 @@ from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -189,6 +190,30 @@ from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_REPLICA_METRIC_BASE_TAG_KEYS = ("deployment", "application")
+
+
+def _get_replica_metric_default_tag_keys(
+    additional_tag_keys: Tuple[str, ...] = tuple(),
+) -> Tuple[str, ...]:
+    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+        return ("deployment", "replica", "application") + additional_tag_keys
+    return _REPLICA_METRIC_BASE_TAG_KEYS + additional_tag_keys
+
+
+def _get_replica_metric_default_tags(
+    deployment_id: DeploymentID,
+    replica_unique_id: str,
+) -> Dict[str, str]:
+    tags = {
+        "deployment": deployment_id.name,
+        "application": deployment_id.app_name,
+    }
+    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+        tags["replica"] = replica_unique_id
+    return tags
+
 
 SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
@@ -363,11 +388,18 @@ class ReplicaMetricsManager:
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
 
         # Request counter (only set on replica startup).
-        self._restart_counter = metrics.Counter(
+        self._restart_counter = ray_metrics.Counter(
             "serve_deployment_replica_starts",
             description=(
                 "The number of times this replica has been restarted due to failure."
             ),
+            tag_keys=_get_replica_metric_default_tag_keys(),
+        )
+        self._restart_counter.set_default_tags(
+            _get_replica_metric_default_tags(
+                self._deployment_id,
+                self._replica_id.unique_id,
+            )
         )
         self._restart_counter.inc()
 
@@ -426,19 +458,32 @@ class ReplicaMetricsManager:
             description="The current number of queries being processed.",
         )
 
-        self.record_autoscaling_stats_failed_counter = metrics.Counter(
+        self.record_autoscaling_stats_failed_counter = ray_metrics.Counter(
             "serve_record_autoscaling_stats_failed",
-            tag_keys=("exception_name",),
+            tag_keys=_get_replica_metric_default_tag_keys(("exception_name",)),
             description="The number of errored record_autoscaling_stats invocations.",
         )
+        self.record_autoscaling_stats_failed_counter.set_default_tags(
+            _get_replica_metric_default_tags(
+                self._deployment_id,
+                self._replica_id.unique_id,
+            )
+        )
 
-        self.user_autoscaling_stats_latency_tracker = metrics.Histogram(
+        self.user_autoscaling_stats_latency_tracker = ray_metrics.Histogram(
             "serve_user_autoscaling_stats_latency_ms",
             description=(
                 "Time taken to execute the user-defined autoscaling stats function "
                 "in milliseconds."
             ),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
+            tag_keys=_get_replica_metric_default_tag_keys(),
+        )
+        self.user_autoscaling_stats_latency_tracker.set_default_tags(
+            _get_replica_metric_default_tags(
+                self._deployment_id,
+                self._replica_id.unique_id,
+            )
         )
 
         # Replica utilization tracking with rolling window.
