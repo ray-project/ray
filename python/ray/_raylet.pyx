@@ -9,7 +9,6 @@ from cpython.exc cimport PyErr_CheckSignals
 import asyncio
 import gc
 import inspect
-import json
 import logging
 import msgpack
 import io
@@ -2591,51 +2590,7 @@ def maybe_initialize_job_config():
         # Add driver's system path to sys.path
         py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
         if py_driver_sys_path:
-            # Check if this worker has its own working_dir from runtime_env
-            # that differs from the job's. If so, we must not let the job's
-            # working_dir path override the actor's in sys.path.
-            _actor_working_dir_uri = None
-            try:
-                _serialized_env = core_worker.get_current_runtime_env()
-                if _serialized_env and _serialized_env != "{}":
-                    _actor_working_dir_uri = json.loads(
-                        _serialized_env).get("working_dir")
-            except Exception:
-                pass
-
-            # Resolve the actor's working_dir URI to a local path.
-            # The runtime_env agent extracts working_dir packages under
-            #   <resources_dir>/working_dir_files/<pkg_name>/
-            # (see WorkingDirPlugin._resources_dir). We can't simply take
-            # PYTHONPATH[0] because when the actor also sets py_modules,
-            # PyModulesPlugin prepends its own paths in front of the
-            # working_dir entry. Scan the PYTHONPATH entries and pick the
-            # one whose normalized path contains a "working_dir_files"
-            # segment instead.
-            # Normalize the path so trailing slashes and platform-specific
-            # separators (e.g. mixed '/' and '\\' on Windows) don't break
-            # the sibling-directory comparison below.
-            _actor_working_dir_local = None
-            if _actor_working_dir_uri:
-                _pythonpath = os.environ.get("PYTHONPATH", "")
-                if _pythonpath:
-                    for _entry in _pythonpath.split(os.pathsep):
-                        if not _entry or not os.path.isdir(_entry):
-                            continue
-                        _norm_entry = os.path.normpath(_entry)
-                        if "working_dir_files" in _norm_entry.split(os.sep):
-                            _actor_working_dir_local = _norm_entry
-                            break
-
             for p in py_driver_sys_path:
-                # Skip the job-level working_dir path if this actor has its
-                # own different working_dir set via runtime_env.
-                if _actor_working_dir_local:
-                    _norm_p = os.path.normpath(p)
-                    if (_norm_p != _actor_working_dir_local
-                            and os.path.dirname(_norm_p) == os.path.dirname(
-                                _actor_working_dir_local)):
-                        continue
                 sys.path.insert(0, p)
 
         # Cache and set the current job id.

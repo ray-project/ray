@@ -661,55 +661,30 @@ def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
         ), ".git should be included when defaults disabled"
 
 
-@pytest.mark.parametrize("with_py_modules", [False, True])
-def test_actor_working_dir_overrides_driver_working_dir(
-    start_cluster, with_py_modules: bool
-):
-    """Tests that an actor's runtime_env.working_dir wins over the driver's
-    py_driver_sys_path on sys.path.
+def test_working_dir_does_not_propagate_driver_paths(start_cluster):
+    """Tests that `runtime_env.working_dir` suppresses driver-local sys.path
+    propagation.
 
-    Regression test: a long-lived driver (e.g. a detached Serve controller)
-    submits an actor with a different working_dir; without the fix the job's
-    py_driver_sys_path overrides sys.path[0] and `import` returns the stale
-    driver package. The with_py_modules case also guards against locating
-    the actor working_dir by PYTHONPATH[0], which breaks once py_modules
-    prepends its own paths in front of working_dir.
+    When a driver `ray.init`s with a `runtime_env.working_dir`, neither
+    `script_directory` (the driver's `sys.argv[0]` dir) nor the current
+    directory should end up in `py_driver_sys_path`. Otherwise an actor
+    later created with a *different* `runtime_env.working_dir` will still
+    have the driver's working_dir inserted at `sys.path[0]` by
+    `maybe_initialize_job_config`, silently shadowing its own working_dir
+    on `import` (the symptom is replicas serving stale code on redeploy
+    without `serve.shutdown()`).
     """
     cluster, address = start_cluster
-
-    with tempfile.TemporaryDirectory() as driver_dir, tempfile.TemporaryDirectory() as actor_dir, tempfile.TemporaryDirectory() as py_module_dir:
-        Path(driver_dir, "target_module.py").write_text("VERSION = 'driver'\n")
-        Path(actor_dir, "target_module.py").write_text("VERSION = 'actor'\n")
-        Path(py_module_dir, "unrelated_helper.py").write_text("VALUE = 1\n")
-
-        ray.init(address, runtime_env={"working_dir": driver_dir})
-
-        @ray.remote
-        class Probe:
-            def version(self) -> str:
-                import target_module
-
-                return target_module.VERSION
-
-            def sys_path_entries(self) -> list:
-                return list(sys.path)
-
-        actor_runtime_env = {"working_dir": actor_dir}
-        if with_py_modules:
-            actor_runtime_env["py_modules"] = [py_module_dir]
-        actor = Probe.options(runtime_env=actor_runtime_env).remote()
-
-        assert ray.get(actor.version.remote()) == "actor"
-        entries = ray.get(actor.sys_path_entries.remote())
-        assert any("working_dir_files" in e for e in entries)
-        if not with_py_modules:
-            assert "working_dir_files" in entries[0]
-
-        # Actors that don't override working_dir still inherit the driver's.
-        inheriting_actor = Probe.remote()
-        assert ray.get(inheriting_actor.version.remote()) == "driver"
-
-        ray.shutdown()
+    with tempfile.TemporaryDirectory() as working_dir:
+        Path(working_dir, "noop.py").write_text("")
+        ray.init(address, runtime_env={"working_dir": working_dir})
+        try:
+            paths = list(
+                ray._private.worker.global_worker.core_worker.get_job_config().py_driver_sys_path
+            )
+            assert paths == [], paths
+        finally:
+            ray.shutdown()
 
 
 if __name__ == "__main__":

@@ -2681,7 +2681,19 @@ def connect(
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
-            if script_directory in sys.path:
+            #
+            # Also skip when the job already specifies a runtime_env
+            # working_dir: in that case the driver was launched from inside
+            # the working_dir package (e.g. via `ray job submit
+            # --working-dir .`) and `script_directory` points at the
+            # uploaded package's local extraction path. Propagating it to
+            # workers via `py_driver_sys_path` would shadow any actor that
+            # later overrides `runtime_env.working_dir` and force it to
+            # import stale code from the driver's working_dir instead.
+            if (
+                script_directory in sys.path
+                and not job_config._runtime_env_has_working_dir()
+            ):
                 code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
