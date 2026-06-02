@@ -114,7 +114,7 @@ class ResultGrid:
         ...     metric="eval/metrics/loss", mode="min")
 
         This works because Tune flattens reported result dicts with ``/`` as the
-        delimiter before tracking metrics.
+        default delimiter before tracking metrics.
 
         Args:
             metric: Key for trial info to order on. Defaults to
