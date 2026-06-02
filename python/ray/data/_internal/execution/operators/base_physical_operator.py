@@ -187,7 +187,7 @@ class AllToAllOperator(
         # We only call on_block_produced for genuinely new refs to avoid
         # double-counting; forwarded refs stay attributed to their original producer.
         input_bundles = self._input_buffer.to_list()
-        input_refs = {ref for bundle in input_bundles for ref, _ in bundle.blocks}
+        input_refs = {entry.ref for bundle in input_bundles for entry in bundle.blocks}
         output_buffer, self._stats = self._bulk_fn(input_bundles, ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
@@ -195,10 +195,10 @@ class AllToAllOperator(
             self._block_ref_counter is not None
         ), "block_ref_counter must be set before all_inputs_done is called"
         for bundle in self._output_buffer:
-            for ref, meta in bundle.blocks:
-                if ref not in input_refs:
+            for entry in bundle.blocks:
+                if entry.ref not in input_refs:
                     self._block_ref_counter.on_block_produced(
-                        ref, meta.size_bytes or 0, self.id
+                        entry.ref, entry.metadata.size_bytes or 0, self.id
                     )
 
         while self._input_buffer.has_next():
