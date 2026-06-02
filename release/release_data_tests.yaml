@@ -519,6 +519,42 @@
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches {{format}}
 
+# A/B the PR #63017 pd.ArrowDtype types_mapper against the row-count batch size.
+# The benchmark harness forces to_pandas on/off deterministically (no product code
+# change, independent of the base's to_pandas). bs256/mapper_on == regressed runtime.
+- name: "iter_batches_pandas_bs{{batch_size}}_mapper_{{mapper}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  matrix:
+    setup:
+      batch_size: [256, 1024, 4096]
+      mapper: ["on", "off"]
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches pandas --batch-size {{batch_size}} --types-mapper {{mapper}}
+
+# Byte-target dimension: fill ~16 MiB batches, sized at runtime from the actual
+# bytes/row in each representation (~96K rows with the mapper, ~28K without).
+- name: "iter_batches_pandas_16mib_mapper_{{mapper}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+  matrix:
+    setup:
+      mapper: ["on", "off"]
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
+      --iter-batches pandas --batch-target-bytes 16777216 --types-mapper {{mapper}}
+
 - name: to_tf
   python: "3.10"
   cluster:
