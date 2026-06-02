@@ -10,7 +10,7 @@ For the high level architecture overview, please refer to the `whitepaper <https
     :maxdepth: 1
 
     internals/task-lifecycle.rst
-    internals/streaming-generator.rst
+    internals/streaming-generator.md
     internals/autoscaler-v2.rst
     internals/rpc-fault-tolerance.rst
     internals/token-authentication.rst
