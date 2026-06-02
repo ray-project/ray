@@ -128,6 +128,20 @@ class ExecutionResources:
             memory=safe_or(memory, float("inf")),
         )
 
+    def to_limits(self) -> "ExecutionResources":
+        """Return a copy of this object interpreted as resource *limits*.
+
+        Fields left unspecified (None) become unlimited (inf) rather than 0,
+        so a partially-specified value like ``ExecutionResources(cpu=4)`` caps
+        only CPU and leaves the other resources unbounded.
+        """
+        return ExecutionResources.for_limits(
+            cpu=self._cpu,
+            gpu=self._gpu,
+            object_store_memory=self._object_store_memory,
+            memory=self._memory,
+        )
+
     @property
     def cpu(self) -> float:
         return self._cpu or 0.0
@@ -429,12 +443,10 @@ class ExecutionOptions:
 
     @resource_limits.setter
     def resource_limits(self, value: ExecutionResources) -> None:
-        self._resource_limits = ExecutionResources.for_limits(
-            cpu=value._cpu,
-            gpu=value._gpu,
-            object_store_memory=value._object_store_memory,
-            memory=value._memory,
-        )
+        # Normalize to a limits object: unspecified fields become unlimited
+        # (inf) rather than 0. Callers assign a bare ``ExecutionResources``
+        # here (e.g. ``ExecutionResources(cpu=2)``) and rely on this.
+        self._resource_limits = value.to_limits()
 
     def is_resource_limits_default(self):
         """Returns True if resource_limits is the default value."""
