@@ -1,6 +1,6 @@
 from typing import List, Tuple
 
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
 from ray.data.block import (
     Block,
@@ -24,7 +24,12 @@ def _equalize(
     """
     if len(per_split_bundles) == 0:
         return per_split_bundles
-    per_split_blocks_with_metadata = [bundle.blocks for bundle in per_split_bundles]
+    # Equalize operates on legacy 2-tuple shape internally; convert at the
+    # boundary and re-wrap into BlockEntry when constructing output bundles.
+    per_split_blocks_with_metadata = [
+        [(entry.ref, entry.metadata) for entry in bundle.blocks]
+        for bundle in per_split_bundles
+    ]
     per_split_num_rows: List[List[int]] = [
         _calculate_blocks_rows(split) for split in per_split_blocks_with_metadata
     ]
@@ -46,7 +51,11 @@ def _equalize(
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
     schema = _take_first_non_empty_schema(bundle.schema for bundle in per_split_bundles)
-    leftover_bundle = RefBundle(leftovers, owns_blocks=owned_by_consumer, schema=schema)
+    leftover_bundle = RefBundle(
+        [BlockEntry(b, m) for b, m in leftovers],
+        owns_blocks=owned_by_consumer,
+        schema=schema,
+    )
     leftover_splits = _split_leftovers(leftover_bundle, per_split_needed_rows)
 
     # phase 3: merge the shaved_splits and leftoever splits and return.
@@ -61,7 +70,11 @@ def _equalize(
     equalized_ref_bundles: List[RefBundle] = []
     for split in shaved_splits:
         equalized_ref_bundles.append(
-            RefBundle(split, owns_blocks=owned_by_consumer, schema=schema)
+            RefBundle(
+                [BlockEntry(b, m) for b, m in split],
+                owns_blocks=owned_by_consumer,
+                schema=schema,
+            )
         )
     return equalized_ref_bundles
 
@@ -141,7 +154,7 @@ def _split_leftovers(
     split_result: Tuple[
         List[List[ObjectRef[Block]]], List[List[BlockMetadata]]
     ] = _split_at_indices(
-        leftovers.blocks,
+        [(entry.ref, entry.metadata) for entry in leftovers.blocks],
         split_indices,
         leftovers.owns_blocks,
     )

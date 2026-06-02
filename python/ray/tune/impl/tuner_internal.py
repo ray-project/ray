@@ -78,6 +78,9 @@ class TunerInternal:
     Args:
         restore_path: The path from where the Tuner can be restored. If provided, None
             of the rest args are needed.
+        storage_filesystem: A custom ``pyarrow.fs.FileSystem`` corresponding
+            to ``restore_path``. This may be necessary if the original
+            experiment used a custom filesystem.
         resume_config: Resume config to configure which trials to continue.
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
@@ -87,6 +90,10 @@ class TunerInternal:
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
             if applicable. Refer to ray.tune.RunConfig for more info.
+        _tuner_kwargs: Internal. Extra kwargs forwarded to ``tune.run`` when
+            this Tuner is fit.
+        _entrypoint: Internal. Tracks which user-facing entrypoint constructed
+            this Tuner so that warnings and errors can be specialized.
     """
 
     def __init__(
@@ -209,8 +216,10 @@ class TunerInternal:
         return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
 
     def _validate_trainable(
-        self, trainable: TrainableType, required_trainable_name: Optional[str] = None
-    ):
+        self,
+        trainable: TrainableType,
+        required_trainable_name: Optional[str] = None,
+    ) -> None:
         """Determines whether or not the trainable is valid.
 
         This includes checks on the serializability of the trainable, as well
@@ -221,6 +230,12 @@ class TunerInternal:
         the trainable type) is saved in the Trial metadata and needs to match
         upon restoration. This does not affect the typical path, since `Tuner.restore`
         expects the exact same trainable (which will have the same name).
+
+        Args:
+            trainable: The trainable to validate.
+            required_trainable_name: If provided, the trainable's generated
+                name must match this value; used on restoration to detect a
+                trainable swap.
 
         Raises:
             ValueError: if the trainable name does not match or if the trainable
@@ -285,11 +300,17 @@ class TunerInternal:
         self,
         new_param_space: Dict[str, Any],
         flattened_param_space_keys: Optional[List[str]],
-    ):
+    ) -> None:
         """Determines whether the (optionally) re-specified `param_space` is valid.
 
         This method performs very loose validation on the new param_space to
         prevent users from trying to specify new hyperparameters to tune over.
+
+        Args:
+            new_param_space: The newly provided search space to validate.
+            flattened_param_space_keys: Sorted flat keys of the original
+                ``param_space``. ``None`` skips validation for backwards
+                compatibility.
 
         Raises:
             ValueError: if not all keys match the original param_space.
@@ -329,8 +350,8 @@ class TunerInternal:
         """Loads Tuner state from the previously saved `tuner.pkl`.
 
         Args:
-            tuner_pkl_path: pathlib.Path of the `tuner.pkl` file saved during the
-                original Tuner initialization.
+            tuner_state: Deserialized contents of the `tuner.pkl` saved during
+                the original Tuner initialization.
 
         Returns:
             tuple: of `(old_trainable_name, flattened_param_space_keys)` used for
@@ -411,6 +432,9 @@ class TunerInternal:
             trainer: The Trainer instance to use with Tune, which may have
                 a RunConfig specified by the user.
             param_space: The param space passed to the Tuner.
+
+        Returns:
+            The resolved ``RunConfig`` to use for the Tune experiment.
 
         Raises:
             ValueError: if the `run_config` is specified as a hyperparameter.
