@@ -29,13 +29,16 @@ Sequence:
 """
 
 import argparse
+import os
 import threading
 import time
 from typing import Dict, List
 
-from benchmark import Benchmark
+import heterogeneous_memory_batch_inference as hmbi
+from benchmark import Benchmark, benchmark_py_modules
 from heterogeneous_memory_batch_inference import build_and_run_pipeline
 
+import ray
 from ray.util.state import list_nodes, list_tasks
 
 
@@ -223,6 +226,17 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     args = parse_args()
     name = "heterogeneous-memory-batch-inference-multitenancy"
+    # Ship both benchmark.py and heterogeneous_memory_batch_inference.py to
+    # workers: when this script is run as ``__main__``, the UDF classes
+    # (FakeGPUInference, etc.) live in the imported
+    # ``heterogeneous_memory_batch_inference`` module, so cloudpickle
+    # serializes them by reference and each worker needs to import the
+    # module to deserialize.
+    ray.init(
+        runtime_env={
+            "py_modules": benchmark_py_modules() + [os.path.abspath(hmbi.__file__)],
+        }
+    )
     benchmark = Benchmark()
     benchmark.run_fn(name, main, args)
     benchmark.write_result()
