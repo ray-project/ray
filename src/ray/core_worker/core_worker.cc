@@ -3399,6 +3399,9 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   // inline. The MarkReady callback may trigger downstream work (ExecuteQueuedTasks),
   // which is also fine to run on io_service_; the actual task body posts to
   // task_execution_service_ inside the queue's ExecuteRequest path.
+  // TOCHECK(karticam): check if all methods of actor_task_execution_arg_waiter_ are
+  // called from io_service. check even if actor_task_execution_arg_waiter_ is passed
+  // somewhere by reference then too its used only from io_service.
   RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << request.tag();
   actor_task_execution_arg_waiter_->MarkReady(request.tag());
 
@@ -3996,18 +3999,15 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     on_canceled(success, is_running);
   };
 
-  if (is_async_actor) {
-    // task_receiver_'s state lives on io_service_, so post the cancel there.
-    // (Previously this was posted to task_execution_service_, but with the
-    // refactor that moved actor-queue bookkeeping onto io_service_, the
-    // canceler must run there too to access actor_task_execution_queues_.)
-    io_service_.post([cancel = std::move(cancel)]() { cancel(); },
-                     "CoreWorker.CancelActorTaskOnExecutor");
-  } else {
-    // For regular (sync) actor, we are already on io_service_ here (this is
-    // invoked from a gRPC handler), so call inline.
-    cancel();
-  }
+  // We are already on io_service_ (HandleCancelTask is a gRPC handler). The
+  // cancel body's only thread requirement is io_service_ access to
+  // actor_task_execution_queues_ (via task_receiver_->CancelQueuedActorTask),
+  // which is satisfied. The pre-refactor distinction between sync/async actors
+  // existed because the original code posted to task_execution_service_ for
+  // async actors (to land on the asyncio loop) and called inline for sync
+  // actors (because task_execution_service_ was blocked by the in-flight body).
+  // Post-refactor neither motivation applies — just call inline.
+  cancel();
 
   if (recursive) {
     auto recursive_cancel = CancelChildren(task_id, force_kill);

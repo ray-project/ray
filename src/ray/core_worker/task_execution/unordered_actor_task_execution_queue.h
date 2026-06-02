@@ -71,9 +71,17 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void RunRequestWithResolvedDependencies(TaskToExecute request);
 
-  /// Accept the given TaskToExecute or reject it if a task id is canceled via
-  /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  /// How to dispatch the user task body off io_service_. Captures the choice
+  /// of asyncio fiber, concurrency-group thread pool, or task_execution_service_.
+  using PostExecuteFn = std::function<void(std::function<void()>)>;
+
+  /// Accept the given TaskToExecute or reject it if the task id is canceled via
+  /// CancelTaskIfFound. Runs on `io_service_` so the is_canceled check is
+  /// serialized with CancelTaskIfFound (also on `io_service_`). Only the user
+  /// task body is posted off `io_service_`, via `post_execute`.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id,
+                                       TaskToExecute request,
+                                       PostExecuteFn post_execute);
 
   /// io_context the queue's bookkeeping runs on. Same as CoreWorker's
   /// io_service_ — i.e. the gRPC handler thread.

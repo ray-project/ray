@@ -147,32 +147,33 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     TaskToExecute request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
+
+  // AcceptRequestOrRejectIfCanceled runs inline on io_service_; we package the
+  // "post user task body off io_service_" decision into a PostExecuteFn that
+  // captures the correct target (fiber / pool / task_execution_service_).
+  PostExecuteFn post_execute;
   if (is_asyncio_) {
-    // Process async actor task.
     auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                    request.FunctionDescriptor());
-    fiber->EnqueueFiber([this, request = std::move(request), task_id]() mutable {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
-    });
+    post_execute = [fiber = std::move(fiber)](std::function<void()> task) mutable {
+      fiber->EnqueueFiber(std::move(task));
+    };
   } else {
-    // Process actor tasks.
     RAY_CHECK(pool_manager_ != nullptr);
     auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                            request.FunctionDescriptor());
     if (pool == nullptr) {
-      // No concurrency-group pool: post the user task body onto
-      // task_execution_service_ so it never blocks io_service_.
-      task_execution_service_.post(
-          [this, request = std::move(request), task_id]() mutable {
-            AcceptRequestOrRejectIfCanceled(task_id, request);
-          },
-          "UnorderedActorTaskExecutionQueue.AcceptRequest");
+      post_execute = [this](std::function<void()> task) {
+        task_execution_service_.post(std::move(task),
+                                     "UnorderedActorTaskExecutionQueue.Execute");
+      };
     } else {
-      pool->Post([this, request = std::move(request), task_id]() mutable {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
-      });
+      post_execute = [pool = std::move(pool)](std::function<void()> task) mutable {
+        pool->Post(std::move(task));
+      };
     }
   }
+  AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(post_execute));
 }
 
 void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
@@ -216,7 +217,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
 }
 
 void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    TaskID task_id, TaskToExecute request, PostExecuteFn post_execute) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -226,35 +227,46 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     }
   }
 
-  // Accept can be very long, and we shouldn't hold a lock.
+  // Helper: run the post-task-completion bookkeeping (check for a queued next
+  // attempt; if present, run it; otherwise, erase the cancellation flag).
+  // Called either inline (cancel branch) or from the execute_handler (post
+  // branch). Always uses mu_, so thread-safe regardless of caller.
+  auto post_task_cleanup = [this, task_id]() {
+    std::optional<TaskToExecute> request_to_run;
+    {
+      absl::MutexLock lock(&mu_);
+      auto it = queued_actor_tasks_.find(task_id);
+      if (it != queued_actor_tasks_.end()) {
+        request_to_run = std::move(it->second);
+        queued_actor_tasks_.erase(it);
+      } else {
+        pending_task_id_to_is_canceled.erase(task_id);
+      }
+    }
+    if (request_to_run.has_value()) {
+      // Re-run on io_service_ where the queue's bookkeeping lives.
+      io_service_.post(
+          [this, request = std::move(*request_to_run)]() mutable {
+            RunRequest(std::move(request));
+          },
+          "UnorderedActorTaskExecutionQueue.RunRequest");
+    }
+  };
+
   if (is_canceled) {
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
-  } else {
+    post_task_cleanup();
+    return;
+  }
+
+  // Post just the user task body. The post handler also runs post-task cleanup
+  // after Execute returns.
+  auto execute_handler = [request = std::move(request), post_task_cleanup]() mutable {
     request.Execute();
-  }
-
-  std::optional<TaskToExecute> request_to_run;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = queued_actor_tasks_.find(task_id);
-    if (it != queued_actor_tasks_.end()) {
-      request_to_run = std::move(it->second);
-      queued_actor_tasks_.erase(it);
-    } else {
-      pending_task_id_to_is_canceled.erase(task_id);
-    }
-  }
-
-  if (request_to_run.has_value()) {
-    // Post the deferred RunRequest to io_service_ — that's where the queue's
-    // bookkeeping (and waiter callback) lives now.
-    io_service_.post(
-        [this, request = std::move(*request_to_run)]() mutable {
-          RunRequest(std::move(request));
-        },
-        "UnorderedActorTaskExecutionQueue.RunRequest");
-  }
+    post_task_cleanup();
+  };
+  post_execute(std::move(execute_handler));
 }
 
 }  // namespace core

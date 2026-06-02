@@ -73,9 +73,16 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Executes as many queued tasks as are ready to execute.
   void ExecuteQueuedTasks();
 
-  /// Accept the given TaskToExecute or reject it if a task id is canceled via
-  /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  /// Accept the given TaskToExecute or reject it if the task id is canceled via
+  /// CancelTaskIfFound. Runs on `io_service_` so the is_canceled check is
+  /// serialized with CancelTaskIfFound (which also runs on `io_service_`),
+  /// eliminating a race where a cancel arriving mid-Execute would report
+  /// "successfully cancelled" while the task still ran. Only `request.Execute()`
+  /// (the user task body) is posted off `io_service_` — to `pool` if non-null,
+  /// otherwise to `task_execution_service_`.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id,
+                                       TaskToExecute request,
+                                       std::shared_ptr<BoundedExecutor> pool);
 
   void ExecuteRequest(TaskToExecute &&request);
 

@@ -295,24 +295,18 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
-  if (pool == nullptr) {
-    // No concurrency-group pool: post the user task body onto
-    // task_execution_service_ so it never blocks io_service_ (which runs the
-    // gRPC handlers and the queue's bookkeeping).
-    task_execution_service_.post(
-        [this, request = std::move(request), task_id]() mutable {
-          AcceptRequestOrRejectIfCanceled(task_id, request);
-        },
-        "OrderedActorTaskExecutionQueue.AcceptRequest");
-  } else {
-    pool->Post([this, request = std::move(request), task_id]() mutable {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
-    });
-  }
+  // AcceptRequestOrRejectIfCanceled runs inline on io_service_ (we're called
+  // from ExecuteQueuedTasks, already on io_service_). Only request.Execute()
+  // is posted off io_service_ -- to the concurrency-group pool if present,
+  // otherwise to task_execution_service_. This serializes the is_canceled
+  // check with CancelTaskIfFound (also on io_service_), eliminating the race
+  // where a cancel arriving mid-Execute would report success but the task
+  // would still run.
+  AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(pool));
 }
 
 void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    TaskID task_id, TaskToExecute request, std::shared_ptr<BoundedExecutor> pool) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -322,16 +316,27 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     }
   }
 
-  // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
-  } else {
-    request.Execute();
+    absl::MutexLock lock(&mu_);
+    pending_task_id_to_is_canceled.erase(task_id);
+    return;
   }
 
-  absl::MutexLock lock(&mu_);
-  pending_task_id_to_is_canceled.erase(task_id);
+  // Post just the user task body. The post handler also erases the
+  // cancellation-flag entry under mu_ after Execute returns.
+  auto execute_handler = [this, task_id, request = std::move(request)]() mutable {
+    request.Execute();
+    absl::MutexLock lock(&mu_);
+    pending_task_id_to_is_canceled.erase(task_id);
+  };
+  if (pool == nullptr) {
+    task_execution_service_.post(std::move(execute_handler),
+                                 "OrderedActorTaskExecutionQueue.Execute");
+  } else {
+    pool->Post(std::move(execute_handler));
+  }
 }
 
 }  // namespace core
