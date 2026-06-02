@@ -574,6 +574,40 @@ class TestAlgorithm(unittest.TestCase):
         counter_values2 = list(algo2._counters.values())
         self.assertEqual(counter_values, counter_values2)
 
+    def test_params_json_serialization(self):
+        """Test that Tune properly serializes RLlib config to params.json."""
+        import json
+        import os
+
+        from ray import tune
+
+        config = ppo.PPOConfig().environment(env="CartPole-v1")
+
+        tuner = tune.Tuner(
+            "PPO",
+            param_space=config,
+            run_config=tune.RunConfig(
+                stop={"training_iteration": 1},
+                storage_path=os.path.abspath("test_params_json"),
+                name="test_params_json_exp",
+            ),
+        )
+        results = tuner.fit()
+        logdir = results.get_best_result().path
+        params_json_path = os.path.join(logdir, "params.json")
+
+        # Verify params.json exists
+        self.assertTrue(os.path.exists(params_json_path))
+
+        # Verify it can be loaded as a dictionary (and not a string)
+        with open(params_json_path, "rt") as f:
+            params = json.load(f)
+
+        self.assertTrue(isinstance(params, dict))
+        # Ensure it's not the string representation of PPOConfig
+        self.assertTrue("env" in params)
+        self.assertEqual(params["env"], "CartPole-v1")
+
     def _assert_modules_added(
         self,
         *,

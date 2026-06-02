@@ -11,6 +11,10 @@ class SafeFallbackEncoder(json.JSONEncoder):
 
     def default(self, value):
         try:
+            to_dict = getattr(value, "to_dict", None)
+            if callable(to_dict):
+                return to_dict()
+
             if type(value).__module__ == np.__name__ and isinstance(value, np.ndarray):
                 return value.tolist()
 

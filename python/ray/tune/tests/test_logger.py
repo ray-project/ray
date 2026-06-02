@@ -175,6 +175,23 @@ class LoggerSuite(unittest.TestCase):
 
         self.assertEqual(loaded_config, config)
 
+    def testJSONWithToDict(self):
+        class MyConfig:
+            def to_dict(self):
+                return {"foo": "bar"}
+
+        config = {"a": 2, "algo_config": MyConfig()}
+        t = Trial(evaluated_params=config, trial_id="json2", logdir=self.test_dir)
+        logger = JsonLoggerCallback()
+        logger.on_trial_result(0, [], t, result(0, 4))
+        logger.on_trial_complete(1, [], t)
+
+        config_file = os.path.join(self.test_dir, EXPR_PARAM_FILE)
+        with open(config_file, "rt") as fp:
+            loaded_config = json.load(fp)
+
+        self.assertEqual(loaded_config, {"a": 2, "algo_config": {"foo": "bar"}})
+
     def testTBX(self):
         config = {
             "a": 2,
