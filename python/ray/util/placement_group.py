@@ -41,8 +41,9 @@ class PlacementGroup:
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
-        This API returns an ObjectRef that becomes ready when the placement group
-        is created. It is compatible with ray.get, ray.wait, and await.
+        Returns:
+            An ``ObjectRef`` that resolves once the placement group has been
+            created and all bundles are scheduled.
 
         Example:
             .. testcode::
@@ -63,9 +64,11 @@ class PlacementGroup:
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
+
         Args:
-             timeout_seconds(float|int): Timeout in seconds.
-        Return:
+             timeout_seconds: Timeout in seconds.
+
+        Returns:
              True if the placement group is created. False otherwise.
         """
         return _call_placement_group_ready(self.id, timeout_seconds)
@@ -163,7 +166,7 @@ def placement_group(
         ValueError: if empty bundle or empty resource bundles are given.
         ValueError: if the wrong lifetime arguments are given.
 
-    Return:
+    Returns:
         PlacementGroup: Placement group object.
     """
     worker = ray._private.worker.global_worker
@@ -217,6 +220,9 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
 def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """Get a placement group object with a global name.
 
+    Args:
+        placement_group_name: Global name of the placement group to look up.
+
     Returns:
         None if can't find a placement group with the given name.
         The placement group object otherwise.
@@ -246,6 +252,10 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     Args:
         placement_group: placement group to see
             states.
+
+    Returns:
+        A dictionary describing the state of the given placement group, or
+        the table of all placement groups if ``placement_group`` is None.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -283,7 +293,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             # so it returns None.
             assert get_current_placement_group() is None
 
-    Return:
+    Returns:
         PlacementGroup: Placement group object.
             None if the current task or actor wasn't
             created with any placement group.

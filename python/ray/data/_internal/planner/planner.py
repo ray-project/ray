@@ -62,6 +62,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     plan_udf_map_op,
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
+from ray.data._internal.usage.execution_callback import UsageCallback
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -205,6 +206,7 @@ class Planner:
         checkpoint_config = logical_plan.context.checkpoint_config
 
         callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
+        callbacks.append(UsageCallback(logical_plan))
 
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan

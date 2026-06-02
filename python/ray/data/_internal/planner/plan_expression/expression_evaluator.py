@@ -32,6 +32,7 @@ from ray.data.expressions import (
     UUIDExpr,
     _ExprVisitor,
     col,
+    is_rename_expr,
 )
 
 logger = logging.getLogger(__name__)
@@ -747,11 +748,11 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         TASK_BITS = 30
         if end_idx > (1 << ROW_BITS):
             raise ValueError(
-                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1<<ROW_BITS)-1}"
+                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1 << ROW_BITS) - 1}"
             )
         if ctx.task_idx >= (1 << TASK_BITS):
             raise ValueError(
-                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1<<TASK_BITS)-1}"
+                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1 << TASK_BITS) - 1}"
             )
 
         partition_mask = ctx.task_idx << ROW_BITS
@@ -849,13 +850,33 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
     # Expand star expr (if any)
     if isinstance(projection_exprs[0], StarExpr):
-        # Cherry-pick input block's columns that aren't explicitly removed via
-        # renaming
-        input_column_ref_exprs = [
-            col(c) for c in input_column_names if c not in input_column_rename_map
-        ]
+        # Bucket the trailing exprs: rename ``AliasExpr``s of an input
+        # column get placed into the original column's position (so the
+        # output preserves on-disk column order); anything else (e.g.
+        # ``with_column`` computed expressions) is appended afterwards.
+        rename_exprs_by_source: Dict[str, Expr] = {}
+        extra_exprs: List[Expr] = []
+        for expr in projection_exprs[1:]:
+            # e.g. ``col(source)._rename(new_name)`` — bucket by ``source`` for column order.
+            # ``rename_exprs_by_source``: input column name -> that rename ``AliasExpr``.
+            if is_rename_expr(expr) and expr.expr.name in input_column_rename_map:
+                rename_exprs_by_source[expr.expr.name] = expr
+            else:
+                extra_exprs.append(expr)
 
-        projection_exprs = input_column_ref_exprs + projection_exprs[1:]
+        ordered_exprs: List[Expr] = []
+        for c in input_column_names:
+            if c in rename_exprs_by_source:
+                ordered_exprs.append(rename_exprs_by_source.pop(c))
+            elif c not in input_column_rename_map:
+                ordered_exprs.append(col(c))
+
+        # Any rename whose source column isn't in the block falls through to
+        # ``extra_exprs`` so evaluation raises a "column not found" error
+        # instead of silently dropping the expression.
+        extra_exprs = list(rename_exprs_by_source.values()) + extra_exprs
+
+        projection_exprs = ordered_exprs + extra_exprs
 
     names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
 

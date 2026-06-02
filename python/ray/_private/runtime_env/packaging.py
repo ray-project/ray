@@ -40,6 +40,13 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 GCS_STORAGE_MAX_SIZE = int(
     os.environ.get("RAY_max_grpc_message_size", GRPC_CPP_MAX_MESSAGE_SIZE)
 )
+# If the resulting zipped package is at least this large, emit a warning before
+# attempting upload. This catches cases the per-file `FILE_SIZE_WARNING` misses,
+# notably large directories of many small files (e.g. `.git`). See GH #45602.
+# Override at runtime with the `RAY_PACKAGE_SIZE_WARNING_MIB` env var (units of
+# MiB); set the env var to `-1` to disable the warning entirely.
+PACKAGE_SIZE_WARNING = GCS_STORAGE_MAX_SIZE // 2
+PACKAGE_SIZE_WARNING_MIB_ENV_VAR = "RAY_PACKAGE_SIZE_WARNING_MIB"
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
@@ -704,6 +711,72 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
+def _resolve_package_size_warning_threshold() -> Optional[int]:
+    """Return the warning threshold in bytes, or None if disabled by the user.
+
+    Reads `RAY_PACKAGE_SIZE_WARNING_MIB` at call time so users can tune or
+    disable the warning without restarting the driver. A negative value
+    disables the warning. A malformed value falls back to the default rather
+    than silently suppressing the warning (a noisy default is safer than a
+    silent miss for an upload-size limit).
+    """
+    env_val = os.environ.get(PACKAGE_SIZE_WARNING_MIB_ENV_VAR)
+    if env_val is None:
+        return PACKAGE_SIZE_WARNING
+    try:
+        mib = int(env_val)
+    except ValueError:
+        return PACKAGE_SIZE_WARNING
+    if mib < 0:
+        return None
+    return mib * 1024 * 1024
+
+
+def _warn_if_package_size_near_limit(
+    package_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+    module_path: Optional[str] = None,
+) -> None:
+    """Warn if the zipped package is approaching the GCS upload size limit.
+
+    The per-file warning in `_zip_files` does not fire for directories that
+    contain many small files (e.g. `.git`), so the user has no signal that
+    they are about to hit `GCS_STORAGE_MAX_SIZE` until the upload itself
+    fails. This warning closes that gap. The local zip path is included for
+    inspection, and `module_path` (the user-supplied source directory or file)
+    is included when available so the user can immediately identify which
+    runtime_env input is causing the bloat — the temp zip path is short-lived
+    and has an obscure auto-generated name. The threshold is tunable via the
+    `RAY_PACKAGE_SIZE_WARNING_MIB` env var (set to `-1` to disable). See
+    GH #45602.
+    """
+    if logger is None:
+        logger = default_logger
+    threshold = _resolve_package_size_warning_threshold()
+    if threshold is None:
+        return
+    try:
+        package_size = package_path.stat().st_size
+    except OSError:
+        return
+    if package_size < threshold:
+        return
+    source_info = f" for '{module_path}'" if module_path else ""
+    logger.warning(
+        f"The runtime_env package{source_info} at '{package_path}' is "
+        f"{_mib_string(package_size)}, approaching the maximum upload size "
+        f"of {_mib_string(GCS_STORAGE_MAX_SIZE)}. If the upload fails, exclude "
+        "large directories (commonly '.git', '.venv', or build artifacts) via "
+        "the 'excludes' option in runtime_env, or list them in '.gitignore' / "
+        "'.rayignore'. To raise the warning threshold set "
+        f"`{PACKAGE_SIZE_WARNING_MIB_ENV_VAR}=<size_in_MiB>`, or disable the "
+        f"warning entirely with `{PACKAGE_SIZE_WARNING_MIB_ENV_VAR}=-1`. For "
+        "details see "
+        "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html"
+        "#api-reference"
+    )
+
+
 def create_package(
     module_path: str,
     target_path: Path,
@@ -728,6 +801,7 @@ def create_package(
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
+        _warn_if_package_size_near_limit(target_path, logger, module_path=module_path)
 
 
 def upload_package_if_needed(

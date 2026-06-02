@@ -64,12 +64,12 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
-    from vllm.entrypoints.openai.speech_to_text.serving import (
-        OpenAIServingTranscription,
-    )
     from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
     from vllm.entrypoints.pooling.scoring.serving import ServingScores
     from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
+    from vllm.entrypoints.speech_to_text.transcription.serving import (
+        OpenAIServingTranscription,
+    )
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
