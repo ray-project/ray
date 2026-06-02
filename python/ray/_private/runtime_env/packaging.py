@@ -1133,6 +1133,7 @@ def unzip_package(
     """
     # Use extended-length paths on Windows to avoid MAX_PATH limitations
     extended_target_dir = _to_extended_length_path(target_dir)
+    target_real = os.path.realpath(extended_target_dir)
 
     try:
         os.mkdir(extended_target_dir)
@@ -1146,16 +1147,16 @@ def unzip_package(
         # on Windows, which are needed to handle paths longer than 260
         # characters, so we implement our own extraction logic here.
         for member in zip_ref.namelist():
-            # Build the full extraction path with extended-length prefix
+            # Build and resolve the full extraction path with extended-length prefix.
             member_path = os.path.join(extended_target_dir, member)
             member_path = _to_extended_length_path(member_path)
+            resolved = os.path.realpath(member_path)
 
             # Ensure the resolved path is within target_dir to prevent
             # path traversal attacks (e.g., ../../../etc/malicious).
-            # Use os.path.commonpath to verify both paths share the same root
             try:
-                common = os.path.commonpath([extended_target_dir, member_path])
-                if not common.startswith(extended_target_dir):
+                common = os.path.commonpath([target_real, resolved])
+                if os.path.normcase(common) != os.path.normcase(target_real):
                     logger.warning(f"Skipping unsafe path in zip: {member}")
                     continue
             except ValueError:
@@ -1163,22 +1164,22 @@ def unzip_package(
                 logger.warning(f"Skipping path on different drive in zip: {member}")
                 continue
 
-            logger.debug(f"Extracting {member} to {member_path}")
+            logger.debug(f"Extracting {member} to {resolved}")
 
             # Get ZipInfo for this member to access metadata
             zip_info = zip_ref.getinfo(member)
 
             # Create directories if this is a directory entry
             if member.endswith("/"):
-                os.makedirs(member_path, exist_ok=True)
+                os.makedirs(resolved, exist_ok=True)
             else:
                 # Ensure parent directory exists
-                parent_dir = os.path.dirname(member_path)
+                parent_dir = os.path.dirname(resolved)
                 if parent_dir:
                     os.makedirs(parent_dir, exist_ok=True)
 
                 # Extract the file
-                with zip_ref.open(member) as source, open(member_path, "wb") as target:
+                with zip_ref.open(member) as source, open(resolved, "wb") as target:
                     shutil.copyfileobj(source, target)
 
                 # Preserve file permissions from the zip archive
@@ -1187,7 +1188,7 @@ def unzip_package(
                     # Extract Unix file mode from external_attr
                     mode = zip_info.external_attr >> 16
                     if mode:
-                        os.chmod(member_path, mode)
+                        os.chmod(resolved, mode)
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is not None:

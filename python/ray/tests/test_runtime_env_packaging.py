@@ -1488,6 +1488,73 @@ def test_untar_package_path_traversal(tmp_path):
     assert len(os.listdir(target_dir)) == 0
 
 
+def test_unzip_package_skips_path_traversal_entries(tmp_path):
+    """Verify that zip entries resolving outside target_dir are skipped."""
+    zip_path = tmp_path / "malicious.zip"
+    target_dir = tmp_path / "extracted"
+    outside = tmp_path / "outside.txt"
+
+    with zipfile.ZipFile(zip_path, "w") as zip_file:
+        zip_file.writestr("../outside.txt", "outside")
+        zip_file.writestr("safe.txt", "safe")
+
+    unzip_package(
+        package_path=str(zip_path),
+        target_dir=str(target_dir),
+        remove_top_level_directory=False,
+        unlink_zip=False,
+    )
+
+    assert not outside.exists()
+    assert (target_dir / "safe.txt").read_text() == "safe"
+
+
+def test_unzip_package_skips_nested_path_traversal_entries(tmp_path):
+    """Verify that nested zip traversal entries are skipped."""
+    zip_path = tmp_path / "malicious.zip"
+    target_dir = tmp_path / "extracted"
+    outside = tmp_path / "outside_nested.txt"
+
+    with zipfile.ZipFile(zip_path, "w") as zip_file:
+        zip_file.writestr("dir/../../outside_nested.txt", "outside")
+        zip_file.writestr("dir/safe.txt", "safe")
+
+    unzip_package(
+        package_path=str(zip_path),
+        target_dir=str(target_dir),
+        remove_top_level_directory=False,
+        unlink_zip=False,
+    )
+
+    assert not outside.exists()
+    assert (target_dir / "dir" / "safe.txt").read_text() == "safe"
+
+
+def test_unzip_package_does_not_write_to_sibling_directory(tmp_path):
+    """Verify that zip entries cannot write into sibling directories."""
+    zip_path = tmp_path / "malicious.zip"
+    target_dir = tmp_path / "target"
+    sibling_dir = tmp_path / "sibling"
+    sibling_dir.mkdir()
+    sibling_file = sibling_dir / "file.py"
+    sibling_file.write_text("original\n")
+    traversal_member = os.path.relpath(sibling_file, target_dir)
+
+    with zipfile.ZipFile(zip_path, "w") as zip_file:
+        zip_file.writestr(traversal_member, "modified\n")
+        zip_file.writestr("safe.py", "SAFE = True\n")
+
+    unzip_package(
+        package_path=str(zip_path),
+        target_dir=str(target_dir),
+        remove_top_level_directory=False,
+        unlink_zip=False,
+    )
+
+    assert sibling_file.read_text() == "original\n"
+    assert (target_dir / "safe.py").exists()
+
+
 def test_get_top_level_dir_from_tar_package(tmp_path):
     tar_path = tmp_path / "test.tar.gz"
     with tarfile.open(tar_path, "w:gz") as tar:
