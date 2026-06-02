@@ -35,6 +35,16 @@ def test_handle_backpressure(serve_instance):
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
     second_response = handle.remote("hi-2")
+
+    # Wait until "hi-2" is actually registered as queued in the router before
+    # sending more requests. The router processes the request asynchronously on
+    # its own event loop thread, so without this the requests below can race
+    # ahead and get queued themselves (blocking forever) instead of being
+    # rejected with backpressure.
+    wait_for_condition(
+        lambda: handle._router._asyncio_router._metrics_manager.num_queued_requests == 1
+    )
+
     for _ in range(10):
         with pytest.raises(BackPressureError):
             handle.remote().result()

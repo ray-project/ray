@@ -184,7 +184,7 @@ class TestActorManager(unittest.TestCase):
             ).ignore_errors()
         ]
 
-        # Results from blocking calls show the # of calls happend on
+        # Results from blocking calls show the # of calls happened on
         # each remote actor. 11 calls to each actor in total.
         self.assertEqual(results2, [11, 11, 11, 11])
 
@@ -428,9 +428,8 @@ class TestActorManager(unittest.TestCase):
         actors = [Actor.remote(i, maybe_crash=False) for i in range(2)]
         manager = FaultTolerantActorManager(actors=actors)
         manager.foreach_actor_async_fetch_ready(lambda w: w.ping(), tag="ping")
-        time.sleep(5)
         results = manager.foreach_actor_async_fetch_ready(
-            lambda w: w.ping(), tag="ping"
+            lambda w: w.ping(), tag="ping", timeout_seconds=30
         )
         self.assertEqual(len(results), 2)
 

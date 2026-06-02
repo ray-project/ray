@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
@@ -57,13 +58,13 @@ class AbstractOneToOne(LogicalOperator):
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
 
-    @property
-    def input_dependency(self) -> LogicalOperator:
-        return self.input_dependencies[0]
-
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
+class Limit(
+    AbstractOneToOne,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for limit."""
 
     limit: int
@@ -83,13 +84,6 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
             input_files=self._input_files(),
             exec_stats=None,
         )
-
-    def infer_schema(
-        self,
-    ) -> Optional["Schema"]:
-        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        assert isinstance(self.input_dependencies[0], LogicalOperator)
-        return self.input_dependencies[0].infer_schema()
 
     def _num_rows(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -134,3 +128,19 @@ class Download(AbstractOneToOne):
                 f"number of output columns ({len(self.output_bytes_column_names)})"
             )
         object.__setattr__(self, "_num_outputs", None)
+
+    def infer_schema(self) -> Optional["Schema"]:
+        # Output = input schema with one binary column appended per requested
+        # output name. The runtime (``download_bytes_threaded``) always appends
+        # via ``add_column`` without removing any pre-existing column of the
+        # same name, so name collisions produce duplicate columns here too.
+        import pyarrow as pa
+
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        input_schema = self.input_dependencies[0].infer_schema()
+        if not isinstance(input_schema, pa.Schema):
+            return None
+        fields = list(input_schema)
+        for name in self.output_bytes_column_names:
+            fields.append(pa.field(name, pa.binary(), nullable=True))
+        return pa.schema(fields)

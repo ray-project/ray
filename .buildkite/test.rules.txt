@@ -20,6 +20,13 @@
 ! linux_wheels macos_wheels docker doc python_dependencies min_build tools
 ! release_tests spark_on_ray
 
+# NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
+# from blocking premerge for these changes. We can remove this pass block once effort concludes,
+# or earlier should regressions become an issue.
+doc/*.rst
+# pass
+;
+
 python/ray/air/
 @ ml train train_gpu tune data linux_wheels
 ;
@@ -95,6 +102,12 @@ python/ray/dashboard/
 # raydepsets --check verification in dependencies.rayci.yml.
 python/deplocks/ci/macos_depset_py*
 @ macos_wheels python_dependencies
+;
+
+# Short-circuit deps handling for docs-specific.
+python/deplocks/docs/*.lock
+ci/raydepsets/configs/docs.depsets.yaml
+@ doc python_dependencies
 ;
 
 # Raydepsets-generated lock files and raydepsets configs that drive
@@ -181,6 +194,7 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+doc/requirements-doc.txt
 .vale.ini
 .vale/
 .buildkite/doc.rayci.yml

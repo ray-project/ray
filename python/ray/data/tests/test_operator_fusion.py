@@ -23,7 +23,6 @@ from ray.data._internal.logical.operators import (
     Read,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
@@ -357,8 +356,9 @@ def test_map_batches_batch_size_fusion(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     ds = Dataset(
-        ExecutionPlan(DatasetStats(metadata={}, parent=None), context),
         LogicalPlan(input_op, context),
+        context,
+        DatasetStats(metadata={}, parent=None),
     )
 
     mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
@@ -466,7 +466,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
     assert "ReadRange->MapBatches(fn)" not in stats
     # Ensure all three operators are also present in usage record
-    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
@@ -528,7 +528,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert "Operator 1 ReadRange" in ds.stats()
     assert "Operator 2 Repartition" in ds.stats()
     assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapRows"])
 
     ctx.target_max_block_size = old_target_max_block_size
 
@@ -634,7 +634,7 @@ def test_read_map_chain_operator_fusion_e2e(
         "->MapBatches(<lambda>)->FlatMap(<lambda>):"
     )
     assert name in ds.stats()
-    _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
+    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):

@@ -3,7 +3,7 @@ import functools
 from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
 from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.block import (
@@ -56,7 +56,7 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
             "input_data",
             [
                 RefBundle(
-                    [(input_blocks[i], input_metadata[i])],
+                    [BlockEntry(input_blocks[i], input_metadata[i])],
                     owns_blocks=False,
                     schema=input_metadata[i].schema,
                 )

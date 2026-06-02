@@ -63,9 +63,9 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -97,7 +97,10 @@ def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     return sample_accessor.to_arrow().schema
 
 
-def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
+def _get_schema_from_bundle(
+    bundle: RefBundle,
+    label_selector: Optional[Dict[str, str]] = None,
+) -> Optional["pa.Schema"]:
     """Extract PyArrow schema from a RefBundle.
 
     For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
@@ -128,8 +131,11 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     if isinstance(schema, PandasBlockSchema):
         if not bundle.blocks:
             return None
-        block_ref, _ = bundle.blocks[0]
-        schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+        block_ref = bundle.blocks[0].ref
+        task = _get_arrow_schema_from_block
+        if label_selector:
+            task = task.options(label_selector=label_selector)
+        schema_ref = task.remote(block_ref)
         return ray.get(schema_ref)
 
     return None
@@ -239,7 +245,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         (e.g., schema evolution for Iceberg writes via on_write_start).
         """
         if not self._on_start_called and self._on_start is not None:
-            schema = _get_schema_from_bundle(bundled_input)
+            schema = _get_schema_from_bundle(
+                bundled_input,
+                label_selector=self.data_context.execution_options.label_selector,
+            )
             self._on_start(schema)
             self._on_start_called = True
             # Note: _map_transformer_ref is lazily initialized, so no need to
@@ -481,6 +490,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        ray_remote_args = merge_label_selector(
+            ray_remote_args, self.data_context.execution_options.label_selector
+        )
         return ray_remote_args
 
     @abstractmethod
@@ -705,7 +717,7 @@ def _map_task(
             ctx.target_max_block_size_override
         )
 
-        blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+        retry_on = data_context.retried_map_errors
 
         # NOTE: We avoid the cost of deduping schemas in the task because
         # each yielded block should have the same schema, since each one
@@ -714,8 +726,25 @@ def _map_task(
         # the same schema)
         yielded_schema: bool = False
 
+        def transform_iter_factory():
+            blocks_iter = (
+                _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+            )
+            return map_transformer.apply_transform(blocks_iter, ctx)
+
+        if retry_on:
+            block_iter = iterate_with_retry(
+                transform_iter_factory,
+                description="apply UDF transform",
+                match=None if retry_on is True else retry_on,
+                max_attempts=data_context.max_map_retries + 1,
+                unwrap_cause=True,
+            )
+        else:
+            block_iter = transform_iter_factory()
+
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-            for block in map_transformer.apply_transform(blocks_iter, ctx):
+            for block in block_iter:
                 block_meta = BlockAccessor.for_block(block).get_metadata()
                 block_schema = BlockAccessor.for_block(block).schema()
 
@@ -731,7 +760,6 @@ def _map_task(
                     ),
                     udf_time_s=map_transformer.udf_time_s(reset=True),
                     task_idx=ctx.task_idx,
-                    max_uss_bytes=profiler.estimate_max_uss(),
                 )
 
                 # NOTE: This tracks task duration up to this point, though we're primarily
@@ -744,7 +772,8 @@ def _map_task(
                         block_meta,
                         exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
-                            task_wall_time_s=task_dur_s
+                            task_wall_time_s=task_dur_s,
+                            max_uss_bytes=profiler.estimate_max_uss(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,
@@ -754,7 +783,6 @@ def _map_task(
                 # Reset trackers
                 yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
-                profiler.reset()
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

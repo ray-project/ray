@@ -1,5 +1,7 @@
 import sys
 import warnings
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -7,18 +9,64 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ChatCompletionRequest,
+)
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     PDServingArgs,
     build_pd_openai_app,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
+    PDOrchestratorMixin,
     PDPrefillServer,
 )
+from ray.serve._private.http_util import SERVE_SESSION_ID
+
+
+async def _aiter(items):
+    for item in items:
+        yield item
+
+
+class _FakePrefillHandle:
+    """Fake prefill DeploymentHandle. Records each .chat/.completions remote
+    call with the session_id from any preceding ``.options(session_id=...)``,
+    and yields one chunk with kv_transfer_params back to the orchestrator."""
+
+    def __init__(self, calls=None, session_id=None):
+        self.calls = calls if calls is not None else []
+        self.session_id = session_id
+
+    def options(self, **kwargs):
+        return _FakePrefillHandle(
+            calls=self.calls,
+            session_id=kwargs.get("session_id", self.session_id),
+        )
+
+    def _method(self, name):
+        def remote(request, raw_request_info):
+            self.calls.append(
+                {"method": name, "request": request, "session_id": self.session_id}
+            )
+            return _aiter(
+                [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-1"})]
+            )
+
+        return SimpleNamespace(remote=remote)
+
+    @property
+    def chat(self):
+        return self._method("chat")
+
+    @property
+    def completions(self):
+        return self._method("completions")
 
 
 class TestPDServingArgs:
@@ -237,6 +285,82 @@ class TestServingArgsParsing:
         assert app is not None
 
 
+class TestPDOrchestratorMixin:
+    def test_prepare_prefill_request_limits_chat_to_one_token(self):
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "hello"}],
+            max_completion_tokens=32,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        prefill_request = PDOrchestratorMixin._prepare_prefill_request(request)
+
+        assert prefill_request.max_tokens == 1
+        assert prefill_request.max_completion_tokens == 1
+        assert prefill_request.stream is False
+        assert prefill_request.stream_options is None
+        assert request.max_completion_tokens == 32
+        assert request.stream is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method,path,body",
+        [
+            (
+                "chat",
+                "/v1/chat/completions",
+                {"messages": [{"role": "user", "content": "hi"}]},
+            ),
+            ("completions", "/v1/completions", {"prompt": "hi"}),
+        ],
+    )
+    async def test_direct_streaming_http_runs_pd_orchestration(
+        self, method, path, body
+    ):
+        """HTTP traffic to PDDecodeServer's direct-streaming ASGI app must
+        flow through PD orchestration (remote prefill, then local decode),
+        propagate the session-id header to the prefill handle, and pass
+        the prefill's kv_transfer_params to the local decode call.
+        Regression for https://github.com/ray-project/ray/pull/63679.
+        """
+        from fastapi.testclient import TestClient
+
+        from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._prefill_handle = _FakePrefillHandle()
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        # The direct-streaming app starts from the engine-native ASGI app, so
+        # the decode server needs a (mock) engine. PD only re-points the
+        # chat/completions routes at the orchestrator, patched below.
+        server.engine = MockVLLMEngine(server._llm_config)
+        await server.engine.start()
+
+        decode_calls = []
+
+        async def _fake_decode(self, req, raw_info):
+            decode_calls.append(req)
+            return _aiter([['data: {"ok":true}\n\n']])
+
+        app = await server.__serve_build_asgi_app__()
+        with patch.object(LLMServer, method, _fake_decode):
+            with TestClient(app) as client:
+                resp = client.post(
+                    path,
+                    json={"model": "test-model", "stream": True, **body},
+                    headers={SERVE_SESSION_ID: "session-a"},
+                )
+
+        assert resp.status_code == 200, resp.text
+        assert server._prefill_handle.calls[0]["method"] == method
+        assert server._prefill_handle.calls[0]["session_id"] == "session-a"
+        assert decode_calls[0].kv_transfer_params == {"remote_engine_id": "prefill-1"}
+
+
 class TestBuildPDOpenaiApp:
     """Test suite for build_pd_openai_app function."""
 
@@ -268,7 +392,10 @@ class TestBuildPDOpenaiApp:
 
         # The app should have an ingress deployment bound to the decode deployment
         ingress_deployment = app._bound_deployment
-        decode_app = ingress_deployment.init_kwargs["llm_deployments"][0]
+        llm_deployments = ingress_deployment.init_kwargs["llm_deployments"]
+        # Single model id -> single decode app (P/D shares the same model_id).
+        assert len(llm_deployments) == 1
+        decode_app = next(iter(llm_deployments.values()))
         decode_deployment = decode_app._bound_deployment
 
         assert decode_deployment.func_or_class is PDDecodeServer
