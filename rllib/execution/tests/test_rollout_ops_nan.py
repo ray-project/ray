@@ -2,7 +2,6 @@
 import math
 import unittest
 
-
 _NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
 
 
@@ -18,9 +17,7 @@ def _count_agent_steps(stats_dicts):
 
 class TestNanAgentSteps(unittest.TestCase):
     def test_skips_nan_entries(self):
-        stats = [
-            {_NUM_AGENT_STEPS_SAMPLED: {"a": 3, "b": float("nan"), "c": 7}}
-        ]
+        stats = [{_NUM_AGENT_STEPS_SAMPLED: {"a": 3, "b": float("nan"), "c": 7}}]
         self.assertEqual(_count_agent_steps(stats), 10)
 
     def test_clean_stats_unchanged(self):

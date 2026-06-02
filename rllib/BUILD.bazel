@@ -2885,6 +2885,18 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
+# Execution / rollout ops
+py_test(
+    name = "execution/tests/test_rollout_ops_nan",
+    size = "small",
+    srcs = ["execution/tests/test_rollout_ops_nan.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
 # Checkpointables
 py_test(
     name = "utils/tests/test_checkpointable",
