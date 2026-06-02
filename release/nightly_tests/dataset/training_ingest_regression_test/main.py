@@ -2,7 +2,7 @@
 
 Probes the iter-batches consumer pipeline under conditions that exercise
 both consumer-side object store usage and pipeline throughput. Reports per run:
-time-to-first-batch, next-batch (fetch) time, train-step time, total
+time-to-first-batch, next-batch time, train-step time, total
 runtime, throughput, peak object store usage. With ``--num-runs > 1``
 also reports mean ± stdev across runs.
 
@@ -45,6 +45,7 @@ from ray.train.torch import TorchTrainer
 # infra (1s background sampler, not just snapshots).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from benchmark import (  # noqa: E402
+    Benchmark,
     ObjectStoreMemorySampler,
     _get_spilled_bytes_total,
 )
@@ -217,7 +218,7 @@ def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
             drop_last=True,
         )
 
-    fetch_times: List[float] = []
+    next_batch_times: List[float] = []
     # CUDA event pairs around each step. Recording an event is async — it
     # gets queued on the stream like a kernel — so it does not block the CPU
     # and does not disrupt H2D/compute pipelining. We compute elapsed times
@@ -237,10 +238,10 @@ def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
         for batch in loader:
             if batches_done >= target_batches:
                 break
-            fetch_end = time.perf_counter()
-            fetch_times.append(fetch_end - last_step_end)
+            next_batch_end = time.perf_counter()
+            next_batch_times.append(next_batch_end - last_step_end)
             if first_batch_end is None:
-                first_batch_end = fetch_end
+                first_batch_end = next_batch_end
 
             images, labels = batch["image"], batch["label"]
             if images.device != device:
@@ -292,22 +293,24 @@ def train_loop(config: Dict[str, Any]) -> Dict[str, float]:
     first_batch_s = (first_batch_end - epoch_start) if first_batch_end else 0.0
     steady_time = max(total_time - first_batch_s, 1e-9)
 
-    # Steady-state next-batch time excludes fetch_times[0], which is the
+    # Steady-state next-batch time excludes next_batch_times[0], which is the
     # epoch-start-to-first-batch warmup (Ray Data pipeline startup), not an
-    # actual inter-step fetch.
-    steady_fetch_times = fetch_times[1:]
+    # actual inter-step wait.
+    steady_next_batch_times = next_batch_times[1:]
 
     return {
         "total_time_s": total_time,
         "first_batch_s": first_batch_s,
         "throughput_rows_s": total_rows / total_time if total_time > 0 else 0.0,
         "steady_throughput_rows_s": total_rows / steady_time,
-        "fetch_avg_ms": 1000 * sum(fetch_times) / max(len(fetch_times), 1),
-        "fetch_p99_ms": 1000 * _pct(fetch_times, 0.99),
-        "steady_fetch_avg_ms": (
-            1000 * sum(steady_fetch_times) / max(len(steady_fetch_times), 1)
+        "next_batch_avg_ms": (
+            1000 * sum(next_batch_times) / max(len(next_batch_times), 1)
         ),
-        "steady_fetch_p99_ms": 1000 * _pct(steady_fetch_times, 0.99),
+        "next_batch_p99_ms": 1000 * _pct(next_batch_times, 0.99),
+        "steady_next_batch_avg_ms": (
+            1000 * sum(steady_next_batch_times) / max(len(steady_next_batch_times), 1)
+        ),
+        "steady_next_batch_p99_ms": 1000 * _pct(steady_next_batch_times, 0.99),
         "step_avg_ms": 1000 * sum(step_times) / max(len(step_times), 1),
         "step_p99_ms": 1000 * _pct(step_times, 0.99),
         "num_batches": num_batches,
@@ -374,12 +377,12 @@ def _print_run(label: str, m: Dict[str, float]) -> None:
     print(f"  throughput (total):   {m['throughput_rows_s']:>8.1f} rows/s")
     print(f"  throughput (steady):  {m['steady_throughput_rows_s']:>8.1f} rows/s")
     print(
-        f"  next-batch (total):   {m['fetch_avg_ms']:>8.3f} ms (p99 "
-        f"{m['fetch_p99_ms']:.2f})"
+        f"  next-batch (total):   {m['next_batch_avg_ms']:>8.3f} ms (p99 "
+        f"{m['next_batch_p99_ms']:.2f})"
     )
     print(
-        f"  next-batch (steady):  {m['steady_fetch_avg_ms']:>8.3f} ms (p99 "
-        f"{m['steady_fetch_p99_ms']:.2f})"
+        f"  next-batch (steady):  {m['steady_next_batch_avg_ms']:>8.3f} ms (p99 "
+        f"{m['steady_next_batch_p99_ms']:.2f})"
     )
     print(
         f"  step time:            {m['step_avg_ms']:>8.2f} ms (p99 "
@@ -393,25 +396,38 @@ def _print_run(label: str, m: Dict[str, float]) -> None:
     print(f"  spilled to disk:      {m['spilled_gib']:>8.2f} GiB")
 
 
+_SUMMARY_KEYS = [
+    ("total_time_s", "total runtime (s)"),
+    ("first_batch_s", "time to first batch (s)"),
+    ("throughput_rows_s", "throughput total (rows/s)"),
+    ("steady_throughput_rows_s", "throughput steady (rows/s)"),
+    ("next_batch_avg_ms", "next-batch avg total (ms)"),
+    ("steady_next_batch_avg_ms", "next-batch avg steady (ms)"),
+    ("step_avg_ms", "step avg (ms)"),
+    ("peak_object_store_gib", "peak object store (GiB)"),
+    ("peak_object_store_utilization", "peak object store util"),
+    ("spilled_gib", "spilled to disk (GiB)"),
+]
+
+
+def _aggregate(runs: List[Dict[str, float]]) -> Dict[str, float]:
+    """Return mean and stdev across runs for the headline metrics."""
+    out: Dict[str, float] = {}
+    for key, _ in _SUMMARY_KEYS:
+        vals = [r[key] for r in runs]
+        out[f"{key}_mean"] = statistics.mean(vals)
+        out[f"{key}_std"] = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    return out
+
+
 def _print_summary(runs: List[Dict[str, float]]) -> None:
     print(f"\n=== Averaged across {len(runs)} runs ===")
-    keys = [
-        ("total_time_s", "total runtime (s)"),
-        ("first_batch_s", "time to first batch (s)"),
-        ("throughput_rows_s", "throughput total (rows/s)"),
-        ("steady_throughput_rows_s", "throughput steady (rows/s)"),
-        ("fetch_avg_ms", "next-batch avg total (ms)"),
-        ("steady_fetch_avg_ms", "next-batch avg steady (ms)"),
-        ("step_avg_ms", "step avg (ms)"),
-        ("peak_object_store_gib", "peak object store (GiB)"),
-        ("peak_object_store_utilization", "peak object store util"),
-        ("spilled_gib", "spilled to disk (GiB)"),
-    ]
-    for key, label in keys:
-        vals = [r[key] for r in runs]
-        mean = statistics.mean(vals)
-        std = statistics.stdev(vals) if len(vals) > 1 else 0.0
-        print(f"  {label:28s}  mean={mean:>10.3f}  std={std:>8.3f}")
+    agg = _aggregate(runs)
+    for key, label in _SUMMARY_KEYS:
+        print(
+            f"  {label:28s}  mean={agg[f'{key}_mean']:>10.3f}"
+            f"  std={agg[f'{key}_std']:>8.3f}"
+        )
 
 
 def main() -> None:
@@ -473,14 +489,25 @@ def main() -> None:
         f"mock={args.mock}  profile={args.profile}"
     )
 
-    runs: List[Dict[str, float]] = []
-    for i in range(args.num_runs):
-        m = run_once(args)
-        _print_run(f"Run {i + 1}/{args.num_runs}", m)
-        runs.append(m)
+    # Wrap the whole N-run sequence in a single `Benchmark.run_fn` so the
+    # dashboard receives one row of mean/stdev metrics for the test —
+    # rather than N separate rows that overwrite each other and can't be
+    # used for regression detection. Per-run inner samplers still record
+    # their own peak_object_store_gib (different key) so we can compute
+    # cross-run stdev for it.
+    def _run_all() -> Dict[str, float]:
+        runs: List[Dict[str, float]] = []
+        for i in range(args.num_runs):
+            m = run_once(args)
+            _print_run(f"Run {i + 1}/{args.num_runs}", m)
+            runs.append(m)
+        if args.num_runs > 1:
+            _print_summary(runs)
+        return _aggregate(runs)
 
-    if args.num_runs > 1:
-        _print_summary(runs)
+    benchmark = Benchmark()
+    benchmark.run_fn("training_ingest_regression_test", _run_all)
+    benchmark.write_result()
 
 
 if __name__ == "__main__":
