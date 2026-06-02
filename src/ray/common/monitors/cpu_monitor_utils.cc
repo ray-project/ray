@@ -124,12 +124,14 @@ int64_t CpuMonitorUtils::GetCpuLimit(const std::string &root_cgroup_path) {
   std::string cgroupv2_error;
   std::string cgroupv1_error;
   if (cpu_count.has_value()) {
-    return std::max<int64_t>(1, cpu_count.value());
+    return std::min<int64_t>(std::max<int64_t>(1, cpu_count.value()),
+                             std::thread::hardware_concurrency());
   }
   cgroupv2_error = cpu_count.message();
   cpu_count = GetCgroupV1CpuCount(cgroupv1_cpu_quota_path, cgroupv1_cpu_period_path);
   if (cpu_count.has_value()) {
-    return std::max<int64_t>(1, cpu_count.value());
+    return std::min<int64_t>(std::max<int64_t>(1, cpu_count.value()),
+                             std::thread::hardware_concurrency());
   }
   cgroupv1_error = cpu_count.message();
 
