@@ -3,7 +3,11 @@ from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
@@ -43,7 +47,9 @@ class LimitOperator(OneToOneOperator):
             return
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
-        for block, metadata in refs.blocks:
+        for entry in refs.blocks:
+            block = entry.ref
+            metadata = entry.metadata
             num_rows = metadata.num_rows
             assert num_rows is not None
             if self._consumed_rows + num_rows <= self._limit:
@@ -81,7 +87,7 @@ class LimitOperator(OneToOneOperator):
                 break
         self._cur_output_bundles += 1
         out_refs = RefBundle(
-            list(zip(out_blocks, out_metadata)),
+            [BlockEntry(b, m) for b, m in zip(out_blocks, out_metadata)],
             owns_blocks=refs.owns_blocks,
             schema=refs.schema,
         )
