@@ -11,6 +11,7 @@ upfront and dispatches both sides simultaneously — it does not wait for a
 prefill response before starting decode.
 """
 
+import asyncio
 import logging
 import secrets
 from typing import AsyncGenerator, Optional, Union
@@ -120,12 +121,10 @@ class SGLangPDDecodeServer(LLMServer):
     ) -> RequestType:
         """Inject bootstrap fields so the prefill engine knows where to send KV."""
         prefill_request = request.model_copy(deep=True)
-        prefill_request.bootstrap_host = self._bootstrap_host
-        prefill_request.bootstrap_port = self._bootstrap_port
-        prefill_request.bootstrap_room = bootstrap_room
-        # This should not be needed since SGLang handles by disaggregation_mode: prefill
-        # prefill_request.max_tokens = 1
-        prefill_request.stream = False
+        object.__setattr__(prefill_request, "bootstrap_host", self._bootstrap_host)
+        object.__setattr__(prefill_request, "bootstrap_port", self._bootstrap_port)
+        object.__setattr__(prefill_request, "bootstrap_room", bootstrap_room)
+        object.__setattr__(prefill_request, "stream", False)
         return prefill_request
 
     def _prepare_decode_request(
@@ -133,8 +132,7 @@ class SGLangPDDecodeServer(LLMServer):
     ) -> RequestType:
         """Inject bootstrap_room so the decode engine can rendezvous with prefill."""
         decode_request = request.model_copy(deep=True)
-        decode_request.bootstrap_room = bootstrap_room
-
+        object.__setattr__(decode_request, "bootstrap_room", bootstrap_room)
         return decode_request
 
     async def _pd_handle_request(
@@ -152,7 +150,7 @@ class SGLangPDDecodeServer(LLMServer):
         """
         request_id = get_serve_request_id()
         if request_id:
-            request.request_id = request_id
+            object.__setattr__(request, "request_id", request_id)
 
         if isinstance(request, ChatCompletionRequest):
             method = "chat"
@@ -176,11 +174,21 @@ class SGLangPDDecodeServer(LLMServer):
         prefill_request = self._prepare_prefill_request(request, bootstrap_room)
         decode_request = self._prepare_decode_request(request, bootstrap_room)
 
-        # Fire prefill — we do not await its response.  SGLang's prefill engine
-        # will write KV into the bootstrap room; the decode engine polls for it.
-        self._prefill_handle.options(stream=True).__getattr__(method).remote(
+        # Fire prefill and drain it in a background task.
+        # Without consuming the generator, Ray's object store may GC the remote
+        # call before SGLang's prefill engine finishes, causing the engine to hang.
+        prefill_gen = getattr(self._prefill_handle, method).remote(
             prefill_request, raw_request_info
         )
+
+        async def _drain_prefill(gen):
+            try:
+                async for _ in gen:
+                    pass
+            except Exception:
+                pass
+
+        asyncio.ensure_future(_drain_prefill(prefill_gen))
 
         # Run decode on the local engine. This blocks internally until the KV
         # cache arrives from prefill via the bootstrap server, then streams tokens.
