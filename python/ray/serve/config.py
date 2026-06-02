@@ -550,17 +550,63 @@ class AutoscalingPolicy(BaseModel):
 
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
-    """Config for the Serve Autoscaler."""
+    """Config for the Serve Autoscaler.
+
+    This class configures how Ray Serve scales a deployment's replicas up and down
+    in response to traffic. The autoscaler periodically aggregates request metrics
+    over a look-back window, compares them to ``target_ongoing_requests``, and
+    adjusts the replica count between ``min_replicas`` and ``max_replicas``.
+    ``upscale_delay_s`` and ``downscale_delay_s`` control how quickly the autoscaler
+    reacts to traffic changes, while ``upscaling_factor`` and ``downscaling_factor``
+    dampen the magnitude of each scaling decision.
+
+    For an end-to-end guide, see the
+    `Serve autoscaling guide <https://docs.ray.io/en/latest/serve/autoscaling-guide.html>`_
+    and the
+    `advanced autoscaling guide <https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html>`_.
+    """
 
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
     # Publicly exposed options
-    min_replicas: NonNegativeInt = 1
-    initial_replicas: Optional[NonNegativeInt] = None
-    max_replicas: PositiveInt = 1
+    min_replicas: NonNegativeInt = Field(
+        default=1,
+        description=(
+            "The minimum number of replicas for the deployment. Set this to a "
+            "positive value to keep replicas ready for traffic at all times, or "
+            "set it to 0 to allow scaling to zero when there is no traffic. "
+            "Scaling to zero reduces cost but introduces cold-start latency when "
+            "traffic resumes."
+        ),
+    )
+    initial_replicas: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of replicas started when the deployment is first deployed. "
+            "If not set, defaults to the value of ``min_replicas``."
+        ),
+    )
+    max_replicas: PositiveInt = Field(
+        default=1,
+        description=(
+            "The maximum number of replicas for the deployment. Must be greater "
+            "than or equal to ``min_replicas``. Ray Serve relies on the Ray "
+            "Autoscaler to add cluster nodes when existing nodes lack the "
+            "resources (CPUs, GPUs, etc.) needed to schedule additional replicas."
+        ),
+    )
 
-    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = Field(
+        default=DEFAULT_TARGET_ONGOING_REQUESTS,
+        description=(
+            "The target number of requests being processed and queued per replica. "
+            "Serve scales the replica count up or down to keep each replica close "
+            "to this value. Lower values reduce per-replica load and tail latency "
+            "at the cost of running more replicas; higher values pack more traffic "
+            "onto each replica. Defaults to 2."
+        ),
+    )
 
     metrics_interval_s: PositiveFloat = Field(
         default=DEFAULT_METRICS_INTERVAL_S,
