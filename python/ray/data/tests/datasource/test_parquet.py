@@ -391,6 +391,116 @@ def test_include_row_hash_existing_column_with_projection(
     assert all(row["row_hash"] not in (10, 20) for row in rows)
 
 
+def test_include_paths_with_custom_column(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
+):
+    """Test custom path column name functionality for Parquet files.
+
+    This test is parameterized to run on both V1 (legacy) and V2 (new) datasources
+    via the use_datasource_v2 fixture.
+    """
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"], "path": ["a", "b"]})
+    pq.write_table(table, path)
+
+    # Test custom column name to avoid conflict with existing "path" column
+    ds = ray.data.read_parquet(path, include_paths=True, path_column="source_path")
+
+    rows = ds.take_all()
+    for row in rows:
+        assert "source_path" in row
+        assert row["source_path"] == path
+        # Verify existing "path" column from data is preserved
+        assert "path" in row
+        assert row["path"] in ["a", "b"]
+
+
+def test_include_paths_with_custom_column_projection(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict(
+        {"animals": ["cat", "dog"], "id": [1, 2], "path": ["a", "b"]}
+    )
+    pq.write_table(table, path)
+
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
+        ds = ray.data.read_parquet(
+            path,
+            columns=["id"],
+            include_paths=True,
+            path_column="source_path",
+        )
+
+    schema_names = ds.schema().names
+    assert "id" in schema_names
+    assert "source_path" in schema_names
+    assert "animals" not in schema_names
+    assert "path" not in schema_names
+
+    rows = ds.take_all()
+    for row in rows:
+        assert row["id"] in [1, 2]
+        assert row["source_path"] == path
+        assert "animals" not in row
+        assert "path" not in row
+
+
+def test_include_paths_with_explicit_none_path_column(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=True, path_column=None)
+
+    schema_names = ds.schema().names
+    assert "path" in schema_names, f"'path' column not found in schema: {schema_names}"
+
+    rows = ds.take_all()
+    for row in rows:
+        assert row["path"] == path
+
+
+def test_path_column_ignored_without_include_paths(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=False, path_column="source_path")
+
+    schema_names = ds.schema().names
+    assert "animals" in schema_names
+    assert "path" not in schema_names
+    assert "source_path" not in schema_names
+
+    rows = ds.take_all()
+    for row in rows:
+        assert "path" not in row
+        assert "source_path" not in row
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [

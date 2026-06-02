@@ -1141,6 +1141,7 @@ def read_parquet(
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     include_row_hash: bool = False,
+    path_column: Optional[str] = None,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1259,11 +1260,21 @@ def read_parquet(
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
-            stored in the ``'path'`` column. To downselect to fewer columns,
-            use :meth:`~ray.data.Dataset.select_columns` on the returned
-            dataset and include ``'path'`` explicitly in the list to retain
-            it.
+            stored in the ``'path'`` column (or the column specified by
+            ``path_column``). To downselect to fewer columns, use
+            :meth:`~ray.data.Dataset.select_columns` on the returned dataset and
+            include the path column name explicitly in the list to retain it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
+            The hash is a uint64 computed from the source file path and the row's
+            output position, making it reproducible across repeated reads of the
+            same data with the same pipeline configuration. Stored in the
+            ``'row_hash'`` column. If a column named ``'row_hash'`` already
+            exists in the file, it will be overwritten. To downselect to fewer
+            columns, use :meth:`~ray.data.Dataset.select_columns` on the
+            returned dataset and include ``'row_hash'`` explicitly in the list
+            to retain it.
+        path_column: The name of the column to store file paths when
+            ``include_paths`` is True. Defaults to ``'path'``.
             The hash is a uint64 computed from the source file path and the row's
             output position, making it reproducible across repeated reads of the
             same data with the same pipeline configuration. Stored in the
@@ -1360,9 +1371,10 @@ def read_parquet(
             # ``select_columns([...])`` is literal, so preserve V1's
             # behavior by appending those columns when applying the
             # projection on the caller's behalf.
+            v2_path_column = path_column if path_column is not None else "path"
             select_columns_after_read = list(columns)
-            if include_paths and "path" not in select_columns_after_read:
-                select_columns_after_read.append("path")
+            if include_paths and v2_path_column not in select_columns_after_read:
+                select_columns_after_read.append(v2_path_column)
             if include_row_hash and "row_hash" not in select_columns_after_read:
                 select_columns_after_read.append("row_hash")
             warnings.warn(
@@ -1388,6 +1400,7 @@ def read_parquet(
             file_extensions=file_extensions,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
+            path_column=path_column,
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
@@ -1421,6 +1434,7 @@ def read_parquet(
         shuffle=shuffle,
         include_paths=include_paths,
         include_row_hash=include_row_hash,
+        path_column=path_column,
         file_extensions=file_extensions,
     )
     return read_datasource(
