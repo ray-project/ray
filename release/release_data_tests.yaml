@@ -500,6 +500,63 @@
           --data-loader s3_read_images --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
+# See release/nightly_tests/dataset/training_ingest_regression_test/main.py
+# for the variation matrix and what each one measures.
+- name: training_ingest_regression_test
+  python: "3.10"
+  group: data-iter-batches
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
+        # Preserve DEFAULTS' runtime_env (setting runtime_env here replaces,
+        # doesn't merge).
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+    cluster_compute: training_ingest_regression_test/compute.yaml
+
+  variations:
+    - __suffix__: peak_object_store_memory
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --num-runs=3
+
+    - __suffix__: peak_object_store_memory.pin_memory
+      frequency: manual
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --pin-memory --num-runs=3
+
+    - __suffix__: throughput
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --num-runs=3
+
+    - __suffix__: throughput.pin_memory
+      frequency: manual
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --pin-memory --num-runs=3
+
 #################
 # Iteration tests
 #################
