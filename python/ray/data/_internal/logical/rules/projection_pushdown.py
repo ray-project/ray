@@ -33,10 +33,12 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
 
     Example: For expression "col1 + col2", returns {"col1", "col2"}
     """
-    # If any expression is star(), we need all columns
+    # ``StarExpr`` is eagerly expanded to explicit ``col()`` refs in
+    # ``Project.__post_init__`` when the input schema is known. So this
+    # branch is hit only on the UDF-fallback path (Project on top of an
+    # opaque-schema input like ``MapBatches``), where we can't enumerate
+    # columns and have to fall back to "all columns" (``None``).
     if any(isinstance(expr, StarExpr) for expr in exprs):
-        # TODO (goutam): Instead of using None to refer to All columns, resolve the AST against the schema.
-        # https://github.com/ray-project/ray/issues/57720
         return None
 
     collector = _ColumnReferenceCollector()
@@ -217,7 +219,9 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
     if not downstream_project.has_star_expr():
         # Projection case: this is when downstream is a *selection* (ie, not including
-        # the upstream columns with ``StarExpr``)
+        # the upstream columns with ``StarExpr``). With eager expansion of
+        # ``StarExpr`` in ``Project.__post_init__`` this is the common case
+        # for typed chains (no ``StarExpr`` reaches the optimizer).
         #
         # Example:
         #   Upstream: Project([col("a").alias("b")])
@@ -227,7 +231,10 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         new_exprs = rebound_downstream_exprs
     else:
         # Composition case: downstream has ``StarExpr`` (entailing that downstream
-        # output will be including all of the upstream output columns)
+        # output will be including all of the upstream output columns). This
+        # is the UDF-fallback path; for typed chains
+        # ``Project.__post_init__`` would have replaced the ``StarExpr``
+        # with explicit ``col()`` refs already.
         #
         # Example 1:
         #   Upstream: [star(), col("a").alias("b")],
@@ -334,8 +341,15 @@ class ProjectionPushdown(Rule):
             # in a single column namespace (the scanner's on-disk names)
             # and avoids the predicate-pushdown rebinding dance.
             if current_project.has_star_expr():
+                # UDF-fallback path: if ``StarExpr`` survives to this rule
+                # the input schema was unknown at construction time, so
+                # we can't enumerate columns and have to push "all".
                 required_columns = None
             else:
+                # Otherwise, collect required columns to push projection down
+                # into the reader. (``Project.__post_init__`` expands
+                # ``StarExpr`` to explicit ``col()`` refs when the input
+                # schema is known, so this is the common path.)
                 required_columns = _collect_referenced_columns(current_project.exprs)
 
             # Build a pure-prune projection map (identity, no renames).
