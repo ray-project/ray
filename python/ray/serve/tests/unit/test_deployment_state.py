@@ -7,6 +7,10 @@ import pytest
 
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
+from ray.serve._private import (
+    deployment_state as deployment_state_module,
+    replica as replica_module,
+)
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -36,8 +40,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
-from ray.serve._private import deployment_state as deployment_state_module
-from ray.serve._private import replica as replica_module
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
@@ -58,6 +60,10 @@ from ray.serve._private.deployment_state import (
 )
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
+from ray.serve._private.replica import (
+    _get_replica_metric_default_tag_keys,
+    _get_replica_metric_default_tags,
+)
 from ray.serve._private.test_utils import (
     MockDeploymentActorWrapper,
     MockPlacementGroup,
@@ -68,10 +74,6 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
-)
-from ray.serve._private.replica import (
-    _get_replica_metric_default_tag_keys,
-    _get_replica_metric_default_tags,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
