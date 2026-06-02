@@ -72,6 +72,10 @@ class RoundRobinPartitioner(FilePartitioner):
     def has_partition(self) -> bool:
         return self._partitioner.has_partition()
 
+    @property
+    def num_buckets(self) -> int:
+        return self._partitioner.num_buckets
+
     def next_partition(self) -> FileManifest:
         partition = self._partitioner.next_partition()
         paths, file_sizes, file_chunk_metadatas = zip(*partition)

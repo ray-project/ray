@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, Iterator, List, Optional, Protocol
 
@@ -39,6 +40,29 @@ MetadataPredicate = Callable[[pa.Table], bool]
 class _FileSizeProvider(Protocol):
     def get_file_sizes(self, uris: List[str]) -> List[Optional[int]]:
         ...
+
+
+class _CloseableResource:
+    """Shared lifecycle for resources that hold OS handles (threads, loops).
+
+    Subclasses implement an idempotent ``close()``. This mixin wires up the
+    context-manager protocol and a best-effort ``__del__`` fallback so callers
+    can release resources deterministically instead of relying on ``__del__``,
+    whose timing is non-deterministic in CPython.
+    """
+
+    def close(self) -> None:
+        raise NotImplementedError
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()
+
+    def __del__(self):
+        # Best-effort fallback; prefer an explicit close()/context manager.
+        self.close()
 
 
 def _ensure_arrow_table(block: pa.Table) -> pa.Table:
@@ -225,7 +249,7 @@ class _ExactDownloadPartitioner:
         return normalized
 
 
-class _PyArrowFileSizeProvider:
+class _PyArrowFileSizeProvider(_CloseableResource):
     """Fetches exact file sizes through PyArrow filesystem metadata."""
 
     def __init__(
@@ -235,6 +259,12 @@ class _PyArrowFileSizeProvider:
     ):
         self._data_context = data_context
         self._filesystem = filesystem
+        self._executor = ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS)
+
+    def close(self) -> None:
+        """Shut down the thread pool. Idempotent and safe to call repeatedly."""
+        # ThreadPoolExecutor.shutdown() is itself idempotent.
+        self._executor.shutdown(wait=False)
 
     def get_file_sizes(self, uris: List[str]) -> List[Optional[int]]:
         def get_file_size(uri_path, fs):
@@ -266,20 +296,19 @@ class _PyArrowFileSizeProvider:
             return [0] * len(uris)
 
         file_sizes: List[Optional[int]] = [None] * len(paths)
-        with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
-            future_to_file_index = {
-                executor.submit(get_file_size, uri_path, fs): file_index
-                for file_index, uri_path in enumerate(paths)
-            }
+        future_to_file_index = {
+            self._executor.submit(get_file_size, uri_path, fs): file_index
+            for file_index, uri_path in enumerate(paths)
+        }
 
-            for future in as_completed(future_to_file_index):
-                file_index = future_to_file_index[future]
-                try:
-                    size = future.result()
-                    file_sizes[file_index] = size if size is not None else 0
-                except Exception as e:
-                    logger.warning(f"Error fetching file size for download: {e}")
-                    file_sizes[file_index] = 0
+        for future in as_completed(future_to_file_index):
+            file_index = future_to_file_index[future]
+            try:
+                size = future.result()
+                file_sizes[file_index] = size if size is not None else 0
+            except Exception as e:
+                logger.warning(f"Error fetching file size for download: {e}")
+                file_sizes[file_index] = 0
 
         assert all(
             size is not None for size in file_sizes
@@ -287,7 +316,7 @@ class _PyArrowFileSizeProvider:
         return [size for size in file_sizes if size is not None]
 
 
-class _ObstoreFileSizeProvider:
+class _ObstoreFileSizeProvider(_CloseableResource):
     """Fetches exact file sizes through obstore, falling back to PyArrow."""
 
     def __init__(
@@ -297,6 +326,39 @@ class _ObstoreFileSizeProvider:
     ):
         self._registry = registry
         self._fallback_provider = fallback_provider
+        self._loop = asyncio.new_event_loop()
+        self._sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
+        self._loop_thread = threading.Thread(
+            target=self._run_loop,
+            name="ray-data-obstore-file-size-provider",
+            daemon=True,
+        )
+        self._loop_thread.start()
+
+    def close(self) -> None:
+        """Stop the event loop, join its thread, and close the fallback.
+
+        Idempotent and safe to call repeatedly.
+        """
+        try:
+            self._fallback_provider.close()
+        finally:
+            if self._loop.is_closed():
+                return
+
+            if self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                if (
+                    self._loop_thread.is_alive()
+                    and self._loop_thread is not threading.current_thread()
+                ):
+                    self._loop_thread.join(timeout=1)
+            else:
+                self._loop.close()
+
+    def _run_loop(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
 
     def get_file_sizes(self, uris: List[str]) -> List[Optional[int]]:
         """Fetch sizes for URIs using obstore's async HEAD API.
@@ -312,13 +374,11 @@ class _ObstoreFileSizeProvider:
         if not _is_obstore_supported_url(uris[0]):
             return self._fallback_provider.get_file_sizes(uris)
 
-        sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
-
         async def _head_one(uri: str) -> int:
             try:
                 store_url, path = _split_obstore_uri(uri)
                 store = self._registry.get(store_url)
-                async with sem:
+                async with self._sem:
                     meta = await obs.head_async(store, path)
                 return meta["size"] if isinstance(meta, dict) else meta.size
             except Exception:
@@ -335,7 +395,8 @@ class _ObstoreFileSizeProvider:
                 )
             return sizes
 
-        return asyncio.run(_head_uris())
+        future = asyncio.run_coroutine_threadsafe(_head_uris(), self._loop)
+        return future.result()
 
 
 class PartitionActor:
@@ -360,6 +421,10 @@ class PartitionActor:
         block = _ensure_arrow_table(block)
         _validate_uri_columns(block, self._uri_column_names)
         yield from self._partitioner.partition(block)
+
+    def close(self) -> None:
+        """Release the size provider's resources (thread pool)."""
+        self._size_provider.close()
 
 
 class AsyncPartitionActor:
@@ -403,6 +468,10 @@ class AsyncPartitionActor:
         block = _ensure_arrow_table(block)
         _validate_uri_columns(block, self._uri_column_names)
         yield from self._partitioner.partition(block)
+
+    def close(self) -> None:
+        """Release the size provider's resources (event loop + thread pool)."""
+        self._size_provider.close()
 
     def _annotate_file_size_columns(
         self,

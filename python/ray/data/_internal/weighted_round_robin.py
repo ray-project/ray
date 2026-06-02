@@ -49,7 +49,7 @@ class WeightedRoundRobinPartitioner(Generic[T]):
         self._current_bucket_index = 0
         self._output_queue: collections.deque[List[T]] = collections.deque()
 
-    def add_item(self, item: T, weight: Optional[int]):
+    def add_item(self, item: T, weight: Optional[int]) -> None:
         current_bucket = self._current_bucket
 
         # If a weight estimate isn't available, add the item to the current
@@ -86,6 +86,10 @@ class WeightedRoundRobinPartitioner(Generic[T]):
             if bucket.items:
                 self._output_queue.append(list(bucket.items))
                 bucket.clear()
+
+    @property
+    def num_buckets(self) -> int:
+        return self._num_buckets
 
     @property
     def _current_bucket(self) -> _WeightedBucket[T]:
