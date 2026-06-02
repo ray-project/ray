@@ -33,6 +33,7 @@
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
@@ -383,10 +384,12 @@ class WorkerPoolMock : public WorkerPool {
       bool push_workers = true,
       PopWorkerStatus *worker_status = nullptr,
       int timeout_worker_number = 0,
-      std::string *runtime_env_error_msg = nullptr) {
+      std::string *runtime_env_error_msg = nullptr,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances = nullptr) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
     this->PopWorker(lease_spec,
+                    allocated_instances,
                     [&popped_worker, worker_status, &promise, runtime_env_error_msg](
                         const std::shared_ptr<WorkerInterface> worker,
                         PopWorkerStatus status,
@@ -2529,6 +2532,78 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
       worker_pool_->PopWorkerSync(lease_spec1);
   ASSERT_NE(popped_worker1, nullptr);
   ASSERT_NE(popped_worker1, popped_worker);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerFitForLeaseResourceRequirementsMismatch) {
+  std::unordered_map<std::string, double> resources1{{"CPU", 1.0}};
+  const LeaseSpecification lease_spec1 = ExampleLeaseSpec(ActorID::Nil(),
+                                                          Language::PYTHON,
+                                                          JOB_ID,
+                                                          {},
+                                                          LeaseID::Nil(),
+                                                          rpc::RuntimeEnvInfo(),
+                                                          resources1);
+
+  std::shared_ptr<WorkerInterface> worker1 = worker_pool_->PopWorkerSync(lease_spec1);
+  ASSERT_NE(worker1, nullptr);
+  ASSERT_EQ(worker1->GetResourceRequirements(), ResourceSet(resources1));
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  worker_pool_->PushWorker(worker1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  std::unordered_map<std::string, double> resources2{{"CPU", 2.0}};
+  const LeaseSpecification lease_spec2 = ExampleLeaseSpec(ActorID::Nil(),
+                                                          Language::PYTHON,
+                                                          JOB_ID,
+                                                          {},
+                                                          LeaseID::Nil(),
+                                                          rpc::RuntimeEnvInfo(),
+                                                          resources2);
+
+  std::shared_ptr<WorkerInterface> worker2 = worker_pool_->PopWorkerSync(lease_spec2);
+  ASSERT_NE(worker2, nullptr);
+  ASSERT_NE(worker1, worker2);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerFitForLeaseAllocatedInstancesMismatch) {
+  const LeaseSpecification lease_spec = ExampleLeaseSpec();
+
+  auto gpu_id = ResourceID::GPU();
+
+  auto instances1 = std::make_shared<TaskResourceInstances>(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>{{gpu_id, {1.0, 0.0}}});
+
+  std::shared_ptr<WorkerInterface> worker1 =
+      worker_pool_->PopWorkerSync(lease_spec,
+                                  /*push_workers=*/true,
+                                  /*worker_status=*/nullptr,
+                                  /*timeout_worker_number=*/0,
+                                  /*runtime_env_error_msg=*/nullptr,
+                                  instances1);
+  ASSERT_NE(worker1, nullptr);
+  ASSERT_EQ(worker1->GetStartupAllocatedInstances(), instances1);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  worker_pool_->PushWorker(worker1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  auto instances2 = std::make_shared<TaskResourceInstances>(
+      absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>{{gpu_id, {0.0, 1.0}}});
+
+  std::shared_ptr<WorkerInterface> worker2 =
+      worker_pool_->PopWorkerSync(lease_spec,
+                                  /*push_workers=*/true,
+                                  /*worker_status=*/nullptr,
+                                  /*timeout_worker_number=*/0,
+                                  /*runtime_env_error_msg=*/nullptr,
+                                  instances2);
+  ASSERT_NE(worker2, nullptr);
+  ASSERT_NE(worker1, worker2);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 }
