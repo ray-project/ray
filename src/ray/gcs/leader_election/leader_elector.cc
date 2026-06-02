@@ -50,19 +50,7 @@ void LeaderElector::Stop() {
   watchdog_cv_.notify_all();
   election_cv_.notify_all();
 
-  if (is_leading_.load()) {
-    is_leading_ = false;
-    try {
-      // Graceful exit: Voluntarily release the lease in Kubernetes to allow the
-      // standby node to promote itself immediately.
-      config_.lease_client->Release(config_.holder_id);
-    } catch (const std::exception &e) {
-      RAY_LOG(WARNING) << "Exception occurred during voluntary lease release: "
-                       << e.what();
-    }
-  }
-
-  // Safely join background execution threads. Enforce self-join checks to prevent
+  // Safely join background execution threads first. Enforce self-join checks to prevent
   // deadlocks if Stop() is called from within callback loops.
   if (election_thread_ && election_thread_->joinable()) {
     if (std::this_thread::get_id() != election_thread_->get_id()) {
@@ -76,6 +64,18 @@ void LeaderElector::Stop() {
       watchdog_thread_->join();
     } else {
       watchdog_thread_->detach();
+    }
+  }
+
+  if (is_leading_.load()) {
+    is_leading_ = false;
+    try {
+      // Graceful exit: Voluntarily release the lease in Kubernetes to allow the
+      // standby node to promote itself immediately.
+      config_.lease_client->Release(config_.holder_id);
+    } catch (const std::exception &e) {
+      RAY_LOG(WARNING) << "Exception occurred during voluntary lease release: "
+                       << e.what();
     }
   }
 }
@@ -207,22 +207,27 @@ void LeaderElector::WatchdogLoop() {
     }
 
     // 2. Calculate monotonic elapsed time since the last successful lease renewal.
+    // Load the last successful renewal steady timestamp first.
+    int64_t last_renew_ns = last_successful_renew_steady_ns_.load();
+
+    // Capture current steady clock next. This order guarantees that last_renew_ns
+    // is always <= now_steady_ns, preventing negative elapsed time calculations.
     auto now_steady = std::chrono::steady_clock::now().time_since_epoch();
     int64_t now_steady_ns =
         std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady).count();
-    int64_t last_renew_ns = last_successful_renew_steady_ns_.load();
 
     int64_t elapsed_ms = (now_steady_ns - last_renew_ns) / 1000000;
     int64_t remaining_ms = (config_.renew_deadline_seconds * 1000) - elapsed_ms;
 
     // 3. If the elapsed time has breached the renew deadline, step GCS down immediately!
-    // GCS must suicide (RAY_LOG(FATAL)) to ensure zero zombie writes reach the database.
     if (remaining_ms <= 0) {
       RAY_LOG(ERROR) << "WATCHDOG: GCS leader lease renewal deadline exceeded ("
                      << elapsed_ms / 1000.0 << "s > " << config_.renew_deadline_seconds
                      << "s). Stepping down immediately!";
       is_leading_ = false;
       if (config_.on_stopped_leading) {
+        // Note: In GCS, this callback is bound to immediately suicide-terminate the
+        // GCS process (RAY_LOG(FATAL)) to prevent split-brain zombie writes to Redis.
         config_.on_stopped_leading();
       }
       continue;
