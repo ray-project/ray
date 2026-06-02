@@ -1559,6 +1559,7 @@ googleapis-common-protos==1.74.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-api-core
+    #   opentelemetry-exporter-otlp-proto-http
 gpytorch==1.15.2 \
     --hash=sha256:2112fdc7c0c0bf56a7f2444663cfc80fdfc3e19724399d6303a83d8efdd71e9e \
     --hash=sha256:380625e93f851b85f772b25c5fb0a6c6d2e3eb2ef667f1e566ab4f95b8775361
@@ -3638,9 +3639,21 @@ opentelemetry-api==1.39.0 \
     --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+    #   torchft-nightly
+opentelemetry-exporter-otlp-proto-common==1.39.0 \
+    --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
+    --hash=sha256:a135fceed1a6d767f75be65bd2845da344dd8b9258eeed6bc48509d02b184409
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-http==1.39.0 \
+    --hash=sha256:28d78fc0eb82d5a71ae552263d5012fa3ebad18dfd189bf8d8095ba0e65ee1ed \
+    --hash=sha256:5789cb1375a8b82653328c0ce13a054d285f774099faf9d068032a49de4c7862
+    # via torchft-nightly
 opentelemetry-exporter-prometheus==0.60b0 \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
@@ -3652,14 +3665,18 @@ opentelemetry-proto==1.39.0 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-http
     #   ray
 opentelemetry-sdk==1.39.0 \
     --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
     --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
     #   ray
+    #   torchft-nightly
 opentelemetry-semantic-conventions==0.60b0 \
     --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
     --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
@@ -5192,6 +5209,7 @@ requests==2.33.1 \
     #   google-api-core
     #   huggingface-hub
     #   jupyterlab-server
+    #   opentelemetry-exporter-otlp-proto-http
     #   ray
     #   tensorflow
     #   tensorflow-datasets
@@ -6227,12 +6245,12 @@ torch-spline-conv==1.2.2+pt29cpu \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-torchft-nightly==2025.7.27 \
-    --hash=sha256:0b832693535be27570bebddfe3b231d93b5ae5f786a2d72f255fd51f6c597632 \
-    --hash=sha256:32e43d3879358866573cad6f72b3fe663fa8b9bad14ef49f517e130fab3e3d87 \
-    --hash=sha256:78a4ca2ffdbd1a45c60fcd3f81a8f32e7fdb3522ef4818c900ad904b7de03e57 \
-    --hash=sha256:90d9d4edec05a12c7a41ee66b118b9ef36cba8d796e382c41dd380292cfec6f3 \
-    --hash=sha256:bbba78f896d91f5a07fc25a7943700152b7cd4f44fd04ccf64a4196f01ee9032
+torchft-nightly==2026.5.15 \
+    --hash=sha256:1925998386082eaac2afdf5d755310705bff4196ffca4a939f0152410681e99c \
+    --hash=sha256:4610eb739ec043684a199709e15f94926162aecf9c2cbfc513c4728e41d12778 \
+    --hash=sha256:582df58a50799f81cf68f8f62e1714cc8c69c31778f59209ec9abb6f142fbfdf \
+    --hash=sha256:7e5cef10d5ff6f6347d056eb172f8f3448a984d12e5950f1ce13e22f12303cb6 \
+    --hash=sha256:8e461fe3fd08393795a2a18a65dcd407462aed783d8d824d2c11b4860b04f351
     # via -r python/requirements/ml/py313/torchft.txt
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
@@ -6374,6 +6392,7 @@ typing-extensions==4.15.0 \
     #   multidict
     #   nevergrad
     #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   optree

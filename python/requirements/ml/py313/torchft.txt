@@ -1,1 +1,1 @@
-torchft-nightly==2025.7.27
+torchft-nightly==2026.5.15
