@@ -292,10 +292,11 @@ defaults
     option abortonclose
     option splice-request
     option splice-response
-    # Failover to a peer slot on every retry (`1`), only when no partial
-    # body has been sent: connect failure or a backend 503.
+    # On a retry, use a different slot (`1`). Retry only connect failures
+    # (nothing was sent → safe to replay); not backend 503s (deliberate
+    # backpressure) or empty-response (already reached the replica).
     option redispatch 1
-    retry-on conn-failure 503
+    retry-on conn-failure
     # Set TCP_NODELAY on all connections
     option http-no-delay
     option idle-close-on-response
@@ -703,7 +704,7 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
                 return f.read()
 
     unset = render({})
-    # Defaults block always emits its own `retry-on conn-failure 503`; this
+    # Defaults block always emits its own `retry-on conn-failure`; this
     # test asserts the per-ingress-backend retry knobs only render when set.
     assert unset.count("\n    retry-on ") == 1
     assert "\n    retries " not in unset
