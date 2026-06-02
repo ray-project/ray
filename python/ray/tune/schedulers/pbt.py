@@ -655,11 +655,16 @@ class PopulationBasedTraining(FIFOScheduler):
         self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
     ):
         """Saves necessary trial information when result is received.
+
         Args:
             state: The state object for the trial.
             time: The current timestep of the trial.
             result: The trial's result dictionary.
             trial: The trial object.
+
+        Returns:
+            The mode-adjusted score (``self._metric_op * result[self._metric]``)
+            recorded onto ``state.last_score``.
         """
 
         # This trial has reached its perturbation interval.

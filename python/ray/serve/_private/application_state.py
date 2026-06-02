@@ -427,6 +427,16 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
+        if (
+            ingress_request_router_deployment_name is not None
+            and ingress_request_router_deployment_name
+            != self._ingress_request_router_deployment_name
+        ):
+            logger.info(
+                f"Application '{self._name}' has ingress request router "
+                f"deployment '{ingress_request_router_deployment_name}' configured."
+            )
+
         self._ingress_deployment_name = ingress_deployment_name
         self._ingress_request_router_deployment_name = (
             ingress_request_router_deployment_name

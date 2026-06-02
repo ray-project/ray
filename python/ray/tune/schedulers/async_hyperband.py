@@ -220,6 +220,16 @@ class _Bracket:
         s: int,
         stop_last_trials: bool = True,
     ):
+        """Initialize a bracket of the asynchronous successive halving algorithm.
+
+        Args:
+            min_t: Minimum number of iterations before a trial can be stopped.
+            max_t: Maximum number of iterations per trial.
+            reduction_factor: Halving rate used to derive rung spacing.
+            s: Bracket index, used to offset the first rung.
+            stop_last_trials: If True, allow trials that survive the final rung
+                to still be stopped by the bracket.
+        """
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
         self._rungs = [
