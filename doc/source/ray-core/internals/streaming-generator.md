@@ -1,9 +1,9 @@
 (streaming-generator)=
 
-# Streaming Generator Internals
+# Streaming Generator
 
 This document explains how streaming generator tasks work in Ray 2.55 and outlines the main implementation differences from normal Ray tasks.
-For the normal task lifecycle, see {ref}`task-lifecycle`.
+Please make sure you read the doc for the normal task lifecycle first. See {ref}`task-lifecycle`.
 
 ## Overview
 
@@ -133,7 +133,7 @@ Note that Ray streaming generators are output-only streams.
 Callers can only iterate over the returned `ObjectRefGenerator` to receive yielded refs.
 Callers can't send values back into the remote generator, which is allowed for normal Python generators, because the remote executor owns the Python generator's `send` or `asend` channel.
 It passes `None` for the first `stats` value, and then passes a [StreamingGeneratorStats](https://github.com/ray-project/ray/blob/ray-2.55.0/python/ray/_raylet.pyx#L1166-L1168) object after each yielded value is reported.
-The stats object records executor-side metadata for the previous yielded value, such as object creation and storage time.
+The stats object records executor-side metadata for the previous yielded value, such as object creation time.
 
 ## Reporting Yielded Values
 
@@ -163,6 +163,10 @@ gen = task.remote()
   |  Create ObjectRefGenerator
   |  and ObjectRefStream(generator_ref)
   |
+  |------------------------- PushTask ---------------------->|
+  |                 task_spec.streaming_generator = true
+  |                 task_spec.num_returns = 1
+  |
   |                                                Run generator task
   |                                                output = 1st yield
   |                                                        |
@@ -191,11 +195,38 @@ gen = task.remote()
   |                 total_num_object_consumed = 1
   |                 (also releases backpressure if the
   |                 caller delayed the reply)
+  |
+  |                         ...
+  |
+  |<---------------- ReportGeneratorItemReturns -----------|
+  |                 returned_object.object_id = ObjectID(T, 3)
+  |                 item_index = 1
+  |                 generator_id = ObjectID(T, 1)
+  |                 attempt_number = 0
+  |
+  |  Insert ObjectRef(T, 3)
+  |  into ObjectRefStream at yield index 1
+  |
+  |  next(gen) returns ObjectRef(T, 3)
+  |
+  |---------------- ReportGeneratorItemReturnsReply ------>|
+  |                 total_num_object_consumed = 2
+  |
+  |                         ...
+  |
+  |<----------------------- PushTaskReply -------------------|
+  |                 return_objects[0] = generator_ref
+  |                 streaming_generator_return_ids = [...]
 ```
 
 The executor repeats this protocol for every yielded value.
-The [final PushTask reply](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_execution/task_receiver.cc#L54-L60) only completes the generator task.
-It contains streamed return ObjectIDs, not all streamed values.
+The final `PushTask` reply marks the generator task as complete.
+The caller handles this reply in [`TaskManager::CompletePendingTask`](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L908-L1085).
+The reply contains [`streaming_generator_return_ids`](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/protobuf/core_worker.proto#L172-L174), which are streamed return ObjectIDs and whether each return is stored in plasma.
+It doesn't contain the yielded values themselves because those values were already reported through `ReportGeneratorItemReturns`.
+The caller uses the number of entries in `streaming_generator_return_ids` to write the end-of-stream marker.
+For example, if the generator yielded three values, the marker is written at yield index `3`.
+This marker tells `ObjectRefGenerator` that the next index will never be reported, so iteration should stop instead of waiting forever.
 
 The [ReportGeneratorItemReturnsRequest](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/protobuf/core_worker.proto#L434-L450) RPC ordering isn't guaranteed.
 The executor sends report RPCs asynchronously.
