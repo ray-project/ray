@@ -214,8 +214,8 @@ class BudgetScheduler:
         self,
         op: Operator,
         input_bytes: int,
+        input_task_ids: List[int],
         num_cpus: float = 1.0,
-        input_task_ids: Optional[List[int]] = None,
     ) -> int:
         """Record that a task has been dispatched for the given operator.
 
@@ -227,9 +227,9 @@ class BudgetScheduler:
         Args:
             op: The operator the task belongs to.
             input_bytes: Actual bytes of the input being consumed.
-            num_cpus: CPUs allocated to this task.
             input_task_ids: Task IDs that produced the input being consumed.
                 Their consumed_bytes will be updated.
+            num_cpus: CPUs allocated to this task.
 
         Returns:
             A unique task_id for tracking this task.

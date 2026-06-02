@@ -58,6 +58,7 @@ from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    import ray
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
     from ray.data.block import Schema
 
@@ -111,6 +112,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._budget_scheduler: Optional[BudgetScheduler] = None
         # Maps (op, task_index) to budget scheduler task ID.
         self._budget_task_ids: Dict[Tuple[PhysicalOperator, int], int] = {}
+        # Maps ObjectRef to budget scheduler task ID of the producing task.
+        self._budget_ref_to_task_id: Dict["ray.ObjectRef", int] = {}
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
@@ -206,8 +209,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager
         )
-        if self._data_context.use_budget_scheduler:
-            self._budget_scheduler = self._create_budget_scheduler()
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
@@ -219,6 +220,8 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager,
             config=self._data_context.autoscaling_config,
         )
+        if self._data_context.use_budget_scheduler:
+            self._budget_scheduler = self._create_budget_scheduler()
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
@@ -438,6 +441,13 @@ class StreamingExecutor(Executor, threading.Thread):
             True if we should continue running the scheduling loop.
         """
         self._resource_manager.update_usages()
+        # Update the budget scheduler's max_bytes from current resource limits,
+        # since limits may not be populated at init time.
+        if self._budget_scheduler is not None:
+            limits = self._resource_manager.get_global_limits()
+            max_bytes = int(limits.object_store_memory or 0)
+            if max_bytes > 0:
+                self._budget_scheduler.max_bytes = max_bytes
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
@@ -486,6 +496,14 @@ class StreamingExecutor(Executor, threading.Thread):
                 state = topology[op]
                 bundle = state.input_queues[0].peek()
                 input_bytes = bundle.size_bytes() if bundle is not None else 0
+                # Find the budget task IDs of the upstream tasks that produced
+                # this bundle, so consumed_bytes can be freed from the budget.
+                input_task_ids = []
+                if bundle is not None:
+                    for block_ref, _ in bundle.blocks:
+                        tid = self._budget_ref_to_task_id.pop(block_ref, None)
+                        if tid is not None:
+                            input_task_ids.append(tid)
                 # Snapshot active task indices before dispatch.
                 pre_task_indices = {t.task_index() for t in op.get_active_tasks()}
 
@@ -496,7 +514,11 @@ class StreamingExecutor(Executor, threading.Thread):
                 post_task_indices = {t.task_index() for t in op.get_active_tasks()}
                 new_indices = post_task_indices - pre_task_indices
                 assert len(new_indices) == 1
-                budget_id = self._budget_scheduler.dispatch_task(op, input_bytes)
+                budget_id = self._budget_scheduler.dispatch_task(
+                    op,
+                    input_bytes,
+                    input_task_ids=input_task_ids,
+                )
                 for task_index in new_indices:
                     self._budget_task_ids[(op, task_index)] = budget_id
 
@@ -551,12 +573,18 @@ class StreamingExecutor(Executor, threading.Thread):
             self._progress_manager.refresh()
 
     def _on_budget_task_output(
-        self, op: PhysicalOperator, task_index: int, output_bytes: int
+        self,
+        op: PhysicalOperator,
+        task_index: int,
+        output_bytes: int,
+        output_refs: list,
     ) -> None:
         """Notify the budget scheduler that a task produced output."""
         budget_id = self._budget_task_ids.get((op, task_index))
         assert budget_id is not None
         self._budget_scheduler.on_task_output(budget_id, output_bytes)
+        for ref in output_refs:
+            self._budget_ref_to_task_id[ref] = budget_id
 
     def _on_budget_task_finished(self, op: PhysicalOperator, task_index: int) -> None:
         """Notify the budget scheduler that a task finished."""

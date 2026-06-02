@@ -299,7 +299,7 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
-        assert len(self.input_queues <= 1)
+        assert len(self.input_queues) <= 1
         for i, inqueue in enumerate(self.input_queues):
             ref = inqueue.pop()
             if ref is not None:
@@ -406,7 +406,7 @@ def process_completed_tasks(
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
     task_output_callback: Optional[
-        "Callable[[PhysicalOperator, int, int], None]"
+        "Callable[[PhysicalOperator, int, int, List], None]"
     ] = None,
     task_finished_callback: Optional["Callable[[PhysicalOperator, int], None]"] = None,
 ) -> int:
@@ -419,7 +419,7 @@ def process_completed_tasks(
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
         task_output_callback: Optional callback invoked when a task produces
-            output. Called with (operator, task_index, output_bytes).
+            output. Called with (operator, task_index, output_bytes, output_refs).
         task_finished_callback: Optional callback invoked when a task finishes.
             Called with (operator, task_index).
     Returns:
@@ -490,9 +490,12 @@ def process_completed_tasks(
                         )
                         if bytes_read > 0 and task_output_callback is not None:
                             task_output_callback(
-                                state.op, task.task_index(), bytes_read
+                                state.op,
+                                task.task_index(),
+                                bytes_read,
+                                task._last_output_refs,
                             )
-                        if task.has_finished() and task_finished_callback is not None:
+                        if task.has_finished and task_finished_callback is not None:
                             task_finished_callback(state.op, task.task_index())
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0

@@ -167,6 +167,9 @@ class DataOpTask(OpTask):
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
 
+        # ObjectRefs produced during the last on_data_ready call.
+        self._last_output_refs: List[ray.ObjectRef] = []
+
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
@@ -179,6 +182,7 @@ class DataOpTask(OpTask):
         Returns: The number of blocks read.
         """
         bytes_read = 0
+        self._last_output_refs = []
 
         self._track_task_output_backpressure(max_bytes_to_read)
 
@@ -269,6 +273,7 @@ class DataOpTask(OpTask):
                 break
 
             meta = meta_with_schema.metadata
+            self._last_output_refs.append(self._pending_block_ref)
             self._output_ready_callback(
                 RefBundle(
                     [(self._pending_block_ref, meta)],
