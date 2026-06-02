@@ -1815,7 +1815,10 @@ class ProxyActor(ProxyActorInterface):
         the same deployment handles), so this reflects the queued count
         regardless of which protocol the request arrived on.
         """
-        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        matched_route = self.http_proxy.proxy_router.match_route(route)
+        if matched_route is None:
+            raise ValueError(f"Route '{route}' not found in proxy router.")
+        _, handle, _ = matched_route
         return handle._router._asyncio_router._metrics_manager.num_queued_requests
 
     async def ready(self) -> str:
