@@ -182,7 +182,9 @@ class PredicatePushdown(Rule):
         return visitor.visit(predicate_expr)
 
     @classmethod
-    def _combine_with_and(cls, left: Optional[Expr], right: Optional[Expr]) -> Optional[Expr]:
+    def _combine_with_and(
+        cls, left: Optional[Expr], right: Optional[Expr]
+    ) -> Optional[Expr]:
         """Combine two optional predicates with ``AND``, ignoring ``None``."""
         if left is not None and right is not None:
             return left & right
