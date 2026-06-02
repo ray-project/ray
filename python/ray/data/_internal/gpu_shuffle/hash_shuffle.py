@@ -20,6 +20,7 @@ from ray.actor import ActorHandle
 from ray.data import ExecutionOptions
 from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -229,6 +230,7 @@ class GPURankPool:
         actor_cls_factory: Callable[[], Any],
         actor_kwargs: Dict[str, Any],
         log_label: str,
+        label_selector: Optional[Dict[str, str]] = None,
     ) -> None:
         self._nranks = nranks
         self._total_nparts = total_nparts
@@ -236,6 +238,7 @@ class GPURankPool:
         self._actor_cls_factory = actor_cls_factory
         self._actor_kwargs = actor_kwargs
         self._log_label = log_label
+        self._label_selector = label_selector
         self._actors: List[ActorHandle] = []
         self._shutdown: bool = False
 
@@ -262,8 +265,14 @@ class GPURankPool:
             self._total_nparts,
         )
         actor_cls = self._actor_cls_factory()
+        actor_options: Dict[str, typing.Any] = {
+            "num_gpus": 1,
+            "scheduling_strategy": "SPREAD",
+        }
+        if self._label_selector:
+            actor_options["label_selector"] = self._label_selector
         self._actors = [
-            actor_cls.options(num_gpus=1, scheduling_strategy="SPREAD",).remote(
+            actor_cls.options(**actor_options).remote(
                 nranks=self._nranks,
                 total_nparts=self._total_nparts,
                 **self._actor_kwargs,
@@ -456,6 +465,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 "should_sort": should_sort,
             },
             log_label="GPUShufflePool",
+            label_selector=data_context.execution_options.label_selector,
         )
 
         self._next_block_idx: int = 0
@@ -504,7 +514,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._insert_tasks[task_idx] = task
             self._shuffle_metrics.on_task_submitted(
                 task_idx,
-                RefBundle([(block_ref, metadata)], schema=None, owns_blocks=False),
+                RefBundle(
+                    [BlockEntry(block_ref, metadata)],
+                    schema=None,
+                    owns_blocks=False,
+                ),
                 task_id=task.get_task_id(),
             )
 

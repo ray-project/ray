@@ -16,6 +16,7 @@ import ray
 import ray.data._internal.gpu_shuffle.hash_aggregate as hash_aggregate
 import ray.data._internal.gpu_shuffle.hash_shuffle as hash_shuffle
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -67,7 +68,10 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
 def _make_bundle(num_blocks: int = 1) -> RefBundle:
     """Return a RefBundle with *num_blocks* placeholder block refs."""
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
+    blocks = [
+        BlockEntry(ray.ObjectRef(bytes([i % 256]) * 28), meta)
+        for i in range(num_blocks)
+    ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
@@ -534,7 +538,7 @@ class TestGPUShuffleOperatorFinalization:
                 num_rows=1, size_bytes=8, exec_stats=None, input_files=None
             )
             bundle = RefBundle(
-                [(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+                [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
                 schema=None,
                 owns_blocks=False,
             )

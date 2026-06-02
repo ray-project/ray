@@ -55,6 +55,7 @@ from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
+    BlockEntry,
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.util import memory_string
@@ -2256,7 +2257,8 @@ class Dataset:
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
         stats = self._raw_stats()
-        block_refs, metadata = zip(*bundle.blocks)
+        block_refs = bundle.block_refs
+        metadata = bundle.metadata
 
         if locality_hints is None:
             block_refs_splits = np.array_split(block_refs, n)
@@ -2268,7 +2270,9 @@ class Dataset:
             ):
                 ref_bundles = [
                     RefBundle(
-                        [(b, m)], owns_blocks=owned_by_consumer, schema=bundle.schema
+                        [BlockEntry(b, m)],
+                        owns_blocks=owned_by_consumer,
+                        schema=bundle.schema,
                     )
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
@@ -2384,7 +2388,7 @@ class Dataset:
             blocks = allocation_per_actor[actor]
             metadata = [metadata_mapping[b] for b in blocks]
             bundle = RefBundle(
-                tuple(zip(blocks, metadata)),
+                tuple(BlockEntry(b, m) for b, m in zip(blocks, metadata)),
                 owns_blocks=owned_by_consumer,
                 schema=bundle.schema,
             )
@@ -2457,7 +2461,7 @@ class Dataset:
         start_time = time.perf_counter()
         bundle: RefBundle = self._execute()
         blocks, metadata = _split_at_indices(
-            bundle.blocks,
+            [(entry.ref, entry.metadata) for entry in bundle.blocks],
             indices,
             False,
         )
@@ -2469,7 +2473,7 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             ref_bundles = [
-                RefBundle([(b, m)], owns_blocks=False, schema=bundle.schema)
+                RefBundle([BlockEntry(b, m)], owns_blocks=False, schema=bundle.schema)
                 for b, m in zip(bs, ms)
             ]
             logical_plan = LogicalPlan(
@@ -6783,6 +6787,9 @@ class Dataset:
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_df = block_to_df.options(label_selector=label_selector)
         pandas_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6819,6 +6826,9 @@ class Dataset:
             A list of remote NumPy ndarrays created from this dataset.
         """
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_ndarray = block_to_ndarray.options(label_selector=label_selector)
         numpy_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6865,6 +6875,9 @@ class Dataset:
             return block_refs
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
@@ -7093,8 +7106,8 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(1)
             >>> for ref_bundle in ds.iter_internal_ref_bundles():
-            ...     for block_ref, block_md in ref_bundle.blocks:
-            ...         block = ray.get(block_ref)
+            ...     for entry in ref_bundle.blocks:
+            ...         block = ray.get(entry.ref)
 
         Returns:
             An iterator over this Dataset's ``RefBundles``.
@@ -7442,6 +7455,9 @@ class Dataset:
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            get_num_rows = get_num_rows.options(label_selector=label_selector)
         num_rows = []
         for ref_bundle in self.iter_internal_ref_bundles():
             for block_ref in ref_bundle.block_refs:

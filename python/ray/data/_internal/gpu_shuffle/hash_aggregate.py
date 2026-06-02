@@ -1531,6 +1531,7 @@ class GPUHashAggregateOperator(GPUShuffleOperator):
                 "spill_memory_limit": data_context.gpu_shuffle_spill_memory_limit,
             },
             log_label="GPUHashAggregatePool",
+            label_selector=data_context.execution_options.label_selector,
         )
 
         super().__init__(
