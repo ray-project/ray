@@ -254,6 +254,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   };
 
   if (is_canceled) {
+    // Note that cancel is now called on io_service_
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
     post_task_cleanup();

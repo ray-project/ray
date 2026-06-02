@@ -3399,9 +3399,6 @@ void CoreWorker::HandleActorCallArgWaitComplete(
   // inline. The MarkReady callback may trigger downstream work (ExecuteQueuedTasks),
   // which is also fine to run on io_service_; the actual task body posts to
   // task_execution_service_ inside the queue's ExecuteRequest path.
-  // TOCHECK(karticam): check if all methods of actor_task_execution_arg_waiter_ are
-  // called from io_service. check even if actor_task_execution_arg_waiter_ is passed
-  // somewhere by reference then too its used only from io_service.
   RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << request.tag();
   actor_task_execution_arg_waiter_->MarkReady(request.tag());
 
