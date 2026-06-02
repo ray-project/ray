@@ -227,9 +227,17 @@ class BatchIterator:
         # Step 5: Finalize the batches (e.g., move to GPU).
         batch_iter = self._finalize_batches(batch_iter)
 
-        # Step 6: Restore the original order of the batches, as the prior
-        # threadpool operations may have reordered the batches non-deterministically.
-        batch_iter = self._restore_original_batch_order(batch_iter)
+        # Step 6 (optional): Restore the original order of the batches.
+        # The format/collate threadpool can produce batches out of order;
+        # we re-sort by batch_idx here when the user has explicitly opted
+        # into order preservation. Otherwise we skip this step — the
+        # buffering it requires can stall the consumer on the slowest
+        # in-flight format/collate worker (head-of-line blocking), which
+        # measurably hurts throughput and next-batch latency. Most
+        # consumers (training with shuffle, etc.) don't depend on order
+        # within an epoch.
+        if DataContext.get_current().execution_options.preserve_order:
+            batch_iter = self._restore_original_batch_order(batch_iter)
 
         yield from batch_iter
 

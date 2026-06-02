@@ -225,6 +225,43 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
     assert all(len(batch) == 2 for batch in batches)
 
 
+@pytest.mark.parametrize("preserve_order", [True, False])
+def test_iter_batches_preserve_order_flag(
+    ray_start_regular_shared, preserve_order, restore_data_context
+):
+    """When `execution_options.preserve_order` is True, batches must come
+    out in input order even with a multi-worker format threadpool. When
+    False, ordering is not guaranteed (but the full set of batches must
+    still be produced)."""
+    from ray.data.context import DataContext
+
+    DataContext.get_current().execution_options.preserve_order = preserve_order
+
+    # Variable per-batch collate cost makes worker-completion order
+    # arbitrary so the reorder path actually does work when enabled.
+    def collate_fn(batch):
+        idx = int(batch["foo"][0])
+        time.sleep(0.05 * (idx % 4))
+        return batch
+
+    num_blocks = 16
+    ref_bundles = ref_bundle_generator(num_blocks=num_blocks, num_rows=1)
+    output_batches = list(
+        BatchIterator(
+            ref_bundles,
+            batch_size=1,
+            collate_fn=collate_fn,
+            batch_format="pandas",
+            prefetch_batches=4,
+        )
+    )
+
+    indices = [int(df["foo"].iloc[0]) for df in output_batches]
+    assert sorted(indices) == list(range(num_blocks))
+    if preserve_order:
+        assert indices == list(range(num_blocks)), indices
+
+
 def _ref_bundles_with_size(
     num_blocks: int, num_rows: int, size_bytes_per_block: int
 ) -> Iterator[RefBundle]:
