@@ -77,18 +77,18 @@ app = build_openai_app({"llm_configs": [llm_config]})
 serve.run(app, blocking=True)
 ```
 
-### C/C++ runtime dependencies incompatibility
+### vLLM NIXL EP dependency incompatibility
 
 :::{admonition} Known issue
-Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter incompatibilities with native runtime libraries (for example, `libstdc++`, `CXXABI`, `ICU`).
+Users who install Ray and vLLM directly may encounter NIXL EP incompatibility error as follows:
 
-In such cases, override just the ``libstdc++`` library from your conda environment with `LD_LIBRARY_PATH`:
-
-```shell
-mkdir -p "${CONDA_PREFIX}/lib-overrides"
-ln -sf "${CONDA_PREFIX}/lib/libstdc++.so.6" "${CONDA_PREFIX}/lib-overrides/libstdc++.so.6"
-export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib-overrides${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+```text
+ImportError: libcudart.so.12: cannot open shared object file: No such file or directory
 ```
+
+Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime
+and vLLM build in your environment.
+
 :::
 
 ## Get help
@@ -105,4 +105,3 @@ If you encounter issues not covered in this guide:
 
 - {doc}`Quickstart examples <quick-start>`
 - {doc}`Examples <examples>`
-

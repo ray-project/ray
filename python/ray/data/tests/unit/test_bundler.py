@@ -10,7 +10,7 @@ from ray.data._internal.execution.bundle_queue import (
     ExactMultipleSize,
     RebundleQueue,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data.block import BlockAccessor
 
 
@@ -37,7 +37,9 @@ def _make_ref_bundles_for_unit_test(raw_bundles: List[List[List[Any]]]) -> tuple
             block_ref = ray.ObjectRef(uuid.uuid4().hex[:28].encode())
             block_data_map[block_ref] = block
 
-            blocks.append((block_ref, BlockAccessor.for_block(block).get_metadata()))
+            blocks.append(
+                BlockEntry(block_ref, BlockAccessor.for_block(block).get_metadata())
+            )
             schema = BlockAccessor.for_block(block).schema()
 
         output_bundle = RefBundle(blocks=blocks, owns_blocks=True, schema=schema)
@@ -159,7 +161,8 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
     total_num_rows = 0
     total_size_bytes = 0
     for bundle in out_bundles:
-        for (block_ref, _), block_slice in zip(bundle.blocks, bundle.slices):
+        for entry, block_slice in zip(bundle.blocks, bundle.slices):
+            block_ref = entry.ref
             # Look up the actual block data from our map (no ray.get needed)
             data = block_data_map[block_ref]["id"]
             if block_slice is not None:
