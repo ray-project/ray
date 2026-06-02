@@ -67,9 +67,7 @@ def test_grpc_backpressure(serve_instance):
     ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == (grpc.StatusCode.OK, "hi-1")
     num_ok = sum(
-        1
-        for status_code, _ in ray.get(burst_refs)
-        if status_code == grpc.StatusCode.OK
+        1 for status_code, _ in ray.get(burst_refs) if status_code == grpc.StatusCode.OK
     )
     assert num_ok == 1
 
