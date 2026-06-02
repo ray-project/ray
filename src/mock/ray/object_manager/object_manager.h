@@ -56,7 +56,7 @@ class MockObjectManager : public ObjectManagerInterface {
               (const WorkerID &worker_id),
               (const, override));
   MOCK_METHOD(std::vector<ObjectID>,
-              GetLocalObjectsOwnedBy,
+              GetLocalObjectsOwnedByOwnersOn,
               (const NodeID &node_id),
               (const, override));
   MOCK_METHOD(void, HandleObjectAdded, (const ObjectInfo &object_info), (override));

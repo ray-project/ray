@@ -665,7 +665,8 @@ std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
       [&worker_id](const ObjectInfo &info) { return info.owner_worker_id == worker_id; });
 }
 
-std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(const NodeID &node_id) const {
+std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
+    const NodeID &node_id) const {
   return GetLocalObjectsMatchedBy(
       [&node_id](const ObjectInfo &info) { return info.owner_node_id == node_id; });
 }

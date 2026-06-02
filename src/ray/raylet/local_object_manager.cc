@@ -88,6 +88,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     };
 
     // Callback that is invoked when the owner of the object id is dead.
+    // TODO(aaronscalene) will delete pubsub and update testing in #63181
     auto owner_dead_callback = [owner_address](const std::string &object_id_binary,
                                                const Status &) {};
 
@@ -105,9 +106,9 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 }
 
 void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
-  // Primary-copy bookkeeping only runs when we actually hold the primary copy
-  // and it hasn't been freed yet. Secondary copies fall through to the enqueue
-  // below.
+  // This is called for both primary and secondary copies. For secondary copies, they
+  // should just be queued up to be freed below. For primary copies, additional
+  // bookkeeping is needed to ensure there is no regression.
   auto it = local_objects_.find(object_id);
   if (it != local_objects_.end() && !it->second.is_freed_) {
     // Mark the object as freed. NOTE(swang): We have to mark this instead of
@@ -151,7 +152,7 @@ std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
   });
 }
 
-std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
+std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedByOwnersOn(
     const NodeID &node_id) const {
   return GetLocalObjectsMatchedBy([&node_id](const rpc::Address &owner) {
     return NodeID::FromBinary(owner.node_id()) == node_id;

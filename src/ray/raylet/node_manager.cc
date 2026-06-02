@@ -979,10 +979,10 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // LocalObjectManager has spilled + pinned copies; ObjectManager has
   // secondary + pinned copies. Dedupe the pinned overlap.
   absl::flat_hash_set<ObjectID> ids;
-  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedBy(node_id)) {
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
     ids.insert(id);
   }
-  for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(node_id)) {
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
     ids.insert(id);
   }
   RAY_UNUSED(FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
