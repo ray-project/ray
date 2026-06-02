@@ -111,6 +111,28 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
   instrumented_io_context &io_service_;
 };
 
+class TestGcsInitData : public GcsInitData {
+ public:
+  using GcsInitData::GcsInitData;
+
+  void SetJobTableData(absl::flat_hash_map<JobID, rpc::JobTableData> job_data) {
+    job_table_data_ = std::move(job_data);
+  }
+
+  void SetNodeTableData(absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_data) {
+    node_table_data_ = std::move(node_data);
+  }
+
+  void SetActorTableData(absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data) {
+    actor_table_data_ = std::move(actor_data);
+  }
+
+  void SetActorTaskSpecTableData(
+      absl::flat_hash_map<ActorID, rpc::TaskSpec> actor_task_spec_data) {
+    actor_task_spec_table_data_ = std::move(actor_task_spec_data);
+  }
+};
+
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {
@@ -227,6 +249,37 @@ class GcsActorManagerTest : public ::testing::Test {
   const absl::flat_hash_map<ActorID, std::vector<std::function<void(Status)>>>
       &GetActorRegisterCallbacks() const {
     return gcs_actor_manager_->actor_to_register_callbacks_;
+  }
+
+  std::unique_ptr<gcs::GcsActorManager> CreateActorManagerForInitializeTest() {
+    auto scheduler = std::make_unique<MockActorScheduler>();
+    return std::make_unique<gcs::GcsActorManager>(
+        std::move(scheduler),
+        gcs_table_storage_.get(),
+        io_service_,
+        gcs_publisher_.get(),
+        *runtime_env_mgr_,
+        *function_manager_,
+        [](const ActorID &actor_id) {},
+        *raylet_client_pool_,
+        *worker_client_pool_,
+        *fake_ray_event_recorder_,
+        "test_session_name",
+        fake_actor_by_state_gauge_,
+        fake_gcs_actor_by_state_gauge_,
+        observability_publisher_.get(),
+        clock_);
+  }
+
+  size_t RegisteredActorCount(const gcs::GcsActorManager &actor_manager) const {
+    return actor_manager.registered_actors_.size();
+  }
+
+  std::shared_ptr<gcs::GcsActor> GetRegisteredActor(
+      const gcs::GcsActorManager &actor_manager, const ActorID &actor_id) const {
+    auto actor_it = actor_manager.registered_actors_.find(actor_id);
+    return actor_it != actor_manager.registered_actors_.end() ? actor_it->second
+                                                              : nullptr;
   }
 
   /**
@@ -2522,34 +2575,16 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
 
   // Step 6: Create a new GcsActorManager to test Initialize()
   // We need a fresh instance since the original one was already initialized
-  auto scheduler = std::make_unique<MockActorScheduler>();
-  auto test_gcs_actor_manager = std::make_unique<gcs::GcsActorManager>(
-      std::move(scheduler),
-      gcs_table_storage_.get(),
-      io_service_,
-      gcs_publisher_.get(),
-      *runtime_env_mgr_,
-      *function_manager_,
-      [](const ActorID &actor_id) {},
-      *raylet_client_pool_,
-      *worker_client_pool_,
-      *fake_ray_event_recorder_,
-      "test_session_name",
-      fake_actor_by_state_gauge_,
-      fake_gcs_actor_by_state_gauge_,
-      observability_publisher_.get(),
-      clock_);
+  auto test_gcs_actor_manager = CreateActorManagerForInitializeTest();
 
   // Step 7: Call Initialize() with the populated GcsInitData
   test_gcs_actor_manager->Initialize(gcs_init_data);
 
   // Step 8: Verify that the actor was registered and local_raylet_address_ was restored
-  const auto &registered_actors = test_gcs_actor_manager->GetRegisteredActors();
-  ASSERT_EQ(registered_actors.size(), 1);
+  ASSERT_EQ(RegisteredActorCount(*test_gcs_actor_manager), 1u);
 
-  auto actor_it = registered_actors.find(actor_id);
-  ASSERT_NE(actor_it, registered_actors.end());
-  auto actor = actor_it->second;
+  auto actor = GetRegisteredActor(*test_gcs_actor_manager, actor_id);
+  ASSERT_NE(actor, nullptr);
 
   // Verify that local_raylet_address_ was properly restored
   const auto &local_raylet_address = actor->LocalRayletAddress();
@@ -2560,106 +2595,6 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->node_id(), node_id.Binary());
   ASSERT_EQ(local_raylet_address->ip_address(), "127.0.0.1");
   ASSERT_EQ(local_raylet_address->port(), 9999);
-}
-
-TEST_F(GcsActorManagerTest, TestInitializeDoesNotRestoreLocalRayletAddressForDeadNodes) {
-  // This test verifies that local_raylet_address_ is NOT restored for actors on DEAD
-  // nodes, since the raylet is unreachable anyway.
-
-  // Step 1: Create a node that is DEAD
-  rpc::GcsNodeInfo node_info;
-  auto node_id = NodeID::FromRandom();
-  node_info.set_node_id(node_id.Binary());
-  node_info.set_state(rpc::GcsNodeInfo::DEAD);  // Node is DEAD
-  node_info.set_node_manager_address("127.0.0.1");
-  node_info.set_node_manager_port(9999);
-
-  // Step 2: Create a job that is ALIVE
-  auto job_id = JobID::FromInt(1);
-  rpc::JobTableData job_data;
-  job_data.set_job_id(job_id.Binary());
-  job_data.set_is_dead(false);
-
-  // Step 3: Create an ALIVE actor on that dead node
-  auto worker_id = WorkerID::FromRandom();
-  auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.set_state(rpc::ActorTableData::ALIVE);
-  actor_table_data.set_node_id(node_id.Binary());
-  actor_table_data.mutable_address()->set_node_id(node_id.Binary());
-  actor_table_data.mutable_address()->set_worker_id(worker_id.Binary());
-  actor_table_data.mutable_address()->set_ip_address("127.0.0.1");
-  actor_table_data.mutable_address()->set_port(12345);
-  // Set owner address (owner is the driver/job)
-  auto *owner_address = actor_table_data.mutable_owner_address();
-  owner_address->set_node_id(node_id.Binary());
-  owner_address->set_worker_id(WorkerID::FromRandom().Binary());
-  owner_address->set_ip_address("127.0.0.1");
-  owner_address->set_port(12345);
-  actor_table_data.set_max_restarts(0);
-  actor_table_data.set_is_detached(false);
-
-  // Step 4: Create task spec for the actor
-  rpc::TaskSpec task_spec;
-  auto *actor_creation_spec = task_spec.mutable_actor_creation_task_spec();
-  actor_creation_spec->set_actor_id(actor_id.Binary());
-  // Set root_detached_actor_id to empty (Nil) to indicate owner is job
-  task_spec.set_root_detached_actor_id("");
-
-  // Step 5: Populate GcsInitData with test data
-  TestGcsInitData gcs_init_data(*gcs_table_storage_);
-  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_data;
-  node_data[node_id] = node_info;
-  gcs_init_data.SetNodeTableData(node_data);
-
-  absl::flat_hash_map<JobID, rpc::JobTableData> job_data_map;
-  job_data_map[job_id] = job_data;
-  gcs_init_data.SetJobTableData(job_data_map);
-
-  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
-  actor_data[actor_id] = actor_table_data;
-  gcs_init_data.SetActorTableData(actor_data);
-
-  absl::flat_hash_map<ActorID, rpc::TaskSpec> task_spec_data;
-  task_spec_data[actor_id] = task_spec;
-  gcs_init_data.SetActorTaskSpecTableData(task_spec_data);
-
-  // Step 6: Create a new GcsActorManager to test Initialize()
-  auto scheduler = std::make_unique<MockActorScheduler>();
-  auto test_gcs_actor_manager = std::make_unique<gcs::GcsActorManager>(
-      std::move(scheduler),
-      gcs_table_storage_.get(),
-      io_service_,
-      gcs_publisher_.get(),
-      *runtime_env_mgr_,
-      *function_manager_,
-      [](const ActorID &actor_id) {},
-      *raylet_client_pool_,
-      *worker_client_pool_,
-      *fake_ray_event_recorder_,
-      "test_session_name",
-      fake_actor_by_state_gauge_,
-      fake_gcs_actor_by_state_gauge_,
-      observability_publisher_.get(),
-      clock_);
-
-  // Step 7: Call Initialize() with the populated GcsInitData
-  test_gcs_actor_manager->Initialize(gcs_init_data);
-
-  // Step 8: Verify that the actor was registered but local_raylet_address_ was NOT
-  // restored (because the node is dead)
-  const auto &registered_actors = test_gcs_actor_manager->GetRegisteredActors();
-  ASSERT_EQ(registered_actors.size(), 1);
-
-  auto actor_it = registered_actors.find(actor_id);
-  ASSERT_NE(actor_it, registered_actors.end());
-  auto actor = actor_it->second;
-
-  // Verify that local_raylet_address_ was NOT restored for actors on dead nodes
-  const auto &local_raylet_address = actor->LocalRayletAddress();
-  ASSERT_FALSE(local_raylet_address.has_value())
-      << "local_raylet_address_ should NOT be restored for actors on DEAD nodes";
 }
 
 }  // namespace gcs

@@ -1763,18 +1763,15 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
                                                     actor->GetActorID());
         // Restore local raylet address for ALIVE actors after GCS restart.
-        // This is necessary because local_raylet_address_ is not persisted to Redis,
+        // This is necessary because local_raylet_address_ is not persisted with GCS FT,
         // but is required to send KillLocalActorRequest when destroying the actor.
         // Without this, GCS will log "Actor has not been assigned a lease" and
         // the worker process will not be killed, leaving a zombie process.
-        if (!actor->GetNodeID().IsNil() && !actor->GetWorkerID().IsNil()) {
+        if (!actor->GetNodeID().IsNil()) {
           const auto &node_id = actor->GetNodeID();
           const auto &nodes = gcs_init_data.Nodes();
           auto node_it = nodes.find(node_id);
-          // Only restore local raylet address if the node is still alive.
-          // If the node is dead, the raylet is unreachable anyway.
-          if (node_it != nodes.end() &&
-              node_it->second.state() == rpc::GcsNodeInfo::ALIVE) {
+          if (node_it != nodes.end()) {
             const auto &node_info = node_it->second;
             rpc::Address actor_local_raylet_address;
             actor_local_raylet_address.set_node_id(node_info.node_id());
