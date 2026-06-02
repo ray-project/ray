@@ -150,7 +150,7 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -167,7 +167,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
                 metadata=None,
@@ -183,7 +183,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
                 metadata=None,
@@ -206,7 +206,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -224,7 +224,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -267,7 +267,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -292,7 +292,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -311,7 +311,7 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -328,7 +328,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id="my_job_id",
                 runtime_env={},
                 metadata=None,
@@ -350,7 +350,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -372,7 +372,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -394,7 +394,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -428,7 +428,7 @@ class TestSubmit:
             print(result.output)
             assert result.exit_code == 0
             expected_kwargs = {
-                "entrypoint": '"echo hello"',
+                "entrypoint": "'echo hello'",
                 "submission_id": None,
                 "runtime_env": {},
                 "metadata": None,
@@ -474,7 +474,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -502,7 +502,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint="'echo hello'",
                 submission_id=None,
                 runtime_env={},
                 entrypoint_num_cpus=None,
