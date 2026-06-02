@@ -97,6 +97,44 @@ TEST_F(K8sLeaseClientTest, AcquireSuccessWhenExpired) {
   EXPECT_EQ(leader, my_id_);
 }
 
+TEST_F(K8sLeaseClientTest, AcquireSuccessWhenExpiredByLocalObservedTime) {
+  // Leader's clock is fast, writing renewTime in the future.
+  // Standby node should still preempt the lease exactly 1 second (lease duration)
+  // after the first observation, even though renewTime is in the future.
+  absl::Time static_future = absl::Now() + absl::Seconds(100);
+  auto get_api = [=](const std::string &, nlohmann::json &resp) {
+    resp["spec"]["holderIdentity"] = "node-2";
+    resp["spec"]["leaseDurationSeconds"] = 1;
+    resp["spec"]["renewTime"] =
+        absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", static_future, absl::UTCTimeZone());
+    return Status::OK();
+  };
+
+  auto post_api = [](const std::string &, const nlohmann::json &, nlohmann::json &) {
+    return Status::IOError("Failure");
+  };
+
+  auto put_api = [](const std::string &, const nlohmann::json &, nlohmann::json &) {
+    return Status::OK();  // Takeover PUT succeeds
+  };
+
+  K8sLeaseClient client(lease_namespace_, lease_key_, get_api, post_api, put_api);
+  std::string leader = "";
+
+  // First attempt: absolute check is false, local observed time is initialized to now.
+  // No takeover should happen.
+  EXPECT_TRUE(client.TryAcquire(my_id_, 1, leader).ok());
+  EXPECT_EQ(leader, "node-2");
+
+  // Wait for 2 seconds to elapse locally (exceeding the 1-second lease duration).
+  absl::SleepFor(absl::Seconds(2));
+
+  // Second attempt: absolute check is still false (future renewTime), but local
+  // observed duration check (Condition 2) is now true! Takeover should succeed.
+  EXPECT_TRUE(client.TryAcquire(my_id_, 1, leader).ok());
+  EXPECT_EQ(leader, my_id_);
+}
+
 TEST_F(K8sLeaseClientTest, AcquireGetErrorPropagated) {
   auto get_api = [](const std::string &, nlohmann::json &) {
     return Status::IOError("Connection refused");  // GET fails with network error

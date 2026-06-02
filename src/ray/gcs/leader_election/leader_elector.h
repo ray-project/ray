@@ -45,6 +45,12 @@ struct LeaderElectionConfig {
   int retry_period_seconds = 2;
 
   // Callbacks
+  // NOTE: Callbacks are invoked from background threads (election or watchdog threads).
+  // Callbacks MUST NOT synchronously destroy the LeaderElector instance (e.g. by deleting
+  // it or resetting its owning unique_ptr directly in the callback), as that would cause
+  // a deadlock or use-after-free during thread joining/detaching inside Stop() or the
+  // destructor. Any destruction or cleanup of the LeaderElector must be dispatched
+  // asynchronously to another thread.
   std::function<void()> on_started_leading;
   std::function<void()> on_stopped_leading;
   std::function<void(const std::string &)> on_new_leader;

@@ -323,8 +323,8 @@ TEST_F(LeaderElectorTest, StepDownOnRenewDeadlineExceeded) {
   LeaderElectionConfig config;
   config.lease_client = lease_client;
   config.holder_id = holder_id_;
-  config.lease_duration_seconds = 2;
-  config.renew_deadline_seconds = 1;
+  config.lease_duration_seconds = 3;
+  config.renew_deadline_seconds = 2;
   config.retry_period_seconds = 1;
   config.on_started_leading = [&]() { started_leading = true; };
   config.on_stopped_leading = [&]() { stopped_leading = true; };
@@ -332,7 +332,7 @@ TEST_F(LeaderElectorTest, StepDownOnRenewDeadlineExceeded) {
   LeaderElector elector(config);
   elector.Run();
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  std::this_thread::sleep_for(std::chrono::milliseconds(2500));
   elector.Stop();
 
   EXPECT_TRUE(started_leading.load());
@@ -418,8 +418,8 @@ TEST_F(LeaderElectorTest, StepDownOnPersistentRenewalFailure) {
   LeaderElectionConfig config;
   config.lease_client = lease_client;
   config.holder_id = holder_id_;
-  config.lease_duration_seconds = 2;
-  config.renew_deadline_seconds = 1;
+  config.lease_duration_seconds = 3;
+  config.renew_deadline_seconds = 2;
   config.retry_period_seconds = 1;
   config.on_started_leading = [&]() { started_leading = true; };
   config.on_stopped_leading = [&]() { stopped_leading = true; };
@@ -427,9 +427,9 @@ TEST_F(LeaderElectorTest, StepDownOnPersistentRenewalFailure) {
   LeaderElector elector(config);
   elector.Run();
 
-  // Sleep for 1.5 seconds (watchdog deadline is 1s, so it should trigger step down at
-  // ~1.01s)
-  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  // Sleep for 2.5 seconds (watchdog deadline is 2s, so it should trigger step down at
+  // ~2.01s)
+  std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
   EXPECT_TRUE(started_leading.load());
   EXPECT_TRUE(stopped_leading.load());  // Watchdog should have forced a step-down!
@@ -514,8 +514,8 @@ TEST_F(LeaderElectorTest, LeadershipTransitionCallback) {
   LeaderElectionConfig config;
   config.lease_client = lease_client;
   config.holder_id = holder_id_;
-  config.lease_duration_seconds = 2;
-  config.renew_deadline_seconds = 1;
+  config.lease_duration_seconds = 3;
+  config.renew_deadline_seconds = 2;
   config.retry_period_seconds = 1;
   config.on_new_leader = [&](const std::string &leader) {
     leader_changes++;
@@ -705,6 +705,72 @@ TEST_F(LeaderElectorTest, TwoReplicasElectionWithNonGracefulExit) {
   EXPECT_TRUE(loser_leading->load());
 
   loser->Stop();
+}
+
+TEST_F(LeaderElectorTest, RunMultipleTimesIsSafe) {
+  auto try_acquire = [&](const std::string &holder, int, std::string &current) {
+    current = holder;
+    return Status::OK();
+  };
+  auto renew = [](const std::string &holder, int, std::string &current) {
+    current = holder;
+    return Status::OK();
+  };
+  auto release = [](const std::string &) {};
+
+  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+
+  LeaderElectionConfig config;
+  config.lease_client = lease_client;
+  config.holder_id = holder_id_;
+  config.lease_duration_seconds = 5;
+  config.renew_deadline_seconds = 3;
+  config.retry_period_seconds = 1;
+
+  LeaderElector elector(config);
+  // Invoke Run multiple times concurrently/back-to-back
+  elector.Run();
+  elector.Run();
+  elector.Run();
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  elector.Stop();
+}
+
+TEST_F(LeaderElectorTest, RunCanBeRestartedAfterStop) {
+  std::atomic<int> acquire_calls{0};
+  auto try_acquire = [&](const std::string &holder, int, std::string &current) {
+    acquire_calls++;
+    current = holder;
+    return Status::OK();
+  };
+  auto renew = [](const std::string &holder, int, std::string &current) {
+    current = holder;
+    return Status::OK();
+  };
+  auto release = [](const std::string &) {};
+
+  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+
+  LeaderElectionConfig config;
+  config.lease_client = lease_client;
+  config.holder_id = holder_id_;
+  config.lease_duration_seconds = 5;
+  config.renew_deadline_seconds = 3;
+  config.retry_period_seconds = 1;
+
+  LeaderElector elector(config);
+  elector.Run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  EXPECT_TRUE(elector.IsLeader());
+  elector.Stop();
+  EXPECT_FALSE(elector.IsLeader());
+
+  // Restart elector
+  elector.Run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  EXPECT_TRUE(elector.IsLeader());
+  elector.Stop();
 }
 
 }  // namespace gcs

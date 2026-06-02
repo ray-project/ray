@@ -21,6 +21,49 @@
 namespace ray {
 namespace gcs {
 
+namespace {
+
+/// Helper function to parse a raw JSON Lease response into type-safe LeaseMetadata
+/// with complete type validation guards to prevent exceptions/crashes.
+LeaseMetadata ParseLeaseMetadata(const nlohmann::json &response) {
+  LeaseMetadata metadata;
+  if (!response.is_object()) {
+    return metadata;
+  }
+  metadata.exists = true;
+  metadata.lease_record = response;
+
+  if (response.contains("spec") && response["spec"].is_object()) {
+    const auto &spec = response["spec"];
+    if (spec.contains("holderIdentity") && spec["holderIdentity"].is_string()) {
+      metadata.holder_id = spec["holderIdentity"].get<std::string>();
+    }
+    if (spec.contains("leaseDurationSeconds") &&
+        spec["leaseDurationSeconds"].is_number_integer()) {
+      metadata.duration_seconds = spec["leaseDurationSeconds"].get<int>();
+    }
+    if (spec.contains("renewTime") && spec["renewTime"].is_string()) {
+      std::string renew_str = spec["renewTime"].get<std::string>();
+      std::string parse_err;
+      if (!absl::ParseTime(
+              absl::RFC3339_full, renew_str, &metadata.renew_time, &parse_err)) {
+        metadata.renew_time = absl::UnixEpoch();
+      }
+    }
+  }
+
+  if (response.contains("metadata") && response["metadata"].is_object() &&
+      response["metadata"].contains("resourceVersion") &&
+      response["metadata"]["resourceVersion"].is_string()) {
+    metadata.resource_version =
+        response["metadata"]["resourceVersion"].get<std::string>();
+  }
+
+  return metadata;
+}
+
+}  // namespace
+
 K8sLeaseClient::K8sLeaseClient(
     std::string lease_namespace,
     std::string lease_key,
@@ -44,45 +87,7 @@ StatusOr<LeaseMetadata> K8sLeaseClient::GetLeaseMetadata() {
     return status;
   }
 
-  LeaseMetadata metadata;
-  metadata.exists = true;
-  metadata.lease_record = response;
-
-  absl::Time server_now = absl::Now();
-  if (response.contains("__api_server_date__")) {
-    std::string date_str = response["__api_server_date__"].get<std::string>();
-    std::string err;
-    if (!absl::ParseTime("%a, %d %b %Y %H:%M:%S %Z", date_str, &server_now, &err)) {
-      RAY_LOG(WARNING) << "Failed to parse API server date: " << date_str
-                       << ", error: " << err << ". Falling back to local pod timestamp.";
-    }
-  }
-  metadata.server_now = server_now;
-
-  if (response.contains("spec")) {
-    auto &spec = response["spec"];
-    if (spec.contains("holderIdentity")) {
-      metadata.holder_id = spec["holderIdentity"].get<std::string>();
-    }
-    if (spec.contains("leaseDurationSeconds")) {
-      metadata.duration_seconds = spec["leaseDurationSeconds"].get<int>();
-    }
-    if (spec.contains("renewTime")) {
-      std::string renew_str = spec["renewTime"].get<std::string>();
-      std::string parse_err;
-      if (!absl::ParseTime(
-              absl::RFC3339_full, renew_str, &metadata.renew_time, &parse_err)) {
-        metadata.renew_time = server_now;
-      }
-    }
-  }
-
-  if (response.contains("metadata") && response["metadata"].contains("resourceVersion")) {
-    metadata.resource_version =
-        response["metadata"]["resourceVersion"].get<std::string>();
-  }
-
-  return metadata;
+  return ParseLeaseMetadata(response);
 }
 
 Status K8sLeaseClient::CreateLease(const std::string &holder_id,
@@ -148,10 +153,19 @@ bool K8sLeaseClient::CanAcquireLease(const LeaseMetadata &metadata,
     return true;
   }
 
-  // Scenario C: Another candidate holds the lease. We can only preempt if it has expired.
-  absl::Time expiration_time =
+  // Scenario C: Another candidate holds the lease. We can preempt if either:
+  // 1. The lease has expired relative to the leader's written renew_time (zero startup
+  // delay for dead leases).
+  // 2. Or our local observed time countdown has elapsed (clock-skew rate/drift
+  // immunity).
+  absl::Time absolute_expiration =
       metadata.renew_time + absl::Seconds(metadata.duration_seconds);
-  if (now > expiration_time) {
+  if (now > absolute_expiration) {
+    return true;
+  }
+
+  absl::Duration elapsed = now - local_observed_time_;
+  if (elapsed > absl::Seconds(metadata.duration_seconds)) {
     return true;
   }
 
@@ -163,9 +177,13 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
                                   std::string &current_leader) {
   auto metadata_or = GetLeaseMetadata();
   if (metadata_or.status().IsNotFound()) {
-    Status create_status = CreateLease(holder_id, ttl_seconds, absl::Now());
+    absl::Time now = absl::Now();
+    Status create_status = CreateLease(holder_id, ttl_seconds, now);
     if (create_status.ok()) {
       RAY_LOG(INFO) << "Successfully created Lease and acquired leadership.";
+      last_observed_holder_id_ = holder_id;
+      last_observed_renew_time_ = now;
+      local_observed_time_ = now;
       current_leader = holder_id;
       return Status::OK();
     }
@@ -181,10 +199,22 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
   const auto &metadata = metadata_or.value();
   current_leader = metadata.holder_id;
 
-  if (CanAcquireLease(metadata, holder_id, metadata.server_now)) {
-    Status update_status =
-        UpdateLease(metadata, holder_id, ttl_seconds, metadata.server_now);
+  absl::Time now = absl::Now();
+
+  // Update local_observed_time_ ONLY if the holder_id or renew_time has changed.
+  if (metadata.holder_id != last_observed_holder_id_ ||
+      metadata.renew_time != last_observed_renew_time_) {
+    last_observed_holder_id_ = metadata.holder_id;
+    last_observed_renew_time_ = metadata.renew_time;
+    local_observed_time_ = now;
+  }
+
+  if (CanAcquireLease(metadata, holder_id, now)) {
+    Status update_status = UpdateLease(metadata, holder_id, ttl_seconds, now);
     if (update_status.ok()) {
+      last_observed_holder_id_ = holder_id;
+      last_observed_renew_time_ = now;
+      local_observed_time_ = now;
       current_leader = holder_id;
       return Status::OK();
     }
@@ -213,12 +243,17 @@ Status K8sLeaseClient::Renew(const std::string &holder_id,
     Status update_status = put_api_(put_path, update_req, response);
     if (update_status.ok()) {
       cached_lease_record_ = response;
+      last_observed_holder_id_ = holder_id;
+      last_observed_renew_time_ = now;
+      local_observed_time_ = now;
       current_leader = holder_id;
       return Status::OK();
     }
     // If direct PUT fails (due to resourceVersion mismatch/conflict, network error,
     // or request timeout), invalidate the cache and fall back to the slow-path
     // TryAcquire() (which performs a GET to refresh the resource version).
+    RAY_LOG(WARNING) << "Failed to renew lease directly with cached resourceVersion: "
+                     << update_status.ToString();
     cached_lease_record_ = nlohmann::json();
   }
 
@@ -233,29 +268,28 @@ void K8sLeaseClient::Release(const std::string &holder_id) {
     return;
   }
 
-  std::string current_holder = "";
-  if (response.contains("spec") && response["spec"].contains("holderIdentity")) {
-    current_holder = response["spec"]["holderIdentity"].get<std::string>();
-  }
+  LeaseMetadata metadata = ParseLeaseMetadata(response);
 
-  if (current_holder == holder_id) {
+  if (metadata.holder_id == holder_id) {
     nlohmann::json update_req = response;
     update_req.erase("__api_server_date__");
     update_req["spec"]["holderIdentity"] = "";
     update_req["spec"]["renewTime"] = "1970-01-01T00:00:00Z";
 
-    std::string resource_version = "";
-    if (response.contains("metadata") &&
-        response["metadata"].contains("resourceVersion")) {
-      resource_version = response["metadata"]["resourceVersion"].get<std::string>();
-    }
-    if (!resource_version.empty()) {
-      update_req["metadata"]["resourceVersion"] = resource_version;
+    if (!metadata.resource_version.empty()) {
+      update_req["metadata"]["resourceVersion"] = metadata.resource_version;
     }
 
     nlohmann::json update_resp;
-    put_api_(get_path, update_req, update_resp);
+    Status status = put_api_(get_path, update_req, update_resp);
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to release lease gracefully: " << status.ToString();
+    }
   }
+
+  last_observed_holder_id_ = "";
+  last_observed_renew_time_ = absl::UnixEpoch();
+  local_observed_time_ = absl::UnixEpoch();
 }
 
 }  // namespace gcs

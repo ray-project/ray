@@ -91,24 +91,43 @@ void InitK8sClientConfig() {
   k8s_client_initialized = true;
 }
 
-Status EstablishSslConnection(net::io_context &ioc,
-                              ssl::context &ctx,
-                              ssl::stream<beast::tcp_stream> &stream,
-                              tcp::resolver &resolver) {
-  ctx.load_verify_file(kK8sCaCertPath);
-  ctx.set_verify_mode(ssl::verify_peer);
+static Status EstablishSslConnection(net::io_context &ioc,
+                                     ssl::context &ctx,
+                                     ssl::stream<beast::tcp_stream> &stream,
+                                     tcp::resolver &resolver) {
+  beast::error_code ec;
+  ctx.load_verify_file(kK8sCaCertPath, ec);
+  if (ec) {
+    return Status::IOError(absl::StrCat("Failed to load CA cert: ", ec.message()));
+  }
+  ctx.set_verify_mode(ssl::verify_peer, ec);
+  if (ec) {
+    return Status::IOError(absl::StrCat("Failed to set verify mode: ", ec.message()));
+  }
 
   beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(kK8sApiTimeoutSecs));
 
   if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
-    beast::error_code ec{static_cast<int>(::ERR_get_error()),
-                         net::error::get_ssl_category()};
+    ec = beast::error_code{static_cast<int>(::ERR_get_error()),
+                           net::error::get_ssl_category()};
     return Status::IOError(absl::StrCat("Failed to set SNI hostname: ", ec.message()));
   }
 
-  auto const results = resolver.resolve(k8s_host, k8s_port);
-  beast::get_lowest_layer(stream).connect(results);
-  stream.handshake(ssl::stream_base::client);
+  auto const results = resolver.resolve(k8s_host, k8s_port, ec);
+  if (ec) {
+    return Status::IOError(absl::StrCat("Failed to resolve K8s host: ", ec.message()));
+  }
+
+  beast::get_lowest_layer(stream).connect(results, ec);
+  if (ec) {
+    return Status::IOError(absl::StrCat("Failed to connect to K8s host: ", ec.message()));
+  }
+
+  stream.handshake(ssl::stream_base::client, ec);
+  if (ec) {
+    return Status::IOError(absl::StrCat("SSL handshake failed: ", ec.message()));
+  }
+
   return Status::OK();
 }
 
@@ -119,7 +138,7 @@ Status K8sApiPost(const std::string &path,
     return Status::Invalid("Kubernetes client configuration is not initialized.");
   }
 
-  static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
+  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
     net::io_context ioc;
@@ -138,8 +157,12 @@ Status K8sApiPost(const std::string &path,
     req.body() = body.dump();
     req.prepare_payload();
 
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
     http::write(stream, req);
 
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(stream, buffer, res);
@@ -184,7 +207,7 @@ Status K8sApiGet(const std::string &path, nlohmann::json &response_json) {
     return Status::Invalid("Kubernetes client configuration is not initialized.");
   }
 
-  static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
+  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
     net::io_context ioc;
@@ -200,8 +223,12 @@ Status K8sApiGet(const std::string &path, nlohmann::json &response_json) {
     std::string auth_header = "Bearer " + k8s_sa_token;
     req.set(http::field::authorization, auth_header);
 
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
     http::write(stream, req);
 
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(stream, buffer, res);
@@ -252,7 +279,7 @@ Status K8sApiPut(const std::string &path,
     return Status::Invalid("Kubernetes client configuration is not initialized.");
   }
 
-  static std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
+  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
     net::io_context ioc;
@@ -271,8 +298,12 @@ Status K8sApiPut(const std::string &path,
     req.body() = body.dump();
     req.prepare_payload();
 
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
     http::write(stream, req);
 
+    beast::get_lowest_layer(stream).expires_after(
+        std::chrono::seconds(kK8sApiTimeoutSecs));
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(stream, buffer, res);
