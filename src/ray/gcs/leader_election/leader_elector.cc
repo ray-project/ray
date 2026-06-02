@@ -29,11 +29,18 @@ LeaderElector::LeaderElector(LeaderElectionConfig config)
   // GCS steps down/suicides before another standby node can preemptively steal the lock.
   RAY_CHECK(config_.renew_deadline_seconds < config_.lease_duration_seconds)
       << "Renew deadline must be smaller than lease duration.";
+  RAY_CHECK(config_.retry_period_seconds < config_.renew_deadline_seconds)
+      << "Retry period must be smaller than renew deadline.";
 }
 
 LeaderElector::~LeaderElector() { Stop(); }
 
 void LeaderElector::Run() {
+  if (election_thread_ || watchdog_thread_) {
+    RAY_LOG(WARNING) << "Leader elector is already running.";
+    return;
+  }
+  is_stopped_ = false;
   RAY_LOG(INFO) << "Starting leader election background thread for candidate: "
                 << config_.holder_id;
   // Thread 1: Executes the network I/O loop to acquire and renew the Kubernetes Lease.
@@ -44,8 +51,10 @@ void LeaderElector::Run() {
 }
 
 void LeaderElector::Stop() {
-  // Flag background loops to exit immediately
-  is_stopped_ = true;
+  // Flag background loops to exit immediately. If already stopped, return.
+  if (is_stopped_.exchange(true)) {
+    return;
+  }
   // Wake up all background threads from their wait/sleep states so they can exit.
   watchdog_cv_.notify_all();
   election_cv_.notify_all();
@@ -59,6 +68,8 @@ void LeaderElector::Stop() {
       election_thread_->detach();
     }
   }
+  election_thread_.reset();
+
   if (watchdog_thread_ && watchdog_thread_->joinable()) {
     if (std::this_thread::get_id() != watchdog_thread_->get_id()) {
       watchdog_thread_->join();
@@ -66,6 +77,7 @@ void LeaderElector::Stop() {
       watchdog_thread_->detach();
     }
   }
+  watchdog_thread_.reset();
 
   if (is_leading_.load()) {
     is_leading_ = false;
@@ -238,9 +250,12 @@ void LeaderElector::WatchdogLoop() {
     // early to recalculate. If the process stops, notify_all() wakes us to exit
     // instantly.
     std::unique_lock<std::mutex> lock(watchdog_mutex_);
-    watchdog_cv_.wait_for(lock, std::chrono::milliseconds(remaining_ms), [this]() {
-      return is_stopped_.load();
-    });
+    watchdog_cv_.wait_for(
+        lock, std::chrono::milliseconds(remaining_ms), [this, last_renew_ns]() {
+          return is_stopped_.load() ||
+                 last_successful_renew_steady_ns_.load() != last_renew_ns ||
+                 !is_leading_.load();
+        });
   }
 }
 

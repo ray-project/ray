@@ -42,8 +42,6 @@ struct LeaseMetadata {
   std::string resource_version;
   // The raw JSON body record of the Lease object returned from the API Server.
   nlohmann::json lease_record;
-  // The centralized API Server time ground truth parsed from the response Date header.
-  absl::Time server_now = absl::UnixEpoch();
 };
 
 /// Concrete implementation of the LeaderLeaseClientInterface using Kubernetes Leases.
@@ -109,6 +107,11 @@ class K8sLeaseClient : public LeaderLeaseClientInterface {
   // This cache is cleared on any API errors (such as conflicts or timeouts) to force
   // a fallback to the standard GET-then-PUT flow.
   nlohmann::json cached_lease_record_;
+  // Track the last observed lease details to implement client-go's local duration
+  // tracking.
+  std::string last_observed_holder_id_;
+  absl::Time last_observed_renew_time_ = absl::UnixEpoch();
+  absl::Time local_observed_time_ = absl::UnixEpoch();
 };
 
 }  // namespace gcs

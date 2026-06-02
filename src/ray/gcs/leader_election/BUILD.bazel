@@ -30,7 +30,10 @@ ray_cc_test(
     srcs = [
         "k8s_lease_client_test.cc",
     ],
-    tags = ["small"],
+    tags = [
+        "small",
+        "team:core",
+    ],
     deps = [
         ":leader_election",
     ],
