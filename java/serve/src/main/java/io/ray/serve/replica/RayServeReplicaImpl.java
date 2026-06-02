@@ -48,7 +48,9 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private Histogram processingLatencyTracker;
 
-  private Gauge numProcessingItems;
+  private Gauge numOngoingRequestsGauge;
+
+  private Gauge numProcessingItemsDeprecated;
 
   private DeploymentVersion version;
 
@@ -140,10 +142,29 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
     RayServeMetrics.execute(
         () ->
-            numProcessingItems =
+            numOngoingRequestsGauge =
                 Metrics.gauge()
-                    .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getName())
-                    .description(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getDescription())
+                    .name(RayServeMetrics.SERVE_REPLICA_NUM_ONGOING_REQUESTS.getName())
+                    .description(
+                        RayServeMetrics.SERVE_REPLICA_NUM_ONGOING_REQUESTS.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_DEPLOYMENT,
+                            deploymentName,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
+
+    // Deprecated: Will be removed in Ray 3.0.
+    RayServeMetrics.execute(
+        () ->
+            numProcessingItemsDeprecated =
+                Metrics.gauge()
+                    .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED.getName())
+                    .description(
+                        RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED
+                            .getDescription())
                     .unit("")
                     .tags(
                         ImmutableMap.of(
@@ -165,7 +186,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
         "Replica {} received request {}", replicaTag, request.getMetadata().getRequestId());
 
     numOngoingRequests.incrementAndGet();
-    RayServeMetrics.execute(() -> numProcessingItems.update(numOngoingRequests.get()));
+    RayServeMetrics.execute(() -> numOngoingRequestsGauge.update(numOngoingRequests.get()));
+    RayServeMetrics.execute(() -> numProcessingItemsDeprecated.update(numOngoingRequests.get()));
     Object result = invokeSingle(request);
     numOngoingRequests.decrementAndGet();
 
