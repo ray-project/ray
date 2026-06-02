@@ -3162,7 +3162,7 @@ class DeploymentState:
         v = version if version is not None else self._target_state.version
         if v is None:
             return []
-        return v.deployment_config.deployment_actors or []
+        return getattr(v.deployment_config, "deployment_actors", None) or []
 
     def _deployment_actors_satisfied_for_target(self) -> bool:
         """True when every configured deployment-scoped actor is RUNNING for the target.

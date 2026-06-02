@@ -1895,6 +1895,14 @@ class SingletonThreadRouter(Router):
 
 
 class SharedRouterLongPollClient:
+    """Manages long polling connections for multiple routers sharing a controller handle.
+
+    The cached controller handle is used as the connection endpoint. If the controller
+    restarts and its `actor_id` changes, the LongPollClient currently bound to the old
+    handle will die. This class caches clients by `(controller_handle, event_loop)`,
+    so a new handle will result in a fresh LongPollClient reconnecting to the new controller.
+    """
+
     def __init__(self, controller_handle: ActorHandle, event_loop: AbstractEventLoop):
         self.controller_handler = controller_handle
         self.event_loop = event_loop

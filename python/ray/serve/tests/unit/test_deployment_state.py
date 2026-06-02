@@ -9560,5 +9560,25 @@ class TestGangDraining:
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
+def test_deployment_actors_legacy_checkpoint_recovery():
+    """Test that _get_deployment_actors_configs handles missing deployment_actors attribute gracefully."""
+    ds = DeploymentState(
+        DeploymentID(name="test"),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+    )
+
+    # Mock a version and its deployment config to simulate an old unpickled object
+    # that raises AttributeError on .deployment_actors access.
+    mock_config = MagicMock(spec=[])  # No deployment_actors attribute
+    mock_version = MagicMock()
+    mock_version.deployment_config = mock_config
+
+    configs = ds._get_deployment_actors_configs(version=mock_version)
+    assert configs == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

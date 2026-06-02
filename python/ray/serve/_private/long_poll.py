@@ -251,14 +251,20 @@ class LongPollClient:
     def _process_update(self, updates: Dict[str, UpdatedObject]):
         if isinstance(updates, (ray.exceptions.RayActorError)):
             # This can happen during shutdown where the controller is
-            # intentionally killed, the client should just gracefully
-            # exit.
-            logger.debug("LongPollClient failed to connect to host. Shutting down.")
+            # intentionally killed. It can also happen if the controller crashes
+            # (OOM, __init__ failure) and the handle becomes permanently dead.
+            logger.warning(
+                f"LongPollClient failed to connect to host (actor_id={self.host_actor._actor_id.hex()}). "
+                f"Shutting down. Exception: {type(updates).__name__}"
+            )
             self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
-            logger.warning("LongPollClient connection failed, shutting down.")
+            logger.warning(
+                f"LongPollClient connection to host (actor_id={self.host_actor._actor_id.hex()}) failed, "
+                f"shutting down. Exception: {type(updates).__name__}"
+            )
             self.is_running = False
             return
 

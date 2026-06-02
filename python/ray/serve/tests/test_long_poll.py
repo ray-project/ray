@@ -659,5 +659,44 @@ def test_long_poll_client_disable_propagates_to_host_log():
     assert "not running" in output.lower(), output
 
 
+def test_long_poll_client_host_disconnection_logging():
+    host_actor = MagicMock()
+    host_actor._actor_id.hex.return_value = "deadbeef"
+    serve_logger = logging.getLogger("ray.serve")
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    serve_logger.addHandler(handler)
+
+    loop = asyncio.new_event_loop()
+    try:
+        client = LongPollClient(
+            host_actor, {}, call_in_event_loop=loop, client_id="TestClientLog"
+        )
+
+        # Test RayActorError
+        client._process_update(ray.exceptions.RayActorError())
+        assert client.is_running is False
+
+        output = buf.getvalue()
+        assert "actor_id=deadbeef" in output
+        assert "RayActorError" in output
+        assert "Shutting down" in output
+
+        # Reset and test ConnectionError
+        buf.truncate(0)
+        buf.seek(0)
+        client.is_running = True
+        client._process_update(ConnectionError())
+        assert client.is_running is False
+
+        output = buf.getvalue()
+        assert "actor_id=deadbeef" in output
+        assert "ConnectionError" in output
+        assert "failed" in output
+    finally:
+        loop.close()
+        serve_logger.removeHandler(handler)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

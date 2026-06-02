@@ -146,6 +146,12 @@ class ServeController:
         - If the call fails, the change may have been made but isn't guaranteed
           to have been. The client should retry in this case. Note that this
           requires all implementations here to be idempotent.
+
+    Restart Semantics:
+        If the ServeController fails to initialize (e.g., OOM during __init__, or
+        error loading from checkpoint), Ray will abandon the `actor_id` and recreate
+        the actor with a *new* `actor_id`. Consumers holding a cached handle to the old
+        `actor_id` will receive an `ActorDiedError` when trying to use it.
     """
 
     async def __init__(
