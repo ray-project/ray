@@ -12,6 +12,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.context import _get_global_client
 from ray.serve.exceptions import BackPressureError
 
 
@@ -92,6 +93,16 @@ def test_http_backpressure(serve_instance):
             [first_fut, second_fut], timeout=0.1, return_when=FIRST_COMPLETED
         )
         assert len(done) == 0
+
+        proxy_handle = list(
+            ray.get(_get_global_client()._controller.get_proxies.remote()).values()
+        )[0]
+        wait_for_condition(
+            lambda: ray.get(
+                proxy_handle._get_num_queued_requests_for_testing.remote("/")
+            )
+            == 1
+        )
 
         # Check that beyond the 1st queued request, others are dropped due to
         # backpressure.

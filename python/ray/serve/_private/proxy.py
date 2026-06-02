@@ -1808,6 +1808,16 @@ class ProxyActor(ProxyActorInterface):
             if cache.get(replica_id) is not None
         }
 
+    def _get_num_queued_requests_for_testing(self, route: str) -> int:
+        """Get the number of requests queued in the ingress router (for testing).
+
+        Both the HTTP and gRPC proxies share the same `proxy_router` (and thus
+        the same deployment handles), so this reflects the queued count
+        regardless of which protocol the request arrived on.
+        """
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        return handle._router._asyncio_router._metrics_manager.num_queued_requests
+
     async def ready(self) -> str:
         """Blocks until the proxy HTTP (and optionally gRPC) servers are running.
 

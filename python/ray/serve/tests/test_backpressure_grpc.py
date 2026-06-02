@@ -9,6 +9,7 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
@@ -48,7 +49,16 @@ def test_grpc_backpressure(serve_instance):
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
     second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.1)
+    proxy_handle = list(
+        ray.get(_get_global_client()._controller.get_proxies.remote()).values()
+    )[0]
+    wait_for_condition(
+        lambda: ray.get(
+            proxy_handle._get_num_queued_requests_for_testing.remote("/")
+        )
+        == 1
+    )
+
     for _ in range(10):
         status_code, text = ray.get(do_request.remote(("hi-err")))
         assert status_code == grpc.StatusCode.RESOURCE_EXHAUSTED
