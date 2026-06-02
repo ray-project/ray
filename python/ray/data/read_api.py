@@ -3464,8 +3464,13 @@ def from_pandas_refs(
         )
 
     context = DataContext.get_current()
+    label_selector = context.execution_options.label_selector
     if context.enable_pandas_block:
         get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+        if label_selector:
+            get_metadata_schema = get_metadata_schema.options(
+                label_selector=label_selector
+            )
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
         stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
         ctx = DataContext.get_current().copy()
@@ -3473,6 +3478,8 @@ def from_pandas_refs(
         return MaterializedDataset(logical_plan, ctx, stats)
 
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
+    if label_selector:
+        df_to_block = df_to_block.options(label_selector=label_selector)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata_schema = map(list, zip(*res))
@@ -3591,6 +3598,11 @@ def from_numpy_refs(
 
     ctx = DataContext.get_current()
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
+    label_selector = ctx.execution_options.label_selector
+    if label_selector:
+        ndarray_to_block_remote = ndarray_to_block_remote.options(
+            label_selector=label_selector
+        )
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
     blocks, metadata_schema = map(list, zip(*res))
@@ -3741,6 +3753,9 @@ def from_arrow_refs(
         tables = [tables]
 
     get_metadata_schema = cached_remote_fn(get_table_block_metadata_schema)
+    label_selector = DataContext.get_current().execution_options.label_selector
+    if label_selector:
+        get_metadata_schema = get_metadata_schema.options(label_selector=label_selector)
     metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
     stats = DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None)
     context = DataContext.get_current().copy()

@@ -643,6 +643,46 @@ cython==0.29.37 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.14.lock
     #   -r docker/base-deps/requirements.in
+datasketches==5.2.0 \
+    --hash=sha256:0208fb7bf40edca3f8cfcd9d1acdb95798abc10b685341b39557f59eb5bd862e \
+    --hash=sha256:177e9545aafd7359c44e7935b995b0b0f9b08704a78f53e7840a7125d2d1fc9e \
+    --hash=sha256:27538af95f5fd7dd58bea05bf9c2c2a6081954ee6c34657e868a6c209e79991a \
+    --hash=sha256:2c13fcd9071147a377b587f590887751d85874df677ec5ed72ccdf3f7a19446a \
+    --hash=sha256:40e6cecb8656b6694e845d9319c5c3aaa083f754e992db6065f18806474685c1 \
+    --hash=sha256:410094c1cfd665f9fbaec94ca9c660d8b7d1366ec255a780d9538e70f45b73d4 \
+    --hash=sha256:470111ef1b213bc75b3602e14153c3e70a1ebe0fe4b069a7800557685080c477 \
+    --hash=sha256:49e78e52d6a1d63b08a2990873f94bbc9d7427f6907f600af1257f0a9c901b1f \
+    --hash=sha256:4d33a1d7894509556efb6a41f2ad530257d67a094a039e3b5a047a22934a951e \
+    --hash=sha256:516e67cd3fd2d14c58c9d2b593f50ac23aff3874406c325ba2589a9c989862ca \
+    --hash=sha256:52c53f8c94c48b3f047ab488e9ea41ce8dbf6897c2c1f353cb8a79b22cb4a22b \
+    --hash=sha256:62aa8ddfb0e8f4d0e3e1e214e19e0de11b8ea1e34bf7752dfd987e6e9e3b1264 \
+    --hash=sha256:65b3e2bb6b2083dfdd6a611e4b07d058ca6625f838088b5cb0897335c4580e6d \
+    --hash=sha256:6be79e382a4b4fe033a7d3de0033fe81b0e01ebc5124ae24f785214517a847a7 \
+    --hash=sha256:6c2be3884b28d24a3be103a5c285902f06eee85c076be57c62c9c5eecbe15d4d \
+    --hash=sha256:6c53a43d08c35161168272bc8d2644cab035cd93d994b259bb1477032ac50427 \
+    --hash=sha256:72cc339cb7775f82516c36fe8e9a70e9f504214a8d0ed06246332f53203b89f3 \
+    --hash=sha256:7cde9ce8f42b6a05930dd9b5d0da1b4420d1e8db53faaa41c6732ce7a1670c4a \
+    --hash=sha256:95c2f6b2dea71385bfddf525cc14c9d8bf261f7aa98cbd65155dbaa0764f6cd9 \
+    --hash=sha256:9bcbf2687b436593f4e03ba73f57dd72fc6a7414d88db57e91f4c24f6e62ee45 \
+    --hash=sha256:a673180dc5226bf3c84baeeadf36d9a4f1ee82e679dcd92776651f8ffcc09287 \
+    --hash=sha256:a76731c0d876cff25cc2896ef9d80c54167f5aff7170f12b89db6a9b898fc714 \
+    --hash=sha256:a76c998ddf4d39f895b830a3ccc41d1df2d0454c74fc5e53844db119658e71a7 \
+    --hash=sha256:a8a0500c0de3012fda530e12b6c62d27278f7d6cce21008b9208895dfd337201 \
+    --hash=sha256:bd76252d5b34d1fc519f183582c69c49a7cb18e1790568eb176d8d7f73233f40 \
+    --hash=sha256:bf8f1cc1b1c4a35554924e27d6c2872e7b0dc065e2694ec83035ffbc203f17c3 \
+    --hash=sha256:bfa6571373244a9e3a4a1f59919b8a41979a997b92be3db0219400d8c6e96d20 \
+    --hash=sha256:bfc80979ccb2e11bf5e93996db7f1f486c9d3ef4a15c18f1f1bc37aaa4b2a038 \
+    --hash=sha256:bfcf551119e07e700279327ea2779a71126fc1094085f6783698430a29db8c2c \
+    --hash=sha256:c00d61da4695e00036e63f590999f584cc39246cbb147b171f375f792604a612 \
+    --hash=sha256:c3ff7dc2dbb07f24ccbf2fe192a7ead06211d4131c272f260da1cfe4a9d3f99b \
+    --hash=sha256:d9aa0c1dad8d00c242718c5dbb9f8cf1876ea099ee55c1c0634a8beecb589164 \
+    --hash=sha256:dd8640866011c7dd346d8c9cf9ad0438de16d56788c13b12c96ecb38c5c7df9d \
+    --hash=sha256:e78a462b397c9a11e876a7fd8198d77d35b8bbe849a8d329c518962bc8463ad1 \
+    --hash=sha256:f1bb68eff79d27c01e4aa2ad7c4c5601620d4efdd92264987503a5ee9b984289 \
+    --hash=sha256:fbd6eab5af078eb65d678bf27fc468097a1c5db07800ac537a75fd983c437e57
+    # via
+    #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.14.lock
+    #   -r docker/base-extra/requirements.in
 debugpy==1.8.20 \
     --hash=sha256:077a7447589ee9bc1ff0cdf443566d0ecf540ac8aa7333b775ebcb8ce9f4ecad \
     --hash=sha256:0dfd9adb4b3c7005e9c33df430bcdd4e4ebba70be533e0066e3a34d210041b66 \
@@ -1768,6 +1808,7 @@ numpy==2.3.2 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.14.lock
     #   -r docker/base-deps/requirements.in
+    #   datasketches
 oauth2client==4.1.3 \
     --hash=sha256:b8a81cc5d60e2d364f0b1b98f958dbd472887acaf1a5b05e21c28c31a2d6d3ac \
     --hash=sha256:d486741e451287f69568a4d26d70d9acd73a2bbfa275746c535b4209891cccc6
