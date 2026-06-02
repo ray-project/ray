@@ -20,6 +20,9 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.util import rows_same
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -145,16 +148,21 @@ def test_filter_with_udf_expression_not_pushed_down(parquet_ds):
     assert plan_has_operator(optimized_plan, Filter)
 
 
-def test_filter_mixed_udf_and_expression(parquet_ds):
-    """A convertible predicate may push down while a UDF predicate stays."""
+@pytest.mark.parametrize("udf_first", [True, False])
+def test_filter_mixed_udf_and_expression(parquet_ds, udf_first):
+    """Convertible conjuncts push down while the UDF stays as a Filter."""
 
     @udf(return_dtype=DataType.bool())
     def greater_than_five(value: pa.Array) -> pa.Array:
         return pa.compute.greater(value, 5.0)
 
-    filtered_ds = parquet_ds.filter(
-        expr=greater_than_five(col("sepal.length"))
-    ).filter(expr=col("sepal.width") > lit(3.0))
+    udf_filter = greater_than_five(col("sepal.length"))
+    expr_filter = col("sepal.width") > lit(3.0)
+
+    if udf_first:
+        filtered_ds = parquet_ds.filter(expr=udf_filter).filter(expr=expr_filter)
+    else:
+        filtered_ds = parquet_ds.filter(expr=expr_filter).filter(expr=udf_filter)
 
     filtered_data = filtered_ds.take_all()
     assert all(
@@ -163,8 +171,12 @@ def test_filter_mixed_udf_and_expression(parquet_ds):
     )
 
     optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
-    # The UDF filter can't be pushed down, so a Filter must survive
-    assert plan_has_operator(optimized_plan, Filter)
+
+    # Exactly one Filter survives
+    remaining_filters = get_operators_of_type(optimized_plan, Filter)
+    assert len(remaining_filters) == 1
+    residual_columns = set(get_column_references(remaining_filters[0].predicate_expr))
+    assert residual_columns == {"sepal.length"}
 
 
 def test_filter_pushdown_source_and_op(ray_start_regular_shared):

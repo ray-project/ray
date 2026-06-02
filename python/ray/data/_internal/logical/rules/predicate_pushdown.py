@@ -1,6 +1,6 @@
 import copy
 from dataclasses import is_dataclass, replace
-from typing import List
+from typing import List, Optional, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -24,7 +24,7 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
-from ray.data.expressions import Expr, _is_pyarrow_convertible, col
+from ray.data.expressions import BinaryExpr, Expr, Operation, col
 
 __all__ = [
     "PredicatePushdown",
@@ -182,6 +182,41 @@ class PredicatePushdown(Rule):
         return visitor.visit(predicate_expr)
 
     @classmethod
+    def _combine_with_and(cls, left: Optional[Expr], right: Optional[Expr]) -> Optional[Expr]:
+        """Combine two optional predicates with ``AND``, ignoring ``None``."""
+        if left is not None and right is not None:
+            return left & right
+        return left if left is not None else right
+
+    @classmethod
+    def _split_by_convertibility(
+        cls, predicate: Expr
+    ) -> Tuple[Optional[Expr], Optional[Expr]]:
+        """Split a predicate into PyArrow convertible and residual parts.
+
+        Walks the top level ``AND`` chain and buckets each conjunct by whether
+        it can be lowered to PyArrow. The convertible part can be pushed into
+        the datasource while the residual part stays as a ``Filter`` above it.
+
+        Args:
+            predicate: The predicate expression to split.
+
+        Returns:
+            A ``(convertible, residual)`` tuple. Both are optional.
+        """
+        if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
+            left_conv, left_res = cls._split_by_convertibility(predicate.left)
+            right_conv, right_res = cls._split_by_convertibility(predicate.right)
+            return (
+                cls._combine_with_and(left_conv, right_conv),
+                cls._combine_with_and(left_res, right_res),
+            )
+
+        if predicate._is_pyarrow_convertible():
+            return predicate, None
+        return None, predicate
+
+    @classmethod
     def _try_push_down_predicate(cls, op: LogicalOperator) -> LogicalOperator:
         """Push Filter down through the operator tree."""
         if not cls._is_valid_filter_operator(op):
@@ -201,18 +236,30 @@ class PredicatePushdown(Rule):
         ):
             # Datasources evaluate pushed predicates via PyArrow. A predicate
             # that can't be lowered to PyArrow (e.g. it contains a UDF) must
-            # not be pushed down
-            if not _is_pyarrow_convertible(predicate_expr):
+            # stay as a Filter. Split the top level AND chain so the convertible
+            # conjuncts can still be pushed while the residual ones are kept as
+            # a Filter above the read.
+            convertible_predicate, residual_predicate = cls._split_by_convertibility(
+                predicate_expr
+            )
+
+            if convertible_predicate is None:
                 return filter_op
 
-            result_op = input_op.apply_predicate(predicate_expr)
+            result_op = input_op.apply_predicate(convertible_predicate)
 
             # If the operator is unchanged (e.g., predicate references partition columns
             # that can't be pushed down), keep the Filter operator
             if result_op is input_op:
                 return filter_op
 
-            return result_op
+            # Convertible conjuncts were pushed into the read. Re-apply any
+            # residual (non-convertible) conjuncts as a Filter above it.
+            if residual_predicate is None:
+                return result_op
+            return Filter(
+                predicate_expr=residual_predicate, input_dependencies=[result_op]
+            )
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):

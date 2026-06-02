@@ -251,6 +251,70 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         raise TypeError("UUID expressions cannot be converted to PyArrow expressions")
 
 
+class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
+    """Visitor that reports whether an expression can be lowered to PyArrow.
+
+    This mirrors the node/operation support of :class:`_PyArrowExpressionVisitor`
+    but only inspects the expression structure, it never builds PyArrow objects.
+    """
+
+    def visit_column(self, expr: "ColumnExpr") -> bool:
+        return True
+
+    def visit_literal(self, expr: "LiteralExpr") -> bool:
+        return True
+
+    def visit_alias(self, expr: "AliasExpr") -> bool:
+        return self.visit(expr.expr)
+
+    def visit_binary(self, expr: "BinaryExpr") -> bool:
+        # ``is_in``/``not_in`` are convertible only when the right operand is a
+        # literal (the converter reads ``expr.right.value`` directly).
+        if expr.op in (Operation.IN, Operation.NOT_IN):
+            return isinstance(expr.right, LiteralExpr) and self.visit(expr.left)
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        return (
+            expr.op in _ARROW_EXPR_OPS_MAP
+            and self.visit(expr.left)
+            and self.visit(expr.right)
+        )
+
+    def visit_unary(self, expr: "UnaryExpr") -> bool:
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        return expr.op in _ARROW_EXPR_OPS_MAP and self.visit(expr.operand)
+
+    def visit_udf(self, expr: "UDFExpr") -> bool:
+        # Only PyArrow compute UDFs have a PyArrow equivalent. Generic Python
+        # UDFs do not.
+        return isinstance(expr, PyArrowComputeUDFExpr) and all(
+            self.visit(a) for a in expr.args
+        )
+
+    def visit_download(self, expr: "DownloadExpr") -> bool:
+        return False
+
+    def visit_star(self, expr: "StarExpr") -> bool:
+        return False
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> bool:
+        return False
+
+    def visit_random(self, expr: "RandomExpr") -> bool:
+        return False
+
+    def visit_uuid(self, expr: "UUIDExpr") -> bool:
+        return False
+
+
 def _eval_kernel_type(
     op: "Operation", operand_types: List["pyarrow.DataType"]
 ) -> Optional["pyarrow.DataType"]:
@@ -277,21 +341,6 @@ def _eval_kernel_type(
         return None
 
     return result.type
-
-
-def _is_pyarrow_convertible(expr: "Expr") -> bool:
-    """Return True if ``expr`` can be lowered to a PyArrow compute expression.
-
-    Used by predicate pushdown to decide whether a filter can be pushed into a
-    datasource (which evaluates the predicate via PyArrow). UDFs and other
-    Python-only expressions are not convertible and must stay as a ``Filter``
-    operator that evaluates them in Python.
-    """
-    try:
-        expr.to_pyarrow()
-        return True
-    except Exception:
-        return False
 
 
 @DeveloperAPI(stability="alpha")
@@ -347,6 +396,24 @@ class Expr(ABC):
             TypeError: If the expression type cannot be converted to PyArrow.
         """
         return _PyArrowExpressionVisitor().visit(self)
+
+    def _is_pyarrow_convertible(self) -> bool:
+        """Return whether this expression can be lowered to PyArrow.
+
+        Used by predicate pushdown to decide whether a filter can be pushed into
+        a datasource (which evaluates the predicate via PyArrow). UDFs and other
+        Python only expressions are not convertible and must stay as a
+        ``Filter`` operator that is evaluated in Python.
+
+        Unlike :meth:`to_pyarrow`, this inspects the expression structure only.
+        It does not build any PyArrow objects (see
+        :class:`_PyArrowConvertibilityVisitor`).
+
+        Returns:
+            Whether this expression can be lowered to a PyArrow compute
+            expression.
+        """
+        return _PyArrowConvertibilityVisitor().visit(self)
 
     def __repr__(self) -> str:
         """Return a tree-structured string representation of the expression.
