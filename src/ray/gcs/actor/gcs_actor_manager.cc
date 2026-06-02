@@ -1940,9 +1940,18 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
 void GcsActorManager::AddDestroyedActorObservabilityData(const GcsActor &actor) {
   if (destroyed_actor_observability_data_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    const auto &actor_id = sorted_destroyed_actor_observability_list_.front().first;
-    gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_});
-    destroyed_actor_observability_data_.erase(actor_id);
+    const auto &evict_id = sorted_destroyed_actor_observability_list_.front().first;
+
+    // Mirror GcsActor::~GcsActor: decrement the counter for non-DEAD states on eviction.
+    auto evict_it = destroyed_actor_observability_data_.find(evict_id);
+    RAY_CHECK(evict_it != destroyed_actor_observability_data_.end());
+    if (evict_it->second.state() != rpc::ActorTableData::DEAD) {
+      actor_state_counter_->Decrement(
+          {evict_it->second.state(), evict_it->second.class_name()});
+    }
+
+    gcs_table_storage_->ActorTable().Delete(evict_id, {[](auto) {}, io_context_});
+    destroyed_actor_observability_data_.erase(evict_it);
     sorted_destroyed_actor_observability_list_.pop_front();
   }
 
