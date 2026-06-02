@@ -18,7 +18,7 @@ from typing import (
 )
 
 import ray
-from .ref_bundle import RefBundle
+from .ref_bundle import BlockEntry, RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
@@ -286,7 +286,7 @@ class DataOpTask(OpTask):
                 )
             self._output_ready_callback(
                 RefBundle(
-                    [(self._pending_block_ref, meta)],
+                    [BlockEntry(self._pending_block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),

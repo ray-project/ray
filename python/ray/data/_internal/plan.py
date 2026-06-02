@@ -130,11 +130,7 @@ class ExecutionPlan:
                     bundle.schema for bundle in output_bundles
                 )
                 bundle = RefBundle(
-                    [
-                        (block, metadata)
-                        for bundle in output_bundles
-                        for block, metadata in bundle.blocks
-                    ],
+                    [entry for bundle in output_bundles for entry in bundle.blocks],
                     owns_blocks=owns_blocks,
                     schema=schema,
                 )

@@ -456,9 +456,10 @@ class StreamingExecutor(Executor, threading.Thread):
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
         # Always assign a ``Timer`` so downstream consumers can call
-        # ``.get()`` / ``.avg()`` / ``.max()`` unconditionally. When
-        # ``_initial_stats`` is absent we hand back an empty Timer (count
-        # 0); the Timer's zero-sample semantics yield 0 across all three.
+        # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``
+        # unconditionally. When ``_initial_stats`` is absent we hand
+        # back an empty Timer; zero-sample semantics yield 0 across all
+        # four.
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats

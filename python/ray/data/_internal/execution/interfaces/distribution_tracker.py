@@ -105,3 +105,28 @@ class DistributionTracker:
             "p95": self.p95,
             "p99": self.p99,
         }
+
+    # ``kll_doubles_sketch`` is a C++-backed object that does not
+    # pickle natively. DistributionTracker rides on DatasetStats
+    # (via Timer), which is cloudpickled when Datasets cross actor /
+    # process boundaries — without these hooks any such transfer
+    # raises ``TypeError: cannot pickle 'kll_doubles_sketch' object``.
+    # The sketch exposes its own byte serialization, so we round-trip
+    # through that.
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if self._sketch is not None:
+            state["_sketch"] = self._sketch.serialize()
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # If the source had datasketches but this side doesn't, drop
+        # the sketch (percentiles will return None — same fallback as a
+        # default construction without datasketches installed).
+        if self._sketch is not None and not _DATASKETCHES_AVAILABLE:
+            self._sketch = None
+        elif self._sketch is not None and not isinstance(
+            self._sketch, kll_doubles_sketch
+        ):
+            self._sketch = kll_doubles_sketch.deserialize(self._sketch)

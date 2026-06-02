@@ -1,7 +1,11 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -137,8 +141,12 @@ def test_does_not_double_count_usage_from_union():
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=1, input_files=None, exec_stats=None
     )
-    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
-    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle(
+        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
+    )
+    bundle2 = RefBundle(
+        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
+    )
 
     # Add two 1-byte `RefBundle` to the union operator.
     topology[union_op].add_output(bundle1)
@@ -203,8 +211,12 @@ def test_per_input_inqueue_attribution_for_union():
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=10, input_files=None, exec_stats=None
     )
-    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
-    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle(
+        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
+    )
+    bundle2 = RefBundle(
+        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
+    )
 
     # Add blocks only to input2's buffer inside the union operator.
     # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
