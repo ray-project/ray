@@ -18,12 +18,14 @@ from fastapi import FastAPI, Request, Response
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
+    PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
     HAProxyApi,
     HAProxyConfig,
+    HAProxyManager,
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
@@ -2294,6 +2296,56 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
             ), "Config should contain 'option http-no-delay' when tcp_nodelay=True"
 
         await api.stop()
+
+
+def _bare_haproxy_manager():
+    """An uninitialized HAProxyManager for unit-testing its methods.
+
+    HAProxyManager is an ``@ray.remote`` actor, so the imported name is an
+    ActorClass, not a plain type. Reach the underlying Python class via
+    ``__ray_metadata__.modified_class`` and instantiate it with ``__new__``
+    so ``__init__`` (actor base class + event loop) is skipped.
+    """
+    cls = HAProxyManager.__ray_metadata__.modified_class
+    return cls.__new__(cls)
+
+
+@pytest.mark.asyncio
+async def test_is_drained_waits_for_old_procs():
+    """is_drained() stays False while a soft-stopping old worker from a
+    prior reload is still alive, even past the drain period with an idle
+    current worker; it flips True once the old worker exits."""
+    # Set only the two attributes is_drained() reads.
+    manager = _bare_haproxy_manager()
+    manager._draining_start_time = time.time() - PROXY_MIN_DRAINING_PERIOD_S - 1
+
+    manager._haproxy = mock.Mock()
+    manager._haproxy.get_haproxy_stats = mock.AsyncMock(
+        return_value=mock.Mock(is_system_idle=True)
+    )
+
+    # Old worker still serving -> not drained despite idle current worker.
+    manager._haproxy.has_alive_old_procs = mock.Mock(return_value=True)
+    assert await manager.is_drained() is False
+
+    # Old worker has exited -> drained.
+    manager._haproxy.has_alive_old_procs = mock.Mock(return_value=False)
+    assert await manager.is_drained() is True
+
+
+@pytest.mark.asyncio
+async def test_is_drained_false_before_min_period():
+    """is_drained() is False until PROXY_MIN_DRAINING_PERIOD_S has elapsed,
+    regardless of old-proc / idle state."""
+    manager = _bare_haproxy_manager()
+    manager._draining_start_time = time.time()  # just started draining
+    manager._haproxy = mock.Mock()
+    manager._haproxy.has_alive_old_procs = mock.Mock(return_value=False)
+    manager._haproxy.get_haproxy_stats = mock.AsyncMock(
+        return_value=mock.Mock(is_system_idle=True)
+    )
+
+    assert await manager.is_drained() is False
 
 
 if __name__ == "__main__":

@@ -101,6 +101,8 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     return {
         "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
         "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
+        "p50_scheduling_loop_duration_s": summary.streaming_exec_schedule_p50_s,
+        "p90_scheduling_loop_duration_s": summary.streaming_exec_schedule_p90_s,
         "operators": [
             {
                 "operator_name": op.operator_name,
@@ -158,8 +160,13 @@ class RuntimeEnvSetupTracker:
 
 
 def benchmark_py_modules() -> List[str]:
-    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
-    return [os.path.abspath(__file__)]
+    """Return paths to benchmark.py and the profiling
+    package for use in runtime_env py_modules."""
+    dataset_dir = os.path.dirname(os.path.realpath(__file__))
+    return [
+        os.path.realpath(__file__),
+        os.path.join(dataset_dir, "profiling"),
+    ]
 
 
 class BenchmarkMetric(Enum):
