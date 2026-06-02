@@ -16,8 +16,8 @@ from ray.data.expressions import (
     RandomExpr,
     UDFExpr,
     UUIDExpr,
-    _expand_star_exprs,
     col,
+    expand_star_exprs,
     exprlist_to_fields,
     lit,
     star,
@@ -267,27 +267,27 @@ class TestExprlistToFields:
 
 
 class TestExpandStarExprs:
-    """Tests for ``_expand_star_exprs`` (Phase 2a eager expansion)."""
+    """Tests for ``expand_star_exprs`` (eager expansion in ``Project``)."""
 
     def test_passthrough_without_star(self, schema):
         # No StarExpr -> input list returned unchanged.
         exprs = [col("a"), (col("a") + col("b")).alias("sum")]
-        assert _expand_star_exprs(exprs, schema) is exprs
+        assert expand_star_exprs(exprs, schema) is exprs
 
     def test_passthrough_when_schema_is_none(self):
         exprs = [star(), col("a")]
-        assert _expand_star_exprs(exprs, None) is exprs
+        assert expand_star_exprs(exprs, None) is exprs
 
     def test_simple_star(self, schema):
         # ``[star()]`` -> one ``col()`` per input column.
-        result = _expand_star_exprs([star()], schema)
+        result = expand_star_exprs([star()], schema)
         assert_exprs_equal(result, [col("a"), col("b"), col("name"), col("flag")])
 
     def test_star_with_with_column(self, schema):
         # ``with_column``-style: ``[star(), expr.alias("new")]`` expands
         # to ``[col(a), col(b), col(name), col(flag), expr.alias("new")]``.
         new_expr = (col("a") + col("b")).alias("new")
-        result = _expand_star_exprs([star(), new_expr], schema)
+        result = expand_star_exprs([star(), new_expr], schema)
         assert_exprs_equal(
             result, [col("a"), col("b"), col("name"), col("flag"), new_expr]
         )
@@ -298,7 +298,7 @@ class TestExpandStarExprs:
         # / ``exprlist_to_fields``), so ``a`` becomes ``renamed_a`` at
         # position 0 rather than moving to the end.
         rename = col("a")._rename("renamed_a")
-        result = _expand_star_exprs([star(), rename], schema)
+        result = expand_star_exprs([star(), rename], schema)
         assert_exprs_equal(result, [rename, col("b"), col("name"), col("flag")])
 
     def test_star_with_rename_source_missing(self, schema):
@@ -306,7 +306,7 @@ class TestExpandStarExprs:
         # its trailing position so it still errors ("column not found") at
         # runtime instead of being silently dropped.
         rename = col("missing")._rename("renamed")
-        result = _expand_star_exprs([star(), rename], schema)
+        result = expand_star_exprs([star(), rename], schema)
         assert_exprs_equal(
             result, [col("a"), col("b"), col("name"), col("flag"), rename]
         )

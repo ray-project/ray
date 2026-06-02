@@ -219,8 +219,8 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
     if not downstream_project.has_star_expr():
         # Projection case: this is when downstream is a *selection* (ie, not including
-        # the upstream columns with ``StarExpr``). After Phase 2a's eager
-        # expansion in ``Project.__post_init__`` this is the common case
+        # the upstream columns with ``StarExpr``). With eager expansion of
+        # ``StarExpr`` in ``Project.__post_init__`` this is the common case
         # for typed chains (no ``StarExpr`` reaches the optimizer).
         #
         # Example:

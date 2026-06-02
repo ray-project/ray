@@ -342,7 +342,7 @@ class TestEndToEndStaticResolution:
 
 
 class TestEagerStarExpansion:
-    """Phase 2a: ``Project.__post_init__`` should expand ``StarExpr`` to
+    """``Project.__post_init__`` should expand ``StarExpr`` to
     explicit ``col()`` references when the input schema is known, so
     downstream optimizer rules never see ``StarExpr`` on typed chains."""
 

@@ -1808,7 +1808,8 @@ class UUIDExpr(Expr):
         return False
 
 
-def _expand_star_exprs(exprs: List[Expr], input_schema: "pyarrow.Schema") -> List[Expr]:
+@DeveloperAPI(stability="alpha")
+def expand_star_exprs(exprs: List[Expr], input_schema: "pyarrow.Schema") -> List[Expr]:
     """Replace any ``StarExpr`` in ``exprs`` with explicit ``col(name)``
     references for each input schema column, substituting any rename
     ``AliasExpr`` (``_is_rename=True`` wrapping a ``ColumnExpr``) in place
@@ -1859,10 +1860,10 @@ def exprlist_to_fields(
 ) -> Optional[List["pyarrow.Field"]]:
     """Resolve a list of expressions against the input schema into PyArrow fields.
 
-    Any ``StarExpr`` is first expanded in place via ``_expand_star_exprs``
+    Any ``StarExpr`` is first expanded in place via ``expand_star_exprs``
     (each rename ``AliasExpr`` substituted at its source column's position),
     yielding a fully ordered, star-free projection list. The expanded list
-    is then resolved positionally. Sharing ``_expand_star_exprs`` with the
+    is then resolved positionally. Sharing ``expand_star_exprs`` with the
     runtime ``eval_projection`` (which expands the star the same way) keeps
     plan-time schema order and runtime output order identical by
     construction, including the position of renamed columns.
@@ -1903,12 +1904,12 @@ def exprlist_to_fields(
         else:
             output_fields[idx] = field_
 
-    # ``_expand_star_exprs`` substitutes renames in place and drops the
+    # ``expand_star_exprs`` substitutes renames in place and drops the
     # ``StarExpr``; a rename whose source is missing stays in the list and
     # fails ``to_field`` below -> ``None`` (matching the runtime's
     # "column not found" error). ``ColumnExpr.to_field`` returns the input
     # field verbatim, so star-expanded columns preserve type and metadata.
-    for expr in _expand_star_exprs(exprs, input_schema):
+    for expr in expand_star_exprs(exprs, input_schema):
         resolved = expr.to_field(input_schema)
         if resolved is None:
             return None

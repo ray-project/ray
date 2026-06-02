@@ -25,7 +25,7 @@ from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
     Expr,
     StarExpr,
-    _expand_star_exprs,
+    expand_star_exprs,
     exprlist_to_fields,
 )
 from ray.data.preprocessor import Preprocessor
@@ -371,7 +371,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         input_schema = self.input_dependencies[0].infer_schema()
         if isinstance(input_schema, pa.Schema):
             object.__setattr__(
-                self, "exprs", _expand_star_exprs(self.exprs, input_schema)
+                self, "exprs", expand_star_exprs(self.exprs, input_schema)
             )
         if self.compute is None:
             object.__setattr__(
