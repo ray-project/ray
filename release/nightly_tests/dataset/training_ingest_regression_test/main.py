@@ -40,12 +40,10 @@ from ray._private.internal_api import get_state_from_address
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
-# Pull ObjectStoreMemorySampler from the shared nightly-tests benchmark
-# utility so we sample peak Plasma usage with the same accuracy as the
-# release-test infra (1s background sampler, not just snapshots).
-sys.path.insert(
-    0, str(Path(__file__).resolve().parent.parent.parent / "nightly_tests" / "dataset")
-)
+# Pull ObjectStoreMemorySampler from the sibling benchmark utility so we
+# sample peak Plasma usage with the same accuracy as the release-test
+# infra (1s background sampler, not just snapshots).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from benchmark import (  # noqa: E402
     ObjectStoreMemorySampler,
     _get_spilled_bytes_total,

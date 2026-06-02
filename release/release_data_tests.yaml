@@ -500,26 +500,17 @@
           --data-loader s3_read_images --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
-# See release/train_tests/benchmark/training_ingest_regression_test.py for the
-# variation matrix and what each one measures.
+# See release/nightly_tests/dataset/training_ingest_regression_test/main.py
+# for the variation matrix and what each one measures.
 - name: training_ingest_regression_test
   python: "3.10"
   group: data-iter-batches
-  working_dir: train_tests/benchmark
-
-  frequency: nightly
-  team: data
 
   cluster:
     anyscale_sdk_2026: true
     byod:
       type: gpu
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_FAIL_ON_SPILLING=1
-    cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
+    cluster_compute: compute_gpu_4x4_aws.yaml
 
   variations:
     - __suffix__: peak_object_store_memory
@@ -527,7 +518,7 @@
         timeout: 1800
         script: >
           RAY_TRAIN_V2_ENABLED=1
-          python training_ingest_regression_test.py
+          python training_ingest_regression_test/main.py
           --num-workers=4 --prefetch-batches=4
           --limit-batches-per-worker=50 --step-sleep-s=2.0
           --num-runs=3
@@ -538,7 +529,7 @@
         timeout: 1800
         script: >
           RAY_TRAIN_V2_ENABLED=1
-          python training_ingest_regression_test.py
+          python training_ingest_regression_test/main.py
           --num-workers=4 --prefetch-batches=4
           --limit-batches-per-worker=50 --step-sleep-s=2.0
           --pin-memory --num-runs=3
@@ -548,7 +539,7 @@
         timeout: 1800
         script: >
           RAY_TRAIN_V2_ENABLED=1
-          python training_ingest_regression_test.py
+          python training_ingest_regression_test/main.py
           --num-workers=4 --prefetch-batches=4
           --limit-batches-per-worker=100 --num-runs=3
 
@@ -558,7 +549,7 @@
         timeout: 1800
         script: >
           RAY_TRAIN_V2_ENABLED=1
-          python training_ingest_regression_test.py
+          python training_ingest_regression_test/main.py
           --num-workers=4 --prefetch-batches=4
           --limit-batches-per-worker=100 --pin-memory --num-runs=3
 
