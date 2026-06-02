@@ -374,6 +374,14 @@ class DAGNode(DAGNodeBase):
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
         """
+        import warnings
+
+        warnings.warn(
+            "DAGNode.execute() is deprecated and will be removed in a future release. "
+            "Use the compiled DAG API (dag.experimental_compile()) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)

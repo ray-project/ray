@@ -4,7 +4,7 @@ import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.util.annotations import DeveloperAPI
-import warnings
+
 
 @DeveloperAPI
 class FunctionNode(DAGNode):
@@ -49,12 +49,6 @@ class FunctionNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
-        warnings.warn(
-            "DAGNode.execute() is deprecated and will be removed in a future release. "
-            "Use the compiled DAG API (dag.experimental_compile()) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         return (
             ray.remote(self._body)
             .options(**self._bound_options)
