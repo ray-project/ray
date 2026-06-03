@@ -47,18 +47,29 @@ def test_grpc_backpressure(serve_instance):
     assert len(pending) == 1
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
-    second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.1)
-    for _ in range(10):
-        status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == grpc.StatusCode.RESOURCE_EXHAUSTED
-        assert text.startswith("Request dropped due to backpressure")
+    num_requests = 10
+    burst_refs = [do_request.remote("hi-err") for _ in range(num_requests)]
 
-    # Send the signal; the first request will be unblocked and the second should
-    # subsequently get scheduled and executed.
+    def num_rejected() -> int:
+        ready, _ = ray.wait(burst_refs, num_returns=len(burst_refs), timeout=0)
+        rejected = 0
+        for status_code, text in ray.get(ready):
+            if status_code == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                assert text.startswith("Request dropped due to backpressure")
+                rejected += 1
+        return rejected
+
+    # All but the single queued request should be rejected with backpressure.
+    wait_for_condition(lambda: num_rejected() == num_requests - 1)
+
+    # Send the signal; the ongoing request and the single queued request both
+    # get unblocked and complete successfully.
     ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == (grpc.StatusCode.OK, "hi-1")
-    assert ray.get(second_ref) == (grpc.StatusCode.OK, "hi-2")
+    num_ok = sum(
+        1 for status_code, _ in ray.get(burst_refs) if status_code == grpc.StatusCode.OK
+    )
+    assert num_ok == 1
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)

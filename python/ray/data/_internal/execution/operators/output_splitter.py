@@ -13,6 +13,7 @@ from ray.data._internal.execution.bundle_queue import (
     HashLinkedQueue,
 )
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionOptions,
     NodeIdStr,
     PhysicalOperator,
@@ -354,7 +355,9 @@ def _split(
     left_blocks, left_meta = [], []
     right_blocks, right_meta = [], []
     acc = 0
-    for b, m in bundle.blocks:
+    for entry in bundle.blocks:
+        b = entry.ref
+        m = entry.metadata
         if acc >= left_size:
             right_blocks.append(b)
             right_meta.append(m)
@@ -373,12 +376,12 @@ def _split(
             acc += lm.num_rows
             assert acc == left_size
     left = RefBundle(
-        list(zip(left_blocks, left_meta)),
+        [BlockEntry(b, m) for b, m in zip(left_blocks, left_meta)],
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
     )
     right = RefBundle(
-        list(zip(right_blocks, right_meta)),
+        [BlockEntry(b, m) for b, m in zip(right_blocks, right_meta)],
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
     )
