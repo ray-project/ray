@@ -74,8 +74,12 @@ def iter_threaded(
 
     def _locked_next():
         # Pull the next item under a lock so workers can safely share a
-        # stateful iterator. Returns _SENTINEL once exhausted.
+        # stateful iterator. Returns _SENTINEL once exhausted or once the
+        # consumer has stopped (so workers don't pay for one more fetch
+        # before the next _put-side stop check).
         with iter_lock:
+            if stopped.is_set():
+                return _SENTINEL
             try:
                 return next(base_iterator)
             except StopIteration:
