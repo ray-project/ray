@@ -124,7 +124,7 @@ The executor then drives the generator itself:
 
 Each `send(stats)` or `asend(stats)` resumes the Python generator until the next `yield`.
 After a value is yielded, the generator is paused.
-Before the executor calls `send(stats)` or `asend(stats)` again, it sends `ReportGeneratorItemReturns` to the caller, and waits for backpressure if needed.
+Before the executor calls `send(stats)` or `asend(stats)` again, [it sends `ReportGeneratorItemReturns` to the caller](#reporting-yielded-values), and [waits for backpressure if needed](#backpressure).
 The loop ends when the generator raises `StopIteration` or `StopAsyncIteration`.
 
 Note that Ray streaming generators are output-only streams.
