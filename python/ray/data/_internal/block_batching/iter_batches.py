@@ -98,8 +98,11 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
-        preserve_order: Whether to restore the original batch order after the
-            format/collate threadpool.
+        preserve_order: Whether to maintain the original order that the batches
+            were formed from the blocks (e.g., the input block order).
+            This only takes effect in the case that the format/collate threadpool
+            has more than one thread and the output batches have non-deterministic
+            order.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
