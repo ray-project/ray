@@ -94,7 +94,8 @@ void InitK8sClientConfig() {
 static Status EstablishSslConnection(net::io_context &ioc,
                                      ssl::context &ctx,
                                      ssl::stream<beast::tcp_stream> &stream,
-                                     tcp::resolver &resolver) {
+                                     tcp::resolver &resolver,
+                                     std::chrono::steady_clock::time_point deadline) {
   beast::error_code ec;
   ctx.load_verify_file(kK8sCaCertPath, ec);
   if (ec) {
@@ -105,7 +106,7 @@ static Status EstablishSslConnection(net::io_context &ioc,
     return Status::IOError(absl::StrCat("Failed to set verify mode: ", ec.message()));
   }
 
-  beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(kK8sApiTimeoutSecs));
+  beast::get_lowest_layer(stream).expires_at(deadline);
 
   if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
     ec = beast::error_code{static_cast<int>(::ERR_get_error()),
@@ -123,6 +124,7 @@ static Status EstablishSslConnection(net::io_context &ioc,
     return Status::IOError(absl::StrCat("Failed to connect to K8s host: ", ec.message()));
   }
 
+  beast::get_lowest_layer(stream).expires_at(deadline);
   stream.handshake(ssl::stream_base::client, ec);
   if (ec) {
     return Status::IOError(absl::StrCat("SSL handshake failed: ", ec.message()));
@@ -141,12 +143,14 @@ Status K8sApiPost(const std::string &path,
   std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
+    auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
     net::io_context ioc;
     ssl::context ctx(ssl::context::tlsv12_client);
     tcp::resolver resolver(ioc);
     ssl::stream<beast::tcp_stream> stream(ioc, ctx);
 
-    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver));
+    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver, deadline));
 
     http::request<http::string_body> req{http::verb::post, path, 11};
     req.set(http::field::host, k8s_host);
@@ -157,12 +161,10 @@ Status K8sApiPost(const std::string &path,
     req.body() = body.dump();
     req.prepare_payload();
 
-    beast::get_lowest_layer(stream).expires_after(
-        std::chrono::seconds(kK8sApiTimeoutSecs));
+    beast::get_lowest_layer(stream).expires_at(deadline);
     http::write(stream, req);
 
-    beast::get_lowest_layer(stream).expires_after(
-        std::chrono::seconds(kK8sApiTimeoutSecs));
+    beast::get_lowest_layer(stream).expires_at(deadline);
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(stream, buffer, res);
@@ -210,12 +212,14 @@ Status K8sApiGet(const std::string &path, nlohmann::json &response_json) {
   std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
+    auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
     net::io_context ioc;
     ssl::context ctx(ssl::context::tlsv12_client);
     tcp::resolver resolver(ioc);
     ssl::stream<beast::tcp_stream> stream(ioc, ctx);
 
-    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver));
+    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver, deadline));
 
     http::request<http::empty_body> req{http::verb::get, path, 11};
     req.set(http::field::host, k8s_host);
@@ -223,12 +227,10 @@ Status K8sApiGet(const std::string &path, nlohmann::json &response_json) {
     std::string auth_header = "Bearer " + k8s_sa_token;
     req.set(http::field::authorization, auth_header);
 
-    beast::get_lowest_layer(stream).expires_after(
-        std::chrono::seconds(kK8sApiTimeoutSecs));
+    beast::get_lowest_layer(stream).expires_at(deadline);
     http::write(stream, req);
 
-    beast::get_lowest_layer(stream).expires_after(
-        std::chrono::seconds(kK8sApiTimeoutSecs));
+    beast::get_lowest_layer(stream).expires_at(deadline);
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(stream, buffer, res);
@@ -282,12 +284,14 @@ Status K8sApiPut(const std::string &path,
   std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
 
   try {
+    auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
     net::io_context ioc;
     ssl::context ctx(ssl::context::tlsv12_client);
     tcp::resolver resolver(ioc);
     ssl::stream<beast::tcp_stream> stream(ioc, ctx);
 
-    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver));
+    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver, deadline));
 
     http::request<http::string_body> req{http::verb::put, path, 11};
     req.set(http::field::host, k8s_host);
@@ -298,12 +302,10 @@ Status K8sApiPut(const std::string &path,
     req.body() = body.dump();
     req.prepare_payload();
 
-    beast::get_lowest_layer(stream).expires_after(
-        std::chrono::seconds(kK8sApiTimeoutSecs));
+    beast::get_lowest_layer(stream).expires_at(deadline);
     http::write(stream, req);
 
-    beast::get_lowest_layer(stream).expires_after(
-        std::chrono::seconds(kK8sApiTimeoutSecs));
+    beast::get_lowest_layer(stream).expires_at(deadline);
     beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(stream, buffer, res);
