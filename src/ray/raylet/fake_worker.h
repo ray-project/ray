@@ -108,7 +108,6 @@ class FakeWorker : public WorkerInterface {
   std::shared_ptr<TaskResourceInstances> GetStartupAllocatedInstances() const override {
     return nullptr;
   }
-  void ClearStartupAllocatedInstances() override {}
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
   bool IsRegistered() override { return false; }
