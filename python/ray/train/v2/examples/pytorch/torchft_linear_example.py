@@ -147,17 +147,22 @@ def train_func(config):
             weight = model.module.weight.detach().flatten().tolist()
             bias = model.module.bias.detach().flatten().tolist()
             result = {"loss": avg_loss, "weight": weight, "bias": bias, "step": step}
-            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-                ray.train.report(
-                    result,
-                    checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
-                )
+            # TODO(tseah): remove this check once we support reporting with 1/2 workers.
+            if config.get("training_requires_all_workers", True):
+                with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                    ray.train.report(
+                        result,
+                        checkpoint=ray.train.Checkpoint.from_directory(
+                            temp_checkpoint_dir
+                        ),
+                    )
             results.append(result)
             running_loss = 0.0
             num_batches = 0
 
     # Needed to avoid "split brain" where worker X dies, worker Y finishes, worker X resumes,
     # and worker X gets stuck in loss.backward()
+    print(f"Shutting down manager on rank {world_rank}")
     manager.shutdown()
 
     return results
