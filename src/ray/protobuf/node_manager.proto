@@ -129,8 +129,9 @@ message CommitBundleResourcesRequest {
 message CommitBundleResourcesReply {}
 
 message CancelResourceReserveRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles to cancel on this node. GCS batches per (placement group, node)
+  // so a single RPC handles all of a PG's bundles that landed on the same node.
+  repeated Bundle bundle_specs = 1;
 }
 
 message CancelResourceReserveReply {}

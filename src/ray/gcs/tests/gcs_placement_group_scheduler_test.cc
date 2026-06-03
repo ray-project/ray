@@ -564,11 +564,12 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+  // Both bundles land on the same node, so GCS sends a single batched Cancel
+  // RPC carrying both bundle specs.
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  ASSERT_EQ(raylet_clients_[0]->num_bundles_returned, 2);
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
-  ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
 }
 

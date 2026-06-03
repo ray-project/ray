@@ -116,8 +116,12 @@ class RayletClientInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
+  /// Request a raylet to cancel resources for one or more placement-group bundles.
+  /// GCS batches all of a placement group's bundles that landed on the same node
+  /// into a single Cancel RPC.
+  /// \param bundle_specs Bundles to cancel on this raylet.
   virtual void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual void ReleaseUnusedBundles(

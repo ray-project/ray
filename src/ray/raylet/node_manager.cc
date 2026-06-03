@@ -1966,9 +1966,23 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveRequest request,
     rpc::CancelResourceReserveReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
-                 << bundle_spec.DebugString();
+  std::vector<BundleSpecification> bundle_specs;
+  bundle_specs.reserve(request.bundle_specs_size());
+  for (const auto &bundle : request.bundle_specs()) {
+    bundle_specs.emplace_back(bundle);
+  }
+  RAY_CHECK(!bundle_specs.empty()) << "Cancel request must contain at least one bundle";
+
+  // GCS batches per (placement group, node), so every bundle in this request
+  // belongs to the same placement group. Compute the PG-scoped work (cancel
+  // leases, destroy workers) once instead of redundantly per bundle.
+  const auto &pg_id = bundle_specs.front().PlacementGroupId();
+  for (const auto &spec : bundle_specs) {
+    RAY_CHECK(spec.PlacementGroupId() == pg_id)
+        << "Cancel batch must be scoped to a single placement group";
+  }
+  RAY_LOG(DEBUG) << "Request to cancel " << bundle_specs.size()
+                 << " bundle(s) for placement group " << pg_id;
 
   // The PG bundle resource must be committed before a lease request asking for it
   // can be added to local_lease_manager and the only reason why we cancel
@@ -1978,12 +1992,10 @@ void NodeManager::HandleCancelResourceReserve(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id =
             work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
-        return bundle_id.first == bundle_spec.PlacementGroupId();
+        return bundle_id.first == pg_id;
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      absl::StrCat("Required placement group ",
-                   bundle_spec.PlacementGroupId().Hex(),
-                   " is removed."));
+      absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
 
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
@@ -1992,7 +2004,7 @@ void NodeManager::HandleCancelResourceReserve(
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
+    if (worker->GetBundleId().first == pg_id) {
       workers_associated_with_pg.emplace_back(worker);
     }
   }
@@ -2001,7 +2013,7 @@ void NodeManager::HandleCancelResourceReserve(
     stream << "Destroying worker since its placement group was removed. Placement "
               "group id: "
            << worker->GetBundleId().first
-           << ", bundle index: " << bundle_spec.BundleId().second
+           << ", bundle index: " << worker->GetBundleId().second
            << ", lease id: " << worker->GetGrantedLeaseId()
            << ", actor id: " << worker->GetActorId()
            << ", worker id: " << worker->WorkerId();
@@ -2010,7 +2022,9 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
+  for (const auto &spec : bundle_specs) {
+    RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(spec));
+  }
   cluster_lease_manager_.ScheduleAndGrantLeases();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

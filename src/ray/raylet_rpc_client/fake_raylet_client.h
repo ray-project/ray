@@ -182,9 +182,10 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ClientCallback<CancelResourceReserveReply> &callback) override {
     num_return_requested += 1;
+    num_bundles_returned += bundle_specs.size();
     return_callbacks.push_back(callback);
   }
 
@@ -320,6 +321,7 @@ class FakeRayletClient : public RayletClientInterface {
   int num_get_task_failure_causes = 0;
   int num_lease_requested = 0;
   int num_return_requested = 0;
+  int num_bundles_returned = 0;
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
   int num_release_unused_bundles_requested = 0;
