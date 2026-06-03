@@ -8,16 +8,35 @@ Two upstream APIs are patched:
    fsspec-compatible cloud URIs (``s3://``, ``gs://``, ``abfs://``, ...) as
    ``root``, routing metadata reads through fsspec instead.
 
-2. ``lerobot.datasets.video_utils.decode_video_frames`` accepts only a
-   local file path (``torchvision.io.VideoReader`` opens the file directly).
-   We wrap it to download cloud-URI videos to a temporary file before
-   decoding, then clean up afterwards.
+2. ``lerobot.datasets.video_utils.decode_video_frames`` streams cloud-URI
+   videos via torchcodec (``fsspec.open`` + ``torchcodec.VideoDecoder``,
+   doing HTTP-range reads — never a full download), but its default decoder
+   cache opens files without ``storage_options``.  We wrap it to route cloud
+   URIs through torchcodec with a credentialed decoder cache so explicit
+   ``storage_options`` reach ``fsspec.open`` while still streaming.
 
 Apply via :func:`apply_lerobot_fsspec_patches`.  Idempotent and safe to call
 multiple times.
 
 Targets ``lerobot >= 0.5.0``.  Newer minor/major releases emit a warning the
 first time the patch is applied.
+
+Upstream tracking — https://github.com/huggingface/lerobot/pull/3669 adds
+native fsspec-root + ``storage_options`` support to lerobot.  When it merges
+and we can pin ``lerobot`` to a release containing it:
+
+- Metadata (patch #1) becomes unnecessary and can be removed: the PR loads
+  remote metadata directly via fsspec, so we'd just construct
+  ``LeRobotDatasetMetadata(repo_id, root, storage_options=...)``.
+
+- Video (patch #2) uses the *same streaming* approach as this patch — the PR
+  threads ``storage_options`` into ``get_decoder``'s ``fsspec.open`` and feeds
+  the handle to ``torchcodec.VideoDecoder`` (HTTP-range reads, no download).
+  Note the PR adds ``storage_options`` only to ``decode_video_frames_torchcodec``
+  / ``get_decoder``, *not* to the ``decode_video_frames`` dispatcher we wrap.
+  So rather than dropping it outright, we'd replace the monkeypatch + custom
+  decoder cache with a direct call to
+  ``decode_video_frames_torchcodec(..., storage_options=...)``.
 """
 
 import json
@@ -76,8 +95,9 @@ def apply_lerobot_fsspec_patches() -> None:
 
     - ``LeRobotDatasetMetadata.__init__`` / ``_load_metadata`` — accept
       cloud URIs as ``root`` and load metadata via fsspec.
-    - ``lerobot.datasets.video_utils.decode_video_frames`` — accept cloud
-      URIs as ``video_path`` by downloading to a temporary file first.
+    - ``lerobot.datasets.video_utils.decode_video_frames`` — stream cloud
+      URIs as ``video_path`` via torchcodec, injecting ``storage_options``
+      into ``fsspec.open`` through a credentialed decoder cache.
 
     No-op after the first successful application.
     """
@@ -101,7 +121,12 @@ def apply_lerobot_fsspec_patches() -> None:
         revision=None,
         force_cache_sync: bool = False,
         metadata_buffer_size: int = 10,
+        storage_options=None,
     ) -> None:
+        # Captured for the fsspec reads regardless of branch; only the cloud
+        # branch actually uses it.  Not forwarded to the upstream __init__,
+        # which (on supported versions) has no storage_options parameter.
+        self._storage_options = dict(storage_options or {})
         if is_cloud_uri(root):
             self.repo_id = repo_id
             self.revision = revision if revision else _dm.CODEBASE_VERSION
@@ -129,54 +154,102 @@ def apply_lerobot_fsspec_patches() -> None:
         else:
             _original_load_metadata(self)
 
-    def _patched_decode_video_frames(video_path, timestamps, tolerance_s, backend=None):
+    class _CredsVideoDecoderCache(_vu.VideoDecoderCache):
+        """A :class:`lerobot.datasets.video_utils.VideoDecoderCache` that opens
+        videos through ``fsspec`` with explicit ``storage_options``.
+
+        lerobot's default cache calls ``fsspec.open(video_path)`` with no
+        credentials.  This subclass injects *storage_options* so cloud videos
+        stream (HTTP-range reads via ``torchcodec.VideoDecoder``) using the
+        supplied credentials — without ever downloading the file.
+
+        Mirrors the upstream ``get_decoder`` body but threads credentials in.
+        The ``storage_options`` keyword is accepted (and overridden by the
+        instance's own) so this is call-compatible with both the current
+        signature and the future ``get_decoder(video_path, storage_options=)``.
+        """
+
+        def __init__(self, storage_options):
+            super().__init__()
+            self._storage_options = dict(storage_options or {})
+
+        def get_decoder(self, video_path, storage_options=None):
+            import fsspec
+            from torchcodec.decoders import VideoDecoder
+
+            opts = self._storage_options or dict(storage_options or {})
+            video_path = str(video_path)
+            with self._lock:
+                if video_path not in self._cache:
+                    file_handle = fsspec.open(video_path, **opts).__enter__()
+                    try:
+                        decoder = VideoDecoder(file_handle, seek_mode="approximate")
+                    except Exception:
+                        file_handle.close()
+                        raise
+                    self._cache[video_path] = (decoder, file_handle)
+                return self._cache[video_path][0]
+
+    def _patched_decode_video_frames(
+        video_path, timestamps, tolerance_s, backend=None, storage_options=None
+    ):
         """Cloud-URI-aware wrapper around lerobot.video_utils.decode_video_frames.
 
-        Backend handling:
+        Videos are always *streamed*, never downloaded:
 
-        - **torchcodec** (default when installed) — lerobot's torchcodec path
-          internally does ``fsspec.open(video_path).__enter__()`` and feeds
-          the resulting file-like to ``torchcodec.VideoDecoder``, which
-          performs HTTP-range / partial reads instead of downloading the
-          whole file.  We pass cloud URIs straight through.
-        - **pyav / video_reader** (torchvision-based) — only accepts a local
-          file path, so for cloud URIs we download to a temp file first and
-          delete it afterwards.
-
-        For local paths, both backends are delegated unchanged.
+        - **Local paths** (any backend) — delegated to lerobot unchanged.
+        - **Cloud URIs + torchcodec** (the default, and what the datasource
+          requires) — torchcodec streams via ``fsspec.open`` + range reads.
+          When ``storage_options`` is empty, lerobot's default path is used
+          as-is (ambient credentials, persistent decoder cache).  When
+          ``storage_options`` is supplied, we call
+          :func:`decode_video_frames_torchcodec` with a credentialed
+          :class:`_CredsVideoDecoderCache` so the credentials reach
+          ``fsspec.open`` while still streaming.
+        - **Cloud URIs + pyav/video_reader** — these backends cannot stream a
+          remote URI, and we refuse to download, so this raises.  Unreachable
+          in practice: the datasource requires torchcodec.
         """
         if backend is None:
             backend = _vu.get_safe_default_codec()
 
+        storage_options = dict(storage_options or {})
         video_path_str = str(video_path)
+        cloud = is_cloud_uri(video_path_str)
 
-        # torchcodec already speaks fsspec — let it stream.
-        if backend == "torchcodec" or not is_cloud_uri(video_path_str):
+        # Local paths: both backends read the file directly — delegate as-is.
+        if not cloud:
             return _original_decode_video_frames(
                 video_path, timestamps, tolerance_s, backend
             )
 
-        # pyav / video_reader: need a local file.  Download to temp.
-        import fsspec
-        import os
-        import tempfile
-
-        fs, fs_path = fsspec.core.url_to_fs(video_path_str)
-        suffix = os.path.splitext(fs_path)[-1] or ".mp4"
-        # delete=False because we close the file before passing it to
-        # torchvision (which on some platforms can't reopen an open fd).
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp_path = tmp.name
-        try:
-            fs.get(fs_path, tmp_path)
-            return _original_decode_video_frames(
-                tmp_path, timestamps, tolerance_s, backend
-            )
-        finally:
+        if backend == "torchcodec":
+            # No explicit credentials: lerobot's default streaming path (with
+            # its persistent decoder cache) is exactly what we want.
+            if not storage_options:
+                return _original_decode_video_frames(
+                    video_path, timestamps, tolerance_s, backend
+                )
+            # Explicit credentials: stream via torchcodec with a credentialed
+            # decoder cache.  Clear it afterwards to close the fsspec handle
+            # (the datasource decodes a whole video file in one call, so there
+            # is nothing to reuse across calls).
+            cache = _CredsVideoDecoderCache(storage_options)
             try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+                return _vu.decode_video_frames_torchcodec(
+                    video_path_str, timestamps, tolerance_s, decoder_cache=cache
+                )
+            finally:
+                cache.clear()
+
+        # pyav / video_reader cannot stream a cloud URI and we will not
+        # download.  Only reachable on platforms without a torchcodec wheel;
+        # the datasource declares torchcodec as a hard dependency.
+        raise NotImplementedError(
+            f"Streaming cloud video {video_path_str!r} requires the torchcodec "
+            f"backend, but the active backend is {backend!r}. Install torchcodec "
+            "(pip install 'lerobot[dataset]') to stream videos from cloud storage."
+        )
 
     _dm.LeRobotDatasetMetadata.__init__ = _patched_init
     _dm.LeRobotDatasetMetadata._load_metadata = _patched_load_metadata
@@ -212,7 +285,8 @@ def _load_metadata_fsspec(meta) -> None:
         STATS_PATH,
     )
 
-    fs, fs_root = fsspec.core.url_to_fs(meta.root)
+    storage_options = dict(getattr(meta, "_storage_options", None) or {})
+    fs, fs_root = fsspec.core.url_to_fs(meta.root, **storage_options)
     fs_root = fs_root.rstrip("/")
 
     info_path = f"{fs_root}/{INFO_PATH}"

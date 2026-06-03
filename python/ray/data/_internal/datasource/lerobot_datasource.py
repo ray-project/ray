@@ -113,6 +113,11 @@ class _LeRobotRoot(NamedTuple):
     """Frames per second — used to size the per-frame timestamp tolerance
     passed to :func:`lerobot.datasets.video_utils.decode_video_frames`."""
 
+    storage_options: Dict[str, Any]
+    """Extra options forwarded to ``fsspec`` (``url_to_fs`` / ``fsspec.open``)
+    and to the video decode call when reading this root.  Empty dict means
+    rely on ambient fsspec credential resolution."""
+
 
 # ---------------------------------------------------------------------------
 # Driver-side derived-state builders.
@@ -202,7 +207,9 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
     return total
 
 
-def _load_lerobot_metadata(root: Union[str, Path]):
+def _load_lerobot_metadata(
+    root: Union[str, Path], storage_options: Optional[Dict[str, Any]] = None
+):
     """Construct a pristine :class:`lerobot.LeRobotDatasetMetadata` for
     *root*, applying the fsspec patch first so cloud URIs work.
 
@@ -210,6 +217,9 @@ def _load_lerobot_metadata(root: Union[str, Path]):
     lerobot, so missing-dataset errors stay as ``FileNotFoundError`` rather
     than getting transformed into HuggingFace Hub validation errors by
     lerobot's local-then-Hub fallback logic.
+
+    *storage_options* is forwarded to ``fsspec`` for the existence check and
+    captured by the patched metadata loader for its own reads.
     """
     import fsspec
 
@@ -217,8 +227,9 @@ def _load_lerobot_metadata(root: Union[str, Path]):
 
     apply_lerobot_fsspec_patches()
     root_uri = str(root).rstrip("/")
+    storage_options = dict(storage_options or {})
 
-    fs, fs_root = fsspec.core.url_to_fs(root_uri)
+    fs, fs_root = fsspec.core.url_to_fs(root_uri, **storage_options)
     fs_root = fs_root.rstrip("/")
     info_path = f"{fs_root}/meta/info.json"
     if not fs.exists(info_path):
@@ -230,15 +241,24 @@ def _load_lerobot_metadata(root: Union[str, Path]):
     # repo_id is decorative for read-only use: it appears only in error
     # messages and as the HF Hub fallback target when files are missing.
     # We pass the root itself so any fallback fails clearly.
-    return LeRobotDatasetMetadata(repo_id=root_uri, root=root_uri)
+    return LeRobotDatasetMetadata(
+        repo_id=root_uri, root=root_uri, storage_options=storage_options
+    )
 
 
-def _build_root(meta) -> _LeRobotRoot:
+def _build_root(
+    meta, storage_options: Optional[Dict[str, Any]] = None
+) -> _LeRobotRoot:
     """Compute the per-root derived state bundle for a (pristine) lerobot
-    ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*."""
+    ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*.
+
+    *storage_options* is forwarded to ``fsspec`` and captured on the returned
+    :class:`_LeRobotRoot` so workers reuse the same credentials.
+    """
     import fsspec
 
     root_uri = str(meta.root).rstrip("/")
+    storage_options = dict(storage_options or {})
 
     # In lerobot 0.5.x, meta.info is a dict; accessing meta.video_path
     # raises KeyError when the key is absent.  Use dict-aware lookup.
@@ -249,7 +269,7 @@ def _build_root(meta) -> _LeRobotRoot:
             "but meta/info.json has no 'video_path' template"
         )
 
-    fs, fs_root = fsspec.core.url_to_fs(root_uri)
+    fs, fs_root = fsspec.core.url_to_fs(root_uri, **storage_options)
     fs_root = fs_root.rstrip("/")
     episodes_table = _build_episodes_table(meta.episodes)
     tasks_dict = _build_tasks_dict(meta.tasks)
@@ -270,6 +290,7 @@ def _build_root(meta) -> _LeRobotRoot:
         row_size_bytes=row_size_bytes,
         total_frames=meta.total_frames,
         fps=meta.fps,
+        storage_options=storage_options,
     )
 
 
@@ -347,7 +368,7 @@ class _LeRobotReadTask(ReadTask):
         import fsspec
         from lerobot.datasets.video_utils import decode_video_frames
 
-        fs, _ = fsspec.core.url_to_fs(root.root)
+        fs, _ = fsspec.core.url_to_fs(root.root, **root.storage_options)
 
         # 1. Read all parquet rows for this segment.
         filters = [("index", ">=", start), ("index", "<", end)]
@@ -450,7 +471,12 @@ class _LeRobotReadTask(ReadTask):
                 timestamps = [t for _, t in rows_and_ts]
                 # decode_fn returns torch.Tensor of shape (N, C, H, W).
                 # torchvision/torchcodec backends produce uint8 CHW.
-                frames = decode_fn(vpath, timestamps, tolerance_s)
+                frames = decode_fn(
+                    vpath,
+                    timestamps,
+                    tolerance_s,
+                    storage_options=root.storage_options,
+                )
                 # → numpy (N, H, W, C) uint8
                 arr = frames.permute(0, 2, 3, 1).contiguous().numpy()
                 if arr.dtype != np.uint8:
@@ -618,6 +644,7 @@ class LeRobotDatasource(Datasource):
         self,
         root: Union[str, Path, List[Union[str, Path]]],
         partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+        storage_options: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
         """Initialize LeRobot datasource.
@@ -630,6 +657,11 @@ class LeRobotDatasource(Datasource):
             partitioning: How to divide the dataset into read tasks.
                 Accepts a :class:`LeRobotPartitioning` member or its string value.
                 Defaults to ``FILE_GROUP``.
+            storage_options: Extra options forwarded to ``fsspec`` when reading
+                metadata, parquet, and video files from a cloud URI (e.g.
+                ``{"anon": False}`` for S3, or credentials / a custom
+                ``endpoint_url``).  Applied to every root.  When omitted,
+                ``fsspec``'s ambient credential resolution is used.
             **kwargs: Forwarded to the partitioning helper at read time.
                 ``ROW_BLOCK`` requires ``block_size``; other modes take none.
 
@@ -643,10 +675,14 @@ class LeRobotDatasource(Datasource):
         for module, package in self._LEROBOT_DATASOURCE_DEPENDENCIES:
             _check_import(self, module=module, package=package)
 
+        self._storage_options: Dict[str, Any] = dict(storage_options or {})
+
         roots = [root] if isinstance(root, (str, Path)) else list(root)
         # Pristine upstream metadata instances, exposed via self.metas /
         # self.meta for callers that want full lerobot API access.
-        self.metas = [_load_lerobot_metadata(r) for r in roots]
+        self.metas = [
+            _load_lerobot_metadata(r, self._storage_options) for r in roots
+        ]
 
         if len(self.metas) > 1:
             ref = self.metas[0]
@@ -681,7 +717,9 @@ class LeRobotDatasource(Datasource):
         # Derived state used by slicing + read tasks.  Computed once on the
         # driver and shipped to workers via ray.put — workers don't need
         # lerobot installed at runtime.
-        self._roots: List[_LeRobotRoot] = [_build_root(m) for m in self.metas]
+        self._roots: List[_LeRobotRoot] = [
+            _build_root(m, self._storage_options) for m in self.metas
+        ]
 
         if isinstance(partitioning, LeRobotPartitioning):
             partitioning = partitioning.value
