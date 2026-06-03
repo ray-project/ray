@@ -62,6 +62,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_TUNE_BUFSIZE,
+    RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
@@ -1232,7 +1233,7 @@ class HAProxyManager(ProxyActorInterface):
                 "HAProxy reload completing. Includes the coalesce window, time "
                 "queued behind an in-flight reload, and the reload itself."
             ),
-            boundaries=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+            boundaries=RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
             tag_keys=("node_id",),
         ).set_default_tags({"node_id": node_id})
 
