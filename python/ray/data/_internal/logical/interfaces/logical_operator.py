@@ -2,7 +2,17 @@ import copy
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    Iterator,
+    List,
+    Optional,
+    Set,
+)
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
@@ -242,3 +252,41 @@ class LogicalOperatorSupportsPredicatePassThrough(ABC):
             Dict mapping from old_name -> new_name, or None if no rebinding needed
         """
         return None
+
+
+class LogicalOperatorSupportsProjectionPassThrough(ABC):
+    """Mixin for interior operators that let a column projection (prune) pass
+    into their input(s).
+
+    The ``ProjectionPushdown`` rule walks the plan top-down, threading the set of
+    columns each operator's consumers actually reference, and asks every operator
+    implementing this trait which columns it needs from each of its inputs.
+    Unused columns are then dropped *before* the operator runs (e.g. before a
+    join/aggregate shuffle) instead of being dragged through it.
+
+    This is distinct from ``LogicalOperatorSupportsProjectionPushdown``, which is
+    for *leaf* operators that absorb a projection into the data source (like
+    ``Read``). Operator-specific column math lives in ``required_input_columns``,
+    not in the rule -- adding a new pass-through operator means implementing this
+    trait, not editing the rule.
+    """
+
+    @abstractmethod
+    def required_input_columns(
+        self, required_output_columns: Optional[FrozenSet[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        """Returns the columns that must be retained on each input branch.
+
+        Args:
+            required_output_columns: The set of this operator's output columns
+                that consumers above it reference, or ``None`` to mean "all of
+                this operator's output columns are needed". Operators whose
+                output is fully self-derived (e.g. ``Aggregate``) may ignore this.
+
+        Returns:
+            A list aligned with ``input_dependencies``; element ``i`` is the set
+            of columns to retain on input ``i`` (or ``None`` for that element to
+            retain all of input ``i``). Return ``None`` to decline pruning
+            entirely -- e.g. when a schema is unknown or can't be modeled safely.
+        """
+        ...

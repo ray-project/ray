@@ -1,10 +1,11 @@
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Optional, Set
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -200,6 +201,7 @@ class Repartition(
 class Sort(
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for sort."""
@@ -233,9 +235,20 @@ class Sort(
         # Sort doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
+    def required_input_columns(
+        self, required_output_columns: Optional[FrozenSet[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        # Sort preserves its input schema, so it needs whatever its consumers
+        # need plus the sort key columns (required to order the rows). The keys
+        # ride one level up and are dropped by the consumer that didn't ask for
+        # them. ``None`` (all output columns needed) -> nothing safe to prune.
+        if required_output_columns is None:
+            return None
+        return [set(required_output_columns) | set(self.sort_key.get_columns())]
+
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Aggregate(AbstractAllToAll):
+class Aggregate(AbstractAllToAll, LogicalOperatorSupportsProjectionPassThrough):
     """Logical operator for aggregate."""
 
     key: Optional[str | List[str]]
@@ -285,3 +298,32 @@ class Aggregate(AbstractAllToAll):
                 return None
             fields.append(f)
         return pa.schema(fields)
+
+    def required_input_columns(
+        self, required_output_columns: Optional[FrozenSet[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        # An aggregate's output is fully self-derived (group keys + one column
+        # per aggregator), so what it needs from its input is independent of what
+        # consumers reference above it -- ``required_output_columns`` is ignored.
+        # It reads only the group keys plus each aggregation's target column;
+        # every other (often wide) column would otherwise be dragged through the
+        # shuffle for nothing.
+        from ray.data.aggregate import AggregateFnV2
+
+        keys = (
+            self.key if isinstance(self.key, list) else ([self.key] if self.key else [])
+        )
+        required: List[str] = list(keys)
+        for agg in self.aggs:
+            # A generic ``AggregateFn`` may read arbitrary columns, so only prune
+            # when every aggregation declares the column it reads.
+            if not isinstance(agg, AggregateFnV2):
+                return None
+            target = agg.get_target_column()
+            if target is not None:
+                required.append(target)
+
+        if not required:
+            # e.g. a global count reads no columns -> nothing safe to prune to.
+            return None
+        return [set(required)]

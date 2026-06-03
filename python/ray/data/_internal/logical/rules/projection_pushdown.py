@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
@@ -292,11 +293,11 @@ class ProjectionPushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        # Insert a pruning projection below consuming ops (e.g. ``Aggregate``)
-        # first, so the fuse/push steps can carry the narrowed columns into the
-        # read.
-        new_dag = dag._apply_transform(self._prune_aggregate_input)
-        new_dag = new_dag._apply_transform(self._push_projection_through_join)
+        # Top-down pass: thread the columns each operator's consumers reference
+        # down the plan and insert pruning projections below interior
+        # pass-through operators (joins, aggregates, sorts, unions). The
+        # fuse/push steps then carry the narrowed columns into the reads.
+        new_dag = self._prune_columns(dag, None)
         new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
@@ -310,7 +311,7 @@ class ProjectionPushdown(Rule):
         from ray.data.expressions import col
 
         schema = input_op.infer_schema()
-        if schema is None:
+        if schema is None or not hasattr(schema, "names"):
             return input_op
         columns = list(schema.names)
         keep = [c for c in columns if c in required]
@@ -319,152 +320,59 @@ class ProjectionPushdown(Rule):
         return Project(exprs=[col(c) for c in keep], input_dependencies=[input_op])
 
     @classmethod
-    def _push_projection_through_join(cls, op: LogicalOperator) -> LogicalOperator:
-        """Prune each input of a ``Join`` below a ``Project`` to the columns it
-        actually contributes: the join keys (needed to perform the join) plus the
-        input columns behind the output columns referenced above the join.
+    def _prune_columns(
+        cls, op: LogicalOperator, required: Optional[Set[str]]
+    ) -> LogicalOperator:
+        """Top-down column pruning.
 
-        Output columns may be suffixed (when left/right have overlapping non-key
-        names), so a referenced output name is mapped back to its origin input
-        column and side. Pruning columns never changes which rows match or
-        null-pad, so this is safe for every join type (inner/outer/semi/anti).
-        The narrowed inputs are then carried into the reads by the fuse/push
-        steps in ``apply``.
+        ``required`` is the set of ``op``'s output columns referenced by
+        consumers above it (``None`` means "all of them are needed"). For each
+        input, recurse with the columns that input must produce, and -- for
+        interior pass-through operators (``Join``/``Aggregate``/``Sort``/
+        ``Union``) -- insert a pure-prune ``Project`` so unused columns are
+        dropped *before* the operator (and any shuffle it performs) runs.
+
+        A ``Project`` already drops columns it doesn't output, so it only threads
+        the requirement down (capping its child would just create a redundant
+        ``Project`` the fuse step removes). Opaque operators (e.g. UDF maps) may
+        read any input column, so their inputs are left untouched (``required``
+        for the child is ``None``), which safely blocks pruning beneath them.
         """
-        from dataclasses import replace
-
-        from ray.data._internal.logical.operators.join_operator import Join, JoinType
-
-        if not isinstance(op, Project) or op.has_star_expr():
-            return op
-        join = op.input_dependencies[0]
-        if not isinstance(join, Join):
+        children = op.input_dependencies
+        if not children:
+            # Leaf (``Read``/``InputData``); column pruning into the data source
+            # is handled separately by ``_push_projection_into_read_op``.
             return op
 
-        referenced = _collect_referenced_columns(op.exprs)
-        if referenced is None:  # a star expression -> can't enumerate columns
+        # Determine what each input must produce.
+        if isinstance(op, Project) and not op.has_star_expr():
+            referenced = _collect_referenced_columns(op.exprs)
+            per_child = [None] if referenced is None else [set(referenced)]
+        elif isinstance(op, LogicalOperatorSupportsProjectionPassThrough):
+            per_child = op.required_input_columns(
+                None if required is None else frozenset(required)
+            )
+        else:
+            per_child = None
+        if per_child is None:
+            per_child = [None] * len(children)
+
+        # Only interior pass-through operators drag unused columns through (and
+        # through a shuffle), so only they cap their inputs.
+        cap_inputs = isinstance(op, LogicalOperatorSupportsProjectionPassThrough)
+
+        new_children: List[LogicalOperator] = []
+        changed = False
+        for child, child_required in zip(children, per_child):
+            new_child = cls._prune_columns(child, child_required)
+            if cap_inputs and child_required is not None:
+                new_child = cls._prune_input(new_child, child_required)
+            new_children.append(new_child)
+            changed = changed or new_child is not child
+
+        if not changed:
             return op
-        referenced = set(referenced)
-
-        left_in, right_in = join.input_dependencies
-        left_schema = left_in.infer_schema()
-        right_schema = right_in.infer_schema()
-        out_schema = join.infer_schema()
-        if left_schema is None or right_schema is None or out_schema is None:
-            return op
-
-        left_cols, right_cols = list(left_schema.names), list(right_schema.names)
-        left_keys, right_keys = set(join.left_key_columns), set(join.right_key_columns)
-
-        # Which sides appear in the output. Semi/anti joins emit only one side.
-        left_only = join.join_type in (JoinType.LEFT_SEMI, JoinType.LEFT_ANTI)
-        right_only = join.join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI)
-        left_in_output = not right_only
-        right_in_output = not left_only
-
-        # Suffixing only happens when both sides are in the output and share
-        # non-key column names. Crucially, Ray's suffix is collision-dependent:
-        # dropping one side's colliding column would un-suffix the other's output
-        # name. So whenever suffixing is in play we must retain the colliding
-        # columns on both sides to keep every output name stable.
-        suffixed = left_in_output and right_in_output
-        collisions = (
-            (set(left_cols) - left_keys) & (set(right_cols) - right_keys)
-            if suffixed
-            else set()
-        )
-        left_suffix = join.left_columns_suffix or ""
-        right_suffix = join.right_columns_suffix or ""
-
-        def _out_name(name: str, suffix: str) -> str:
-            return name + suffix if name in collisions else name
-
-        # Map each output column name back to its origin input column per side
-        # (right key columns are coalesced into the left keys -> not in output).
-        out_to_left = (
-            {_out_name(c, left_suffix): c for c in left_cols} if left_in_output else {}
-        )
-        out_to_right = (
-            {_out_name(c, right_suffix): c for c in right_cols if c not in right_keys}
-            if right_in_output
-            else {}
-        )
-
-        # If this model doesn't exactly reproduce the join's real output columns,
-        # bail out rather than risk pruning the wrong column.
-        if set(out_to_left) | set(out_to_right) != set(out_schema.names):
-            return op
-
-        # Each side keeps its join keys (needed to perform the join), the
-        # collision columns (to keep output names stable), and the input columns
-        # behind the referenced output columns.
-        left_keep = set(left_keys) | collisions
-        right_keep = set(right_keys) | collisions
-        for output_column in referenced:
-            if output_column in out_to_left:
-                left_keep.add(out_to_left[output_column])
-            if output_column in out_to_right:
-                right_keep.add(out_to_right[output_column])
-
-        new_left = cls._prune_input(left_in, left_keep)
-        new_right = cls._prune_input(right_in, right_keep)
-        if new_left is left_in and new_right is right_in:
-            return op
-
-        new_join = join._with_new_input_dependencies([new_left, new_right])
-        return replace(op, input_dependencies=[new_join])
-
-    @classmethod
-    def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
-        """Insert a ``Project`` below an ``Aggregate`` that keeps only the
-        columns it consumes (group keys + each aggregation's target column).
-
-        The aggregation drops every other column anyway, so pruning them before
-        the shuffle avoids dragging unused (often wide) columns through it --
-        which otherwise inflates both the aggregator's memory reservation and
-        the bytes shuffled. The inserted projection is fused/pushed toward the
-        read by the steps in ``apply``.
-        """
-        from dataclasses import replace
-
-        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-        from ray.data.aggregate import AggregateFnV2
-        from ray.data.expressions import col
-
-        if not isinstance(op, Aggregate):
-            return op
-
-        keys = op.key if isinstance(op.key, list) else ([op.key] if op.key else [])
-        required: List[str] = list(keys)
-        for agg in op.aggs:
-            # A generic ``AggregateFn`` may read arbitrary columns, so only
-            # prune when every aggregation declares the column it reads.
-            if not isinstance(agg, AggregateFnV2):
-                return op
-            target = agg.get_target_column()
-            if target is not None:
-                required.append(target)
-
-        # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
-        # global count reading no columns).
-        required = list(dict.fromkeys(required))
-        if not required:
-            return op
-
-        input_op = op.input_dependencies[0]
-        schema = input_op.infer_schema()
-        if schema is None or not hasattr(schema, "names"):
-            return op  # unknown schema: can't prove pruning helps
-
-        # Insert only when ``required`` is a strict subset of the input columns:
-        # this guarantees there's something to drop and keeps the rule
-        # idempotent (once the input yields exactly ``required`` nothing more is
-        # inserted, so the fixed-point optimizer terminates).
-        if not set(required) < set(schema.names):
-            return op
-
-        prune = Project(exprs=[col(c) for c in required], input_dependencies=[input_op])
-        return replace(op, input_dependencies=[prune])
+        return op._with_new_input_dependencies(new_children)
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:

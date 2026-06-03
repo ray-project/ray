@@ -1,10 +1,11 @@
 import enum
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, FrozenSet, List, Optional, Set
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorUnifiesInputSchemas,
     PredicatePassThroughBehavior,
 )
@@ -193,6 +194,7 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
 class Union(
     NAry,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorUnifiesInputSchemas,
 ):
     """Logical operator for union."""
@@ -221,3 +223,14 @@ class Union(
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch
         return PredicatePassThroughBehavior.PUSH_INTO_BRANCHES
+
+    def required_input_columns(
+        self, required_output_columns: Optional[FrozenSet[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        # Union concatenates rows, so each branch contributes exactly the
+        # columns referenced above it (the branches share a unified schema, so
+        # the same set applies to every branch). ``None`` (all output columns
+        # needed) -> nothing safe to prune.
+        if required_output_columns is None:
+            return None
+        return [set(required_output_columns)] * len(self.input_dependencies)
