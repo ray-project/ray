@@ -59,11 +59,16 @@ def train_func(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
-    # torchft process group and checkpoint transport
-    pg = ProcessGroupGloo(timeout=timedelta(seconds=5))
+    # torchft process group and checkpoint transport.
+    # Timeouts must be generous enough to re-form the gloo process group after a
+    # replica fails. On loaded CI machines a 5s gloo store wait is too short, which
+    # makes the post-failure reconfigure time out (DistStoreError) and breaks
+    # recovery. Keep these <= the Manager timeout so the PG wait isn't cancelled
+    # by the outer quorum timeout first.
+    pg = ProcessGroupGloo(timeout=timedelta(seconds=30))
     transport = PGTransport(
         pg,
-        timeout=timedelta(seconds=10),
+        timeout=timedelta(seconds=30),
         device=torch.device("cpu"),
     )
 
@@ -86,7 +91,7 @@ def train_func(config):
         world_size=1,
         rank=0,
         replica_id=f"train_ddp_{world_rank}",
-        timeout=timedelta(seconds=30),
+        timeout=timedelta(seconds=60),
         checkpoint_transport=transport,
     )
 
