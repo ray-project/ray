@@ -60,8 +60,8 @@ class BaseConnectorBackend(abc.ABC):
 
         # NOTE (jeffreywang): A missing replica context must fail loudly, not
         # silently return a 0 offset that collides colocated replicas on the
-        # same NIXL side-channel port.
-        # get_replica_context() raises RayServeException outside a replica
+        # same NIXL side-channel port. get_replica_context() raises RayServeException
+        # outside a replica.
         rc = serve.get_replica_context()
         engine_config = self.llm_config.get_engine_config()
         num_devices = engine_config.num_devices
