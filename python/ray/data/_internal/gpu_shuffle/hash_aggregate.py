@@ -1015,7 +1015,15 @@ class GPUMean(_BuiltinGPUAggregateFn):
 
 
 class GPUAggregationPlan:
-    """Executable GPU aggregation plan shared by the driver and GPU actors."""
+    """Executable GPU aggregation plan shared by the driver and GPU actors.
+
+    Args:
+        key_columns: The key columns to group by.
+        gpu_aggregates: The GPU aggregate functions to apply.
+        output_names: The names of the output columns.
+        accumulator_prefixes: The prefixes for intermediate accumulator columns.
+        input_schema: The schema of the input data.
+    """
 
     def __init__(
         self,
@@ -1081,7 +1089,7 @@ class GPUAggregationPlan:
         for column in key_columns:
             if column not in df.columns:
                 continue
-            dtype = _schema_column_dtype(input_schema, column)
+            dtype = self._effective_column_dtype(column, input_schema)
             if dtype is not None:
                 dtype = _normalize_intermediate_dtype(dtype, "key")
             else:
@@ -1129,6 +1137,26 @@ class GPUAggregationPlan:
             current_dtype = fields.get(column)
             if current_dtype is None or _is_null_dtype(current_dtype):
                 fields[column] = observed_dtype
+            elif not current_dtype.equals(observed_dtype):
+                # Unify schemas using arrow_ops
+                try:
+                    from ray.data._internal.arrow_ops.transform_pyarrow import (
+                        unify_schemas,
+                    )
+
+                    fields[column] = (
+                        unify_schemas(
+                            [
+                                pa.schema([(column, current_dtype)]),
+                                pa.schema([(column, observed_dtype)]),
+                            ],
+                            promote_types=True,
+                        )
+                        .field(column)
+                        .type
+                    )
+                except (pa.ArrowInvalid, pa.ArrowTypeError):
+                    pass
 
         if not fields:
             return current
@@ -1316,6 +1344,15 @@ def _get_builtin_gpu_aggregate_fn(
     *,
     input_schema: Optional[Schema] = None,
 ) -> Optional[GPUAggregateFn]:
+    """Get a GPU equivalent function for a built-in aggregation function.
+
+    Args:
+        agg: The built-in aggregation function to convert.
+        input_schema: The schema of the input data.
+
+    Returns:
+        A GPU aggregate function, or None if the aggregation function is not supported.
+    """
     if not isinstance(agg, AggregateFnV2):
         return None
 
@@ -1345,7 +1382,23 @@ def build_gpu_aggregation_plan(
     aggregation_fns: Tuple[AggregateFn, ...],
     input_schema: Optional[Schema] = None,
 ) -> Optional[GPUAggregationPlan]:
+    """Build a GPU aggregation plan.
+
+    Args:
+        key_columns: The key columns to group by.
+        aggregation_fns: The aggregation functions to apply.
+        input_schema: The schema of the input data.
+
+    Returns:
+        A GPU aggregation plan, or None if the aggregation plan is not supported.
+    """
     if not aggregation_fns:
+        # No aggregation functions, no plan needed.
+        return None
+    if key_columns and not all(
+        _schema_column_dtype(input_schema, column) is not None for column in key_columns
+    ):
+        # Missing key columns in the input schema, fallback to CPU.
         return None
 
     resolved_names = _resolve_aggregation_names(aggregation_fns)
@@ -1398,7 +1451,11 @@ class GPUHashAggregateActor:
             spill_memory_limit=spill_memory_limit,
         )
         self._shuffle_columns: Optional[List[str]] = None
-        self._runtime_input_schema: Optional[pa.Schema] = None
+        self._runtime_input_schema: Optional[pa.Schema] = (
+            aggregation_plan._input_schema
+            if isinstance(aggregation_plan._input_schema, pa.Schema)
+            else None
+        )
 
     def setup_root(self) -> Tuple[int, bytes]:
         logger.info("UCXX setup_root starting on GPU hash aggregate rank 0.")
@@ -1439,7 +1496,8 @@ class GPUHashAggregateActor:
             table.schema,
         )
         partial = self._aggregation_plan.partial_aggregate(
-            df, input_schema=table.schema
+            df,
+            input_schema=self._runtime_input_schema,
         )
         if self._shuffle_columns is None:
             self._shuffle_columns = list(partial.columns)
@@ -1516,8 +1574,11 @@ class GPUHashAggregateOperator(GPUShuffleOperator):
         target_num_partitions = (
             num_partitions
             if len(key_columns) > 0 and num_partitions is not None
+            else nranks
+            if len(key_columns) == 0
             else data_context.default_hash_shuffle_parallelism
         )
+        # rapidsmpf requires total_nparts >= nranks
         target_num_partitions = max(target_num_partitions, nranks)
 
         rank_pool = GPURankPool(

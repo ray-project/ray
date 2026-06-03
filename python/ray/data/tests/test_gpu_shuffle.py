@@ -8,6 +8,7 @@ import types
 from typing import Any, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
@@ -675,15 +676,24 @@ class TestPlanAllToAllOpRouting:
 
 
 class TestGPUHashAggregatePlanning:
-    def _make_aggregate_op(self, aggs, key="user_id", num_partitions=8):
+    def _make_aggregate_op(
+        self,
+        aggs,
+        key="user_id",
+        num_partitions=8,
+        input_schema=pa.schema([("user_id", pa.int64()), ("value", pa.int64())]),
+    ):
+        input_op = MagicMock(LogicalOperator)
+        input_op.infer_schema.return_value = input_schema
         return Aggregate(
             key=key,
             aggs=list(aggs),
-            input_dependencies=[MagicMock(LogicalOperator)],
+            input_dependencies=[input_op],
             num_partitions=num_partitions,
         )
 
     def test_builtin_aggregation_plan_supported(self):
+        schema = pa.schema([("user_id", pa.int64()), ("value", pa.int64())])
         plan = build_gpu_aggregation_plan(
             ("user_id",),
             (
@@ -694,6 +704,7 @@ class TestGPUHashAggregatePlanning:
                 Max("value"),
                 Mean("value"),
             ),
+            input_schema=schema,
         )
 
         assert plan is not None
@@ -718,7 +729,14 @@ class TestGPUHashAggregatePlanning:
         assert "value" in plan.required_columns
 
     def test_unsupported_aggregation_plan_rejected(self):
-        assert build_gpu_aggregation_plan(("user_id",), (AsList("value"),)) is None
+        schema = pa.schema([("user_id", pa.int64())])
+        assert (
+            build_gpu_aggregation_plan(
+                ("user_id",), (AsList("value"),), input_schema=schema
+            )
+            is None
+        )
+        assert build_gpu_aggregation_plan(("user_id",), (Sum("value"),)) is None
 
     def test_gpu_shuffle_routes_supported_aggregate_to_gpu_operator(self):
         ctx = DataContext()
@@ -754,8 +772,9 @@ class TestGPUHashAggregatePlanning:
         ctx.gpu_shuffle_num_actors = 4
         ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
         input_physical_op = _make_input_op_mock()
+        schema = pa.schema([("user_id", pa.int64()), ("value", pa.int64())])
         aggregation_plan = build_gpu_aggregation_plan(
-            ("user_id",), (Count(), Sum("value"))
+            ("user_id",), (Count(), Sum("value")), input_schema=schema
         )
 
         with patch(
@@ -783,6 +802,30 @@ class TestGPUHashAggregatePlanning:
         ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
 
         logical_op = self._make_aggregate_op([AsList("value")])
+        input_physical_op = _make_input_op_mock(num_blocks=8, size_bytes=1024)
+
+        with patch(
+            "ray.data._internal.execution.operators.hash_shuffle"
+            "._get_total_cluster_resources",
+            return_value=ExecutionResources(cpu=4, memory=1024 * 1024 * 1024),
+        ), patch(
+            "ray.data._internal.execution.operators.hash_shuffle.ray.put",
+            return_value=MagicMock(),
+        ):
+            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, HashAggregateOperator)
+
+    def test_gpu_shuffle_missing_key_schema_falls_back_to_cpu_hash_aggregate(self):
+        from ray.data._internal.execution.operators.hash_aggregate import (
+            HashAggregateOperator,
+        )
+
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+
+        logical_op = self._make_aggregate_op([Sum("value")], input_schema=None)
         input_physical_op = _make_input_op_mock(num_blocks=8, size_bytes=1024)
 
         with patch(
@@ -905,6 +948,144 @@ class TestGPUHashAggregatePlanning:
         partial = actor._shuffler.inserted_chunks[0][0]
         assert partial[plan.accumulator_columns[0]].iloc[0] == 3
 
+    def test_insert_batch_passes_merged_runtime_schema_to_partial_aggregate(self):
+        seen_schemas: List[Optional[pa.Schema]] = []
+        original_partial = hash_aggregate.GPUAggregationPlan.partial_aggregate
+
+        def _tracking_partial(self, df, input_schema=None):
+            seen_schemas.append(input_schema)
+            return original_partial(
+                self,
+                df,
+                input_schema=input_schema,
+            )
+
+        class _FakeDataFrame(pd.DataFrame):
+            @classmethod
+            def from_arrow(cls, table: pa.Table) -> pd.DataFrame:
+                return table.to_pandas()
+
+        class _FakeShuffler:
+            def __init__(self, **kwargs: Any) -> None:
+                self.inserted_chunks = []
+
+            def insert_chunk(
+                self, table: pd.DataFrame, column_names: List[str]
+            ) -> None:
+                self.inserted_chunks.append((table, column_names))
+
+        fake_cudf = types.ModuleType("cudf")
+        fake_cudf.DataFrame = _FakeDataFrame
+        fake_backend = types.ModuleType(
+            "ray.data._internal.gpu_shuffle.rapidsmpf_backend"
+        )
+        fake_backend.BulkRapidsMPFShuffler = _FakeShuffler
+
+        block1 = pa.table(
+            {
+                "value": pa.array([1], type=pa.int8()),
+            }
+        )
+        block2 = pa.table(
+            {
+                "value": pa.array([2], type=pa.int32()),
+            }
+        )
+        plan = build_gpu_aggregation_plan(tuple(), (Sum("value"),))
+        assert plan is not None
+
+        actor_cls = hash_aggregate.GPUHashAggregateActor.__ray_actor_class__
+        with patch.dict(
+            "sys.modules",
+            {
+                "cudf": fake_cudf,
+                "ray.data._internal.gpu_shuffle.rapidsmpf_backend": fake_backend,
+            },
+        ), patch.object(
+            hash_aggregate.GPUAggregationPlan,
+            "partial_aggregate",
+            _tracking_partial,
+        ):
+            actor = actor_cls(nranks=1, total_nparts=1, aggregation_plan=plan)
+            actor.insert_batch(block1)
+            actor.insert_batch(block2)
+
+        assert len(seen_schemas) == 2
+        assert seen_schemas[0].field("value").type == pa.int8()
+        assert seen_schemas[1].field("value").type == pa.int32()
+        assert actor._runtime_input_schema.field("value").type == pa.int32()
+
+    def test_insert_batch_uses_logical_schema_for_widened_shuffle_keys(self):
+        class _FakeDataFrame(pd.DataFrame):
+            @classmethod
+            def from_arrow(cls, table: pa.Table) -> pd.DataFrame:
+                return table.to_pandas()
+
+        class _FakeShuffler:
+            def __init__(self, **kwargs: Any) -> None:
+                self.inserted_chunks = []
+
+            def insert_chunk(
+                self, table: pd.DataFrame, column_names: List[str]
+            ) -> None:
+                self.inserted_chunks.append((table, column_names))
+
+        fake_cudf = types.ModuleType("cudf")
+        fake_cudf.DataFrame = _FakeDataFrame
+        fake_backend = types.ModuleType(
+            "ray.data._internal.gpu_shuffle.rapidsmpf_backend"
+        )
+        fake_backend.BulkRapidsMPFShuffler = _FakeShuffler
+
+        block1 = pa.table(
+            {
+                "user_id": pa.array([1], type=pa.int8()),
+                "value": pa.array([1], type=pa.int64()),
+            }
+        )
+        block2 = pa.table(
+            {
+                "user_id": pa.array([300], type=pa.int32()),
+                "value": pa.array([2], type=pa.int64()),
+            }
+        )
+        logical_schema = pa.schema(
+            [
+                ("user_id", pa.int32()),
+                ("value", pa.int64()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("user_id",), (Sum("value"),), input_schema=logical_schema
+        )
+        assert plan is not None
+
+        with patch.dict("sys.modules", {"cudf": fake_cudf}):
+            observed_only_partial = plan.partial_aggregate(
+                block1.to_pandas(), input_schema=block1.schema
+            )
+        assert str(observed_only_partial["user_id"].dtype) == "int32"
+
+        actor_cls = hash_aggregate.GPUHashAggregateActor.__ray_actor_class__
+        with patch.dict(
+            "sys.modules",
+            {
+                "cudf": fake_cudf,
+                "ray.data._internal.gpu_shuffle.rapidsmpf_backend": fake_backend,
+            },
+        ):
+            actor = actor_cls(nranks=1, total_nparts=1, aggregation_plan=plan)
+            actor.insert_batch(block1)
+            actor.insert_batch(block2)
+
+        first_partial = actor._shuffler.inserted_chunks[0][0]
+        second_partial = actor._shuffler.inserted_chunks[1][0]
+        assert first_partial["user_id"].iloc[0] == 1
+        assert str(first_partial["user_id"].dtype) == "int32"
+        assert second_partial["user_id"].iloc[0] == 300
+        assert str(second_partial["user_id"].dtype) == "int32"
+        assert actor._runtime_input_schema.field("user_id").type == pa.int32()
+
     def test_sum_and_mean_schema_source_dtypes_use_cpu_like_accumulators(self):
         fake_cudf = types.ModuleType("cudf")
         fake_cudf.DataFrame = pd.DataFrame
@@ -991,7 +1172,16 @@ class TestGPUHashAggregatePlanning:
             pa.schema([("count()", pa.int64())]), check_metadata=False
         )
 
-        runtime_plan = build_gpu_aggregation_plan(("user_id",), (Count(), Sum("value")))
+        runtime_plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Count(), Sum("value")),
+            input_schema=pa.schema(
+                [
+                    ("user_id", pa.int64()),
+                    ("value", pa.int8()),
+                ]
+            ),
+        )
         assert runtime_plan is not None
 
         with patch.dict("sys.modules", {"cudf": fake_cudf}):
@@ -1097,6 +1287,8 @@ class TestGPUHashAggregatePlanning:
         }
 
     def test_null_reductions_preserve_groups_and_accumulator_dtypes(self, monkeypatch):
+        fake_cudf = types.ModuleType("cudf")
+        fake_cudf.DataFrame = pd.DataFrame
         original_group_aggregate = hash_aggregate._group_aggregate
         original_group_count = hash_aggregate._group_count
 
@@ -1122,7 +1314,10 @@ class TestGPUHashAggregatePlanning:
         )
         monkeypatch.setattr(hash_aggregate, "_group_count", _drop_zero_group_counts)
 
-        plan = build_gpu_aggregation_plan(("user_id",), (Sum("value"),))
+        schema = pa.schema([("user_id", pa.int64())])
+        plan = build_gpu_aggregation_plan(
+            ("user_id",), (Sum("value"),), input_schema=schema
+        )
         assert plan is not None
         acc_col = plan.accumulator_columns[0]
 
@@ -1132,36 +1327,41 @@ class TestGPUHashAggregatePlanning:
                 "value": pd.Series([None, None, None, None], dtype="Int64"),
             }
         )
-        partial = plan.partial_aggregate(df)
-        assert str(partial[acc_col].dtype) == "Int64"
+        with patch.dict("sys.modules", {"cudf": fake_cudf}):
+            partial = plan.partial_aggregate(df)
+            assert str(partial[acc_col].dtype) == "Int64"
 
-        result = (
-            plan.final_aggregate(partial).sort_values("user_id").reset_index(drop=True)
-        )
+            result = (
+                plan.final_aggregate(partial)
+                .sort_values("user_id")
+                .reset_index(drop=True)
+            )
 
-        assert result.to_dict("records") == [
-            {"user_id": 0, "sum(value)": None},
-            {"user_id": 1, "sum(value)": None},
-            {"user_id": 2, "sum(value)": None},
-        ]
+            assert result.to_dict("records") == [
+                {"user_id": 0, "sum(value)": None},
+                {"user_id": 1, "sum(value)": None},
+                {"user_id": 2, "sum(value)": None},
+            ]
 
-        count_plan = build_gpu_aggregation_plan(
-            ("user_id",), (Count("value", ignore_nulls=True),)
-        )
-        assert count_plan is not None
+            count_plan = build_gpu_aggregation_plan(
+                ("user_id",),
+                (Count("value", ignore_nulls=True),),
+                input_schema=schema,
+            )
+            assert count_plan is not None
 
-        count_partial = count_plan.partial_aggregate(df)
-        count_result = (
-            count_plan.final_aggregate(count_partial)
-            .sort_values("user_id")
-            .reset_index(drop=True)
-        )
+            count_partial = count_plan.partial_aggregate(df)
+            count_result = (
+                count_plan.final_aggregate(count_partial)
+                .sort_values("user_id")
+                .reset_index(drop=True)
+            )
 
-        assert count_result.to_dict("records") == [
-            {"user_id": 0, "count(value)": 0},
-            {"user_id": 1, "count(value)": 0},
-            {"user_id": 2, "count(value)": 0},
-        ]
+            assert count_result.to_dict("records") == [
+                {"user_id": 0, "count(value)": 0},
+                {"user_id": 1, "count(value)": 0},
+                {"user_id": 2, "count(value)": 0},
+            ]
 
         null_schema = pa.schema(
             [
@@ -1208,7 +1408,7 @@ class TestGPUHashAggregatePlanning:
             == "int64"
         )
 
-        unknown_schema_plan = build_gpu_aggregation_plan(("A",), (Sum("B"),))
+        unknown_schema_plan = build_gpu_aggregation_plan(tuple(), (Sum("B"),))
         assert unknown_schema_plan is not None
         unknown_schema_acc_col = unknown_schema_plan.accumulator_columns[0]
         int_input = pd.DataFrame(
@@ -1414,7 +1614,6 @@ class TestGPUShuffleActorReal:
 
     def test_insert_batch_large_table(self, ray_with_gpu):
         """insert_batch handles a larger Arrow Table without error."""
-        import numpy as np
 
         n = 5_000
         actor = self._make_setup_actor(total_nparts=4)
@@ -1616,6 +1815,12 @@ class TestGPUHashAggregateActorReal:
         return pd.concat(frames, ignore_index=True)
 
     def test_grouped_builtin_aggregates_real_gpu(self, ray_with_gpu):
+        table = pa.table(
+            {
+                "group": pa.array([0, 0, 1, 1, 1, 2], type=pa.int64()),
+                "value": pa.array([1, None, 2, 3, None, 10], type=pa.int64()),
+            }
+        )
         plan = build_gpu_aggregation_plan(
             ("group",),
             (
@@ -1626,15 +1831,10 @@ class TestGPUHashAggregateActorReal:
                 Max("value"),
                 Mean("value"),
             ),
+            input_schema=table.schema,
         )
         assert plan is not None
 
-        table = pa.table(
-            {
-                "group": pa.array([0, 0, 1, 1, 1, 2], type=pa.int64()),
-                "value": pa.array([1, None, 2, 3, None, 10], type=pa.int64()),
-            }
-        )
         actor = self._make_setup_actor(plan)
         try:
             assert ray.get(actor.insert_batch.remote(table)) == table.num_rows
