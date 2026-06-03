@@ -55,8 +55,8 @@ DATA_TASK_NAME_PREFIXES = ("MapBatches(", "Read", "Write")
 
 # Upper bound on tasks fetched via list_tasks. We print the scanned count
 # so the operator can spot truncation. Going above this limit gives
-# RayStateApiException
-LIST_TASKS_LIMIT = 10_000
+# RayStateApiException. When I ran this release test I saw 16081 tasks.
+LIST_TASKS_LIMIT = 20_000
 
 
 def run_pipeline(subcluster: str, args: argparse.Namespace) -> None:
