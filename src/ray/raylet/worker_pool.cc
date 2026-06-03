@@ -956,6 +956,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
       rpc::LeaseSpec rpc_lease_spec;
       rpc_lease_spec.set_language(Language::PYTHON);
       rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
+      (*rpc_lease_spec.mutable_required_resources())["CPU"] = 1.0;
 
       LeaseSpecification lease_spec{std::move(rpc_lease_spec)};
       PrestartWorkersInternal(lease_spec, num_prestart_python_workers);
@@ -1593,25 +1594,13 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                                          int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
-    // Prestart worker with no runtime env.
-    if (IsRuntimeEnvEmpty(lease_spec.SerializedRuntimeEnv())) {
-      PopWorkerStatus status;
-      StartWorkerProcess(lease_spec.GetLanguage(),
-                         rpc::WorkerType::WORKER,
-                         lease_spec.JobId(),
-                         &status,
-                         /*dynamic_options=*/{},
-                         /*runtime_env_hash=*/0,
-                         /*serialized_runtime_env_context=*/"{}",
-                         /*runtime_env_info=*/rpc::RuntimeEnvInfo(),
-                         /*worker_startup_keep_alive_duration=*/std::nullopt,
-                         lease_spec.GetRequiredResources());
-      continue;
+    std::string env_to_use = lease_spec.SerializedRuntimeEnv();
+    if (IsRuntimeEnvEmpty(env_to_use)) {
+      env_to_use = "{}";
     }
 
-    // Prestart worker with runtime env.
     GetOrCreateRuntimeEnv(
-        lease_spec.SerializedRuntimeEnv(),
+        env_to_use,
         lease_spec.RuntimeEnvConfig(),
         lease_spec.JobId(),
         lease_spec.GetRequiredResources(),
