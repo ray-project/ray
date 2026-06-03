@@ -296,12 +296,12 @@ However, it doesn't return that ref until it is ready for the following reasons:
 
 ## Finishing the Generator
 
-When the Python generator raises `StopIteration` or `StopAsyncIteration`, the executor finishes the streaming task.
+When the Python generator raises `StopIteration` or `StopAsyncIteration` on `send(stats)/asend(stats)`, the executor finishes the streaming task.
 The completion flow is:
 
 1. The executor [waits for all in-flight ReportGeneratorItemReturns RPCs](https://github.com/ray-project/ray/blob/ray-2.55.0/python/ray/_raylet.pyx#L1345-L1352) to finish before sending the final `PushTask` reply. This prevents the task from appearing complete before the caller receives one of the yielded objects.
-2. The executor sends the final `PushTask` reply. This reply includes the generator ObjectRef and the [list of streamed return ObjectIDs](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_execution/task_receiver.cc#L54-L60) produced by the task.
-3. The caller handles the final `PushTask` reply, records how many streaming return objects the task produced, and marks the stream as ended.
+2. The executor sends the `PushTask` reply. This reply includes the generator ObjectRef and the [list of streamed return ObjectIDs](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_execution/task_receiver.cc#L54-L60) produced by the task.
+3. The caller handles the `PushTask` reply, records how many streaming return objects the task produced, and marks the stream as ended.
 4. The caller [writes an internal end-of-stream marker](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L1078-L1085) into the caller-side `ObjectRefStream`.
 5. Later, when `ObjectRefGenerator` reaches the marker, it checks the generator ObjectRef.
 
