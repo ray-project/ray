@@ -740,10 +740,12 @@ These metrics track replica health, restarts, and lifecycle timing.
 These lifecycle **histograms** use `deployment` and `application` labels only—no `replica` label—so Prometheus cardinality stays manageable at scale.
 :::
 
-By default, replica lifecycle metrics include source identifiers such as
-`replica` where applicable. For large deployments, set
+By default, controller-emitted replica lifecycle metrics include source
+identifiers such as `replica` where applicable. For large deployments, set
 `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those
 source-level high-cardinality tags while retaining `deployment` and `application`.
+This setting doesn't affect replica-emitted metrics such as
+`ray_serve_deployment_replica_starts_total`.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
@@ -760,10 +762,13 @@ source-level high-cardinality tags while retaining `deployment` and `application
 
 These metrics provide visibility into autoscaling behavior and help debug scaling issues.
 
-By default, autoscaling metrics include source identifiers such as `handle` and
-`replica` where applicable. For large deployments, set
+By default, controller-emitted autoscaling delay metrics include source
+identifiers such as `handle` and `replica` where applicable. For large deployments, set
 `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those
 source-level high-cardinality tags while retaining `deployment` and `application`.
+This setting doesn't affect replica-emitted metrics such as
+`ray_serve_record_autoscaling_stats_failed_total` or
+`ray_serve_user_autoscaling_stats_latency_ms`.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|

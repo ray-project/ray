@@ -25,8 +25,18 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    HandleMetricReport,
+    ReplicaID,
+    ReplicaMetricReport,
+    TimeStampedValue,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
@@ -41,6 +51,10 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
+CONTROLLER_HIGH_CARDINALITY_TAGS_ENV_VAR = (
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS"
+)
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -1266,6 +1280,130 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     assert (
         "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
+@pytest.mark.parametrize(
+    "metrics_start_shutdown, include_high_cardinality",
+    [
+        (
+            {"env_vars": {CONTROLLER_HIGH_CARDINALITY_TAGS_ENV_VAR: "1"}},
+            True,
+        ),
+        (
+            {"env_vars": {CONTROLLER_HIGH_CARDINALITY_TAGS_ENV_VAR: "0"}},
+            False,
+        ),
+    ],
+    ids=["include_high_cardinality", "exclude_high_cardinality"],
+    indirect=["metrics_start_shutdown"],
+)
+def test_controller_high_cardinality_metric_tags(
+    metrics_start_shutdown, include_high_cardinality
+):
+    """Test controller metrics respect high-cardinality tag config."""
+
+    @serve.deployment(
+        name="autoscaling_metrics_model",
+        health_check_period_s=0.1,
+        health_check_timeout_s=1,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "target_ongoing_requests": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+        },
+    )
+    class Model:
+        def __init__(self):
+            self.should_fail_health_check = False
+
+        async def __call__(self, request: Request):
+            body = await request.body()
+            if body == b"fail_health_check":
+                self.should_fail_health_check = True
+            return "hello"
+
+        async def check_health(self):
+            if self.should_fail_health_check:
+                raise RuntimeError("Intentional health check failure.")
+
+    app_name = "autoscaling_metrics_app"
+    deployment_name = "autoscaling_metrics_model"
+    deployment_id = DeploymentID(deployment_name, app_name)
+    replica_id = ReplicaID("test-replica-id", deployment_id)
+    serve.run(Model.bind(), name=app_name)
+
+    url = get_application_url("HTTP", app_name)
+    assert httpx.get(url).text == "hello"
+    assert httpx.request("GET", url, content=b"fail_health_check").text == "hello"
+
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    now = time.time()
+    ray.get(
+        [
+            controller.record_autoscaling_metrics_from_handle.remote(
+                HandleMetricReport(
+                    deployment_id=deployment_id,
+                    handle_id="test-handle-id",
+                    actor_id="test-actor-id",
+                    handle_source=DeploymentHandleSource.UNKNOWN,
+                    aggregated_queued_requests=0,
+                    queued_requests=[TimeStampedValue(now, 0)],
+                    aggregated_metrics={},
+                    metrics={},
+                    timestamp=now,
+                )
+            ),
+            controller.record_autoscaling_metrics_from_replica.remote(
+                ReplicaMetricReport(
+                    replica_id=replica_id,
+                    aggregated_metrics={},
+                    metrics={},
+                    timestamp=now,
+                )
+            ),
+        ]
+    )
+
+    timeseries = PrometheusTimeseries()
+
+    def get_matching_metrics(metric_name: str):
+        return [
+            metric
+            for metric in get_metric_dictionaries(
+                metric_name, timeseries=timeseries, wait=False
+            )
+            if metric.get("deployment") == deployment_name
+            and metric.get("application") == app_name
+        ]
+
+    def assert_high_cardinality_tag(metric, tag):
+        assert (tag in metric) is include_high_cardinality
+
+    def check_controller_metric_tags():
+        health_failure_metrics = get_matching_metrics(
+            "ray_serve_health_check_failures_total"
+        )
+        handle_metrics = get_matching_metrics(
+            "ray_serve_autoscaling_handle_metrics_delay_ms"
+        )
+        replica_metrics = get_matching_metrics(
+            "ray_serve_autoscaling_replica_metrics_delay_ms"
+        )
+        if not health_failure_metrics or not handle_metrics or not replica_metrics:
+            return False
+
+        for metric in health_failure_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+        for metric in handle_metrics:
+            assert_high_cardinality_tag(metric, "handle")
+        for metric in replica_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+
+        return True
+
+    wait_for_condition(check_controller_metric_tags, timeout=60)
 
 
 def test_routing_stats_delay_metric(metrics_start_shutdown):

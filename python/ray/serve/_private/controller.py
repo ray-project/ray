@@ -119,11 +119,11 @@ _AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS = ("deployment", "application")
 
 
 def _get_autoscaling_metrics_delay_tag_keys(
-    high_cardinality_tag_keys: Tuple[str, ...],
+    high_cardinality_tag_key: str,
 ) -> Tuple[str, ...]:
     """Return tag keys for controller autoscaling metrics delay gauges."""
     if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-        return _AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS + high_cardinality_tag_keys
+        return _AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS + (high_cardinality_tag_key,)
     return _AUTOSCALING_METRICS_DELAY_BASE_TAG_KEYS
 
 
@@ -787,7 +787,7 @@ class ServeController:
                 "Time taken for the replica metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=_get_autoscaling_metrics_delay_tag_keys(("replica",)),
+            tag_keys=_get_autoscaling_metrics_delay_tag_keys("replica"),
         )
         self.handle_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_handle_metrics_delay_ms",
@@ -795,7 +795,7 @@ class ServeController:
                 "Time taken for the handle metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=_get_autoscaling_metrics_delay_tag_keys(("handle",)),
+            tag_keys=_get_autoscaling_metrics_delay_tag_keys("handle"),
         )
         self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",

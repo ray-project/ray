@@ -2,10 +2,8 @@ from copy import deepcopy
 
 import pytest
 
-from ray.serve._private.common import DeploymentID, TargetCapacityDirection
+from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
-    _get_autoscaling_metrics_delay_tag_keys,
-    _get_autoscaling_metrics_delay_tags,
     applications_match,
     calculate_target_capacity_direction,
 )
@@ -20,58 +18,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
 )
-
-
-def test_autoscaling_metrics_delay_tags_include_high_cardinality_by_default(
-    monkeypatch,
-):
-    from ray.serve._private import controller
-
-    monkeypatch.setattr(
-        controller,
-        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
-        True,
-    )
-
-    assert _get_autoscaling_metrics_delay_tag_keys(("handle",)) == (
-        "deployment",
-        "application",
-        "handle",
-    )
-    assert _get_autoscaling_metrics_delay_tags(
-        DeploymentID(name="deployment", app_name="application"),
-        "handle",
-        "handle-id",
-    ) == {
-        "deployment": "deployment",
-        "application": "application",
-        "handle": "handle-id",
-    }
-
-
-def test_autoscaling_metrics_delay_tags_exclude_high_cardinality(
-    monkeypatch,
-):
-    from ray.serve._private import controller
-
-    monkeypatch.setattr(
-        controller,
-        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS",
-        False,
-    )
-
-    assert _get_autoscaling_metrics_delay_tag_keys(("replica",)) == (
-        "deployment",
-        "application",
-    )
-    assert _get_autoscaling_metrics_delay_tags(
-        DeploymentID(name="deployment", app_name="application"),
-        "replica",
-        "replica-id",
-    ) == {
-        "deployment": "deployment",
-        "application": "application",
-    }
 
 
 def create_app_config(name: str) -> ServeApplicationSchema:

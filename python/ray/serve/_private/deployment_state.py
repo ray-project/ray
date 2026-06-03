@@ -106,23 +106,6 @@ from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-_REPLICA_LIFECYCLE_METRIC_BASE_TAG_KEYS = ("deployment", "application")
-
-
-def _get_replica_lifecycle_metric_tag_keys() -> Tuple[str, ...]:
-    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-        return ("deployment", "replica", "application")
-    return _REPLICA_LIFECYCLE_METRIC_BASE_TAG_KEYS
-
-
-def _get_replica_lifecycle_metric_tags(
-    replica_unique_id: str,
-) -> Optional[Dict[str, str]]:
-    if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-        return {"replica": replica_unique_id}
-    return None
-
-
 _RESERVED_INTERNAL_DEPLOYMENT_CONTEXT_ENV_VARS = {
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
@@ -2894,13 +2877,19 @@ class DeploymentState:
         # Deployment-scoped actor lifecycle (per deployment)
         self._deployment_actors = DeploymentActorContainer(self._id)
 
+        replica_lifecycle_metric_tag_keys = (
+            ("deployment", "replica", "application")
+            if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS
+            else ("deployment", "application")
+        )
+
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
                 "Tracks whether this deployment replica is healthy. 1 means "
                 "healthy, 0 means unhealthy."
             ),
-            tag_keys=_get_replica_lifecycle_metric_tag_keys(),
+            tag_keys=replica_lifecycle_metric_tag_keys,
         )
         self.health_check_gauge.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2955,7 +2944,7 @@ class DeploymentState:
         self.health_check_failures_counter = metrics.Counter(
             "serve_health_check_failures_total",
             description=("Count of failed health checks."),
-            tag_keys=_get_replica_lifecycle_metric_tag_keys(),
+            tag_keys=replica_lifecycle_metric_tag_keys,
         )
         self.health_check_failures_counter.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -4376,10 +4365,10 @@ class DeploymentState:
             and (now - cached[1]) < RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
         ):
             return
-        self.health_check_gauge.set(
-            value,
-            tags=_get_replica_lifecycle_metric_tags(replica_unique_id),
-        )
+        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
+        else:
+            self.health_check_gauge.set(value)
         self._health_gauge_cache[replica_unique_id] = (value, now)
 
     def _register_gang_replica(self, replica_id: ReplicaID, gang_id: str) -> None:
@@ -4545,11 +4534,12 @@ class DeploymentState:
                     replica.last_health_check_latency_ms
                 )
             if replica.last_health_check_failed:
-                self.health_check_failures_counter.inc(
-                    tags=_get_replica_lifecycle_metric_tags(
-                        replica.replica_id.unique_id
+                if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+                    self.health_check_failures_counter.inc(
+                        tags={"replica": replica.replica_id.unique_id}
                     )
-                )
+                else:
+                    self.health_check_failures_counter.inc()
 
             if is_healthy:
                 healthy_replicas.append(replica)
