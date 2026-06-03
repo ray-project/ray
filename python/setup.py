@@ -276,8 +276,8 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard]",
             "requests",
-            "starlette",
-            "fastapi",
+            "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
+            "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
             "mmh3",
         ],
@@ -377,10 +377,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.20.0",
-                "nixl[cu13]==0.10.1",
-                "nixl-cu12==0.10.1",
-                "nixl-cu13==0.10.1",
+                "vllm[audio]==0.22.0",
+                "nixl==1.1.0",
+                "nixl-cu13==1.1.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",

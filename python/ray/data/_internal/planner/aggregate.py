@@ -8,6 +8,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.planner.exchange.aggregate_task_spec import (
     SortAggregateTaskSpec,
 )
@@ -61,6 +62,7 @@ def generate_aggregate_fn(
 
         sort_key = SortKey(key)
 
+        label_selector = data_context.execution_options.label_selector
         if key is None:
             num_outputs = 1
             boundaries = []
@@ -72,7 +74,11 @@ def generate_aggregate_fn(
             ]
             # Sample boundaries for aggregate key.
             boundaries = SortTaskSpec.sample_boundaries(
-                blocks, sort_key, num_outputs, sample_bar
+                blocks,
+                sort_key,
+                num_outputs,
+                sample_bar,
+                label_selector=label_selector,
             )
 
         agg_spec = SortAggregateTaskSpec(
@@ -91,10 +97,14 @@ def generate_aggregate_fn(
                 f"Invalid shuffle strategy '{data_context.shuffle_strategy}'"
             )
 
+        map_ray_remote_args = merge_label_selector({}, label_selector)
+        reduce_ray_remote_args = merge_label_selector({}, label_selector)
         return scheduler.execute(
             refs,
             num_outputs,
             ctx,
+            map_ray_remote_args=map_ray_remote_args,
+            reduce_ray_remote_args=reduce_ray_remote_args,
             _debug_limit_execution_to_num_blocks=(
                 _debug_limit_shuffle_execution_to_num_blocks
             ),
