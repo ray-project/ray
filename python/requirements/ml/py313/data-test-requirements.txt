@@ -38,3 +38,4 @@ tf-keras
 torchvision==0.24.0
 confluent-kafka
 lerobot[dataset]>=0.5.0
+torchcodec

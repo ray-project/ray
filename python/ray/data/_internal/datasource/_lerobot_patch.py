@@ -1,10 +1,17 @@
 """Monkey-patches for the ``lerobot`` library to support fsspec cloud URIs.
 
-The upstream ``lerobot.datasets.dataset_metadata.LeRobotDatasetMetadata``
-only loads from local ``pathlib.Path`` roots, with a HuggingFace Hub
-download fallback when files are missing.  These patches let it accept
-fsspec-compatible cloud URIs (``s3://``, ``gs://``, ``abfs://``, ...) as
-``root``, routing metadata reads through fsspec instead.
+Two upstream APIs are patched:
+
+1. ``lerobot.datasets.dataset_metadata.LeRobotDatasetMetadata`` only loads
+   from local ``pathlib.Path`` roots, with a HuggingFace Hub download
+   fallback when files are missing.  These patches let it accept
+   fsspec-compatible cloud URIs (``s3://``, ``gs://``, ``abfs://``, ...) as
+   ``root``, routing metadata reads through fsspec instead.
+
+2. ``lerobot.datasets.video_utils.decode_video_frames`` accepts only a
+   local file path (``torchvision.io.VideoReader`` opens the file directly).
+   We wrap it to download cloud-URI videos to a temporary file before
+   decoding, then clean up afterwards.
 
 Apply via :func:`apply_lerobot_fsspec_patches`.  Idempotent and safe to call
 multiple times.
@@ -63,7 +70,14 @@ def _check_version() -> None:
 
 
 def apply_lerobot_fsspec_patches() -> None:
-    """Patch ``LeRobotDatasetMetadata`` to support fsspec cloud URIs.
+    """Patch lerobot APIs to support fsspec cloud URIs.
+
+    Patches:
+
+    - ``LeRobotDatasetMetadata.__init__`` / ``_load_metadata`` — accept
+      cloud URIs as ``root`` and load metadata via fsspec.
+    - ``lerobot.datasets.video_utils.decode_video_frames`` — accept cloud
+      URIs as ``video_path`` by downloading to a temporary file first.
 
     No-op after the first successful application.
     """
@@ -74,9 +88,11 @@ def apply_lerobot_fsspec_patches() -> None:
     _check_version()
 
     from lerobot.datasets import dataset_metadata as _dm
+    from lerobot.datasets import video_utils as _vu
 
     _original_init = _dm.LeRobotDatasetMetadata.__init__
     _original_load_metadata = _dm.LeRobotDatasetMetadata._load_metadata
+    _original_decode_video_frames = _vu.decode_video_frames
 
     def _patched_init(
         self,
@@ -113,8 +129,58 @@ def apply_lerobot_fsspec_patches() -> None:
         else:
             _original_load_metadata(self)
 
+    def _patched_decode_video_frames(video_path, timestamps, tolerance_s, backend=None):
+        """Cloud-URI-aware wrapper around lerobot.video_utils.decode_video_frames.
+
+        Backend handling:
+
+        - **torchcodec** (default when installed) — lerobot's torchcodec path
+          internally does ``fsspec.open(video_path).__enter__()`` and feeds
+          the resulting file-like to ``torchcodec.VideoDecoder``, which
+          performs HTTP-range / partial reads instead of downloading the
+          whole file.  We pass cloud URIs straight through.
+        - **pyav / video_reader** (torchvision-based) — only accepts a local
+          file path, so for cloud URIs we download to a temp file first and
+          delete it afterwards.
+
+        For local paths, both backends are delegated unchanged.
+        """
+        if backend is None:
+            backend = _vu.get_safe_default_codec()
+
+        video_path_str = str(video_path)
+
+        # torchcodec already speaks fsspec — let it stream.
+        if backend == "torchcodec" or not is_cloud_uri(video_path_str):
+            return _original_decode_video_frames(
+                video_path, timestamps, tolerance_s, backend
+            )
+
+        # pyav / video_reader: need a local file.  Download to temp.
+        import fsspec
+        import os
+        import tempfile
+
+        fs, fs_path = fsspec.core.url_to_fs(video_path_str)
+        suffix = os.path.splitext(fs_path)[-1] or ".mp4"
+        # delete=False because we close the file before passing it to
+        # torchvision (which on some platforms can't reopen an open fd).
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            fs.get(fs_path, tmp_path)
+            return _original_decode_video_frames(
+                tmp_path, timestamps, tolerance_s, backend
+            )
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
     _dm.LeRobotDatasetMetadata.__init__ = _patched_init
     _dm.LeRobotDatasetMetadata._load_metadata = _patched_load_metadata
+    _vu.decode_video_frames = _patched_decode_video_frames
     _PATCH_APPLIED = True
 
 
