@@ -517,12 +517,13 @@ def _read_datasource_v2(
     # captured in a pickled closure and runs inside worker tasks, so its
     # estimator must be I/O-free and pickle-safe — use the datasource's
     # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
-    # encoding-ratio multiplier). ``num_buckets`` is a hint;
-    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
-    # first, so the actual bucket count scales with total data size.
-    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
-    # back to sentinel bounds so the partitioner just rolls every file
-    # into a single bucket.
+    # encoding-ratio multiplier).
+    #
+    # ``num_buckets`` is the *target* output block count; the partitioner
+    # aims to use all buckets so downstream stages have enough
+    # parallelism. ``target_*_block_size`` can be ``None`` (block sizing
+    # disabled); fall back to sentinel bounds so the partitioner just
+    # rolls every file into a single bucket.
     import sys
 
     min_bucket_size = ctx.target_min_block_size or 0
@@ -531,10 +532,28 @@ def _read_datasource_v2(
         if ctx.target_max_block_size is not None
         else sys.maxsize
     )
-    # ``parallelism`` is the caller-resolved ``override_num_blocks`` value
-    # (``-1`` when unset). Honoring it here per-read avoids mutating the
-    # process-global ``DataContext.read_op_min_num_blocks``.
-    num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
+
+    # Honor the same parallelism heuristic V1 uses
+    # (``_autodetect_parallelism``) so V2 reads saturate the cluster's
+    # CPUs by default. ``parallelism`` is the caller-resolved
+    # ``override_num_blocks`` value (``-1`` when unset); the helper:
+    #
+    #   * If ``parallelism != -1``, returns it unchanged (user override).
+    #   * Else returns ``max(read_op_min_num_blocks, 2 * avail_cpus)``.
+    #
+    # We pass ``mem_size=None`` (and no datasource adapter) so the
+    # helper's size-based floors (``min_safe_parallelism`` and
+    # ``max_reasonable_parallelism``) stay at identity defaults — V2
+    # does not have a plan-time data-size estimate, and the
+    # ``FileChunker`` provides the equivalent runtime safety against
+    # oversized output blocks. ``_autodetect_parallelism`` is imported at
+    # module scope.
+    num_buckets, _reason, _mem_size = _autodetect_parallelism(
+        parallelism=parallelism,
+        target_max_block_size=ctx.target_max_block_size,
+        ctx=ctx,
+        mem_size=None,
+    )
     partitioner = RoundRobinPartitioner(
         in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,
