@@ -102,6 +102,17 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_gcs_resource_manager",
+    hdrs = ["fake_gcs_resource_manager.h"],
+    deps = [
+        ":gcs_resource_manager_interface",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:ray_syncer_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_resource_manager",
     srcs = ["gcs_resource_manager.cc"],
     hdrs = ["gcs_resource_manager.h"],

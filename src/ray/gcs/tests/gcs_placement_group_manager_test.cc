@@ -24,10 +24,9 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
-#include "ray/gcs/gcs_resource_manager.h"
+#include "ray/gcs/fake_gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
-#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
@@ -82,15 +81,13 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
-      : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()),
-        cluster_resource_manager_(io_service_) {
+      : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
+    gcs_resource_manager_ = std::make_shared<gcs::FakeGcsResourceManager>();
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
         mock_placement_group_scheduler_.get(),
@@ -232,9 +229,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   FakeClock clock_;
 
  private:
-  ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<gcs::FakeGcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
 };
 
