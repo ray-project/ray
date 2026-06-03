@@ -1008,6 +1008,8 @@ def test_overlapping_non_key_columns_without_suffixes(
     [
         pytest.param(False, "inner", ["a", "b"], id="inner"),
         pytest.param(False, "left_semi", ["a"], id="left_semi"),
+        pytest.param(False, "right_semi", ["b"], id="right_semi"),
+        pytest.param(False, "right_anti", ["b"], id="right_anti"),
         pytest.param(True, "inner", ["v_l"], id="collision-left-v"),
     ],
 )
