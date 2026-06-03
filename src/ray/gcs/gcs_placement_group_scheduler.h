@@ -384,16 +384,17 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       const rpc::StatusCallback callback);
 
-  /// Cancel prepared or committed resources from a node. All bundles in the batch
-  /// must belong to the same placement group and be located on the same node;
-  /// the raylet handles them in a single RPC.
-  /// This method is supposed to be idempotent.
+  /// Remove a placement group's bundles from a node. All bundles in the batch
+  /// must belong to the placement group and be located on the same node; the
+  /// raylet handles them in a single RPC. This method is idempotent.
   ///
-  /// \param bundle_specs Bundles to cancel on the node.
-  /// \param node The node that the worker will be returned for.
-  /// \param max_retry The maximum times cancel request can be retried.
-  /// \param current_retry_cnt The number of times the cancel request is retried.
-  void CancelResourceReserve(
+  /// \param placement_group_id The placement group whose bundles are being removed.
+  /// \param bundle_specs Bundles to remove on the node.
+  /// \param node The node that the bundles are being removed from.
+  /// \param max_retry The maximum times the remove request can be retried.
+  /// \param current_retry_cnt The number of times the remove request has been retried.
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,

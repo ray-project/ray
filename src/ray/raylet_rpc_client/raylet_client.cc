@@ -273,10 +273,13 @@ void RayletClient::CommitBundleResources(
                   /*method_timeout_ms*/ -1);
 }
 
-void RayletClient::CancelResourceReserve(
+void RayletClient::RemovePlacementGroupBundles(
+    const PlacementGroupID &placement_group_id,
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-    const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
-  rpc::CancelResourceReserveRequest request;
+    const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+        &callback) {
+  rpc::RemovePlacementGroupBundlesRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
   std::set<std::string> nodes;
   for (const auto &bundle_spec : bundle_specs) {
     nodes.insert(bundle_spec->NodeId().Hex());
@@ -285,7 +288,7 @@ void RayletClient::CancelResourceReserve(
   }
   RAY_CHECK(nodes.size() == 1);
   INVOKE_RPC_CALL(NodeManagerService,
-                  CancelResourceReserve,
+                  RemovePlacementGroupBundles,
                   request,
                   callback,
                   grpc_client_,

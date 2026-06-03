@@ -181,12 +181,13 @@ class FakeRayletClient : public RayletClientInterface {
     commit_callbacks.push_back(callback);
   }
 
-  void CancelResourceReserve(
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ClientCallback<CancelResourceReserveReply> &callback) override {
-    num_return_requested += 1;
-    num_bundles_returned += bundle_specs.size();
-    return_callbacks.push_back(callback);
+      const ClientCallback<RemovePlacementGroupBundlesReply> &callback) override {
+    num_remove_pg_bundles_requested += 1;
+    num_bundles_removed += bundle_specs.size();
+    remove_pg_bundles_callbacks.push_back(callback);
   }
 
   void ReleaseUnusedBundles(
@@ -221,15 +222,15 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  bool GrantCancelResourceReserve(bool success = true) {
+  bool GrantRemovePlacementGroupBundles(bool success = true) {
     Status status = Status::OK();
-    CancelResourceReserveReply reply;
-    if (return_callbacks.size() == 0) {
+    RemovePlacementGroupBundlesReply reply;
+    if (remove_pg_bundles_callbacks.size() == 0) {
       return false;
     } else {
-      auto callback = return_callbacks.front();
+      auto callback = remove_pg_bundles_callbacks.front();
       callback(status, std::move(reply));
-      return_callbacks.pop_front();
+      remove_pg_bundles_callbacks.pop_front();
       return true;
     }
   }
@@ -320,8 +321,8 @@ class FakeRayletClient : public RayletClientInterface {
   int num_release_unused_workers = 0;
   int num_get_task_failure_causes = 0;
   int num_lease_requested = 0;
-  int num_return_requested = 0;
-  int num_bundles_returned = 0;
+  int num_remove_pg_bundles_requested = 0;
+  int num_bundles_removed = 0;
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
   int num_release_unused_bundles_requested = 0;
@@ -336,7 +337,8 @@ class FakeRayletClient : public RayletClientInterface {
   std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
   std::list<ClientCallback<PrepareBundleResourcesReply>> lease_callbacks = {};
   std::list<ClientCallback<CommitBundleResourcesReply>> commit_callbacks = {};
-  std::list<ClientCallback<CancelResourceReserveReply>> return_callbacks = {};
+  std::list<ClientCallback<RemovePlacementGroupBundlesReply>>
+      remove_pg_bundles_callbacks = {};
 };
 
 }  // namespace rpc

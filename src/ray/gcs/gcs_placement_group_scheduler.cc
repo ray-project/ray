@@ -252,54 +252,60 @@ void GcsPlacementGroupScheduler::CommitResources(
       });
 }
 
-void GcsPlacementGroupScheduler::CancelResourceReserve(
+void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
+    const PlacementGroupID &placement_group_id,
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
     int current_retry_cnt) {
   RAY_CHECK(!bundle_specs.empty());
   if (!node.has_value()) {
-    RAY_LOG(INFO) << "Node for placement group "
-                  << bundle_specs.front()->PlacementGroupId()
-                  << " has already been removed. Cancellation request will be ignored.";
+    RAY_LOG(INFO) << "Node for placement group " << placement_group_id
+                  << " has already been removed. Remove request will be ignored.";
     return;
   }
 
   auto node_id = NodeID::FromBinary(node.value()->node_id());
 
   if (max_retry == current_retry_cnt) {
-    RAY_LOG(ERROR) << "Failed to cancel " << bundle_specs.size()
-                   << " bundle(s) for placement group "
-                   << bundle_specs.front()->PlacementGroupId() << " at node " << node_id
+    RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
+                   << " bundle(s) for placement group " << placement_group_id
+                   << " at node " << node_id
                    << " because the max retry count is reached.";
     return;
   }
 
-  RAY_LOG(DEBUG) << "Cancelling " << bundle_specs.size()
-                 << " bundle(s) for placement group "
-                 << bundle_specs.front()->PlacementGroupId() << " at node " << node_id;
+  RAY_LOG(DEBUG) << "Removing " << bundle_specs.size() << " bundle(s) for placement group "
+                 << placement_group_id << " at node " << node_id;
   const auto raylet_client = GetRayletClientFromNode(node.value());
 
-  raylet_client->CancelResourceReserve(
+  raylet_client->RemovePlacementGroupBundles(
+      placement_group_id,
       bundle_specs,
-      [this, bundle_specs, node_id, node, max_retry, current_retry_cnt](
-          const Status &status, const rpc::CancelResourceReserveReply &reply) {
+      [this, placement_group_id, bundle_specs, node_id, node, max_retry, current_retry_cnt](
+          const Status &status, const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
-          RAY_LOG(INFO) << "Finished cancelling " << bundle_specs.size()
-                        << " bundle(s) for placement group "
-                        << bundle_specs.front()->PlacementGroupId() << " at node "
-                        << node_id;
+          RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
+                        << " bundle(s) for placement group " << placement_group_id
+                        << " at node " << node_id;
         } else {
           // We couldn't delete the pg resources because of network issue. Retry.
-          RAY_LOG(WARNING) << "Failed to cancel " << bundle_specs.size()
-                           << " bundle(s) for placement group "
-                           << bundle_specs.front()->PlacementGroupId() << " at node "
-                           << node_id << ". Status: " << status;
+          RAY_LOG(WARNING) << "Failed to remove " << bundle_specs.size()
+                           << " bundle(s) for placement group " << placement_group_id
+                           << " at node " << node_id << ". Status: " << status;
           execute_after(
               io_context_,
-              [this, bundle_specs, node, max_retry, current_retry_cnt] {
-                CancelResourceReserve(
-                    bundle_specs, node, max_retry, current_retry_cnt + 1);
+              [this,
+               placement_group_id,
+               bundle_specs,
+               node,
+               max_retry,
+               current_retry_cnt] {
+                RemovePlacementGroupBundles(placement_group_id,
+                                            bundle_specs,
+                                            node,
+                                            max_retry,
+                                            current_retry_cnt + 1);
               },
               std::chrono::milliseconds(1000) /* milliseconds */);
         }
@@ -656,15 +662,16 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     const auto &leasing_context = it->second;
     const auto &leasing_bundle_locations = leasing_context->GetPreparedBundleLocations();
 
-    // Cancel all resource reservation of prepared bundles, batched per node so
-    // the raylet handles them in a single RPC.
-    RAY_LOG(INFO) << "Cancelling all prepared bundles of a placement group, id is "
+    // Remove all prepared bundles' resources, batched per node so the raylet
+    // handles them in a single RPC.
+    RAY_LOG(INFO) << "Removing all prepared bundles of a placement group, id is "
                   << placement_group_id;
     for (auto &entry : GroupBundlesByNode(*leasing_bundle_locations)) {
-      CancelResourceReserve(entry.second,
-                            gcs_node_manager_.GetAliveNode(entry.first),
-                            /*max_retry*/ 5,
-                            /*current_retry_cnt*/ 0);
+      RemovePlacementGroupBundles(placement_group_id,
+                                  entry.second,
+                                  gcs_node_manager_.GetAliveNode(entry.first),
+                                  /*max_retry*/ 5,
+                                  /*current_retry_cnt*/ 0);
     }
   }
 }
@@ -677,15 +684,16 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
   if (maybe_bundle_locations.has_value()) {
     const auto &committed_bundle_locations = maybe_bundle_locations.value();
 
-    // Cancel all resource reservation of committed bundles, batched per node so
-    // the raylet handles them in a single RPC.
-    RAY_LOG(INFO) << "Cancelling all committed bundles of a placement group, id is "
+    // Remove all committed bundles' resources, batched per node so the raylet
+    // handles them in a single RPC.
+    RAY_LOG(INFO) << "Removing all committed bundles of a placement group, id is "
                   << placement_group_id;
     for (auto &entry : GroupBundlesByNode(*committed_bundle_locations)) {
-      CancelResourceReserve(entry.second,
-                            gcs_node_manager_.GetAliveNode(entry.first),
-                            /*max_retry*/ 5,
-                            /*current_retry_cnt*/ 0);
+      RemovePlacementGroupBundles(placement_group_id,
+                                  entry.second,
+                                  gcs_node_manager_.GetAliveNode(entry.first),
+                                  /*max_retry*/ 5,
+                                  /*current_retry_cnt*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
     cluster_resource_scheduler_.GetClusterResourceManager()

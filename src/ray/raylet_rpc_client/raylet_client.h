@@ -101,10 +101,11 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
       override;
 
-  void CancelResourceReserve(
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-      override;
+      const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+          &callback) override;
 
   void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,

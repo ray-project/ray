@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -116,13 +117,18 @@ class RayletClientInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
-  /// Request a raylet to cancel resources for one or more placement-group bundles.
-  /// GCS batches all of a placement group's bundles that landed on the same node
-  /// into a single Cancel RPC.
-  /// \param bundle_specs Bundles to cancel on this raylet.
-  virtual void CancelResourceReserve(
+  /// Request a raylet to remove the resources for one or more placement-group
+  /// bundles (called when a placement group is being destroyed). GCS batches all
+  /// of a placement group's bundles that landed on the same node into a single
+  /// RPC.
+  /// \param placement_group_id The placement group whose bundles are being removed.
+  /// \param bundle_specs Bundles to remove on this raylet. All must belong to
+  ///   placement_group_id.
+  virtual void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+          &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,
