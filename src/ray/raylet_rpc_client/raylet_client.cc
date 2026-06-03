@@ -278,15 +278,17 @@ void RayletClient::RemovePlacementGroupBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
         &callback) {
+  RAY_CHECK(!bundle_specs.empty());
   rpc::RemovePlacementGroupBundlesRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
-  std::set<std::string> nodes;
+  const auto &expected_node_id = bundle_specs.front()->NodeId();
   for (const auto &bundle_spec : bundle_specs) {
-    nodes.insert(bundle_spec->NodeId().Hex());
+    RAY_CHECK(bundle_spec->NodeId() == expected_node_id)
+        << "All bundles in a RemovePlacementGroupBundles batch must target the "
+           "same node.";
     auto *message_bundle = request.add_bundle_specs();
     message_bundle->CopyFrom(bundle_spec->GetMessage());
   }
-  RAY_CHECK(nodes.size() == 1);
   INVOKE_RPC_CALL(NodeManagerService,
                   RemovePlacementGroupBundles,
                   request,

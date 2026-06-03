@@ -224,6 +224,7 @@ struct GcsServerMocker {
         const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
             &callback) override {
       num_remove_pg_bundles_requested += 1;
+      num_bundles_removed += bundle_specs.size();
       remove_pg_bundles_callbacks.push_back(callback);
     }
 
@@ -298,6 +299,7 @@ struct GcsServerMocker {
         release_callbacks = {};
     int num_lease_requested = 0;
     int num_remove_pg_bundles_requested = 0;
+    int num_bundles_removed = 0;
     int num_commit_requested = 0;
 
     int num_release_unused_bundles_requested = 0;
