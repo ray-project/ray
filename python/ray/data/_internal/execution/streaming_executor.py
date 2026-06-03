@@ -808,6 +808,18 @@ class _ClosingIterator(OutputIterator):
             op, state = self._executor._output_node
             bundle = state.get_output_blocking(output_split_idx)
 
+            # Notify the budget scheduler that output was consumed externally.
+            if self._executor._budget_scheduler is not None:
+                input_task_ids = []
+                for block_ref, _ in bundle.blocks:
+                    tid = self._executor._budget_ref_to_task_id.pop(block_ref, None)
+                    if tid is not None:
+                        input_task_ids.append(tid)
+                if input_task_ids:
+                    self._executor._budget_scheduler.on_output_consumed(
+                        op, bundle.size_bytes(), input_task_ids
+                    )
+
             # Update progress-bars
             if self._executor._progress_manager:
                 self._executor._progress_manager.update_total_progress(

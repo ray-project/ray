@@ -240,6 +240,47 @@ class BudgetScheduler:
             return resources.cpu
         return 1.0
 
+    def _consume_output(
+        self,
+        op: Operator,
+        consumed_bytes: int,
+        input_task_ids: List[int],
+    ) -> None:
+        """Update bookkeeping when output from an operator is consumed.
+
+        Decreases the operator's buffered_output_bytes and updates
+        consumed_bytes on the producing tasks. For finished tasks whose
+        output is fully consumed, frees the budget and cleans up state.
+
+        Args:
+            op: The operator whose output is being consumed.
+            consumed_bytes: Bytes being consumed.
+            input_task_ids: Budget task IDs that produced the consumed output.
+        """
+        if consumed_bytes > 0:
+            op_state = self.op_states.get(op)
+            if op_state is not None:
+                op_state.buffered_output_bytes = max(
+                    0, op_state.buffered_output_bytes - consumed_bytes
+                )
+
+        if input_task_ids:
+            # TODO: Account for each task's input bytes exactly instead of averaging.
+            per_task_bytes = consumed_bytes // len(input_task_ids)
+            remainder = consumed_bytes - per_task_bytes * len(input_task_ids)
+            for i, producing_tid in enumerate(input_task_ids):
+                task = self.task_states.get(producing_tid)
+                if task is not None:
+                    extra = remainder if i == 0 else 0
+                    consumed = per_task_bytes + extra
+                    task.consumed_bytes += consumed
+                    # For finished tasks, allocated_bytes tracks
+                    # concurrent_bytes, so reduce it as outputs are consumed.
+                    if task.finished:
+                        self.allocated_bytes -= consumed
+                        if task.concurrent_bytes == 0:
+                            del self.task_states[producing_tid]
+
     def dispatch_task(
         self,
         op: Operator,
@@ -250,15 +291,12 @@ class BudgetScheduler:
         """Record that a task has been dispatched for the given operator.
 
         Pre-allocates the expected peak concurrent bytes in the global budget.
-        Also consumes outputs from the op's input operator(s): decreases
-        their buffered_output_bytes and updates consumed_bytes on the
-        producing tasks.
+        Also consumes outputs from the op's input operator(s).
 
         Args:
             op: The operator the task belongs to.
             input_bytes: Actual bytes of the input being consumed.
             input_task_ids: Task IDs that produced the input being consumed.
-                Their consumed_bytes will be updated.
             num_cpus: CPUs allocated to this task.
 
         Returns:
@@ -281,30 +319,8 @@ class BudgetScheduler:
         self.available_cpus -= num_cpus
 
         # Consume outputs from the op's input operators.
-        if input_bytes > 0:
-            for input_op in op.input_dependencies:
-                input_op_state = self.op_states.get(input_op)
-                if input_op_state is not None:
-                    input_op_state.buffered_output_bytes = max(
-                        0, input_op_state.buffered_output_bytes - input_bytes
-                    )
-
-        # Update consumed_bytes on the producing tasks.
-        if input_task_ids:
-            per_task_bytes = input_bytes // len(input_task_ids) if input_task_ids else 0
-            remainder = input_bytes - per_task_bytes * len(input_task_ids)
-            for i, producing_tid in enumerate(input_task_ids):
-                task = self.task_states.get(producing_tid)
-                if task is not None:
-                    extra = remainder if i == 0 else 0
-                    consumed = per_task_bytes + extra
-                    task.consumed_bytes += consumed
-                    # For finished tasks, allocated_bytes tracks concurrent_bytes,
-                    # so reduce it as outputs are consumed.
-                    if task.finished:
-                        self.allocated_bytes -= consumed
-                        if task.concurrent_bytes == 0:
-                            del self.task_states[producing_tid]
+        for input_op in op.input_dependencies:
+            self._consume_output(input_op, input_bytes, input_task_ids)
 
         return task_id
 
@@ -392,6 +408,25 @@ class BudgetScheduler:
         task.finished = True
         if task.concurrent_bytes == 0:
             del self.task_states[task_id]
+
+    def on_output_consumed(
+        self,
+        op: Operator,
+        consumed_bytes: int,
+        input_task_ids: List[int],
+    ) -> None:
+        """Record that output from an operator was consumed externally.
+
+        This is used when the final operator's output is consumed by an
+        iterator rather than a downstream operator, so there is no
+        dispatch_task call to free the budget.
+
+        Args:
+            op: The operator whose output was consumed.
+            consumed_bytes: Bytes consumed.
+            input_task_ids: Budget task IDs that produced the consumed output.
+        """
+        self._consume_output(op, consumed_bytes, input_task_ids)
 
     def is_backpressured(self, op: Operator) -> bool:
         """Check if all running tasks for an operator are backpressured."""
