@@ -1293,7 +1293,7 @@ def read_parquet(
     .. tip::
 
         If you're reading large Parquet files and getting out-of-memory errors, try
-        setting ``ray.data.DataContext.isolate_read_workers = True``.
+        setting ``ray.data.DataContext.get_current().isolate_read_workers = True``.
 
         Parquet reads can allocate lots of heap memory because of issues like
         https://github.com/apache/arrow/issues/39808. Since Ray Data re-uses workers
