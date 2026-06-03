@@ -1083,6 +1083,9 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // migrated to the event aggregator.
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 
+// Whether to enable GCS active-passive leader election.
+RAY_CONFIG(bool, LEADER_ELECT, false)
+
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.
 // TODO(myan): #54515 Remove this flag after the task events are fully migrated to the

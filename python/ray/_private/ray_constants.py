@@ -389,6 +389,12 @@ DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
+# Environment variable key for GCS leader election.
+RAY_LEADER_ELECT_ENV_VAR = "RAY_LEADER_ELECT"
+
+# Whether to enable active-passive GCS leader election for high availability.
+RAY_LEADER_ELECT = env_bool(RAY_LEADER_ELECT_ENV_VAR, False)
+
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
 # Filename of "shim process" that sets up Python worker environment.
