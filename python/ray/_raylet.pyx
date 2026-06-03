@@ -2169,18 +2169,6 @@ cdef execute_task_with_cancellation_handler(
     except KeyboardInterrupt as e:
         # Catch and handle task cancellation, which will result in an interrupt being
         # raised.
-        #
-        # Immediately clear current_task_id to prevent further cancellation
-        # interrupts from arriving during error storage. kill_main_task
-        # checks current_task_id under the lock before sending
-        # _thread.interrupt_main(). Without this, a second ray.cancel()
-        # could interrupt store_task_errors, causing a KeyboardInterrupt to
-        # escape task_execution_handler entirely.
-        # TODO(karticam): this is still prone to race if the second keyboard
-        # interrupt comes before we reset the current_task_id.
-        with current_task_id_lock:
-            current_task_id = None
-
         e = TaskCancelledError(
             core_worker.get_current_task_id()).with_traceback(e.__traceback__)
 
@@ -2384,6 +2372,17 @@ cdef CRayStatus task_execution_handler(
             # when return objects are not populated.
             # Convert to UnexpectedSystemExit so the C++ side
             # treats this as a clean worker-exiting task failure.
+            #
+            # The motivating case is a rapid double `ray.cancel()`. The first
+            # cancel raises a KeyboardInterrupt that is caught by
+            # `execute_task_with_cancellation_handler`'s
+            # `except KeyboardInterrupt` clause, which calls
+            # `store_task_errors`. If a second cancel arrives while
+            # `store_task_errors` is running, it queues another SIGINT that
+            # fires inside the error-storage path. That KeyboardInterrupt
+            # cannot be re-caught (we are already inside `except
+            # KeyboardInterrupt`), so it escapes all the way out to this
+            # handler.
             msg = (
                 "BaseException escaped task execution handlers: "
                 f"{type(e).__name__}: {e}"
