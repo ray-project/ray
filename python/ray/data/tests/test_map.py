@@ -35,6 +35,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import extract_values
 from ray.exceptions import RayTaskError
+from ray.runtime_env import RuntimeEnv
 from ray.tests.conftest import *  # noqa
 
 
@@ -1515,6 +1516,46 @@ def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
 
     ray.data.read_datasource(SetMarkerDatasource()).map(
         check_marker_not_set
+    ).materialize()
+
+
+@pytest.mark.parametrize(
+    "runtime_env", [{"env_vars": {"MARKER": "1"}}, RuntimeEnv(env_vars={"MARKER": "1"})]
+)
+def test_isolate_read_workers_preserves_runtime_env(
+    runtime_env, ray_start_regular_shared, restore_data_context
+):
+    """The `isolate_read_workers` implementation uses runtime envs to isolate workers.
+    This test verifies that Ray Data preserves the user-specified runtime env when you
+    set the flag.
+    """
+    ray.data.DataContext.get_current().isolate_read_workers = True
+
+    class CheckEnvVarDatasource(Datasource):
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            def read_fn() -> Iterable[Block]:
+                assert os.environ.get("MARKER") == "1"
+                yield pa.Table.from_pydict({"id": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=4, input_files=None, exec_stats=None
+                    ),
+                )
+            ]
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+    ray.data.read_datasource(
+        CheckEnvVarDatasource(), ray_remote_args={"runtime_env": runtime_env}
     ).materialize()
 
 

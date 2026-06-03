@@ -108,6 +108,9 @@ class TaskPoolMapOperator(MapOperator):
             "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
 
+        # Ray Core doesn't share workers for tasks with different `runtime_env`s. We use
+        # this property to implicitly ensure that this operator's tasks run on isolated
+        # workers.
         if self._isolate_workers:
             runtime_env = ray_remote_static_args.get("runtime_env", {})
             env_vars = runtime_env.get("env_vars", {})
