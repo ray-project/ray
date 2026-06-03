@@ -64,7 +64,7 @@ class LeaderElector {
   // Start the continuous leader election background loop. Non-blocking.
   void Run();
 
-  // Stop the leader election loop and release lease if held.
+  // Stop the leader election loop and release lease gracefully if held.
   void Stop();
 
   // Check if the elector currently holds the lease.

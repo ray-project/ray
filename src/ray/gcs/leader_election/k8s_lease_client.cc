@@ -47,7 +47,8 @@ LeaseMetadata ParseLeaseMetadata(const nlohmann::json &response) {
       std::string parse_err;
       if (!absl::ParseTime(
               absl::RFC3339_full, renew_str, &metadata.renew_time, &parse_err)) {
-        metadata.renew_time = absl::UnixEpoch();
+        RAY_LOG(ERROR) << "Failed to parse lease renewTime: " << parse_err;
+        metadata.renew_time = absl::InfiniteFuture();
       }
     }
   }
@@ -121,7 +122,11 @@ Status K8sLeaseClient::UpdateLease(const LeaseMetadata &metadata,
   std::string now_str =
       absl::FormatTime("%Y-%m-%dT%H:%M:%E6SZ", now, absl::UTCTimeZone());
   nlohmann::json update_req = metadata.lease_record;
+  if (!update_req.is_object()) {
+    return Status::Invalid("Lease record is not a valid JSON object.");
+  }
   update_req.erase("__api_server_date__");
+
   update_req["spec"]["holderIdentity"] = holder_id;
   update_req["spec"]["leaseDurationSeconds"] = ttl_seconds;
   update_req["spec"]["renewTime"] = now_str;
@@ -164,8 +169,9 @@ bool K8sLeaseClient::CanAcquireLease(const LeaseMetadata &metadata,
     return true;
   }
 
-  absl::Duration elapsed = now - local_observed_time_;
-  if (elapsed > absl::Seconds(metadata.duration_seconds)) {
+  auto now_steady = std::chrono::steady_clock::now();
+  auto elapsed = now_steady - local_observed_time_steady_;
+  if (elapsed > std::chrono::seconds(metadata.duration_seconds)) {
     return true;
   }
 
@@ -183,7 +189,7 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
       RAY_LOG(INFO) << "Successfully created Lease and acquired leadership.";
       last_observed_holder_id_ = holder_id;
       last_observed_renew_time_ = now;
-      local_observed_time_ = now;
+      local_observed_time_steady_ = std::chrono::steady_clock::now();
       current_leader = holder_id;
       return Status::OK();
     }
@@ -201,12 +207,12 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
 
   absl::Time now = absl::Now();
 
-  // Update local_observed_time_ ONLY if the holder_id or renew_time has changed.
+  // Update local_observed_time_steady_ ONLY if the holder_id or renew_time has changed.
   if (metadata.holder_id != last_observed_holder_id_ ||
       metadata.renew_time != last_observed_renew_time_) {
     last_observed_holder_id_ = metadata.holder_id;
     last_observed_renew_time_ = metadata.renew_time;
-    local_observed_time_ = now;
+    local_observed_time_steady_ = std::chrono::steady_clock::now();
   }
 
   if (CanAcquireLease(metadata, holder_id, now)) {
@@ -214,7 +220,7 @@ Status K8sLeaseClient::TryAcquire(const std::string &holder_id,
     if (update_status.ok()) {
       last_observed_holder_id_ = holder_id;
       last_observed_renew_time_ = now;
-      local_observed_time_ = now;
+      local_observed_time_steady_ = std::chrono::steady_clock::now();
       current_leader = holder_id;
       return Status::OK();
     }
@@ -245,7 +251,7 @@ Status K8sLeaseClient::Renew(const std::string &holder_id,
       cached_lease_record_ = response;
       last_observed_holder_id_ = holder_id;
       last_observed_renew_time_ = now;
-      local_observed_time_ = now;
+      local_observed_time_steady_ = std::chrono::steady_clock::now();
       current_leader = holder_id;
       return Status::OK();
     }
@@ -289,7 +295,7 @@ void K8sLeaseClient::Release(const std::string &holder_id) {
 
   last_observed_holder_id_ = "";
   last_observed_renew_time_ = absl::UnixEpoch();
-  local_observed_time_ = absl::UnixEpoch();
+  local_observed_time_steady_ = std::chrono::steady_clock::time_point();
 }
 
 }  // namespace gcs

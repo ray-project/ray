@@ -111,7 +111,7 @@ class K8sLeaseClient : public LeaderLeaseClientInterface {
   // tracking.
   std::string last_observed_holder_id_;
   absl::Time last_observed_renew_time_ = absl::UnixEpoch();
-  absl::Time local_observed_time_ = absl::UnixEpoch();
+  std::chrono::steady_clock::time_point local_observed_time_steady_;
 };
 
 }  // namespace gcs
