@@ -1997,6 +1997,8 @@ def submit(
     Example:
         ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
 
+    \f
+
     Args:
         cluster_config_file: Path to the cluster YAML configuration file.
         screen: When ``True``, run the script inside a ``screen`` session.
