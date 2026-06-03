@@ -136,4 +136,8 @@ documentation_style() {
   ./ci/lint/check-documentation-style.sh
 }
 
+doc_no_new_rst() {
+  python doc/test_no_new_rst.py
+}
+
 "$@"
