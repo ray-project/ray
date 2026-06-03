@@ -54,11 +54,6 @@ class TaskReceiver {
       std::string *actor_repr_name,
       std::string *application_error)>;
 
-  /// \param io_service The io_context the queue's bookkeeping runs on. All
-  ///   public TaskReceiver methods MUST be invoked from this thread.
-  /// \param task_execution_service The io_context user task bodies are posted
-  ///   to when no concurrency-group pool is available (forwarded to actor
-  ///   queues).
   TaskReceiver(instrumented_io_context &io_service,
                instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
@@ -124,12 +119,8 @@ class TaskReceiver {
   /// The callback function to process a task.
   TaskHandler task_handler_;
 
-  /// The event loop the queue's bookkeeping runs on (gRPC handler thread).
-  /// Public TaskReceiver methods MUST be invoked from this thread.
   instrumented_io_context &io_service_;
 
-  /// The event loop user task bodies (`request.Execute()`) are posted to when
-  /// no concurrency-group pool is available. Forwarded to actor queues.
   instrumented_io_context &task_execution_service_;
 
   worker::TaskEventBuffer &task_event_buffer_;

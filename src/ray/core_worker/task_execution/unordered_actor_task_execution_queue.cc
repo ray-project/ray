@@ -227,8 +227,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     }
   }
 
-  // Helper: run the post-task-completion bookkeeping (check for a queued next
-  // attempt; if present, run it; otherwise, erase the cancellation flag).
+  // Helper: run the post-task-completion bookkeeping .
   // Called either inline (cancel branch) or from the execute_handler (post
   // branch). Always uses mu_, so thread-safe regardless of caller.
   auto post_task_cleanup = [this, task_id]() {

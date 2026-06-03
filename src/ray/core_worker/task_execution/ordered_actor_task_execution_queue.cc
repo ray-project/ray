@@ -79,8 +79,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   TaskSpecification task_spec = task.TaskSpec();
   const std::string &group = task_spec.ConcurrencyGroupName();
   // wait_timer_ is bound to io_service_ because the queue's bookkeeping
-  // (and therefore the timer's manipulation: expires_from_now / async_wait /
-  // cancel + the expiry handler) all run on io_service_.
+  // runs on io_service_ now.
   auto [iter, _] =
       group_states_.try_emplace(group, ConcurrencyGroupOrderingState(io_service_));
   auto &group_state = iter->second;
@@ -295,13 +294,16 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
-  // AcceptRequestOrRejectIfCanceled runs inline on io_service_ (we're called
+  // AcceptRequestOrRejectIfCanceled runs inline on io_service_ (this is called
   // from ExecuteQueuedTasks, already on io_service_). Only request.Execute()
   // is posted off io_service_ -- to the concurrency-group pool if present,
-  // otherwise to task_execution_service_. This serializes the is_canceled
-  // check with CancelTaskIfFound (also on io_service_), eliminating the race
-  // where a cancel arriving mid-Execute would report success but the task
-  // would still run.
+  // otherwise to task_execution_service_.
+
+  // This is done for two reasons:
+  // 1. all operations except for task execution happen on io_service_
+  // 2. This serializes the is_canceled check with CancelTaskIfFound (also on
+  // io_service_), eliminating the race where a cancel arriving mid-Execute would report
+  // success but the task would still run.
   AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(pool));
 }
 
@@ -326,6 +328,7 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
 
   // Post just the user task body. The post handler also erases the
   // cancellation-flag entry under mu_ after Execute returns.
+  // Lock should not be held during execute since it can be long.
   auto execute_handler = [this, task_id, request = std::move(request)]() mutable {
     request.Execute();
     absl::MutexLock lock(&mu_);

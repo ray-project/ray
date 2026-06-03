@@ -39,8 +39,13 @@ namespace core {
 /// Does not guarantee that tasks are executed in submission order.
 class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
-  /// See OrderedActorTaskExecutionQueue's ctor for the io_service /
-  /// task_execution_service distinction.
+  /// \param io_service The io_context this queue's bookkeeping runs on.
+  ///   Used for: timer binding, re-posts of bookkeeping work, and the thread enforced by
+  ///   `RAY_CHECK(this_thread == main_thread_id_)`. Constructed-on-this-thread.
+  /// \param task_execution_service The io_context that user task bodies
+  ///   (`request.Execute()`) are posted to when no concurrency-group thread pool
+  ///   is available. Decoupled from `io_service` so a long-running user task
+  ///   never blocks bookkeeping / arg-fetch IPCs on `io_service`.
   UnorderedActorTaskExecutionQueue(
       instrumented_io_context &io_service,
       instrumented_io_context &task_execution_service,
@@ -76,19 +81,14 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   using PostExecuteFn = std::function<void(std::function<void()>)>;
 
   /// Accept the given TaskToExecute or reject it if the task id is canceled via
-  /// CancelTaskIfFound. Runs on `io_service_` so the is_canceled check is
-  /// serialized with CancelTaskIfFound (also on `io_service_`). Only the user
+  /// CancelTaskIfFound. Runs on `io_service_`. Only the user
   /// task body is posted off `io_service_`, via `post_execute`.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id,
                                        TaskToExecute request,
                                        PostExecuteFn post_execute);
 
-  /// io_context the queue's bookkeeping runs on. Same as CoreWorker's
-  /// io_service_ — i.e. the gRPC handler thread.
   instrumented_io_context &io_service_;
 
-  /// io_context user task bodies are posted to when no concurrency-group pool
-  /// is available.
   instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;

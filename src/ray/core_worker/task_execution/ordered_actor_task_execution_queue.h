@@ -38,9 +38,8 @@ namespace core {
 /// See core_worker.proto for a description of the ordering protocol.
 class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
-  /// \param io_service The io_context this queue's bookkeeping runs on (e.g. the
-  ///   gRPC handler thread / CoreWorker's io_service_). Used for: timer binding,
-  ///   re-posts of bookkeeping work, and the thread enforced by
+  /// \param io_service The io_context this queue's bookkeeping runs on.
+  ///   Used for: timer binding, re-posts of bookkeeping work, and the thread enforced by
   ///   `RAY_CHECK(this_thread == main_thread_id_)`. Constructed-on-this-thread.
   /// \param task_execution_service The io_context that user task bodies
   ///   (`request.Execute()`) are posted to when no concurrency-group thread pool
@@ -74,10 +73,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   void ExecuteQueuedTasks();
 
   /// Accept the given TaskToExecute or reject it if the task id is canceled via
-  /// CancelTaskIfFound. Runs on `io_service_` so the is_canceled check is
-  /// serialized with CancelTaskIfFound (which also runs on `io_service_`),
-  /// eliminating a race where a cancel arriving mid-Execute would report
-  /// "successfully cancelled" while the task still ran. Only `request.Execute()`
+  /// CancelTaskIfFound. Runs on `io_service_`. Only `request.Execute()`
   /// (the user task body) is posted off `io_service_` — to `pool` if non-null,
   /// otherwise to `task_execution_service_`.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id,
@@ -105,12 +101,11 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   };
 
   /// io_context the queue's bookkeeping runs on (timer, EnqueueTask /
-  /// ExecuteQueuedTasks, waiter callbacks). Same context as CoreWorker's
-  /// io_service_ — i.e. the gRPC handler thread.
+  /// ExecuteQueuedTasks, waiter callbacks).
   instrumented_io_context &io_service_;
 
   /// io_context user task bodies are posted to when no concurrency-group pool
-  /// is available. See ctor doc.
+  /// is available.
   instrumented_io_context &task_execution_service_;
 
   /// Max time in seconds to wait for an earlier seq no to arrive.
