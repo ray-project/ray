@@ -1,19 +1,37 @@
 import functools
 import inspect
 import logging
-from dataclasses import InitVar, dataclass, field, replace
-from typing import Any, Callable, Dict, Iterable, Literal, Optional, Union
+from dataclasses import dataclass, field
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Literal,
+    Optional,
+    Union,
+)
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr
+from ray.data.expressions import (
+    Expr,
+    StarExpr,
+    expand_star_exprs,
+    exprlist_to_fields,
+)
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 __all__ = [
     "AbstractMap",
@@ -30,6 +48,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractMap(AbstractOneToOne):
     """Abstract class for logical operators that should be converted to physical
     MapOperator.
@@ -78,20 +97,43 @@ class AbstractMap(AbstractOneToOne):
             num_outputs=num_outputs,
             name=name,
         )
-        self.min_rows_per_bundled_input = min_rows_per_bundled_input
-        self.ray_remote_args = ray_remote_args or {}
-        self.ray_remote_args_fn = ray_remote_args_fn
-        self.compute = compute or TaskPoolStrategy()
-        self.per_block_limit = None
+        object.__setattr__(
+            self, "min_rows_per_bundled_input", min_rows_per_bundled_input
+        )
+        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
+        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
+        object.__setattr__(self, "compute", compute or TaskPoolStrategy())
+        object.__setattr__(self, "per_block_limit", None)
 
     def set_per_block_limit(self, per_block_limit: int):
-        self.per_block_limit = per_block_limit
+        object.__setattr__(self, "per_block_limit", per_block_limit)
+
+    def _get_args(self) -> Dict[str, Any]:
+        args = super()._get_args()
+        for key in [
+            "can_modify_num_rows",
+            "min_rows_per_bundled_input",
+            "ray_remote_args",
+            "ray_remote_args_fn",
+            "compute",
+            "per_block_limit",
+        ]:
+            args[f"_{key}"] = getattr(self, key)
+        return args
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
     to physical MapOperator.
     """
+
+    fn: UserDefinedFunction
+    fn_args: Optional[Iterable[Any]] = None
+    fn_kwargs: Optional[Dict[str, Any]] = None
+    fn_constructor_args: Optional[Iterable[Any]] = None
+    fn_constructor_kwargs: Optional[Dict[str, Any]] = None
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
 
     def __init__(
         self,
@@ -146,12 +188,12 @@ class AbstractUDFMap(AbstractMap):
             ray_remote_args=ray_remote_args,
             compute=compute,
         )
-        self.fn = fn
-        self.fn_args = fn_args
-        self.fn_kwargs = fn_kwargs
-        self.fn_constructor_args = fn_constructor_args
-        self.fn_constructor_kwargs = fn_constructor_kwargs
-        self.ray_remote_args_fn = ray_remote_args_fn
+        object.__setattr__(self, "fn", fn)
+        object.__setattr__(self, "fn_args", fn_args)
+        object.__setattr__(self, "fn_kwargs", fn_kwargs)
+        object.__setattr__(self, "fn_constructor_args", fn_constructor_args)
+        object.__setattr__(self, "fn_constructor_kwargs", fn_constructor_kwargs)
+        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -187,8 +229,8 @@ class AbstractUDFMap(AbstractMap):
 class MapBatches(AbstractUDFMap):
     """Logical operator for map_batches."""
 
-    input_op: InitVar[LogicalOperator]
     fn: UserDefinedFunction
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = False
     batch_size: Union[Optional[int], Literal["auto"]] = None
     batch_format: Optional[str] = "default"
@@ -202,12 +244,10 @@ class MapBatches(AbstractUDFMap):
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(
@@ -215,27 +255,15 @@ class MapBatches(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
 class MapRows(AbstractUDFMap):
     """Logical operator for map."""
 
-    input_op: InitVar[LogicalOperator]
     fn: UserDefinedFunction
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     fn_args: Optional[Iterable[Any]] = None
     fn_kwargs: Optional[Dict[str, Any]] = None
     fn_constructor_args: Optional[Iterable[Any]] = None
@@ -246,37 +274,23 @@ class MapRows(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(self, "_name", self._get_operator_name("Map", self.fn))
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Filter(AbstractUDFMap):
+class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     """Logical operator for filter."""
 
-    input_op: InitVar[LogicalOperator]
     predicate_expr: Optional[Expr] = None
     fn: Optional[UserDefinedFunction] = None
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     fn_args: Optional[Iterable[Any]] = None
     fn_kwargs: Optional[Dict[str, Any]] = None
     fn_constructor_args: Optional[Iterable[Any]] = None
@@ -287,12 +301,10 @@ class Filter(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         provided_params = sum([self.fn is not None, self.predicate_expr is not None])
         if provided_params != 1:
             raise ValueError(
@@ -306,19 +318,7 @@ class Filter(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
     def is_expression_based(self) -> bool:
         return self.predicate_expr is not None
@@ -345,8 +345,8 @@ class Filter(AbstractUDFMap):
 class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
-    input_op: InitVar[LogicalOperator]
     exprs: list["Expr"]
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     compute: Optional[ComputeStrategy] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
@@ -356,12 +356,23 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     batch_format: str = field(init=False, default="pyarrow")
     zero_copy_batch: bool = field(init=False, default=True)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        # Eagerly expand ``StarExpr`` when the input schema is known. By the time
+        # optimizer rules see this op, the projection list contains only
+        # explicit ``col()`` and computed expressions, no ``StarExpr``.
+        # When the input schema is opaque (e.g., upstream UDF map), the
+        # ``StarExpr`` is preserved and runtime ``eval_projection``
+        # expands it on a per-block basis.
+        import pyarrow as pa
+
+        input_schema = self.input_dependencies[0].infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            object.__setattr__(
+                self, "exprs", expand_star_exprs(self.exprs, input_schema)
+            )
         if self.compute is None:
             object.__setattr__(
                 self, "compute", self._detect_and_get_compute_strategy(self.exprs)
@@ -372,20 +383,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                     "All Project expressions must be named (use .alias(name) or col(name)), "
                     "or be a star() expression."
                 )
-        object.__setattr__(self, "_name", self.__class__.__name__)
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
     def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:
         """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
@@ -440,13 +438,27 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
 
+    def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
+
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        input_schema = self.input_dependencies[0].infer_schema()
+        # Only Arrow schemas are supported for static expression resolution.
+        # (``PandasBlockSchema`` chains fall back to ``limit(1)`` execution.)
+        if not isinstance(input_schema, pa.Schema):
+            return None
+        fields = exprlist_to_fields(self.exprs, input_schema)
+        if fields is None:
+            return None
+        return pa.schema(fields)
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class FlatMap(AbstractUDFMap):
     """Logical operator for flat_map."""
 
-    input_op: InitVar[LogicalOperator]
     fn: UserDefinedFunction
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     fn_args: Optional[Iterable[Any]] = None
     fn_kwargs: Optional[Dict[str, Any]] = None
     fn_constructor_args: Optional[Iterable[Any]] = None
@@ -457,12 +469,10 @@ class FlatMap(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(
@@ -470,23 +480,15 @@ class FlatMap(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
+class StreamingRepartition(
+    AbstractMap,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for streaming repartition operation.
 
     Args:
@@ -500,8 +502,8 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
             Defaults to False.
     """
 
-    input_op: InitVar[LogicalOperator]
     target_num_rows_per_block: int
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     strict: bool = False
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -509,12 +511,10 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     compute: Optional[ComputeStrategy] = None
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.target_num_rows_per_block <= 0:
             raise ValueError(
                 "target_num_rows_per_block must be positive for streaming repartition, "
@@ -527,19 +527,7 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        transformed_input = self.input_dependency._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is self.input_dependency:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # StreamingRepartition only re-bundles rows into different block sizes.

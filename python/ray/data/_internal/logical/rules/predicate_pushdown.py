@@ -74,8 +74,8 @@ class PredicatePushdown(Rule):
 
         # Create new filter on the input of the lower filter
         return Filter(
-            input_op.input_dependencies[0],
             predicate_expr=combined_predicate,
+            input_dependencies=[input_op.input_dependencies[0]],
         )
 
     @classmethod
@@ -95,13 +95,10 @@ class PredicatePushdown(Rule):
         - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
           (where 'b' is valid output created by a->b)
         """
-        from ray.data._internal.logical.rules.projection_pushdown import (
-            _is_renaming_expr,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
-        from ray.data.expressions import AliasExpr
+        from ray.data.expressions import AliasExpr, is_rename_expr
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
@@ -121,15 +118,18 @@ class PredicatePushdown(Rule):
                 new_names.add(expr.name)
 
                 # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
-                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                if expr.name in predicate_columns and not is_rename_expr(expr):
                     return False  # Computed column
 
                 # Track old names being renamed for later check
-                if _is_renaming_expr(expr):
+                if is_rename_expr(expr):
                     original_columns_being_renamed.add(expr.expr.name)
 
-        # Check if filter references columns removed by explicit select
-        # Valid if: projection includes all columns (star) OR predicate columns exist in output
+        # Check if filter references columns removed by explicit select.
+        # Valid if: projection includes all columns (star, UDF-fallback path)
+        # OR predicate columns exist in the explicit output set (typed path,
+        # where ``StarExpr`` is expanded into explicit ``col()`` refs in
+        # ``Project.__post_init__`` when the input schema is known).
         has_required_columns = (
             projection_op.has_star_expr() or predicate_columns.issubset(output_columns)
         )
@@ -193,22 +193,15 @@ class PredicatePushdown(Rule):
         input_op = filter_op.input_dependencies[0]
         predicate_expr = filter_op.predicate_expr
 
-        # Case 1: Check if operator supports predicate pushdown (e.g., Read)
+        # Case 1: Check if operator supports predicate pushdown (e.g., Read).
+        # The read stage never renames columns (renaming is always carried
+        # by an ``AliasExpr`` in a ``Project`` operator above the read), so
+        # the predicate above the read is already in the same column
+        # namespace the scanner sees — no rebinding is required here.
         if (
             isinstance(input_op, LogicalOperatorSupportsPredicatePushdown)
             and input_op.supports_predicate_pushdown()
         ):
-            # Check if the operator has column renames that need rebinding
-            # This happens when projection pushdown has been applied
-            rename_map = input_op.get_column_renames()
-            if rename_map:
-                # Substitute the predicate to use original column names
-                # This is needed to ensure that the predicate expression can be pushed into the input operator.
-                predicate_expr = cls._substitute_predicate_columns(
-                    predicate_expr, rename_map
-                )
-
-            # Push the predicate down
             result_op = input_op.apply_predicate(predicate_expr)
 
             # If the operator is unchanged (e.g., predicate references partition columns
@@ -216,7 +209,6 @@ class PredicatePushdown(Rule):
             if result_op is input_op:
                 return filter_op
 
-            # Otherwise, return the result without the filter (predicate was pushed down)
             return result_op
 
         # Case 2: Check if operator allows predicates to pass through
@@ -254,8 +246,8 @@ class PredicatePushdown(Rule):
 
                 # Push filter through and recursively try to push further
                 new_filter = Filter(
-                    input_op.input_dependencies[0],
                     predicate_expr=predicate_expr,
+                    input_dependencies=[input_op.input_dependencies[0]],
                 )
                 pushed_filter = cls._try_push_down_predicate(new_filter)
 
@@ -267,7 +259,9 @@ class PredicatePushdown(Rule):
                 # Apply filter to each branch and recursively push down
                 new_inputs = []
                 for branch_op in input_op.input_dependencies:
-                    branch_filter = Filter(branch_op, predicate_expr=predicate_expr)
+                    branch_filter = Filter(
+                        predicate_expr=predicate_expr, input_dependencies=[branch_op]
+                    )
                     pushed_branch = cls._try_push_down_predicate(branch_filter)
                     new_inputs.append(pushed_branch)
 
@@ -307,8 +301,8 @@ class PredicatePushdown(Rule):
         # Push to the appropriate branch
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
-            new_inputs[branch_idx],
             predicate_expr=filter_op.predicate_expr,
+            input_dependencies=[new_inputs[branch_idx]],
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
@@ -330,13 +324,13 @@ class PredicatePushdown(Rule):
         """
         if isinstance(op, Limit):
             assert len(new_inputs) == 1, len(new_inputs)
-            return Limit(new_inputs[0], op.limit)
+            return Limit(op.limit, input_dependencies=[new_inputs[0]])
         if isinstance(op, AbstractMap) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
-            return replace(op, input_op=new_inputs[0])
+            return replace(op, input_dependencies=[new_inputs[0]])
         if isinstance(op, AbstractAllToAll) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
-            kwargs = {"input_op": new_inputs[0]}
+            kwargs = {"input_dependencies": [new_inputs[0]]}
             if isinstance(op, Repartition):
                 kwargs["num_outputs"] = op.num_outputs
             if isinstance(op, RandomShuffle):

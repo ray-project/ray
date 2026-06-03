@@ -42,6 +42,7 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
@@ -545,11 +546,21 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    def __init__(self, app_or_func: Union[ASGIApp, Callable]):
+    def __init__(self, app_or_func: Optional[Union[ASGIApp, Callable]]):
+        if app_or_func is None:
+            # Late-bound: `__serve_build_asgi_app__` will supply the app at
+            # replica init time. `__del__` tolerates the missing
+            # `_serve_asgi_lifespan` attribute.
+            return
         if inspect.isfunction(app_or_func):
-            self._asgi_app = app_or_func()
+            app = app_or_func()
         else:
-            self._asgi_app = app_or_func
+            app = app_or_func
+
+        self._set_asgi_app(app)
+
+    def _set_asgi_app(self, app: ASGIApp) -> None:
+        self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
         # startup and shutdown event.
@@ -800,6 +811,45 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
         ).decode("utf-8")
         == "?1"
     )
+
+
+def _matches_session_id_header(header_key: str) -> bool:
+    """True if ``header_key`` refers to the configured session-id header.
+
+    Compares case-insensitively and treats ``-`` and ``_`` as equivalent
+    so intermediate proxies that rewrite the separator (nginx, AWS API
+    Gateway, ...) don't silently drop session affinity. The header name
+    itself is whatever ``SERVE_SESSION_ID`` resolves to (set via the env
+    var ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    return header_key.lower().replace("-", "_") == SERVE_SESSION_ID.lower().replace(
+        "-", "_"
+    )
+
+
+def session_id_from_headers(headers: Dict[str, str]) -> Optional[str]:
+    """Return the session-id header value from str-keyed headers, or None.
+
+    Same matching rule as ``parse_session_id_header`` (which takes bytes
+    keys); use this for already-decoded ``Dict[str, str]`` headers such as
+    Starlette ``request.headers`` or ``RawRequestInfo.headers``.
+    """
+    return next(
+        (value for key, value in headers.items() if _matches_session_id_header(key)),
+        None,
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the configured session-id header value, or '' if absent.
+
+    Header name is whatever ``SERVE_SESSION_ID`` resolves to (set via
+    ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    for key, value in headers.items():
+        if _matches_session_id_header(key.decode("utf-8")):
+            return value.decode("utf-8")
+    return ""
 
 
 def get_http_response_status(

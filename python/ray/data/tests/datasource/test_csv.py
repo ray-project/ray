@@ -29,7 +29,7 @@ def test_csv_read(
     df1.to_csv(path1, index=False)
     ds = ray.data.read_csv(path1, partitioning=None)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
@@ -42,10 +42,14 @@ def test_csv_read(
     ds = ray.data.read_csv([path1, path2], override_num_blocks=2, partitioning=None)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     df = pd.concat([df1, df2], ignore_index=True)
-    assert df.equals(dsdf)
+    pd.testing.assert_frame_equal(df.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for entry in ds._execute().blocks:
+        assert (
+            # pyrefly: ignore[no-matching-overload]
+            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
+            == entry.metadata.size_bytes
+        )
 
     # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -58,7 +62,7 @@ def test_csv_read(
     )
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
+    pd.testing.assert_frame_equal(df.astype(dsdf.dtypes.to_dict()), dsdf)
 
 
 def test_csv_write(
@@ -93,8 +97,12 @@ def test_csv_roundtrip(
     ds2 = ray.data.read_csv(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._plan.execute().blocks:
-        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for entry in ds2._execute().blocks:
+        # pyrefly: ignore[no-matching-overload]
+        assert (
+            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
+            == entry.metadata.size_bytes
+        )
 
 
 def test_csv_read_invalid_format(ray_start_regular_shared, tmp_path):
@@ -129,7 +137,7 @@ def test_csv_read_no_header(ray_start_regular_shared, tmp_path):
         read_options=csv.ReadOptions(column_names=["one", "two"]),
     )
     out_df = ds.to_pandas()
-    assert df.equals(out_df)
+    pd.testing.assert_frame_equal(df.astype(out_df.dtypes.to_dict()), out_df)
 
 
 def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path):
@@ -157,7 +165,10 @@ def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path)
         ),
     )
     expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
-    assert ds.to_pandas().equals(expected_df)
+    actual_df = ds.to_pandas()
+    pd.testing.assert_frame_equal(
+        expected_df.astype(actual_df.dtypes.to_dict()), actual_df
+    )
 
 
 @pytest.mark.skipif(

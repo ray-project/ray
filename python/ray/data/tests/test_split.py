@@ -13,13 +13,12 @@ import pytest
 
 import ray
 from ray.data._internal.equalize import _equalize
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.split import (
     _drop_empty_block_split,
     _generate_global_split_results,
@@ -102,16 +101,13 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata())
         schema = BlockAccessor.for_block(block).schema()
-        blk = (blocks[-1], metadata[-1])
+        blk = BlockEntry(blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True, schema=schema))
         total_rows += block_size
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
-    ds = Dataset(
-        ExecutionPlan(stats, ctx),
-        logical_plan,
-    )
+    ds = Dataset(logical_plan, ctx, stats)
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]
@@ -355,25 +351,23 @@ def test_split(ray_start_regular_shared_2_cpus):
     assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [len(dataset._plan.execute().blocks) for dataset in datasets]
+    assert [2] * 5 == [len(dataset._execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [len(dataset._plan.execute().blocks) for dataset in datasets]
+    assert [4, 3, 3] == [len(dataset._execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [len(dataset._plan.execute().blocks) for dataset in datasets]
+    assert [10] == [len(dataset._execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [len(dataset._plan.execute().blocks) for dataset in datasets]
+    assert [1] * 10 == [len(dataset._execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
-    assert [1] * 10 + [0] == [
-        len(dataset._plan.execute().blocks) for dataset in datasets
-    ]
+    assert [1] * 10 + [0] == [len(dataset._execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
 
@@ -513,15 +507,17 @@ def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetada
 def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
     schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
-        [_create_block_and_metadata(block) for block in blocks],
+        [BlockEntry(*_create_block_and_metadata(block)) for block in blocks],
         owns_blocks=True,
         schema=schema,
     )
 
 
 def _create_blocks_with_metadata(blocks):
+    # Returns the legacy 2-tuple shape (BlockPartition) consumed by the
+    # split helpers in ``ray.data._internal.split``.
     bundle = _create_bundle(blocks)
-    return list(bundle.blocks)
+    return [(entry.ref, entry.metadata) for entry in bundle.blocks]
 
 
 def test_split_single_block(ray_start_regular_shared_2_cpus):

@@ -18,6 +18,12 @@ from ray.core.generated import (
 
 logger = logging.getLogger(__name__)
 
+_OBSERVABILITY_PUBSUB_CHANNELS = (
+    pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
+    pubsub_pb2.RAY_LOG_CHANNEL,
+    pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
+)
+
 
 class _SubscriberBase:
     def __init__(self, worker_id: bytes = None):
@@ -97,8 +103,10 @@ class _AioSubscriber(_SubscriberBase):
             channel = gcs_utils.create_gcs_channel(address, aio=True)
         else:
             assert channel is not None, "One of address and channel must be specified"
-        # GRPC stub to GCS pubsub.
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+        if pubsub_channel_type in _OBSERVABILITY_PUBSUB_CHANNELS:
+            self._stub = gcs_service_pb2_grpc.ObservabilityPubSubServiceStub(channel)
+        else:
+            self._stub = gcs_service_pb2_grpc.ControlPlanePubSubGcsServiceStub(channel)
 
         # Type of the channel.
         self._channel = pubsub_channel_type

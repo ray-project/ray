@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_table_storage.h"
@@ -29,6 +29,7 @@
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -49,13 +50,17 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
+  /// \param observability_publisher Publishes node-related errors to the observability
+  /// stream (`PublishError`). Must be non-null for a live GCS server.
   GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
                  GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id,
                  observability::RayEventRecorderInterface &ray_event_recorder,
-                 const std::string &session_name);
+                 const std::string &session_name,
+                 pubsub::ObservabilityPublisher *observability_publisher,
+                 ClockInterface &clock);
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -386,6 +391,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
   /// Storage for GCS tables.
   GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;
@@ -398,6 +404,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
+  ClockInterface &clock_;
 
   // Debug info.
   enum CountType {

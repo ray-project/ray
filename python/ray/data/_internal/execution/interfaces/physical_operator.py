@@ -18,7 +18,7 @@ from typing import (
 )
 
 import ray
-from .ref_bundle import RefBundle
+from .ref_bundle import BlockEntry, RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
@@ -274,7 +274,7 @@ class DataOpTask(OpTask):
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
-                    [(self._pending_block_ref, meta)],
+                    [BlockEntry(self._pending_block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
                 ),
@@ -381,7 +381,8 @@ class PhysicalOperator(Operator):
         target_max_block_size_override: Optional[int] = None,
         num_output_splits: int = 1,
     ):
-        super().__init__(name, input_dependencies)
+        self._name = name
+        self._input_dependencies = input_dependencies
         self._output_dependencies: List["PhysicalOperator"] = []
 
         for input in input_dependencies:
@@ -436,8 +437,29 @@ class PhysicalOperator(Operator):
     # Override the following methods to correct type hints.
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        return self._input_dependencies
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole physical DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self._name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
