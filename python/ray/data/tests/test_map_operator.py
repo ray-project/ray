@@ -1,5 +1,6 @@
 import time
 from typing import Iterable
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -704,6 +705,31 @@ def test_operator_metrics():
 
         # Check object store metrics
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
+
+
+@pytest.mark.parametrize("ray_remote_args", [{}, {"num_cpus": 0}, {"num_cpus": 1}])
+@pytest.mark.parametrize(
+    "compute_strategy",
+    [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],
+)
+def test_map_operator_specifies_default_memory(
+    ray_start_regular_shared, ray_remote_args, compute_strategy
+):
+    data_context = ray.data.DataContext.get_current()
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+        ray_remote_args=ray_remote_args,
+    )
+
+    # If Ray Data doesn't specify a default memory, then the system can oversubscribe
+    # tasks and actors even if the user has correctly specified memory for some UDFs.
+    #
+    # This assertion just checks that map operators default to *something*, without
+    # making assumptions about the actual heuristic.
+    assert op.min_scheduling_resources().memory > 0
 
 
 if __name__ == "__main__":
