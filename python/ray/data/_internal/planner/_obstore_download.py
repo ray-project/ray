@@ -2,9 +2,11 @@ import asyncio
 import inspect
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import s3fs  # noqa: F401
@@ -96,6 +98,45 @@ def _log_fallback_warning() -> None:
             "slower for large or numerous files. "
             "Install it with: pip install obstore"
         )
+
+
+# Path-style AWS S3 host: ``s3.amazonaws.com`` (legacy global) or
+# ``s3.<region>.amazonaws.com`` (regional). Virtual-host hosts like
+# ``<bucket>.s3.<region>.amazonaws.com`` already carry the bucket in the
+# netloc and route correctly through obstore without rewriting.
+_AWS_PATH_STYLE_HOST_RE = re.compile(
+    r"^s3(?:\.[a-z0-9-]+)?\.amazonaws\.com$", re.IGNORECASE
+)
+
+
+def _split_obstore_uri(uri: str) -> Tuple[str, str]:
+    """Split a URI into ``(store_url, path)`` for ``obstore.store.from_url``.
+
+    Wraps :func:`_split_uri` to rewrite AWS path-style HTTPS URLs of the
+    form ``https://s3.<region>.amazonaws.com/<bucket>/<key>`` into
+    ``store_url='s3://<bucket>'`` / ``path='<key>'``. Without this, obstore
+    constructs an ``S3Store`` keyed by the regional host endpoint, which
+    pins region from the URL and bails with ``BareRedirect`` whenever the
+    bucket actually lives in a different region (AWS's PermanentRedirect
+    omits the ``Location`` header, so generic redirect-following fails).
+    Rewriting to ``s3://<bucket>`` lets ``S3Store`` discover the bucket's
+    real region once and cache it for the store's lifetime.
+
+    Pre-signed HTTPS URLs (any URI with a query string) are passed through
+    unchanged because their signature is bound to host + path + query, so
+    rewriting would invalidate the signature.
+    """
+    parsed = urlparse(uri, allow_fragments=False)
+    if (
+        parsed.scheme in ("http", "https")
+        and not parsed.query
+        and _AWS_PATH_STYLE_HOST_RE.match(parsed.netloc)
+    ):
+        raw_path = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
+        bucket, _, key = raw_path.partition("/")
+        if bucket:
+            return f"s3://{bucket}", key
+    return _split_uri(uri)
 
 
 def _is_obstore_supported_url(path: str) -> bool:
@@ -484,6 +525,51 @@ def _plan_obstore_routing(
     return True, fs_kwargs
 
 
+# Per-process cache: AWS bucket name -> region (``None`` if discovery failed).
+# Buckets do not change region, so caching for the process lifetime is safe.
+_BUCKET_REGION_CACHE: Dict[str, Optional[str]] = {}
+_BUCKET_REGION_CACHE_LOCK = threading.Lock()
+
+
+def _discover_aws_bucket_region(bucket: str, *, timeout: float = 5.0) -> Optional[str]:
+    """Discover an AWS S3 bucket's region via a HEAD probe.
+
+    Cached per-process. AWS returns ``x-amz-bucket-region`` in the response
+    headers for both 200 OK and 301 PermanentRedirect, so the probe is cheap
+    whether or not the default endpoint happens to be the correct region.
+
+    Returns ``None`` on network errors, non-AWS endpoints, or any case where
+    the header is absent. Callers fall back to obstore's default region
+    handling, which preserves prior behavior for non-AWS S3-compatible
+    backends (MinIO, R2, etc.).
+    """
+    with _BUCKET_REGION_CACHE_LOCK:
+        if bucket in _BUCKET_REGION_CACHE:
+            return _BUCKET_REGION_CACHE[bucket]
+
+    import urllib.error
+    import urllib.request
+
+    region: Optional[str] = None
+    try:
+        req = urllib.request.Request(
+            f"https://s3.us-east-1.amazonaws.com/{bucket}",
+            method="HEAD",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            region = resp.headers.get("x-amz-bucket-region")
+        except urllib.error.HTTPError as e:
+            # 301 PermanentRedirect / 403 / 404 still carry the header.
+            region = e.headers.get("x-amz-bucket-region") if e.headers else None
+    except Exception as e:
+        logger.debug("Failed to discover region for bucket %r: %s", bucket, e)
+
+    with _BUCKET_REGION_CACHE_LOCK:
+        _BUCKET_REGION_CACHE[bucket] = region
+    return region
+
+
 class StoreRegistry:
     """Cache of store_url -> ObjectStore instances.
 
@@ -506,6 +592,23 @@ class StoreRegistry:
     def get(self, store_url: str) -> Any:
         if store_url not in self._cache:
             kwargs = dict(self._filesystem_kwargs)
+            # obstore's S3Store defaults ``region`` to ``us-east-1`` and does
+            # not auto-discover the bucket's real region, so cross-region
+            # buckets fail with ``BareRedirect`` (AWS's PermanentRedirect
+            # omits the ``Location`` header, defeating generic redirect
+            # following). Probe ``x-amz-bucket-region`` once per bucket and
+            # supply the discovered region explicitly. Skip when the caller
+            # already provided a region or a custom endpoint (MinIO/R2/etc.).
+            if (
+                store_url.startswith(("s3://", "s3a://"))
+                and "region" not in kwargs
+                and "endpoint" not in kwargs
+            ):
+                bucket = store_url.split("://", 1)[1].split("/", 1)[0]
+                if bucket:
+                    region = _discover_aws_bucket_region(bucket)
+                    if region:
+                        kwargs["region"] = region
             if store_url.startswith("http://"):
                 # obstore's reqwest client rejects http:// by default. Auto-enable it
                 # to maintain parity with PyArrow (which accepts http:// via fsspec),
@@ -851,7 +954,7 @@ async def _fetch_ranged(
     pipeline never loses a file due to a transient range error.
     """
     try:
-        store_url, path = _split_uri(uri)
+        store_url, path = _split_obstore_uri(uri)
         store = registry.get(store_url)
         result = bytearray(size)
 
@@ -914,6 +1017,6 @@ async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
     """Download a single URI as a whole-file GET and return raw bytes."""
     import obstore as obs
 
-    store_url, path = _split_uri(uri)
+    store_url, path = _split_obstore_uri(uri)
     result = await obs.get_async(registry.get(store_url), path)
     return bytes(await result.bytes_async())

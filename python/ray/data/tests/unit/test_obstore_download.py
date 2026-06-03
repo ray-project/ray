@@ -10,13 +10,17 @@ import pyarrow.fs as pafs
 import pytest
 
 from ray.data._internal.planner._obstore_download import (
+    _BUCKET_REGION_CACHE,
     _FILE_SIZE_COLUMN_PREFIX,
+    StoreRegistry,
+    _discover_aws_bucket_region,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
     _S3FSSessionCredentialProvider,
+    _split_obstore_uri,
     download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
@@ -56,6 +60,210 @@ def test_split_uri(uri, expected_store_url, expected_path):
     store_url, path = _split_uri(uri)
     assert store_url == expected_store_url
     assert path == expected_path
+
+
+# TestSplitObstoreUri — AWS path-style HTTPS URLs must be rewritten to s3://
+# so obstore's S3Store keys off the bucket (with region discovery) instead of
+# off the regional host endpoint (which pins region and fails with
+# BareRedirect on cross-region buckets).
+@pytest.mark.parametrize(
+    "uri, expected_store_url, expected_path",
+    [
+        # Path-style regional: must rewrite to s3://<bucket>.
+        (
+            "https://s3.us-east-1.amazonaws.com/ray-example-data/imagenet/foo.jpg",
+            "s3://ray-example-data",
+            "imagenet/foo.jpg",
+        ),
+        # Path-style legacy global endpoint: also rewrite.
+        (
+            "https://s3.amazonaws.com/my-bucket/key.bin",
+            "s3://my-bucket",
+            "key.bin",
+        ),
+        # Virtual-host style: bucket already in netloc, leave alone.
+        (
+            "https://my-bucket.s3.us-west-2.amazonaws.com/key.bin",
+            "https://my-bucket.s3.us-west-2.amazonaws.com",
+            "key.bin",
+        ),
+        # Native s3:// URIs: no change.
+        (
+            "s3://my-bucket/prefix/key.jpg",
+            "s3://my-bucket",
+            "prefix/key.jpg",
+        ),
+        # Pre-signed URLs (any query string): signature is bound to host +
+        # path + query, so rewriting would invalidate it. Pass through.
+        (
+            "https://s3.us-east-1.amazonaws.com/bucket/key?X-Amz-Signature=abc",
+            "https://s3.us-east-1.amazonaws.com",
+            "bucket/key?X-Amz-Signature=abc",
+        ),
+        # Non-AWS HTTPS (MinIO, R2 custom domain, generic file server):
+        # leave alone — only AWS S3 needs the region-discovery rewrite.
+        (
+            "https://files.example.com/bucket/key.bin",
+            "https://files.example.com",
+            "bucket/key.bin",
+        ),
+        # Other clouds: untouched.
+        ("gs://bucket/path", "gs://bucket", "path"),
+        # Path-style with nested key.
+        (
+            "https://s3.eu-central-1.amazonaws.com/bucket/a/b/c.parquet",
+            "s3://bucket",
+            "a/b/c.parquet",
+        ),
+        # Path-style with only a bucket (no key): bucket is preserved, key
+        # is empty. Edge case; downstream obstore call would fail but that's
+        # the caller's problem.
+        (
+            "https://s3.amazonaws.com/just-a-bucket",
+            "s3://just-a-bucket",
+            "",
+        ),
+    ],
+)
+def test_split_obstore_uri(uri, expected_store_url, expected_path):
+    store_url, path = _split_obstore_uri(uri)
+    assert store_url == expected_store_url
+    assert path == expected_path
+
+
+# TestBucketRegionDiscovery — exercise the HEAD-probe path used by
+# StoreRegistry to discover the real region of cross-region S3 buckets.
+class TestBucketRegionDiscovery:
+    @staticmethod
+    def _clear_cache():
+        _BUCKET_REGION_CACHE.clear()
+
+    def test_region_from_200_response(self):
+        # Same-region buckets respond 200 OK with x-amz-bucket-region.
+        self._clear_cache()
+        mock_resp = MagicMock()
+        mock_resp.headers = {"x-amz-bucket-region": "us-east-1"}
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            assert _discover_aws_bucket_region("east-bucket") == "us-east-1"
+
+    def test_region_from_301_redirect(self):
+        # Cross-region buckets respond 301 PermanentRedirect. The header is on
+        # the HTTPError, not on a raised-then-lost response. This is the
+        # path the user's workload actually hits.
+        import urllib.error
+
+        self._clear_cache()
+        mock_headers = MagicMock()
+        mock_headers.get.return_value = "us-west-2"
+        err = urllib.error.HTTPError(
+            url="https://s3.us-east-1.amazonaws.com/cross-region-bucket",
+            code=301,
+            msg="Moved Permanently",
+            hdrs=mock_headers,
+            fp=None,
+        )
+        err.headers = mock_headers
+        with patch("urllib.request.urlopen", side_effect=err):
+            assert _discover_aws_bucket_region("cross-region-bucket") == "us-west-2"
+
+    def test_cache_hit_avoids_second_probe(self):
+        # First call probes; second call must not invoke urlopen.
+        self._clear_cache()
+        mock_resp = MagicMock()
+        mock_resp.headers = {"x-amz-bucket-region": "eu-west-1"}
+        with patch("urllib.request.urlopen", return_value=mock_resp) as urlopen:
+            _discover_aws_bucket_region("euro-bucket")
+            _discover_aws_bucket_region("euro-bucket")
+            assert urlopen.call_count == 1
+
+    def test_network_failure_returns_none_and_caches(self):
+        # On network errors (e.g. probing a non-AWS bucket via this code path)
+        # return None so StoreRegistry leaves obstore's defaults intact for
+        # MinIO/R2/etc. Cache the negative result so we don't keep probing.
+        self._clear_cache()
+        with patch(
+            "urllib.request.urlopen", side_effect=ConnectionError("nope")
+        ) as urlopen:
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert urlopen.call_count == 1
+
+
+# TestStoreRegistryRegionInjection — verify region discovery happens at
+# store-construction time for s3:// URLs without an explicit region, and is
+# correctly skipped when the caller has already configured one.
+class TestStoreRegistryRegionInjection:
+    @staticmethod
+    def _make_registry_capturing_kwargs():
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            captured["kwargs"] = kwargs
+            return MagicMock(name="fake-store")
+
+        reg = StoreRegistry()
+        reg._from_url = fake_from_url
+        return reg, captured
+
+    def test_s3_url_injects_discovered_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3://ray-example-data")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_s3a_url_also_injects_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3a://some-bucket")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_explicit_region_not_overridden(self):
+        # Caller (e.g., creds extracted from PyArrow S3FileSystem) already
+        # supplied region; do not probe and do not override.
+        reg = StoreRegistry(region="eu-central-1")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg._from_url = fake_from_url
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+        assert captured["kwargs"]["region"] == "eu-central-1"
+
+    def test_custom_endpoint_skips_probe(self):
+        # MinIO / R2 / localstack: caller configured a custom endpoint, so
+        # the AWS region probe would be both wrong and wasteful.
+        reg = StoreRegistry(endpoint="http://localhost:9000")
+        reg._from_url = lambda *a, **k: MagicMock()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+
+    def test_https_url_does_not_probe(self):
+        # Virtual-hosted-style or presigned HTTPS URLs reach get() unchanged
+        # (after _split_obstore_uri). obstore parses the region from the
+        # netloc directly, so probing would be redundant.
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("https://bucket.s3.us-east-1.amazonaws.com")
+        probe.assert_not_called()
 
 
 # TestDownloadHelpers
