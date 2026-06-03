@@ -317,7 +317,7 @@ If the generator raises an application exception, Ray reports an error object at
 The caller receives an `ObjectRef` for that item, and `ray.get` on that ref raises the task exception.
 Ray also uses the generator ObjectRef, available through `gen.completed()`, to represent completion or failure of the whole generator task.
 
-Ray can retry a streaming generator task through the same task retry machinery used for normal tasks. This assumes that the generator task is idempotent and deterministic.
+Ray can retry a streaming generator task from its beginning through the same task retry machinery used for normal tasks. This assumes that the generator task is idempotent and deterministic.
 A retry can be triggered when the running task attempt fails, such as dependency resolution failure, worker or node death, eligible out-of-memory failure, or a retryable application exception when `retry_exceptions` is enabled.
 When retries remain, the task manager marks the current attempt failed, increments the attempt number, and resubmits the same task spec.
 
