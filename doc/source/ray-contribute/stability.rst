@@ -1,3 +1,6 @@
+.. meta::
+    :description: Defines Ray's API stability guarantees and the PublicAPI (alpha, beta, stable), DeveloperAPI, and Deprecated annotations that label public interfaces. Read this to understand the stability to expect from a Ray API or how to annotate one you're adding.
+
 .. _api-stability:
 
 API Stability

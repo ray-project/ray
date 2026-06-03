@@ -1,3 +1,6 @@
+.. meta::
+    :description: Ray's policies for documenting, promoting, demoting, and deprecating APIs across exposure levels, including the required annotations and deprecation timelines. Consult this when adding, changing, or removing a public Ray API.
+
 .. _api-policy:
 
 API Policy
