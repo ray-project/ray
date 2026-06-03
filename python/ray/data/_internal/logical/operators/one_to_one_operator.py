@@ -164,6 +164,23 @@ class Download(AbstractOneToOne):
             )
         object.__setattr__(self, "_num_outputs", None)
 
+    def infer_metadata(self) -> BlockMetadata:
+        # Download preserves the row count but appends a binary blob column per
+        # requested output, so the output is *larger* than the input -- often by
+        # orders of magnitude. Propagating the input's ``size_bytes`` (as the
+        # row-preserving default does) would be a misleading under-estimate that
+        # could starve downstream size-dependent planning (e.g. hash-shuffle
+        # aggregator memory reservation). Keep the accurate row count and input
+        # files, but report ``size_bytes=None`` since we can't estimate the
+        # downloaded bytes ahead of execution.
+        meta = super().infer_metadata()
+        return BlockMetadata(
+            num_rows=meta.num_rows,
+            size_bytes=None,
+            input_files=meta.input_files,
+            exec_stats=None,
+        )
+
     def infer_schema(self) -> Optional["Schema"]:
         # Output = input schema with one binary column appended per requested
         # output name. The runtime (``download_bytes_threaded``) always appends
