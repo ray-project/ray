@@ -631,16 +631,19 @@ class TestResourceManager:
 
         assert completed_ops_usage == ExecutionResources(cpu=8, object_store_memory=400)
 
-    def test_completed_ops_set_is_cached_and_invalidated(self, restore_data_context):
-        """The completed-ops *set* is computed once and reused until
-        `update_usages` invalidates it, but the summed usage still reflects the
-        current per-op usages on every call."""
+    def test_completed_ops_usage_reflects_mid_step_completion(
+        self, restore_data_context
+    ):
+        """`_get_completed_ops_usage` must reflect an operator that finishes
+        mid-step (e.g. a `LimitOperator` calling `mark_execution_finished`
+        during `dispatch_next_task`) without waiting for the next full
+        `update_usages` — i.e. the completed-op exclusion set is not cached
+        across that boundary."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
         o1.mark_execution_finished()
-        o2.mark_execution_finished()
 
         topo = build_streaming_topology(o3, ExecutionOptions())
         op_usages = {
@@ -656,36 +659,47 @@ class TestResourceManager:
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        compute_calls = 0
-        real_compute = resource_manager._compute_completed_ops
+        # Only o1 (an empty InputDataBuffer, zero usage) is completed so far.
+        assert resource_manager._get_completed_ops_usage() == ExecutionResources.zero()
 
-        def counting_compute():
-            nonlocal compute_calls
-            compute_calls += 1
-            return real_compute()
+        # o2 finishes mid-step, with no full `update_usages` in between.
+        o2.mark_execution_finished()
 
-        resource_manager._compute_completed_ops = counting_compute
-
-        # First access computes the set; second reuses it.
+        # The exclusion set must include o2 immediately on the next call.
         assert resource_manager._get_completed_ops_usage() == ExecutionResources(
             cpu=2, object_store_memory=50
         )
-        assert compute_calls == 1
-        resource_manager._get_completed_ops_usage()
-        assert compute_calls == 1
 
-        # The summed usage reflects current usages even on a cache hit (e.g. a
-        # completed op's output draining).
-        op_usages[o2] = ExecutionResources(cpu=2, object_store_memory=20)
-        assert resource_manager._get_completed_ops_usage() == ExecutionResources(
-            cpu=2, object_store_memory=20
+    def test_update_usages_for_ops_refreshes_sink_external_consumer(
+        self, restore_data_context
+    ):
+        """`update_usages_for_ops` must refresh the sink's object-store estimate
+        (which includes `_external_consumer_bytes`) even when the changed op is
+        not the sink — no operator depends on the sink, so it would otherwise
+        stay stale until the next full `update_usages`."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)  # terminal operator (sink)
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
         )
-        assert compute_calls == 1
-
-        # A full `update_usages` invalidates the set, forcing a recompute.
+        # Skip the allocator budget path (not needed here).
+        resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
-        resource_manager._get_completed_ops_usage()
-        assert compute_calls == 2
+        assert resource_manager.get_op_usage(o3).object_store_memory == 0
+
+        # Consumer prefetches bytes; charged to the sink only.
+        resource_manager.set_external_consumer_bytes(500)
+
+        # An incremental update for a NON-sink op must still pick up the sink's
+        # new external-consumer contribution.
+        resource_manager.update_usages_for_ops([o2])
+        assert resource_manager.get_op_usage(o3).object_store_memory == 500
 
     def test_external_consumer_bytes_attributed_to_terminal_operator(
         self, restore_data_context
