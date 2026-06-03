@@ -774,14 +774,20 @@ class HAProxyApi(ProxyApi):
             if p.returncode is None:
                 still_alive.append(p)
                 continue
-            self._retired_logs.append((p._stdout_path, p._stderr_path))
-            while len(self._retired_logs) > self._max_retained_logs:
-                for path in self._retired_logs.popleft():
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
+            self._retire_log_files(p)
         self._old_procs = still_alive
+
+    def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
+        """Move an exited proc's std-stream logs into the bounded debug ring,
+        deleting the oldest pair once the ring exceeds its cap. Only call this
+        for procs that have exited — their fds must be closed."""
+        self._retired_logs.append((proc._stdout_path, proc._stderr_path))
+        while len(self._retired_logs) > self._max_retained_logs:
+            for path in self._retired_logs.popleft():
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
     def _is_running(self) -> bool:
         """Check if the HAProxy process is still running."""
@@ -827,6 +833,9 @@ class HAProxyApi(ProxyApi):
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
+            # The proc has exited; retire its log files so a failed start/reload
+            # doesn't orphan them outside the bounded ring.
+            self._retire_log_files(proc)
             raise
 
         return proc
