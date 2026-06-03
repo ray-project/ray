@@ -2478,6 +2478,25 @@ class TestTimerPercentile:
         assert restored.min() == float("inf")
         assert restored.get() == 0
 
+    @pytest.mark.parametrize("bad_state", [None, [], "x", 42])
+    def test_from_dict_ignores_non_dict(self, bad_state):
+        # A malformed/missing checkpoint payload must not crash restore;
+        # the Timer keeps its empty-state defaults.
+        t = Timer()
+        t.from_dict(bad_state)
+        assert t.get() == 0
+        assert t.min() == float("inf")
+
+    def test_from_dict_handles_none_values(self):
+        # Explicit None values must fall back to defaults — .get(k, 0)
+        # would wrongly keep None since the key is present.
+        t = Timer()
+        t.from_dict({"_total": None, "_min": None, "_max": None, "_total_count": None})
+        assert t.get() == 0.0
+        assert t._total_count == 0.0
+        assert t.min() == float("inf")
+        assert t.max() == 0.0
+
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
     # KLL-sketch percentile tracking is always on (bounded memory), so

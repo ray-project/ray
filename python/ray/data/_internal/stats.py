@@ -258,19 +258,25 @@ class Timer:
             "_total_count": self._total_count,
         }
 
-    def from_dict(self, state: Dict[str, Optional[float]]) -> None:
+    def from_dict(self, state: Optional[Dict[str, Optional[float]]]) -> None:
         """Restore the scalar stats from a dict produced by :meth:`as_dict`.
 
         ``_distribution`` is left untouched (it keeps the empty tracker
         created in ``__init__``), mirroring that the sketch is not
-        persisted.
+        persisted. A non-dict ``state`` is ignored, and a ``None`` value
+        for any field falls back to its empty-Timer default (``.get``'s
+        default only fires on a missing key, not a present ``None``).
         """
-        self._total = state.get("_total", 0)
-        self._total_count = state.get("_total_count", 0)
+        if not isinstance(state, dict):
+            return
+        _total = state.get("_total")
+        self._total = _total if _total is not None else 0.0
+        _total_count = state.get("_total_count")
+        self._total_count = _total_count if _total_count is not None else 0.0
         _min = state.get("_min")
         self._min = _min if _min is not None else float("inf")
         _max = state.get("_max")
-        self._max = _max if _max is not None else 0
+        self._max = _max if _max is not None else 0.0
 
 
 class _DatasetStatsBuilder:
