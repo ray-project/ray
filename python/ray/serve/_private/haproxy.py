@@ -10,6 +10,7 @@ import shutil
 import string
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -35,6 +36,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
+    RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -52,6 +54,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_RETRIES,
+    RAY_SERVE_HAPROXY_RETRY_ON,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
@@ -61,6 +65,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_TUNE_BUFSIZE,
+    RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
@@ -82,6 +87,7 @@ from ray.serve.schema import (
     Target,
     TargetGroup,
 )
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -161,6 +167,17 @@ def _write_if_changed(path: str, content: str) -> bool:
     with open(path, "w") as f:
         f.write(content)
     return True
+
+
+def _tail_file(path: str, n_bytes: int = 4096) -> str:
+    """Return up to the last ``n_bytes`` of ``path``, or "" on any error."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - n_bytes))
+            return f.read().decode("utf-8", errors="ignore").strip()
+    except OSError:
+        return ""
 
 
 def get_haproxy_binary() -> str:
@@ -557,6 +574,12 @@ class HAProxyConfig:
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
+    # Global retry policy for the defaults block (inherited by every backend).
+    retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
+    retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
+
+    # Per-ingress-router overrides; when None the ingress backend inherits the
+    # global policy above.
     ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
     ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
     ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
@@ -680,6 +703,19 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        # Per-spawn counter for stdout/stderr file names.
+        self._spawn_seq: int = 0
+        # Unique per actor incarnation. A restart resets _spawn_seq to 0, so
+        # without this a new incarnation would reuse — and (wb) truncate — the
+        # previous one's log files. The actor PID changes on every restart.
+        self._log_id: int = os.getpid()
+        # Debug ring of (stdout_path, stderr_path) for the most recently
+        # exited workers. Files for still-alive workers are never touched
+        # (their fds are still writing); once a worker exits its files are
+        # retired here and the oldest beyond the cap are deleted, so the
+        # file count stays bounded instead of growing with every reload.
+        self._retired_logs: "deque[Tuple[str, str]]" = deque()
+        self._max_retained_logs: int = 10
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -696,6 +732,10 @@ class HAProxyApi(ProxyApi):
         # Create a socket directory
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
+
+        # Sweep std-stream logs left by a previous incarnation on this node.
+        # No worker has spawned yet, so any match belongs to a dead actor.
+        self._sweep_stale_logs()
 
         # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
@@ -714,6 +754,52 @@ class HAProxyApi(ProxyApi):
 
         self.cfg.error_file_path = error_file_path
 
+    def _sweep_stale_logs(self) -> None:
+        """Delete std-stream log files left by a previous actor incarnation.
+
+        Called at init before any worker spawns, so every match belongs to a
+        dead actor (a crash-restart can't run the normal prune on its way out).
+        """
+        socket_path = Path(self.cfg.socket_path)
+        for pattern in (
+            f"{socket_path.name}.*.stdout.log",
+            f"{socket_path.name}.*.stderr.log",
+        ):
+            for stale in socket_path.parent.glob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+
+    def _prune_old_procs(self) -> None:
+        """Drop exited workers from ``_old_procs`` and bound their log files.
+
+        A still-alive (draining) worker is kept untouched — its fd is still
+        writing to its file. When a worker has exited, its (stdout, stderr)
+        files are retired into a fixed-size ring kept for post-mortem
+        debugging; files that fall off the end of the ring are deleted, so the
+        file count stays bounded instead of growing with every reload.
+        """
+        still_alive = []
+        for p in self._old_procs:
+            if p.returncode is None:
+                still_alive.append(p)
+                continue
+            self._retire_log_files(p)
+        self._old_procs = still_alive
+
+    def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
+        """Move an exited proc's std-stream logs into the bounded debug ring,
+        deleting the oldest pair once the ring exceeds its cap. Only call this
+        for procs that have exited — their fds must be closed."""
+        self._retired_logs.append((proc._stdout_path, proc._stderr_path))
+        while len(self._retired_logs) > self._max_retained_logs:
+            for path in self._retired_logs.popleft():
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
     def _is_running(self) -> bool:
         """Check if the HAProxy process is still running."""
         return self._proc is not None and self._proc.returncode is None
@@ -731,12 +817,24 @@ class HAProxyApi(ProxyApi):
         # Add any extra args (like -sf for graceful reload)
         args.extend(extra_args)
 
-        logger.debug(f"Starting HAProxy with args: {args}")
-
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # Redirect both std streams to files → no 64KB pipe buffer to deadlock on.
+        self._spawn_seq += 1
+        base = f"{self.cfg.socket_path}.{self._log_id}.{self._spawn_seq}"
+        stdout_path = f"{base}.stdout.log"
+        stderr_path = f"{base}.stderr.log"
+        with open(stdout_path, "wb", buffering=0) as stdout_file, open(
+            stderr_path, "wb", buffering=0
+        ) as stderr_file:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=stdout_file,
+                stderr=stderr_file,
+            )
+        proc._stdout_path = stdout_path
+        proc._stderr_path = stderr_path
+        logger.info(
+            f"Starting HAProxy (spawn #{self._spawn_seq}, pid={proc.pid}, "
+            f"stdout={stdout_path}, stderr={stderr_path}); args={args}"
         )
 
         try:
@@ -746,6 +844,9 @@ class HAProxyApi(ProxyApi):
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
+            # The proc has exited; retire its log files so a failed start/reload
+            # doesn't orphan them outside the bounded ring.
+            self._retire_log_files(proc)
             raise
 
         return proc
@@ -774,8 +875,8 @@ class HAProxyApi(ProxyApi):
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process for cleanup; prune exited ones so the list
-            # stays bounded even when the proxy reloads but never drains.
+            # Track old process for shutdown cleanup, then prune exited ones so
+            # the list and the log files on disk stay bounded across reloads.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
             self._prune_old_procs()
@@ -795,12 +896,10 @@ class HAProxyApi(ProxyApi):
         # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
-                stdout = await proc.stdout.read() if proc.stdout else b""
-                stderr = await proc.stderr.read() if proc.stderr else b""
-                output = (
-                    stderr.decode("utf-8", errors="ignore").strip()
-                    or stdout.decode("utf-8", errors="ignore").strip()
-                )
+                # Both streams were redirected to files at spawn; tail them.
+                stderr_text = _tail_file(proc._stderr_path)
+                stdout_text = _tail_file(proc._stdout_path)
+                output = stderr_text or stdout_text
 
                 raise RuntimeError(
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
@@ -1126,10 +1225,6 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
-    def _prune_old_procs(self) -> None:
-        """Drop references to old workers that have already exited."""
-        self._old_procs = [p for p in self._old_procs if p.returncode is None]
-
     def has_alive_old_procs(self) -> bool:
         """True if any soft-stopping HAProxy workers from prior reloads remain."""
         self._prune_old_procs()
@@ -1226,6 +1321,24 @@ class HAProxyManager(ProxyActorInterface):
         # Lock to serialize HAProxy reloads and prevent concurrent reload operations
         # which can cause race conditions with SO_REUSEPORT
         self._reload_lock = asyncio.Lock()
+
+        # Coalescing state: each broadcast sets _update_pending=True and
+        # (re)arms _coalesce_task, which sleeps one window then applies.
+        # _coalesce_armed_at is the monotonic time of the first broadcast
+        # since the last apply, used to report end-to-end update latency.
+        self._update_pending: bool = False
+        self._coalesce_task: Optional[asyncio.Task] = None
+        self._coalesce_armed_at: Optional[float] = None
+        self._haproxy_update_latency = metrics.Histogram(
+            "serve_haproxy_update_latency_s",
+            description=(
+                "Seconds from the first coalesced controller broadcast to the "
+                "HAProxy reload completing. Includes the coalesce window, time "
+                "queued behind an in-flight reload, and the reload itself."
+            ),
+            boundaries=RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
+            tag_keys=("node_id",),
+        ).set_default_tags({"node_id": node_id})
 
         self.long_poll_client = long_poll_client or LongPollClient(
             ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
@@ -1522,7 +1635,7 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy_start_task
             await self._haproxy.reload()
 
-    def _update_haproxy_backends(self) -> None:
+    async def _update_haproxy_backends(self) -> None:
         backend_configs = []
         for target_group in self._target_groups:
             fallback_target = None
@@ -1544,11 +1657,11 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
-        self.event_loop.create_task(self._reload_haproxy())
+        await self._reload_haproxy()
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups
-        self._update_haproxy_backends()
+        self._schedule_haproxy_update()
 
     def update_fallback_targets(
         self,
@@ -1564,7 +1677,49 @@ class HAProxyManager(ProxyActorInterface):
             elif protocol == RequestProtocol.GRPC:
                 self._grpc_fallback_target = target
 
-        self._update_haproxy_backends()
+        self._schedule_haproxy_update()
+
+    def _schedule_haproxy_update(self) -> None:
+        """Mark state dirty and ensure the apply task is running.
+
+        Broadcasts within RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S collapse
+        into a single _update_haproxy_backends call. A window of 0 disables
+        the coalesce delay (each broadcast applies immediately) but still
+        runs through the same task, so update latency is always recorded.
+        """
+        self._update_pending = True
+        if self._coalesce_armed_at is None:
+            self._coalesce_armed_at = time.monotonic()
+        if self._coalesce_task is None or self._coalesce_task.done():
+            self._coalesce_task = self.event_loop.create_task(
+                self._coalesce_and_apply()
+            )
+
+    async def _coalesce_and_apply(self) -> None:
+        # Awaits the reload so failures propagate here and so broadcasts
+        # arriving during a slow reload coalesce into the next cycle
+        # instead of queueing behind the reload lock. On failure, re-arm
+        # for up to 2 retries; past that, wait for the next broadcast.
+        consecutive_failures = 0
+        while self._update_pending:
+            if RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S > 0:
+                await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
+            self._update_pending = False
+            armed_at = self._coalesce_armed_at
+            self._coalesce_armed_at = None
+            try:
+                await self._update_haproxy_backends()
+                if armed_at is not None:
+                    self._haproxy_update_latency.observe(time.monotonic() - armed_at)
+                consecutive_failures = 0
+            except Exception:
+                logger.exception("Coalesced HAProxy update failed.")
+                consecutive_failures += 1
+                if consecutive_failures < 3:
+                    self._update_pending = True
+                    # Keep measuring from the original broadcast so a retry's
+                    # latency still reflects the full delay.
+                    self._coalesce_armed_at = armed_at
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""
