@@ -42,7 +42,7 @@ class GcsResourceManagerInterface {
   /// the resource usage broadcast. Called by GcsPlacementGroupManager whenever
   /// the per-shape pending-PG counts change.
   virtual void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) = 0;
+      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) = 0;
 };
 
 }  // namespace gcs

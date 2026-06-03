@@ -273,9 +273,9 @@ void GcsResourceManager::SetNodeDraining(const NodeID &node_id,
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
-    const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+    std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
   RAY_CHECK(placement_group_load != nullptr);
-  placement_group_load_ = absl::make_optional(placement_group_load);
+  placement_group_load_ = std::move(placement_group_load);
 }
 
 std::string GcsResourceManager::DebugString() const {

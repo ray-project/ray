@@ -39,8 +39,8 @@ class FakeGcsResourceManager : public GcsResourceManagerInterface {
   }
 
   void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) override {
-    placement_group_load_ = placement_group_load;
+      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) override {
+    placement_group_load_ = std::move(placement_group_load);
   }
 
   /// Recorded (node_id, sync_message) tuples from UpdateFromResourceView, in

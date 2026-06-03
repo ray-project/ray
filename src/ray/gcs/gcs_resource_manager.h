@@ -144,7 +144,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   ///
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) override;
+      std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) override;
 
   /// Update the resource loads.
   ///
