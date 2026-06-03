@@ -9,7 +9,11 @@ import yaml
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
-from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, AZURE_REGISTRY_NAME
+
+# AZURE_REGISTRY_NAME import temporarily removed below: Azure image push is
+# disabled due to CI issues. Re-add `AZURE_REGISTRY_NAME` to the import below
+# when re-enabling the Azure ACR login step in create_custom_build_yaml.
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX
 
 
 def generate_custom_build_step_key(image: str) -> str:
@@ -117,8 +121,12 @@ def create_custom_build_yaml(
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
                 f"bash release/gcloud_docker_login.sh {aws2gce_credentials}",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
-                "bash release/azure_docker_login.sh",
-                f"az acr login --name {AZURE_REGISTRY_NAME}",
+                # Azure ACR login skipped: Azure image push is temporarily
+                # disabled due to CI issues.
+                "echo 'Skipping Azure ACR login: Azure image push is "
+                "temporarily disabled due to CI issues.'",
+                # "bash release/azure_docker_login.sh",
+                # f"az acr login --name {AZURE_REGISTRY_NAME}",
                 f"aws ecr get-login-password --region {byod_ecr_region} | docker login --username AWS --password-stdin {byod_ecr}",
                 build_cmd,
             ],

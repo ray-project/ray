@@ -32,6 +32,7 @@ from ray.data.expressions import (
     UUIDExpr,
     _ExprVisitor,
     col,
+    is_rename_expr,
 )
 
 logger = logging.getLogger(__name__)
@@ -851,7 +852,10 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     # Collect input column rename map from the projection list
     input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
-    # Expand star expr (if any)
+    # Expand star expr (if any). ``Project.__post_init__`` eagerly expands
+    # ``StarExpr`` to explicit ``col()`` refs whenever the
+    # input schema is known, so this runtime branch is hit only on the
+    # UDF-fallback path (Project on top of an opaque-schema input).
     if isinstance(projection_exprs[0], StarExpr):
         # Bucket the trailing exprs: rename ``AliasExpr``s of an input
         # column get placed into the original column's position (so the
@@ -862,12 +866,7 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         for expr in projection_exprs[1:]:
             # e.g. ``col(source)._rename(new_name)`` — bucket by ``source`` for column order.
             # ``rename_exprs_by_source``: input column name -> that rename ``AliasExpr``.
-            if (
-                isinstance(expr, AliasExpr)
-                and expr._is_rename
-                and isinstance(expr.expr, ColumnExpr)
-                and expr.expr.name in input_column_rename_map
-            ):
+            if is_rename_expr(expr) and expr.expr.name in input_column_rename_map:
                 rename_exprs_by_source[expr.expr.name] = expr
             else:
                 extra_exprs.append(expr)

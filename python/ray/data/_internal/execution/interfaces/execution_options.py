@@ -325,6 +325,14 @@ class ExecutionOptions:
         verbose_progress: Whether to report progress individually per operator. By
             default, only AllToAll operators and global progress is reported. This
             option is useful for performance debugging. On by default.
+        label_selector: A mapping of label key to label value. When set, every task
+            and actor launched by this Dataset (including shuffle, sort, and
+            aggregator actors) carries this label selector in its remote args,
+            constraining placement to nodes whose labels satisfy the selector.
+            Used to scope a Dataset to a labeled subset of the cluster (e.g.
+            ``{"subcluster": "training"}``). Operator-level ``label_selector``
+            entries in ``ray_remote_args`` take precedence on key conflicts so
+            existing node-pin selectors are preserved.
     """
 
     def __init__(
@@ -334,6 +342,7 @@ class ExecutionOptions:
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
+        label_selector: Optional[Dict[str, str]] = None,
     ):
         """Initialize execution options.
 
@@ -346,6 +355,8 @@ class ExecutionOptions:
                 stateful map and streaming split operations.
             verbose_progress: Whether to report progress per operator. If None,
                 read from ``RAY_DATA_VERBOSE_PROGRESS``.
+            label_selector: Per-Dataset label selector applied to every task and
+                actor launched by Ray Data. ``None`` means no selector is added.
         """
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
@@ -360,6 +371,7 @@ class ExecutionOptions:
                 int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "1"))
             )
         self.verbose_progress = verbose_progress
+        self.label_selector = label_selector
 
     def __repr__(self) -> str:
         return (
@@ -367,7 +379,8 @@ class ExecutionOptions:
             f"exclude_resources={self.exclude_resources}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
-            f"verbose_progress={self.verbose_progress})"
+            f"verbose_progress={self.verbose_progress}, "
+            f"label_selector={self.label_selector})"
         )
 
     @property

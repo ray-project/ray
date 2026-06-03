@@ -1,3 +1,4 @@
+import copy
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -43,6 +44,7 @@ class TaskPoolMapOperator(MapOperator):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -72,6 +74,10 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             on_start: Optional callback invoked with the schema from the first input
                 bundle before any tasks are submitted.
+            isolate_workers: If ``True``, ensure that other operators' tasks don't get
+                scheduled on the same worker processes as this operator's. This flag
+                is useful to prevent side-effects from affecting other operators, like
+                large PyArrow memory allocations.
         """
         super().__init__(
             map_transformer,
@@ -88,6 +94,8 @@ class TaskPoolMapOperator(MapOperator):
             on_start,
         )
 
+        self._isolate_workers = isolate_workers
+
         if max_concurrency is not None and max_concurrency <= 0:
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
 
@@ -103,7 +111,41 @@ class TaskPoolMapOperator(MapOperator):
             "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
 
+        # Ray Core doesn't share workers for tasks with different `runtime_env`s. We use
+        # this property to implicitly ensure that this operator's tasks run on isolated
+        # workers.
+        if self._isolate_workers:
+            ray_remote_static_args = self._add_unique_runtime_env(
+                ray_remote_static_args
+            )
+
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
+    def _add_unique_runtime_env(
+        self, ray_remote_args: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Return a copy of the remote args with a runtime env that's unique to this
+        operator.
+        """
+        ray_remote_args = copy.deepcopy(ray_remote_args)
+
+        runtime_env = ray_remote_args.get("runtime_env", {})
+        env_vars = ray_remote_args.get("env_vars", {})
+        env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
+        runtime_env["env_vars"] = env_vars
+
+        ray_remote_args["runtime_env"] = runtime_env
+        return ray_remote_args
+
+    @property
+    def isolate_workers(self) -> bool:
+        """Return whether this operator launches tasks on isolated worker processes.
+
+        If ``True``, other operators' tasks won't get scheduled on the same worker
+        processes as this operator's. This flag is useful to prevent side-effects
+        from affecting other operators, like large PyArrow memory allocations.
+        """
+        return self._isolate_workers
 
     @property
     @override
