@@ -1,3 +1,4 @@
+import hashlib
 import random
 import time
 from enum import Enum
@@ -43,11 +44,12 @@ class TelemetryTags(str, Enum):
 class TelemetryModel(BaseModelExtended):
     """Telemetry model for LLM Serve.
 
-    ``model_id`` is the dedup identity used by the telemetry agent and is never
-    recorded as a tag value.
+    ``model_id_hash`` is the dedup identity used by the telemetry agent and is
+    never recorded as a tag value. It is a hash of the model id so the raw model
+    name never reaches the head-node actor.
     """
 
-    model_id: str
+    model_id_hash: str
     model_architecture: str
     num_replicas: int
     use_lora: bool
@@ -70,8 +72,8 @@ class TelemetryAgent:
     """Named Actor to keep the state of all deployed models and record telemetry."""
 
     def __init__(self):
-        # Keyed by model_id so repeated reports from replicas/restarts of the
-        # same model overwrite rather than accumulate.
+        # Keyed by model_id_hash so repeated reports from replicas/restarts of
+        # the same model overwrite rather than accumulate.
         self.models: Dict[str, TelemetryModel] = {}
         self.record_tag_func = record_extra_usage_tag
 
@@ -188,7 +190,7 @@ class TelemetryAgent:
         from ray._common.usage.usage_lib import TagKey
 
         if model:
-            self.models[model.model_id] = model
+            self.models[model.model_id_hash] = model
 
         for key, value in self.generate_report().items():
             try:
@@ -332,7 +334,9 @@ def _push_model_telemetry(
     hardware_usage = HardwareUsage(get_hardware_fn)
 
     telemetry_model = TelemetryModel(
-        model_id=model.model_id,
+        # Hash so the cleartext model name (possibly proprietary) never reaches
+        # the head-node actor; deterministic across replicas/restarts so dedup holds.
+        model_id_hash=hashlib.sha256(model.model_id.encode("utf-8")).hexdigest(),
         model_architecture=model.model_architecture,
         num_replicas=num_replicas,
         use_lora=use_lora,
