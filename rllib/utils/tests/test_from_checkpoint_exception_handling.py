@@ -10,7 +10,6 @@ When loading the class constructor from a checkpoint's pickle file:
 See: https://github.com/ray-project/ray/issues/63093
 """
 
-import pickle
 from unittest import mock
 
 import pytest
