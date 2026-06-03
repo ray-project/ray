@@ -41,6 +41,7 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import print_next_steps_context_note
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
     attach_cluster,
@@ -1082,6 +1083,7 @@ def start(
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
         with cli_logger.group("Next steps"):
+            print_next_steps_context_note(cli_logger, cf)
             dashboard_url = node.address_info["webui_url"]
             if ray_constants.ENABLE_RAY_CLUSTER:
                 cli_logger.print("To add another node to this Ray cluster, run")
