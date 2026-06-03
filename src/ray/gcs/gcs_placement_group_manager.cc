@@ -55,7 +55,7 @@ ExponentialBackoff CreateDefaultBackoff() {
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
-    GcsResourceManager &gcs_resource_manager,
+    GcsResourceManagerInterface &gcs_resource_manager,
     ray::observability::MetricInterface &placement_group_gauge,
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
@@ -76,7 +76,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
     GcsPlacementGroupSchedulerInterface *scheduler,
     gcs::GcsTableStorage *gcs_table_storage,
-    GcsResourceManager &gcs_resource_manager,
+    GcsResourceManagerInterface &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace,
     ray::observability::MetricInterface &placement_group_gauge,
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,

@@ -26,7 +26,7 @@ namespace gcs {
 class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
  public:
   explicit MockGcsPlacementGroupManager(
-      GcsResourceManager &gcs_resource_manager,
+      GcsResourceManagerInterface &gcs_resource_manager,
       ray::observability::MetricInterface &placement_group_gauge,
       ray::observability::MetricInterface
           &placement_group_creation_latency_in_ms_histogram,

@@ -28,7 +28,7 @@
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_placement_group.h"
 #include "ray/gcs/gcs_placement_group_scheduler.h"
-#include "ray/gcs/gcs_resource_manager.h"
+#include "ray/gcs/gcs_resource_manager_interface.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
@@ -61,7 +61,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       instrumented_io_context &io_context,
       GcsPlacementGroupSchedulerInterface *scheduler,
       gcs::GcsTableStorage *gcs_table_storage,
-      GcsResourceManager &gcs_resource_manager,
+      GcsResourceManagerInterface &gcs_resource_manager,
       std::function<std::string(const JobID &)> get_ray_namespace,
       ray::observability::MetricInterface &placement_group_gauge,
       ray::observability::MetricInterface
@@ -226,7 +226,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// For testing/mocking only.
   explicit GcsPlacementGroupManager(
       instrumented_io_context &io_context,
-      GcsResourceManager &gcs_resource_manager,
+      GcsResourceManagerInterface &gcs_resource_manager,
       ray::observability::MetricInterface &placement_group_gauge,
       ray::observability::MetricInterface
           &placement_group_creation_latency_in_ms_histogram,
@@ -332,8 +332,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// We should probably support concurrenet creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
-  /// Reference of GcsResourceManager.
-  GcsResourceManager &gcs_resource_manager_;
+  /// Reference of GcsResourceManagerInterface (used to push PG load updates).
+  GcsResourceManagerInterface &gcs_resource_manager_;
 
   UsageStatsClient *usage_stats_client_;
 

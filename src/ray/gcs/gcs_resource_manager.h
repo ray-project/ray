@@ -24,6 +24,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_node_manager.h"
+#include "ray/gcs/gcs_resource_manager_interface.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
@@ -52,7 +53,8 @@ namespace gcs {
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
 class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
-                           public syncer::ReceiverInterface {
+                           public syncer::ReceiverInterface,
+                           public GcsResourceManagerInterface {
  public:
   /// Create a GcsResourceManager.
   explicit GcsResourceManager(instrumented_io_context &io_context,
@@ -135,14 +137,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// \param resource_view_sync_message The resource usage of the node.
   void UpdateFromResourceView(
       const NodeID &node_id,
-      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message) override;
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
   ///
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) override;
 
   /// Update the resource loads.
   ///

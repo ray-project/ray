@@ -24,6 +24,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"

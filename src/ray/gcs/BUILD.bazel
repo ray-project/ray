@@ -92,12 +92,23 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "gcs_resource_manager_interface",
+    hdrs = ["gcs_resource_manager_interface.h"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:ray_syncer_cc_proto",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_resource_manager",
     srcs = ["gcs_resource_manager.cc"],
     hdrs = ["gcs_resource_manager.h"],
     deps = [
         ":gcs_init_data",
         ":gcs_node_manager",
+        ":gcs_resource_manager_interface",
         ":gcs_state_util",
         ":grpc_service_interfaces",
         "//src/ray/asio:instrumented_io_context",
@@ -312,7 +323,7 @@ ray_cc_library(
         ":gcs_init_data",
         ":gcs_placement_group",
         ":gcs_placement_group_scheduler",
-        ":gcs_resource_manager",
+        ":gcs_resource_manager_interface",
         ":gcs_table_storage",
         ":gcs_usage_stats_client",
         ":grpc_service_interfaces",
