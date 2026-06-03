@@ -94,7 +94,6 @@ class MockWorkerInterface : public WorkerInterface {
               GetStartupAllocatedInstances,
               (),
               (const, override));
-  MOCK_METHOD(void, ClearStartupAllocatedInstances, (), (override));
   MOCK_METHOD(const ResourceSet &, GetResourceRequirements, (), (const, override));
   MOCK_METHOD(void,
               SetResourceRequirements,

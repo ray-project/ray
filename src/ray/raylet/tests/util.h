@@ -174,10 +174,6 @@ class MockWorker : public WorkerInterface {
     return startup_allocated_instances_;
   }
 
-  void ClearStartupAllocatedInstances() override {
-    startup_allocated_instances_ = nullptr;
-  }
-
   const BundleID &GetBundleId() const override {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;

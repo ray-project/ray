@@ -141,10 +141,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
     return startup_allocated_instances_;
   };
 
-  void ClearStartupAllocatedInstances() override {
-    startup_allocated_instances_ = nullptr;
-  };
-
   const RayLease &GetGrantedLease() const override {
     RAY_CHECK(granted_lease_.has_value());
     return *granted_lease_;
