@@ -27,9 +27,6 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    TaskDurationStats,
-)
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
@@ -38,6 +35,7 @@ from ray.data._internal.stats import (
     NodeMetrics,
     OperatorStatsSummary,
     StatsSummary,
+    Timer,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -130,8 +128,6 @@ def assert_basic_operator_metrics(
     assert op.wall_time is not None, "wall_time should not be None"
     assert op.wall_time.sum > 0, "wall_time sum should be positive"
 
-    assert op.memory is not None, "memory should not be None"
-
     assert op.output_num_rows is not None, "output_num_rows should not be None"
 
     assert op.output_size_bytes is not None, "output_size_bytes should not be None"
@@ -210,6 +206,8 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -298,6 +296,8 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
@@ -488,16 +488,23 @@ def canonicalize(
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
-    # Ray might not be able to estimate the peak heap memory usage on some platforms.
-    # In those cases, the memory estimate could be 0 or None.
-    canonicalized_stats = re.sub(
-        r"Peak heap memory usage \(MiB\): (N|Z) min, (N|Z) max, (N|Z) mean",
-        "Peak heap memory usage (MiB): H min, H max, H mean",
-        canonicalized_stats,
-    )
     canonicalized_stats = re.sub(
         r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
         r"\g<1> H",
+        canonicalized_stats,
+    )
+    # Percentile values in DistributionTracker dicts can be None (when datasketches
+    # is not installed) or a number (canonicalized to N). Normalize to P.
+    canonicalized_stats = re.sub(
+        r"('pN': )(?:N|None)\b",
+        r"\g<1>P",
+        canonicalized_stats,
+    )
+    # max_uss_bytes DistributionTracker may have 0 or N samples depending on
+    # platform (USS measurement only available on Linux). Normalize entire dict.
+    canonicalized_stats = re.sub(
+        r"(max_uss_bytes['\s:]+)\{[^}]+\}",
+        r"\g<1>H",
         canonicalized_stats,
     )
 
@@ -559,7 +566,6 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): H min, H max, H mean
 * Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
@@ -617,7 +623,6 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -643,7 +648,6 @@ def test_dataset_stats_basic(
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
                 f"* UDF time: T min, T max, T mean, T total\n"
-                f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -744,6 +748,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -816,7 +822,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"         block_execution_summary_str={EXECUTION_STRING}\n"
         "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
@@ -908,6 +913,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
@@ -980,7 +987,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"         block_execution_summary_str={EXECUTION_STRING}\n"
         "         wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "         memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "         output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "         output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "         node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"
@@ -1025,6 +1031,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            max_uss_bytes: H,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
@@ -1097,7 +1105,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         f"               block_execution_summary_str={EXECUTION_STRING}\n"
         "               wall_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
         "               cpu_time={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"
-        "               memory={'min': 'T', 'max': 'T', 'mean': 'T'},\n"
         "               output_num_rows={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               output_size_bytes={'min': 'T', 'max': 'T', 'mean': 'T', 'sum': 'T'},\n"  # noqa: E501
         "               node_count={'min': 'T', 'max': 'T', 'mean': 'T', 'count': 'T'},\n"  # noqa: E501
@@ -1395,8 +1402,7 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     """Tests a set of similar getter methods which pull aggregated
     statistics values after calculating operator-level stats:
     `DatasetStats.get_total_wall_time()`,
-    `DatasetStats.get_total_cpu_time()`,
-    `DatasetStats.get_max_heap_memory()`."""
+    `DatasetStats.get_total_cpu_time()`."""
     block_params, block_meta_list = op_two_block
     stats = DatasetStats(
         metadata={"Read": block_meta_list},
@@ -1421,9 +1427,6 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     cpu_time_stats = op_stats.cpu_time
     assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.sum
 
-    peak_memory_stats = op_stats.memory
-    assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.max
-
 
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     ds = ray.data.range(5, override_num_blocks=5).map(column_udf("id", lambda x: x + 1))
@@ -1438,7 +1441,6 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     assert op.wall_time is not None
     assert op.cpu_time is not None
     assert op.udf_time is not None
-    assert op.memory is not None
     assert op.output_num_rows is not None
     assert op.output_size_bytes is not None
     assert op.node_count is not None
@@ -1644,28 +1646,6 @@ def test_per_node_metrics_toggle(
             assert per_node_metrics is not None
         else:
             assert per_node_metrics is None
-
-
-def test_task_duration_stats():
-    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
-    stats = TaskDurationStats()
-
-    # Test initial state
-    assert stats.count() == 0
-    assert stats.mean() == 0.0
-    assert stats.stddev() == 0.0
-
-    # Add some task durations and verify stats
-    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
-    for d in durations:
-        stats.add_duration(d)
-
-    # Compare with numpy's implementations
-    assert stats.count() == len(durations)
-    assert pytest.approx(stats.mean()) == np.mean(durations)
-    assert pytest.approx(stats.stddev()) == np.std(
-        durations, ddof=1
-    )  # ddof=1 for sample standard deviation
 
 
 def test_dataset_throughput_calculation(ray_start_regular_shared):
@@ -2326,6 +2306,151 @@ ray.shutdown()
             f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
             f"but found {len(datasets)}"
         )
+
+
+class TestTimerPercentile:
+    """Tests for Timer's KLL-sketch-backed percentile().
+
+    Every ``Timer.add(v)`` feeds the internal ``DistributionTracker``
+    sketch, so ``percentile`` returns an approximate quantile bounded
+    by the KLL accuracy guarantee (~1.65% rank error at k=200). For
+    sample counts at or below k the sketch keeps every item and
+    returns exact values; the relaxed tolerances below cover both
+    regimes.
+    """
+
+    def test_zero_samples(self):
+        t = Timer()
+        assert t.percentile(0.0) == 0
+        assert t.percentile(0.5) == 0
+        assert t.percentile(0.9) == 0
+        assert t.percentile(1.0) == 0
+
+    def test_existing_aggregate_stats_unchanged(self):
+        # Sanity: wiring DistributionTracker into add() must not perturb
+        # Timer's pre-existing sum/min/max/avg semantics.
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        assert t.get() == pytest.approx(1.111)
+        assert t.max() == pytest.approx(1.0)
+        assert t.min() == pytest.approx(0.001)
+        assert t.avg() == pytest.approx(0.27775)
+
+    def test_single_sample(self):
+        t = Timer()
+        t.add(0.042)
+        for p in [0.0, 0.5, 0.9, 1.0]:
+            assert t.percentile(p) == pytest.approx(0.042)
+
+    @pytest.mark.parametrize("p", [0.5, 0.9, 0.99])
+    def test_uniform_samples(self, p):
+        # All samples identical — every quantile must equal the sample.
+        t = Timer()
+        for _ in range(100):
+            t.add(0.005)
+        assert t.percentile(p) == pytest.approx(0.005)
+
+    def test_linearly_spaced_samples_within_kll_tolerance(self):
+        # 11 samples in [0.0, 1.0]. With k=200 the sketch is exact at
+        # this size; allow a small abs tolerance for safety.
+        t = Timer()
+        for v in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+            t.add(v)
+        assert t.percentile(0.0) == pytest.approx(0.0, abs=0.05)
+        assert t.percentile(0.5) == pytest.approx(0.5, abs=0.1)
+        assert t.percentile(0.9) == pytest.approx(0.9, abs=0.1)
+        assert t.percentile(1.0) == pytest.approx(1.0, abs=0.05)
+
+    def test_percentiles_are_monotonic(self):
+        # Across arbitrary quantiles, the sketch must return a
+        # monotonically non-decreasing sequence.
+        t = Timer()
+        for v in range(1, 1001):
+            t.add(float(v))
+        ps = [t.percentile(q) for q in [0.1, 0.25, 0.5, 0.75, 0.9, 0.99]]
+        assert ps == sorted(ps)
+
+    def test_bimodal_distribution(self):
+        # 80 samples at 5ms, 20 samples at 200ms.
+        #   true p50 = 5ms (50% of mass is at 5ms)
+        #   true p90 ≈ 200ms (top 20% of mass is at 200ms)
+        t = Timer()
+        for _ in range(80):
+            t.add(0.005)
+        for _ in range(20):
+            t.add(0.2)
+        assert t.percentile(0.5) == pytest.approx(0.005, abs=0.01)
+        assert t.percentile(0.9) == pytest.approx(0.2, abs=0.05)
+
+    def test_worker_scaling_regression_case(self):
+        # Regression test for the worker_scaling-scale workload that
+        # motivated proper percentile tracking. KLL-backed percentiles
+        # land close to the true distribution and stay monotonic.
+        t = Timer()
+        for v in [8.0, 9.0, 10.0, 11.0, 12.0] * 16:  # 80 in 8-12s
+            t.add(v)
+        for v in [15.0, 18.0, 22.0, 28.0] * 4:  # 16 in 15-28s
+            t.add(v)
+        for v in [35.0, 37.0]:
+            t.add(v)
+        max_v = t.max()
+        p50 = t.percentile(0.5)
+        p90 = t.percentile(0.9)
+        assert 0 < p50 <= p90 <= max_v
+        # p50 in the bulk (8-12s); p90 well into the tail.
+        assert 8.0 <= p50 <= 12.0
+        assert p90 >= 15.0
+
+    @pytest.mark.parametrize("bad_p", [-0.1, 1.1, 90, -1.0, 2.0])
+    def test_rejects_out_of_range_p(self, bad_p):
+        # Catch the common ``percentile(90)`` typo (instead of 0.9).
+        t = Timer()
+        t.add(0.005)
+        with pytest.raises(ValueError, match="p must be in"):
+            t.percentile(bad_p)
+
+    @pytest.mark.parametrize("ok_p", [0.0, 1.0])
+    def test_accepts_boundary_p(self, ok_p):
+        t = Timer()
+        t.add(0.005)
+        # Should not raise.
+        t.percentile(ok_p)
+
+    def test_cloudpickle_roundtrip(self):
+        # Regression: Timer is embedded in DatasetStats, which is
+        # cloudpickled when Datasets cross actor / process boundaries.
+        # The KLL sketch under DistributionTracker is C++-backed; an
+        # earlier version of this PR broke ``cloudpickle.dumps(ds)``
+        # with ``cannot pickle 'kll_doubles_sketch' object``.
+        import cloudpickle
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        t2 = cloudpickle.loads(cloudpickle.dumps(t))
+        assert t2.get() == pytest.approx(t.get())
+        assert t2.max() == pytest.approx(t.max())
+        assert t2.avg() == pytest.approx(t.avg())
+        # Percentiles must survive the round-trip.
+        assert t2.percentile(0.5) == pytest.approx(t.percentile(0.5))
+        assert t2.percentile(0.9) == pytest.approx(t.percentile(0.9))
+
+
+def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
+    # KLL-sketch percentile tracking is always on (bounded memory), so
+    # the percentile fields are populated end-to-end with no env-var
+    # gating. ``Dataset.materialize`` runs the streaming executor on a
+    # deep copy of the dataset, so stats land on the
+    # ``MaterializedDataset`` it returns — read stats from there.
+    mds = ray.data.range(100).map(lambda r: r).materialize()
+    summary = mds.get_stats_summary(detail=True)
+    p50 = summary.streaming_exec_schedule_p50_s
+    p90 = summary.streaming_exec_schedule_p90_s
+    schedule_max = summary.streaming_exec_schedule_max_s
+    # Percentiles are populated, monotonic, and bounded by max.
+    assert p90 > 0
+    assert 0 <= p50 <= p90 <= schedule_max
 
 
 if __name__ == "__main__":

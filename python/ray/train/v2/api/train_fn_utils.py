@@ -288,6 +288,10 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    return get_train_fn_utils().get_dataset_shard(
-        DatasetShardMetadata(dataset_name=dataset_name)
+    train_fn_utils = get_train_fn_utils()
+    return train_fn_utils.get_dataset_shard(
+        DatasetShardMetadata(
+            dataset_name=dataset_name,
+            world_rank=train_fn_utils.get_context().get_world_rank(),
+        )
     )
