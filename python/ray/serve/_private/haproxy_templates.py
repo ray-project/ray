@@ -294,7 +294,7 @@ backend grpc_fallback_backend
     # response body to contain the healthy message.
     option httpchk
     http-check connect proto h2
-    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr content-type application/grpc hdr te trailers body-lf "%{+bin}o%[bin(0000000000)]"
+    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr Host ray-serve-grpc hdr content-type application/grpc hdr te trailers
     http-check expect string {{ healthy_message }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to the fallback gRPC server.
@@ -333,7 +333,7 @@ backend {{ backend.name or 'unknown' }}
     # response body to contain the healthy message.
     option httpchk
     http-check connect proto h2
-    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr content-type application/grpc hdr te trailers body-lf "%{+bin}o%[bin(0000000000)]"
+    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr Host ray-serve-grpc hdr content-type application/grpc hdr te trailers
     http-check expect string {{ healthy_message }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
