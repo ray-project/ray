@@ -1,0 +1,22 @@
+diff --git a/vllm/v1/worker/gpu_worker.py b/vllm/v1/worker/gpu_worker.py
+index 259cd0555..24c31e80e 100644
+--- a/vllm/v1/worker/gpu_worker.py
++++ b/vllm/v1/worker/gpu_worker.py
+@@ -271,8 +271,15 @@ class Worker(WorkerBase):
+                     f"({visible_device_count})."
+                 )
+ 
+-            self.device = torch.device(f"cuda:{self.local_rank}")
+-            torch.accelerator.set_device_index(self.device)
++            physical_device_id = current_platform.device_id_to_physical_device_id(
++                self.local_rank
++            )
++            try:
++                self.device = torch.device(f"cuda:{physical_device_id}")
++                current_platform.set_device(self.device)
++            except RuntimeError:
++                self.device = torch.device(f"cuda:{self.local_rank}")
++                current_platform.set_device(self.device)
+ 
+             current_platform.check_if_supports_dtype(self.model_config.dtype)
+ 
