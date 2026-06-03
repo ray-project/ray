@@ -111,8 +111,12 @@ def _hash_partition(
         # Struct/list/map columns become dicts/lists in pandas, which are
         # unhashable. Use row-by-row hashing on PyArrow scalars instead.
         partitions = np.zeros((table.num_rows,), dtype=np.int64)
-        for i in range(table.num_rows):
-            _tuple = tuple(c[i] for c in table.columns)
+
+        # Hoist per-column lookups out of the row loop. Iterating columns in
+        # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
+        # of per-row __getitem__ calls, which avoids Python-side method dispatch
+        # on every element.
+        for i, _tuple in enumerate(zip(*table.columns)):
             partitions[i] = hash(_tuple) % num_partitions
     else:
         # Use pandas' vectorized hash (xxhash-based) instead of a Python
