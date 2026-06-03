@@ -1981,7 +1981,8 @@ void NodeManager::HandleRemovePlacementGroupBundles(
       absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
 
   // Return resources for the placement group bundles.
-  for (const auto &bundle_spec : request.bundle_specs()) {
+  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
+    BundleSpecification bundle_spec(rpc_bundle_spec);
     RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
         << "Remove batch must be scoped to a single placement group";
     RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
