@@ -782,9 +782,11 @@ class HAProxyApi(ProxyApi):
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process so we can ensure it's cleaned up during shutdown
+            # Track old process for cleanup; prune exited ones so the list
+            # stays bounded even when the proxy reloads but never drains.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
+            self._prune_old_procs()
 
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
@@ -1132,6 +1134,15 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
+    def _prune_old_procs(self) -> None:
+        """Drop references to old workers that have already exited."""
+        self._old_procs = [p for p in self._old_procs if p.returncode is None]
+
+    def has_alive_old_procs(self) -> bool:
+        """True if any soft-stopping HAProxy workers from prior reloads remain."""
+        self._prune_old_procs()
+        return len(self._old_procs) > 0
+
     async def disable(self) -> None:
         """Force haproxy health checks to fail."""
         try:
@@ -1415,19 +1426,22 @@ class HAProxyManager(ProxyActorInterface):
             self._draining_start_time = None
 
     async def is_drained(self, _after: Optional[Any] = None) -> bool:
-        """Check whether the haproxy is drained or not.
+        """Drained iff past min drain period AND no old workers still serving
+        AND current worker reports idle.
 
-        An haproxy is drained if it has no ongoing requests
-        AND it has been draining for more than
-        `PROXY_MIN_DRAINING_PERIOD_S` seconds.
+        The admin socket only sees the current (post-reload) worker; old
+        soft-stopping workers can still hold in-flight long-running requests
+        invisible to ``is_system_idle``. Gating on ``has_alive_old_procs``
+        prevents SIGKILL from severing those connections.
         """
         if not self._is_draining():
             return False
-
+        if (time.time() - self._draining_start_time) <= PROXY_MIN_DRAINING_PERIOD_S:
+            return False
+        if self._haproxy.has_alive_old_procs():
+            return False
         haproxy_stats = await self._haproxy.get_haproxy_stats()
-        return haproxy_stats.is_system_idle and (
-            (time.time() - self._draining_start_time) > PROXY_MIN_DRAINING_PERIOD_S
-        )
+        return haproxy_stats.is_system_idle
 
     async def check_health(self) -> bool:
         # If haproxy is already shutdown, return False.
