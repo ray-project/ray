@@ -299,11 +299,16 @@ class Reconciler:
             cloud_provider=cloud_provider,
         )
 
+        # Fix: Terminate instances before launching new ones
+        # This ensures that when launching new instances, the replica count
+        # does not include instances that are about to be terminated,
+        # preventing the maxReplicas limit from being incorrectly triggered.
+        Reconciler._terminate_instances(instance_manager=instance_manager)
+
         Reconciler._handle_instances_launch(
             instance_manager=instance_manager, autoscaling_config=autoscaling_config
         )
 
-        Reconciler._terminate_instances(instance_manager=instance_manager)
         if not autoscaling_config.disable_node_updaters():
             Reconciler._install_ray(
                 instance_manager=instance_manager,
