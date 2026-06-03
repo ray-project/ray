@@ -1980,14 +1980,6 @@ void NodeManager::HandleRemovePlacementGroupBundles(
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
       absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
 
-  // Return resources for the placement group bundles.
-  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
-    BundleSpecification bundle_spec(rpc_bundle_spec);
-    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
-        << "Remove batch must be scoped to a single placement group";
-    RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
-  }
-
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
   // will delete the element of `leased_workers_`. So we need to filter out
@@ -2011,6 +2003,14 @@ void NodeManager::HandleRemovePlacementGroupBundles(
     const auto &message = stream.str();
     RAY_LOG(DEBUG) << message;
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
+  }
+
+  // Return resources for the placement group bundles.
+  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
+    BundleSpecification bundle_spec(rpc_bundle_spec);
+    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
+        << "Remove batch must be scoped to a single placement group";
+    RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
   }
 
   cluster_lease_manager_.ScheduleAndGrantLeases();
