@@ -158,7 +158,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
   // successful, but the parent hasn't relayed it back to the GCS yet, we might mark a
   // finished task as failed. Fixing this would require maintaining the owner death data
   // for a detached actor and This can be fixed for detached actors if we see these
-  // instances happening for customers in future.
+  // instances happening frequently in the future.
   if (is_detached_actor_worker && is_graceful) {
     RAY_LOG(DEBUG) << "Worker " << worker_id
                    << " is a detached actor worker and exited gracefully ("
@@ -184,19 +184,6 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
   // detached actor (or a method call on one) must not be marked FAILED when the owner
   // dies. The detached actor's own worker death is handled by its own OnWorkerDead
   // invocation.
-  if (is_detached_actor_worker) {
-    RAY_LOG(DEBUG) << "Worker " << worker_id
-                   << " is a detached actor worker and exited ungracefully ("
-                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
-                   << "); marking root tasks failed and DFS-marking child tasks failed.";
-  } else {
-    RAY_LOG(DEBUG) << "Worker " << worker_id
-                   << " is a non-detached actor worker and exited ungracefully ("
-                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
-                   << "); DFS-marking child tasks failed. Reporting status of tasks "
-                      "running on this worker"
-                      "is their owner's responsibility";
-  }
   std::function<void(const TaskID &)> dfs_mark_failed = [&](const TaskID &task_id) {
     absl::flat_hash_map<TaskID,
                         absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>::iterator
@@ -226,14 +213,17 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
     }
   };
 
-  for (const auto &parent_task_locator : task_attempts_itr->second) {
+  if (is_detached_actor_worker) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " is a detached actor worker and exited ungracefully ("
+                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
+                   << "); marking root tasks failed and DFS-marking child tasks failed.";
     // For detached actor workers with ungraceful exit, also mark the root tasks as
     // FAILED. Unlike normal tasks where the root's owner reports its status, a
     // detached actor might have no surviving owner. Also since we skip marking detached
     // actors failed when any of its parents died, we should mark them dead now.
-
     // TODO(karticam): Same edge as mentioned above in the detached actor + graceful case.
-    if (is_detached_actor_worker) {
+    for (const auto &parent_task_locator : task_attempts_itr->second) {
       TaskID task_id =
           TaskID::FromBinary(parent_task_locator->GetTaskEventsMutable().task_id());
       error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
@@ -246,7 +236,18 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
                           worker_failure_data.exit_detail()));
       MarkTaskAttemptFailedIfNeeded(parent_task_locator, failed_ts_ns, error_info);
     }
+  } else {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " is a non-detached actor worker and exited ungracefully ("
+                   << rpc::WorkerExitType_Name(worker_failure_data.exit_type())
+                   << "); DFS-marking child tasks failed. Reporting status of tasks "
+                      "running on this worker "
+                      "is their owner's responsibility";
+  }
 
+  // DFS-mark children of every root task on this worker, for both detached and
+  // non-detached cases.
+  for (const auto &parent_task_locator : task_attempts_itr->second) {
     TaskID parent_task_id =
         TaskID::FromBinary(parent_task_locator->GetTaskEventsMutable().task_id());
     RAY_CHECK(!parent_task_id.IsNil());
@@ -379,7 +380,7 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
 
   // build parent->child index.
   if (task_events.has_task_info()) {
-    const auto &task_info = task_events.task_info();
+    const rpc::TaskInfoEntry &task_info = task_events.task_info();
     TaskID parent_task_id = TaskID::FromBinary(task_info.parent_task_id());
 
     if (!parent_task_id.IsNil()) {
@@ -426,7 +427,7 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
   }
 
   if (task_events.has_task_info()) {
-    const auto &task_info = task_events.task_info();
+    const rpc::TaskInfoEntry &task_info = task_events.task_info();
     TaskID parent_task_id = TaskID::FromBinary(task_info.parent_task_id());
     if (!parent_task_id.IsNil()) {
       auto child_tasks_itr = parent_to_child_index_.find(parent_task_id);

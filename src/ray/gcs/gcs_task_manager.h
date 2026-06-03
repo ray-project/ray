@@ -234,11 +234,13 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     /// failed time.
     void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
 
-    /// Mark tasks FAILED when a worker dies. Behavior depends on worker and exit type.
-    /// More explanations in the function definition.
-    ///
-    /// \param worker_id Worker ID
-    /// \param worker_failure_data Worker failure data.
+    /**
+     * Mark tasks FAILED when a worker dies. Behavior depends on worker and exit type.
+     * More explanations in the function definition.
+     *
+     * \param worker_id Worker ID
+     * \param worker_failure_data Worker failure data.
+     **/
     void MarkTaskLineageFailedOnWorkerDead(
         const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data);
 
@@ -467,10 +469,10 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     absl::flat_hash_map<WorkerID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
         worker_index_;
 
-    // Tracks a TaskId to its child tasks. Used by MarkChildTasksFailedOnWorkerDead to
-    // mark the task tree of owner FAILED on worker death. The should ideally be
+    // Tracks a TaskId to its child tasks. Used by MarkTaskLineageFailedOnWorkerDead to
+    // mark the task tree of owner FAILED on worker death. This should ideally be
     // TaskAttempt instead of TaskId, to mark only the child tasks that are created for
-    // that attempt as FAILED. But task events dont store parent task's attempt number
+    // that attempt as FAILED. But task events don't store parent task's attempt number
     // currently.
     //
     // TODO(karticam): Keying by TaskId rather than TaskAttempt can mark wrong tasks as
@@ -478,7 +480,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     // spawns new children before GCS processes the death notification. The map would
     // contain children from both attempts under the same TaskId. The DFS triggered by
     // attempt 0's death would then incorrectly mark attempt 1's live children as FAILED.
-    // Fix can be take in a separate PR.
+    // Fix can be taken in a separate PR.
     absl::flat_hash_map<TaskID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
         parent_to_child_index_;
 
