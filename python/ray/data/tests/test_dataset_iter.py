@@ -158,10 +158,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
     batch_size = 2
-    context = DataContext.get_current()
-    old_preserve_order = context.execution_options.preserve_order
+    old_preserve_order = ds.context.execution_options.preserve_order
     try:
-        context.execution_options.preserve_order = True
+        ds.context.execution_options.preserve_order = True
         batches = list(
             ds.iter_batches(
                 prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
@@ -186,7 +185,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
             assert isinstance(batch, pd.DataFrame)
             assert batch.equals(df)
     finally:
-        context.execution_options.preserve_order = old_preserve_order
+        ds.context.execution_options.preserve_order = old_preserve_order
 
     # Prefetch with ray.wait.
     context = DataContext.get_current()

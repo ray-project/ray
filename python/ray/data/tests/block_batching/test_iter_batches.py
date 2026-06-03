@@ -171,6 +171,7 @@ def test_iter_batches_e2e(
         batch_format="pandas",
         collate_fn=collate_fn,
         drop_last=drop_last,
+        preserve_order=True,
     )
 
     output_batches = list(output_batches)
@@ -235,10 +236,6 @@ def test_iter_batches_preserve_order_flag(
     out in input order even with a multi-worker format threadpool. When
     False, ordering is not guaranteed (but the full set of batches must
     still be produced)."""
-    from ray.data.context import DataContext
-
-    DataContext.get_current().execution_options.preserve_order = preserve_order
-
     # Variable per-batch collate cost makes worker-completion order
     # arbitrary so the reorder path actually does work when enabled.
     def collate_fn(batch):
@@ -255,6 +252,7 @@ def test_iter_batches_preserve_order_flag(
             collate_fn=collate_fn,
             batch_format="pandas",
             prefetch_batches=4,
+            preserve_order=preserve_order,
         )
     )
 
