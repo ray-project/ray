@@ -444,8 +444,11 @@ class TestResourceManager:
         operator; their usages must stay identical.
         """
         input = make_ref_bundles([[x] for x in range(1)])[0]
-        block_ref, block_meta = input.blocks[0]
-        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
+        entry = input.blocks[0]
+        input = replace(
+            input,
+            blocks=[BlockEntry(entry.ref, replace(entry.metadata, size_bytes=1))],
+        )
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)
