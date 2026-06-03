@@ -1205,10 +1205,6 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
-    def _prune_old_procs(self) -> None:
-        """Drop references to old workers that have already exited."""
-        self._old_procs = [p for p in self._old_procs if p.returncode is None]
-
     def has_alive_old_procs(self) -> bool:
         """True if any soft-stopping HAProxy workers from prior reloads remain."""
         self._prune_old_procs()
