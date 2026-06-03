@@ -643,8 +643,7 @@ void GcsPlacementGroupScheduler::Initialize(
 
 namespace {
 
-// Group a PG's bundles by the node they were placed on, so each entry can be
-// sent to its raylet in a single batched Cancel RPC.
+// Group a PG's bundles by the node they were placed on.
 absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
 GroupBundlesByNode(const BundleLocations &bundle_locations) {
   absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
