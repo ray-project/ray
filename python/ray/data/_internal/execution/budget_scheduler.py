@@ -164,6 +164,8 @@ class BudgetScheduler:
         Ties are broken by favoring downstream (later) operators.
 
         Only considers operators whose dispatch would stay within budget.
+        If no operator fits in budget but no tasks are running (deadlock),
+        forces the most downstream operator to ensure liveness.
 
         Args:
             ops_with_input: Mapping from operators that have pending input
@@ -191,7 +193,27 @@ class BudgetScheduler:
                 best_key = key
                 best_op = op
 
-        return best_op
+        if best_op is not None:
+            return best_op
+
+        # Liveness guarantee: if no operator was selected but there are
+        # candidates with pending input, force-dispatch the most downstream
+        # operator to drain data. This prevents deadlocks when the budget
+        # is nearly full.
+        if ops_with_input:
+            best_liveness_op = None
+            best_liveness_depth = -1
+            for op in ops_with_input:
+                task_cpus = self._get_task_cpus(op)
+                if task_cpus > self.available_cpus:
+                    continue
+                depth = self._get_topology_order(op)
+                if depth > best_liveness_depth:
+                    best_liveness_depth = depth
+                    best_liveness_op = op
+            return best_liveness_op
+
+        return None
 
     def _can_dispatch(self, op: Operator, input_bytes: int) -> bool:
         """Check if dispatching a task for this operator would stay in budget."""
