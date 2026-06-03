@@ -910,6 +910,12 @@ RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
+
+# Hold released replica ports out of the pool this long so proxies can
+# drop their stale slot before a new replica grabs the same port. 0 disables.
+RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
+    "RAY_SERVE_PORT_QUARANTINE_S", 10.0
+)
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.
