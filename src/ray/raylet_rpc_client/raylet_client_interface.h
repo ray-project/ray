@@ -117,11 +117,11 @@ class RayletClientInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
-  /// Request a raylet to remove the resources for one or more placement-group
-  /// bundles (called when a placement group is being destroyed). GCS batches all
-  /// of a placement group's bundles that landed on the same node into a single
-  /// RPC.
+  /// Request a raylet to remove the resources for one or more placement group
+  /// bundles.
+  ///
   /// \param placement_group_id The placement group whose bundles are being removed.
+  ///   All bundles in the request must belong to this placement group.
   /// \param bundle_specs Bundles to remove on this raylet. All must belong to
   ///   placement_group_id.
   virtual void RemovePlacementGroupBundles(
