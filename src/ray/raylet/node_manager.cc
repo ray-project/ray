@@ -1968,7 +1968,7 @@ void NodeManager::HandleRemovePlacementGroupBundles(
     rpc::SendReplyCallback send_reply_callback) {
   const auto pg_id = PlacementGroupID::FromBinary(request.placement_group_id());
   RAY_LOG(INFO) << "Got request to remove " << request.bundle_specs_size()
-                 << " bundle(s) for placement group " << pg_id;
+                << " bundle(s) for placement group " << pg_id;
 
   // Cancel all lease requests for the placement group removal.
   local_lease_manager_.CancelLeases(

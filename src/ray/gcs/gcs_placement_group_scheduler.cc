@@ -275,15 +275,22 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     return;
   }
 
-  RAY_LOG(DEBUG) << "Removing " << bundle_specs.size() << " bundle(s) for placement group "
-                 << placement_group_id << " at node " << node_id;
+  RAY_LOG(DEBUG) << "Removing " << bundle_specs.size()
+                 << " bundle(s) for placement group " << placement_group_id << " at node "
+                 << node_id;
   const auto raylet_client = GetRayletClientFromNode(node.value());
 
   raylet_client->RemovePlacementGroupBundles(
       placement_group_id,
       bundle_specs,
-      [this, placement_group_id, bundle_specs, node_id, node, max_retry, current_retry_cnt](
-          const Status &status, const rpc::RemovePlacementGroupBundlesReply &reply) {
+      [this,
+       placement_group_id,
+       bundle_specs,
+       node_id,
+       node,
+       max_retry,
+       current_retry_cnt](const Status &status,
+                          const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
                         << " bundle(s) for placement group " << placement_group_id
@@ -638,11 +645,9 @@ namespace {
 
 // Group a PG's bundles by the node they were placed on, so each entry can be
 // sent to its raylet in a single batched Cancel RPC.
-absl::flat_hash_map<NodeID,
-                    std::vector<std::shared_ptr<const BundleSpecification>>>
+absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
 GroupBundlesByNode(const BundleLocations &bundle_locations) {
-  absl::flat_hash_map<NodeID,
-                      std::vector<std::shared_ptr<const BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       bundles_per_node;
   for (const auto &iter : bundle_locations) {
     const auto &node_id = iter.second.first;
