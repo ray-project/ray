@@ -94,10 +94,17 @@ class PortAllocator:
 
         # Recovered replicas live in _allocated_ports but their ports are
         # still in _available_ports, so guard against re-handing them out.
+        # A recovered port released into quarantine is also still in the heap
+        # (update_port_if_missing never pops it), so guard against handing out
+        # a still-quarantined port too.
         allocated = set(self._allocated_ports.values())
         while self._available_ports:
             port = heapq.heappop(self._available_ports)
-            if port not in self._blocked_ports and port not in allocated:
+            if (
+                port not in self._blocked_ports
+                and port not in allocated
+                and port not in self._quarantined_ports
+            ):
                 self._allocated_ports[replica_id] = port
                 logger.info(
                     f"Allocated {self._protocol} port {port} to replica {replica_id} on node {self._node_id}"

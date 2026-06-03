@@ -276,5 +276,31 @@ def test_allocate_skips_recovered_port(port_range_constants):
     assert next_port != recovered
 
 
+def test_allocate_skips_quarantined_recovered_port(monkeypatch, port_range_constants):
+    """A port recovered via update_port_if_missing stays in the heap; once
+    released into quarantine it must not be handed out again until the
+    quarantine expires, even though it's still in _available_ports."""
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        60.0,
+    )
+    manager = NodePortManager.get_node_manager("node-recover-quarantine")
+    alloc = manager._http_allocator
+    # Recover at the smallest port so heappop would otherwise return it first.
+    recovered = port_range_constants["RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT"]
+    alloc.update_port_if_missing("replica-r", recovered)
+
+    # Release it: goes into quarantine but is still in the heap (recovery
+    # never popped it).
+    manager.release_port("replica-r", recovered, RequestProtocol.HTTP)
+    assert recovered in alloc._quarantined_ports
+    assert recovered in alloc._available_ports  # the invariant-violating state
+
+    # allocate() must not hand back the still-quarantined port.
+    next_port = manager.allocate_port("replica-new", RequestProtocol.HTTP)
+    assert next_port != recovered
+    assert recovered in alloc._quarantined_ports  # still held
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
