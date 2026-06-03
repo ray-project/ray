@@ -75,7 +75,7 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --python-version 3.10 --build-name corebuild-py3.10
@@ -90,7 +90,7 @@ steps:
       - dashboard
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/autoscaler/v2/... core
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{array.worker_id}}" --parallelism-per-worker 3
         --python-version {{array.python}} --build-name corebuild-py{{array.python}}
@@ -99,6 +99,27 @@ steps:
     array:
       python: ["3.12"]
       worker_id: ["0", "1", "2", "3"]
+
+  - block: "run dag tests"
+    key: block-dag-tests
+    depends_on: []
+
+  - label: ":ray: core: dag tests"
+    key: core_dag_tests
+    tags:
+      - python
+      - cgraphs_direct_transport
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... core
+        --install-mask all-ray-libraries
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --python-version 3.10 --build-name corebuild-py3.10
+        --only-tags ray_dag_tests,compiled_graphs
+        --except-tags custom_setup
+    depends_on:
+      - block-dag-tests
+      - corebuild-multipy(python=3.10)
 
   - label: ":ray: core: ray client tests"
     tags:
