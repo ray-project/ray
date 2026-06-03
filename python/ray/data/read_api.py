@@ -1299,7 +1299,7 @@ def read_parquet(
         https://github.com/apache/arrow/issues/39808. Since Ray Data re-uses workers
         for different operators, downstream tasks can look like they're using too much
         memory when they're not. By setting ``isolate_read_workers``, Ray Data ensures
-        downstream tasks run on distinct workers.
+        downstream tasks run on distinct workers without memory bloat.
 
         The tradeoff is that you might see a performance regression if Ray needs to
         restart more workers.
