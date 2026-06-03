@@ -707,7 +707,9 @@ def test_operator_metrics():
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
 
 
-@pytest.mark.parametrize("ray_remote_args", [{}, {"num_cpus": 0}, {"num_cpus": 1}])
+@pytest.mark.parametrize(
+    "ray_remote_args", [{}, {"num_cpus": 0}, {"num_cpus": 0.5}, {"num_cpus": 1}]
+)
 @pytest.mark.parametrize(
     "compute_strategy",
     [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],

@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import functools
 import logging
+import math
 import pickle
 import time
 from abc import ABC, abstractmethod
@@ -174,16 +175,16 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     Ray Data aims to guarantee that if you set each UDF's logical memory to at least
     the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
 
-    The problem is that this doesn't work without a default. If you set logical memory
-    for some UDFs but not others, the unspecified ones fall back to 0 and the system
-    oversubscribes anyway.
+    The problem is that if you set logical memory for some UDFs but not others, the
+    unspecified ones fall back to 0 and the system oversubscribes anyway.
 
     To avoid that, we default to ~2.57 GiB per CPU core. Here's where that magic number
     comes from: We want to pick the largest logical memory (so it's safe) that won't
-    decrease concurrency and cause performance regressions. Hyperscaler nodes usually
+    decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
     have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
-    30% for the object store and 10% for system-reserved memory. So, 4 GiB * (1 - 0.3 -
-    0.1) = 2.57 GiB.
+    30% for the object store and 10% for system-reserved memory. So, in the typical
+    case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
+    that's the highest you can go before you start decreasing concurrency.
 
     We use this heuristic over more sophisticated alternatives because a constant
     default is easy to reason about.
@@ -262,10 +263,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         if not num_cpus:
             # If the map tasks or actors don't require logical CPUs, just assume it
             # requires one logical CPU for the purpose of computing a default value.
-            default_memory = self.DEFAULT_LOGICAL_MEMORY_PER_CPU
+            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU)
         else:
-            default_memory = self.DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus
+            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
 
+        assert isinstance(default_memory, int), default_memory
+        assert default_memory > 0, default_memory
         ray_remote_args.setdefault("memory", default_memory)
 
     @functools.cached_property
