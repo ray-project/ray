@@ -1,3 +1,4 @@
+import copy
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -112,13 +113,25 @@ class TaskPoolMapOperator(MapOperator):
         # this property to implicitly ensure that this operator's tasks run on isolated
         # workers.
         if self._isolate_workers:
-            runtime_env = ray_remote_static_args.get("runtime_env", {})
-            env_vars = runtime_env.get("env_vars", {})
-            env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
-            runtime_env["env_vars"] = env_vars
-            ray_remote_static_args["runtime_env"] = runtime_env
+            ray_remote_static_args = self._add_unique_runtime_env(
+                ray_remote_static_args
+            )
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
+    def _add_unique_runtime_env(
+        self, ray_remote_args: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Return a copy of the remote args with a runtime env that's unique to this operator."""
+        ray_remote_args = copy.deepcopy(ray_remote_args)
+
+        runtime_env = ray_remote_args.get("runtime_env", {})
+        env_vars = ray_remote_args.get("env_vars", {})
+        env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
+        runtime_env["env_vars"] = env_vars
+
+        ray_remote_args["runtime_env"] = runtime_env
+        return ray_remote_args
 
     @property
     def isolate_workers(self) -> bool:
