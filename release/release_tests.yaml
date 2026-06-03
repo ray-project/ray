@@ -1341,17 +1341,21 @@
       cluster:
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
-- name: jobs_check_cuda_available
-  python: "3.10"
+- name: jobs_check_cuda_available_py{{python}}_{{cuda_version}}
+  python: "{{python}}"
   group: Jobs tests
   team: serve
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+      cuda_version: ["gpu", "gpu-cu130"]
 
   frequency: nightly
   working_dir: jobs_tests
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: "{{cuda_version}}"
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
