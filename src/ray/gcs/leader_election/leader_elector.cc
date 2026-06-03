@@ -65,23 +65,13 @@ void LeaderElector::Stop() {
   watchdog_cv_.notify_all();
   election_cv_.notify_all();
 
-  // Safely join background execution threads first. Enforce self-join checks to prevent
-  // deadlocks if Stop() is called from within callback loops.
+  // Safely join background execution threads first.
   if (election_thread_ && election_thread_->joinable()) {
-    if (std::this_thread::get_id() != election_thread_->get_id()) {
-      election_thread_->join();
-    } else {
-      election_thread_->detach();
-    }
+    election_thread_->join();
   }
   election_thread_.reset();
-
   if (watchdog_thread_ && watchdog_thread_->joinable()) {
-    if (std::this_thread::get_id() != watchdog_thread_->get_id()) {
-      watchdog_thread_->join();
-    } else {
-      watchdog_thread_->detach();
-    }
+    watchdog_thread_->join();
   }
   watchdog_thread_.reset();
 
@@ -202,12 +192,13 @@ void LeaderElector::Renew() {
     if (status.ok() && !renewed) {
       RAY_LOG(ERROR) << "Lease ownership has been acquired by another node. Stepping "
                         "down immediately.";
+      bool was_leading = false;
       {
         std::lock_guard<std::mutex> lock(watchdog_mutex_);
-        is_leading_ = false;
+        was_leading = is_leading_.exchange(false);
       }
       watchdog_cv_.notify_all();
-      if (config_.on_stopped_leading) {
+      if (was_leading && config_.on_stopped_leading) {
         config_.on_stopped_leading();
       }
       return;
@@ -253,14 +244,15 @@ void LeaderElector::WatchdogLoop() {
       RAY_LOG(ERROR) << "WATCHDOG: GCS leader lease renewal deadline exceeded ("
                      << elapsed_ms / 1000.0 << "s > " << config_.renew_deadline_seconds
                      << "s). Stepping down immediately!";
+      bool was_leading = false;
       {
         // Acquire election_mutex_ to prevent a lost wake-up race condition with the
         // election thread waiting on election_cv_.
         std::lock_guard<std::mutex> lock(election_mutex_);
-        is_leading_ = false;
+        was_leading = is_leading_.exchange(false);
       }
       election_cv_.notify_all();
-      if (config_.on_stopped_leading) {
+      if (was_leading && config_.on_stopped_leading) {
         // Note: In GCS, this callback is bound to immediately suicide-terminate the
         // GCS process (RAY_LOG(FATAL)) to prevent split-brain zombie writes to Redis.
         config_.on_stopped_leading();
