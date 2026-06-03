@@ -54,8 +54,9 @@ MAX_OVERHEAD = 0.15
 DATA_TASK_NAME_PREFIXES = ("MapBatches(", "Read", "Write")
 
 # Upper bound on tasks fetched via list_tasks. We print the scanned count
-# so the operator can spot truncation.
-LIST_TASKS_LIMIT = 200_000
+# so the operator can spot truncation. Going above this limit gives
+# RayStateApiException
+LIST_TASKS_LIMIT = 10_000
 
 
 def run_pipeline(subcluster: str, args: argparse.Namespace) -> None:
