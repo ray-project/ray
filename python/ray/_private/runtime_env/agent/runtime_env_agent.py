@@ -329,12 +329,18 @@ class RuntimeEnvAgent:
             if not env_var:
                 continue
 
-            if env_var in context.env_vars or env_var in os.environ:
+            if env_var in context.env_vars:
                 continue
 
             if resource_name in request.allocated_instances:
                 allocated_ids = list(request.allocated_instances[resource_name].ids)
-                allocated_ids_str = [str(i) for i in allocated_ids]
+                if env_var in os.environ:
+                    original_ids = os.environ[env_var].split(",")
+                    allocated_ids_str = [
+                        str(original_ids[int(i)]) for i in allocated_ids
+                    ]
+                else:
+                    allocated_ids_str = [str(i) for i in allocated_ids]
                 context.env_vars[env_var] = ",".join(allocated_ids_str)
             elif override_on_zero:
                 context.env_vars[env_var] = ""
