@@ -122,7 +122,9 @@ class TaskPoolMapOperator(MapOperator):
     def _add_unique_runtime_env(
         self, ray_remote_args: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Return a copy of the remote args with a runtime env that's unique to this operator."""
+        """Return a copy of the remote args with a runtime env that's unique to this
+        operator.
+        """
         ray_remote_args = copy.deepcopy(ray_remote_args)
 
         runtime_env = ray_remote_args.get("runtime_env", {})
