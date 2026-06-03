@@ -341,9 +341,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
 
-            Returns:
-                A ``MapOperator`` instance whose concrete subclass depends on the
-                requested compute strategy.
+        Returns:
+            A ``MapOperator`` instance whose concrete subclass depends on the
+            requested compute strategy.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
