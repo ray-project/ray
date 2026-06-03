@@ -102,8 +102,6 @@ class LeaderElector {
   std::mutex election_mutex_;
   std::atomic<int64_t> last_successful_renew_steady_ns_{0};
   std::string last_observed_leader_;
-
-  static constexpr std::chrono::milliseconds kWatchdogStandbySleepMs{100};
 };
 
 }  // namespace gcs
