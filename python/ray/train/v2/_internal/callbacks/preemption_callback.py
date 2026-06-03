@@ -4,11 +4,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError
 from ray.train.v2._internal.constants import (
     DEFAULT_PREEMPTION_POLL_INTERVAL_S,
     PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
-    PREEMPTION_WATCHER_STOP_TIMEOUT_S,
 )
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.preemption import PreemptionWatcher
@@ -38,6 +36,11 @@ class PreemptionCallback(WorkerGroupCallback):
         self._watcher: Optional[ActorHandle] = None
 
     def after_worker_group_start(self, worker_group: "WorkerGroup") -> None:
+        # Tear down any watcher from a previous worker group first. Worker-group
+        # startup can fail after this hook without running the shutdown hook, so
+        # this also prevents leaking an orphaned watcher across a reschedule.
+        self._stop_watcher()
+
         node_to_ranks: Dict[str, List[int]] = {}
         for w in worker_group.get_workers():
             if w.distributed_context is None:
@@ -64,21 +67,17 @@ class PreemptionCallback(WorkerGroupCallback):
         )
 
     def before_worker_group_shutdown(self, worker_group: "WorkerGroup") -> None:
+        self._stop_watcher()
+
+    def _stop_watcher(self) -> None:
         if self._watcher is None:
             return
         watcher = self._watcher
         self._watcher = None
-        try:
-            ray.get(watcher.stop.remote(), timeout=PREEMPTION_WATCHER_STOP_TIMEOUT_S)
-        except RayActorError:
-            logger.debug("PreemptionWatcher already exited before stop; ignoring.")
-        except Exception:
-            logger.warning(
-                "PreemptionWatcher.stop() did not complete within %.1fs; "
-                "killing actor.",
-                PREEMPTION_WATCHER_STOP_TIMEOUT_S,
-                exc_info=True,
-            )
+        # Force-kill rather than a graceful ``ray.get(stop.remote())`` so we
+        # never block the controller's event loop on a synchronous wait. The
+        # watcher's daemon poll thread dies with the actor process and holds no
+        # external resources, so there's nothing to flush.
         try:
             ray.kill(watcher)
         except Exception:

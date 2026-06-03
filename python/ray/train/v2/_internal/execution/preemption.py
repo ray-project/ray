@@ -98,42 +98,46 @@ class PreemptionWatcher:
         """
         per_node = {nid: sorted(set(ranks)) for nid, ranks in node_to_ranks.items()}
 
+        # Wrap the whole build: any failure (GCS unavailable, a malformed node
+        # entry, a TPU-label lookup error) must fall back to per-node domains
+        # rather than fail the actor's __init__ — which, under max_restarts=-1,
+        # would otherwise spin in a restart loop.
         try:
             all_nodes = ray.nodes()
+
+            # Slice label for each node we host (None for non-TPU nodes).
+            node_to_slice: Dict[str, Optional[str]] = {
+                node["NodeID"]: get_tpu_slice_name_from_node(node)
+                for node in all_nodes
+                if node["NodeID"] in node_to_ranks
+            }
+
+            # Union our ranks per slice.
+            slice_to_ranks: Dict[str, Set[int]] = {}
+            for node_id, ranks in node_to_ranks.items():
+                slice_label = node_to_slice.get(node_id)
+                if slice_label:
+                    slice_to_ranks.setdefault(slice_label, set()).update(ranks)
+
+            # Non-TPU cluster (or none of our nodes are on a slice): per-node.
+            if not slice_to_ranks:
+                return per_node
+
+            result: Dict[str, List[int]] = {}
+            for node_id, ranks in node_to_ranks.items():
+                slice_label = node_to_slice.get(node_id)
+                if slice_label:
+                    result[node_id] = sorted(slice_to_ranks[slice_label])
+                else:
+                    result[node_id] = sorted(set(ranks))
+            return result
         except Exception:
             logger.debug(
-                "Could not read ray.nodes(); failure-domain map will be "
-                "per-node (no TPU-slice expansion).",
+                "Could not build failure-domain map; falling back to per-node "
+                "domains (no TPU-slice expansion).",
                 exc_info=True,
             )
             return per_node
-
-        # Slice label for each node we host (None for non-TPU nodes).
-        node_to_slice: Dict[str, Optional[str]] = {
-            node["NodeID"]: get_tpu_slice_name_from_node(node)
-            for node in all_nodes
-            if node["NodeID"] in node_to_ranks
-        }
-
-        # Union our ranks per slice.
-        slice_to_ranks: Dict[str, Set[int]] = {}
-        for node_id, ranks in node_to_ranks.items():
-            slice_label = node_to_slice.get(node_id)
-            if slice_label:
-                slice_to_ranks.setdefault(slice_label, set()).update(ranks)
-
-        # Non-TPU cluster (or none of our nodes are on a slice): per-node domains.
-        if not slice_to_ranks:
-            return per_node
-
-        result: Dict[str, List[int]] = {}
-        for node_id, ranks in node_to_ranks.items():
-            slice_label = node_to_slice.get(node_id)
-            if slice_label:
-                result[node_id] = sorted(slice_to_ranks[slice_label])
-            else:
-                result[node_id] = sorted(set(ranks))
-        return result
 
     def stop(self) -> None:
         """Signal the poll loop to exit and wait for the thread to join."""
@@ -164,7 +168,7 @@ class PreemptionWatcher:
         doesn't kill the watcher loop.
         """
         try:
-            drained = self._drain_source()
+            drained = self._drain_source() or {}
             # Filter out drains for nodes not in training run.
             relevant = {
                 n: d for n, d in drained.items() if n in self._failure_domain_map
@@ -190,8 +194,10 @@ class PreemptionWatcher:
         )
 
         # Earliest non-zero deadline wins; 0 means "unknown" when no node
-        # reported a deadline.
-        nonzero_deadlines = [drained[n] for n in affected_node_ids if drained[n] > 0]
+        # reported a deadline. ``or 0`` guards against a None/missing value.
+        nonzero_deadlines = [
+            drained[n] for n in affected_node_ids if (drained[n] or 0) > 0
+        ]
         deadline_ms = min(nonzero_deadlines) if nonzero_deadlines else 0
 
         info = PreemptionInfo(

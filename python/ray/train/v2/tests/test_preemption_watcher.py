@@ -62,6 +62,8 @@ class TestPreemptionWatcher:
             ),
             # deadline_ms=0 is preserved as 0 (unknown), per Ray Core's convention.
             ({"node-a": [0]}, {"node-a": 0}, ["node-a"], [0], 0),
+            # A None deadline is treated as unknown (0) rather than raising.
+            ({"node-a": [0]}, {"node-a": None}, ["node-a"], [0], 0),
         ],
     )
     def test_drain_produces_info(
@@ -96,6 +98,16 @@ class TestPreemptionWatcher:
         watcher._poll_once()  # must not raise
         assert watcher.get_latest_info() is None
 
+    def test_none_drain_source_is_safe(self):
+        """A drain source returning None is treated as no drains."""
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0]},
+            fd_map={"node-a": [0]},
+            drain_source=lambda: None,
+        )
+        watcher._poll_once()  # must not raise
+        assert watcher.get_latest_info() is None
+
 
 class TestBuildFailureDomainMap:
     def test_falls_back_on_ray_nodes_error(self, monkeypatch):
@@ -110,6 +122,17 @@ class TestBuildFailureDomainMap:
             {"node-a": [0, 1], "node-b": [2, 3]}
         )
         assert result == {"node-a": [0, 1], "node-b": [2, 3]}
+
+    def test_falls_back_on_slice_lookup_error(self):
+        """If the TPU slice lookup raises, fall back to per-node domains."""
+        import ray
+
+        with patch.object(ray, "nodes", return_value=[{"NodeID": "node-a"}]), patch(
+            f"{_PREEMPTION_MOD}.get_tpu_slice_name_from_node",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = PreemptionWatcher._build_failure_domain_map({"node-a": [0, 1]})
+        assert result == {"node-a": [0, 1]}
 
     @pytest.mark.parametrize(
         "node_to_ranks, slice_labels, cluster_node_ids, expected",
