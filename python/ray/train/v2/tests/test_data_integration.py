@@ -89,7 +89,7 @@ def test_data_config_validation():
     with pytest.raises(TypeError, match="`datasets_to_split` should be.*"):
         ray.train.DataConfig(datasets_to_split="hello")
     with pytest.raises(TypeError, match="`datasets_to_split` should be.*"):
-        ray.train.DataConfig(datasets_to_split={})
+        ray.train.DataConfig(datasets_to_split={"train": False})
 
 
 def test_datasets_callback(ray_start_4_cpus):
@@ -206,6 +206,43 @@ def test_configure_locality(enable_shard_locality):
         world_size,
         equal=True,
         locality_hints=worker_node_ids if enable_shard_locality else None,
+    )
+
+
+def test_configure_per_dataset_split_config():
+    data_config = ray.train.DataConfig(
+        datasets_to_split={
+            "train": ray.train.SplitConfig(),
+            "eval": ray.train.SplitConfig(equal=False, enable_shard_locality=False),
+        }
+    )
+
+    mock_train = MagicMock()
+    mock_train.streaming_split = MagicMock()
+    mock_train.copy = MagicMock(return_value=mock_train)
+
+    mock_eval = MagicMock()
+    mock_eval.streaming_split = MagicMock()
+    mock_eval.copy = MagicMock(return_value=mock_eval)
+
+    world_size = 2
+    worker_node_ids = ["node0", "node1"]
+    data_config.configure(
+        datasets={"train": mock_train, "eval": mock_eval},
+        world_size=world_size,
+        worker_handles=None,
+        worker_node_ids=worker_node_ids,
+    )
+
+    mock_train.streaming_split.assert_called_once_with(
+        world_size,
+        equal=True,
+        locality_hints=worker_node_ids,
+    )
+    mock_eval.streaming_split.assert_called_once_with(
+        world_size,
+        equal=False,
+        locality_hints=None,
     )
 
 

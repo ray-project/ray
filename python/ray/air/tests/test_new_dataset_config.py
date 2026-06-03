@@ -12,7 +12,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.tests.conftest import *  # noqa
-from ray.train import DataConfig, ScalingConfig
+from ray.train import DataConfig, ScalingConfig, SplitConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -116,7 +116,7 @@ def test_split(ray_start_4_cpus):
     test.fit()
 
     # Test invalid arguments
-    for datasets_to_split in ["train", ("train"), {}]:
+    for datasets_to_split in ["train", ("train"), {"train": False}]:
         with pytest.raises(TypeError, match="`datasets_to_split` should be.*"):
             test = TestBasic(
                 2,
@@ -133,6 +133,16 @@ def test_split(ray_start_4_cpus):
         {"train": 10, "test": 10},
         datasets={"train": ds, "test": ds},
         dataset_config=DataConfig(datasets_to_split=[]),
+    )
+    test.fit()
+
+    # Test empty `datasets_to_split` dict
+    test = TestBasic(
+        2,
+        True,
+        {"train": 10, "test": 10},
+        datasets={"train": ds, "test": ds},
+        dataset_config=DataConfig(datasets_to_split={}),
     )
     test.fit()
 
@@ -181,6 +191,12 @@ def test_unequal_split_datasets_invalid():
     for invalid_value in ["train", ("train",), {}]:
         with pytest.raises(TypeError, match="`unequal_split_datasets` should be.*"):
             DataConfig(unequal_split_datasets=invalid_value)
+
+    with pytest.raises(
+        ValueError,
+        match="`unequal_split_datasets` cannot be combined with dict-based",
+    ):
+        DataConfig(datasets_to_split={}, unequal_split_datasets=["eval"])
 
 
 @pytest.mark.parametrize(
@@ -248,6 +264,44 @@ def test_configure_per_dataset_unequal_split():
         world_size,
         equal=False,
         locality_hints=worker_node_ids,
+    )
+
+
+def test_configure_per_dataset_split_config():
+    """Test that dict-based split config applies per-dataset split behavior."""
+    data_config = DataConfig(
+        datasets_to_split={
+            "train": SplitConfig(),
+            "eval": SplitConfig(equal=False, enable_shard_locality=False),
+        }
+    )
+
+    mock_train = MagicMock()
+    mock_train.streaming_split = MagicMock()
+    mock_train.copy = MagicMock(return_value=mock_train)
+
+    mock_eval = MagicMock()
+    mock_eval.streaming_split = MagicMock()
+    mock_eval.copy = MagicMock(return_value=mock_eval)
+
+    world_size = 2
+    worker_node_ids = ["node0", "node1"]
+    data_config.configure(
+        datasets={"train": mock_train, "eval": mock_eval},
+        world_size=world_size,
+        worker_handles=None,
+        worker_node_ids=worker_node_ids,
+    )
+
+    mock_train.streaming_split.assert_called_once_with(
+        world_size,
+        equal=True,
+        locality_hints=worker_node_ids,
+    )
+    mock_eval.streaming_split.assert_called_once_with(
+        world_size,
+        equal=False,
+        locality_hints=None,
     )
 
 

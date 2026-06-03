@@ -1,6 +1,7 @@
 import copy
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 from ray.actor import ActorHandle
@@ -8,6 +9,23 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+
+
+@PublicAPI(stability="stable")
+@dataclass(frozen=True)
+class SplitConfig:
+    """Per-dataset split behavior for Train datasets.
+
+    Args:
+        equal: Whether the dataset should be split equally across workers.
+            When true, Ray Data may drop up to ``world_size - 1`` rows from
+            the tail to keep worker shard lengths aligned.
+        enable_shard_locality: Per-dataset override for shard locality.
+            If unset, falls back to ``DataConfig(enable_shard_locality=...)``.
+    """
+
+    equal: bool = True
+    enable_shard_locality: Optional[bool] = None
 
 
 @PublicAPI(stability="stable")
@@ -20,7 +38,9 @@ class DataConfig:
 
     def __init__(
         self,
-        datasets_to_split: Union[Literal["all"], List[str]] = "all",
+        datasets_to_split: Union[
+            Literal["all"], List[str], Dict[str, SplitConfig]
+        ] = "all",
         unequal_split_datasets: Optional[List[str]] = None,
         execution_options: Optional[
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
@@ -31,14 +51,19 @@ class DataConfig:
 
         Args:
             datasets_to_split: Specifies which datasets should be split among workers.
-                Can be set to "all" or a list of dataset names. Defaults to "all",
-                i.e. split all datasets.
+                Can be set to "all", a list of dataset names, or a dict mapping
+                dataset names to ``SplitConfig``. Dict-based configuration enables
+                per-dataset control over equal splitting and shard locality while
+                preserving the existing list-based API. Defaults to "all", i.e.
+                split all datasets with the global defaults.
             unequal_split_datasets: Specifies which datasets should use unequal
                 splitting (``equal=False``). By default, all datasets use equal
                 splitting (``equal=True``) for backward compatibility. List datasets
                 here that should NOT drop rows during splitting, such as evaluation
                 or batch inference datasets. Only datasets that are also in
-                ``datasets_to_split`` are affected.
+                ``datasets_to_split`` are affected. This is a legacy compatibility
+                option; use ``datasets_to_split={name: SplitConfig(equal=False)}``
+                for new code.
             execution_options: The execution options to pass to Ray Data. Can be either:
                 1. A single ExecutionOptions object that is applied to all datasets.
                 2. A dict mapping dataset names to ExecutionOptions. If a dataset name
@@ -50,13 +75,38 @@ class DataConfig:
         """
         from ray.data import ExecutionOptions
 
-        if isinstance(datasets_to_split, list) or datasets_to_split == "all":
+        self._dataset_split_configs: Dict[str, SplitConfig] = {}
+        using_dict_split_config = isinstance(datasets_to_split, dict)
+        if using_dict_split_config:
+            invalid_dataset_names = [
+                name for name in datasets_to_split if not isinstance(name, str)
+            ]
+            invalid_split_configs = [
+                config
+                for config in datasets_to_split.values()
+                if not isinstance(config, SplitConfig)
+            ]
+            if invalid_dataset_names or invalid_split_configs:
+                raise TypeError(
+                    "`datasets_to_split` should be 'all', a list of strings of "
+                    "dataset names, or a dict of dataset names to SplitConfig. "
+                    f"Received value {datasets_to_split}."
+                )
+            self._datasets_to_split = list(datasets_to_split.keys())
+            self._dataset_split_configs = dict(datasets_to_split)
+        elif isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
         else:
             raise TypeError(
-                "`datasets_to_split` should be a 'all' or a list of strings of "
-                "dataset names. Received "
+                "`datasets_to_split` should be 'all', a list of strings of "
+                "dataset names, or a dict of dataset names to SplitConfig. Received "
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
+            )
+
+        if unequal_split_datasets and using_dict_split_config:
+            raise ValueError(
+                "`unequal_split_datasets` cannot be combined with dict-based "
+                "`datasets_to_split`. Use SplitConfig(equal=False) instead."
             )
 
         if unequal_split_datasets is None:
@@ -85,6 +135,23 @@ class DataConfig:
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
+
+    def _get_dataset_split_config(self, dataset_name: str) -> SplitConfig:
+        """Return the effective split config for a dataset."""
+        split_config = self._dataset_split_configs.get(dataset_name)
+        if split_config is not None:
+            enable_shard_locality = split_config.enable_shard_locality
+            if enable_shard_locality is None:
+                enable_shard_locality = self._enable_shard_locality
+            return SplitConfig(
+                equal=split_config.equal,
+                enable_shard_locality=enable_shard_locality,
+            )
+
+        return SplitConfig(
+            equal=dataset_name not in set(self._unequal_split_datasets),
+            enable_shard_locality=self._enable_shard_locality,
+        )
 
     def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
         """Set the total number of CPUs and GPUs used by training.
@@ -138,10 +205,6 @@ class DataConfig:
         else:
             datasets_to_split = set(self._datasets_to_split)
 
-        # Datasets in unequal_split_datasets use equal=False, all others use equal=True
-        unequal_split_set = set(self._unequal_split_datasets)
-
-        locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
             execution_options = self._get_execution_options(name)
 
@@ -159,10 +222,15 @@ class DataConfig:
             ds.context.execution_options = execution_options
 
             if name in datasets_to_split:
-                equal = name not in unequal_split_set
+                split_config = self._get_dataset_split_config(name)
+                locality_hints = (
+                    worker_node_ids if split_config.enable_shard_locality else None
+                )
                 for i, split in enumerate(
                     ds.streaming_split(
-                        world_size, equal=equal, locality_hints=locality_hints
+                        world_size,
+                        equal=split_config.equal,
+                        locality_hints=locality_hints,
                     )
                 ):
                     output[i][name] = split
