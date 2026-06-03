@@ -1072,10 +1072,10 @@ class TaskSummaries:
         total_actor_scheduled = 0
 
         for task in tasks:
-            key = task["func_or_class_name"]
+            key = task["name"] or task["func_or_class_name"]
             if key not in summary:
                 summary[key] = TaskSummaryPerFuncOrClassName(
-                    func_or_class_name=task["func_or_class_name"],
+                    func_or_class_name=key,
                     type=task["type"],
                 )
             task_summary = summary[key]
