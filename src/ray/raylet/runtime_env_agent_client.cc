@@ -28,6 +28,7 @@
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -440,14 +441,27 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     // Copy resource_requirements
     auto mutable_reqs = request.mutable_resource_requirements();
     for (const auto &[id, quantity] : resource_requirements.Resources()) {
-      (*mutable_reqs)[id.Binary()] = quantity.Double();
+      std::string resource_name = id.Binary();
+      auto parsed = ParsePgFormattedResource(
+          resource_name, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
+      if (parsed) {
+        resource_name = parsed->original_resource;
+      }
+      (*mutable_reqs)[resource_name] += quantity.Double();
     }
 
     // Copy allocated_instances
     auto mutable_allocated = request.mutable_allocated_instances();
     if (allocated_instances) {
       for (const auto &resource_id : allocated_instances->ResourceIds()) {
-        if (resource_id.IsUnitInstanceResource()) {
+        std::string resource_name = resource_id.Binary();
+        auto parsed = ParsePgFormattedResource(
+            resource_name, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
+        if (parsed) {
+          resource_name = parsed->original_resource;
+        }
+        ResourceID original_resource_id(resource_name);
+        if (original_resource_id.IsUnitInstanceResource()) {
           const auto &instances = allocated_instances->Get(resource_id);
           rpc::ResourceIDs ids;
           for (size_t i = 0; i < instances.size(); i++) {
@@ -456,7 +470,19 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
             }
           }
           if (ids.ids_size() > 0) {
-            (*mutable_allocated)[resource_id.Binary()] = std::move(ids);
+            auto &existing_ids = (*mutable_allocated)[resource_name];
+            for (int64_t id : ids.ids()) {
+              bool duplicate = false;
+              for (int64_t existing_id : existing_ids.ids()) {
+                if (existing_id == id) {
+                  duplicate = true;
+                  break;
+                }
+              }
+              if (!duplicate) {
+                existing_ids.add_ids(id);
+              }
+            }
           }
         }
       }
