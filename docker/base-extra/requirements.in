@@ -1,4 +1,5 @@
 azure-identity
+datasketches
 jupyterlab
 ipywidgets
 grpcio
