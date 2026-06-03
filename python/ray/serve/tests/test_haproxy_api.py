@@ -2298,6 +2298,60 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
         await api.stop()
 
 
+@pytest.mark.asyncio
+async def test_std_streams_redirected_to_files(haproxy_api_cleanup):
+    """Both HAProxy stdout and stderr must be files (not PIPEs) so a
+    full 64KB kernel pipe buffer can never block admin-socket threads
+    under load. Each spawn gets its own files so a reload doesn't lose
+    the prior worker's diagnostics.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            pass_health_checks=True,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            has_received_routes=True,
+            has_received_servers=True,
+            reload_id=f"initial-{int(time.time() * 1000)}",
+        )
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+        haproxy_api_cleanup(api)
+
+        await api.start()
+        first_stderr = api._proc._stderr_path
+        first_stdout = api._proc._stdout_path
+        # No pipes — both streams went to files.
+        assert api._proc.stderr is None
+        assert api._proc.stdout is None
+        # HAProxy's -db startup banner landed on stderr.
+        assert os.path.getsize(first_stderr) > 0
+        # stdout file exists even if it stays empty by default.
+        assert os.path.exists(first_stdout)
+
+        # Reload must open new files so the prior worker's logs survive.
+        config.reload_id = f"reload-{int(time.time() * 1000)}"
+        await api._graceful_reload()
+        assert api._proc.stderr is None
+        assert api._proc.stdout is None
+        assert api._proc._stderr_path != first_stderr
+        assert api._proc._stdout_path != first_stdout
+        assert os.path.exists(first_stderr)
+        assert os.path.exists(first_stdout)
+
+        await api.stop()
+
+
 def _bare_haproxy_manager():
     """An uninitialized HAProxyManager for unit-testing its methods.
 
@@ -2346,6 +2400,52 @@ async def test_is_drained_false_before_min_period():
     )
 
     assert await manager.is_drained() is False
+
+
+@pytest.mark.asyncio
+async def test_failed_spawn_retires_log_files(monkeypatch):
+    """A spawn that fails startup must not orphan its std-stream log files —
+    they should be retired into the bounded ring like an exited worker's."""
+
+    class _FakeProc:
+        def __init__(self):
+            self.returncode = None
+            self.pid = 4321
+
+        def kill(self):
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def _fake_exec(*args, **kwargs):
+        return _FakeProc()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+
+        monkeypatch.setattr(
+            "ray.serve._private.haproxy.get_haproxy_binary", lambda: "haproxy"
+        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+
+        async def _boom(proc, timeout_s=5):
+            raise RuntimeError("startup failed")
+
+        monkeypatch.setattr(api, "_wait_for_hap_availability", _boom)
+
+        with pytest.raises(RuntimeError, match="startup failed"):
+            await api._start_and_wait_for_haproxy()
+
+        # The failed spawn's files were created then retired into the ring,
+        # not left orphaned on disk.
+        assert len(api._retired_logs) == 1
+        stdout_path, stderr_path = api._retired_logs[0]
+        assert stdout_path.endswith(".stdout.log")
+        assert stderr_path.endswith(".stderr.log")
 
 
 if __name__ == "__main__":

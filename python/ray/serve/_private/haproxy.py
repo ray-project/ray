@@ -10,6 +10,7 @@ import shutil
 import string
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -161,6 +162,17 @@ def _write_if_changed(path: str, content: str) -> bool:
     with open(path, "w") as f:
         f.write(content)
     return True
+
+
+def _tail_file(path: str, n_bytes: int = 4096) -> str:
+    """Return up to the last ``n_bytes`` of ``path``, or "" on any error."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - n_bytes))
+            return f.read().decode("utf-8", errors="ignore").strip()
+    except OSError:
+        return ""
 
 
 def get_haproxy_binary() -> str:
@@ -680,6 +692,19 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        # Per-spawn counter for stdout/stderr file names.
+        self._spawn_seq: int = 0
+        # Unique per actor incarnation. A restart resets _spawn_seq to 0, so
+        # without this a new incarnation would reuse — and (wb) truncate — the
+        # previous one's log files. The actor PID changes on every restart.
+        self._log_id: int = os.getpid()
+        # Debug ring of (stdout_path, stderr_path) for the most recently
+        # exited workers. Files for still-alive workers are never touched
+        # (their fds are still writing); once a worker exits its files are
+        # retired here and the oldest beyond the cap are deleted, so the
+        # file count stays bounded instead of growing with every reload.
+        self._retired_logs: "deque[Tuple[str, str]]" = deque()
+        self._max_retained_logs: int = 10
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -696,6 +721,10 @@ class HAProxyApi(ProxyApi):
         # Create a socket directory
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
+
+        # Sweep std-stream logs left by a previous incarnation on this node.
+        # No worker has spawned yet, so any match belongs to a dead actor.
+        self._sweep_stale_logs()
 
         # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
@@ -714,6 +743,52 @@ class HAProxyApi(ProxyApi):
 
         self.cfg.error_file_path = error_file_path
 
+    def _sweep_stale_logs(self) -> None:
+        """Delete std-stream log files left by a previous actor incarnation.
+
+        Called at init before any worker spawns, so every match belongs to a
+        dead actor (a crash-restart can't run the normal prune on its way out).
+        """
+        socket_path = Path(self.cfg.socket_path)
+        for pattern in (
+            f"{socket_path.name}.*.stdout.log",
+            f"{socket_path.name}.*.stderr.log",
+        ):
+            for stale in socket_path.parent.glob(pattern):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+
+    def _prune_old_procs(self) -> None:
+        """Drop exited workers from ``_old_procs`` and bound their log files.
+
+        A still-alive (draining) worker is kept untouched — its fd is still
+        writing to its file. When a worker has exited, its (stdout, stderr)
+        files are retired into a fixed-size ring kept for post-mortem
+        debugging; files that fall off the end of the ring are deleted, so the
+        file count stays bounded instead of growing with every reload.
+        """
+        still_alive = []
+        for p in self._old_procs:
+            if p.returncode is None:
+                still_alive.append(p)
+                continue
+            self._retire_log_files(p)
+        self._old_procs = still_alive
+
+    def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
+        """Move an exited proc's std-stream logs into the bounded debug ring,
+        deleting the oldest pair once the ring exceeds its cap. Only call this
+        for procs that have exited — their fds must be closed."""
+        self._retired_logs.append((proc._stdout_path, proc._stderr_path))
+        while len(self._retired_logs) > self._max_retained_logs:
+            for path in self._retired_logs.popleft():
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
     def _is_running(self) -> bool:
         """Check if the HAProxy process is still running."""
         return self._proc is not None and self._proc.returncode is None
@@ -731,12 +806,24 @@ class HAProxyApi(ProxyApi):
         # Add any extra args (like -sf for graceful reload)
         args.extend(extra_args)
 
-        logger.debug(f"Starting HAProxy with args: {args}")
-
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # Redirect both std streams to files → no 64KB pipe buffer to deadlock on.
+        self._spawn_seq += 1
+        base = f"{self.cfg.socket_path}.{self._log_id}.{self._spawn_seq}"
+        stdout_path = f"{base}.stdout.log"
+        stderr_path = f"{base}.stderr.log"
+        with open(stdout_path, "wb", buffering=0) as stdout_file, open(
+            stderr_path, "wb", buffering=0
+        ) as stderr_file:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=stdout_file,
+                stderr=stderr_file,
+            )
+        proc._stdout_path = stdout_path
+        proc._stderr_path = stderr_path
+        logger.info(
+            f"Starting HAProxy (spawn #{self._spawn_seq}, pid={proc.pid}, "
+            f"stdout={stdout_path}, stderr={stderr_path}); args={args}"
         )
 
         try:
@@ -746,6 +833,9 @@ class HAProxyApi(ProxyApi):
             if proc.returncode is None:
                 proc.kill()
                 await proc.wait()
+            # The proc has exited; retire its log files so a failed start/reload
+            # doesn't orphan them outside the bounded ring.
+            self._retire_log_files(proc)
             raise
 
         return proc
@@ -774,8 +864,8 @@ class HAProxyApi(ProxyApi):
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process for cleanup; prune exited ones so the list
-            # stays bounded even when the proxy reloads but never drains.
+            # Track old process for shutdown cleanup, then prune exited ones so
+            # the list and the log files on disk stay bounded across reloads.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
             self._prune_old_procs()
@@ -795,12 +885,10 @@ class HAProxyApi(ProxyApi):
         # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
-                stdout = await proc.stdout.read() if proc.stdout else b""
-                stderr = await proc.stderr.read() if proc.stderr else b""
-                output = (
-                    stderr.decode("utf-8", errors="ignore").strip()
-                    or stdout.decode("utf-8", errors="ignore").strip()
-                )
+                # Both streams were redirected to files at spawn; tail them.
+                stderr_text = _tail_file(proc._stderr_path)
+                stdout_text = _tail_file(proc._stdout_path)
+                output = stderr_text or stdout_text
 
                 raise RuntimeError(
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
@@ -1125,10 +1213,6 @@ class HAProxyApi(ProxyApi):
             await self._graceful_reload()
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
-
-    def _prune_old_procs(self) -> None:
-        """Drop references to old workers that have already exited."""
-        self._old_procs = [p for p in self._old_procs if p.returncode is None]
 
     def has_alive_old_procs(self) -> bool:
         """True if any soft-stopping HAProxy workers from prior reloads remain."""
