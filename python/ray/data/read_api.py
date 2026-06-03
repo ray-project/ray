@@ -8,6 +8,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
     Literal,
     Optional,
@@ -3616,7 +3617,9 @@ def from_numpy_refs(
 
 @PublicAPI
 def from_arrow(
-    tables: Union["pyarrow.Table", bytes, List[Union["pyarrow.Table", bytes]]],
+    tables: Union[
+        "pyarrow.Table", bytes, Iterable[Union["pyarrow.Table", bytes]]
+    ],
     *,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
@@ -3651,10 +3654,27 @@ def from_arrow(
         ╰───────╯
         (Showing 2 of 2 rows)
 
+        You can also pass any iterable (for example, a generator) of PyArrow
+        tables. This is useful when the tables are produced lazily and don't all
+        fit in memory at once, since the tables are moved to the Ray object store
+        one at a time instead of being buffered in a list.
+
+        >>> ray.data.from_arrow(table for _ in range(2))  # doctest: +ELLIPSIS
+        shape: (2, 1)
+        ╭───────╮
+        │ x     │
+        │ ---   │
+        │ int64 │
+        ╞═══════╡
+        │ 1     │
+        │ 1     │
+        ╰───────╯
+        (Showing 2 of 2 rows)
+
 
     Args:
-        tables: A PyArrow table, or a list of PyArrow tables,
-                or its streaming format in bytes.
+        tables: A PyArrow table, or an iterable (for example, a list or
+                generator) of PyArrow tables, or its streaming format in bytes.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
@@ -3673,6 +3693,9 @@ def from_arrow(
     if override_num_blocks is not None:
         if override_num_blocks <= 0:
             raise ValueError("override_num_blocks must be > 0")
+        # Re-blocking needs to inspect every table, so eagerly materialize the
+        # iterable into a list before concatenating and slicing.
+        tables = list(tables)
         combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         total_rows = len(combined_table)
 
@@ -3699,6 +3722,8 @@ def from_arrow(
 
             tables = slices
 
+    # Iterate lazily so that, for generators/iterators, at most one table is
+    # held in driver memory at a time before being moved to the object store.
     return from_arrow_refs([ray.put(t) for t in tables])
 
 

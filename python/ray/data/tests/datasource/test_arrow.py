@@ -39,6 +39,54 @@ def test_from_arrow(ray_start_regular_shared, sample_dataframes):
     assert "FromArrow" in ds.stats()
 
 
+def test_from_arrow_iterator(ray_start_regular_shared, sample_dataframes):
+    """Test that from_arrow accepts arbitrary iterables/generators of tables."""
+    df1, df2 = sample_dataframes
+    table1 = pa.Table.from_pandas(df1)
+    table2 = pa.Table.from_pandas(df2)
+    expected = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+
+    # Generator (consumable, no __len__, not a Sequence).
+    def table_generator():
+        yield table1
+        yield table2
+
+    ds = ray.data.from_arrow(table_generator())
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    assert values == expected
+    assert "FromArrow" in ds.stats()
+
+    # Plain iterator.
+    ds = ray.data.from_arrow(iter([table1, table2]))
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    assert values == expected
+
+    # Tuple input.
+    ds = ray.data.from_arrow((table1, table2))
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    assert values == expected
+
+
+def test_from_arrow_iterator_with_override_num_blocks(
+    ray_start_regular_shared, sample_dataframes
+):
+    """Test that override_num_blocks works when passing a generator."""
+    df1, df2 = sample_dataframes
+    table1 = pa.Table.from_pandas(df1)
+    table2 = pa.Table.from_pandas(df2)
+    expected = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+
+    def table_generator():
+        yield table1
+        yield table2
+
+    ds = ray.data.from_arrow(table_generator(), override_num_blocks=3)
+    assert ds.num_blocks() == 3
+    assert ds.count() == 6
+    values = [(r["one"], r["two"]) for r in ds.take_all()]
+    assert values == expected
+
+
 @pytest.mark.parametrize(
     "tables,override_num_blocks,expected_blocks,expected_rows",
     [
