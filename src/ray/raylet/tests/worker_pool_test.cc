@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
@@ -120,6 +121,8 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       GetOrCreateRuntimeEnvCallback callback) override {
     if (serialized_runtime_env == kBadRuntimeEnv) {
       callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
+    } else if (serialized_runtime_env == "{}" || serialized_runtime_env.empty()) {
+      callback(true, "{}", "");
     } else {
       rpc::GetOrCreateRuntimeEnvReply reply;
       auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -587,7 +590,7 @@ static inline LeaseSpecification ExampleLeaseSpec(
     const std::vector<std::string> &dynamic_worker_options = {},
     const LeaseID &lease_id = LeaseID::Nil(),
     const rpc::RuntimeEnvInfo runtime_env_info = rpc::RuntimeEnvInfo(),
-    std::unordered_map<std::string, double> resources = {{"CPU", 1}}) {
+    absl::flat_hash_map<std::string, double> resources = {{"CPU", 1.0}}) {
   rpc::LeaseSpec message;
   message.set_job_id(job_id.Binary());
   message.set_language(language);
@@ -2537,7 +2540,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseFailureForDifferentJobId) {
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerFitForLeaseResourceRequirementsMismatch) {
-  std::unordered_map<std::string, double> resources1{{"CPU", 1.0}};
+  absl::flat_hash_map<std::string, double> resources1{{"CPU", 1.0}};
   const LeaseSpecification lease_spec1 = ExampleLeaseSpec(ActorID::Nil(),
                                                           Language::PYTHON,
                                                           JOB_ID,
@@ -2554,7 +2557,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerFitForLeaseResourceRequirementsMism
   worker_pool_->PushWorker(worker1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
-  std::unordered_map<std::string, double> resources2{{"CPU", 2.0}};
+  absl::flat_hash_map<std::string, double> resources2{{"CPU", 2.0}};
   const LeaseSpecification lease_spec2 = ExampleLeaseSpec(ActorID::Nil(),
                                                           Language::PYTHON,
                                                           JOB_ID,
