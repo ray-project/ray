@@ -349,7 +349,7 @@ def _format_in_threadpool(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
             num_workers=num_threadpool_workers,
-            output_buffer_size=1,
+            output_buffer_size=num_threadpool_workers,
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
