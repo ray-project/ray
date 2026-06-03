@@ -259,7 +259,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     int max_retry,
     int current_retry_cnt) {
   if (bundle_specs.empty()) {
-    RAY_LOG(INFO) << "RemovePlacementGroupBundles called on empty bundle list.";
+    RAY_LOG(WARNING) << "RemovePlacementGroupBundles called on empty bundle list.";
     return
   }
   if (!node.has_value()) {
