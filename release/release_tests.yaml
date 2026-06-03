@@ -201,8 +201,8 @@
   variations:
     - __suffix__: aws
 
-- name: hello_world_cu130
-  python: "{{array.python}}"
+- name: "hello_world_cu130_py{{python}}"
+  python: "{{python}}"
   team: reef
   group: hello_world
   frequency: nightly
@@ -2540,12 +2540,15 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
-- name: compiled_graphs_GPU_cu130
-  python: "3.12"
+- name: "compiled_graphs_GPU_cu130_py{{python}}"
+  python: "{{python}}"
   group: core-daily-test
   team: core
   frequency: manual
   working_dir: microbenchmark
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
 
   cluster:
     anyscale_sdk_2026: true
@@ -2559,12 +2562,15 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py
 
-- name: compiled_graphs_GPU_multinode_cu130
-  python: "3.12"
+- name: "compiled_graphs_GPU_multinode_cu130_py{{python}}"
+  python: "{{python}}"
   group: core-daily-test
   team: core
   frequency: manual
   working_dir: microbenchmark
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
 
   cluster:
     anyscale_sdk_2026: true

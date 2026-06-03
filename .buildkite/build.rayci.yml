@@ -252,6 +252,7 @@ steps:
         - "12.6.3-cudnn"
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
+        - "13.0.0-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
