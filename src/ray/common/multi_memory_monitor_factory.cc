@@ -15,6 +15,7 @@
 #include <memory>
 #include <vector>
 
+#include "ray/common/event_memory_monitor.h"
 #include "ray/common/memory_monitor_factory.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/memory_monitor_utils.h"
@@ -30,6 +31,15 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager) {
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors;
+
+  if (resource_isolation_enabled) {
+    StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> event_monitor_or =
+        EventMemoryMonitor::Create(cgroup_manager.GetUserCgroupPath(),
+                                   kill_workers_callback);
+    RAY_CHECK(event_monitor_or.has_value())
+        << "Failed to create EventMemoryMonitor: " << event_monitor_or.message();
+    monitors.push_back(std::move(event_monitor_or.value()));
+  }
 
   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
   int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(

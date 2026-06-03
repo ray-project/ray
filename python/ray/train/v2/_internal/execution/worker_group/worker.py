@@ -20,7 +20,6 @@ from ray.train.v2._internal.execution.callback import (
     TrainContextCallback,
     WorkerCallback,
 )
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
@@ -248,7 +247,7 @@ class RayTrainWorker:
         self,
         train_run_context: TrainRunContext,
         distributed_context: DistributedContext,
-        synchronization_actor: SynchronizationActor,
+        synchronization_actor: ActorHandle,
         storage_context: StorageContext,
         worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
         controller_actor: ActorHandle,
