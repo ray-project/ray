@@ -203,7 +203,7 @@ class RemoteFunction:
             resources (Dict[str, float]): The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
-            name: A human-readable name for the task. If set, the name appears
+            name (str): A human-readable name for the task. If set, the name appears
                 alongside the task in the Ray Dashboard, logs, and the State API
                 (for example, ``ray list tasks``), which is useful for debugging
                 and observability. Names don't need to be unique. Defaults to
