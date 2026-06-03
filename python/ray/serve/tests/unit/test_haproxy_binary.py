@@ -32,10 +32,13 @@ def test_flag_off_is_noop():
     assert get_haproxy_binary() == "haproxy"
 
 
+@patch.dict("sys.modules", {"ray_haproxy": None})
 @patch(FLAG_PATCH, True)
 def test_explicit_path_validates_executable(tmp_path):
-    """When a user sets RAY_SERVE_HAPROXY_BINARY_PATH, we check that the file
-    exists and is executable before returning it."""
+    """When the bundled ray-haproxy package is unavailable, RAY_SERVE_HAPROXY_BINARY_PATH
+    is used as an override: we check that the file exists and is executable
+    before returning it. (ray_haproxy is patched absent so resolution reaches
+    this branch rather than the now-higher-priority bundled binary.)"""
     binary = tmp_path / "haproxy"
     binary.write_bytes(b"")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
