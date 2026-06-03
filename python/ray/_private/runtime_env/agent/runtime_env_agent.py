@@ -12,6 +12,7 @@ import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+    env_bool,
 )
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
@@ -307,6 +308,7 @@ class RuntimeEnvAgent:
         import math
 
         from ray._private.accelerators import (
+            RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
             get_accelerator_manager_for_resource,
             get_all_accelerator_resource_names,
         )
@@ -316,19 +318,26 @@ class RuntimeEnvAgent:
         if "OMP_NUM_THREADS" not in context.env_vars:
             context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
 
+        override_on_zero = env_bool(
+            RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
+            False,
+        )
+
         for resource_name in get_all_accelerator_resource_names():
             manager = get_accelerator_manager_for_resource(resource_name)
             env_var = manager.get_visible_accelerator_ids_env_var()
             if not env_var:
                 continue
 
-            if env_var in context.env_vars:
+            if env_var in context.env_vars or env_var in os.environ:
                 continue
 
             if resource_name in request.allocated_instances:
                 allocated_ids = list(request.allocated_instances[resource_name].ids)
                 allocated_ids_str = [str(i) for i in allocated_ids]
                 context.env_vars[env_var] = ",".join(allocated_ids_str)
+            elif override_on_zero:
+                context.env_vars[env_var] = ""
 
     def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
