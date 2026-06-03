@@ -1911,17 +1911,9 @@ TEST_F(GcsTaskManagerTest, TestWorkerDeadMarksChildTaskTreeFailed) {
             rpc::ErrorType::OWNER_DIED);
 }
 
-// Parameterized fixture exercising both graceful worker exit types
-// (INTENDED_USER_EXIT and INTENDED_SYSTEM_EXIT).
-class GcsTaskManagerGracefulWorkerDeadTest
-    : public GcsTaskManagerTest,
-      public ::testing::WithParamInterface<rpc::WorkerExitType> {};
-
-// Test that graceful worker death does NOT mark child tasks as failed, for both
-// graceful exit types.
-TEST_P(GcsTaskManagerGracefulWorkerDeadTest, DoesNotMarkChildTasksFailed) {
-  rpc::WorkerExitType exit_type = GetParam();
-
+// Test that graceful worker death (INTENDED_USER_EXIT) does NOT mark child tasks as
+// failed.
+TEST_F(GcsTaskManagerTest, TestGracefulWorkerDeadDoesNotMarkChildTasksFailed) {
   WorkerID owner_worker = WorkerID::FromRandom();
   TaskID parent_task = GenTaskIDs(1)[0];
   TaskID child_task = GenTaskIDs(1)[0];
@@ -1946,8 +1938,9 @@ TEST_P(GcsTaskManagerGracefulWorkerDeadTest, DoesNotMarkChildTasksFailed) {
                     GenTaskInfo(JobID::FromInt(0), parent_task));
   SyncAddTaskEventData(GenTaskEventsData(child_events));
 
-  // Owner worker dies gracefully with the parameterized exit type.
-  task_manager->OnWorkerDead(owner_worker, GenWorkerFailureData(exit_type, 10));
+  // Owner worker dies gracefully via INTENDED_USER_EXIT.
+  task_manager->OnWorkerDead(
+      owner_worker, GenWorkerFailureData(rpc::WorkerExitType::INTENDED_USER_EXIT, 10));
   WaitForWorkerDeadDelay();
 
   // Child task should NOT be marked failed.
@@ -1956,14 +1949,6 @@ TEST_P(GcsTaskManagerGracefulWorkerDeadTest, DoesNotMarkChildTasksFailed) {
   EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
       rpc::TaskStatus::FAILED));
 }
-
-INSTANTIATE_TEST_SUITE_P(GracefulExitTypes,
-                         GcsTaskManagerGracefulWorkerDeadTest,
-                         ::testing::Values(rpc::WorkerExitType::INTENDED_USER_EXIT,
-                                           rpc::WorkerExitType::INTENDED_SYSTEM_EXIT),
-                         [](const ::testing::TestParamInfo<rpc::WorkerExitType> &info) {
-                           return rpc::WorkerExitType_Name(info.param);
-                         });
 
 // Test that already-terminated child tasks are not overwritten when owner dies.
 TEST_F(GcsTaskManagerTest, TestWorkerDeadDoesNotOverrideTerminatedChildTasks) {
@@ -2337,7 +2322,7 @@ TEST_F(GcsTaskManagerTest, TestDetachedActorWorkerGracefulMarksRootsOnly) {
 
   task_manager->OnWorkerDead(
       detached_actor_worker,
-      GenWorkerFailureData(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, 10));
+      GenWorkerFailureData(rpc::WorkerExitType::INTENDED_USER_EXIT, 10));
   WaitForWorkerDeadDelay();
 
   // Root should be marked WORKER_DIED.

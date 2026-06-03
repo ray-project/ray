@@ -113,9 +113,14 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskLineageFailedOnWorkerDead(
     return;
   }
 
+  // INTENDED_SYSTEM_EXIT is NOT always graceful. For eg: ray.kill(actor) calls
+  // ForceExit(INTENDED_SYSTEM_EXIT) which immediately kills the worker without
+  // flushing the buffer. INTENDED_USER_EXIT is graceful exit.
+  // Note that this means when INTENDED_SYSTEM_EXIT IS graceful, we might mark
+  // a child FINISHED as FAILED if the child's FINISHED event hasn't reached GCS
+  // yet. This is acceptable since the owner has died and the child is orphaned
   bool is_graceful =
-      worker_failure_data.exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
-      worker_failure_data.exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+      worker_failure_data.exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT;
 
   // A worker is either dedicated to running a single actor, or it runs normal tasks —
   // never both. So any task on this worker carrying is_detached_actor identifies it as
