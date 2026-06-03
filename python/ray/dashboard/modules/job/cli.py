@@ -4,6 +4,7 @@ import pprint
 import shlex
 import sys
 import time
+from subprocess import list2cmdline
 from typing import Any, Dict, Optional, Tuple, Union
 
 import click
@@ -131,8 +132,7 @@ def job_cli_group():
     default=None,
     required=False,
     help=(
-        "Submission ID to specify for the job. "
-        "If not provided, one will be generated."
+        "Submission ID to specify for the job. If not provided, one will be generated."
     ),
 )
 @click.option(
@@ -310,7 +310,11 @@ def submit(
         working_dir=working_dir,
     )
     job_id = client.submit_job(
-        entrypoint=shlex.join(entrypoint),
+        entrypoint=(
+            list2cmdline(entrypoint)
+            if sys.platform == "win32"
+            else shlex.join(entrypoint)
+        ),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
         metadata=metadata_json,
@@ -432,7 +436,7 @@ def stop(
         return
     else:
         cli_logger.print(
-            f"Waiting for job '{job_id}' to exit " f"(disable with --no-wait):"
+            f"Waiting for job '{job_id}' to exit (disable with --no-wait):"
         )
 
     while True:
