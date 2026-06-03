@@ -189,6 +189,22 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_LOG(INFO) << "Core worker main io service stopped.";
   });
 
+  boost::thread::attributes obj_freed_cb_thread_attrs;
+#if defined(__APPLE__)
+  obj_freed_cb_thread_attrs.set_stack_size(16777216);
+#endif
+  object_freed_callback_thread_ = boost::thread(obj_freed_cb_thread_attrs, [this]() {
+#ifndef _WIN32
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+    SetThreadName("worker.obj_freed_cb");
+    object_freed_callback_service_.run();
+  });
+
   if (options.worker_type == WorkerType::DRIVER &&
       !options.serialized_job_config.empty()) {
     // Driver populates the job config via initialization.
@@ -338,7 +354,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
-      task_execution_service_,
+      object_freed_callback_service_,
       RayConfig::instance().lineage_pinning_enabled());
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
@@ -679,6 +695,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<CoreWorker>(std::move(options),
                                    std::move(worker_context),
                                    io_service_,
+                                   object_freed_callback_service_,
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -688,6 +705,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(raylet_ipc_client),
                                    std::move(local_raylet_rpc_client),
                                    io_thread_,
+                                   object_freed_callback_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
                                    std::move(plasma_store_provider),
@@ -719,6 +737,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : options_.worker_id),
       io_work_(io_service_.get_executor()),
+      object_freed_callback_service_work_(object_freed_callback_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
@@ -851,14 +870,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
-    // Workers drain task_execution_service_ via RunTaskExecutionLoop(). Drivers never
-    // call that, so start a background thread here to process object-freed callbacks.
-    if (options_.worker_type == WorkerType::DRIVER) {
-      driver_callback_thread_ = boost::thread([this]() {
-        SetThreadName("driver.callbacks");
-        task_execution_service_.run();
-      });
-    }
     // Initialize metrics agent client.
     // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
     if (options_.metrics_agent_port > 0) {
@@ -997,11 +1008,6 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Shutdown();
   RAY_LOG(INFO) << "Waiting for driver shutdown to complete...";
   global_worker->WaitForShutdownComplete();
-  // Drain remaining object-freed callbacks then stop the driver callback thread.
-  task_execution_service_work_.reset();
-  if (driver_callback_thread_.joinable()) {
-    driver_callback_thread_.join();
-  }
   RAY_LOG(INFO) << "Driver shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();

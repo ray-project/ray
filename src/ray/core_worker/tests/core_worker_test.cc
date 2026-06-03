@@ -28,6 +28,7 @@
 #include "absl/time/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/plasma/client.h"
+#include "ray/asio/asio_util.h"
 #include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
@@ -154,7 +155,7 @@ class CoreWorkerTest : public ::testing::Test {
         [](const NodeID &) { return false; },
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
-        task_execution_service_,
+        object_freed_callback_service_.GetIoService(),
         false);
 
     // Mock reference counter as enabled
@@ -255,47 +256,52 @@ class CoreWorkerTest : public ::testing::Test {
 
     // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
     // create a real plasma_store_provider_ and mutable_object_provider_
-    core_worker_ = std::make_shared<CoreWorker>(std::move(options),
-                                                std::move(worker_context),
-                                                io_service_,
-                                                std::move(core_worker_client_pool),
-                                                std::move(raylet_client_pool),
-                                                std::move(periodical_runner),
-                                                std::move(core_worker_server),
-                                                std::move(rpc_address_),
-                                                mock_gcs_client_,
-                                                std::move(fake_raylet_ipc_client),
-                                                std::move(fake_local_raylet_rpc_client),
-                                                io_thread_,
-                                                reference_counter_,
-                                                memory_store_,
-                                                nullptr,  // plasma_store_provider_
-                                                nullptr,  // mutable_object_provider_
-                                                std::move(future_resolver),
-                                                task_manager_,
-                                                actor_creator_,
-                                                std::move(actor_task_submitter),
-                                                std::move(object_info_publisher),
-                                                std::move(fake_object_info_subscriber),
-                                                std::move(lease_request_rate_limiter),
-                                                std::move(normal_task_submitter),
-                                                std::move(object_recovery_manager),
-                                                std::move(actor_manager),
-                                                task_execution_service_,
-                                                std::move(task_event_buffer),
-                                                getpid(),
-                                                fake_task_by_state_gauge_,
-                                                fake_actor_by_state_gauge_);
+    core_worker_ =
+        std::make_shared<CoreWorker>(std::move(options),
+                                     std::move(worker_context),
+                                     io_service_,
+                                     object_freed_callback_service_.GetIoService(),
+                                     std::move(core_worker_client_pool),
+                                     std::move(raylet_client_pool),
+                                     std::move(periodical_runner),
+                                     std::move(core_worker_server),
+                                     std::move(rpc_address_),
+                                     mock_gcs_client_,
+                                     std::move(fake_raylet_ipc_client),
+                                     std::move(fake_local_raylet_rpc_client),
+                                     io_thread_,
+                                     object_freed_callback_thread_,
+                                     reference_counter_,
+                                     memory_store_,
+                                     nullptr,  // plasma_store_provider_
+                                     nullptr,  // mutable_object_provider_
+                                     std::move(future_resolver),
+                                     task_manager_,
+                                     actor_creator_,
+                                     std::move(actor_task_submitter),
+                                     std::move(object_info_publisher),
+                                     std::move(fake_object_info_subscriber),
+                                     std::move(lease_request_rate_limiter),
+                                     std::move(normal_task_submitter),
+                                     std::move(object_recovery_manager),
+                                     std::move(actor_manager),
+                                     task_execution_service_,
+                                     std::move(task_event_buffer),
+                                     getpid(),
+                                     fake_task_by_state_gauge_,
+                                     fake_actor_by_state_gauge_);
   }
 
  protected:
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
+  InstrumentedIOContextWithThread object_freed_callback_service_{"object-freed-callback"};
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
 
   boost::thread io_thread_;
+  boost::thread object_freed_callback_thread_;
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -315,10 +321,11 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
 
-  // Drain all pending object-freed callbacks posted to task_execution_service_.
   void FlushObjectFreedCallbacks() {
-    task_execution_service_.poll();
-    task_execution_service_.reset();
+    std::promise<void> done;
+    object_freed_callback_service_.GetIoService().post([&done]() { done.set_value(); },
+                                                       "flush-sentinel");
+    done.get_future().wait();
   }
 
   // Controllable time for testing publisher timeouts
