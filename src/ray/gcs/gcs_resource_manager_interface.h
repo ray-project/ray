@@ -16,27 +16,18 @@
 
 #include <memory>
 
-#include "ray/common/id.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
 namespace gcs {
 
 /// Narrow interface that other GCS components depend on when they need to
-/// push data into the resource manager (resource view snapshots from raylets,
-/// PG load updates from the PG manager). Keeping it minimal lets tests
+/// push data into the resource manager. Keeping it minimal lets tests
 /// substitute a fake without spinning up the full GCS resource manager
 /// dependency graph.
 class GcsResourceManagerInterface {
  public:
   virtual ~GcsResourceManagerInterface() = default;
-
-  /// Apply a ResourceViewSyncMessage received from a raylet (typically in-band
-  /// in a Prepare-failure or Cancel reply) to GCS's cluster resource view.
-  virtual void UpdateFromResourceView(
-      const NodeID &node_id,
-      const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message) = 0;
 
   /// Update the placement group load info that the autoscaler consumes through
   /// the resource usage broadcast. Called by GcsPlacementGroupManager whenever

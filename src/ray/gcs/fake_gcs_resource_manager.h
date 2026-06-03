@@ -16,12 +16,9 @@
 
 #include <memory>
 #include <utility>
-#include <vector>
 
-#include "ray/common/id.h"
 #include "ray/gcs/gcs_resource_manager_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -32,22 +29,9 @@ namespace gcs {
 /// `ray_syncer` graph.
 class FakeGcsResourceManager : public GcsResourceManagerInterface {
  public:
-  void UpdateFromResourceView(
-      const NodeID &node_id,
-      const rpc::syncer::ResourceViewSyncMessage &resource_view_sync_message) override {
-    resource_view_updates_.emplace_back(node_id, resource_view_sync_message);
-  }
-
   void UpdatePlacementGroupLoad(
       std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) override {
     placement_group_load_ = std::move(placement_group_load);
-  }
-
-  /// Recorded (node_id, sync_message) tuples from UpdateFromResourceView, in
-  /// call order.
-  const std::vector<std::pair<NodeID, rpc::syncer::ResourceViewSyncMessage>>
-      &resource_view_updates() const {
-    return resource_view_updates_;
   }
 
   /// Latest PlacementGroupLoad pushed via UpdatePlacementGroupLoad.
@@ -56,8 +40,6 @@ class FakeGcsResourceManager : public GcsResourceManagerInterface {
   }
 
  private:
-  std::vector<std::pair<NodeID, rpc::syncer::ResourceViewSyncMessage>>
-      resource_view_updates_;
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load_;
 };
 

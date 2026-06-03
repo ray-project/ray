@@ -137,7 +137,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// \param resource_view_sync_message The resource usage of the node.
   void UpdateFromResourceView(
       const NodeID &node_id,
-      const syncer::ResourceViewSyncMessage &resource_view_sync_message) override;
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
