@@ -74,6 +74,48 @@ class TestDatetimeNamespace:
         with pytest.raises(Exception):
             ds.with_column("year", col("value").dt.year()).to_pandas()
 
+    def test_dt_assume_timezone(self, ray_start_regular_shared):
+        """Test assume_timezone expression."""
+        import pyarrow as pa
+
+        # Naive timestamps
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [1704067200000000],
+                    type=pa.timestamp("us"),  # 2024-01-01 00:00:00
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+        result = ds.with_column(
+            "ts_utc", col("ts").dt.assume_timezone("UTC")
+        ).to_pandas()
+        assert result["ts_utc"].dt.tz is not None
+        assert str(result["ts_utc"].dt.tz) == "UTC"
+
+    def test_dt_tz_convert(self, ray_start_regular_shared):
+        """Test tz_convert expression."""
+        import pyarrow as pa
+
+        # UTC timestamps
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [1704067200000000],
+                    type=pa.timestamp("us", tz="UTC"),  # 2024-01-01 00:00:00 UTC
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+        result = ds.with_column(
+            "ts_ny", col("ts").dt.tz_convert("America/New_York")
+        ).to_pandas()
+        # UTC midnight = NY 19:00 previous day
+        assert result["ts_ny"].dt.tz is not None
+        assert str(result["ts_ny"].dt.tz) == "America/New_York"
+        assert result["ts_ny"].iloc[0].hour == 19
+
 
 if __name__ == "__main__":
     import sys
