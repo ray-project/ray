@@ -324,7 +324,7 @@ class TestResourceManager:
             global_cpu, 0, global_mem
         )
 
-    def test_update_usages_for_op_matches_full_update(self):
+    def test_update_usages_for_ops_matches_full_update(self):
         """Incremental refresh must produce the same per-op and global state
         as the full O(N_ops) `update_usages()` recompute."""
         o1 = InputDataBuffer(DataContext.get_current(), [])

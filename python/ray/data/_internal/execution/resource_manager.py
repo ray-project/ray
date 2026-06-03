@@ -753,6 +753,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         assert 0.0 <= self._reservation_ratio <= 1.0
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Inputs the cached reservation was last computed for, so we can skip
+        # `_update_reservation` when they're unchanged. See `update_budgets`
+        # for why these are stable across the scheduling loop's inner dispatch
+        # loop (where this is called once per dispatch).
+        self._cached_reservation_limits: Optional[ExecutionResources] = None
+        self._cached_reservation_eligible_ops: Optional[List[PhysicalOperator]] = None
         # Memory reserved exclusively for the outputs of each operator.
         # "Op outputs" refer to blocks that have been taken out of an operator,
         # i.e., `RessourceManager._mem_op_outputs`.
@@ -908,11 +914,39 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         limits: ExecutionResources,
     ):
         # `_update_reservation` populates `_op_reserved`, `_reserved_for_op_outputs`,
-        # `_reserved_min_resources`, and `_total_shared`.
-        self._update_reservation(limits)
+        # `_reserved_min_resources`, and `_total_shared`. Its result is a pure
+        # function of `limits`, the set of eligible ops, and each op's
+        # `min_max_resource_requirements()` (static config) — so we cache it and
+        # recompute only when `limits` or `eligible_ops` actually change.
+        #
+        # This is called once per dispatch in the scheduling loop's inner
+        # dispatch loop, and both inputs are stable across that loop, so the
+        # cache hits on nearly every dispatch:
+        #   - `eligible_ops` (ops that aren't throttling-disabled and haven't
+        #     finished) only changes when an op completes, which happens between
+        #     loop steps, never mid-dispatch.
+        #   - `limits` is recomputed each call as
+        #     `global_limits - completed_ops_usage`, but its *value* (we compare
+        #     by value, not identity) rarely moves: `global_limits` is time-cached
+        #     (refreshed on an interval, and only changes when the cluster
+        #     autoscales), and `completed_ops_usage` is zero until an operator
+        #     finishes — and only its object-store term drifts thereafter, as a
+        #     completed op's buffered outputs drain.
+        # When neither input changes, the reservation is identical, so skipping
+        # the recompute is exact, not approximate.
+        eligible_ops = self._resource_manager.get_eligible_ops()
+        if (
+            # First call: nothing cached yet (and `None != limits` would raise
+            # inside `ExecutionResources.__eq__`), so always recompute.
+            self._cached_reservation_limits is None
+            or self._cached_reservation_limits != limits
+            or self._cached_reservation_eligible_ops != eligible_ops
+        ):
+            self._update_reservation(limits)
+            self._cached_reservation_limits = limits
+            self._cached_reservation_eligible_ops = list(eligible_ops)
 
         self._op_budgets.clear()
-        eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
