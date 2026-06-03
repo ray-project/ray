@@ -53,6 +53,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_RETRIES,
+    RAY_SERVE_HAPROXY_RETRY_ON,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
@@ -569,6 +571,12 @@ class HAProxyConfig:
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
+    # Global retry policy for the defaults block (inherited by every backend).
+    retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
+    retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
+
+    # Per-ingress-router overrides; when None the ingress backend inherits the
+    # global policy above.
     ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
     ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
     ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
