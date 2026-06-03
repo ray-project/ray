@@ -1148,7 +1148,14 @@ class Dataset:
         """  # noqa: E501
         import pyarrow as pa
 
-        if len(cols) != len(set(cols)):
+        # Dropping no columns is a no-op; return early to avoid schema
+        # inference, the uniqueness check, and a redundant ``Project`` that
+        # would just select every column.
+        if not cols:
+            return self
+
+        cols_set = set(cols)
+        if len(cols) != len(cols_set):
             raise ValueError(f"drop_columns expects unique column names, got: {cols}")
 
         # When the input schema is known, reshape into a ``Project`` over the
@@ -1161,13 +1168,14 @@ class Dataset:
         # expect from ``drop_columns``.
         input_schema = self._logical_plan.dag.infer_schema()
         if isinstance(input_schema, pa.Schema):
-            missing = [c for c in cols if c not in input_schema.names]
+            input_schema_names_set = set(input_schema.names)
+            missing = [c for c in cols if c not in input_schema_names_set]
             if missing:
                 raise KeyError(
                     f"drop_columns: column(s) not found in dataset schema: "
                     f"{missing}. Available columns: {input_schema.names}"
                 )
-            keep = [c for c in input_schema.names if c not in cols]
+            keep = [c for c in input_schema.names if c not in cols_set]
             if keep:
                 return self.select_columns(
                     keep,
