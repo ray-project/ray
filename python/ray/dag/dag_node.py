@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import uuid
+import warnings
 from itertools import chain
 from typing import (
     Any,
@@ -374,11 +375,8 @@ class DAGNode(DAGNodeBase):
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
         """
-        import warnings
-
         warnings.warn(
-            "DAGNode.execute() is deprecated and will be removed in a future release. "
-            "Use the compiled DAG API (dag.experimental_compile()) instead.",
+            "DAGNode.execute() is deprecated and will be removed in a future release."
             DeprecationWarning,
             stacklevel=2,
         )
