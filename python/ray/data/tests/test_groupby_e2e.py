@@ -66,7 +66,7 @@ def test_groupby_arrow(
     target_max_block_size_infinite_or_default,
 ):
     # Test empty dataset.
-    agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
+    agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("id").count()
     assert agg_ds.count() == 0
 
 

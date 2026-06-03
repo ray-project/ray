@@ -36,7 +36,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     import pandas as pd
     import pyarrow as pa
 
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 
     output = []
     for block in simple_data:
@@ -44,7 +44,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
         output.append(
             RefBundle(
                 [
-                    (
+                    BlockEntry(
                         ray.put(block),
                         BlockAccessor.for_block(block).get_metadata(),
                     )
