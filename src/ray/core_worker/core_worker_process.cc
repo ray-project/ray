@@ -851,6 +851,14 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto worker = CreateCoreWorker(options_, worker_id_);
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
+    // Workers drain task_execution_service_ via RunTaskExecutionLoop(). Drivers never
+    // call that, so start a background thread here to process object-freed callbacks.
+    if (options_.worker_type == WorkerType::DRIVER) {
+      driver_callback_thread_ = boost::thread([this]() {
+        SetThreadName("driver.callbacks");
+        task_execution_service_.run();
+      });
+    }
     // Initialize metrics agent client.
     // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
     if (options_.metrics_agent_port > 0) {
@@ -989,6 +997,11 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Shutdown();
   RAY_LOG(INFO) << "Waiting for driver shutdown to complete...";
   global_worker->WaitForShutdownComplete();
+  // Drain remaining object-freed callbacks then stop the driver callback thread.
+  task_execution_service_work_.reset();
+  if (driver_callback_thread_.joinable()) {
+    driver_callback_thread_.join();
+  }
   RAY_LOG(INFO) << "Driver shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();

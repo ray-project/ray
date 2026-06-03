@@ -179,6 +179,10 @@ class CoreWorkerProcessImpl {
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
 
+  /// For DRIVER processes only: background thread draining task_execution_service_ so
+  /// that object-freed callbacks fire. Workers drain it via RunTaskExecutionLoop().
+  boost::thread driver_callback_thread_;
+
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
 
