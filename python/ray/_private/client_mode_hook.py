@@ -2,7 +2,7 @@ import os
 import threading
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Optional, Tuple, TypeVar, cast
+from typing import Any, Callable, Optional, Tuple, TypeVar, cast, overload
 
 from ray._private.auto_init_hook import auto_init_ray
 
@@ -80,6 +80,16 @@ def enable_client_mode():
         yield None
     finally:
         _explicitly_disable_client_mode()
+
+
+@overload
+def client_mode_hook(func: F) -> F:
+    ...
+
+
+@overload
+def client_mode_hook(*, local_only_kwargs: Tuple[str, ...] = ()) -> Callable[[F], F]:
+    ...
 
 
 def client_mode_hook(
