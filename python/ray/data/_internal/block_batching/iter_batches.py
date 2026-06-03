@@ -98,6 +98,8 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
+        preserve_order: Whether to restore the original batch order after the
+            format/collate threadpool.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -119,6 +121,7 @@ class BatchIterator:
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        preserve_order: bool = False,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -133,6 +136,7 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
+        self._preserve_order = preserve_order
         self._eager_free = (
             clear_block_after_read and DataContext.get_current().eager_free
         )
@@ -236,7 +240,7 @@ class BatchIterator:
         # measurably hurts throughput and next-batch latency. Most
         # consumers (training with shuffle, etc.) don't depend on order
         # within an epoch.
-        if DataContext.get_current().execution_options.preserve_order:
+        if self._preserve_order:
             batch_iter = self._restore_original_batch_order(batch_iter)
 
         yield from batch_iter

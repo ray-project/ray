@@ -287,6 +287,7 @@ class DataIterator(abc.ABC):
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
                 prefetch_bytes_callback=prefetch_bytes_callback,
+                preserve_order=DataContext.get_current().execution_options.preserve_order,
             )
 
             if stats:
