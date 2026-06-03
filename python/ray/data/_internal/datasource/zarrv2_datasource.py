@@ -45,18 +45,52 @@ if TYPE_CHECKING:
 
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
 
-# Zarr-specific transient-error patterns appended to the user's
-# ``DataContext.retried_io_errors`` when reading chunks. The defaults in
-# ``DataContext`` cover AWS-flavored object-store errors; these cover the
-# kind of network-layer messages that bubble up through fsspec/numcodecs
-# when reading chunked array data over HTTPS/S3/GCS.
+# Conservative, *grounded* allow-list of retry triggers for chunk reads. These
+# are matched (substring first, then regex) by ``call_with_retry`` against the
+# ``"module.ClassName: message"`` string that
+# ``ray._common.retry.format_exception`` produces, and are merged on top of the
+# user's ``DataContext.retried_io_errors`` (which already covers PyArrow's
+# ``AWS Error ...`` strings). Modeled on ``DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS``
+# in ``ray.data.context``: we match transient transport *exception types* and
+# transient HTTP/S3 status codes / reason phrases
+#
+# This is an allow-list, so it doubles as the fail-safe: anything not listed is
+# NOT retried
+#
+# NOTE(Artur):
+#   1. Prefer matching exception *types* (``isinstance``) over strings once
+#      ``call_with_retry`` supports it (see the TODO in
+#      ``python/ray/_common/retry.py``); type matching is immune to message and
+#      library-version drift.
+#   2. The authoritative retry budget belongs in the storage layer -- botocore
+#      adaptive retries, ``pyarrow.fs.S3FileSystem(retry_strategy=...)``, gcsfs --
+#      configured via the ``filesystem`` argument. This list should remain a thin
+#      outer net, not the primary retry mechanism.
 _ZARR_TRANSIENT_ERROR_PATTERNS = (
-    "Connection reset",
-    "Read timeout",
-    "Connection refused",
-    "network",
-    "socket",
-    "HTTP error",
+    # Transient transport / network exception types (matched against the
+    # "ClassName:" prefix; a bare class name matches as a substring).
+    "ConnectionError",
+    "ConnectionResetError",
+    "ConnectionRefusedError",
+    "ConnectionAbortedError",
+    "TimeoutError",
+    "EndpointConnectionError",
+    "ServerDisconnectedError",
+    "ClientConnectorError",
+    "ClientOSError",
+    "IncompleteRead",
+    # Transient HTTP / S3 throttling and server-side responses (object stores
+    # put these in the message text). Status codes use a regex word boundary so
+    # we match 429/5xx but not, for example, 403/404.
+    r"\b(?:429|500|502|503|504)\b",
+    "Too Many Requests",
+    "Service Unavailable",
+    "Internal Server Error",
+    "SlowDown",
+    "ServiceUnavailable",
+    "InternalError",
+    "RequestTimeout",
+    "ThrottlingException",
 )
 
 

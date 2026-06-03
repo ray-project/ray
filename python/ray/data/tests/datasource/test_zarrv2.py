@@ -1005,6 +1005,51 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
         ray.shutdown()
 
 
+@pytest.mark.parametrize(
+    "error_str, retryable",
+    [
+        # Transient transport / network errors -> retry.
+        ("ConnectionResetError: [Errno 104] Connection reset by peer", True),
+        ("TimeoutError: The read operation timed out", True),
+        ("botocore.exceptions.ReadTimeoutError: Read timeout on endpoint URL", True),
+        ("botocore.exceptions.EndpointConnectionError: Could not connect", True),
+        (
+            "aiohttp.client_exceptions.ServerDisconnectedError: Server disconnected",
+            True,
+        ),
+        # Throttling / 5xx surfaced in the message text -> retry.
+        (
+            "botocore.exceptions.ClientError: An error occurred (SlowDown) when "
+            "calling the GetObject operation",
+            True,
+        ),
+        ("OSError: Server returned HTTP status 503 Service Unavailable", True),
+        # Non-transient -> must NOT retry (the allow-list is the fail-safe).
+        ("FileNotFoundError: Array metadata '.zarray' not found", False),
+        (
+            "botocore.exceptions.ClientError: An error occurred (403) when calling "
+            "the GetObject operation: Access Denied",
+            False,
+        ),
+        # A numcodecs decode failure is data corruption, not a transient error.
+        ("ValueError: blosc: invalid compressed buffer", False),
+        ("KeyError: 'chunk 0.0 is missing'", False),
+    ],
+)
+def test_zarr_transient_error_classification(error_str, retryable):
+    """The retry allow-list matches genuine transport/throttling errors, and
+    crucially does NOT match decode-corruption or non-429 4xx errors. Note that
+    a generic ``ClientError`` is retried only for the right code/reason
+    (``SlowDown`` -> retry, ``403`` -> no retry)."""
+    from ray._common.retry import matches_error
+
+    matched = any(
+        matches_error(pattern, error_str)
+        for pattern in zarrv2_datasource._ZARR_TRANSIENT_ERROR_PATTERNS
+    )
+    assert matched is retryable
+
+
 if __name__ == "__main__":
     import sys
 
