@@ -275,7 +275,10 @@ class TrainLoopRunner:
             metrics_json = json.load(f)
 
         for k, v in metrics_json.items():
-            self._metrics[k].__dict__.update(v)
+            self._metrics[k]._total = v["_total"]
+            self._metrics[k]._min = v["_min"]
+            self._metrics[k]._max = v["_max"]
+            self._metrics[k]._total_count = v["_total_count"]
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
@@ -300,7 +303,15 @@ class TrainLoopRunner:
             }
             torch.save(run_state, os.path.join(local_dir, "run_state.pt"))
 
-            metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
+            metrics_json = {
+                k: {
+                    "_total": v.get(),
+                    "_min": v.min(),
+                    "_max": v.max(),
+                    "_total_count": v._total_count,
+                }
+                for k, v in self._metrics.items()
+            }
             with open(os.path.join(local_dir, "metrics.json"), "w") as f:
                 json.dump(metrics_json, f)
 
