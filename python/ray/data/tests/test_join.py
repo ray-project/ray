@@ -1003,6 +1003,61 @@ def test_overlapping_non_key_columns_without_suffixes(
         )
 
 
+@pytest.mark.parametrize(
+    "collision, join_type, select",
+    [
+        pytest.param(False, "inner", ["a", "b"], id="inner"),
+        pytest.param(False, "left_semi", ["a"], id="left_semi"),
+        pytest.param(True, "inner", ["v_l"], id="collision-left-v"),
+    ],
+)
+def test_join_projection_pushdown_is_result_preserving(
+    ray_start_regular_shared_2_cpus, collision, join_type, select
+):
+    """``ProjectionPushdown`` prunes each join input to the columns it
+    contributes. Dropping the never-referenced wide columns up front must yield
+    the same rows as letting the optimizer prune them."""
+    left = [
+        {
+            "id": i % 3,
+            "a": float(i),
+            "lpad": "L" * 16,
+            **({"v": float(i)} if collision else {}),
+        }
+        for i in range(6)
+    ]
+    right = [
+        {
+            "id": i % 3,
+            "b": float(i * 2),
+            "rpad": "R" * 16,
+            **({"v": float(-i)} if collision else {}),
+        }
+        for i in range(6)
+    ]
+    join_kwargs = dict(
+        on=("id",), num_partitions=2, left_suffix="_l", right_suffix="_r"
+    )
+
+    full = (
+        ray.data.from_items(left)
+        .join(ray.data.from_items(right), join_type=join_type, **join_kwargs)
+        .select_columns(select)
+    )
+    slim = (
+        ray.data.from_items([{k: v for k, v in r.items() if k != "lpad"} for r in left])
+        .join(
+            ray.data.from_items(
+                [{k: v for k, v in r.items() if k != "rpad"} for r in right]
+            ),
+            join_type=join_type,
+            **join_kwargs,
+        )
+        .select_columns(select)
+    )
+    assert rows_same(full.to_pandas(), slim.to_pandas())
+
+
 if __name__ == "__main__":
     import sys
 

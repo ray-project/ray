@@ -1479,5 +1479,127 @@ class TestAggregateInputPruning:
         assert "unused" not in set(_leaf_op(dag).infer_schema().names)
 
 
+class TestJoinProjectionPushdown:
+    """``ProjectionPushdown`` should prune each input of a ``Join`` to the
+    columns it contributes (join keys + columns referenced above the join), for
+    every join type, without changing results."""
+
+    JOIN = dict(on=("id",), num_partitions=2, left_suffix="_l", right_suffix="_r")
+
+    @staticmethod
+    def _tables(collision):
+        # Both sides carry a wide unused column (lpad/rpad). When ``collision``
+        # is set they also share a non-key column ``v`` (suffixed in the output).
+        left = [
+            {
+                "id": i % 3,
+                "a": float(i),
+                "lpad": "L" * 16,
+                **({"v": float(i)} if collision else {}),
+            }
+            for i in range(6)
+        ]
+        right = [
+            {
+                "id": i % 3,
+                "b": float(i * 2),
+                "rpad": "R" * 16,
+                **({"v": float(-i)} if collision else {}),
+            }
+            for i in range(6)
+        ]
+        return left, right
+
+    @staticmethod
+    def _join_input_columns(ds):
+        from ray.data._internal.logical.operators.join_operator import Join
+
+        dag = LogicalOptimizer().optimize(ds._logical_plan).dag
+        join = _find_op(dag, Join)
+        return (
+            set(join.input_dependencies[0].infer_schema().names),
+            set(join.input_dependencies[1].infer_schema().names),
+        )
+
+    @pytest.mark.parametrize(
+        "collision, join_type, select, exp_left, exp_right",
+        [
+            pytest.param(
+                False, "inner", ["a", "b"], {"id", "a"}, {"id", "b"}, id="inner"
+            ),
+            pytest.param(
+                False, "inner", ["a"], {"id", "a"}, {"id"}, id="inner-left-only"
+            ),
+            pytest.param(
+                False,
+                "left_outer",
+                ["a", "b"],
+                {"id", "a"},
+                {"id", "b"},
+                id="left_outer",
+            ),
+            pytest.param(
+                False,
+                "right_outer",
+                ["a", "b"],
+                {"id", "a"},
+                {"id", "b"},
+                id="right_outer",
+            ),
+            pytest.param(
+                False,
+                "full_outer",
+                ["a", "b"],
+                {"id", "a"},
+                {"id", "b"},
+                id="full_outer",
+            ),
+            # Semi/anti emit only the left side -> right collapses to its key.
+            pytest.param(
+                False, "left_semi", ["a"], {"id", "a"}, {"id"}, id="left_semi"
+            ),
+            pytest.param(
+                False, "left_anti", ["a"], {"id", "a"}, {"id"}, id="left_anti"
+            ),
+            # Collision: ``v`` is kept on both sides to keep the suffixed output
+            # names (v_l/v_r) stable, but lpad/rpad still prune away.
+            pytest.param(
+                True, "inner", ["v_l"], {"id", "v"}, {"id", "v"}, id="collision-left-v"
+            ),
+            pytest.param(
+                True,
+                "inner",
+                ["a", "b"],
+                {"id", "a", "v"},
+                {"id", "b", "v"},
+                id="collision-keep-v",
+            ),
+        ],
+    )
+    def test_join_inputs_pruned(
+        self,
+        collision,
+        join_type,
+        select,
+        exp_left,
+        exp_right,
+        ray_start_regular_shared,
+    ):
+        # Plan-only: assert each join input is pruned to the expected columns.
+        # This exercises the optimizer rule without executing the join.
+        left, right = self._tables(collision)
+        ds = (
+            ray.data.from_items(left)
+            .join(ray.data.from_items(right), join_type=join_type, **self.JOIN)
+            .select_columns(select)
+        )
+
+        left_cols, right_cols = self._join_input_columns(ds)
+        assert left_cols == exp_left
+        assert right_cols == exp_right
+        # The wide, never-referenced columns are always pruned from the inputs.
+        assert "lpad" not in left_cols and "rpad" not in right_cols
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

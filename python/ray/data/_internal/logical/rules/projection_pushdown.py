@@ -296,9 +296,123 @@ class ProjectionPushdown(Rule):
         # first, so the fuse/push steps can carry the narrowed columns into the
         # read.
         new_dag = dag._apply_transform(self._prune_aggregate_input)
+        new_dag = new_dag._apply_transform(self._push_projection_through_join)
         new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @staticmethod
+    def _prune_input(input_op: LogicalOperator, required: Set[str]) -> LogicalOperator:
+        """Return a pure-prune ``Project`` of ``required`` over ``input_op``,
+        preserving input column order, or ``input_op`` unchanged when its schema
+        is unknown or it already produces no more than ``required`` (which keeps
+        the fixed-point optimizer idempotent)."""
+        from ray.data.expressions import col
+
+        schema = input_op.infer_schema()
+        if schema is None:
+            return input_op
+        columns = list(schema.names)
+        keep = [c for c in columns if c in required]
+        if not keep or len(keep) == len(columns):
+            return input_op
+        return Project(exprs=[col(c) for c in keep], input_dependencies=[input_op])
+
+    @classmethod
+    def _push_projection_through_join(cls, op: LogicalOperator) -> LogicalOperator:
+        """Prune each input of a ``Join`` below a ``Project`` to the columns it
+        actually contributes: the join keys (needed to perform the join) plus the
+        input columns behind the output columns referenced above the join.
+
+        Output columns may be suffixed (when left/right have overlapping non-key
+        names), so a referenced output name is mapped back to its origin input
+        column and side. Pruning columns never changes which rows match or
+        null-pad, so this is safe for every join type (inner/outer/semi/anti).
+        The narrowed inputs are then carried into the reads by the fuse/push
+        steps in ``apply``.
+        """
+        from dataclasses import replace
+
+        from ray.data._internal.logical.operators.join_operator import Join, JoinType
+
+        if not isinstance(op, Project) or op.has_star_expr():
+            return op
+        join = op.input_dependencies[0]
+        if not isinstance(join, Join):
+            return op
+
+        referenced = _collect_referenced_columns(op.exprs)
+        if referenced is None:  # a star expression -> can't enumerate columns
+            return op
+        referenced = set(referenced)
+
+        left_in, right_in = join.input_dependencies
+        left_schema = left_in.infer_schema()
+        right_schema = right_in.infer_schema()
+        out_schema = join.infer_schema()
+        if left_schema is None or right_schema is None or out_schema is None:
+            return op
+
+        left_cols, right_cols = list(left_schema.names), list(right_schema.names)
+        left_keys, right_keys = set(join.left_key_columns), set(join.right_key_columns)
+
+        # Which sides appear in the output. Semi/anti joins emit only one side.
+        left_only = join.join_type in (JoinType.LEFT_SEMI, JoinType.LEFT_ANTI)
+        right_only = join.join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI)
+        left_in_output = not right_only
+        right_in_output = not left_only
+
+        # Suffixing only happens when both sides are in the output and share
+        # non-key column names. Crucially, Ray's suffix is collision-dependent:
+        # dropping one side's colliding column would un-suffix the other's output
+        # name. So whenever suffixing is in play we must retain the colliding
+        # columns on both sides to keep every output name stable.
+        suffixed = left_in_output and right_in_output
+        collisions = (
+            (set(left_cols) - left_keys) & (set(right_cols) - right_keys)
+            if suffixed
+            else set()
+        )
+        left_suffix = join.left_columns_suffix or ""
+        right_suffix = join.right_columns_suffix or ""
+
+        def _out_name(name: str, suffix: str) -> str:
+            return name + suffix if name in collisions else name
+
+        # Map each output column name back to its origin input column per side
+        # (right key columns are coalesced into the left keys -> not in output).
+        out_to_left = (
+            {_out_name(c, left_suffix): c for c in left_cols} if left_in_output else {}
+        )
+        out_to_right = (
+            {_out_name(c, right_suffix): c for c in right_cols if c not in right_keys}
+            if right_in_output
+            else {}
+        )
+
+        # If this model doesn't exactly reproduce the join's real output columns,
+        # bail out rather than risk pruning the wrong column.
+        if set(out_to_left) | set(out_to_right) != set(out_schema.names):
+            return op
+
+        # Each side keeps its join keys (needed to perform the join), the
+        # collision columns (to keep output names stable), and the input columns
+        # behind the referenced output columns.
+        left_keep = set(left_keys) | collisions
+        right_keep = set(right_keys) | collisions
+        for output_column in referenced:
+            if output_column in out_to_left:
+                left_keep.add(out_to_left[output_column])
+            if output_column in out_to_right:
+                right_keep.add(out_to_right[output_column])
+
+        new_left = cls._prune_input(left_in, left_keep)
+        new_right = cls._prune_input(right_in, right_keep)
+        if new_left is left_in and new_right is right_in:
+            return op
+
+        new_join = join._with_new_input_dependencies([new_left, new_right])
+        return replace(op, input_dependencies=[new_join])
 
     @classmethod
     def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
