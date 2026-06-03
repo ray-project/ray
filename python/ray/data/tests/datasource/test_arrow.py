@@ -87,6 +87,15 @@ def test_from_arrow_iterator_with_override_num_blocks(
     assert values == expected
 
 
+@pytest.mark.parametrize("empty", [[], iter([]), (_ for _ in [])])
+def test_from_arrow_empty_iterable_with_override_num_blocks(
+    ray_start_regular_shared, empty
+):
+    """Empty input with override_num_blocks should raise a clear ValueError."""
+    with pytest.raises(ValueError, match="tables.*empty"):
+        ray.data.from_arrow(empty, override_num_blocks=2)
+
+
 @pytest.mark.parametrize(
     "tables,override_num_blocks,expected_blocks,expected_rows",
     [

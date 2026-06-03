@@ -3696,6 +3696,11 @@ def from_arrow(
         # Re-blocking needs to inspect every table, so eagerly materialize the
         # iterable into a list before concatenating and slicing.
         tables = list(tables)
+        if not tables:
+            raise ValueError(
+                "`override_num_blocks` was provided, but `tables` is empty. "
+                "Pass at least one PyArrow table, or omit `override_num_blocks`."
+            )
         combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         total_rows = len(combined_table)
 
