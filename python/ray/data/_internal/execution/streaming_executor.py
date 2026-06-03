@@ -31,6 +31,7 @@ from ray.data._internal.execution.resource_manager import (
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
+    OutputBackpressureGuard,
     Topology,
     build_streaming_topology,
     format_op_state_summary,
@@ -214,6 +215,12 @@ class StreamingExecutor(Executor, threading.Thread):
             self._options,
             lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
+        )
+
+        # Constructed once per executor (not per scheduling iteration) so the
+        # guard's idle-detection state accumulates across scheduling iterations.
+        self._output_backpressure_guard = OutputBackpressureGuard(
+            self._topology, self._resource_manager
         )
 
         # Setup progress manager
@@ -440,9 +447,10 @@ class StreamingExecutor(Executor, threading.Thread):
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
         # Always assign a ``Timer`` so downstream consumers can call
-        # ``.get()`` / ``.avg()`` / ``.max()`` unconditionally. When
-        # ``_initial_stats`` is absent we hand back an empty Timer (count
-        # 0); the Timer's zero-sample semantics yield 0 across all three.
+        # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``
+        # unconditionally. When ``_initial_stats`` is absent we hand
+        # back an empty Timer; zero-sample semantics yield 0 across all
+        # four.
         stats.streaming_exec_schedule_s = (
             self._initial_stats.streaming_exec_schedule_s
             if self._initial_stats
@@ -469,6 +477,7 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             self._backpressure_policies,
             self._max_errored_blocks,
+            output_backpressure_guard=self._output_backpressure_guard,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

@@ -13,16 +13,21 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
+from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
+    _build_direct_streaming_llm_deployment,
+    _build_openai_ingress_request_router,
+    _validate_direct_streaming_ingress_config,
     load_class,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_deployment,
 )
@@ -34,6 +39,8 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer,  # TODO(Kourosh): Deprecate, remove in Ray 2.58.
 )
 from ray.serve.deployment import Application
+
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Deprecated: ProxyClsConfig
@@ -168,6 +175,14 @@ class PDServingArgs(BaseModelExtended):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _default_decode_nixl_port_base(self):
+        """Shift decode's NIXL base off prefill's default (20000) so colocated replicas don't collide."""
+        self.decode_config.experimental_configs.setdefault(
+            "NIXL_SIDE_CHANNEL_PORT_BASE", 22000
+        )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Builder
@@ -181,6 +196,12 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_ingress_config(
+            pd_config.ingress_deployment_config,
+            pd_config.ingress_cls_config,
+        )
+
     prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
         "data_parallel_size", 1
     )
@@ -188,7 +209,6 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     prefill_builder = (
         build_dp_deployment if prefill_dp_size > 1 else build_llm_deployment
     )
-    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
 
     # When DP > 1, use combined DP+PD server classes that inherit from both
     # the PD server and DPServer (for gang scheduling, DP master info, etc.).
@@ -201,6 +221,24 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         deployment_cls=prefill_cls,
     )
 
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        # Direct streaming makes decode the ASGI ingress, so it must be built
+        # with the ASGI wrapper while still receiving the prefill backend.
+        decode_deployment = _build_direct_streaming_llm_deployment(
+            pd_config.decode_config,
+            name_prefix="Decode:",
+            bind_kwargs={"prefill_server": prefill_deployment},
+            deployment_cls=decode_cls,
+        )
+        logger.info(
+            "Direct streaming enabled for PD: "
+            f"{decode_cls.__name__}=ingress, LLMRouter=ingress_request_router"
+        )
+        return decode_deployment._with_ingress_request_router(
+            _build_openai_ingress_request_router(server=decode_deployment)
+        )
+
+    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
     decode_deployment = decode_builder(
         pd_config.decode_config,
         name_prefix="Decode:",
