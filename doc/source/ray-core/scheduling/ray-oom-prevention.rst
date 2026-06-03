@@ -31,7 +31,7 @@ based on the time since the task started executing. However, the default memory 
 
 Starting in Ray 2.56, with resource isolation enabled, the memory monitoring system provides the following:
 
-- Zero kernel OOM kills (worker-preserving) when resource isolation is enabled and system-reserved memory is configured to cover the memory footprint of critical Ray system processes and other system overhead.
+- Zero kernel OOM kills (work-preserving) when resource isolation is enabled and system-reserved memory is configured to cover the memory footprint of critical Ray system processes and other system overhead.
 - Zero Ray OOM kills under the above configuration when tasks and actors specify accurate logical memory requests.
 - Zero node deaths due to memory contention when resource isolation is enabled and system-reserved memory is configured correctly.
 
@@ -90,7 +90,9 @@ As shown in the diagram above, the worker killing policy prioritizes idle worker
 **Idle worker policy:**
 
 1. The memory monitor only considers workers that have never executed any tasks or actors (cold-start idle workers) for killing if their memory footprint exceeds the idle-worker killing memory threshold.
-   Cold-start idle workers should have a small memory footprint. If the OOM logs show idle workers with a large per-worker memory footprint, the dependencies inherited from starting a new process in Ray's userspace are likely too expensive. In that case, consider reducing the memory footprint of starting a new process in Ray's userspace.
+   Cold-start idle workers should have a small memory footprint. In the unlikely case that the OOM logs show active workers being selected over idle workers while a large idle-worker memory footprint remains,
+   the dependencies inherited when starting a new process in Ray's userspace are likely too expensive. In that case, consider reducing the memory footprint of new processes in Ray's userspace, or
+   lowering the idle-worker killing memory threshold via the environment variable ``RAY_idle_worker_killing_memory_threshold_bytes`` (default is 1GiB).
 2. Among the workers eligible for killing, the policy selects the worker with the largest memory footprint first.
 
 **Active worker policy:**

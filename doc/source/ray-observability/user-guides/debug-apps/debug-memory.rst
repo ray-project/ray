@@ -32,6 +32,9 @@ For Ray, the Linux out-of-memory (OOM) killer kills Ray processes without the co
 2. The Linux OOM killer uses SIGKILL to kill processes. Because processes can't handle SIGKILL,
    Ray has difficulty raising a proper error message and taking proper actions for fault tolerance.
 
+To solve this problem, Ray has (from Ray 2.2) an application-level :ref:`memory monitor <ray-oom-monitor>`,
+which continually monitors the memory usage of the host and kills the Ray Workers before the Linux out-of-memory killer executes. 
+
 .. _troubleshooting-out-of-memory-how-to-detect:
 
 Detecting Out-of-Memory errors
