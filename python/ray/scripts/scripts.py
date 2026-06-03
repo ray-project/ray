@@ -1997,25 +1997,20 @@ def submit(
     Example:
         ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
 
-    \f
-
     Args:
         cluster_config_file: Path to the cluster YAML configuration file.
         screen: When ``True``, run the script inside a ``screen`` session.
         tmux: When ``True``, run the script inside a ``tmux`` session.
         stop: When ``True``, stop the cluster after the script finishes.
         start: When ``True``, start the cluster if it is not already running.
-        cluster_name: Optional override for the cluster name configured in the
-            cluster YAML.
+        cluster_name: Optional override for the cluster name configured in the cluster YAML.
         no_config_cache: When ``True``, disable the local cluster config cache.
         port_forward: Local ports to forward to the cluster head node.
         script: Path to the Python script to upload and run.
-        args: Deprecated single-string form of ``script_args``. Prefer
-            ``-- --arg1 --arg2``.
+        args: Deprecated single-string form of ``script_args``. Prefer ``-- --arg1 --arg2``.
         script_args: Positional arguments forwarded to the remote script.
         disable_usage_stats: When ``True``, disable usage statistics collection.
-        extra_screen_args: Extra arguments appended to the ``screen`` invocation
-            when ``screen`` is enabled.
+        extra_screen_args: Extra arguments appended to the ``screen`` invocation when ``screen`` is enabled.
     """
     cli_logger.doassert(
         not (screen and tmux),
