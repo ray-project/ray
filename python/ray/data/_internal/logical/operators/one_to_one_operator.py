@@ -58,6 +58,41 @@ class AbstractOneToOne(LogicalOperator):
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
 
+    def infer_metadata(self) -> BlockMetadata:
+        """Best-effort output metadata derived from the single input dependency.
+
+        One-to-one operators that don't modify the row count (e.g. ``Project``)
+        preserve the row count and don't grow the data, so the input's row count
+        and byte size are valid output estimates -- an upper bound for the common
+        column-selection case, where projecting away columns only shrinks the
+        data. Operators that can modify the row count (e.g. ``Filter``,
+        ``FlatMap``) can't reuse these estimates, so they fall back to ``None``.
+
+        Propagating ``size_bytes`` is what keeps size-dependent planning correct
+        when a one-to-one op is pushed below a join/shuffle (e.g. by projection
+        pushdown): otherwise ``_try_estimate_output_bytes`` sees ``size_bytes=None``
+        and the hash-shuffle aggregator silently falls back to a fixed default
+        memory reservation instead of one derived from the dataset size.
+        """
+        if len(self.input_dependencies) != 1:
+            return BlockMetadata(
+                num_rows=None, size_bytes=None, input_files=None, exec_stats=None
+            )
+        input_meta = self.input_dependencies[0].infer_metadata()
+        if self.can_modify_num_rows:
+            return BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                input_files=input_meta.input_files,
+                exec_stats=None,
+            )
+        return BlockMetadata(
+            num_rows=input_meta.num_rows,
+            size_bytes=input_meta.size_bytes,
+            input_files=input_meta.input_files,
+            exec_stats=None,
+        )
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(
@@ -128,6 +163,23 @@ class Download(AbstractOneToOne):
                 f"number of output columns ({len(self.output_bytes_column_names)})"
             )
         object.__setattr__(self, "_num_outputs", None)
+
+    def infer_metadata(self) -> BlockMetadata:
+        # Download preserves the row count but appends a binary blob column per
+        # requested output, so the output is *larger* than the input -- often by
+        # orders of magnitude. Propagating the input's ``size_bytes`` (as the
+        # row-preserving default does) would be a misleading under-estimate that
+        # could starve downstream size-dependent planning (e.g. hash-shuffle
+        # aggregator memory reservation). Keep the accurate row count and input
+        # files, but report ``size_bytes=None`` since we can't estimate the
+        # downloaded bytes ahead of execution.
+        meta = super().infer_metadata()
+        return BlockMetadata(
+            num_rows=meta.num_rows,
+            size_bytes=None,
+            input_files=meta.input_files,
+            exec_stats=None,
+        )
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = input schema with one binary column appended per requested
