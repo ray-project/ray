@@ -724,6 +724,14 @@ To enable the feature, set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`.
 | `serve_haproxy_ingress_router_server_mismatch_total` | Counter | `application` | Number of requests where HAProxy ultimately routed to a different replica than the router returned. This happens when the named replica is `DOWN` and `option redispatch` falls through to load balancing. Non-zero values indicate the router's view of replica health is stale, or replicas are flapping. |
 | `serve_haproxy_ingress_router_failures_total` | Counter | `application`, `reason` | Number of router consultations that failed to pin a replica. Each failure causes HAProxy to return `503` to the client. The `reason` tag is one of `router_unreachable` (socket connect/send/recv failed), `router_non_200` (router returned a non-200 status), `unparseable_replica_id` (router 200 but body didn't contain a string `replica_id`), or `unknown_replica_id` (router returned a `replica_id` not in HAProxy's current replica map). |
 
+### HAProxy config reload metrics
+
+This metric tracks how long it takes for a controller update (replica set or fallback-target change) to take effect in HAProxy when using Serve's HAProxy proxy.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `serve_haproxy_update_latency_s` | Histogram | `node_id` | Seconds from the first coalesced controller broadcast to the HAProxy reload completing. Includes the coalesce window (`RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S`), time queued behind an in-flight reload, and the reload itself. Use to detect slow config propagation; high values mean replica-set changes take longer to reach the data plane. |
+
 ### Replica lifecycle metrics
 
 These metrics track replica health, restarts, and lifecycle timing.

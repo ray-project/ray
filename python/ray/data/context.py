@@ -282,6 +282,8 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
+
 DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
     "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
 )
@@ -665,6 +667,12 @@ class DataContext:
         gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
             communicator setup (actor creation + root/worker init) before raising
             a ``TimeoutError``. Defaults to 120 seconds.
+        isolate_read_workers: If ``True``, other operators' tasks don't get scheduled on
+            the same worker processes as the read operators'. This prevents large
+            PyArrow memory allocation during reads from inflating the resident memory of
+            workers that are later reused by downstream operators. Enabling this flag
+            can reduce OOMs but also cause performance regressions. Defaults to
+            ``False``.
     """
 
     # `None` means the block size is infinite.
@@ -823,6 +831,8 @@ class DataContext:
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
     )
+
+    isolate_read_workers: bool = DEFAULT_ISOLATE_READ_WORKERS
 
     downstream_capacity_backpressure_ratio: Optional[
         float

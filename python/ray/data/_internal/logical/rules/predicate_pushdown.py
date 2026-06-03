@@ -125,8 +125,11 @@ class PredicatePushdown(Rule):
                 if is_rename_expr(expr):
                     original_columns_being_renamed.add(expr.expr.name)
 
-        # Check if filter references columns removed by explicit select
-        # Valid if: projection includes all columns (star) OR predicate columns exist in output
+        # Check if filter references columns removed by explicit select.
+        # Valid if: projection includes all columns (star, UDF-fallback path)
+        # OR predicate columns exist in the explicit output set (typed path,
+        # where ``StarExpr`` is expanded into explicit ``col()`` refs in
+        # ``Project.__post_init__`` when the input schema is known).
         has_required_columns = (
             projection_op.has_star_expr() or predicate_columns.issubset(output_columns)
         )
