@@ -750,6 +750,17 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
+# Minimum spacing between HAProxy reloads. Broadcasts arriving inside
+# the window are batched into one apply; without it, autoscaling churn
+# can fire reloads tens of ms apart.
+RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0.1
+)
+
+# Histogram boundaries (seconds) for serve_haproxy_update_latency_s: the time
+# from the first coalesced controller broadcast to the HAProxy reload finishing.
+RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30]
+
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
