@@ -1425,37 +1425,30 @@ void WorkerPool::StartNewWorker(
   // If the request has allocated instances or resource requirements, we need to
   // start a new worker even if the runtime env is empty. This is to inject allocated
   // accelerators IDs to worker processes.
-  if (!IsRuntimeEnvEmpty(serialized_runtime_env) ||
-      (pop_worker_request->allocated_instances_ &&
-       !pop_worker_request->allocated_instances_->IsEmpty()) ||
-      !pop_worker_request->resource_requirements_.IsEmpty()) {
-    std::string env_to_use = serialized_runtime_env;
-    if (IsRuntimeEnvEmpty(env_to_use)) {
-      env_to_use = "{}";
-    }
-    GetOrCreateRuntimeEnv(
-        env_to_use,
-        pop_worker_request->runtime_env_info_.runtime_env_config(),
-        pop_worker_request->job_id_,
-        pop_worker_request->resource_requirements_,
-        pop_worker_request->allocated_instances_,
-        [this, start_worker_process_fn, pop_worker_request](
-            bool successful,
-            const std::string &serialized_runtime_env_context,
-            const std::string &setup_error_message) {
-          if (successful) {
-            start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
-          } else {
-            process_failed_runtime_env_setup_failed_++;
-            pop_worker_request->callback_(
-                nullptr,
-                PopWorkerStatus::RuntimeEnvCreationFailed,
-                /*runtime_env_setup_error_message*/ setup_error_message);
-          }
-        });
-  } else {
-    start_worker_process_fn(pop_worker_request, "");
+  std::string env_to_use = serialized_runtime_env;
+  if (IsRuntimeEnvEmpty(env_to_use)) {
+    env_to_use = "{}";
   }
+  GetOrCreateRuntimeEnv(env_to_use,
+                        pop_worker_request->runtime_env_info_.runtime_env_config(),
+                        pop_worker_request->job_id_,
+                        pop_worker_request->resource_requirements_,
+                        pop_worker_request->allocated_instances_,
+                        [this, start_worker_process_fn, pop_worker_request](
+                            bool successful,
+                            const std::string &serialized_runtime_env_context,
+                            const std::string &setup_error_message) {
+                          if (successful) {
+                            start_worker_process_fn(pop_worker_request,
+                                                    serialized_runtime_env_context);
+                          } else {
+                            process_failed_runtime_env_setup_failed_++;
+                            pop_worker_request->callback_(
+                                nullptr,
+                                PopWorkerStatus::RuntimeEnvCreationFailed,
+                                /*runtime_env_setup_error_message*/ setup_error_message);
+                          }
+                        });
 }
 
 void WorkerPool::PopWorker(
