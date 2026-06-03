@@ -84,7 +84,11 @@
 .+\.py.*AWSNodeProvider: Set tag ray-runtime-config=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*AWSNodeProvider: Set tag ray-file-mounts-contents=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: up-to-date
-.+\.py.*Useful commands:
+.+\.py.*-{60}
+.+\.py.*Note: The output above is from the head node \(via `ray start`\)\.
+.+\.py.*  Commands shown in 'Next steps' may only work from the head node
+.+\.py.*  or from within the cluster network\.
+.+\.py.*Useful commands for your local machine:
 .+\.py.*To terminate the cluster:
 .+\.py.*  ray down .+
 .+\.py.*To retrieve the IP address of the cluster head:
