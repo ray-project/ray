@@ -402,6 +402,9 @@ TEST_F(LeaderElectorTest, StepDownOnPersistentRenewalFailure) {
 
   auto try_acquire = [&](const std::string &holder, int, std::string &current) {
     acquire_calls++;
+    if (acquire_calls > 1) {
+      return Status::IOError("Persistent Connection Timeout");
+    }
     current = holder;
     return Status::OK();
   };
