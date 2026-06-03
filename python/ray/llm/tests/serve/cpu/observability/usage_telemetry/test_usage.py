@@ -34,7 +34,7 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):
-        recorder.record.remote(key, value)
+        ray.get(recorder.record.remote(key, value))
 
     telemetry_agent = _get_or_create_telemetry_agent()
     telemetry_agent._reset_models.remote()
@@ -185,7 +185,7 @@ def test_telemetry_dedups_replicas_and_restarts(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):
-        recorder.record.remote(key, value)
+        ray.get(recorder.record.remote(key, value))
 
     telemetry_agent = _get_or_create_telemetry_agent()
     telemetry_agent._reset_models.remote()
@@ -216,7 +216,7 @@ def test_telemetry_reports_fixed_num_replicas(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):
-        recorder.record.remote(key, value)
+        ray.get(recorder.record.remote(key, value))
 
     telemetry_agent = _get_or_create_telemetry_agent()
     telemetry_agent._reset_models.remote()
@@ -244,7 +244,7 @@ def test_telemetry_reports_auto_num_replicas(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):
-        recorder.record.remote(key, value)
+        ray.get(recorder.record.remote(key, value))
 
     telemetry_agent = _get_or_create_telemetry_agent()
     telemetry_agent._reset_models.remote()
