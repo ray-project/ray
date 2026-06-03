@@ -2383,7 +2383,7 @@ cdef CRayStatus task_execution_handler(
             # exceptions, causing a CHECK failure in HandleTaskExecutionResult
             # when return objects are not populated.
             # Convert to UnexpectedSystemExit so the C++ side
-            # treats this as a clean worker-exiting task failure (CORE-2834).
+            # treats this as a clean worker-exiting task failure.
             msg = (
                 "BaseException escaped task execution handlers: "
                 f"{type(e).__name__}: {e}"

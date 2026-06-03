@@ -657,7 +657,7 @@ def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
     reason="Manual repro only; run by hand and inspect worker logs. See docstring."
 )
 def test_double_cancel_does_not_crash_worker(shutdown_only):
-    """Test for CORE-2834.
+    """Test for the double-cancel race that can crash the worker.
 
     Trigger sequence:
 
