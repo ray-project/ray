@@ -1,8 +1,10 @@
 import logging
+from functools import partial
 from typing import Iterator, List, Optional
 
 import pyarrow as pa
 
+from ray._common.utils import env_integer
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -28,6 +30,7 @@ from ray.data._internal.planner.download_partition_actor import (
 )
 from ray.data._internal.util import (
     RetryingPyFileSystem,
+    _arrow_batcher,
     _iter_arrow_table_for_target_max_block_size,
     make_async_gen,
 )
@@ -39,6 +42,28 @@ from ray.data.datasource.path_util import (
 )
 
 logger = logging.getLogger(__name__)
+
+URI_SPLIT_MAX_ROWS = max(1, env_integer("RAY_DATA_DOWNLOAD_URI_SHARD_NUM_ROWS", 8192))
+URI_METADATA_FETCH_MAX_ACTORS = max(
+    1, env_integer("RAY_DATA_DOWNLOAD_PARTITION_MAX_ACTORS", 16)
+)
+
+
+def split_download_uri_blocks(
+    blocks: Iterator[pa.Table],
+    _,
+    *,
+    max_rows_per_block: int,
+) -> Iterator[pa.Table]:
+    """Split large URI-string blocks before exact metadata fetching."""
+    max_rows_per_block = max(1, max_rows_per_block)
+    for block in blocks:
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+        if block.num_rows == 0:
+            yield block
+            continue
+        yield from _arrow_batcher(block, max_rows_per_block)
 
 
 def plan_download_op(
@@ -68,10 +93,9 @@ def plan_download_op(
         _get_udf,
     )
 
-    # If we have multiple download operators in a row, we should only include the partition actor
-    # at the start of the chain. This is primarily done to prevent partition actors from bottlenecking
-    # the chain becuase the interleaved operators would be a single actor. As a result, the
-    # URIDownloader physical operator is responsible for outputting appropriately sized blocks.
+    # If we have multiple download operators in a row, only include the
+    # metadata planning stage at the start of the chain. The downstream download
+    # operators then use normal block shaping.
     # Decide obstore vs threaded upfront. For fsspec-S3 filesystems backed by
     # a session we can't statically introspect (Okta / STS / profile-based),
     # _plan_obstore_routing emits a warning and returns use_obstore=False so
@@ -81,14 +105,36 @@ def plan_download_op(
     if OBSTORE_AVAILABLE:
         use_obstore_path, _ = _plan_obstore_routing(filesystem)
 
-    partition_map_operator = None
+    metadata_map_operator = None
     if not upstream_op_is_download:
+        split_transformer = MapTransformer(
+            [
+                BlockMapTransformFn(
+                    partial(
+                        split_download_uri_blocks,
+                        max_rows_per_block=URI_SPLIT_MAX_ROWS,
+                    ),
+                    disable_block_shaping=True,
+                )
+            ]
+        )
+        split_map_operator = MapOperator.create(
+            split_transformer,
+            input_physical_dag,
+            data_context,
+            name=f"SplitDownloadURIs({uri_column_names_str})",
+            compute_strategy=TaskPoolStrategy(),
+            supports_fusion=False,
+        )
+
         partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
         # PartitionActor / AsyncPartitionActor are callable classes, so we need
-        # ActorPoolStrategy.
-        partition_compute = ActorPoolStrategy(
-            size=1, enable_true_multi_threading=True
-        )  # Use single actor for partitioning
+        # ActorPoolStrategy. Let the actor pool autoscale over row-split URI
+        # blocks, but cap it so S3 HEAD concurrency is bounded by default.
+        metadata_compute = ActorPoolStrategy(
+            max_size=URI_METADATA_FETCH_MAX_ACTORS,
+            enable_true_multi_threading=True,
+        )
 
         fn, init_fn = _get_udf(
             partition_cls,
@@ -96,37 +142,36 @@ def plan_download_op(
             {},
             (uri_column_names, data_context, filesystem),
             {},
-            compute=partition_compute,
+            compute=metadata_compute,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
-        partition_transform_fns = [
+        metadata_transform_fns = [
             BlockMapTransformFn(
                 block_fn,
                 # NOTE: Disable block-shaping to produce blocks as is
                 disable_block_shaping=True,
             ),
         ]
-        partition_map_transformer = MapTransformer(
-            partition_transform_fns,
+        metadata_map_transformer = MapTransformer(
+            metadata_transform_fns,
             init_fn=init_fn,
         )
 
-        partition_map_operator = ActorPoolMapOperator(
-            partition_map_transformer,
-            input_physical_dag,
+        metadata_map_operator = ActorPoolMapOperator(
+            metadata_map_transformer,
+            split_map_operator,
             data_context,
-            name=f"Partition({uri_column_names_str})",
-            # NOTE: Partition actor doesn't use the user-provided `ray_remote_args`
-            #       since those only apply to the actual download tasks. Partitioning is
-            #       a lightweight internal operation that doesn't need custom resource
-            #       requirements.
+            name=f"PlanDownloadBlocks({uri_column_names_str})",
+            # NOTE: The metadata planning actor doesn't use the user-provided
+            #       `ray_remote_args` since those only apply to the actual
+            #       download tasks. Planning is a lightweight internal operation
+            #       that doesn't need custom resource requirements.
             ray_remote_args=None,
-            compute_strategy=partition_compute,  # Use actor-based compute for callable class
-            # NOTE: We set `_generator_backpressure_num_objects` to -1 to unblock
-            #       backpressure since partitioning is extremely fast. Without this, the
-            #       partition actor gets bottlenecked by the Ray Data scheduler, which
-            #       can prevent Ray Data from launching enough download tasks.
+            compute_strategy=metadata_compute,
+            # NOTE: Let each metadata actor stream emitted download blocks without
+            #       generator-object backpressure. Downstream operator
+            #       backpressure still controls the end-to-end pipeline.
             ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
@@ -169,9 +214,9 @@ def plan_download_op(
 
     download_map_operator = MapOperator.create(
         download_map_transformer,
-        partition_map_operator if partition_map_operator else input_physical_dag,
+        metadata_map_operator if metadata_map_operator else input_physical_dag,
         data_context,
-        name=f"Download({uri_column_names_str})",
+        name=f"DownloadURIBytes({uri_column_names_str})",
         compute_strategy=download_compute,
         ray_remote_args=ray_remote_args,
     )

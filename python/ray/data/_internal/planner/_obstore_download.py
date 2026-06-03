@@ -531,46 +531,43 @@ _BUCKET_REGION_CACHE: Dict[str, Optional[str]] = {}
 _BUCKET_REGION_CACHE_LOCK = threading.Lock()
 
 
-def _discover_aws_bucket_region(bucket: str) -> Optional[str]:
-    """Discover an AWS S3 bucket's region, cached per-process.
+def _discover_aws_bucket_region(bucket: str, *, timeout: float = 5.0) -> Optional[str]:
+    """Discover an AWS S3 bucket's region via a HEAD probe.
 
-    Delegates to :func:`pyarrow.fs.resolve_s3_region`, which issues a HEAD
-    probe and reads ``x-amz-bucket-region`` (AWS returns it for both 200 OK
-    and 301 PermanentRedirect responses). PyArrow is already a required Ray
-    Data dependency and caches region lookups in its C++ S3 layer; the extra
-    per-process dict here also caches negative results, so a bucket that can't
-    be resolved (network error, non-AWS endpoint, or a PyArrow build without
-    S3 support) is probed at most once.
+    Cached per-process. AWS returns ``x-amz-bucket-region`` in the response
+    headers for both 200 OK and 301 PermanentRedirect, so the probe is cheap
+    whether or not the default endpoint happens to be the correct region.
 
-    Returns ``None`` when the region cannot be determined. Callers fall back
-    to obstore's default region handling, which preserves prior behavior for
-    non-AWS S3-compatible backends (MinIO, R2, etc.).
+    Returns ``None`` on network errors, non-AWS endpoints, or any case where
+    the header is absent. Callers fall back to obstore's default region
+    handling, which preserves prior behavior for non-AWS S3-compatible
+    backends (MinIO, R2, etc.).
     """
     with _BUCKET_REGION_CACHE_LOCK:
         if bucket in _BUCKET_REGION_CACHE:
             return _BUCKET_REGION_CACHE[bucket]
 
-    # Probe outside the lock so concurrent first-time lookups don't serialize
-    # on a network round-trip.
+    import urllib.error
+    import urllib.request
+
     region: Optional[str] = None
     try:
-        region = pyarrow.fs.resolve_s3_region(bucket)
+        req = urllib.request.Request(
+            f"https://s3.us-east-1.amazonaws.com/{bucket}",
+            method="HEAD",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            region = resp.headers.get("x-amz-bucket-region")
+        except urllib.error.HTTPError as e:
+            # 301 PermanentRedirect / 403 / 404 still carry the header.
+            region = e.headers.get("x-amz-bucket-region") if e.headers else None
     except Exception as e:
-        # Includes AttributeError on PyArrow builds compiled without S3
-        # support, where ``resolve_s3_region`` is absent.
         logger.debug("Failed to discover region for bucket %r: %s", bucket, e)
 
     with _BUCKET_REGION_CACHE_LOCK:
-        # Another thread may have resolved the same bucket while we probed.
-        # A real region must win over a ``None`` result: never let a failed
-        # probe overwrite a region a concurrent thread already cached, or
-        # later ``StoreRegistry.get`` calls would skip region injection and
-        # cross-region downloads could fail intermittently.
-        cached = _BUCKET_REGION_CACHE.get(bucket)
-        if cached is not None:
-            return cached
         _BUCKET_REGION_CACHE[bucket] = region
-        return region
+    return region
 
 
 class StoreRegistry:
@@ -789,10 +786,9 @@ async def _download_uris_with_obstore(
     and forwarded to obstore's store construction.
 
     When ``RAY_DATA_OBSTORE_RANGE_THRESHOLD`` is set to a positive value,
-    files larger than the threshold are downloaded as parallel range chunks
-    via ``get_range_async``.  The *file_sizes* list, when provided by the
-    upstream ``AsyncPartitionActor``, lets the function skip the HEAD request
-    for files whose size is already known.
+    files with a known size larger than the threshold are downloaded as
+    parallel range chunks via ``get_range_async``. Unknown sizes use a simple
+    GET, which avoids a full-batch HEAD pass for large URI lists.
 
     Args:
         uris: URIs to download.
@@ -800,8 +796,8 @@ async def _download_uris_with_obstore(
         filesystem: Optional PyArrow filesystem whose credentials are
             forwarded to the obstore store. Ignored when *fs_kwargs* is given.
         file_sizes: Optional per-URI file sizes from AsyncPartitionActor.
-            ``0`` or ``None`` entries trigger a HEAD request when range
-            splitting is enabled.
+            ``0`` or ``None`` entries mean "unknown size" and are downloaded
+            with a simple GET when range splitting is enabled.
         fs_kwargs: Pre-extracted obstore kwargs from the planner. Preferred
             over *filesystem* because it sidesteps re-extracting credentials
             from inside the event loop (aiobotocore sessions need ``asyncio.run``).
@@ -865,19 +861,12 @@ async def _download_uris_with_obstore(
 
     # --- Range-split path ---
     assert sem is not None
-    # 0 = unknown size; these will be resolved via HEAD below.
-    sizes = list(file_sizes) if file_sizes is not None else [0] * len(uris)
-
-    # Resolve unknown file sizes via HEAD. The cost is one concurrent RTT
-    # regardless of batch size, which is negligible compared to the speedup
-    # from correctly routing large files to ranged download.
-    unknown_indices = [i for i, s in enumerate(sizes) if not s or s <= 0]
-    if unknown_indices:
-        resolved = await asyncio.gather(
-            *[_resolve_size(uris[i], registry, sem) for i in unknown_indices]
-        )
-        for i, sz in zip(unknown_indices, resolved):
-            sizes[i] = sz
+    # 0 = unknown size. Unknown entries intentionally stay unknown so large
+    # batches do not pay one HEAD request per URI before downloading.
+    sizes = [0] * len(uris)
+    if file_sizes is not None:
+        for i, size in enumerate(file_sizes[: len(uris)]):
+            sizes[i] = size if size is not None and size > 0 else 0
 
     tasks = []
     for uri, size in zip(uris, sizes):
@@ -893,28 +882,6 @@ async def _download_uris_with_obstore(
 
 
 # Async helpers
-async def _resolve_size(
-    uri: str,
-    registry: StoreRegistry,
-    semaphore: asyncio.Semaphore,
-) -> int:
-    """Return the file size in bytes via a HEAD request, or 0 on failure.
-
-    Returning 0 on failure is intentional: callers treat 0 as "unknown size",
-    which routes the file to a simple GET instead of ranged download.
-    """
-    import obstore as obs
-
-    try:
-        store_url, path = _split_obstore_uri(uri)
-        store = registry.get(store_url)
-        async with semaphore:
-            meta = await obs.head_async(store, path)
-        return meta["size"]
-    except Exception:
-        return 0
-
-
 async def _fetch_whole(
     uri: str,
     registry: StoreRegistry,
