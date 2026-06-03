@@ -1,22 +1,61 @@
-diff --git a/vllm/v1/worker/gpu_worker.py b/vllm/v1/worker/gpu_worker.py
-index 259cd0555..24c31e80e 100644
---- a/vllm/v1/worker/gpu_worker.py
-+++ b/vllm/v1/worker/gpu_worker.py
-@@ -271,8 +271,15 @@ class Worker(WorkerBase):
-                     f"({visible_device_count})."
+diff --git a/vllm/v1/executor/ray_executor_v2.py b/vllm/v1/executor/ray_executor_v2.py
+index 0665b5f..157e1d1 100644
+--- a/vllm/v1/executor/ray_executor_v2.py
++++ b/vllm/v1/executor/ray_executor_v2.py
+@@ -36,6 +36,7 @@ from vllm.v1.executor.ray_utils import (
+ )
+ 
+ if ray is not None:
++    import ray.cloudpickle  # noqa: F401
+     from ray.actor import ActorHandle
+     from ray.types import ObjectRef
+     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+@@ -102,7 +103,7 @@ class RayWorkerProc(WorkerProc):
+ 
+     def __init__(
+         self,
+-        vllm_config: VllmConfig,
++        vllm_config_serialized: bytes,
+         rank: int,
+         distributed_init_method: str,
+         input_shm_handle: Handle,
+@@ -111,8 +112,8 @@ class RayWorkerProc(WorkerProc):
+     ):
+         # Defer WorkerProc.__init__ until GPU IDs are known.
+         self._is_driver_node = is_driver_node
++        self._vllm_config_serialized = vllm_config_serialized
+         self._init_kwargs = dict(
+-            vllm_config=vllm_config,
+             rank=rank,
+             distributed_init_method=distributed_init_method,
+             input_shm_handle=input_shm_handle,
+@@ -149,8 +150,11 @@ class RayWorkerProc(WorkerProc):
+         for key, value in env_vars.items():
+             os.environ[key] = value
+ 
++        vllm_config = ray.cloudpickle.loads(self._vllm_config_serialized)
++
+         self.local_rank = local_rank
+         super().__init__(
++            vllm_config=vllm_config,
+             local_rank=local_rank,
+             **self._init_kwargs,
+         )
+@@ -323,6 +327,8 @@ class RayExecutorV2(MultiprocExecutor):
+         runtime_env = self._build_runtime_env()
+         resource_kwargs = self._get_actor_resource_kwargs()
+ 
++        vllm_config_serialized = ray.cloudpickle.dumps(self.vllm_config)
++
+         for bundle_idx in range(self.world_size):
+             bundle = bundle_assignments[bundle_idx]
+             is_driver_worker = self._is_driver_worker(bundle["rank"])
+@@ -347,7 +353,7 @@ class RayExecutorV2(MultiprocExecutor):
+                     runtime_env=runtime_env,
                  )
- 
--            self.device = torch.device(f"cuda:{self.local_rank}")
--            torch.accelerator.set_device_index(self.device)
-+            physical_device_id = current_platform.device_id_to_physical_device_id(
-+                self.local_rank
-+            )
-+            try:
-+                self.device = torch.device(f"cuda:{physical_device_id}")
-+                current_platform.set_device(self.device)
-+            except RuntimeError:
-+                self.device = torch.device(f"cuda:{self.local_rank}")
-+                current_platform.set_device(self.device)
- 
-             current_platform.check_if_supports_dtype(self.model_config.dtype)
- 
+                 .remote(
+-                    vllm_config=self.vllm_config,
++                    vllm_config_serialized=vllm_config_serialized,
+                     rank=bundle["rank"],
+                     distributed_init_method=distributed_init_method,
+                     input_shm_handle=scheduler_output_handle,
