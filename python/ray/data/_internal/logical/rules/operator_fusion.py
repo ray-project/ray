@@ -522,6 +522,10 @@ class FuseOperators(Rule):
         ):
             ref_bundler = down_op._block_ref_bundler
 
+        isolate_workers = (
+            isinstance(up_op, TaskPoolMapOperator) and up_op.isolate_workers
+        ) or (isinstance(down_op, TaskPoolMapOperator) and down_op.isolate_workers)
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -539,6 +543,7 @@ class FuseOperators(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
+            isolate_workers=isolate_workers,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(

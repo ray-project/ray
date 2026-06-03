@@ -84,7 +84,7 @@ config = {
     "qlograndint": tune.qlograndint(1, 10, 2),  # Round to multiples of 2
     "choice": tune.choice(["a", "b", "c"]),  # Choose one of these options uniformly
     "func": tune.sample_from(
-        lambda spec: spec.config.uniform * 0.01
+        lambda config: config["uniform"] * 0.01
     ),  # Depends on other value
     "grid": tune.grid_search([32, 64, 128]),  # Search over all these values
 }

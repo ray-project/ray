@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/worker_killing_policy_interface.h"
