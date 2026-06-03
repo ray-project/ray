@@ -2447,6 +2447,13 @@ class Replica:
                         self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
+                    set_rpc_span_attributes(
+                        system=RequestProtocol.GRPC,
+                        method=request_metadata.call_method,
+                        status_code=status.code.name,
+                        service=self._deployment_id.name,
+                    )
+                    set_span_exception(e, escaped=True)
                     return
                 finally:
                     set_grpc_code_and_details(context, status)
