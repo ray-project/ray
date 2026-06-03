@@ -27,7 +27,6 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
-    ReservationOpResourceAllocator,
     ResourceManager,
     create_resource_allocator,
 )
@@ -687,94 +686,6 @@ class TestResourceManager:
         resource_manager.update_usages()
         resource_manager._get_completed_ops_usage()
         assert compute_calls == 2
-
-    def test_reservation_cache_reused_and_invalidated(self, restore_data_context):
-        """`_update_reservation` reuses the cached reservation when neither the
-        limits nor the eligible-op set change, and recomputes otherwise."""
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1)
-        o3 = mock_map_op(o2)
-        topo = build_streaming_topology(o3, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo,
-            ExecutionOptions(),
-            MagicMock(return_value=ExecutionResources.zero()),
-            DataContext.get_current(),
-        )
-        # `update_budgets` reads each op's usage; mock it so we can drive the
-        # allocator directly without running a full `update_usages`.
-        resource_manager.get_op_usage = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-        allocator = resource_manager._op_resource_allocator
-        assert isinstance(allocator, ReservationOpResourceAllocator)
-
-        limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
-        allocator.update_budgets(limits=limits)
-        reserved_before = dict(allocator._op_reserved)
-        assert reserved_before  # sanity: some ops are eligible
-
-        # A recompute clears `_op_reserved`; a sentinel surviving a same-input
-        # call proves the cached path was taken.
-        sentinel = object()
-        allocator._op_reserved[sentinel] = "x"
-        allocator.update_budgets(limits=limits)
-        assert sentinel in allocator._op_reserved  # cache hit
-
-        # Changing the limits invalidates the cache and recomputes.
-        allocator.update_budgets(
-            limits=ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
-        )
-        assert sentinel not in allocator._op_reserved  # recomputed
-
-        # Changing the eligible-op set (an op completes) also recomputes.
-        allocator.update_budgets(limits=limits)  # repopulate cache for `limits`
-        allocator._op_reserved[sentinel] = "x"
-        o3.mark_execution_finished()
-        allocator.update_budgets(limits=limits)
-        assert sentinel not in allocator._op_reserved  # recomputed
-
-    def test_min_max_resource_requirements_cached(self, restore_data_context):
-        """`min_max_resource_requirements()` is static config, so the allocator
-        computes it once per op and reuses it across `update_budgets` calls."""
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1)
-        o3 = mock_map_op(o2)
-        topo = build_streaming_topology(o3, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo,
-            ExecutionOptions(),
-            MagicMock(return_value=ExecutionResources.zero()),
-            DataContext.get_current(),
-        )
-        resource_manager.get_op_usage = MagicMock(
-            return_value=ExecutionResources.zero()
-        )
-        allocator = resource_manager._op_resource_allocator
-        assert isinstance(allocator, ReservationOpResourceAllocator)
-
-        calls = 0
-        real = o2.min_max_resource_requirements
-
-        def counting():
-            nonlocal calls
-            calls += 1
-            return real()
-
-        o2.min_max_resource_requirements = counting
-
-        limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
-        allocator.update_budgets(limits=limits)
-        assert calls == 1  # computed once across the reservation + budget loops
-
-        # Subsequent calls (same and different limits) reuse the cached value.
-        allocator.update_budgets(limits=limits)
-        allocator.update_budgets(
-            limits=ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
-        )
-        assert calls == 1
 
     def test_external_consumer_bytes_attributed_to_terminal_operator(
         self, restore_data_context
