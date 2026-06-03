@@ -74,10 +74,9 @@ class PreemptionCallback(WorkerGroupCallback):
             return
         watcher = self._watcher
         self._watcher = None
-        # Force-kill rather than a graceful ``ray.get(stop.remote())`` so we
-        # never block the controller's event loop on a synchronous wait. The
-        # watcher's daemon poll thread dies with the actor process and holds no
-        # external resources, so there's nothing to flush.
+        # Force-kill (non-blocking) rather than a synchronous graceful stop, so
+        # we never block the controller's event loop. The watcher's daemon poll
+        # thread dies with the actor process and holds no external resources.
         try:
             ray.kill(watcher)
         except Exception:

@@ -4,10 +4,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set
 
 import ray
-from ray.train.v2._internal.constants import (
-    DEFAULT_PREEMPTION_POLL_INTERVAL_S,
-    PREEMPTION_WATCHER_STOP_TIMEOUT_S,
-)
+from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
 from ray.util.tpu import get_tpu_slice_name_from_node
 
 logger = logging.getLogger(__name__)
@@ -138,13 +135,6 @@ class PreemptionWatcher:
                 exc_info=True,
             )
             return per_node
-
-    def stop(self) -> None:
-        """Signal the poll loop to exit and wait for the thread to join."""
-        self._stop_event.set()
-        if self._monitor_thread is not None:
-            self._monitor_thread.join(timeout=PREEMPTION_WATCHER_STOP_TIMEOUT_S)
-            self._monitor_thread = None
 
     def get_latest_info(self) -> Optional[PreemptionInfo]:
         """Most recent :class:`PreemptionInfo` observed, or ``None``."""

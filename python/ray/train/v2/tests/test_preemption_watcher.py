@@ -25,7 +25,9 @@ def _make_watcher(
             node_to_ranks=node_to_ranks,
             drain_source=drain_source,
         )
-    watcher.stop()
+    # Halt the background poll thread so the test can drive _poll_once() itself.
+    watcher._stop_event.set()
+    watcher._monitor_thread.join(timeout=5)
     return watcher
 
 
