@@ -515,8 +515,6 @@ redirects:
 - from: /ray-core/tasks/patterns/*
   to: /ray-core/patterns/:splat
   type: page
-  description: consolidated prefix rewrite (DOC-947)
 - from: /auto_examples/*
   to: /ray-core/examples/:splat
   type: page
-  description: consolidated prefix rewrite (DOC-947)
