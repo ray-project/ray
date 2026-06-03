@@ -64,7 +64,7 @@ class WeightedRoundRobinPartitioner(Generic[T]):
         # (e.g. file_size * encoding_ratio), and truncating each per-item
         # estimate would shift bucket-fullness and emit/advance timing relative
         # to accumulating the raw values.
-        weight = max(0, weight)
+        weight = max(0.0, weight)
         while (
             self._emit_before_overflow
             and current_bucket.items
