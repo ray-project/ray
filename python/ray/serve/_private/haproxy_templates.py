@@ -193,7 +193,7 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     # threads are still routing other requests.
     http-reuse always
     # Inherits the defaults block's `option redispatch 1` + retry-on, so a
-    # DOWN/slow pinned server falls through to a different replica instead of
+    # DOWN / slow pinned server falls through to a different replica instead of
     # head-of-line-blocking on the original pick. One retry policy everywhere.
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
