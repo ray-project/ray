@@ -258,7 +258,10 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
     int current_retry_cnt) {
-  RAY_CHECK(!bundle_specs.empty());
+  if (bundle_specs.empty()) {
+    RAY_LOG(INFO) << "RemovePlacementGroupBundles called on empty bundle list.";
+    return
+  }
   if (!node.has_value()) {
     RAY_LOG(INFO) << "Node for placement group " << placement_group_id
                   << " has already been removed. Remove request will be ignored.";

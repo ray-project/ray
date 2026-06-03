@@ -2009,7 +2009,8 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   for (const auto &rpc_bundle_spec : request.bundle_specs()) {
     BundleSpecification bundle_spec(rpc_bundle_spec);
     RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
-        << "Bundles in RemovePlacementGroupBundles must be all be in the same placement group.";
+        << "Bundles in RemovePlacementGroupBundles must be all be in the same placement "
+           "group.";
     RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
   }
 
