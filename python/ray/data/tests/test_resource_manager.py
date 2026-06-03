@@ -394,7 +394,7 @@ class TestResourceManager:
         o2._metrics.obj_store_mem_internal_outqueue = initial_internal_outqueue[o2] - 50
 
         rm_baseline.update_usages()
-        rm_incremental.update_usages_for_op(o3)
+        rm_incremental.update_usages_for_ops([o3])
 
         # Per-op state must match across both managers.
         for op in [o1, o2, o3]:
@@ -425,9 +425,9 @@ class TestResourceManager:
             == rm_incremental.get_global_pending_usage()
         )
 
-    def test_update_usages_for_op_refreshes_after_completion(self):
-        """`update_usages_for_op` (what the completion phase calls for each
-        op whose task finished) refreshes that op's slot + deltas the
+    def test_update_usages_for_ops_refreshes_after_completion(self):
+        """`update_usages_for_ops` (what the completion phase calls with the
+        ops whose tasks finished) refreshes those ops' slots + deltas the
         globals without recomputing every operator."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
@@ -469,8 +469,8 @@ class TestResourceManager:
             return_value=ExecutionResources(cpu=0, gpu=0, memory=0)
         )
 
-        # This is what the completion phase calls for each completed op.
-        resource_manager.update_usages_for_op(o3)
+        # This is what the completion phase calls with the completed ops.
+        resource_manager.update_usages_for_ops([o3])
 
         # The manager's cache reflects the new state without a full
         # `update_usages()` recompute.

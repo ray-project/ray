@@ -595,7 +595,7 @@ def process_completed_tasks(
     Returns:
         A tuple of (number of errored blocks, set of operators whose tasks
         completed this call). The caller refreshes the resource-usage cache
-        for the returned operators via `update_usages_for_op`.
+        for the returned operators via `update_usages_for_ops`.
     """
 
     # All active tasks, keyed by their waitables.

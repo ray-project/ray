@@ -487,9 +487,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Only the ops whose tasks just completed changed their usage, so
         # refresh just those slots incrementally rather than recomputing
-        # every operator.
-        for op in completed_ops:
-            self._resource_manager.update_usages_for_op(op)
+        # every operator. Passing the whole set lets the resource manager
+        # deduplicate affected ops and recompute budgets once.
+        self._resource_manager.update_usages_for_ops(completed_ops)
         # Dispatch as many operators as we can for completed tasks.
         self._report_current_usage()
 
@@ -513,7 +513,7 @@ class StreamingExecutor(Executor, threading.Thread):
             # Per-dispatch hot path: only the dispatched op's slot can
             # have changed. The incremental refresh is O(1) per call vs
             # the full O(N_ops) update_usages re-derivation.
-            self._resource_manager.update_usages_for_op(op)
+            self._resource_manager.update_usages_for_ops([op])
 
             i += 1
             if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:

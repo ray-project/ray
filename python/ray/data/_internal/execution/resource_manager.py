@@ -215,7 +215,7 @@ class ResourceManager:
         source-of-truth resync (it catches usage changes from sources
         outside the completion / dispatch phases, e.g. actor-pool
         autoscaling and restart transitions). The completion and dispatch
-        phases use `update_usages_for_op` to refresh only the ops they
+        phases use `update_usages_for_ops` to refresh only the ops they
         touch.
         """
         self._global_usage = ExecutionResources.zero()
@@ -239,34 +239,45 @@ class ResourceManager:
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
 
-    def update_usages_for_op(self, op: "PhysicalOperator"):
-        """Incremental update after `op`'s state changed (a dispatch on
-        `op`, or a task of `op` completing).
+    def update_usages_for_ops(self, ops: Iterable["PhysicalOperator"]):
+        """Incremental update after the given ops' state changed (a dispatch
+        on an op, or tasks of those ops completing).
 
         Refreshes the affected ops' slots in `_op_*_usages` and applies
-        the deltas to `_global_*_usage`. `op`'s own slot changes (new /
+        the deltas to `_global_*_usage`. Each op's own slot changes (new /
         finished pending/running task, grown/shrunk obj_store queues),
         and its immediate upstream's obj_store accounting changes (a
-        bundle was popped from the upstream's outqueue and given to `op`
+        bundle was popped from the upstream's outqueue and given to the op
         as input). Other ops' cached slots are untouched.
-        O(1 + N_input_deps) per call vs the O(N_ops) full re-derivation.
 
-        Falls back to the full recompute when the op has no cached
-        slot yet (i.e., it hasn't been seen by `update_usages` once).
+        Accepting a list lets callers (e.g. the completion phase, which
+        passes every op whose task finished this step) deduplicate the
+        affected set, so an op shared by several inputs is refreshed once
+        and the budgets are recomputed once rather than per input op.
+
+        Falls back to the full recompute if any op has no cached slot yet
+        (i.e. it hasn't been seen by `update_usages` once).
         """
-        if op not in self._op_usages:
-            # Initial population — fall through to the full recompute so
-            # the per-op caches and the globals end up in lockstep.
-            self.update_usages()
+        # The changed ops plus their immediate input dependencies (whose
+        # outqueues just lost a bundle), deduplicated so each affected op
+        # is refreshed at most once.
+        affected_ops = set()
+        for op in ops:
+            if op not in self._op_usages:
+                # Initial population — fall through to the full recompute so
+                # the per-op caches and the globals end up in lockstep.
+                self.update_usages()
+                return
+            affected_ops.add(op)
+            affected_ops.update(
+                input_op
+                for input_op in op.input_dependencies
+                if input_op in self._op_usages
+            )
+
+        if not affected_ops:
             return
 
-        # The dispatched op plus its immediate input dependencies (whose
-        # outqueues just lost a bundle to `op`).
-        affected_ops = [op] + [
-            input_op
-            for input_op in op.input_dependencies
-            if input_op in self._op_usages
-        ]
         for affected_op in affected_ops:
             self._refresh_op_with_delta(affected_op)
 
@@ -742,14 +753,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         assert 0.0 <= self._reservation_ratio <= 1.0
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Cached inputs to `_update_reservation`. `_update_reservation` only
-        # depends on `limits` and the set of eligible ops (and the per-op
-        # `min_max_resource_requirements`). All three are stable between most
-        # dispatches — limits refresh every 10s, eligible_ops only changes
-        # when an op completes. Skip the recompute when the inputs match
-        # the previous call.
-        self._cached_reservation_limits: Optional[ExecutionResources] = None
-        self._cached_reservation_eligible_ops: Optional[List[PhysicalOperator]] = None
         # Memory reserved exclusively for the outputs of each operator.
         # "Op outputs" refer to blocks that have been taken out of an operator,
         # i.e., `RessourceManager._mem_op_outputs`.
@@ -905,23 +908,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         limits: ExecutionResources,
     ):
         # `_update_reservation` populates `_op_reserved`, `_reserved_for_op_outputs`,
-        # `_reserved_min_resources`, and `_total_shared`. All depend only on
-        # `limits` and the set of eligible ops (plus each op's
-        # `min_max_resource_requirements`, which is also stable). Skip when
-        # the inputs match the previous call.
-        eligible_ops = self._resource_manager.get_eligible_ops()
-        if (
-            # First call: nothing cached yet (and `None != limits` would
-            # raise inside `ExecutionResources.__eq__`), so always recompute.
-            self._cached_reservation_limits is None
-            or self._cached_reservation_limits != limits
-            or self._cached_reservation_eligible_ops != eligible_ops
-        ):
-            self._update_reservation(limits)
-            self._cached_reservation_limits = limits
-            self._cached_reservation_eligible_ops = list(eligible_ops)
+        # `_reserved_min_resources`, and `_total_shared`.
+        self._update_reservation(limits)
 
         self._op_budgets.clear()
+        eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
