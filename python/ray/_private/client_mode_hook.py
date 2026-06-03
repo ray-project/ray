@@ -2,7 +2,7 @@ import os
 import threading
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, Callable, Optional, Tuple, TypeVar, cast
 
 from ray._private.auto_init_hook import auto_init_ray
 
@@ -82,31 +82,50 @@ def enable_client_mode():
         _explicitly_disable_client_mode()
 
 
-def client_mode_hook(func: F) -> F:
+def client_mode_hook(
+    func: Optional[F] = None, *, local_only_kwargs: Tuple[str, ...] = ()
+):
     """Decorator for whether to use the 'regular' ray version of a function,
     or the Ray Client version of that function.
 
     Args:
         func: This function. This is set when this function is used
-            as a decorator.
+            as a bare decorator.
+        local_only_kwargs: Names of keyword arguments that apply only to the
+            local (non-client) implementation. They are stripped before the
+            call is redirected to the Ray Client, so the client API does not
+            need to accept them. On the local path they pass through unchanged.
     """
 
-    from ray.util.client import ray
+    def decorator(func: F) -> F:
+        from ray.util.client import ray
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        # NOTE(hchen): DO NOT use "import" inside this function.
-        # Because when it's called within a `__del__` method, this error
-        # will be raised (see #35114):
-        # ImportError: sys.meta_path is None, Python is likely shutting down.
-        if client_mode_should_convert():
-            # Legacy code
-            # we only convert init function if RAY_CLIENT_MODE=1
-            if func.__name__ != "init" or is_client_mode_enabled_by_default:
-                return getattr(ray, func.__name__)(*args, **kwargs)
-        return func(*args, **kwargs)
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # NOTE(hchen): DO NOT use "import" inside this function.
+            # Because when it's called within a `__del__` method, this error
+            # will be raised (see #35114):
+            # ImportError: sys.meta_path is None, Python is likely shutting down.
+            if client_mode_should_convert():
+                # Legacy code
+                # we only convert init function if RAY_CLIENT_MODE=1
+                if func.__name__ != "init" or is_client_mode_enabled_by_default:
+                    if local_only_kwargs:
+                        kwargs = {
+                            k: v
+                            for k, v in kwargs.items()
+                            if k not in local_only_kwargs
+                        }
+                    return getattr(ray, func.__name__)(*args, **kwargs)
+            return func(*args, **kwargs)
 
-    return cast(F, wrapper)
+        return cast(F, wrapper)
+
+    # Support both `@client_mode_hook` and
+    # `@client_mode_hook(local_only_kwargs=...)` usage.
+    if func is not None:
+        return decorator(func)
+    return decorator
 
 
 def client_mode_should_convert():

@@ -2084,7 +2084,7 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(local_only_kwargs=("wait_for_processes",))
 @with_connect_or_shutdown_lock
 def shutdown(*, wait_for_processes: bool = False, _exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
@@ -2119,7 +2119,8 @@ def shutdown(*, wait_for_processes: bool = False, _exiting_interpreter: bool = F
     Args:
         wait_for_processes: If True, block until the subprocesses started by
             ``ray.init()`` (raylet, GCS, dashboard, etc.) have actually exited
-            before returning.
+            before returning. Has no effect when connected as a Ray Client,
+            which owns no local subprocesses.
         _exiting_interpreter: True if this is called by the atexit hook
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
