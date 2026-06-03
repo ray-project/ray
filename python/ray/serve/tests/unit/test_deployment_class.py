@@ -82,7 +82,6 @@ class TestDeploymentOptions:
     # Deployment options mapped to sample input
     deployment_options = {
         "name": "test",
-        "version": "abcd",
         "num_replicas": 1,
         "ray_actor_options": {},
         "user_config": {},
@@ -174,6 +173,45 @@ class TestDeploymentOptions:
         f = f.options(**options)
         assert f._deployment_config.user_configured_option_names == set(options.keys())
 
+    def test_deployment_decorator_version_removed(self):
+        with pytest.raises(
+            ValueError,
+            match=r"`version` in `@serve\.deployment` has been removed",
+        ):
+
+            @serve.deployment(version="abcd")
+            def f():
+                pass
+
+    def test_deployment_options_version_removed(self):
+        @serve.deployment
+        def f():
+            pass
+
+        with pytest.raises(
+            ValueError,
+            match=r"`version` in `Deployment\.options\(\)` has been removed",
+        ):
+            f.options(version="abcd")
+
+    def test_deployment_route_prefix_removed(self):
+        @serve.deployment
+        def f():
+            pass
+
+        assert not hasattr(f, "route_prefix")
+        with pytest.raises(AttributeError):
+            _ = f.route_prefix
+
+        with pytest.raises(TypeError, match="route_prefix"):
+
+            @serve.deployment(route_prefix="/prefix")
+            def g():
+                pass
+
+        with pytest.raises(TypeError, match="route_prefix"):
+            f.options(route_prefix="/prefix")
+
     def test_eager_placement_group_validation(self):
         """Check that placement groups are validated early.
 
@@ -190,6 +228,15 @@ class TestDeploymentOptions:
             )
             def f():
                 pass
+
+    def test_deployment_url_removed(self):
+        @serve.deployment
+        def f():
+            pass
+
+        assert not hasattr(f, "url")
+        with pytest.raises(AttributeError):
+            _ = f.url
 
     def test_placement_group_strategy_without_bundles(self):
         """Check that specifying strategy requires also specifying bundles."""
