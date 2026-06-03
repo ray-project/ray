@@ -95,13 +95,10 @@ class PredicatePushdown(Rule):
         - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
           (where 'b' is valid output created by a->b)
         """
-        from ray.data._internal.logical.rules.projection_pushdown import (
-            _is_renaming_expr,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _ColumnReferenceCollector,
         )
-        from ray.data.expressions import AliasExpr
+        from ray.data.expressions import AliasExpr, is_rename_expr
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
@@ -121,15 +118,18 @@ class PredicatePushdown(Rule):
                 new_names.add(expr.name)
 
                 # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
-                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                if expr.name in predicate_columns and not is_rename_expr(expr):
                     return False  # Computed column
 
                 # Track old names being renamed for later check
-                if _is_renaming_expr(expr):
+                if is_rename_expr(expr):
                     original_columns_being_renamed.add(expr.expr.name)
 
-        # Check if filter references columns removed by explicit select
-        # Valid if: projection includes all columns (star) OR predicate columns exist in output
+        # Check if filter references columns removed by explicit select.
+        # Valid if: projection includes all columns (star, UDF-fallback path)
+        # OR predicate columns exist in the explicit output set (typed path,
+        # where ``StarExpr`` is expanded into explicit ``col()`` refs in
+        # ``Project.__post_init__`` when the input schema is known).
         has_required_columns = (
             projection_op.has_star_expr() or predicate_columns.issubset(output_columns)
         )
