@@ -2436,6 +2436,48 @@ class TestTimerPercentile:
         assert t2.percentile(0.5) == pytest.approx(t.percentile(0.5))
         assert t2.percentile(0.9) == pytest.approx(t.percentile(0.9))
 
+    def test_as_dict_is_json_serializable(self):
+        # Regression: Timer.__dict__ holds a DistributionTracker (not
+        # JSON-serializable) since percentile tracking was added. Code
+        # that persists Timer stats to JSON (e.g. the training-ingest
+        # benchmark checkpointing metrics.json) must use as_dict(), which
+        # exposes only the scalar fields.
+        import json
+
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+        d = t.as_dict()
+        assert "_distribution" not in d
+        # Must not raise ``Object of type DistributionTracker is not JSON
+        # serializable``.
+        json.loads(json.dumps(d))
+
+    def test_as_dict_from_dict_roundtrip(self):
+        t = Timer()
+        for v in [0.001, 0.01, 0.1, 1.0]:
+            t.add(v)
+
+        restored = Timer()
+        restored.from_dict(t.as_dict())
+        assert restored.get() == pytest.approx(t.get())
+        assert restored.min() == pytest.approx(t.min())
+        assert restored.max() == pytest.approx(t.max())
+        assert restored.avg() == pytest.approx(t.avg())
+
+    def test_as_dict_from_dict_empty(self):
+        # An untouched Timer reports min/max as None (inf is not
+        # JSON-representable) and restores back to the empty sentinels.
+        t = Timer()
+        d = t.as_dict()
+        assert d["_min"] is None and d["_max"] is None
+        assert d["_total"] == 0 and d["_total_count"] == 0
+
+        restored = Timer()
+        restored.from_dict(d)
+        assert restored.min() == float("inf")
+        assert restored.get() == 0
+
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):
     # KLL-sketch percentile tracking is always on (bounded memory), so
