@@ -187,10 +187,10 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/gcs:fake_gcs_resource_manager",
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:test_utils",
+        "//src/ray/gcs:fake_gcs_resource_manager",
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
