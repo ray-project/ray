@@ -134,7 +134,10 @@ class RealisticSchemaUDF:
         ).astype(np.float32)
 
     def __call__(self, batch) -> Dict[str, object]:
-        n_rows = len(batch["id"])
+        # Derive the row count from any input column rather than hardcoding
+        # "id": when operators are chained, the UDF output (scalar/array cols
+        # only) becomes the next operator's input and no longer contains "id".
+        n_rows = len(next(iter(batch.values())))
         out: Dict[str, object] = {}
 
         for i, col in enumerate(self._scalar_cols):
