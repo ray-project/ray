@@ -50,8 +50,6 @@ But inside the decorator, Ray checks whether the decorated Python function is a 
 Note that a user can explicitly set `num_returns` to an integer for a generator function.
 However, it is not the scope of this document because, in that case, Ray treats the invocation as a fixed-return task, iterates over the generator while buffering task outputs, and returns the fixed set of `ObjectRef` objects from `.remote()`.
 
-Besides `num_returns`, a user can set `_generator_backpressure_num_objects` to control the backpressure behavior of a streaming generator task.
-
 ## Task Submission and Return ObjectIDs
 
 Invoking `generator.remote()` submits one streaming generator task and [returns one ObjectRefGenerator](https://github.com/ray-project/ray/blob/ray-2.55.0/python/ray/remote_function.py#L509-L514) to the Python caller.
@@ -126,7 +124,7 @@ The executor then drives the generator itself:
 
 Each `send(stats)` or `asend(stats)` resumes the Python generator until the next `yield`.
 After a value is yielded, the generator is paused.
-Before the executor calls `send(stats)` or `asend(stats)` again, it serializes the yielded value, stores it inline or in plasma, sends `ReportGeneratorItemReturns` to the caller, and waits for backpressure if needed.
+Before the executor calls `send(stats)` or `asend(stats)` again, it sends `ReportGeneratorItemReturns` to the caller, and waits for backpressure if needed.
 The loop ends when the generator raises `StopIteration` or `StopAsyncIteration`.
 
 Note that Ray streaming generators are output-only streams.
@@ -146,7 +144,7 @@ For each yielded value, the executor runs [report_streaming_generator_output](ht
 When the caller [handles ReportGeneratorItemReturns](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L779-L878), it performs the following steps:
 
 1. Insert the returned object into the caller-side `ObjectRefStream` at the yield index.
-2. Handle the reported return object using the same direct-return versus plasma-return logic as normal task returns.
+2. Handle the reported return object as a direct return or a plasma return, using the same logic as normal task returns.
 3. [Make the reported ObjectRef ready](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L821-L847). If a caller is [waiting in next(gen)](https://github.com/ray-project/ray/blob/ray-2.55.0/python/ray/_private/object_ref_generator.py#L188-L237) for this in-order yield index, that wait can now finish.
 
 The following diagram shows the reporting path for yielded values:
@@ -220,7 +218,7 @@ gen = task.remote()
 ```
 
 The executor repeats this protocol for every yielded value.
-The final `PushTask` reply marks the generator task as complete.
+Finally, the `PushTask` reply marks the generator task as complete.
 The caller handles this reply in [`TaskManager::CompletePendingTask`](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L908-L1085).
 The reply contains [`streaming_generator_return_ids`](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/protobuf/core_worker.proto#L172-L174), which are streamed return ObjectIDs and whether each return is stored in plasma.
 It doesn't contain the yielded values themselves because those values were already reported through `ReportGeneratorItemReturns`.
@@ -228,7 +226,7 @@ The caller uses the number of entries in `streaming_generator_return_ids` to wri
 For example, if the generator yielded three values, the marker is written at yield index `3`.
 This marker tells `ObjectRefGenerator` that the next index will never be reported, so iteration should stop instead of waiting forever.
 
-The [ReportGeneratorItemReturnsRequest](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/protobuf/core_worker.proto#L434-L450) RPC ordering isn't guaranteed.
+One more detail is that, while the yield ordering is fixed, the arrival ordering of the [ReportGeneratorItemReturnsRequest](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/protobuf/core_worker.proto#L434-L450) RPC on the caller isn't guaranteed.
 The executor sends report RPCs asynchronously.
 It [waits for a report response](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/generator_waiter.cc#L32-L57) only when generator backpressure is enabled and the number of generated but unconsumed objects reaches the configured threshold.
 When backpressure is disabled, or when the threshold still allows more unconsumed objects, multiple reports can be in flight.
@@ -248,8 +246,7 @@ The option has the following behavior:
 
 Note that Ray doesn't support `_generator_backpressure_num_objects` for async generators.
 
-After the executor sends `ReportGeneratorItemReturns`, it calls [WaitUntilObjectConsumed()](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/generator_waiter.cc#L32-L57).
-This call blocks the executor thread while:
+Then after the executor sends `ReportGeneratorItemReturns`, it calls [WaitUntilObjectConsumed()](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/generator_waiter.cc#L32-L57) to block the executor thread while:
 
 ```text
 generated_objects - consumed_objects >= _generator_backpressure_num_objects
@@ -270,6 +267,7 @@ When the `ObjectRefGenerator` goes out of scope, its [destructor](https://github
 [Deleting the stream](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/task_manager.cc#L690-L727) releases unconsumed streamed refs from the caller-side stream and replies to pending backpressured report RPCs with `NotFound`.
 This unblocks an executor that was waiting for the caller to consume more refs.
 If the executor reports more yielded values after the stream is deleted, the caller rejects those future `ReportGeneratorItemReturns` RPCs with `NotFound`.
+On the executor side, the failed report reply is treated as if [all generated refs were consumed](https://github.com/ray-project/ray/blob/ray-2.55.0/src/ray/core_worker/core_worker.cc#L3190-L3211) for backpressure accounting, so the executor doesn't stay blocked on the deleted stream.
 Note that deleting the `ObjectRefStream` doesn't cancel the remote generator task. The executor continues running user code until the generator finishes or the task is cancelled separately.
 
 ## Getting Streamed Return Values
