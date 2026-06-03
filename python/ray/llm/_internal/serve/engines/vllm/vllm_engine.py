@@ -315,6 +315,7 @@ class VLLMEngine(LLMEngine):
         self.llm_config.apply_checkpoint_info(
             vllm_engine_config.model_config.model,
             trust_remote_code=config.trust_remote_code,
+            hf_config=vllm_engine_config.model_config.hf_config,
         )
 
         self._engine_client = self._start_async_llm_engine(

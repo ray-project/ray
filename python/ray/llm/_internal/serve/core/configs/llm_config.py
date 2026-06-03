@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 from typing import (
     Any,
@@ -31,7 +30,6 @@ from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
 )
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
-from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -279,66 +277,53 @@ class LLMConfig(BaseModelExtended):
             ) from e
 
     def _infer_supports_vision(
-        self, model_id_or_path: str, trust_remote_code: bool = False
+        self, hf_config: "transformers.PretrainedConfig"
     ) -> None:
-        """Called in llm node initializer together with other transformers calls. It
-        loads the model config from huggingface and sets the supports_vision
-        attribute based on whether the config has `vision_config`. All LVM models has
-        `vision_config` setup.
+        """Set the supports_vision attribute based on whether the config has
+        `vision_config`. All LVM models have `vision_config` setup.
         """
-        hf_config = self._load_hf_config(
-            model_id_or_path, trust_remote_code=trust_remote_code
-        )
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def _set_model_architecture(
         self,
-        model_id_or_path: Optional[str] = None,
+        hf_config: Optional["transformers.PretrainedConfig"] = None,
         model_architecture: Optional[str] = None,
-        trust_remote_code: bool = False,
     ) -> None:
-        """Called in llm node initializer together with other transformers calls. It
-        loads the model config from huggingface and sets the model_architecture
-        attribute based on whether the config has `architectures`.
+        """Set the model_architecture attribute from the config's `architectures`,
+        or from an explicitly provided architecture string.
         """
-        if model_id_or_path:
-            hf_config = self._load_hf_config(
-                model_id_or_path, trust_remote_code=trust_remote_code
-            )
-            if (
-                hf_config
-                and hasattr(hf_config, "architectures")
-                and hf_config.architectures
-            ):
-                self._model_architecture = hf_config.architectures[0]
+        if hf_config is not None:
+            architectures = getattr(hf_config, "architectures", None)
+            if architectures:
+                self._model_architecture = architectures[0]
 
         if model_architecture:
             self._model_architecture = model_architecture
 
     def apply_checkpoint_info(
-        self, model_id_or_path: str, trust_remote_code: bool = False
+        self,
+        model_id_or_path: str,
+        trust_remote_code: bool = False,
+        hf_config: Optional["transformers.PretrainedConfig"] = None,
     ) -> None:
-        """Apply the checkpoint info to the model config."""
-        # GGUF models use a repo:quantization format (e.g. "org/repo:Q5_K_M")
-        # that HuggingFace's config loader rejects due to the colon. For local
-        # GGUF files the weights path is a .gguf file, not the directory that
-        # contains config.json. Normalise both cases before the HF calls.
-        drive, tail = os.path.splitdrive(model_id_or_path)
-        if model_id_or_path.lower().endswith(".gguf"):
-            hf_path = os.path.dirname(model_id_or_path) or "."
-        elif ":" in tail:
-            hf_path = drive + get_base_model_id(tail)
-        else:
-            hf_path = model_id_or_path
+        """Apply the checkpoint info to the model config.
 
-        self._infer_supports_vision(hf_path)
-        self._set_model_architecture(hf_path)
-        self._infer_supports_vision(
-            model_id_or_path, trust_remote_code=trust_remote_code
-        )
-        self._set_model_architecture(
-            model_id_or_path, trust_remote_code=trust_remote_code
-        )
+        Args:
+            model_id_or_path: HF repo id or local path. Used to load the config
+                only when ``hf_config`` is not supplied.
+            trust_remote_code: Forwarded to the HF config loader.
+            hf_config: An already-resolved transformers config. When provided it
+                is used directly, so callers that have already resolved the
+                config (e.g. the engine, which understands formats like GGUF)
+                avoid a second load and any format-specific path handling.
+        """
+        if hf_config is None:
+            hf_config = self._load_hf_config(
+                model_id_or_path, trust_remote_code=trust_remote_code
+            )
+
+        self._infer_supports_vision(hf_config)
+        self._set_model_architecture(hf_config=hf_config)
 
     def get_or_create_callback(self) -> Optional[CallbackBase]:
         """Get or create the callback instance for this process.

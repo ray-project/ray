@@ -489,7 +489,7 @@ class TestCheckpointInfo:
 
 
 class TestApplyCheckpointInfo:
-    """Test that apply_checkpoint_info normalises model paths for HF config loading."""
+    """Test that apply_checkpoint_info derives capabilities from the HF config."""
 
     @pytest.fixture
     def mock_hf_config(self):
@@ -501,42 +501,46 @@ class TestApplyCheckpointInfo:
     def _make_llm_config(self, model_id="org/model"):
         return LLMConfig(model_loading_config=ModelLoadingConfig(model_id=model_id))
 
-    @pytest.mark.parametrize(
-        "input_id,expected_id",
-        [
-            ("org/repo:Q5_K_M", "org/repo"),
-            ("org/plain-model", "org/plain-model"),
-        ],
-    )
-    @patch("transformers.PretrainedConfig.from_pretrained")
-    def test_model_id_normalisation(
-        self, mock_from_pretrained, mock_hf_config, input_id, expected_id
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_uses_provided_hf_config_without_reloading(
+        self, mock_from_pretrained, mock_hf_config
+    ):
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/repo:Q5_K_M", hf_config=mock_hf_config)
+
+        mock_from_pretrained.assert_not_called()
+        assert config._model_architecture == "Qwen2ForCausalLM"
+        assert config._supports_vision is False
+
+    def test_detects_vision_from_provided_hf_config(self, mock_hf_config):
+        mock_hf_config.vision_config = MagicMock()
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/repo", hf_config=mock_hf_config)
+
+        assert config._supports_vision is True
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_falls_back_to_loading_from_path(
+        self, mock_from_pretrained, mock_hf_config
     ):
         mock_from_pretrained.return_value = mock_hf_config
         config = self._make_llm_config()
 
-        config.apply_checkpoint_info(input_id)
+        config.apply_checkpoint_info("org/plain-model")
 
-        calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-        assert all(
-            arg == expected_id for arg in calls
-        ), f"Expected {expected_id!r}, got {calls}"
+        mock_from_pretrained.assert_called_once()
+        assert mock_from_pretrained.call_args.args[0] == "org/plain-model"
+        assert config._model_architecture == "Qwen2ForCausalLM"
 
-    @patch("transformers.PretrainedConfig.from_pretrained")
-    def test_local_gguf_file_uses_parent_directory(
-        self, mock_from_pretrained, mock_hf_config, tmp_path
-    ):
-        mock_from_pretrained.return_value = mock_hf_config
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_load_failure_raises_value_error(self, mock_from_pretrained):
+        mock_from_pretrained.side_effect = OSError("no config.json")
         config = self._make_llm_config()
 
-        gguf_path = str(tmp_path / "model-Q5_K_M.gguf")
-
-        config.apply_checkpoint_info(gguf_path)
-
-        calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-        assert all(
-            arg == str(tmp_path) for arg in calls
-        ), f"Expected parent directory {str(tmp_path)!r}, got {calls}"
+        with pytest.raises(ValueError, match="Failed to load Hugging Face config"):
+            config.apply_checkpoint_info("org/missing-model")
 
 
 if __name__ == "__main__":
