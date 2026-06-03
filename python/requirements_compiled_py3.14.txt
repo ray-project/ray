@@ -1909,7 +1909,7 @@ python-json-logger==4.1.0
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
     # via semgrep
-python-multipart==0.0.26
+python-multipart==0.0.27
     # via gradio
 python-snappy==0.7.3
     # via -r python/requirements/ml/py313/data-test-requirements.txt
