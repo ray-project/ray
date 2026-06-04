@@ -106,7 +106,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     )
 
     # Ensures Healthz method succeeding.
-    ping_grpc_healthz(channel)
+    wait_for_condition(ping_grpc_healthz, channel=channel)
 
     # Ensures a custom defined method is responding correctly.
     ping_grpc_call_method(channel, app1)
@@ -148,7 +148,7 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     )
 
     # Ensures Healthz method succeeding.
-    ping_grpc_healthz(channel)
+    wait_for_condition(ping_grpc_healthz, channel=channel)
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app)

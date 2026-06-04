@@ -9,7 +9,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -66,10 +66,12 @@ def test_serving_grpc_requests(ray_cluster):
     serve.run(g)
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, [app_name])
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=[app_name]
+    )
 
     # Ensures Healthz method succeeding.
-    ping_grpc_healthz(channel)
+    wait_for_condition(ping_grpc_healthz, channel=channel)
 
     # Ensures a custom defined method is responding correctly.
     ping_grpc_call_method(channel, app_name)
@@ -119,10 +121,12 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
     channel = grpc.insecure_channel(url)
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, ["default"])
+    wait_for_condition(
+        ping_grpc_list_applications, channel=channel, app_names=["default"]
+    )
 
     # Ensures Healthz method succeeding.
-    ping_grpc_healthz(channel)
+    wait_for_condition(ping_grpc_healthz, channel=channel)
 
 
 def test_grpc_routing_without_metadata(ray_cluster):

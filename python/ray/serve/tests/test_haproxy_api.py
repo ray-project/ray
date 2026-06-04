@@ -203,7 +203,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
             health_check_fall=3,
             health_check_rise=2,
             health_check_inter="2s",
-            health_check_path="/health",
+            http_health_check_path="/health",
             http_options=HTTPOptions(
                 host="0.0.0.0",
                 port=8000,
@@ -220,7 +220,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 app_name="api_backend",
                 timeout_http_keep_alive_s=60,
                 timeout_tunnel_s=60,
-                health_check_path="/api/health",
+                http_health_check_path="/api/health",
                 health_check_fall=2,
                 health_check_rise=3,
                 health_check_inter="5s",
@@ -896,7 +896,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 socket_path=os.path.join(temp_dir, "admin.sock"),
                 has_received_routes=True,
                 has_received_servers=True,
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 health_check_inter="500ms",
                 health_check_rise=1,
                 health_check_fall=2,
@@ -906,7 +906,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 name="llm",
                 path_prefix="/",
                 app_name="llm",
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 servers=[
                     ServerConfig(
                         name="A",
@@ -1061,7 +1061,7 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 socket_path=os.path.join(temp_dir, "admin.sock"),
                 has_received_routes=True,
                 has_received_servers=True,
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 health_check_inter="500ms",
                 health_check_rise=1,
                 health_check_fall=2,
@@ -1071,7 +1071,7 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 name="llm",
                 path_prefix="/",
                 app_name="llm",
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 servers=[
                     ServerConfig(
                         name="A",
