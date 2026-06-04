@@ -750,7 +750,7 @@ def extract_ip_port(bootstrap_address: str):
     ip_port = parse_address(bootstrap_address)
     if ip_port is None:
         raise ValueError(
-            f"Malformed address {bootstrap_address}. " f"Expected '<host>:<port>'."
+            f"Malformed address {bootstrap_address}. Expected '<host>:<port>'."
         )
     ip, port = ip_port
     try:
@@ -759,8 +759,7 @@ def extract_ip_port(bootstrap_address: str):
         raise ValueError(f"Malformed address port {port}. Must be an integer.")
     if port < 1024 or port > 65535:
         raise ValueError(
-            f"Invalid address port {port}. Must be between 1024 "
-            "and 65535 (inclusive)."
+            f"Invalid address port {port}. Must be between 1024 and 65535 (inclusive)."
         )
     return ip, port
 
@@ -1053,21 +1052,35 @@ def start_ray_process(
         total_chrs = sum([len(x) for x in command])
         if total_chrs > 31766:
             raise ValueError(
-                f"command is limited to a total of 31767 characters, "
-                f"got {total_chrs}"
+                f"command is limited to a total of 31767 characters, got {total_chrs}"
             )
 
-    process = ConsolePopen(
-        command,
-        env=modified_env,
-        cwd=cwd,
-        stdout=stdout_file,
-        stderr=stderr_file,
-        stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=(None if sys.platform == "win32" or use_posix_spawn else preexec_fn),
-        close_fds=close_fds,
-        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
+    previous_sigmask = None
+    should_block_sigint_for_spawn = (
+        use_posix_spawn
+        and hasattr(signal, "pthread_sigmask")
+        and hasattr(signal, "SIG_BLOCK")
+        and hasattr(signal, "SIG_SETMASK")
     )
+    if should_block_sigint_for_spawn:
+        previous_sigmask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    try:
+        process = ConsolePopen(
+            command,
+            env=modified_env,
+            cwd=cwd,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            stdin=subprocess.PIPE if pipe_stdin else None,
+            preexec_fn=(
+                None if sys.platform == "win32" or use_posix_spawn else preexec_fn
+            ),
+            close_fds=close_fds,
+            creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
+        )
+    finally:
+        if previous_sigmask is not None:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_sigmask)
 
     if win32_fate_sharing:
         try:
@@ -2495,9 +2508,12 @@ def start_ray_client_server(
     # multi-threaded gRPC server. Avoid a fork+preexec path there: gRPC may have
     # active poller threads and can skip fork handlers, leaving the child to
     # crash before it opens its channel. Specific servers self-terminate after
-    # being idle and are also cleaned up by the proxier, so they can trade
-    # kernel fate sharing and the preexec SIGINT mask for a fork-safe spawn path.
+    # being idle, monitor stdin EOF from setup_worker for abnormal parent death,
+    # and inherit a temporarily-blocked SIGINT mask from the spawning thread, so
+    # they can trade kernel fate sharing for a fork-safe spawn path.
     process_fate_share = False if use_posix_spawn else fate_share
+    if use_posix_spawn:
+        command.append("--monitor-parent-pipe")
 
     process_info = start_ray_process(
         command,
@@ -2506,6 +2522,7 @@ def start_ray_client_server(
         stderr_file=stderr_file,
         fate_share=process_fate_share,
         env_updates=env_updates,
+        pipe_stdin=use_posix_spawn,
         use_posix_spawn=use_posix_spawn,
     )
     return process_info

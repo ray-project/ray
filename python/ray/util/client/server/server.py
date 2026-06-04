@@ -8,6 +8,7 @@ import math
 import os
 import pickle
 import queue
+import signal
 import threading
 import time
 from collections import defaultdict
@@ -851,6 +852,11 @@ def create_ray_handler(address, redis_password, redis_username=None):
     return ray_connect_handler
 
 
+def _block_sigint_for_specific_server() -> None:
+    if hasattr(signal, "pthread_sigmask") and hasattr(signal, "SIG_BLOCK"):
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+
+
 def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     """
     Try to create a gcs client based on the command line args or by
@@ -903,6 +909,8 @@ def main():
     args, _ = parser.parse_known_args()
     redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
+    if args.mode == "specific-server":
+        _block_sigint_for_specific_server()
 
     ray_connect_handler = create_ray_handler(
         args.address, redis_password, args.redis_username
