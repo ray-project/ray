@@ -680,7 +680,10 @@ class KineticaDatasink(Datasink):
             # contains bad_record_indices (comma-separated list of indices)
             # and error_N entries with the error message for each failed record.
             if response is not None:
-                info = getattr(response, "info", None) or response.get("info", {})
+                # Handle both attribute-style (AttrDict) and dict-style responses
+                info = getattr(response, "info", None)
+                if info is None and hasattr(response, "get"):
+                    info = response.get("info", {})
                 if info:
                     bad_indices = info.get("bad_record_indices", "")
                     if bad_indices:
@@ -744,13 +747,20 @@ class KineticaDatasink(Datasink):
                     },
                 )
 
-                inserted += response.get("count_inserted", 0)
-                updated += response.get("count_updated", 0)
+                # Handle both attribute-style (AttrDict) and dict-style responses
+                inserted += getattr(response, "count_inserted", 0) or (
+                    response.get("count_inserted", 0) if hasattr(response, "get") else 0
+                )
+                updated += getattr(response, "count_updated", 0) or (
+                    response.get("count_updated", 0) if hasattr(response, "get") else 0
+                )
 
                 # Check for per-record errors in the response info map.
                 # When return_individual_errors is true, errors are reported via
                 # bad_record_indices and error_N entries.
-                info = response.get("info", {})
+                info = getattr(response, "info", None)
+                if info is None and hasattr(response, "get"):
+                    info = response.get("info", {})
                 if info:
                     bad_indices = info.get("bad_record_indices", "")
                     if bad_indices:
