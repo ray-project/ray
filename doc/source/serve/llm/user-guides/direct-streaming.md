@@ -15,13 +15,9 @@ By default, every request to a Ray Serve LLM application flows through a separat
 
 ## When to use direct streaming
 
-Use direct streaming when:
+Direct streaming is the low-latency path for Ray Serve LLM: removing the ingress proxy hop cuts per-token overhead on streaming responses, which matters most for long generations and latency-sensitive, high-throughput deployments. It's alpha today and is intended to become the default serving path as it matures.
 
-- You serve a single model and want to minimize streaming latency.
-- You already run the HAProxy ingress (`RAY_SERVE_ENABLE_HA_PROXY=1`).
-- Per-hop overhead on long streaming responses matters for your workload.
-
-Keep the default ingress when you serve multiple models behind one endpoint, or when you customize the ingress with `ingress_cls_config` or `ingress_deployment_config` (see {ref}`direct-streaming-limitations`).
+For now, use it for single-model deployments where streaming latency is a priority, and keep the default ingress for everything else (see {ref}`direct-streaming-limitations`).
 
 ## How it works
 
