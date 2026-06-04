@@ -601,11 +601,6 @@ class ZarrV2Datasource(Datasource):
                     f"arrays to the same axis-0 prefix) to re-tile them."
                 )
 
-        # Lazy zarr import: ``zarr`` is a hard dep of this datasource (gated
-        # by ``_check_import`` above) but ``import ray.data`` shouldn't drag
-        # it in for users who never call ``read_zarr``.
-        import zarr
-
         self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
