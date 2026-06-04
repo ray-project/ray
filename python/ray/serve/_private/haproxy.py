@@ -65,6 +65,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
+    RAY_SERVE_HAPROXY_TIMEOUT_QUEUE_S,
     RAY_SERVE_HAPROXY_TUNE_BUFSIZE,
     RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
@@ -523,7 +524,7 @@ class HAProxyConfig:
     metrics_port: int = RAY_SERVE_HAPROXY_METRICS_PORT
     metrics_uri: str = "/metrics"
     # All timeout values are in seconds
-    timeout_queue_s: Optional[int] = None
+    timeout_queue_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_QUEUE_S
     timeout_connect_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S
     timeout_client_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S
     timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S

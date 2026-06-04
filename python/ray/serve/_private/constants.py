@@ -868,6 +868,10 @@ RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
 )
 RAY_SERVE_HAPROXY_DISABLE_GRPC = get_env_bool("RAY_SERVE_HAPROXY_DISABLE_GRPC", "0")
 
+RAY_SERVE_HAPROXY_TIMEOUT_QUEUE_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_QUEUE_S", "30")
+)
+
 # Per-buffer byte cap for HAProxy when the ingress-request-router Lua action is
 # active. Bodies longer than this are truncated; the Lua forwards what it has
 # with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
