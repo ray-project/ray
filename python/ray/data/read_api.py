@@ -3617,9 +3617,7 @@ def from_numpy_refs(
 
 @PublicAPI
 def from_arrow(
-    tables: Union[
-        "pyarrow.Table", bytes, Iterable[Union["pyarrow.Table", bytes]]
-    ],
+    tables: Union["pyarrow.Table", bytes, Iterable[Union["pyarrow.Table", bytes]]],
     *,
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
@@ -3659,7 +3657,7 @@ def from_arrow(
         fit in memory at once, since the tables are moved to the Ray object store
         one at a time instead of being buffered in a list.
 
-        >>> ray.data.from_arrow(table for _ in range(2))  # doctest: +ELLIPSIS
+        >>> ray.data.from_arrow(pa.table({"x": [1]}) for _ in range(2))  # doctest: +ELLIPSIS
         shape: (2, 1)
         ╭───────╮
         │ x     │
