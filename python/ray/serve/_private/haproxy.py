@@ -187,8 +187,8 @@ def get_haproxy_binary() -> str:
     RAY_SERVE_HAPROXY_BINARY_PATH (defaults to "haproxy", i.e. system PATH).
 
     When enabled, resolution order:
-      1. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
-      2. The binary bundled in the ``ray-haproxy`` package.
+      1. The binary bundled in the ``ray-haproxy`` package.
+      2. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
       3. ``haproxy`` on the system PATH (fallback).
 
     Raises ``FileNotFoundError`` if no usable binary is found.
@@ -202,7 +202,20 @@ def _resolve_haproxy_binary() -> str:
     if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
         return RAY_SERVE_HAPROXY_BINARY_PATH
 
-    # 1. If RAY_SERVE_HAPROXY_BINARY_PATH was explicitly set (not the default),
+    # 1. Bundled binary from the ray-haproxy package. Tried first so the flag
+    # forces the pip binary even when the runtime image bakes in an explicit
+    # RAY_SERVE_HAPROXY_BINARY_PATH (e.g. /usr/local/bin/haproxy); otherwise the
+    # override below would shadow it and the flag would be a no-op.
+    try:
+        from ray_haproxy import get_haproxy_binary as _pip_binary
+
+        return _pip_binary()
+    except ImportError:
+        pass
+    except OSError:
+        pass
+
+    # 2. If RAY_SERVE_HAPROXY_BINARY_PATH was explicitly set (not the default),
     # use it as an override.
     if RAY_SERVE_HAPROXY_BINARY_PATH != "haproxy":
         if os.path.isfile(RAY_SERVE_HAPROXY_BINARY_PATH) and os.access(
@@ -213,16 +226,6 @@ def _resolve_haproxy_binary() -> str:
             f"RAY_SERVE_HAPROXY_BINARY_PATH={RAY_SERVE_HAPROXY_BINARY_PATH!r} "
             "does not point to an executable file."
         )
-
-    # 2. Bundled binary from the ray-haproxy package.
-    try:
-        from ray_haproxy import get_haproxy_binary as _pip_binary
-
-        return _pip_binary()
-    except ImportError:
-        pass
-    except OSError:
-        pass
 
     # 3. System PATH fallback.
     system_haproxy = shutil.which("haproxy")
