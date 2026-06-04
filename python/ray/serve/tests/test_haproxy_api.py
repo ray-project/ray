@@ -18,12 +18,14 @@ from fastapi import FastAPI, Request, Response
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
+    PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
     HAProxyApi,
     HAProxyConfig,
+    HAProxyManager,
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
@@ -269,13 +271,12 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 # Expected configuration stub (matching the actual template output)
                 expected_config = f"""
 global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
     log 127.0.0.1:514 local0 debug
     stats socket {socket_path} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn 1000
     nbthread 2
+    tune.bufsize 16384
     server-state-base /tmp/haproxy-serve
     server-state-file /tmp/haproxy-serve/server-state
     hard-stop-after 120s
@@ -291,11 +292,20 @@ defaults
     log global
     option httplog
     option abortonclose
+    option splice-request
+    option splice-response
+    # On a retry, use a different slot (`1`). retry-on defaults to connect
+    # failures only (nothing was sent → safe to replay); override globally via
+    # RAY_SERVE_HAPROXY_RETRY_ON. Inherited by every backend.
+    option redispatch 1
+    retry-on conn-failure
     # Set TCP_NODELAY on all connections
     option http-no-delay
     option idle-close-on-response
-    # Normalize 502 and 504 errors to 500 per Serve's default behavior
+    # Normalize 502/503/504 to 500 per Serve's default behavior. 503
+    # covers HAProxy's own "all retries exhausted / no server" response.
     errorfile 502 {temp_dir}/500.http
+    errorfile 503 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
     balance random(2)
@@ -658,6 +668,95 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
         assert "X-Serve-Reason" in cfg, cfg
 
 
+def test_ingress_backend_inherits_global_retry_policy(haproxy_api_cleanup):
+    """The ``-via-ingress-request-router`` backend defines no retry directives
+    of its own — it inherits retry-on / retries / redispatch from the defaults
+    block (one policy everywhere). Only timeout server remains a per-ingress
+    override."""
+    backends = {
+        "llm": BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.1", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router", host="10.0.0.10", port=9000)
+            ],
+        ),
+    }
+
+    def render(cfg_overrides):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = HAProxyApi(
+                cfg=HAProxyConfig(
+                    socket_path=os.path.join(temp_dir, "admin.sock"),
+                    **cfg_overrides,
+                ),
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+                backend_configs=backends,
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                api.config_file_path,
+            ):
+                api._generate_config_file_internal()
+            with open(api.config_file_path) as f:
+                return f.read()
+
+    # retry-on is defined once (defaults block); the ingress backend inherits it.
+    unset = render({})
+    assert "ingress-request-router" in unset  # backend still rendered
+    assert unset.count("\n    retry-on ") == 1
+    assert "\n    retries " not in unset
+
+    # ingress retry knobs are inherited, not re-emitted in the ingress backend;
+    # only timeout server renders there as a per-ingress override.
+    set_cfg = render(
+        {
+            "ingress_retry_on": "conn-failure empty-response response-timeout",
+            "ingress_retries": 4,
+            "ingress_timeout_server_s": 5,
+        }
+    )
+    assert set_cfg.count("\n    retry-on ") == 1  # still only the defaults block
+    assert "empty-response" not in set_cfg
+    assert "\n    retries 4\n" not in set_cfg
+    assert "\n    timeout server 5s\n" in set_cfg
+
+
+def test_global_retry_knobs_render(haproxy_api_cleanup):
+    """RAY_SERVE_HAPROXY_RETRY_ON / RETRIES drive the defaults block (inherited
+    by every backend). Defaults to `conn-failure` with no explicit `retries`."""
+
+    def render(overrides):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = HAProxyApi(
+                cfg=HAProxyConfig(
+                    socket_path=os.path.join(temp_dir, "admin.sock"), **overrides
+                ),
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                api.config_file_path,
+            ):
+                api._generate_config_file_internal()
+            with open(api.config_file_path) as f:
+                return f.read()
+
+    # Default: conn-failure only, no explicit retries line.
+    default_cfg = render({})
+    assert "\n    retry-on conn-failure\n" in default_cfg
+    assert "\n    retries " not in default_cfg
+
+    # Both knobs override the defaults block.
+    overridden = render({"retry_on": "conn-failure junk-response", "retries": 2})
+    assert "\n    retry-on conn-failure junk-response\n" in overridden
+    assert "\n    retries 2\n" in overridden
+
+
 @pytest.mark.parametrize("forward_body", [True, False])
 def test_ingress_request_router_forward_body_gate_renders(
     haproxy_api_cleanup, monkeypatch, forward_body
@@ -707,11 +806,9 @@ def test_ingress_request_router_forward_body_gate_renders(
             lua = f.read()
 
         if forward_body:
-            assert "tune.bufsize" in cfg, cfg
             assert "wait-for-body" in cfg, cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
-            assert "tune.bufsize" not in cfg, cfg
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
 
@@ -1837,12 +1934,15 @@ async def test_errorfile_creation_and_config(haproxy_api_cleanup):
         # Start HAProxy and verify config contains errorfile directives
         await api.start()
 
-        # Verify config file contains errorfile directives for both 502 and 504 pointing to the same file
+        # Verify config file contains errorfile directives for 502, 503 and 504 pointing to the same file
         with open(config_file_path, "r") as f:
             config_content = f.read()
             assert (
                 f"errorfile 502 {expected_error_file_path}" in config_content
             ), "HAProxy config should contain 502 errorfile directive"
+            assert (
+                f"errorfile 503 {expected_error_file_path}" in config_content
+            ), "HAProxy config should contain 503 errorfile directive"
             assert (
                 f"errorfile 504 {expected_error_file_path}" in config_content
             ), "HAProxy config should contain 504 errorfile directive"
@@ -2239,6 +2339,156 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
             ), "Config should contain 'option http-no-delay' when tcp_nodelay=True"
 
         await api.stop()
+
+
+@pytest.mark.asyncio
+async def test_std_streams_redirected_to_files(haproxy_api_cleanup):
+    """Both HAProxy stdout and stderr must be files (not PIPEs) so a
+    full 64KB kernel pipe buffer can never block admin-socket threads
+    under load. Each spawn gets its own files so a reload doesn't lose
+    the prior worker's diagnostics.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            pass_health_checks=True,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            has_received_routes=True,
+            has_received_servers=True,
+            reload_id=f"initial-{int(time.time() * 1000)}",
+        )
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+        haproxy_api_cleanup(api)
+
+        await api.start()
+        first_stderr = api._proc._stderr_path
+        first_stdout = api._proc._stdout_path
+        # No pipes — both streams went to files.
+        assert api._proc.stderr is None
+        assert api._proc.stdout is None
+        # HAProxy's -db startup banner landed on stderr.
+        assert os.path.getsize(first_stderr) > 0
+        # stdout file exists even if it stays empty by default.
+        assert os.path.exists(first_stdout)
+
+        # Reload must open new files so the prior worker's logs survive.
+        config.reload_id = f"reload-{int(time.time() * 1000)}"
+        await api._graceful_reload()
+        assert api._proc.stderr is None
+        assert api._proc.stdout is None
+        assert api._proc._stderr_path != first_stderr
+        assert api._proc._stdout_path != first_stdout
+        assert os.path.exists(first_stderr)
+        assert os.path.exists(first_stdout)
+
+        await api.stop()
+
+
+def _bare_haproxy_manager():
+    """An uninitialized HAProxyManager for unit-testing its methods.
+
+    HAProxyManager is an ``@ray.remote`` actor, so the imported name is an
+    ActorClass, not a plain type. Reach the underlying Python class via
+    ``__ray_metadata__.modified_class`` and instantiate it with ``__new__``
+    so ``__init__`` (actor base class + event loop) is skipped.
+    """
+    cls = HAProxyManager.__ray_metadata__.modified_class
+    return cls.__new__(cls)
+
+
+@pytest.mark.asyncio
+async def test_is_drained_waits_for_old_procs():
+    """is_drained() stays False while a soft-stopping old worker from a
+    prior reload is still alive, even past the drain period with an idle
+    current worker; it flips True once the old worker exits."""
+    # Set only the two attributes is_drained() reads.
+    manager = _bare_haproxy_manager()
+    manager._draining_start_time = time.time() - PROXY_MIN_DRAINING_PERIOD_S - 1
+
+    manager._haproxy = mock.Mock()
+    manager._haproxy.get_haproxy_stats = mock.AsyncMock(
+        return_value=mock.Mock(is_system_idle=True)
+    )
+
+    # Old worker still serving -> not drained despite idle current worker.
+    manager._haproxy.has_alive_old_procs = mock.Mock(return_value=True)
+    assert await manager.is_drained() is False
+
+    # Old worker has exited -> drained.
+    manager._haproxy.has_alive_old_procs = mock.Mock(return_value=False)
+    assert await manager.is_drained() is True
+
+
+@pytest.mark.asyncio
+async def test_is_drained_false_before_min_period():
+    """is_drained() is False until PROXY_MIN_DRAINING_PERIOD_S has elapsed,
+    regardless of old-proc / idle state."""
+    manager = _bare_haproxy_manager()
+    manager._draining_start_time = time.time()  # just started draining
+    manager._haproxy = mock.Mock()
+    manager._haproxy.has_alive_old_procs = mock.Mock(return_value=False)
+    manager._haproxy.get_haproxy_stats = mock.AsyncMock(
+        return_value=mock.Mock(is_system_idle=True)
+    )
+
+    assert await manager.is_drained() is False
+
+
+@pytest.mark.asyncio
+async def test_failed_spawn_retires_log_files(monkeypatch):
+    """A spawn that fails startup must not orphan its std-stream log files —
+    they should be retired into the bounded ring like an exited worker's."""
+
+    class _FakeProc:
+        def __init__(self):
+            self.returncode = None
+            self.pid = 4321
+
+        def kill(self):
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def _fake_exec(*args, **kwargs):
+        return _FakeProc()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+
+        monkeypatch.setattr(
+            "ray.serve._private.haproxy.get_haproxy_binary", lambda: "haproxy"
+        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+
+        async def _boom(proc, timeout_s=5):
+            raise RuntimeError("startup failed")
+
+        monkeypatch.setattr(api, "_wait_for_hap_availability", _boom)
+
+        with pytest.raises(RuntimeError, match="startup failed"):
+            await api._start_and_wait_for_haproxy()
+
+        # The failed spawn's files were created then retired into the ring,
+        # not left orphaned on disk.
+        assert len(api._retired_logs) == 1
+        stdout_path, stderr_path = api._retired_logs[0]
+        assert stdout_path.endswith(".stdout.log")
+        assert stderr_path.endswith(".stderr.log")
 
 
 if __name__ == "__main__":

@@ -111,8 +111,12 @@ def _hash_partition(
         # Struct/list/map columns become dicts/lists in pandas, which are
         # unhashable. Use row-by-row hashing on PyArrow scalars instead.
         partitions = np.zeros((table.num_rows,), dtype=np.int64)
-        for i in range(table.num_rows):
-            _tuple = tuple(c[i] for c in table.columns)
+
+        # Hoist per-column lookups out of the row loop. Iterating columns in
+        # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
+        # of per-row __getitem__ calls, which avoids Python-side method dispatch
+        # on every element.
+        for i, _tuple in enumerate(zip(*table.columns)):
             partitions[i] = hash(_tuple) % num_partitions
     else:
         # Use pandas' vectorized hash (xxhash-based) instead of a Python
@@ -333,6 +337,37 @@ def _unify_schemas_pyarrow(
 
     promote_options = "permissive" if promote_types else "default"
     return pyarrow.unify_schemas(schemas, promote_options=promote_options)
+
+
+def reorder_columns_by_schema(
+    table: "pyarrow.Table", schema: "pyarrow.Schema"
+) -> "pyarrow.Table":
+    """Return `table` with its columns in the order of `schema.names`.
+
+    No-op when the column orders already match. Use before a positional
+    operation like `Table.cast(schema)` or
+    `RecordBatchReader.from_batches(schema, ...)` so blocks that share
+    the same field names in a different order — common when upstream
+    UDFs build dicts whose key order varies across workers — don't trip
+    the positional schema check.
+
+    Raises `ValueError` if `table` has any columns not in `schema.names`
+    (selecting on `schema.names` would silently drop them) and via
+    `Table.select` if `table` is missing any column in `schema.names`.
+    Callers reconciling field-set mismatches (e.g. via `unify_schemas`)
+    must handle that case before calling here.
+    """
+    if table.schema.names == schema.names:
+        return table
+    target_names = set(schema.names)
+    extra = [n for n in table.schema.names if n not in target_names]
+    if extra:
+        raise ValueError(
+            f"Table has columns not in target schema: {extra}. "
+            f"reorder_columns_by_schema only reorders an existing field set; "
+            f"reconcile the column set before calling."
+        )
+    return table.select(schema.names)
 
 
 def unify_schemas(
