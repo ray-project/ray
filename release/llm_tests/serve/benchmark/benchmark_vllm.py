@@ -93,14 +93,15 @@ def get_vllm_cli_args(llm_config):
 def _engine_kwarg_to_cli(key, value):
     """Translate one engine_kwargs entry to vllm CLI args.
 
-    vLLM uses argparse.BooleanOptionalAction for bool fields, so we emit
-    `--flag` only when True and rely on the engine default otherwise.
+    vLLM uses argparse.BooleanOptionalAction for bool fields, so emit the
+    explicit `--flag` / `--no-flag` form to honor the configured value
+    regardless of the engine default.
     """
     if value is None:
         return []
     flag = "--" + key.replace("_", "-")
     if isinstance(value, bool):
-        return [flag] if value else []
+        return [flag] if value else ["--no-" + key.replace("_", "-")]
     if isinstance(value, dict):
         return [flag, json.dumps(value)]
     return [flag, str(value)]
