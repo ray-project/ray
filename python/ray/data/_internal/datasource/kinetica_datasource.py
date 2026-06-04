@@ -179,6 +179,7 @@ class KineticaDatasource(Datasource):
         batch_size: Optional[int] = None,
         use_multihead_io: bool = False,
         convert_special_types: bool = True,
+        partition_column: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -203,6 +204,12 @@ class KineticaDatasource(Datasource):
                 datasets on clustered deployments.
             convert_special_types: If True, converts special types (arrays, JSON)
                 on retrieval. Defaults to True.
+            partition_column: Optional column name for hash-based partitioning
+                in parallel reads. When specified, rows are deterministically
+                assigned to read tasks using MOD(HASH(column), parallelism),
+                guaranteeing each row is read by exactly one task. This enables
+                safe parallel reads without requiring a unique sort key. Should
+                be a column with good value distribution (e.g., primary key).
             options: Additional GPUdb client options.
         """
         super().__init__()
@@ -261,6 +268,9 @@ class KineticaDatasource(Datasource):
                 "rejected. Please review your filter for SQL injection patterns "
                 "such as statement terminators, comments, or DDL/DML keywords."
             )
+
+        # Partition column for hash-based parallel reads
+        self._partition_column = partition_column
 
         # Cache for schema and record count
         self._arrow_schema: Optional["pa.Schema"] = None
@@ -440,13 +450,17 @@ class KineticaDatasource(Datasource):
         self,
         offset: int,
         limit: int,
+        task_id: Optional[int] = None,
+        total_tasks: Optional[int] = None,
     ) -> Callable[[], Iterable["pa.Table"]]:
         """
         Create a read function for a specific data partition using GPUdbTable.
 
         Args:
-            offset: Starting offset for this partition.
-            limit: Number of records to read.
+            offset: Starting offset for this partition (offset-based reads).
+            limit: Number of records to read (offset-based reads).
+            task_id: Task index for hash-based partitioning (0 to total_tasks-1).
+            total_tasks: Total number of parallel tasks for hash partitioning.
 
         Returns:
             A callable that returns an iterable of Arrow tables.
@@ -465,6 +479,14 @@ class KineticaDatasource(Datasource):
         batch_size = self._batch_size
         use_multihead_io = self._use_multihead_io
         convert_special_types = self._convert_special_types
+        partition_column = self._partition_column
+
+        # Determine if using hash-based partitioning
+        use_hash_partitioning = (
+            partition_column is not None
+            and task_id is not None
+            and total_tasks is not None
+        )
 
         def read_fn() -> Iterable["pa.Table"]:
             import pyarrow as pa
@@ -493,13 +515,33 @@ class KineticaDatasource(Datasource):
 
             # Build request options
             options = {}
-            if filter_expression:
-                options["expression"] = filter_expression
+
+            # Build the filter expression, combining user filter with hash partition
+            effective_filter = filter_expression
+
+            if use_hash_partitioning:
+                # Hash-based partitioning: each task reads rows where
+                # MOD(HASH(partition_column), total_tasks) = task_id
+                # This guarantees each row is read by exactly one task.
+                hash_filter = (
+                    f"MOD(HASH({partition_column}), {total_tasks}) = {task_id}"
+                )
+                if effective_filter:
+                    # Combine user filter with hash filter
+                    effective_filter = f"({effective_filter}) AND ({hash_filter})"
+                else:
+                    effective_filter = hash_filter
+
+            if effective_filter:
+                options["expression"] = effective_filter
+
             if sort_by:
                 options["sort_by"] = sort_by
                 options["sort_order"] = sort_order
 
             # Track how many records we've read and need to read
+            # For hash partitioning, we don't know exact count per task upfront,
+            # so we use a large limit and read until exhausted.
             records_remaining = limit
             current_offset = offset
             has_yielded = False
@@ -616,28 +658,38 @@ class KineticaDatasource(Datasource):
             # Ensure parallelism is at least 1 to handle invalid values
             effective_parallelism = max(1, parallelism)
 
-        if effective_parallelism > 1 and not self._sort_by:
-            # Without a sort order, offset-based pagination will produce
-            # non-deterministic results (duplicates or missing rows) because
-            # Kinetica does not guarantee stable row ordering.
-            logger.warning(
-                "Parallel reads without sort_by may produce non-deterministic "
-                "results (duplicate or missing rows). Reducing parallelism "
-                f"from {effective_parallelism} to 1. Specify sort_by with a "
-                "unique column (e.g., primary key) to enable parallel reads."
-            )
-            effective_parallelism = 1
-        elif effective_parallelism > 1 and self._sort_by:
-            # Parallel reads with sort_by are allowed, but require a unique
-            # sort column to guarantee consistent results. This matches how
-            # other database datasources (MongoDB, SQL) handle partitioning -
-            # they require a unique key for deterministic splits.
-            logger.info(
-                f"Parallel reads enabled with sort_by='{self._sort_by}'. "
-                "IMPORTANT: For consistent results, sort_by must be a column "
-                "with unique values (e.g., primary key). Non-unique sort keys "
-                "may cause duplicate or missing rows across parallel tasks."
-            )
+        # Determine partitioning strategy for parallel reads
+        use_hash_partitioning = self._partition_column is not None
+
+        if effective_parallelism > 1:
+            if use_hash_partitioning:
+                # Hash-based partitioning using MOD(HASH(column), parallelism)
+                # guarantees each row goes to exactly one task - safe for parallel
+                logger.info(
+                    f"Using hash-based partitioning on column "
+                    f"'{self._partition_column}' for {effective_parallelism} "
+                    "parallel read tasks."
+                )
+            elif not self._sort_by:
+                # Without partition_column or sort_by, offset-based pagination
+                # will produce non-deterministic results (duplicates or missing
+                # rows) because Kinetica does not guarantee stable row ordering.
+                logger.warning(
+                    "Parallel reads without partition_column or sort_by may "
+                    "produce non-deterministic results (duplicate or missing "
+                    f"rows). Reducing parallelism from {effective_parallelism} "
+                    "to 1. Specify partition_column for safe parallel reads."
+                )
+                effective_parallelism = 1
+            else:
+                # sort_by specified but no partition_column - offset-based
+                # pagination requires unique sort key for consistency
+                logger.warning(
+                    f"Parallel reads with sort_by='{self._sort_by}' require "
+                    "the sort column to have unique values for consistent "
+                    "results. Consider using partition_column instead for "
+                    "guaranteed correctness."
+                )
 
         # Calculate partition sizes
         records_per_task = max(1, self._total_count // effective_parallelism)
@@ -659,36 +711,68 @@ class KineticaDatasource(Datasource):
         records_per_task = max(1, self._total_count // effective_parallelism)
 
         read_tasks = []
-        offset = 0
 
-        for i in range(effective_parallelism):
-            if i == effective_parallelism - 1:
-                partition_size = self._total_count - offset
-            else:
-                partition_size = records_per_task
+        if use_hash_partitioning:
+            # Hash-based partitioning: each task gets rows where
+            # MOD(HASH(partition_column), parallelism) = task_id
+            # Row counts are estimated (hash distribution is approximately even)
+            estimated_rows_per_task = max(1, self._total_count // effective_parallelism)
 
-            # Skip if we've already assigned all records
-            if partition_size <= 0 or offset >= self._total_count:
-                break
-
-            metadata = BlockMetadata(
-                num_rows=partition_size,
-                size_bytes=partition_size * avg_row_size,
-                input_files=None,
-                exec_stats=None,
-            )
-
-            read_fn = self._create_read_fn(offset, partition_size)
-
-            read_tasks.append(
-                ReadTask(
-                    read_fn,
-                    metadata,
-                    schema=self._arrow_schema,
-                    per_task_row_limit=per_task_row_limit,
+            for task_id in range(effective_parallelism):
+                metadata = BlockMetadata(
+                    num_rows=estimated_rows_per_task,
+                    size_bytes=estimated_rows_per_task * avg_row_size,
+                    input_files=None,
+                    exec_stats=None,
                 )
-            )
-            offset += partition_size
+
+                read_fn = self._create_read_fn(
+                    offset=0,
+                    limit=self._total_count,
+                    task_id=task_id,
+                    total_tasks=effective_parallelism,
+                )
+
+                read_tasks.append(
+                    ReadTask(
+                        read_fn,
+                        metadata,
+                        schema=self._arrow_schema,
+                        per_task_row_limit=per_task_row_limit,
+                    )
+                )
+        else:
+            # Offset-based partitioning (requires unique sort_by for consistency)
+            offset = 0
+
+            for i in range(effective_parallelism):
+                if i == effective_parallelism - 1:
+                    partition_size = self._total_count - offset
+                else:
+                    partition_size = records_per_task
+
+                # Skip if we've already assigned all records
+                if partition_size <= 0 or offset >= self._total_count:
+                    break
+
+                metadata = BlockMetadata(
+                    num_rows=partition_size,
+                    size_bytes=partition_size * avg_row_size,
+                    input_files=None,
+                    exec_stats=None,
+                )
+
+                read_fn = self._create_read_fn(offset, partition_size)
+
+                read_tasks.append(
+                    ReadTask(
+                        read_fn,
+                        metadata,
+                        schema=self._arrow_schema,
+                        per_task_row_limit=per_task_row_limit,
+                    )
+                )
+                offset += partition_size
 
         return read_tasks
 
