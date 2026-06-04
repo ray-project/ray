@@ -774,76 +774,6 @@ def test_heterogeneous_store_emits_one_row_per_chunk(heterogeneous_zarrv2_store)
 
 
 # ---------------------------------------------------------------------------
-# _read_chunk retry behavior
-# ---------------------------------------------------------------------------
-
-
-class _ScriptedArray:
-    """Stand-in for a zarr Array: each ``[indexer]`` returns the next scripted item.
-
-    Items can be either an exception (raised) or an ndarray (returned). Used
-    to drive ``_read_chunk`` through specific retry scenarios without
-    touching the network.
-    """
-
-    def __init__(self, *responses) -> None:
-        self._responses = list(responses)
-
-    def __getitem__(self, key):
-        item = self._responses.pop(0)
-        if isinstance(item, BaseException):
-            raise item
-        return item
-
-
-class _ScriptedRoot:
-    """Stand-in for a zarr Group: name → :class:`_ScriptedArray`."""
-
-    def __init__(self, **arrays) -> None:
-        self._arrays = arrays
-
-    def __getitem__(self, name):
-        return self._arrays[name]
-
-
-def test_read_chunk_retries_then_succeeds():
-    """Retryable network errors retried with backoff, eventual read succeeds.
-
-    Uses default ``match`` patterns (``DataContext.retried_io_errors`` plus
-    zarr-specific entries like ``"Connection reset"`` and ``"Read timeout"``).
-    """
-    expected = np.array([1, 2, 3], dtype="<i4")
-    arr = _ScriptedArray(
-        ConnectionError("Connection reset by peer"),
-        TimeoutError("Read timeout"),
-        expected,
-    )
-    root = _ScriptedRoot(x=arr)
-
-    out = zarrv2_datasource._read_chunk(
-        root, "x", ((0, 3),), max_attempts=5, max_backoff_s=0
-    )
-    np.testing.assert_array_equal(out, expected)
-
-
-def test_read_chunk_exhausts_retries():
-    arr = _ScriptedArray(
-        ConnectionError("Connection reset"),
-        ConnectionError("Connection reset"),
-        ConnectionError("Connection reset"),
-    )
-    root = _ScriptedRoot(x=arr)
-
-    # call_with_retry re-raises the last exception itself (with ``from None``)
-    # rather than wrapping in a RuntimeError. Match against the original
-    # exception type to pin that behaviour.
-    with pytest.raises(ConnectionError, match="Connection reset"):
-        zarrv2_datasource._read_chunk(
-            root, "x", ((0, 3),), max_attempts=3, max_backoff_s=0
-        )
-
-
-# ---------------------------------------------------------------------------
 # Estimator
 # ---------------------------------------------------------------------------
 
@@ -1006,51 +936,6 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
         np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
     finally:
         ray.shutdown()
-
-
-@pytest.mark.parametrize(
-    "error_str, retryable",
-    [
-        # Transient transport / network errors -> retry.
-        ("ConnectionResetError: [Errno 104] Connection reset by peer", True),
-        ("TimeoutError: The read operation timed out", True),
-        ("botocore.exceptions.ReadTimeoutError: Read timeout on endpoint URL", True),
-        ("botocore.exceptions.EndpointConnectionError: Could not connect", True),
-        (
-            "aiohttp.client_exceptions.ServerDisconnectedError: Server disconnected",
-            True,
-        ),
-        # Throttling / 5xx surfaced in the message text -> retry.
-        (
-            "botocore.exceptions.ClientError: An error occurred (SlowDown) when "
-            "calling the GetObject operation",
-            True,
-        ),
-        ("OSError: Server returned HTTP status 503 Service Unavailable", True),
-        # Non-transient -> must NOT retry (the allow-list is the fail-safe).
-        ("FileNotFoundError: Array metadata '.zarray' not found", False),
-        (
-            "botocore.exceptions.ClientError: An error occurred (403) when calling "
-            "the GetObject operation: Access Denied",
-            False,
-        ),
-        # A numcodecs decode failure is data corruption, not a transient error.
-        ("ValueError: blosc: invalid compressed buffer", False),
-        ("KeyError: 'chunk 0.0 is missing'", False),
-    ],
-)
-def test_zarr_transient_error_classification(error_str, retryable):
-    """The retry allow-list matches genuine transport/throttling errors, and
-    crucially does NOT match decode-corruption or non-429 4xx errors. Note that
-    a generic ``ClientError`` is retried only for the right code/reason
-    (``SlowDown`` -> retry, ``403`` -> no retry)."""
-    from ray._common.retry import matches_error
-
-    matched = any(
-        matches_error(pattern, error_str)
-        for pattern in zarrv2_datasource._ZARR_TRANSIENT_ERROR_PATTERNS
-    )
-    assert matched is retryable
 
 
 def test_rejects_zarr_v3(tmp_path, monkeypatch):

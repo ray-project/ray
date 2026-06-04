@@ -1083,7 +1083,11 @@ def read_zarr(
             any storage backend configuration that shouldn't be inferred
             internally. Recommended for non-local Zarr stores; for local
             paths it's usually fine to omit. If omitted, the datasource
-            infers the filesystem from ``path``.
+            infers the filesystem from ``path``. Transient-error retries
+            (throttling, 5xx, timeouts) are handled by this filesystem, so
+            configure retry behavior here -- e.g. the botocore ``retries``
+            config on an ``s3fs.S3FileSystem`` or ``retry_strategy`` on a
+            ``pyarrow.fs.S3FileSystem``.
         chunk_shapes: Optional override(s) for chunk geometry along the
             leading axes. Accepts either:
 

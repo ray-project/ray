@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING, Any, List, Optional
@@ -27,10 +27,8 @@ import numpy as np
 import pandas as pd
 from fsspec.spec import AbstractFileSystem
 
-from ray._common.retry import call_with_retry
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
@@ -40,58 +38,12 @@ if TYPE_CHECKING:
     from zarr import Array as ZarrArray
     from zarr.hierarchy import Group as ZarrGroup
 
+    from ray.data.context import DataContext
+
     ZarrRoot = ZarrGroup | ZarrArray
 
 
 REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
-
-# Conservative, *grounded* allow-list of retry triggers for chunk reads. These
-# are matched (substring first, then regex) by ``call_with_retry`` against the
-# ``"module.ClassName: message"`` string that
-# ``ray._common.retry.format_exception`` produces, and are merged on top of the
-# user's ``DataContext.retried_io_errors`` (which already covers PyArrow's
-# ``AWS Error ...`` strings). Modeled on ``DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS``
-# in ``ray.data.context``: we match transient transport *exception types* and
-# transient HTTP/S3 status codes / reason phrases
-#
-# This is an allow-list, so it doubles as the fail-safe: anything not listed is
-# NOT retried
-#
-# NOTE(Artur):
-#   1. Prefer matching exception *types* (``isinstance``) over strings once
-#      ``call_with_retry`` supports it (see the TODO in
-#      ``python/ray/_common/retry.py``); type matching is immune to message and
-#      library-version drift.
-#   2. The authoritative retry budget belongs in the storage layer -- botocore
-#      adaptive retries, ``pyarrow.fs.S3FileSystem(retry_strategy=...)``, gcsfs --
-#      configured via the ``filesystem`` argument. This list should remain a thin
-#      outer net, not the primary retry mechanism.
-_ZARR_TRANSIENT_ERROR_PATTERNS = (
-    # Transient transport / network exception types (matched against the
-    # "ClassName:" prefix; a bare class name matches as a substring).
-    "ConnectionError",
-    "ConnectionResetError",
-    "ConnectionRefusedError",
-    "ConnectionAbortedError",
-    "TimeoutError",
-    "EndpointConnectionError",
-    "ServerDisconnectedError",
-    "ClientConnectorError",
-    "ClientOSError",
-    "IncompleteRead",
-    # Transient HTTP / S3 throttling and server-side responses (object stores
-    # put these in the message text). Status codes use a regex word boundary so
-    # we match 429/5xx but not, for example, 403/404.
-    r"\b(?:429|500|502|503|504)\b",
-    "Too Many Requests",
-    "Service Unavailable",
-    "Internal Server Error",
-    "SlowDown",
-    "ServiceUnavailable",
-    "InternalError",
-    "RequestTimeout",
-    "ThrottlingException",
-)
 
 
 @dataclass(frozen=True)
@@ -291,41 +243,22 @@ def _read_chunk(
     root: ZarrRoot,
     array_name: str,
     chunk_slices: tuple[tuple[int, int], ...],
-    *,
-    match: Optional[Sequence[str]] = None,
-    max_attempts: int = 10,
-    max_backoff_s: int = 32,
 ) -> np.ndarray:
-    """Read ``array[chunk_slices]`` from a Zarr root with transient-error retry.
+    """Read ``array[chunk_slices]`` from a Zarr root.
 
     ``chunk_slices`` is an N-tuple of ``(start, stop)`` pairs, one per axis.
     For a 0-D (scalar) array it is the empty tuple ``()``, which reads the
     single element.
 
-    Retries are delegated to :func:`ray._common.retry.call_with_retry`,
-    matching the pattern used by other Ray Data datasources (lance,
-    iceberg). ``match`` defaults to ``DataContext.retried_io_errors``
-    (covers the AWS-flavored object-store transient errors) plus a small
-    set of zarr-specific network patterns. Pass an explicit ``match``
-    sequence to override.
+    Transient I/O errors (throttling, 5xx, connection resets, timeouts) are
+    retried by the underlying filesystem/storage backend, which owns the retry
+    policy: ``s3fs``/botocore and ``pyarrow.fs.S3FileSystem`` retry by default
+    and are tunable on the ``filesystem`` passed to ``read_zarr`` (e.g. botocore
+    ``retries`` config or pyarrow ``retry_strategy``).
     """
     indexer = tuple(slice(s, e) for s, e in chunk_slices)
-
-    def _read() -> np.ndarray:
-        arr = root if array_name == "" else root[array_name]
-        return arr[indexer]
-
-    if match is None:
-        match = list(DataContext.get_current().retried_io_errors) + list(
-            _ZARR_TRANSIENT_ERROR_PATTERNS
-        )
-    return call_with_retry(
-        _read,
-        description=f"read zarr chunk array={array_name!r} slices={chunk_slices}",
-        match=match,
-        max_attempts=max_attempts,
-        max_backoff_s=max_backoff_s,
-    )
+    arr = root if array_name == "" else root[array_name]
+    return arr[indexer]
 
 
 @dataclass(frozen=True)
