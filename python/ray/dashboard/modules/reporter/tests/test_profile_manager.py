@@ -213,6 +213,16 @@ class TestCpuProfiling:
         cmd = await self._capture_pyspy_cmd()
         assert "--idle" not in cmd
 
+    async def test_cpu_profile_subprocesses_flag_added(self):
+        # subprocesses=True should append `--subprocesses` to the py-spy command.
+        cmd = await self._capture_pyspy_cmd(subprocesses=True)
+        assert "--subprocesses" in cmd
+
+    async def test_cpu_profile_subprocesses_not_added_by_default(self):
+        # By default the `--subprocesses` flag should be absent.
+        cmd = await self._capture_pyspy_cmd()
+        assert "--subprocesses" not in cmd
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

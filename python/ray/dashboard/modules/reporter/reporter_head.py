@@ -373,6 +373,8 @@ class ReportHead(SubprocessModule):
         native = req.query.get("native", False) == "1"
         # Default not using `--idle` for profiling
         idle = req.query.get("idle", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
         addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
@@ -389,12 +391,17 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}, idle={idle}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
 
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native, idle=idle
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                idle=idle,
+                subprocesses=subprocesses,
             )
         )
 
@@ -497,6 +504,8 @@ class ReportHead(SubprocessModule):
             native: Optional. Whether to use native profiling (default: false).
             idle: Optional. Whether to include off-CPU / sleeping threads
                 in the profile (default: false).
+            subprocesses: Optional. Whether to also profile child processes
+                of the worker (default: false).
 
         Raises:
             ValueError: If pid is not provided.
@@ -542,12 +551,19 @@ class ReportHead(SubprocessModule):
         native = req.query.get("native", False) == "1"
         # Default not using `--idle` for profiling
         idle = req.query.get("idle", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
         logger.info(
-            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, idle={idle}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native, idle=idle
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                idle=idle,
+                subprocesses=subprocesses,
             )
         )
         if reply.success:

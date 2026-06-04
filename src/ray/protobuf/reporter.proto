@@ -38,6 +38,8 @@ message CpuProfilingRequest {
   optional bool native = 4;
   // If using idle flag for py-spy (include off-CPU / sleeping threads)
   optional bool idle = 5;
+  // If using subprocesses flag for py-spy (also profile child processes)
+  optional bool subprocesses = 6;
 }
 
 message CpuProfilingReply {

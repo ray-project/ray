@@ -125,6 +125,7 @@ class CpuProfilingManager:
         duration: float = 5,
         native: bool = False,
         idle: bool = False,
+        subprocesses: bool = False,
     ) -> (bool, str):
         """
         Perform CPU profiling on a specified process.
@@ -140,6 +141,9 @@ class CpuProfilingManager:
             idle (bool, optional): If True, includes off-CPU / sleeping threads
                 (e.g. threads blocked on locks, I/O, or CUDA syncs).
                 Default is False.
+            subprocesses (bool, optional): If True, also profiles child
+                processes of the target process (e.g. data loader or
+                multiprocess inference workers). Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -180,6 +184,8 @@ class CpuProfilingManager:
             cmd.append("--native")
         if idle:
             cmd.append("--idle")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(

@@ -96,7 +96,8 @@ Clicking "CPU Flame Graph" takes a number of stack trace samples and combine the
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
 parameter to enable native profiling. To also include off-CPU (sleeping) threads, such as threads blocked on locks,
-I/O, or CUDA syncs, set the URL parameter ``idle=1``.
+I/O, or CUDA syncs, set the URL parameter ``idle=1``. To also profile child processes of the target (for example,
+data loader or multiprocess inference workers), set the URL parameter ``subprocesses=1``.
 
 .. image:: /images/flamegraph.png
    :align: center
