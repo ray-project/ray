@@ -628,7 +628,7 @@ class KineticaDatasink(Datasink):
         errors = []
 
         try:
-            gpudb_table.insert_records(
+            response = gpudb_table.insert_records(
                 records,
                 options={
                     "update_on_existing_pk": "true"
@@ -637,6 +637,29 @@ class KineticaDatasink(Datasink):
                     "return_individual_errors": "true",
                 },
             )
+
+            # Check for per-record errors in the response.
+            # When return_individual_errors is true, the response's info map
+            # contains bad_record_indices (comma-separated list of indices)
+            # and error_N entries with the error message for each failed record.
+            if response is not None:
+                info = getattr(response, "info", None) or response.get("info", {})
+                if info:
+                    bad_indices = info.get("bad_record_indices", "")
+                    if bad_indices:
+                        # Extract individual error messages for each bad record
+                        for idx in bad_indices.split(","):
+                            idx = idx.strip()
+                            if idx:
+                                error_key = f"error_{idx}"
+                                default_err = f"Unknown error at index {idx}"
+                                error_msg = info.get(error_key, default_err)
+                                errors.append(f"Record {idx}: {error_msg}")
+                                logger.error(
+                                    f"Error inserting record at index {idx} "
+                                    f"via GPUdbTable: {error_msg}"
+                                )
+
         except GPUdbException as e:
             errors.append(str(e))
             logger.error(f"Error inserting records via GPUdbTable: {e}")
