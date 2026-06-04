@@ -417,6 +417,167 @@ def test_variable_processing_time(use_budget_scheduler):
         ray.shutdown()
 
 
+# ---------------------------------------------------------------------------
+# Test 8: Multi-node two-stage pipeline (4 nodes, 2 CPUs each)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("amplification_factor", [1, 5, 10])
+def test_multinode_two_stage_pipeline(use_budget_scheduler, amplification_factor):
+    """Same as test_two_stage_pipeline but on a simulated 4-node cluster.
+
+    Each node has 2 CPUs and a fraction of the object store, testing that
+    the budget scheduler handles distributed memory correctly.
+    """
+    from ray.cluster_utils import Cluster
+
+    num_nodes = 4
+    cpus_per_node = 2
+    # Each worker node gets 200 MiB object store so the total cluster
+    # budget (~400 MiB after the 0.5 fraction) is comparable to the
+    # single-node tests.
+    object_store_per_node = 200 * 1024 * 1024
+
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0)
+    for _ in range(num_nodes):
+        cluster.add_node(
+            num_cpus=cpus_per_node,
+            object_store_memory=object_store_per_node,
+        )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    try:
+        _warmup()
+
+        def run():
+            ctx = ray.data.DataContext.get_current()
+            ctx.use_budget_scheduler = use_budget_scheduler
+            ctx.target_max_block_size = BLOCK_SIZE
+
+            def produce(batch):
+                for _ in batch["id"]:
+                    for _ in range(amplification_factor):
+                        yield {
+                            "id": [1],
+                            "data": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
+                        }
+
+            def consume(batch):
+                del batch["data"]
+                return {"id": batch["id"]}
+
+            ds = ray.data.range(NUM_BLOCKS, override_num_blocks=NUM_BLOCKS)
+            ds = ds.map_batches(produce, batch_size=1)
+            ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99)
+
+            start = time.perf_counter()
+            result = ds.materialize()
+            elapsed = time.perf_counter() - start
+
+            assert result.count() == NUM_BLOCKS * amplification_factor
+            return elapsed
+
+        _benchmark(run, label=f"multinode-factor={amplification_factor}")
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Test 10: Heterogeneous cluster spilling stress test
+# ---------------------------------------------------------------------------
+
+
+def test_heterogeneous_spilling(use_budget_scheduler):
+    """Demonstrates the global-budget blind spot on heterogeneous clusters.
+
+    Cluster layout:
+      2 CPU nodes: 2 CPUs, 100 MiB object store each  (200 MiB total CPU)
+      1 GPU node:  0 CPUs, 1 GPU, 400 MiB object store
+
+    Global budget = (200 + 400) * 0.5 = 300 MiB.
+
+    The producer (CPU) amplifies each input 10x (10 MiB per task).
+    The consumer (GPU) runs on the single GPU node.
+
+    Because the global budget (300 MiB) exceeds the total CPU-side object
+    store (200 MiB), the scheduler can authorize more produce output than
+    the CPU nodes can hold, causing spilling. A per-node-aware scheduler
+    would cap produce output at ~200 MiB and avoid spilling entirely.
+    """
+    from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+    from ray.cluster_utils import Cluster
+
+    # Use 2 CPU nodes + 1 GPU node to keep local test fast.
+    # CPU-side: 2 nodes × 100 MiB = 200 MiB
+    # GPU-side: 1 node × 400 MiB
+    # Global budget: (200 + 400) × 0.5 = 300 MiB > 200 MiB CPU-side
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0)
+    for _ in range(2):
+        cluster.add_node(
+            num_cpus=2,
+            object_store_memory=100 * 1024 * 1024,
+        )
+    cluster.add_node(
+        num_cpus=0,
+        num_gpus=1,
+        object_store_memory=400 * 1024 * 1024,
+    )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    try:
+        ctx = ray.data.DataContext.get_current()
+        ctx.use_budget_scheduler = use_budget_scheduler
+        ctx.target_max_block_size = 2 * BLOCK_SIZE
+
+        amplification = 10  # Each produce task: 1 input → 10 MiB output
+
+        def produce(batch):
+            for _ in batch["id"]:
+                for _ in range(amplification):
+                    yield {
+                        "id": [1],
+                        "data": [np.zeros(2 * BLOCK_SIZE, dtype=np.uint8)],
+                    }
+
+        def gpu_consume(batch):
+            time.sleep(0.010)
+            del batch["data"]
+            return {"id": batch["id"]}
+
+        num_blocks = 20
+        ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        ds = ds.map_batches(produce, batch_size=1)
+        ds = ds.map_batches(gpu_consume, batch_size=1, num_cpus=0, num_gpus=1)
+
+        start = time.perf_counter()
+        result = ds.materialize()
+        elapsed = time.perf_counter() - start
+
+        assert result.count() == num_blocks * amplification
+
+        # Check spilling stats.
+        memory_info = get_memory_info_reply(
+            get_state_from_address(ray.get_runtime_context().gcs_address)
+        )
+        spilled = memory_info.store_stats.spilled_bytes_total
+        spilled_mib = spilled / (1024 * 1024)
+
+        print(
+            f"  heterogeneous-spilling "
+            f"scheduler={'budget' if use_budget_scheduler else 'default'} "
+            f"time={elapsed:.2f}s "
+            f"spilled={spilled_mib:.1f}MiB"
+        )
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     import sys
 
