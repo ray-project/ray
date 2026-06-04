@@ -517,6 +517,21 @@
     timeout: 1200
     script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}}
 
+- name: worker_scaling_{{num_workers}}_{{worker_type}}_budget_scheduler
+  python: "3.10"
+  frequency: weekly
+  cluster:
+    cluster_compute: fixed_size_1000_cpu_compute.yaml
+
+  matrix:
+    setup:
+      num_workers: [1000]
+      worker_type: [actors, tasks]
+
+  run:
+    timeout: 1200
+    script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}} --use-budget-scheduler
+
 
 ########################
 # Sort and shuffle tests

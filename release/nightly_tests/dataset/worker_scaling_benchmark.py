@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
         default="actors",
         help="Whether to use actors or regular tasks for map_batches.",
     )
+    parser.add_argument(
+        "--use-budget-scheduler",
+        action="store_true",
+        default=False,
+        help="Enable the budget-based scheduler instead of the default.",
+    )
     return parser.parse_args()
 
 
@@ -49,6 +55,10 @@ def no_op_udf(batch):
 
 def main(args: argparse.Namespace):
     benchmark = Benchmark()
+
+    if args.use_budget_scheduler:
+        ctx = ray.data.DataContext.get_current()
+        ctx.use_budget_scheduler = True
 
     def benchmark_fn():
         num_blocks = BLOCKS_PER_WORKER * args.num_workers
