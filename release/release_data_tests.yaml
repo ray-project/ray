@@ -46,12 +46,6 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
-        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -60,10 +54,15 @@
 
   run:
     timeout: 3600
+    # Ray Data can't guarantee memory safety if you haven't hinted how much heap memory
+    # high-memory operations require. Since reading large Parquet files requires lots of
+    # heap memory, we need to manually specify the memory to prevent OOMs.
+    #
+    # 3650722201 is ~3.4 GiB, the maximum heap memory observed in our tests.
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
-      --iter-bundles
+      --iter-bundles --memory 3650722201
 
 - name: "read_images_{{scaling}}"
   python: "3.10"
@@ -500,6 +499,63 @@
           --data-loader s3_read_images --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
+# See release/nightly_tests/dataset/training_ingest_regression_test/main.py
+# for the variation matrix and what each one measures.
+- name: training_ingest_regression_test
+  python: "3.10"
+  group: data-iter-batches
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
+        # Preserve DEFAULTS' runtime_env (setting runtime_env here replaces,
+        # doesn't merge).
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+    cluster_compute: training_ingest_regression_test/compute.yaml
+
+  variations:
+    - __suffix__: peak_object_store_memory
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --num-runs=3
+
+    - __suffix__: peak_object_store_memory.pin_memory
+      frequency: manual
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --pin-memory --num-runs=3
+
+    - __suffix__: throughput
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --num-runs=3
+
+    - __suffix__: throughput.pin_memory
+      frequency: manual
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --pin-memory --num-runs=3
+
 #################
 # Iteration tests
 #################
@@ -672,8 +728,17 @@
 
   run:
     timeout: 3600
-    script: >
-      python backpressure_benchmark.py --case training-prefetch
+
+  variations:
+    - __suffix__: multi_node
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch
+
+    - __suffix__: single_node
+      cluster:
+        cluster_compute: fixed_size_1_cpu_compute.yaml
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
 
 
 ########################
