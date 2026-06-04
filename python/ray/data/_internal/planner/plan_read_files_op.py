@@ -40,6 +40,31 @@ from ray.data.context import DataContext
 logger = logging.getLogger(__name__)
 
 
+def _resolve_read_files_output_block_target(data_context: DataContext) -> int:
+    """Resolve the byte target the ``OutputBlockSizeOption`` coalesces to.
+
+    Resolution order:
+
+    1. ``data_context.parquet_reader_target_output_block_size_bytes`` —
+       user-set knob, wins when not ``None``.
+    2. ``data_context.target_min_block_size`` — the "middle path"
+       default; produces output blocks of ~1 MiB unless overridden.
+    3. ``data_context.target_max_block_size`` — last-resort fallback
+       when block sizing is otherwise disabled; preserves prior V2
+       behavior in that edge case.
+
+    The returned value is the *target* the buffer coalesces toward — not
+    the *max*. ``target_max_block_size`` continues to govern the
+    safety-split behavior inside ``BlockOutputBuffer``.
+    """
+    knob = data_context.parquet_reader_target_output_block_size_bytes
+    if knob is not None:
+        return int(knob)
+    if data_context.target_min_block_size is not None:
+        return int(data_context.target_min_block_size)
+    return int(data_context.target_max_block_size)
+
+
 def plan_read_files_op(
     op: ReadFiles,
     physical_children: List[PhysicalOperator],
@@ -75,6 +100,7 @@ def plan_read_files_op(
                     table = block_udf(table)
                 yield table
 
+    output_block_target = _resolve_read_files_output_block_target(data_context)
     return MapOperator.create(
         MapTransformer(
             [
@@ -82,7 +108,7 @@ def plan_read_files_op(
                     do_read,
                     is_udf=False,
                     output_block_size_option=OutputBlockSizeOption.of(
-                        target_max_block_size=data_context.target_max_block_size,
+                        target_max_block_size=output_block_target,
                     ),
                 ),
             ]

@@ -91,6 +91,16 @@ DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 # to ``target_min_block_size`` (1 MiB default).
 DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = None
 
+# Default target output block size (in bytes) for V2 file reads. Controls
+# how aggressively the ``MapOperator``'s output buffer coalesces pyarrow
+# batches into emitted blocks. Distinct from
+# ``parquet_reader_target_batch_size_bytes`` (the per-batch target) and
+# ``target_max_block_size`` (the upper-bound safety ceiling). Smaller
+# values mean more, smaller output blocks — better downstream parallelism;
+# larger values amortize per-block overhead. ``None`` falls back to
+# ``target_min_block_size``.
+DEFAULT_PARQUET_READER_TARGET_OUTPUT_BLOCK_SIZE_BYTES: Optional[int] = None
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -784,6 +794,16 @@ class DataContext:
     parquet_reader_target_batch_size_bytes: Optional[
         int
     ] = DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
+    # Target output block size (in bytes) used by V2 ``ReadFiles`` ops when
+    # building the ``OutputBlockSizeOption``. Together with the batch-size
+    # knob above, decouples output-block granularity from
+    # ``target_max_block_size`` (which remains the upper-bound safety
+    # ceiling). Smaller values produce more, smaller output blocks; larger
+    # values amortize per-block overhead. When ``None``, falls back to
+    # ``target_min_block_size``.
+    parquet_reader_target_output_block_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_TARGET_OUTPUT_BLOCK_SIZE_BYTES
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

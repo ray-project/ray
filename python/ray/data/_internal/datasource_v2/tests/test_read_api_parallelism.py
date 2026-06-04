@@ -360,6 +360,93 @@ def test_resolve_batch_target_bytes_none_when_both_unset(
         ctx.target_min_block_size = original_min
 
 
+# ---------------------------------------------------------------------------
+# ReadFiles output block target — _resolve_read_files_output_block_target
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def reset_ctx_output_block_knob():
+    """Clear ``parquet_reader_target_output_block_size_bytes`` after the test."""
+    ctx = DataContext.get_current()
+    original = ctx.parquet_reader_target_output_block_size_bytes
+    ctx.parquet_reader_target_output_block_size_bytes = None
+    try:
+        yield ctx
+    finally:
+        ctx.parquet_reader_target_output_block_size_bytes = original
+
+
+def test_output_block_target_falls_back_to_target_min_block_size(
+    reset_ctx_output_block_knob: DataContext,
+):
+    """Knob unset → fall back to ``target_min_block_size``."""
+    from ray.data._internal.planner.plan_read_files_op import (
+        _resolve_read_files_output_block_target,
+    )
+
+    ctx = reset_ctx_output_block_knob
+    target = _resolve_read_files_output_block_target(ctx)
+    assert target == ctx.target_min_block_size
+
+
+def test_output_block_target_uses_knob_when_set(
+    reset_ctx_output_block_knob: DataContext,
+):
+    """Knob value wins over the ``target_min_block_size`` fallback."""
+    from ray.data._internal.planner.plan_read_files_op import (
+        _resolve_read_files_output_block_target,
+    )
+
+    ctx = reset_ctx_output_block_knob
+    ctx.parquet_reader_target_output_block_size_bytes = 4 * 1024 * 1024  # 4 MiB
+    target = _resolve_read_files_output_block_target(ctx)
+    assert target == 4 * 1024 * 1024
+
+
+def test_output_block_target_last_resort_is_target_max_block_size(
+    reset_ctx_output_block_knob: DataContext,
+):
+    """Both knob and ``target_min_block_size`` unset → fall back to
+    ``target_max_block_size`` (preserves prior coalescing behavior when
+    ``target_min_block_size`` is explicitly disabled)."""
+    from ray.data._internal.planner.plan_read_files_op import (
+        _resolve_read_files_output_block_target,
+    )
+
+    ctx = reset_ctx_output_block_knob
+    original_min = ctx.target_min_block_size
+    ctx.target_min_block_size = None
+    try:
+        target = _resolve_read_files_output_block_target(ctx)
+        assert target == ctx.target_max_block_size
+    finally:
+        ctx.target_min_block_size = original_min
+
+
+def test_output_block_target_knob_wins_even_when_target_min_block_size_set(
+    reset_ctx_output_block_knob: DataContext,
+):
+    """User-set knob always wins regardless of the other size knobs."""
+    from ray.data._internal.planner.plan_read_files_op import (
+        _resolve_read_files_output_block_target,
+    )
+
+    ctx = reset_ctx_output_block_knob
+    # Configure all three size knobs to distinct values; assert the
+    # output-block knob is honored.
+    original_min = ctx.target_min_block_size
+    original_max = ctx.target_max_block_size
+    ctx.target_min_block_size = 7 * 1024 * 1024
+    ctx.target_max_block_size = 99 * 1024 * 1024
+    ctx.parquet_reader_target_output_block_size_bytes = 2 * 1024 * 1024
+    try:
+        assert _resolve_read_files_output_block_target(ctx) == 2 * 1024 * 1024
+    finally:
+        ctx.target_min_block_size = original_min
+        ctx.target_max_block_size = original_max
+
+
 if __name__ == "__main__":
     import sys
 
