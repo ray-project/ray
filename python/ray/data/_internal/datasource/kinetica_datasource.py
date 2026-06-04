@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 # Patterns that are potentially dangerous in filter expressions
 # Note: This is a defense-in-depth measure. Kinetica's expression parser
 # provides the primary protection, but we block obvious injection attempts.
+# Valid SQL identifier pattern: starts with letter or underscore,
+# followed by letters, digits, or underscores. No spaces or special chars.
+_VALID_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Patterns that are potentially dangerous in filter expressions
+# Note: This is a defense-in-depth measure. Kinetica's expression parser
+# provides the primary protection, but we block obvious injection attempts.
 _UNSAFE_FILTER_PATTERNS = [
     re.compile(r"[;{}]"),  # Statement terminators and code blocks
     re.compile(r"--"),  # SQL comment sequences
@@ -43,6 +50,25 @@ _UNSAFE_FILTER_PATTERNS = [
     re.compile(r"\bINTO\s+OUTFILE\b", re.IGNORECASE),  # File operations
     re.compile(r"\bLOAD_FILE\b", re.IGNORECASE),
 ]
+
+
+def _is_valid_identifier(name: str) -> bool:
+    """
+    Check if a string is a valid SQL identifier (column/table name).
+
+    Valid identifiers start with a letter or underscore, followed by
+    letters, digits, or underscores. This prevents injection attacks
+    when interpolating column names into expressions.
+
+    Args:
+        name: The identifier to validate.
+
+    Returns:
+        True if the identifier is valid, False otherwise.
+    """
+    if not name:
+        return False
+    return _VALID_IDENTIFIER_PATTERN.match(name) is not None
 
 
 def _has_balanced_quotes(expr: str) -> bool:
@@ -269,7 +295,14 @@ class KineticaDatasource(Datasource):
                 "such as statement terminators, comments, or DDL/DML keywords."
             )
 
-        # Partition column for hash-based parallel reads
+        # Validate and set partition column for hash-based parallel reads
+        if partition_column is not None:
+            if not _is_valid_identifier(partition_column):
+                raise ValueError(
+                    f"Invalid partition_column '{partition_column}'. "
+                    "Column names must start with a letter or underscore and "
+                    "contain only letters, digits, and underscores."
+                )
         self._partition_column = partition_column
 
         # Cache for schema and record count
@@ -663,13 +696,26 @@ class KineticaDatasource(Datasource):
 
         if effective_parallelism > 1:
             if use_hash_partitioning:
-                # Hash-based partitioning using MOD(HASH(column), parallelism)
-                # guarantees each row goes to exactly one task - safe for parallel
-                logger.info(
-                    f"Using hash-based partitioning on column "
-                    f"'{self._partition_column}' for {effective_parallelism} "
-                    "parallel read tasks."
-                )
+                if self._limit is not None:
+                    # Hash partitioning with a global limit cannot be parallelized
+                    # correctly - each task reads its hash partition independently,
+                    # so we can't enforce a global row limit across tasks.
+                    logger.warning(
+                        "Cannot use parallel hash partitioning with a global limit. "
+                        f"Reducing parallelism from {effective_parallelism} to 1. "
+                        "Remove the limit parameter to enable parallel reads with "
+                        "partition_column."
+                    )
+                    effective_parallelism = 1
+                    use_hash_partitioning = False
+                else:
+                    # Hash-based partitioning using MOD(HASH(column), parallelism)
+                    # guarantees each row goes to exactly one task - safe for parallel
+                    logger.info(
+                        f"Using hash-based partitioning on column "
+                        f"'{self._partition_column}' for {effective_parallelism} "
+                        "parallel read tasks."
+                    )
             elif not self._sort_by:
                 # Without partition_column or sort_by, offset-based pagination
                 # will produce non-deterministic results (duplicates or missing
