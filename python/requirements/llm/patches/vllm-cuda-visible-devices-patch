@@ -1,8 +1,17 @@
 diff --git a/vllm/v1/executor/ray_executor_v2.py b/vllm/v1/executor/ray_executor_v2.py
-index 0665b5f..157e1d1 100644
+index 0665b5f..ce8ce84 100644
 --- a/vllm/v1/executor/ray_executor_v2.py
 +++ b/vllm/v1/executor/ray_executor_v2.py
-@@ -36,6 +36,7 @@ from vllm.v1.executor.ray_utils import (
+@@ -8,6 +8,8 @@ from collections import defaultdict, deque
+ from dataclasses import dataclass
+ from typing import Any
+ 
++import torch
++
+ import vllm.envs as envs
+ from vllm.config import VllmConfig
+ from vllm.distributed.device_communicators.shm_broadcast import (
+@@ -36,6 +38,7 @@ from vllm.v1.executor.ray_utils import (
  )
  
  if ray is not None:
@@ -10,7 +19,7 @@ index 0665b5f..157e1d1 100644
      from ray.actor import ActorHandle
      from ray.types import ObjectRef
      from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-@@ -102,7 +103,7 @@ class RayWorkerProc(WorkerProc):
+@@ -102,7 +105,7 @@ class RayWorkerProc(WorkerProc):
  
      def __init__(
          self,
@@ -19,7 +28,7 @@ index 0665b5f..157e1d1 100644
          rank: int,
          distributed_init_method: str,
          input_shm_handle: Handle,
-@@ -111,8 +112,8 @@ class RayWorkerProc(WorkerProc):
+@@ -111,8 +114,8 @@ class RayWorkerProc(WorkerProc):
      ):
          # Defer WorkerProc.__init__ until GPU IDs are known.
          self._is_driver_node = is_driver_node
@@ -29,7 +38,19 @@ index 0665b5f..157e1d1 100644
              rank=rank,
              distributed_init_method=distributed_init_method,
              input_shm_handle=input_shm_handle,
-@@ -149,8 +150,11 @@ class RayWorkerProc(WorkerProc):
+@@ -143,14 +146,23 @@ class RayWorkerProc(WorkerProc):
+         in missing vars but never overwrite node-local values.
+         *env_vars* (e.g. CUDA_VISIBLE_DEVICES) always overwrite.
+         """
++        if torch.cuda.is_initialized():
++            raise RuntimeError(
++                "CUDA context was already initialized in RayWorkerProc "
++                "before CUDA_VISIBLE_DEVICES was set."
++            )
++
+         if driver_env_vars:
+             for key, value in driver_env_vars.items():
+                 os.environ.setdefault(key, value)
          for key, value in env_vars.items():
              os.environ[key] = value
  
@@ -41,7 +62,7 @@ index 0665b5f..157e1d1 100644
              local_rank=local_rank,
              **self._init_kwargs,
          )
-@@ -323,6 +327,8 @@ class RayExecutorV2(MultiprocExecutor):
+@@ -323,6 +335,8 @@ class RayExecutorV2(MultiprocExecutor):
          runtime_env = self._build_runtime_env()
          resource_kwargs = self._get_actor_resource_kwargs()
  
@@ -50,7 +71,7 @@ index 0665b5f..157e1d1 100644
          for bundle_idx in range(self.world_size):
              bundle = bundle_assignments[bundle_idx]
              is_driver_worker = self._is_driver_worker(bundle["rank"])
-@@ -347,7 +353,7 @@ class RayExecutorV2(MultiprocExecutor):
+@@ -347,7 +361,7 @@ class RayExecutorV2(MultiprocExecutor):
                      runtime_env=runtime_env,
                  )
                  .remote(

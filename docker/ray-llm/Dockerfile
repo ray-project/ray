@@ -41,6 +41,7 @@ uv pip install --system --no-cache-dir --no-deps \
 # until the pinned vLLM release includes it.
 VLLM_IMPORT_UTILS_PATCH="$(pwd)/vllm-trial-import-patch"
 # Fix RayExecutorV2 GPU collision when multiple engines share a node.
+# Remove this patch once https://github.com/vllm-project/vllm/pull/44466 is merged.
 VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/vllm-cuda-visible-devices-patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
