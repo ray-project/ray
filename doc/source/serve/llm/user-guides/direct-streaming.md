@@ -68,7 +68,7 @@ Then build and deploy a single-model application as usual:
 :language: python
 ```
 
-When direct streaming is active, Serve logs a confirmation at build time that the LLM server is acting as the ingress with an ingress request router attached.
+To confirm direct streaming is active, open the Serve dashboard and check that the ingress request router deployment (listed as `LLMRouter`) is running alongside your model deployment.
 
 :::{tip}
 The HAProxy ingress sets `TCP_NODELAY` by default (`RAY_SERVE_HAPROXY_TCP_NODELAY=1`) so the first streamed chunk isn't held back by Nagle's algorithm. Keep it enabled for streaming workloads.
@@ -79,18 +79,10 @@ The HAProxy ingress sets `TCP_NODELAY` by default (`RAY_SERVE_HAPROXY_TCP_NODELA
 
 Direct streaming uses the deployment's `request_router_config`, so you select a routing policy the same way you would for any LLM deployment. Set it on the model's `deployment_config`:
 
-```python
-from ray.serve.config import RequestRouterConfig
-from ray.serve.llm import LLMConfig
-
-llm_config = LLMConfig(
-    model_loading_config={"model_id": "qwen-0.5b"},
-    deployment_config={
-        "request_router_config": RequestRouterConfig(
-            request_router_class="ray.serve.experimental.consistent_hash_router.ConsistentHashRouter",
-        ),
-    },
-)
+```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_custom_router_example.py
+:start-after: __direct_streaming_custom_router_example_start__
+:end-before: __direct_streaming_custom_router_example_end__
+:language: python
 ```
 
 If you set `request_router_config`, direct streaming uses it as-is. Otherwise it falls back to `RoundRobinRouter`. For the available policies and how to write your own, see {ref}`routing-policies-guide` and {ref}`custom-request-router-guide`.
@@ -105,7 +97,13 @@ If your policy needs the body, enable forwarding:
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
-With forwarding on, HAProxy buffers the request body and includes it in the routing call. To bound the memory this costs, it buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes (default 256 KiB; memory scales roughly as `2 * bufsize * maxconn`). When a request body is larger than that cap, HAProxy forwards only the leading bytes it captured and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload. Truncation is fine for prefix-based policies, which only need the head of the prompt. Raise the buffer size if your policy needs to see more of large requests, keeping the memory tradeoff in mind.
+With forwarding on, HAProxy buffers the request body and includes it in the routing call. To bound the memory this costs, it buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes (default 256 KiB; memory scales roughly as `2 * bufsize * maxconn`). When a request body is larger than that cap, HAProxy forwards only the leading bytes it captured and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
+
+:::{note}
+Truncation applies only to the copy of the body that HAProxy sends to the router for the routing decision. The request that HAProxy forwards to the chosen replica is the full request, so neither the prompt the model processes nor the response streamed back to the client is affected.
+
+The captured portion is always the head of the body, from the first byte up to the buffer cap; you can't select a different region. That's deliberate, because prefix-based policies key on the start of the prompt, where shared system prompts and few-shot examples live. The only knob is how much to capture: raise `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` to give a body-aware policy more of each request to match on, at the cost of more HAProxy memory.
+:::
 
 ### Session affinity
 
