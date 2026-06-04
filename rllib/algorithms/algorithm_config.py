@@ -344,6 +344,9 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_module_to_env_pipeline = True
         self.merge_env_runner_states = "training_only"
         self.broadcast_env_runner_states = True
+        self.use_env_runner_state_server = False
+        self.env_runner_state_server_max_concurrency = 16
+        self.env_runner_state_server_pull_timeout_s = 10.0
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -1877,6 +1880,9 @@ class AlgorithmConfig(_Config):
         episode_lookback_horizon: Optional[int] = NotProvided,
         merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
         broadcast_env_runner_states: Optional[bool] = NotProvided,
+        use_env_runner_state_server: Optional[bool] = NotProvided,
+        env_runner_state_server_max_concurrency: Optional[int] = NotProvided,
+        env_runner_state_server_pull_timeout_s: Optional[float] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
@@ -2002,6 +2008,22 @@ class AlgorithmConfig(_Config):
             broadcast_env_runner_states: True, if merged EnvRunner states (from the
                 central connector pipelines) should be broadcast back to all remote
                 EnvRunner actors.
+            use_env_runner_state_server: If True (and on the new API stack with an async
+                algorithm like IMPALA/APPO), EnvRunners PULL the latest weights and
+                merged connector states from a single global `EnvRunnerStateServer`
+                actor at the top of each `sample()` call, instead of having the
+                Algorithm PUSH (broadcast) state to every EnvRunner. This avoids
+                silently dropping newer weight broadcasts under back-pressure while an
+                EnvRunner is busy sampling, keeping the sampling policy fresher (lower
+                `diff_num_grad_updates_vs_sampler_policy`).
+            env_runner_state_server_max_concurrency: The `max_concurrency` (thread-pool
+                size) of the `EnvRunnerStateServer` actor, i.e. how many EnvRunner
+                `pull` requests it can serve concurrently. Raise this for very large
+                EnvRunner fleets. Only used when `use_env_runner_state_server=True`.
+            env_runner_state_server_pull_timeout_s: Timeout (seconds) for an EnvRunner's
+                `pull` from the `EnvRunnerStateServer`. On timeout (e.g. the server is
+                mid-restart), the EnvRunner keeps its current weights for that round
+                instead of blocking. Only used when `use_env_runner_state_server=True`.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2160,6 +2182,16 @@ class AlgorithmConfig(_Config):
             self.merge_env_runner_states = merge_env_runner_states
         if broadcast_env_runner_states is not NotProvided:
             self.broadcast_env_runner_states = broadcast_env_runner_states
+        if use_env_runner_state_server is not NotProvided:
+            self.use_env_runner_state_server = use_env_runner_state_server
+        if env_runner_state_server_max_concurrency is not NotProvided:
+            self.env_runner_state_server_max_concurrency = (
+                env_runner_state_server_max_concurrency
+            )
+        if env_runner_state_server_pull_timeout_s is not NotProvided:
+            self.env_runner_state_server_pull_timeout_s = (
+                env_runner_state_server_pull_timeout_s
+            )
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:

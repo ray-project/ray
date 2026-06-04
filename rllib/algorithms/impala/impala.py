@@ -18,6 +18,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.env_runner_state_server import EnvRunnerStateServer
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -45,6 +46,7 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.metrics.ray_metrics import (
@@ -156,6 +158,12 @@ class IMPALAConfig(AlgorithmConfig):
 
         # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
         self._dont_auto_sync_env_runner_states = True
+        # Use the PULL-based `EnvRunnerStateServer` by default for async IMPALA/APPO:
+        # EnvRunners pull the freshest weights/connector states at the top of each
+        # `sample()` call, rather than the Algorithm broadcasting (pushing) state, which
+        # can silently drop newer weight broadcasts under back-pressure while an
+        # EnvRunner is busy sampling. Inherited by APPO (`APPOConfig(IMPALAConfig)`).
+        self.use_env_runner_state_server = True
 
         # `.debugging()`
         self._env_runners_only = False
@@ -604,6 +612,43 @@ class IMPALA(Algorithm):
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
+        # PULL-based EnvRunner state sync: create a single, global, NAMED
+        # `EnvRunnerStateServer` actor holding the latest merged EnvRunner state.
+        # EnvRunners pull from it at the top of each `sample()` instead of the Algorithm
+        # broadcasting (pushing) state, which can silently drop newer weight broadcasts
+        # under back-pressure while an EnvRunner is busy sampling. The Algorithm keeps a
+        # backup of the last pushed state, so the server (pure derived state) is
+        # recoverable and not a single point of failure.
+        self._env_runner_state_server = None
+        self._last_pushed_env_runner_state = None
+        if (
+            self.config.enable_rl_module_and_learner
+            and self.config.enable_env_runner_and_connector_v2
+            and self.config.use_env_runner_state_server
+            and self.config.num_env_runners > 0
+        ):
+            server_cls = ray.remote(
+                num_cpus=0,
+                max_restarts=-1,
+                max_concurrency=self.config.env_runner_state_server_max_concurrency,
+            )(EnvRunnerStateServer)
+            self._env_runner_state_server = server_cls.options(
+                # Named (incl. trial_id to avoid Tune collisions) so it is re-acquirable
+                # via `ray.get_actor` after a restart.
+                name=f"EnvRunnerStateServer_{self.trial_id}",
+                get_if_exists=True,
+            ).remote()
+
+            # Share the handle with the (remote, training) EnvRunners only. Eval
+            # EnvRunners receive weights via the regular `Algorithm.evaluate()` path.
+            def _share_state_server(env_runner, server=self._env_runner_state_server):
+                env_runner._env_runner_state_server = server
+
+            self.env_runner_group.foreach_env_runner(
+                func=_share_state_server,
+                local_env_runner=False,
+            )
+
     @override(Algorithm)
     def training_step(self):
         with TimerAndPrometheusLogger(self._metrics_impala_training_step_time):
@@ -831,17 +876,98 @@ class IMPALA(Algorithm):
                     with TimerAndPrometheusLogger(
                         self._metrics_impala_training_step_sync_env_runner_state_time
                     ):
-                        self.env_runner_group.sync_env_runner_states(
-                            config=self.config,
-                            connector_states=connector_states,
-                            rl_module_state=rl_module_state,
-                            env_steps_sampled=self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                            env_to_module=self.env_to_module_connector,
-                            module_to_env=self.module_to_env_connector,
-                        )
+                        if self._env_runner_state_server is not None:
+                            # PULL model: assemble the merged state once and push it to
+                            # the single global server; EnvRunners pull it from there at
+                            # the top of `sample()`. Keep a backup for server recovery.
+                            env_runner_state = (
+                                self.env_runner_group.get_merged_env_runner_state(
+                                    config=self.config,
+                                    connector_states=connector_states,
+                                    rl_module_state=rl_module_state,
+                                    env_steps_sampled=self.metrics.peek(
+                                        (
+                                            ENV_RUNNER_RESULTS,
+                                            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                        ),
+                                        default=0,
+                                    ),
+                                    env_to_module=self.env_to_module_connector,
+                                    module_to_env=self.module_to_env_connector,
+                                )
+                            )
+                            self._env_runner_state_server.push.remote(env_runner_state)
+                            self._last_pushed_env_runner_state = env_runner_state
+                        else:
+                            self.env_runner_group.sync_env_runner_states(
+                                config=self.config,
+                                connector_states=connector_states,
+                                rl_module_state=rl_module_state,
+                                env_steps_sampled=self.metrics.peek(
+                                    (
+                                        ENV_RUNNER_RESULTS,
+                                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                    ),
+                                    default=0,
+                                ),
+                                env_to_module=self.env_to_module_connector,
+                                module_to_env=self.module_to_env_connector,
+                            )
+
+            # Recover the EnvRunnerStateServer if it was restarted (it comes back empty):
+            # re-push our backup so EnvRunners resume pulling fresh weights.
+            self._maybe_recover_env_runner_state_server()
+
+    def _maybe_recover_env_runner_state_server(self) -> None:
+        """Re-pushes the backup state if the `EnvRunnerStateServer` was restarted.
+
+        The server uses ``max_restarts=-1`` but comes back with empty state after a
+        restart. We compare its reported version (``WEIGHTS_SEQ_NO``) against our last
+        pushed backup and, if the server is behind (or unreachable mid-restart, handled
+        by the timeout), re-push the backup. This keeps the server from being a single
+        point of failure.
+        """
+        if (
+            self._env_runner_state_server is None
+            or self._last_pushed_env_runner_state is None
+        ):
+            return
+        backup_version = self._last_pushed_env_runner_state.get(WEIGHTS_SEQ_NO, 0)
+        try:
+            server_version = ray.get(
+                self._env_runner_state_server.get_version.remote(),
+                timeout=self.config.env_runner_state_server_pull_timeout_s,
+            )
+            if server_version < backup_version:
+                self._env_runner_state_server.push.remote(
+                    self._last_pushed_env_runner_state
+                )
+        except (ray.exceptions.RayActorError, ray.exceptions.GetTimeoutError):
+            # Server is mid-restart/unreachable; retry on the next training iteration.
+            return
+
+    @override(Algorithm)
+    def restore_env_runners(self, env_runner_group) -> List[int]:
+        restored = super().restore_env_runners(env_runner_group)
+        # Re-share the EnvRunnerStateServer handle with restored (training) EnvRunners:
+        # a fresh actor incarnation lost the attribute set post-construction. A restored
+        # runner starts at weights_seq_no=0, so its first pull force-applies the latest.
+        if (
+            restored
+            and self._env_runner_state_server is not None
+            and env_runner_group is self.env_runner_group
+        ):
+
+            def _share_state_server(env_runner, server=self._env_runner_state_server):
+                env_runner._env_runner_state_server = server
+
+            env_runner_group.foreach_env_runner(
+                func=_share_state_server,
+                remote_worker_ids=restored,
+                local_env_runner=False,
+                timeout_seconds=self.config.env_runner_restore_timeout_s,
+            )
+        return restored
 
     def _sample_and_get_connector_states(self):
         with TimerAndPrometheusLogger(

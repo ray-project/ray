@@ -368,6 +368,140 @@ class EnvRunnerGroup:
         """Total number of times managed remote workers have been restarted."""
         return self._worker_manager.total_num_restarts()
 
+    def _merge_env_runner_connector_states(
+        self,
+        *,
+        config: "AlgorithmConfig",
+        connector_states: Optional[List[Dict[str, Any]]],
+        from_worker: Optional[EnvRunner],
+        env_to_module,
+        module_to_env,
+        merge: bool,
+    ) -> Dict[str, Any]:
+        """Gathers and merges the EnvRunners' ConnectorV2 states into one dict.
+
+        Extracted (behavior-preserving) from `sync_env_runner_states` so that both the
+        legacy broadcast path and the PULL-based `get_merged_env_runner_state` share a
+        single connector-merge implementation. Returns a dict that may contain
+        `COMPONENT_ENV_TO_MODULE_CONNECTOR` and/or `COMPONENT_MODULE_TO_ENV_CONNECTOR`.
+        """
+        # Use (merged) states from all remote EnvRunners.
+        if merge:
+            if connector_states == []:
+                env_runner_states = {}
+            else:
+                if connector_states is None:
+                    connector_states = self.foreach_env_runner(
+                        lambda w: w.get_state(
+                            components=[
+                                COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                                COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                            ]
+                        ),
+                        local_env_runner=False,
+                        timeout_seconds=(
+                            config.sync_filters_on_rollout_workers_timeout_s
+                        ),
+                    )
+                env_to_module_states = [
+                    s[COMPONENT_ENV_TO_MODULE_CONNECTOR]
+                    for s in connector_states
+                    if COMPONENT_ENV_TO_MODULE_CONNECTOR in s
+                ]
+                module_to_env_states = [
+                    s[COMPONENT_MODULE_TO_ENV_CONNECTOR]
+                    for s in connector_states
+                    if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
+                ]
+
+                if (
+                    self.local_env_runner is not None
+                    and hasattr(self.local_env_runner, "_env_to_module")
+                    and hasattr(self.local_env_runner, "_module_to_env")
+                ):
+                    assert env_to_module is None
+                    env_to_module = self.local_env_runner._env_to_module
+                    assert module_to_env is None
+                    module_to_env = self.local_env_runner._module_to_env
+
+                env_runner_states = {}
+                if env_to_module_states:
+                    env_runner_states.update(
+                        {
+                            COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                                env_to_module.merge_states(env_to_module_states)
+                            ),
+                        }
+                    )
+                if module_to_env_states:
+                    env_runner_states.update(
+                        {
+                            COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                                module_to_env.merge_states(module_to_env_states)
+                            ),
+                        }
+                    )
+        # Ignore states from remote EnvRunners (use the current `from_worker` states
+        # only).
+        else:
+            if from_worker is None:
+                env_runner_states = {
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: env_to_module.get_state(),
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: module_to_env.get_state(),
+                }
+            else:
+                env_runner_states = from_worker.get_state(
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
+                )
+
+        return env_runner_states
+
+    def get_merged_env_runner_state(
+        self,
+        *,
+        config: "AlgorithmConfig",
+        rl_module_state: Dict[str, Any],
+        connector_states: Optional[List[Dict[str, Any]]] = None,
+        env_steps_sampled: Optional[int] = None,
+        env_to_module=None,
+        module_to_env=None,
+    ) -> Dict[str, Any]:
+        """Builds the merged EnvRunner state to push to an `EnvRunnerStateServer`.
+
+        PULL-model counterpart of `sync_env_runner_states`: merges the gathered
+        connector states (reusing `_merge_env_runner_connector_states`, the same logic
+        the legacy broadcast path uses) and combines them with `rl_module_state` (which
+        already carries the `COMPONENT_RL_MODULE` ObjectRef and `WEIGHTS_SEQ_NO`) and the
+        global env-steps counter into a single state dict. Does NOT touch any remote
+        EnvRunner - the Algorithm pushes the returned dict to the server and EnvRunners
+        pull it at the top of `sample()`.
+
+        The `WEIGHTS_SEQ_NO` inside the returned state doubles as its version: EnvRunners
+        apply the state only if it is newer than the one they currently hold.
+        """
+        # This path is gated to the new API stack (IMPALA/APPO), so only the new-stack
+        # half of `sync_env_runner_states`' `merge` predicate applies here.
+        merge = config.merge_env_runner_states is True or (
+            config.merge_env_runner_states == "training_only"
+            and not config.in_evaluation
+        )
+        env_runner_states = self._merge_env_runner_connector_states(
+            config=config,
+            connector_states=connector_states,
+            from_worker=self.local_env_runner,
+            env_to_module=env_to_module,
+            module_to_env=module_to_env,
+            merge=merge,
+        )
+        if env_steps_sampled is not None:
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = int(env_steps_sampled)
+        # Add the model weights (a `ray.ObjectRef`) and `WEIGHTS_SEQ_NO` (= version).
+        env_runner_states.update(rl_module_state)
+        return env_runner_states
+
     def sync_env_runner_states(
         self,
         *,
@@ -447,77 +581,16 @@ class EnvRunnerGroup:
         if not merge and not broadcast:
             return
 
-        # Use states from all remote EnvRunners.
-        if merge:
-            if connector_states == []:
-                env_runner_states = {}
-            else:
-                if connector_states is None:
-                    connector_states = self.foreach_env_runner(
-                        lambda w: w.get_state(
-                            components=[
-                                COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                                COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                            ]
-                        ),
-                        local_env_runner=False,
-                        timeout_seconds=(
-                            config.sync_filters_on_rollout_workers_timeout_s
-                        ),
-                    )
-                env_to_module_states = [
-                    s[COMPONENT_ENV_TO_MODULE_CONNECTOR]
-                    for s in connector_states
-                    if COMPONENT_ENV_TO_MODULE_CONNECTOR in s
-                ]
-                module_to_env_states = [
-                    s[COMPONENT_MODULE_TO_ENV_CONNECTOR]
-                    for s in connector_states
-                    if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
-                ]
-
-                if (
-                    self.local_env_runner is not None
-                    and hasattr(self.local_env_runner, "_env_to_module")
-                    and hasattr(self.local_env_runner, "_module_to_env")
-                ):
-                    assert env_to_module is None
-                    env_to_module = self.local_env_runner._env_to_module
-                    assert module_to_env is None
-                    module_to_env = self.local_env_runner._module_to_env
-
-                env_runner_states = {}
-                if env_to_module_states:
-                    env_runner_states.update(
-                        {
-                            COMPONENT_ENV_TO_MODULE_CONNECTOR: (
-                                env_to_module.merge_states(env_to_module_states)
-                            ),
-                        }
-                    )
-                if module_to_env_states:
-                    env_runner_states.update(
-                        {
-                            COMPONENT_MODULE_TO_ENV_CONNECTOR: (
-                                module_to_env.merge_states(module_to_env_states)
-                            ),
-                        }
-                    )
-        # Ignore states from remote EnvRunners (use the current `from_worker` states
-        # only).
-        else:
-            if from_worker is None:
-                env_runner_states = {
-                    COMPONENT_ENV_TO_MODULE_CONNECTOR: env_to_module.get_state(),
-                    COMPONENT_MODULE_TO_ENV_CONNECTOR: module_to_env.get_state(),
-                }
-            else:
-                env_runner_states = from_worker.get_state(
-                    components=[
-                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                    ]
-                )
+        # Gather + merge the remote EnvRunners' connector states (shared with the
+        # PULL-based `get_merged_env_runner_state`).
+        env_runner_states = self._merge_env_runner_connector_states(
+            config=config,
+            connector_states=connector_states,
+            from_worker=from_worker,
+            env_to_module=env_to_module,
+            module_to_env=module_to_env,
+            merge=merge,
+        )
 
         # Update the global number of environment steps, if necessary.
         if env_steps_sampled is not None:

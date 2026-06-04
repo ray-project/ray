@@ -134,6 +134,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[SingleAgentEpisode]
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
+        # Handle to the global `EnvRunnerStateServer` to PULL weights/connector states
+        # from. Set post-construction by the Algorithm when
+        # `config.use_env_runner_state_server=True`; None means use the legacy PUSH path.
+        self._env_runner_state_server = None
 
         # Measures the time passed between returning from `sample()`
         # and receiving the next `sample()` request from the user.
@@ -209,6 +213,26 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             value=self._weights_seq_no,
             window=1,
         )
+
+        # PULL-based weight sync: if a global `EnvRunnerStateServer` is configured, pull
+        # the latest state and apply it only if its `WEIGHTS_SEQ_NO` is newer than ours
+        # (apply-if-newer for the whole state, so connector states reset only on a new
+        # merge). This replaces the back-pressured PUSH path, which could silently drop
+        # newer weight broadcasts while this EnvRunner was busy in a long `sample()`.
+        if self._env_runner_state_server is not None:
+            try:
+                _server_state = ray.get(
+                    self._env_runner_state_server.pull.remote(),
+                    timeout=self.config.env_runner_state_server_pull_timeout_s,
+                )
+            except (ray.exceptions.RayActorError, ray.exceptions.GetTimeoutError):
+                # Server mid-restart/unreachable: keep current weights this round.
+                _server_state = None
+            if (
+                _server_state
+                and _server_state.get(WEIGHTS_SEQ_NO, 0) > self._weights_seq_no
+            ):
+                self.set_state(_server_state)
 
         with self.metrics.log_time(SAMPLE_TIMER):
             # If no execution details are provided, use the config to try to infer the

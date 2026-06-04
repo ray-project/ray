@@ -3,9 +3,11 @@ import unittest
 import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import (
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     ENV_RUNNER_RESULTS,
     LEARNER_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -214,6 +216,74 @@ class TestAPPO(unittest.TestCase):
         # We should not get the tensors from the target model here or any value function
         # related parameters (inference-only).
         self.assertEqual(len(state), 5)
+
+    def test_env_runner_state_server_on_vs_off(self):
+        """PULL-based EnvRunnerStateServer: APPO learns with the flag ON and OFF.
+
+        Also checks the off-policyness metric is logged on the new-stack path and that
+        the global server actor is created only when the flag is enabled.
+        """
+        off_policyness = {}
+        for use_server in [False, True]:
+            config = (
+                appo.APPOConfig()
+                .environment("CartPole-v1")
+                .env_runners(
+                    num_env_runners=2,
+                    use_env_runner_state_server=use_server,
+                )
+            )
+            algo = config.build()
+            # The global server actor exists iff the flag is enabled.
+            self.assertEqual(algo._env_runner_state_server is not None, use_server)
+
+            for _ in range(5):
+                results = algo.train()
+            check_train_results_new_api_stack(results)
+
+            diff = algo.metrics.peek(
+                (
+                    LEARNER_RESULTS,
+                    DEFAULT_MODULE_ID,
+                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+                ),
+                default=None,
+            )
+            # The off-policyness metric must be present and finite/non-negative.
+            self.assertIsNotNone(diff)
+            self.assertGreaterEqual(diff, 0.0)
+            off_policyness[use_server] = diff
+            algo.stop()
+
+        print("APPO off-policyness (server OFF vs ON):", off_policyness)
+
+    def test_env_runner_state_server_kill_and_recover(self):
+        """Killing the EnvRunnerStateServer must not stop training; it recovers."""
+        config = (
+            appo.APPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=2, use_env_runner_state_server=True)
+        )
+        algo = config.build()
+        self.assertIsNotNone(algo._env_runner_state_server)
+
+        for _ in range(3):
+            algo.train()
+        version_before = ray.get(algo._env_runner_state_server.get_version.remote())
+        self.assertGreater(version_before, 0)
+
+        # Kill the server. `max_restarts=-1` makes Ray restart it (with empty state).
+        ray.kill(algo._env_runner_state_server, no_restart=False)
+
+        # Training must continue (EnvRunners keep their current weights through the gap)
+        # and the Algorithm must re-push its backup so the version recovers.
+        for _ in range(3):
+            results = algo.train()
+        check_train_results_new_api_stack(results)
+        version_after = ray.get(algo._env_runner_state_server.get_version.remote())
+        self.assertGreaterEqual(version_after, version_before)
+
+        algo.stop()
 
 
 if __name__ == "__main__":
