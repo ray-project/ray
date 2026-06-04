@@ -37,3 +37,9 @@ tf-keras
 torchvision==0.24.0
 confluent-kafka
 zarr<3 ; python_version >= '3.11'  # zarr 2.18.4+ requires py3.11+ (v2 API)
+zarr>=2.18,<2.18.4 ; python_version < '3.11'  # 2.18.3: last v2 line supporting py3.10
+# numcodecs is zarr's codec dep; 0.14+ dropped py3.10. Pin per-Python with exact
+# versions so the markers survive pip-compile -- the compiled-constraint pin must
+# stay gated to py3.11+, otherwise the py3.10 data locks can't resolve zarr.
+numcodecs==0.15.1 ; python_version >= '3.11'
+numcodecs==0.13.1 ; python_version < '3.11'

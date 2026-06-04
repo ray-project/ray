@@ -310,6 +310,11 @@ arro3-core==0.8.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   deltalake
+asciitree==0.3.3; python_full_version < "3.11" \
+    --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   zarr
 asn1crypto==1.5.1 \
     --hash=sha256:13ae38502be632115abf8a24cbe5f4da52e3b5231990aff31123c805306ccb9c \
     --hash=sha256:db4e40728b728508912cbb3d44f19ce188f218e9eba635821bb4b68564f8fd67
@@ -1324,6 +1329,12 @@ fastavro==1.12.1 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/py313/data-test-requirements.txt
+fasteners==0.20; python_full_version < "3.11" and sys_platform != "emscripten" \
+    --hash=sha256:55dce8792a41b56f727ba6e123fcaee77fd87e638a6863cec00007bfea84c8d8 \
+    --hash=sha256:9422c40d1e350e4259f509fb2e608d6bc43c0136f79a00db1b49046029d0b3b7
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   zarr
 fastrlock==0.8.3; sys_platform != "darwin" \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
@@ -2688,6 +2699,27 @@ networkx==3.2.1 \
     --hash=sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
 # via torch
+numcodecs==0.13.1; python_full_version < "3.11" \
+    --hash=sha256:233bc7f26abce24d57e44ea8ebeb5cd17084690b4e7409dd470fdb75528d615f \
+    --hash=sha256:237b7171609e868a20fd313748494444458ccd696062f67e198f7f8f52000c15 \
+    --hash=sha256:2a86f5367af9168e30f99727ff03b27d849c31ad4522060dde0bce2923b3a8bc \
+    --hash=sha256:2eda97dd2f90add98df6d295f2c6ae846043396e3d51a739ca5db6c03b5eb666 \
+    --hash=sha256:3501a848adaddce98a71a262fee15cd3618312692aa419da77acd18af4a6a3f6 \
+    --hash=sha256:3f593c7506b0ab248961a3b13cb148cc6e8355662ff124ac591822310bc55ecf \
+    --hash=sha256:5195bea384a6428f8afcece793860b1ab0ae28143c853f0b2b20d55a8947c917 \
+    --hash=sha256:796b3e6740107e4fa624cc636248a1580138b3f1c579160f260f76ff13a4261b \
+    --hash=sha256:7a60d75179fd6692e301ddfb3b266d51eb598606dcae7b9fc57f986e8d65cb43 \
+    --hash=sha256:80d3071465f03522e776a31045ddf2cfee7f52df468b977ed3afdd7fe5869701 \
+    --hash=sha256:90d3065ae74c9342048ae0046006f99dcb1388b7288da5a19b3bddf9c30c3176 \
+    --hash=sha256:96add4f783c5ce57cc7e650b6cac79dd101daf887c479a00a29bc1487ced180b \
+    --hash=sha256:96e42f73c31b8c24259c5fac6adba0c3ebf95536e37749dc6c62ade2989dca28 \
+    --hash=sha256:a3cf37881df0898f3a9c0d4477df88133fe85185bffe57ba31bcc2fa207709bc \
+    --hash=sha256:da2230484e6102e5fa3cc1a5dd37ca1f92dfbd183d91662074d6f7574e3e8f53 \
+    --hash=sha256:e5db4824ebd5389ea30e54bc8aeccb82d514d28b6b68da6c536b8fa4596f4bca \
+    --hash=sha256:eda7d7823c9282e65234731fd6bd3986b1f9e035755f7fed248d7d366bb291ab
+# via
+#   -r python/requirements/ml/py313/data-test-requirements.txt
+#   zarr
 numexpr==2.14.1; python_full_version < "3.12" \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
@@ -2767,6 +2799,7 @@ numexpr==2.14.1; python_full_version < "3.12" \
 #   keras
 #   ml-dtypes
 #   modin
+#   numcodecs
 #   numexpr
 #   pandas
 #   pylance
@@ -2786,6 +2819,7 @@ numexpr==2.14.1; python_full_version < "3.12" \
 #   torchtext
 #   torchvision
 #   webdataset
+#   zarr
 nvidia-nccl-cu12==2.27.5; platform_machine != "aarch64" and sys_platform == "linux" \
     --hash=sha256:ad730cf15cb5d25fe849c6e6ca9eb5b76db16a80f13f425ac68d8e2e55624457
 # via
@@ -5456,6 +5490,10 @@ yarl==1.23.0 \
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   aiohttp
 #   delta-sharing
+zarr==2.18.3; python_full_version < "3.11" \
+    --hash=sha256:2580d8cb6dd84621771a10d31c4d777dca8a27706a1a89b29f42d2d37e2df5ce \
+    --hash=sha256:b1f7dfd2496f436745cdd4c7bcf8d3b4bc1dceef5fdd0d589c87130d842496dd
+# via -r python/requirements/ml/py313/data-test-requirements.txt
 zict==3.0.0 \
     --hash=sha256:5796e36bd0e0cc8cf0fbc1ace6a68912611c1dbd74750a3f3026b9b9d6a327ae \
     --hash=sha256:e321e263b6a97aafc0790c3cfb3c04656b7066e6738c37fffcca95d803c9fba5

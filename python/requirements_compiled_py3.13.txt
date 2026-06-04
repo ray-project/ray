@@ -1270,8 +1270,10 @@ numba==0.61.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   statsforecast
-numcodecs==0.15.1
-    # via zarr
+numcodecs==0.15.1 ; python_version >= "3.11"
+    # via
+    #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   zarr
 numexpr==2.14.1
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
