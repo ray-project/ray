@@ -2416,7 +2416,7 @@ class Replica:
                 request_metadata, request_args, request_kwargs
             )
 
-        with self._wrap_request(request_metadata):
+        with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
             async with self._start_request(request_metadata):
                 self._num_queued_requests -= 1
@@ -2447,14 +2447,10 @@ class Replica:
                         self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
-                    set_rpc_span_attributes(
-                        system=RequestProtocol.GRPC,
-                        method=request_metadata.call_method,
-                        status_code=status.code.name,
-                        service=self._deployment_id.name,
-                    )
-                    set_span_exception(e, escaped=True)
-                    return
+                    # Record the status code and re-raise so `_wrap_request`'s
+                    # error handling sets the span attributes and exception.
+                    status_code_callback(status.code.name)
+                    raise e
                 finally:
                     set_grpc_code_and_details(context, status)
 
