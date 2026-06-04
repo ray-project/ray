@@ -2,9 +2,11 @@ from enum import Enum
 from typing import Callable, Dict, Tuple, Union
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray.llm._internal.batch.observability.logging import get_logger
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
 LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"
@@ -117,9 +119,6 @@ class TelemetryAgent:
     push_telemetry_report is called."""
 
     def __init__(self):
-        from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
         # Creation must never break processor construction, so swallow failures
         # (e.g. Ray not initialized, transient GCS issues) and degrade to a no-op.
         try:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence
 
 import ray
 from ray import serve
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.usage.usage_lib import (
     get_hardware_usages_to_report,
     record_extra_usage_tag,
@@ -14,6 +15,7 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -206,9 +208,6 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
     ``get_if_exists`` makes creation atomic, so concurrent replicas converge on a
     single actor without racing on the name.
     """
-    from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
     return TelemetryAgent.options(
         name=LLM_SERVE_TELEMETRY_ACTOR_NAME,
         namespace=LLM_SERVE_TELEMETRY_NAMESPACE,
