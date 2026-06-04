@@ -569,22 +569,22 @@ class StateAPIManager:
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
-        summary_by = option.summary_by or "func_name"
-        if summary_by not in ["func_name", "lineage"]:
-            raise ValueError('summary_by must be one of "func_name" or "lineage".')
+        summary_by = option.summary_by or "task_name"
+        if summary_by not in ["task_name", "lineage"]:
+            raise ValueError('summary_by must be one of "task_name" or "lineage".')
 
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
             option=ListApiOptions(
-                timeout=option.timeout,
                 limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+                timeout=option.timeout,
                 filters=option.filters,
                 detail=summary_by == "lineage",
             )
         )
 
-        if summary_by == "func_name":
-            summary_results = TaskSummaries.to_summary_by_func_name(tasks=result.result)
+        if summary_by == "task_name":
+            summary_results = TaskSummaries.to_summary_by_task_name(tasks=result.result)
         else:
             # We will need the actors info for actor tasks.
             actors = await self.list_actors(
