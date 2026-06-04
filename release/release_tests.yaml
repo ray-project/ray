@@ -1371,25 +1371,25 @@
       cluster:
         byod:
           type: gpu-cu130
-          cluster_compute: compute_tpl_gpu_node.yaml
+        cluster_compute: compute_tpl_gpu_node.yaml
     - __suffix__: py311_cu130
       python: "3.11"
       cluster:
         byod:
           type: gpu-cu130
-          cluster_compute: compute_tpl_gpu_node.yaml
+        cluster_compute: compute_tpl_gpu_node.yaml
     - __suffix__: py312_cu130
       python: "3.12"
       cluster:
         byod:
           type: gpu-cu130
-          cluster_compute: compute_tpl_gpu_node.yaml
+        cluster_compute: compute_tpl_gpu_node.yaml
     - __suffix__: py313_cu130
       python: "3.13"
       cluster:
         byod:
           type: gpu-cu130
-          cluster_compute: compute_tpl_gpu_node.yaml
+        cluster_compute: compute_tpl_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
   python: "3.10"
