@@ -182,23 +182,27 @@ class KineticaDatasink(Datasink):
         return result
 
     def _dicts_to_columns(self, dicts: List[Dict[str, Any]]):
-        """Convert serializable dicts back to GPUdbRecordColumn objects."""
+        """Convert serializable dicts back to GPUdbRecordColumn objects.
+
+        Note: precision and scale for decimal columns are stored in the dict
+        for reference but are not passed to GPUdbRecordColumn constructor.
+        The constructor parses these values from the column_properties list
+        (e.g., 'decimal(18,4)') automatically.
+        """
         from gpudb import GPUdbRecordColumn
 
         result = []
         for d in dicts:
-            col_kwargs = {
-                "name": d["name"],
-                "column_type": d["column_type"],
-                "column_properties": d["column_properties"],
-                "is_nullable": d["is_nullable"],
-            }
-            # Restore precision and scale for decimal columns if present
-            if "precision" in d:
-                col_kwargs["precision"] = d["precision"]
-            if "scale" in d:
-                col_kwargs["scale"] = d["scale"]
-            result.append(GPUdbRecordColumn(**col_kwargs))
+            # GPUdbRecordColumn constructor only accepts these 4 parameters.
+            # Precision/scale are parsed from column_properties automatically.
+            result.append(
+                GPUdbRecordColumn(
+                    name=d["name"],
+                    column_type=d["column_type"],
+                    column_properties=d["column_properties"],
+                    is_nullable=d["is_nullable"],
+                )
+            )
         return result
 
     def _table_exists(self, client) -> bool:
