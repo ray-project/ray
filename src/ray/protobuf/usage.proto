@@ -252,6 +252,9 @@ enum TagKey {
   LLM_SERVE_GPU_TYPE = 612;
   // Comma separated list of num GPUs.
   LLM_SERVE_NUM_GPUS = 613;
+  // Whether LLM direct streaming (engine-native ASGI ingress) is enabled via
+  // RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING. "1" when enabled.
+  LLM_SERVE_DIRECT_STREAMING_ENABLED = 623;
 
   // LLM Batch
   // Comma separated list of names of the config used to build processor.
