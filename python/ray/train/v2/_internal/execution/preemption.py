@@ -159,7 +159,11 @@ class PreemptionWatcher:
         """
         try:
             drained = self._drain_source() or {}
-            # Filter out drains for nodes not in training run.
+            # Only consider drains on this job's own nodes. That's complete for
+            # TPU — an SPMD job fully occupies its slice, so every fate-shared
+            # host is one of our nodes and a drain on any slice host appears
+            # here. For GPU, a drain on a host we don't run on is correctly
+            # irrelevant.
             relevant = {
                 n: d for n, d in drained.items() if n in self._failure_domain_map
             }

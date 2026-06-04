@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import ray
 from ray.train.v2._internal.execution.preemption import PreemptionWatcher
 
 _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
@@ -114,7 +115,6 @@ class TestPreemptionWatcher:
 class TestBuildFailureDomainMap:
     def test_falls_back_on_ray_nodes_error(self, monkeypatch):
         """If ray.nodes() raises, fall back to per-node domains."""
-        import ray
 
         def raise_runtime():
             raise RuntimeError("no ray runtime")
@@ -127,8 +127,6 @@ class TestBuildFailureDomainMap:
 
     def test_falls_back_on_slice_lookup_error(self):
         """If the TPU slice lookup raises, fall back to per-node domains."""
-        import ray
-
         with patch.object(ray, "nodes", return_value=[{"NodeID": "node-a"}]), patch(
             f"{_PREEMPTION_MOD}.get_tpu_slice_name_from_node",
             side_effect=RuntimeError("boom"),
@@ -161,8 +159,6 @@ class TestBuildFailureDomainMap:
     def test_build_failure_domain_map(
         self, node_to_ranks, slice_labels, cluster_node_ids, expected
     ):
-        import ray
-
         fake_nodes = [{"NodeID": nid} for nid in cluster_node_ids]
 
         def fake_slice_label(node):

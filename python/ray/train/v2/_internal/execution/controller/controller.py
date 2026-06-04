@@ -190,11 +190,22 @@ class TrainController:
             else False
         )
 
-        # Register the preemption-observability callback when not in TorchFT mode.
-        if not self._manages_replica_groups and ray_constants.env_bool(
+        # Register the preemption-observability callback when not in TorchFT
+        # mode (replica groups handle peer loss via their own quorum).
+        enable_preemption_watcher = ray_constants.env_bool(
             ENABLE_PREEMPTION_WATCHER_ENV_VAR,
             DEFAULT_ENABLE_PREEMPTION_WATCHER,
-        ):
+        )
+        if self._manages_replica_groups:
+            if enable_preemption_watcher and ray_constants.env_set_by_user(
+                ENABLE_PREEMPTION_WATCHER_ENV_VAR
+            ):
+                logger.info(
+                    "The preemption watcher is not compatible with replica "
+                    "groups (e.g. TorchFT), which handle peer loss via their "
+                    "own quorum; skipping it."
+                )
+        elif enable_preemption_watcher:
             from ray.train.v2._internal.callbacks.preemption_callback import (
                 PreemptionCallback,
             )
