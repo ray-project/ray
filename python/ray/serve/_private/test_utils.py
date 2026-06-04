@@ -1004,6 +1004,7 @@ def ping_grpc_healthz(channel, test_draining=False):
         assert call.code() == grpc.StatusCode.OK
         if not RAY_SERVE_ENABLE_HA_PROXY:
             assert response.message == "success"
+    return True
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
