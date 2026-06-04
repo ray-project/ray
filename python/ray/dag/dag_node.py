@@ -24,7 +24,7 @@ from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.util.types import Device
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 
 T = TypeVar("T")
 
@@ -377,7 +377,7 @@ class DAGNode(DAGNodeBase):
         """
         warnings.warn(
             "DAGNode.execute() is deprecated and will be removed in a future release.",
-            DeprecationWarning,
+            RayDeprecationWarning,
             stacklevel=2,
         )
 
