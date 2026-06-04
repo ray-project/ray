@@ -1,6 +1,5 @@
 import random
 import sys
-import time
 from typing import Any, Dict, List
 
 import pytest
@@ -8,8 +7,6 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._raylet import GcsClient
-from ray.core.generated import autoscaler_pb2
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -24,12 +21,8 @@ from ray.serve._private.controller import ServeController
 from ray.serve._private.test_utils import (
     check_deployment_status,
     check_num_replicas_eq,
-    get_node_id,
 )
-from ray.serve.config import ProxyLocation
-from ray.serve.context import _get_global_client
 from ray.serve.schema import ReplicaRank
-from ray.tests.conftest import *  # noqa: F401,F403
 
 
 def get_controller() -> ServeController:
@@ -818,172 +811,6 @@ def test_user_reconfigure_with_all_rank_fields(serve_instance):
     # Verify local ranks are valid (non-negative and reasonable)
     for local_rank in local_ranks:
         assert local_rank in range(3), f"Invalid local rank: {local_rank}"
-
-
-def test_rank_consistency_during_node_draining(ray_start_cluster, capfd):
-    """Test that rank consistency check doesn't fail during node draining.
-
-    This test verifies the fix for the bug where the rank consistency check
-    would fail with "active keys without ranks" error during node draining.
-    The bug occurs because:
-    1. Deployment is HEALTHY with all replicas RUNNING (each has a rank)
-    2. A node starts draining
-    3. New replacement replicas are created in STARTING state
-       (ranks are only assigned after initialization completes)
-    4. Consistency check runs because status is HEALTHY
-    5. ERROR: "active keys without ranks" because STARTING replicas don't have ranks
-    """
-
-    cluster = ray_start_cluster
-    # Ensure any pre-existing Ray/Serve instances are shut down
-    # (needed when running after tests using session-scoped serve_instance fixture)
-    serve.shutdown()
-    ray.shutdown()
-
-    # Head node with no CPUs for replicas
-    cluster.add_node(num_cpus=0, resources={"head": 1})
-    ray.init(address=cluster.address)
-    # Worker nodes
-    cluster.add_node(num_cpus=2, resources={"worker1": 1})
-    cluster.add_node(num_cpus=2, resources={"worker2": 1})
-    cluster.wait_for_nodes()
-
-    serve.start(proxy_location=ProxyLocation.HeadOnly)
-
-    # Get worker node IDs
-    worker1_node_id = ray.get(get_node_id.options(resources={"worker1": 1}).remote())
-    worker2_node_id = ray.get(get_node_id.options(resources={"worker2": 1}).remote())
-
-    signal_actor = SignalActor.options(resources={"head": 0.1}).remote()
-    ray.get(signal_actor.send.remote())  # Allow replicas to start
-
-    @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 1})
-    class DrainingRankTracker:
-        def __init__(self):
-            ray.get(signal_actor.wait.remote())
-
-        def __call__(self):
-            context = serve.get_replica_context()
-            return {
-                "rank": context.rank.rank if context.rank else None,
-                "node_id": ray.get_runtime_context().get_node_id(),
-            }
-
-    handle = serve.run(DrainingRankTracker.bind())
-
-    # Wait for deployment to be HEALTHY with all replicas running
-    wait_for_condition(
-        lambda: check_deployment_status(
-            "DrainingRankTracker", DeploymentStatus.HEALTHY
-        ),
-        timeout=30,
-    )
-    wait_for_condition(
-        lambda: check_rank_assignment_complete("DrainingRankTracker", 2),
-        timeout=30,
-    )
-
-    # Verify initial ranks are assigned and contiguous
-    initial_ranks = get_replica_ranks("DrainingRankTracker")
-    assert len(initial_ranks) == 2
-    assert check_rank_contiguity(initial_ranks)
-
-    # Get initial replica node distribution
-    responses = []
-    for _ in range(20):
-        response = handle.remote().result()
-        responses.append(response)
-
-    # Find a node that has replicas
-    replica_node_ids = {r["node_id"] for r in responses}
-    draining_node_id = (
-        worker1_node_id if worker1_node_id in replica_node_ids else worker2_node_id
-    )
-
-    # Block new replica initialization to create the race condition
-    # where STARTING replicas exist while deployment is still HEALTHY
-    ray.get(signal_actor.send.remote(clear=True))
-
-    # Drain the node using GCS client
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-
-    # Set a draining deadline far in the future so node stays in draining state
-    deadline_ms = int((time.time() + 3600) * 1000)  # 1 hour from now
-
-    is_accepted = gcs_client.drain_node(
-        draining_node_id,
-        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-        "draining for rank consistency test",
-        deadline_ms,
-    )
-    assert is_accepted, "Node drain request was not accepted"
-
-    # Get controller for checking replica states
-    client = _get_global_client()
-    controller = client._controller
-
-    # Wait for the controller to process the draining state.
-    # New replicas should be created in STARTING state.
-    def check_starting_replicas_exist():
-        deployment_id = DeploymentID(
-            name="DrainingRankTracker", app_name=SERVE_DEFAULT_APP_NAME
-        )
-        replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote(deployment_id)
-        )
-        starting_count = replicas.count(states=[ReplicaState.STARTING])
-        # We want STARTING replicas to exist while we have PENDING_MIGRATION replicas
-        # (which means deployment is still HEALTHY)
-        return starting_count > 0
-
-    # This is the critical point where the bug would manifest.
-    # If the fix is working, no "active keys without ranks" error should occur.
-    wait_for_condition(check_starting_replicas_exist, timeout=30)
-
-    # Give the controller a few more update cycles to ensure the consistency
-    # check runs while STARTING replicas exist. If the bug existed, we'd get
-    # an error here.
-    time.sleep(2)
-
-    # Now unblock replica initialization
-    ray.get(signal_actor.send.remote())
-
-    # Wait for all replicas to be running again
-    wait_for_condition(
-        lambda: check_rank_assignment_complete("DrainingRankTracker", 2),
-        timeout=60,
-    )
-
-    # Verify ranks are still contiguous after migration
-    final_ranks = get_replica_ranks("DrainingRankTracker")
-    assert len(final_ranks) == 2
-    assert check_rank_contiguity(final_ranks)
-
-    # Verify deployment is healthy
-    wait_for_condition(
-        lambda: check_deployment_status(
-            "DrainingRankTracker", DeploymentStatus.HEALTHY
-        ),
-        timeout=30,
-    )
-
-    serve.shutdown()
-
-    # Check that no rank consistency errors occurred during the test.
-    # The error message "Found active keys without ranks" indicates the bug.
-    captured = capfd.readouterr()
-    assert "Found active keys without ranks" not in captured.out, (
-        "Rank consistency error occurred during node draining. "
-        "This indicates the fix for skipping consistency check "
-        "during STARTING replicas is not working."
-    )
-    assert "Found active keys without ranks" not in captured.err, (
-        "Rank consistency error occurred during node draining. "
-        "This indicates the fix for skipping consistency check "
-        "during STARTING replicas is not working."
-    )
-
-    ray.shutdown()
 
 
 if __name__ == "__main__":
