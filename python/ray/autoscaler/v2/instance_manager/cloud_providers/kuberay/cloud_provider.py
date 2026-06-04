@@ -88,8 +88,11 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
+        # Below are states for idle-cluster termination tracking.
         # Monotonic timestamp when no driver was first observed; None resets it.
         self._no_driver_observed_since: Optional[float] = None
+        # Latest GCS job end time seen; a newer one means a driver came and went.
+        self._last_seen_job_end_time = 0
         # No-driver timeout (seconds) from the CR; None disables the feature.
         self._no_driver_timeout_seconds: Optional[float] = None
 
@@ -662,9 +665,16 @@ class KubeRayProvider(ICloudInstanceProvider):
         if self._no_driver_timeout_seconds is None:
             self._no_driver_observed_since = None
             return
-        if self._has_active_user_drivers():
+        has_active_driver, latest_job_end_time = self._driver_status()
+        if has_active_driver:
             self._no_driver_observed_since = None
             return
+
+        # A driver finished since the last check: it was attached during the
+        # no-driver window, so restart the timer.
+        if latest_job_end_time > self._last_seen_job_end_time:
+            self._last_seen_job_end_time = latest_job_end_time
+            self._no_driver_observed_since = None
 
         # Anchor on the first loop with no driver, then dispatch once the
         # no-driver window reaches the timeout.
@@ -675,10 +685,10 @@ class KubeRayProvider(ICloudInstanceProvider):
             return
         self._set_no_driver_annotation()
 
-    def _has_active_user_drivers(self) -> bool:
-        """Returns True when GCS reports any non-internal driver still alive.
+    def _driver_status(self) -> Tuple[bool, int]:
+        """Returns whether a non-internal driver is alive and the latest job end time.
 
-        Fails closed: a failed GCS query is treated as drivers present.
+        Fails closed: a failed GCS query reports a driver as present.
         """
         try:
             jobs = self._gcs_client.get_all_job_info(
@@ -689,16 +699,19 @@ class KubeRayProvider(ICloudInstanceProvider):
             logger.exception(
                 "Failed to query GCS job table; treating as drivers attached."
             )
-            return True
+            return True, self._last_seen_job_end_time
 
+        has_active_driver = False
+        latest_job_end_time = 0
         for job in jobs.values():
-            if job.is_dead:
-                continue
             # Ray-internal drivers (e.g. the dashboard) are not user activity.
             if job.config.ray_namespace.startswith(RAY_INTERNAL_NAMESPACE_PREFIX):
                 continue
-            return True
-        return False
+            if job.is_dead:
+                latest_job_end_time = max(latest_job_end_time, job.end_time)
+            else:
+                has_active_driver = True
+        return has_active_driver, latest_job_end_time
 
     def _set_no_driver_annotation(self) -> None:
         """Sets `ray.io/no-driver-ttl-expired=true` on the RayCluster CR.

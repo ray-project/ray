@@ -817,44 +817,45 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 self.ray_namespace = ray_namespace
 
         class _Job:
-            def __init__(self, dead, ray_namespace):
+            def __init__(self, dead, ray_namespace, end_time=0):
                 self.is_dead = dead
+                self.end_time = end_time
                 self.config = _Config(ray_namespace)
 
         class _Gcs:
             def get_all_job_info(self, **_):
-                return {i: _Job(d, ns) for i, (d, ns) in enumerate(jobs)}
+                return {i: _Job(*job) for i, job in enumerate(jobs)}
 
         return _Gcs()
 
-    def test_has_active_user_drivers_filters_internal(self):
+    def test_driver_status_filters_internal(self):
         gcs = self._make_gcs(
             (False, "_ray_internal_dashboard"),
             (False, "_ray_internal_something"),
         )
         self.provider._gcs_client = gcs
-        assert self.provider._has_active_user_drivers() is False
+        assert self.provider._driver_status()[0] is False
 
-    def test_has_active_user_drivers_counts_user_driver(self):
+    def test_driver_status_counts_user_driver(self):
         gcs = self._make_gcs(
             (False, "_ray_internal_dashboard"),
             (False, "default"),
         )
         self.provider._gcs_client = gcs
-        assert self.provider._has_active_user_drivers() is True
+        assert self.provider._driver_status()[0] is True
 
-    def test_has_active_user_drivers_ignores_dead(self):
-        gcs = self._make_gcs((True, "default"))
+    def test_driver_status_ignores_dead(self):
+        gcs = self._make_gcs((True, "default", 42))
         self.provider._gcs_client = gcs
-        assert self.provider._has_active_user_drivers() is False
+        assert self.provider._driver_status() == (False, 42)
 
-    def test_has_active_user_drivers_fail_closed(self):
+    def test_driver_status_fail_closed(self):
         class _FailingGcs:
             def get_all_job_info(self, **_):
                 raise RuntimeError("gcs unreachable")
 
         self.provider._gcs_client = _FailingGcs()
-        assert self.provider._has_active_user_drivers() is True
+        assert self.provider._driver_status()[0] is True
 
     def test_evaluate_no_driver_termination_disabled_when_timeout_none(self):
         path = f"rayclusters/{self.provider._cluster_name}"
@@ -897,6 +898,23 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             self.provider._evaluate_no_driver_termination()
         assert self.provider._no_driver_observed_since is None
         assert path not in self.mock_client._patches
+
+    def test_evaluate_no_driver_termination_resets_on_intermittent_driver(self):
+        self.provider._no_driver_timeout_seconds = 100.0
+
+        # No driver: anchor at t=0.
+        with mock.patch("time.monotonic", return_value=0.0):
+            self.provider._gcs_client = self._make_gcs()
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since == 0.0
+
+        # A short-lived driver started and finished between loops (a dead job
+        # with a newer end time): the timer must restart.
+        with mock.patch("time.monotonic", return_value=50.0):
+            self.provider._gcs_client = self._make_gcs((True, "default", 42))
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since == 50.0
+        assert self.provider._last_seen_job_end_time == 42
 
     def test_refresh_no_driver_timeout_seconds_reads_value(self):
         self.provider._ray_cluster = {
