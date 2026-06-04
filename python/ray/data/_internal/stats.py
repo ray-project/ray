@@ -241,6 +241,43 @@ class Timer:
         q = self._distribution._quantile(p)
         return q if q is not None else 0
 
+    def as_dict(self) -> Dict[str, Optional[float]]:
+        """Return a JSON-serializable snapshot of the accumulated stats.
+
+        Only the scalar fields are included. ``_distribution`` (a
+        :class:`DistributionTracker`) is intentionally omitted because it
+        is not JSON-serializable and its sketch is not meant to be
+        persisted across checkpoints. ``_min`` / ``_max`` are reported as
+        ``None`` when no samples have been added (rather than the ``inf``
+        sentinel, which JSON cannot represent).
+        """
+        return {
+            "_total": self._total,
+            "_min": self._min if self._total_count > 0 else None,
+            "_max": self._max if self._total_count > 0 else None,
+            "_total_count": self._total_count,
+        }
+
+    def from_dict(self, state: Optional[Dict[str, Optional[float]]]) -> None:
+        """Restore the scalar stats from a dict produced by :meth:`as_dict`.
+
+        ``_distribution`` is left untouched (it keeps the empty tracker
+        created in ``__init__``), mirroring that the sketch is not
+        persisted. A non-dict ``state`` is ignored, and a ``None`` value
+        for any field falls back to its empty-Timer default (``.get``'s
+        default only fires on a missing key, not a present ``None``).
+        """
+        if not isinstance(state, dict):
+            return
+        _total = state.get("_total")
+        self._total = _total if _total is not None else 0.0
+        _total_count = state.get("_total_count")
+        self._total_count = _total_count if _total_count is not None else 0.0
+        _min = state.get("_min")
+        self._min = _min if _min is not None else float("inf")
+        _max = state.get("_max")
+        self._max = _max if _max is not None else 0.0
+
 
 class _DatasetStatsBuilder:
     """Helper class for building dataset stats.
