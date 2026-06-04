@@ -212,7 +212,10 @@ class ConcatAggregation(ShuffleAggregation):
         result = _combine(blocks)
 
         if self._should_sort and result.num_rows > 0:
-            result = result.sort_by([(k, "ascending") for k in self._key_columns])
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+            sort_key = SortKey(key=list(self._key_columns), descending=False)
+            result = BlockAccessor.for_block(result).sort(sort_key)
 
         yield result
 
@@ -1165,6 +1168,29 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 #       max block size specified as the best partition size estimate
                 estimated_dataset_bytes=estimated_dataset_bytes,
             )
+
+            # A per-aggregator ``memory`` request must fit on a single node,
+            # otherwise the actor is unschedulable. For low-partition shuffles
+            # over large datasets (e.g. a global aggregation with
+            # ``num_partitions=1``) the estimate can exceed the largest node's
+            # memory. In that case clamp it: aggregators hold shuffle data in the
+            # (spillable) object store, so reserving more heap ``memory`` than a
+            # node has would only make the actor unschedulable, not faster.
+            max_node_memory = _get_max_single_node_memory()
+            if (
+                max_node_memory is not None
+                and estimated_aggregator_memory_required > max_node_memory
+            ):
+                logger.warning(
+                    f"Estimated per-aggregator memory requirement "
+                    f"({estimated_aggregator_memory_required / GiB:.1f}GiB) exceeds "
+                    f"the largest node's memory ({max_node_memory / GiB:.1f}GiB); "
+                    f"clamping the reservation to fit on a single node and relying "
+                    f"on object-store spilling for the remainder. Consider "
+                    f"increasing the number of partitions or the cluster's node "
+                    f"size to reduce spilling."
+                )
+                estimated_aggregator_memory_required = max_node_memory
         else:
             # NOTE: In cases when we're unable to estimate dataset size,
             #       we simply fallback to request the minimum of:
@@ -1905,6 +1931,26 @@ def _get_total_cluster_resources() -> ExecutionResources:
         ray._private.state.state.get_max_resources_from_cluster_config()
         or ray.cluster_resources()
     )
+
+
+def _get_max_single_node_memory() -> Optional[int]:
+    """Largest ``memory`` capacity available on any single node, or ``None`` if
+    it can't be determined.
+
+    A per-actor ``memory`` request must fit on a single node, so this is the
+    ceiling for an individual aggregator's memory reservation: requesting more
+    than the largest node has makes the actor unschedulable.
+    """
+    try:
+        per_node_resources = ray._private.state.total_resources_per_node()
+    except Exception:
+        return None
+
+    max_node_memory = max(
+        (res.get("memory", 0) for res in per_node_resources.values()),
+        default=0,
+    )
+    return int(max_node_memory) if max_node_memory > 0 else None
 
 
 # TODO rebase on generic operator output estimation
