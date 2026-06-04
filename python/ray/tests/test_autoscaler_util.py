@@ -41,6 +41,7 @@ def test_parse_usage_formatting():
     assert "1.00MiB/2.00MiB memory" in lines
     assert "0.01/1 special_hardware" in lines
 
+
 def test_with_envs():
     assert with_envs(
         ["echo $RAY_HEAD_IP", "ray start"], {"RAY_HEAD_IP": "127.0.0.0"}
