@@ -3688,8 +3688,8 @@ def from_arrow(
         tables = list(tables)
         if not tables:
             raise ValueError(
-                "`override_num_blocks` was provided, but `tables` is empty. "
-                "Pass at least one PyArrow table, or omit `override_num_blocks`."
+                "The input tables iterable is empty. At least one table must "
+                "be provided when `override_num_blocks` is specified."
             )
         combined_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         total_rows = len(combined_table)
