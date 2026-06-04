@@ -81,7 +81,9 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler_name = "py-spy"
 
-    async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
+    async def trace_dump(
+        self, pid: int, native: bool = False, subprocesses: bool = False
+    ) -> (bool, str):
         """
         Capture and dump a trace for a specified process.
 
@@ -89,6 +91,8 @@ class CpuProfilingManager:
             pid: The process ID (PID) of the target process for trace capture.
             native (bool, optional): If True, includes native (C/C++) stack frames.
                 Default is False.
+            subprocesses (bool, optional): If True, also dumps stack traces for
+                child processes of the target process. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -103,6 +107,8 @@ class CpuProfilingManager:
         # We
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(

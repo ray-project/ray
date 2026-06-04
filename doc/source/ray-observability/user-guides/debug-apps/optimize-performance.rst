@@ -86,7 +86,9 @@ actions for active workers, actors, and jobs.
    :width: 80%
 
 Clicking "Stack Trace" returns the current stack trace sample using ``py-spy``. By default, only the Python stack
-trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
+trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux). To also
+dump stack traces for child processes of the target (for example, data loader or multiprocess inference workers),
+set the URL parameter ``subprocesses=1``.
 
 .. image:: /images/stack.png
    :align: center

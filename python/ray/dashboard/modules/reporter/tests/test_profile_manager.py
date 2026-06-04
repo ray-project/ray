@@ -224,5 +224,47 @@ class TestCpuProfiling:
         assert "--subprocesses" not in cmd
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+class TestTraceDump:
+    async def _capture_pyspy_cmd(self, **trace_dump_kwargs):
+        """Run trace_dump with subprocess execution mocked out and return the
+        py-spy command that would have been executed.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cpu_profiler = CpuProfilingManager(tmpdir)
+
+            fake_process = AsyncMock()
+            fake_process.communicate.return_value = (b"", b"boom")
+            fake_process.returncode = 1
+
+            with patch(
+                "ray.dashboard.modules.reporter.profile_manager.shutil.which",
+                return_value="/fake/py-spy",
+            ), patch(
+                "ray.dashboard.modules.reporter.profile_manager."
+                "_can_passwordless_sudo",
+                new=AsyncMock(return_value=False),
+            ), patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=fake_process),
+            ) as mock_exec:
+                await cpu_profiler.trace_dump(pid=12345, **trace_dump_kwargs)
+
+            assert mock_exec.call_count == 1
+            return list(mock_exec.call_args.args)
+
+    async def test_trace_dump_subprocesses_flag_added(self):
+        # subprocesses=True should append `--subprocesses` to the py-spy dump command.
+        cmd = await self._capture_pyspy_cmd(subprocesses=True)
+        assert "dump" in cmd
+        assert "--subprocesses" in cmd
+
+    async def test_trace_dump_subprocesses_not_added_by_default(self):
+        # By default the `--subprocesses` flag should be absent.
+        cmd = await self._capture_pyspy_cmd()
+        assert "--subprocesses" not in cmd
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

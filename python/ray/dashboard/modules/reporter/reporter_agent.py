@@ -553,8 +553,11 @@ class ReporterAgent(
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
+        subprocesses = request.subprocesses
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.trace_dump(pid, native=native)
+        success, output = await p.trace_dump(
+            pid, native=native, subprocesses=subprocesses
+        )
         return reporter_pb2.GetTracebackReply(output=output, success=success)
 
     async def CpuProfiling(self, request, context):

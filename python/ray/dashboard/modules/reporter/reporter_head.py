@@ -281,6 +281,8 @@ class ReportHead(SubprocessModule):
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -290,12 +292,14 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            "Sending stack trace request to {}:{} with native={}".format(
-                ip, pid, native
+            "Sending stack trace request to {}:{} with native={}, subprocesses={}".format(
+                ip, pid, native, subprocesses
             )
         )
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+            reporter_pb2.GetTracebackRequest(
+                pid=pid, native=native, subprocesses=subprocesses
+            )
         )
 
         """
@@ -479,12 +483,16 @@ class ReportHead(SubprocessModule):
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
         logger.info(
-            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
+            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, subprocesses={subprocesses}"
         )
         pid = int(pid)
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+            reporter_pb2.GetTracebackRequest(
+                pid=pid, native=native, subprocesses=subprocesses
+            )
         )
         if reply.success:
             logger.info("Returning stack trace, size {}".format(len(reply.output)))

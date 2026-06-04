@@ -23,6 +23,8 @@ message GetTracebackRequest {
   uint32 pid = 1;
   // If using native flag for py-spy
   optional bool native = 2;
+  // If using subprocesses flag for py-spy (also profile child processes)
+  optional bool subprocesses = 3;
 }
 
 message GetTracebackReply {
