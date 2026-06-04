@@ -31,6 +31,9 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.stream_metrics import (
+    instrumented_stream,
+)
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
@@ -352,8 +355,12 @@ class LLMServer(LLMServerProtocol):
         is_stream = hasattr(request, "stream") and request.stream
         engine_stream = getattr(self.engine, engine_method)(request, raw_request_info)
 
-        if is_stream and batch_output_stream:
-            stream = self._batch_output_stream(engine_stream)
+        if is_stream:
+            engine_stream = instrumented_stream(engine_stream, engine_method)
+            if batch_output_stream:
+                stream = self._batch_output_stream(engine_stream)
+            else:
+                stream = engine_stream
         else:
             stream = engine_stream
 
