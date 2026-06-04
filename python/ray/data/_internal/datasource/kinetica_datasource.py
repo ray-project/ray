@@ -504,6 +504,16 @@ class KineticaDatasource(Datasource):
             current_offset = offset
             has_yielded = False
 
+            # Warn if pagination without sort_by could produce inconsistent results.
+            # When limit > batch_size, multiple offset-based fetches occur, and
+            # without a stable sort order, rows may be duplicated or skipped.
+            if limit > batch_size and not sort_by:
+                logger.warning(
+                    f"Reading {limit} records in batches of {batch_size} without "
+                    "sort_by may produce non-deterministic results (duplicate or "
+                    "missing rows). Specify sort_by for consistent ordering."
+                )
+
             try:
                 while records_remaining > 0:
                     fetch_count = min(batch_size, records_remaining)
