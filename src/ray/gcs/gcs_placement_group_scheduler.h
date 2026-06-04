@@ -392,13 +392,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param bundle_specs Bundles to remove on the node.
   /// \param node The node that the bundles are being removed from.
   /// \param max_retry The maximum times the remove request can be retried.
-  /// \param current_retry_cnt The number of times the remove request has been retried.
+  /// \param current_retry_count The number of times the remove request has been retried.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
-      int current_retry_cnt);
+      int current_retry_count);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(

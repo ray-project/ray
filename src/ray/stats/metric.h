@@ -247,7 +247,7 @@ struct StatsTypeMap<COUNT> {
   static opencensus::stats::Aggregation Aggregation(const std::vector<double> &) {
     return opencensus::stats::Aggregation::Count();
   }
-  static constexpr const char *val = "_cnt";
+  static constexpr const char *val = "_count";
 };
 
 template <>
