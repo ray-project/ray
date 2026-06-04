@@ -907,19 +907,25 @@ class Dataset:
         Returns:
             A new dataset with the added or overwritten columns.
         """
+        from ray.data.expressions import DownloadExpr
+
         if not isinstance(exprs, dict) or not exprs:
             raise ValueError(
-                f"`exprs` must be a non-empty dict of {{str: Expr}}, got " f"{exprs!r}."
+                f"`exprs` must be a non-empty dict of {{str: Expr}}, got {exprs!r}."
             )
         for name, expr in exprs.items():
             if not isinstance(name, str):
                 raise TypeError(
-                    f"Column names must be strings, got {type(name)} for "
-                    f"key {name!r}."
+                    f"Column names must be strings, got {type(name)} for key {name!r}."
                 )
             if not isinstance(expr, Expr):
                 raise TypeError(
                     f"Expected an Expr for column {name!r}, got {type(expr)}."
+                )
+            if isinstance(expr, DownloadExpr):
+                raise ValueError(
+                    f"`with_columns` does not support DownloadExpr (column "
+                    f"{name!r}). Use `with_column` for download expressions."
                 )
 
         from ray.data._internal.logical.operators import Project

@@ -1102,6 +1102,15 @@ def test_with_columns_validation():
         ds.with_columns({"x": "not_an_expr"})
 
 
+def test_with_columns_rejects_download_expr(ray_start_regular_shared):
+    """Verify `with_columns` rejects DownloadExpr with a clear error."""
+    from ray.data.expressions import download
+
+    ds = ray.data.range(5)
+    with pytest.raises(ValueError, match="does not support DownloadExpr"):
+        ds.with_columns({"contents": download("id")})
+
+
 if __name__ == "__main__":
     import sys
 
