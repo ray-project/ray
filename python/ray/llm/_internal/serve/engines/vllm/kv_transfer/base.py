@@ -58,20 +58,14 @@ class BaseConnectorBackend(abc.ABC):
             # (data_parallel_rank × tp_size), don't multiply here
             return dp_rank
 
-        # Fall back to Serve replica rank for TP/PP cases
-        try:
-            rc = serve.get_replica_context()
-            if rc and hasattr(rc, "rank"):
-                # Use num_devices (tp × pp) to reserve ports for all workers
-                # Each replica spawns num_devices workers, each needing a unique port
-                engine_config = self.llm_config.get_engine_config()
-                num_devices = engine_config.num_devices
-                return rc.rank * num_devices
-        except Exception:
-            # Best-effort fallback; avoid introducing failures in setup paths
-            pass
-
-        return 0
+        # NOTE (jeffreywang): A missing replica context must fail loudly, not
+        # silently return a 0 offset that collides colocated replicas on the
+        # same NIXL side-channel port. get_replica_context() raises RayServeException
+        # outside a replica.
+        rc = serve.get_replica_context()
+        engine_config = self.llm_config.get_engine_config()
+        num_devices = engine_config.num_devices
+        return rc.rank.rank * num_devices
 
     def setup(self) -> None:
         """Setup the connector backend.

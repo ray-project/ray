@@ -70,6 +70,8 @@ pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CU
 # Temporarily patch fixes from https://github.com/vllm-project/vllm/pull/39873
 # until the pinned vLLM release includes it.
 VLLM_IMPORT_UTILS_PATCH="$(pwd)/python/requirements/llm/patches/vllm-trial-import-patch"
+# Fix RayExecutorV2 GPU collision when multiple engines share a node.
+VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/python/requirements/llm/patches/vllm-cuda-visible-devices-patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -93,6 +95,7 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_IMPORT_UTILS_PATCH}"
+    git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
 )
 
 EOF

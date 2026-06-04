@@ -6,6 +6,7 @@ srcs:
   - ci/env/install-llvm-binaries.sh
   - ci/suppress_output
   - python/requirements/llm/patches/vllm-trial-import-patch
+  - python/requirements/llm/patches/vllm-cuda-visible-devices-patch
   - python/deplocks/llm/rayllm_test_py312_cpu.lock
   - python/deplocks/llm/rayllm_test_py312_cu130.lock
 tags:
