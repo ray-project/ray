@@ -26,4 +26,3 @@ pybase64
 hudi==0.4.0
 datasketches
 testcontainers[kafka]
-zarr<3 ; python_version >= '3.11'  # zarr 2.18.4+ requires py3.11+ (v2 API)
