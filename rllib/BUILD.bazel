@@ -2968,6 +2968,18 @@ py_test(
     deps = [":conftest"],
 )
 
+# From-checkpoint exception handling
+py_test(
+    name = "utils/tests/test_from_checkpoint_exception_handling",
+    size = "small",
+    srcs = ["utils/tests/test_from_checkpoint_exception_handling.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
 # Errors
 py_test(
     name = "test_errors",
