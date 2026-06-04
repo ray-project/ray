@@ -71,14 +71,14 @@ class ResourceIsolationConfig:
                     "Set enable_resource_isolation to True if you're using ray.init or use the "
                     "--enable-resource-isolation flag if you're using the ray cli."
                 )
-            if system_reserved_cpu:
+            if system_reserved_cpu is not None:
                 raise ValueError(
                     "system_reserved_cpu cannot be set when resource isolation is not enabled. "
                     "Set enable_resource_isolation to True if you're using ray.init or use the "
                     "--enable-resource-isolation flag if you're using the ray cli."
                 )
 
-            if self.system_reserved_memory:
+            if system_reserved_memory is not None:
                 raise ValueError(
                     "system_reserved_memory cannot be set when resource isolation is not enabled. "
                     "Set enable_resource_isolation to True if you're using ray.init or use the "
@@ -164,7 +164,7 @@ class ResourceIsolationConfig:
                 f"Pick a number of cpu cores greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_CPU_CORES}"
             )
 
-        if not system_reserved_cpu:
+        if system_reserved_cpu is None:
             system_reserved_cpu = float(
                 min(
                     max(
@@ -242,7 +242,7 @@ class ResourceIsolationConfig:
                 f"Pick a number of bytes greater than or equal to {ray_constants.DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES}"
             )
 
-        if not system_reserved_memory:
+        if system_reserved_memory is None:
             system_reserved_memory = int(
                 min(
                     max(
