@@ -489,8 +489,8 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   auto reply_count = 0;
   send_reply_callback = [&reply_count](Status status,
-                                     std::function<void()> success,
-                                     std::function<void()> failure) { reply_count++; };
+                                       std::function<void()> success,
+                                       std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
@@ -570,8 +570,8 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
 
   auto reply_count = 0;
   send_reply_callback = [&reply_count](Status status,
-                                     std::function<void()> success,
-                                     std::function<void()> failure) { reply_count++; };
+                                       std::function<void()> success,
+                                       std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
@@ -641,8 +641,8 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
 
   auto reply_count = 0;
   send_reply_callback = [&reply_count](Status status,
-                                     std::function<void()> success,
-                                     std::function<void()> failure) { reply_count++; };
+                                       std::function<void()> success,
+                                       std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,

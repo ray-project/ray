@@ -293,7 +293,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
        node,
        max_retry,
        current_retry_count](const Status &status,
-                          const rpc::RemovePlacementGroupBundlesReply &reply) {
+                            const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
                         << " bundle(s) for placement group " << placement_group_id
