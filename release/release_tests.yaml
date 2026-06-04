@@ -4659,6 +4659,47 @@
     timeout: 3600
     script: pytest -vs test_llm_serve_sglang.py
 
+- name: llm_serve_sglang_pd_fake_transport
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+      post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_llm_serve_sglang_pd.py -k "fake_transport or bootstrap_room or bootstrap_field or bootstrap_port"
+
+- name: llm_serve_sglang_pd_mooncake
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+      post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_2x_4xl4.yaml
+
+  run:
+    timeout: 3600
+    prepare: pip install mooncake-transfer-engine -q
+    script: pytest -vs test_llm_serve_sglang_pd.py -k "mooncake"
+
 ##############
 # LLM Batch
 ##############
