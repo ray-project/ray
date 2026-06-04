@@ -829,6 +829,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=0
         - RAYTEST_FAIL_ON_DEAD_NODES=0
         - RAY_MAX_LIMIT_FROM_API_SERVER=20000
+        - RAY_MAX_LIMIT_FROM_DATA_SOURCE=20000
     cluster_compute: heterogeneous_memory_compute_multitenancy.yaml
 
   run:
