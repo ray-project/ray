@@ -13,12 +13,12 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
+    iter_threaded,
     resolve_block_refs,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, _StatsManager
-from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -243,20 +243,14 @@ class BatchIterator:
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
-        async_batch_iter = make_async_gen(
-            self._ref_bundles,
-            fn=self._pipeline,
-            num_workers=1,
-            preserve_ordering=False,
-            buffer_size=max(self._prefetch_batches, 1),
-        )
+        batch_iter = iter_threaded(self._ref_bundles, fn=self._pipeline)
 
         self.before_epoch_start()
 
         while True:
             with self.get_next_batch_context():
                 try:
-                    batch = next(async_batch_iter)
+                    batch = next(batch_iter)
                 except StopIteration:
                     break
             with self.yield_batch_context(batch):
@@ -358,11 +352,13 @@ def _format_in_threadpool(
         return formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        collated_iter = make_async_gen(
+        # Output order is non-deterministic across workers and is restored
+        # downstream by `restore_original_order`.
+        collated_iter = iter_threaded(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
-            preserve_ordering=False,
             num_workers=num_threadpool_workers,
+            output_buffer_size=num_threadpool_workers,
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
