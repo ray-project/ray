@@ -747,7 +747,10 @@ class AlgorithmConfig(_Config):
         # If using the New API Stack, overwrite the stale legacy train_batch_size
         # with the true computed total so to_dict() is not misleading.
         if self.enable_rl_module_and_learner:
-            config["train_batch_size"] = self.total_train_batch_size
+            try:
+                config["train_batch_size"] = self.total_train_batch_size
+            except ValueError:
+                config["train_batch_size"] = None
 
         return config
 
@@ -4273,11 +4276,14 @@ class AlgorithmConfig(_Config):
             return default_rl_module_spec
 
     @property
-    def train_batch_size_per_learner(self) -> Optional[int]:
+    def train_batch_size_per_learner(self) -> int:
         # If not set explicitly, try to infer the value.
         if self._train_batch_size_per_learner is None:
             if self.train_batch_size is None:
-                return None
+                raise ValueError(
+                    "Both `train_batch_size` and `train_batch_size_per_learner` "
+                    "are None! You must specify at least one of them in your config."
+                )
             return self.train_batch_size // (self.num_learners or 1)
         return self._train_batch_size_per_learner
 
@@ -4286,7 +4292,7 @@ class AlgorithmConfig(_Config):
         self._train_batch_size_per_learner = value
 
     @property
-    def total_train_batch_size(self) -> Optional[int]:
+    def total_train_batch_size(self) -> int:
         """Returns the effective total train batch size.
 
         New API stack: `train_batch_size_per_learner` * [effective num Learners].
@@ -4294,8 +4300,6 @@ class AlgorithmConfig(_Config):
         @OldAPIStack: User never touches `train_batch_size_per_learner` or
         `num_learners`) -> `train_batch_size`.
         """
-        if self.train_batch_size_per_learner is None:
-            return None
         return self.train_batch_size_per_learner * (self.num_learners or 1)
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
