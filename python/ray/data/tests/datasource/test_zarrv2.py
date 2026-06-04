@@ -9,12 +9,15 @@ import numpy as np
 import pandas as pd
 import pyarrow.fs
 import pytest
-import zarr
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data._internal.datasource import zarrv2_datasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+# zarr v2 requires Python 3.11+ (2.18.4+ dropped py3.10), so it isn't installed
+# on py3.10; skip the whole module there instead of hard-failing on import.
+zarr = pytest.importorskip("zarr")
 
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
@@ -1003,6 +1006,51 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
         np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
     finally:
         ray.shutdown()
+
+
+@pytest.mark.parametrize(
+    "error_str, retryable",
+    [
+        # Transient transport / network errors -> retry.
+        ("ConnectionResetError: [Errno 104] Connection reset by peer", True),
+        ("TimeoutError: The read operation timed out", True),
+        ("botocore.exceptions.ReadTimeoutError: Read timeout on endpoint URL", True),
+        ("botocore.exceptions.EndpointConnectionError: Could not connect", True),
+        (
+            "aiohttp.client_exceptions.ServerDisconnectedError: Server disconnected",
+            True,
+        ),
+        # Throttling / 5xx surfaced in the message text -> retry.
+        (
+            "botocore.exceptions.ClientError: An error occurred (SlowDown) when "
+            "calling the GetObject operation",
+            True,
+        ),
+        ("OSError: Server returned HTTP status 503 Service Unavailable", True),
+        # Non-transient -> must NOT retry (the allow-list is the fail-safe).
+        ("FileNotFoundError: Array metadata '.zarray' not found", False),
+        (
+            "botocore.exceptions.ClientError: An error occurred (403) when calling "
+            "the GetObject operation: Access Denied",
+            False,
+        ),
+        # A numcodecs decode failure is data corruption, not a transient error.
+        ("ValueError: blosc: invalid compressed buffer", False),
+        ("KeyError: 'chunk 0.0 is missing'", False),
+    ],
+)
+def test_zarr_transient_error_classification(error_str, retryable):
+    """The retry allow-list matches genuine transport/throttling errors, and
+    crucially does NOT match decode-corruption or non-429 4xx errors. Note that
+    a generic ``ClientError`` is retried only for the right code/reason
+    (``SlowDown`` -> retry, ``403`` -> no retry)."""
+    from ray._common.retry import matches_error
+
+    matched = any(
+        matches_error(pattern, error_str)
+        for pattern in zarrv2_datasource._ZARR_TRANSIENT_ERROR_PATTERNS
+    )
+    assert matched is retryable
 
 
 if __name__ == "__main__":

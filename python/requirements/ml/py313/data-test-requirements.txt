@@ -36,3 +36,4 @@ tensorflow-metadata>=1.17.0
 tf-keras
 torchvision==0.24.0
 confluent-kafka
+zarr<3 ; python_version >= '3.11'  # zarr 2.18.4+ requires py3.11+ (v2 API)

@@ -311,6 +311,11 @@ arro3-core==0.8.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   deltalake
+asciitree==0.3.3 \
+    --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   zarr
 asn1crypto==1.5.1 \
     --hash=sha256:13ae38502be632115abf8a24cbe5f4da52e3b5231990aff31123c805306ccb9c \
     --hash=sha256:db4e40728b728508912cbb3d44f19ce188f218e9eba635821bb4b68564f8fd67
@@ -1209,6 +1214,7 @@ deprecated==1.3.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   deltalake
+    #   numcodecs
 dill==0.3.8 \
     --hash=sha256:3ebe3c479ad625c4553aca177444d89b486b1d84982eeacded644afc0cf797ca \
     --hash=sha256:c36ca9ffb54365bdd2f8eb3eff7d2a21237f8452b57ace88b1ac615b7e815bd7
@@ -1338,6 +1344,12 @@ fastavro==1.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/data-test-requirements.txt
+fasteners==0.20 ; sys_platform != 'emscripten' \
+    --hash=sha256:55dce8792a41b56f727ba6e123fcaee77fd87e638a6863cec00007bfea84c8d8 \
+    --hash=sha256:9422c40d1e350e4259f509fb2e608d6bc43c0136f79a00db1b49046029d0b3b7
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   zarr
 fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
@@ -2730,6 +2742,23 @@ networkx==3.6.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   torch
+numcodecs==0.15.1 \
+    --hash=sha256:1d471a1829ce52d3f365053a2bd1379e32e369517557c4027ddf5ac0d99c591e \
+    --hash=sha256:1dfdea4a67108205edfce99c1cb6cd621343bc7abb7e16a041c966776920e7de \
+    --hash=sha256:698f1d59511488b8fe215fadc1e679a4c70d894de2cca6d8bf2ab770eed34dfd \
+    --hash=sha256:a34f0fe5e5f3b837bbedbeb98794a6d4a12eeeef8d4697b523905837900b5e1c \
+    --hash=sha256:a4f7bdb26f1b34423cb56d48e75821223be38040907c9b5954eeb7463e7eb03c \
+    --hash=sha256:b0a9d9cd29a0088220682dda4a9898321f7813ff7802be2bbb545f6e3d2f10ff \
+    --hash=sha256:bef8c8e64fab76677324a07672b10c31861775d03fc63ed5012ca384144e4bb9 \
+    --hash=sha256:c3a09e22140f2c691f7df26303ff8fa2dadcf26d7d0828398c0bc09b69e5efa3 \
+    --hash=sha256:cdfaef9f5f2ed8f65858db801f1953f1007c9613ee490a1c56233cd78b505ed5 \
+    --hash=sha256:daed6066ffcf40082da847d318b5ab6123d69ceb433ba603cb87c323a541a8bc \
+    --hash=sha256:e2547fa3a7ffc9399cfd2936aecb620a3db285f2630c86c8a678e477741a4b3c \
+    --hash=sha256:e3d82b70500cf61e8d115faa0d0a76be6ecdc24a16477ee3279d711699ad85f3 \
+    --hash=sha256:eeed77e4d6636641a2cc605fbc6078c7a8f2cc40f3dfa2b3f61e52e6091b04ff
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   zarr
 numexpr==2.14.1 ; python_full_version < '3.12' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
@@ -2865,6 +2894,7 @@ numpy==2.2.6 \
     #   keras
     #   ml-dtypes
     #   modin
+    #   numcodecs
     #   numexpr
     #   pandas
     #   pylance
@@ -2884,6 +2914,7 @@ numpy==2.2.6 \
     #   torchtext
     #   torchvision
     #   webdataset
+    #   zarr
 nvidia-nccl-cu12==2.27.5 ; platform_machine != 'aarch64' and sys_platform == 'linux' \
     --hash=sha256:ad730cf15cb5d25fe849c6e6ca9eb5b76db16a80f13f425ac68d8e2e55624457
     # via
@@ -5686,6 +5717,12 @@ yarl==1.23.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
     #   delta-sharing
+zarr==2.18.7 \
+    --hash=sha256:ac3dc4033e9ae4e9d7b5e27c97ea3eaf1003cc0a07f010bd83d5134bf8c4b223 \
+    --hash=sha256:b2b8f66f14dac4af66b180d2338819981b981f70e196c9a66e6bfaa9e59572f5
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/data-test-requirements.txt
 zict==3.0.0 \
     --hash=sha256:5796e36bd0e0cc8cf0fbc1ace6a68912611c1dbd74750a3f3026b9b9d6a327ae \
     --hash=sha256:e321e263b6a97aafc0790c3cfb3c04656b7066e6738c37fffcca95d803c9fba5
