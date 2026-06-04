@@ -185,35 +185,58 @@ class KineticaDatasink(Datasink):
         """Convert serializable dicts back to GPUdbRecordColumn objects.
 
         Note: precision and scale for decimal columns are stored in the dict
-        for reference but are not passed to GPUdbRecordColumn constructor.
-        The constructor parses these values from the column_properties list
-        (e.g., 'decimal(18,4)') automatically.
+        for reference. The GPUdbRecordColumn constructor parses these values
+        from the column_properties list (e.g., 'decimal(18,4)') automatically.
+
+        If a column has precision/scale in the dict but no decimal(p,s) property,
+        we reconstruct the property to ensure consistency.
         """
         from gpudb import GPUdbRecordColumn
 
         result = []
         for d in dicts:
-            # GPUdbRecordColumn constructor only accepts these 4 parameters.
-            # Precision/scale are parsed from column_properties automatically.
+            properties = list(d["column_properties"])  # Make a copy
+
+            # Ensure decimal columns have proper decimal(p,s) property format.
+            # This handles edge cases where only 'decimal' without (p,s) exists.
+            if "precision" in d and "scale" in d:
+                has_decimal_with_params = any(
+                    prop.startswith("decimal(") for prop in properties
+                )
+                if not has_decimal_with_params:
+                    # Remove bare 'decimal' if present and add with params
+                    properties = [p for p in properties if p != "decimal"]
+                    properties.append(f"decimal({d['precision']},{d['scale']})")
+
             result.append(
                 GPUdbRecordColumn(
                     name=d["name"],
                     column_type=d["column_type"],
-                    column_properties=d["column_properties"],
+                    column_properties=properties,
                     is_nullable=d["is_nullable"],
                 )
             )
         return result
 
     def _table_exists(self, client) -> bool:
-        """Check if the target table exists."""
+        """Check if the target table exists.
+
+        Raises:
+            GPUdbException: If an error occurs that is not related to the
+                table not existing (e.g., auth failures, connection errors).
+        """
         from gpudb import GPUdbException
 
         try:
             response = client.has_table(table_name=self._table_name)
             return response.get("table_exists", False)
-        except GPUdbException:
-            return False
+        except GPUdbException as e:
+            # Only swallow "table not found" type errors.
+            # Re-raise auth errors, connection errors, etc.
+            error_msg = str(e).lower()
+            if "does not exist" in error_msg or "not found" in error_msg:
+                return False
+            raise
 
     def _drop_table(self, client: Any) -> None:
         """Drop the target table if it exists.
@@ -724,14 +747,33 @@ class KineticaDatasink(Datasink):
                 inserted += response.get("count_inserted", 0)
                 updated += response.get("count_updated", 0)
 
-                response_errors = response.get("info", {}).get("errors")
-                if response_errors:
-                    # Handle both list and string error formats from the API
-                    if isinstance(response_errors, list):
-                        errors.extend(response_errors)
+                # Check for per-record errors in the response info map.
+                # When return_individual_errors is true, errors are reported via
+                # bad_record_indices and error_N entries.
+                info = response.get("info", {})
+                if info:
+                    bad_indices = info.get("bad_record_indices", "")
+                    if bad_indices:
+                        # Extract individual error messages for each bad record
+                        for idx in bad_indices.split(","):
+                            idx = idx.strip()
+                            if idx:
+                                error_key = f"error_{idx}"
+                                default_err = f"Unknown error at index {idx}"
+                                error_msg = info.get(error_key, default_err)
+                                errors.append(f"Record {idx}: {error_msg}")
+                                logger.error(
+                                    f"Error inserting record at index {idx} "
+                                    f"via simple insert: {error_msg}"
+                                )
                     else:
-                        # Single error string - append as single item
-                        errors.append(str(response_errors))
+                        # Fallback: check legacy 'errors' field
+                        response_errors = info.get("errors")
+                        if response_errors:
+                            if isinstance(response_errors, list):
+                                errors.extend(response_errors)
+                            else:
+                                errors.append(str(response_errors))
 
             except GPUdbException as e:
                 errors.append(str(e))
