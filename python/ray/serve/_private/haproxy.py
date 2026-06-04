@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
+    RAY_SERVE_HAPROXY_DISABLE_GRPC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL,
@@ -1638,6 +1639,12 @@ class HAProxyManager(ProxyActorInterface):
     async def _update_haproxy_backends(self) -> None:
         backend_configs = []
         for target_group in self._target_groups:
+            if (
+                RAY_SERVE_HAPROXY_DISABLE_GRPC
+                and target_group.protocol == RequestProtocol.GRPC
+            ):
+                continue
+
             fallback_target = None
             if target_group.protocol == RequestProtocol.HTTP:
                 fallback_target = self._http_fallback_target
