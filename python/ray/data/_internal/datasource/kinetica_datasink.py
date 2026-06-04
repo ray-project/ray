@@ -586,9 +586,18 @@ class KineticaDatasink(Datasink):
         # are only detected here, not during insert_records calls.
         if gpudb_table is not None:
             from gpudb import GPUdbException
+            from gpudb.gpudb_multihead_io import InsertionException
 
             try:
                 gpudb_table.flush_data_to_server()
+            except InsertionException as e:
+                # InsertionException contains the records that failed to insert
+                failed_records = e.get_records()
+                raise RuntimeError(
+                    f"Failed to flush records to Kinetica table "
+                    f"'{self._table_name}': {e}. "
+                    f"{len(failed_records)} record(s) failed to insert."
+                ) from e
             except GPUdbException as e:
                 raise RuntimeError(
                     f"Failed to flush records to Kinetica table "
@@ -624,6 +633,7 @@ class KineticaDatasink(Datasink):
             List of error messages (empty if successful).
         """
         from gpudb import GPUdbException
+        from gpudb.gpudb_multihead_io import InsertionException
 
         errors = []
 
@@ -660,6 +670,12 @@ class KineticaDatasink(Datasink):
                                     f"via GPUdbTable: {error_msg}"
                                 )
 
+        except InsertionException as e:
+            # InsertionException is raised by the multihead ingestor and
+            # contains the list of records that failed to insert
+            failed_count = len(e.get_records())
+            errors.append(f"{e} ({failed_count} record(s) failed)")
+            logger.error(f"InsertionException via GPUdbTable: {e}")
         except GPUdbException as e:
             errors.append(str(e))
             logger.error(f"Error inserting records via GPUdbTable: {e}")
