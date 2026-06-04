@@ -18,6 +18,10 @@ def test_format_resource():
     assert format_resource(123.456) == "123.456"
     assert format_resource(123.0) == "123"
     assert format_resource(0) == "0"
+    assert format_resource(123456789) == "123456789"
+    assert format_resource(123456789.0) == "123456789"
+    assert format_resource(1000000.0) == "1000000"
+    assert format_resource(1000000) == "1000000"
 
 
 def test_parse_usage_formatting():

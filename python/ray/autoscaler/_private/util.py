@@ -614,12 +614,17 @@ def format_memory(mem_bytes: Number) -> str:
     return f"{int(mem_bytes)}B"
 
 
-def format_resource(value: Number) -> str:
-    """Formats a resource value to be more human readable.
-    It removes trailing zeros and limits precision to avoid floating point
-    artifacts.
-    """
+def format_resource(value):
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
     if isinstance(value, Real):
+        try:
+            if float(value).is_integer():
+                return str(int(value))
+        except (ValueError, OverflowError):
+            pass
         return f"{value:g}"
     return str(value)
 
