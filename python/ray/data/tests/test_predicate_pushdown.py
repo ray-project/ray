@@ -20,9 +20,6 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data._internal.planner.plan_expression.expression_visitors import (
-    get_column_references,
-)
 from ray.data._internal.util import rows_same
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -135,17 +132,18 @@ def test_filter_with_udf_expression_not_pushed_down(parquet_ds):
     """A UDF based filter expression must not be pushed into the datasource."""
 
     @udf(return_dtype=DataType.bool())
-    def greater_than_five(value: pa.Array) -> pa.Array:
+    def gt5(value: pa.Array) -> pa.Array:
         return pa.compute.greater(value, 5.0)
 
-    filtered_ds = parquet_ds.filter(expr=greater_than_five(col("sepal.length")))
+    expected = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0).take_all()
+    filtered_ds = parquet_ds.filter(expr=gt5(col("sepal.length")))
 
-    filtered_data = filtered_ds.take_all()
-    assert filtered_ds.count() == 118
-    assert all(record["sepal.length"] > 5.0 for record in filtered_data)
-
-    optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
-    assert plan_has_operator(optimized_plan, Filter)
+    # The whole UDF predicate stays as a Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(gt5(col('sepal.length')))]",
+        expected,
+    )
 
 
 @pytest.mark.parametrize("udf_first", [True, False])
@@ -153,10 +151,10 @@ def test_filter_mixed_udf_and_expression(parquet_ds, udf_first):
     """Convertible conjuncts push down while the UDF stays as a Filter."""
 
     @udf(return_dtype=DataType.bool())
-    def greater_than_five(value: pa.Array) -> pa.Array:
+    def gt5(value: pa.Array) -> pa.Array:
         return pa.compute.greater(value, 5.0)
 
-    udf_filter = greater_than_five(col("sepal.length"))
+    udf_filter = gt5(col("sepal.length"))
     expr_filter = col("sepal.width") > lit(3.0)
 
     if udf_first:
@@ -164,19 +162,80 @@ def test_filter_mixed_udf_and_expression(parquet_ds, udf_first):
     else:
         filtered_ds = parquet_ds.filter(expr=expr_filter).filter(expr=udf_filter)
 
-    filtered_data = filtered_ds.take_all()
-    assert all(
-        record["sepal.length"] > 5.0 and record["sepal.width"] > 3.0
-        for record in filtered_data
+    expected = parquet_ds.filter(
+        lambda r: r["sepal.length"] > 5.0 and r["sepal.width"] > 3.0
+    ).take_all()
+
+    # The convertible ``sepal.width > 3.0`` conjunct is pushed into the Read
+    # and only the UDF conjunct survives as a residual Filter
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(gt5(col('sepal.length')))]",
+        expected,
     )
 
-    optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
 
-    # Exactly one Filter survives
-    remaining_filters = get_operators_of_type(optimized_plan, Filter)
-    assert len(remaining_filters) == 1
-    residual_columns = set(get_column_references(remaining_filters[0].predicate_expr))
-    assert residual_columns == {"sepal.length"}
+def test_or_of_pyarrow_and_udf_not_pushed_down(parquet_ds):
+    """``pyarrow_expr | udf_expr`` must stay as a Filter above the Read."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    or_predicate = (col("sepal.width") > 3.0) | gt5(col("sepal.length"))
+    filtered_ds = parquet_ds.filter(expr=or_predicate)
+    expected = parquet_ds.filter(
+        lambda r: r["sepal.width"] > 3.0 or r["sepal.length"] > 5.0
+    ).take_all()
+
+    # The entire OR predicate stays as a single Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter((col('sepal.width') > 3.0) | gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_and_wrapping_or_with_udf_splits(parquet_ds):
+    """An AND of a convertible conjunct and a UDF containing OR splits correctly."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    or_conjunct = (col("sepal.width") > 3.0) | gt5(col("sepal.length"))
+    predicate = or_conjunct & (col("sepal.length") > 4.0)
+    filtered_ds = parquet_ds.filter(expr=predicate)
+    expected = parquet_ds.filter(
+        lambda r: (r["sepal.width"] > 3.0 or r["sepal.length"] > 5.0)
+        and r["sepal.length"] > 4.0
+    ).take_all()
+
+    # ``sepal.length > 4.0`` is pushed into the Read and only the OR conjunct
+    # survives as a residual Filter
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter((col('sepal.width') > 3.0) | gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_not_udf_not_pushed_down(parquet_ds):
+    """A negation of a UDF must stay as a Filter."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    filtered_ds = parquet_ds.filter(expr=~gt5(col("sepal.length")))
+    expected = parquet_ds.filter(lambda r: r["sepal.length"] <= 5.0).take_all()
+
+    # The negated UDF stays as a Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(~gt5(col('sepal.length')))]",
+        expected,
+    )
 
 
 def test_filter_pushdown_source_and_op(ray_start_regular_shared):

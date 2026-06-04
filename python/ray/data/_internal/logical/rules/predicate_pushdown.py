@@ -1,6 +1,6 @@
 import copy
-from dataclasses import is_dataclass, replace
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, is_dataclass, replace
+from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -29,6 +29,21 @@ from ray.data.expressions import BinaryExpr, Expr, Operation, col
 __all__ = [
     "PredicatePushdown",
 ]
+
+
+@dataclass(frozen=True)
+class _ConvertibilitySplit:
+    """Result of splitting a predicate by PyArrow convertibility.
+
+    Attributes:
+        convertible: The conjuncts that can be lowered to PyArrow and pushed
+            into the datasource. ``None`` if nothing is convertible.
+        residual: The conjuncts that cannot be lowered and must remain as a
+            ``Filter``. ``None`` if everything is convertible.
+    """
+
+    convertible: Optional[Expr]
+    residual: Optional[Expr]
 
 
 class PredicatePushdown(Rule):
@@ -191,9 +206,7 @@ class PredicatePushdown(Rule):
         return left if left is not None else right
 
     @classmethod
-    def _split_by_convertibility(
-        cls, predicate: Expr
-    ) -> Tuple[Optional[Expr], Optional[Expr]]:
+    def _split_by_convertibility(cls, predicate: Expr) -> _ConvertibilitySplit:
         """Split a predicate into PyArrow convertible and residual parts.
 
         Walks the top level ``AND`` chain and buckets each conjunct by whether
@@ -204,19 +217,20 @@ class PredicatePushdown(Rule):
             predicate: The predicate expression to split.
 
         Returns:
-            A ``(convertible, residual)`` tuple. Both are optional.
+            A ``_ConvertibilitySplit`` whose ``convertible`` and ``residual``
+            fields hold the two parts. Both are optional.
         """
         if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-            left_conv, left_res = cls._split_by_convertibility(predicate.left)
-            right_conv, right_res = cls._split_by_convertibility(predicate.right)
-            return (
-                cls._combine_with_and(left_conv, right_conv),
-                cls._combine_with_and(left_res, right_res),
+            left = cls._split_by_convertibility(predicate.left)
+            right = cls._split_by_convertibility(predicate.right)
+            return _ConvertibilitySplit(
+                convertible=cls._combine_with_and(left.convertible, right.convertible),
+                residual=cls._combine_with_and(left.residual, right.residual),
             )
 
         if predicate._is_pyarrow_convertible():
-            return predicate, None
-        return None, predicate
+            return _ConvertibilitySplit(convertible=predicate, residual=None)
+        return _ConvertibilitySplit(convertible=None, residual=predicate)
 
     @classmethod
     def _try_push_down_predicate(cls, op: LogicalOperator) -> LogicalOperator:
@@ -241,14 +255,12 @@ class PredicatePushdown(Rule):
             # stay as a Filter. Split the top level AND chain so the convertible
             # conjuncts can still be pushed while the residual ones are kept as
             # a Filter above the read.
-            convertible_predicate, residual_predicate = cls._split_by_convertibility(
-                predicate_expr
-            )
+            split = cls._split_by_convertibility(predicate_expr)
 
-            if convertible_predicate is None:
+            if split.convertible is None:
                 return filter_op
 
-            result_op = input_op.apply_predicate(convertible_predicate)
+            result_op = input_op.apply_predicate(split.convertible)
 
             # If the operator is unchanged (e.g., predicate references partition columns
             # that can't be pushed down), keep the Filter operator
@@ -257,11 +269,9 @@ class PredicatePushdown(Rule):
 
             # Convertible conjuncts were pushed into the read. Re-apply any
             # residual (non-convertible) conjuncts as a Filter above it.
-            if residual_predicate is None:
+            if split.residual is None:
                 return result_op
-            return Filter(
-                predicate_expr=residual_predicate, input_dependencies=[result_op]
-            )
+            return Filter(predicate_expr=split.residual, input_dependencies=[result_op])
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
