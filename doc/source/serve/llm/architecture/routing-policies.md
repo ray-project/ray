@@ -22,7 +22,7 @@ HTTP Request → Ingress (model routing) → Request Router (replica selection) 
 ```
 
 :::{note}
-With {ref}`direct streaming <direct-streaming-guide>` enabled, replica selection moves to an **ingress request router** that HAProxy queries before forwarding traffic directly to the chosen replica. It reuses the same `request_router_config` and policies described here, so the concepts below still apply.
+The concepts here also apply with {ref}`direct streaming <direct-streaming-guide>` enabled: it reuses the same public `request_router_config` and routing policies, so nothing below changes. The mechanism that carries replica selection to the HTTP ingress in that mode is internal; see the direct streaming guide for details and caveats.
 :::
 
 ## Request routing architecture
