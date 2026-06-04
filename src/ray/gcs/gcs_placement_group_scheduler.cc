@@ -260,7 +260,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     int current_retry_cnt) {
   if (bundle_specs.empty()) {
     RAY_LOG(WARNING) << "RemovePlacementGroupBundles called on empty bundle list.";
-    return
+    return;
   }
   if (!node.has_value()) {
     RAY_LOG(INFO) << "Node for placement group " << placement_group_id
