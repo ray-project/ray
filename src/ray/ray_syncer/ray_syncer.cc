@@ -182,10 +182,10 @@ void RaySyncer::Register(MessageType message_type,
                 if (*stopped) {
                   return;
                 }
-                EagerBroadcastIfNewVersion(message_type);
+                BroadcastMessageIfNewVersion(message_type);
               },
               pull_from_reporter_interval_ms,
-              "RaySyncer.EagerBroadcastIfNewVersion");
+              "RaySyncer.BroadcastMessageIfNewVersion");
         }
 
         RAY_LOG(DEBUG) << "Registered components: "
@@ -196,7 +196,7 @@ void RaySyncer::Register(MessageType message_type,
       "RaySyncerRegister");
 }
 
-bool RaySyncer::EagerBroadcastIfNewVersion(MessageType message_type) {
+bool RaySyncer::BroadcastMessageIfNewVersion(MessageType message_type) {
   auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());

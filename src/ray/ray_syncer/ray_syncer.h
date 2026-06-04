@@ -150,7 +150,7 @@ class RaySyncer {
   /// \param message_type The component to check.
   /// \return true if a message is generated. If the component doesn't have a new
   /// version of message, false will be returned.
-  bool EagerBroadcastIfNewVersion(MessageType message_type);
+  bool BroadcastMessageIfNewVersion(MessageType message_type);
 
   /// Function to broadcast the messages to other nodes.
   /// A message will be sent to a node if that node doesn't have this message.
