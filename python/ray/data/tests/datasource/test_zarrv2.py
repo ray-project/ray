@@ -9,12 +9,15 @@ import numpy as np
 import pandas as pd
 import pyarrow.fs
 import pytest
-import zarr
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data._internal.datasource import zarrv2_datasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+# zarr v2 requires Python 3.11+ (2.18.4+ dropped py3.10), so it isn't installed
+# on py3.10; skip the whole module there instead of hard-failing on import.
+zarr = pytest.importorskip("zarr")
 
 
 def _execute_read_tasks(tasks) -> pd.DataFrame:
