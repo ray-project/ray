@@ -145,9 +145,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[MultiAgentEpisode]
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
-        # Handle to the global `EnvRunnerStateServer` to PULL weights/connector states
-        # from. Set post-construction by the Algorithm when
-        # `config.use_env_runner_state_server=True`; None means use the legacy PUSH path.
+        # Set by the Algorithm when `config.use_env_runner_state_server=True`.
         self._env_runner_state_server = None
 
         # Measures the time passed between returning from `sample()`
@@ -221,20 +219,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             window=1,
         )
 
-        # PULL-based weight sync: if a global `EnvRunnerStateServer` is configured, pull
-        # the latest state and apply it only if its `WEIGHTS_SEQ_NO` is newer than ours
-        # (apply-if-newer for the whole state, so connector states reset only on a new
-        # merge). This replaces the back-pressured PUSH path, which could silently drop
-        # newer weight broadcasts while this EnvRunner was busy in a long `sample()`.
+        # Pull-based weight sync: if a global `EnvRunnerStateServer` is configured, pull
+        # the latest state and apply it only if it is newer than ours.
         if self._env_runner_state_server is not None:
             try:
-                # Fully blocking (no timeout): always wait for the freshest weights
-                # rather than skip an update. Fall back to current weights only if the
-                # server is genuinely unavailable.
+                # Block for the freshest weights; fall back to current ones if the
+                # server is unavailable.
                 with self.metrics.log_time(ENV_RUNNER_STATE_SERVER_PULL_TIMER):
                     _server_state = ray.get(self._env_runner_state_server.pull.remote())
             except ray.exceptions.RayError:
-                # Server crashed/unavailable: keep current weights this round.
                 _server_state = None
             if (
                 _server_state

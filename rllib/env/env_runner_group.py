@@ -380,10 +380,7 @@ class EnvRunnerGroup:
     ) -> Dict[str, Any]:
         """Gathers and merges the EnvRunners' ConnectorV2 states into one dict.
 
-        Extracted (behavior-preserving) from `sync_env_runner_states` so that both the
-        legacy broadcast path and the PULL-based `get_merged_env_runner_state` share a
-        single connector-merge implementation. Returns a dict that may contain
-        `COMPONENT_ENV_TO_MODULE_CONNECTOR` and/or `COMPONENT_MODULE_TO_ENV_CONNECTOR`.
+        Shared by `sync_env_runner_states` and `get_merged_env_runner_state`.
         """
         # Use (merged) states from all remote EnvRunners.
         if merge:
@@ -471,19 +468,11 @@ class EnvRunnerGroup:
     ) -> Dict[str, Any]:
         """Builds the merged EnvRunner state to push to an `EnvRunnerStateServer`.
 
-        PULL-model counterpart of `sync_env_runner_states`: merges the gathered
-        connector states (reusing `_merge_env_runner_connector_states`, the same logic
-        the legacy broadcast path uses) and combines them with `rl_module_state` (which
-        already carries the `COMPONENT_RL_MODULE` ObjectRef and `WEIGHTS_SEQ_NO`) and the
-        global env-steps counter into a single state dict. Does NOT touch any remote
-        EnvRunner - the Algorithm pushes the returned dict to the server and EnvRunners
-        pull it at the top of `sample()`.
-
-        The `WEIGHTS_SEQ_NO` inside the returned state doubles as its version: EnvRunners
-        apply the state only if it is newer than the one they currently hold.
+        Merges the connector states with `rl_module_state` (weights + `WEIGHTS_SEQ_NO`)
+        and the env-steps counter into a single state dict, without touching any remote
+        EnvRunner.
         """
-        # This path is gated to the new API stack (IMPALA/APPO), so only the new-stack
-        # half of `sync_env_runner_states`' `merge` predicate applies here.
+        # New API stack only, so just the new-stack half of the `merge` predicate.
         merge = config.merge_env_runner_states is True or (
             config.merge_env_runner_states == "training_only"
             and not config.in_evaluation
@@ -581,8 +570,7 @@ class EnvRunnerGroup:
         if not merge and not broadcast:
             return
 
-        # Gather + merge the remote EnvRunners' connector states (shared with the
-        # PULL-based `get_merged_env_runner_state`).
+        # Gather + merge the remote EnvRunners' connector states.
         env_runner_states = self._merge_env_runner_connector_states(
             config=config,
             connector_states=connector_states,

@@ -2006,18 +2006,14 @@ class AlgorithmConfig(_Config):
             broadcast_env_runner_states: True, if merged EnvRunner states (from the
                 central connector pipelines) should be broadcast back to all remote
                 EnvRunner actors.
-            use_env_runner_state_server: If True (and on the new API stack with an async
-                algorithm like IMPALA/APPO), EnvRunners PULL the latest weights and
-                merged connector states from a single global `EnvRunnerStateServer`
-                actor at the top of each `sample()` call, instead of having the
-                Algorithm PUSH (broadcast) state to every EnvRunner. This avoids
-                silently dropping newer weight broadcasts under back-pressure while an
-                EnvRunner is busy sampling, keeping the sampling policy fresher (lower
-                `diff_num_grad_updates_vs_sampler_policy`).
-            env_runner_state_server_max_concurrency: The `max_concurrency` (thread-pool
-                size) of the `EnvRunnerStateServer` actor, i.e. how many EnvRunner
-                `pull` requests it can serve concurrently. Raise this for very large
-                EnvRunner fleets. Only used when `use_env_runner_state_server=True`.
+            use_env_runner_state_server: If True (new API stack, async algorithms like
+                IMPALA/APPO), EnvRunners pull the latest weights and merged connector
+                states from a single global `EnvRunnerStateServer` actor at the top of
+                each `sample()` call, instead of the Algorithm broadcasting state to
+                every EnvRunner.
+            env_runner_state_server_max_concurrency: `max_concurrency` of the
+                `EnvRunnerStateServer` actor, i.e. how many EnvRunner `pull` requests it
+                serves concurrently. Only used when `use_env_runner_state_server=True`.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.

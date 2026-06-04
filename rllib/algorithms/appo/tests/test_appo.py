@@ -275,9 +275,7 @@ class TestAPPO(unittest.TestCase):
         # Kill the server. `max_restarts=-1` makes Ray restart it (with empty state).
         ray.kill(algo._env_runner_state_server, no_restart=False)
 
-        # Training must continue (EnvRunners keep their current weights through the gap)
-        # and the next per-iteration push must re-seed the restarted server so the
-        # version recovers.
+        # Training continues through the gap and the next push re-seeds the server.
         for _ in range(3):
             results = algo.train()
         check_train_results_new_api_stack(results)

@@ -160,9 +160,7 @@ class IMPALAConfig(AlgorithmConfig):
         self._dont_auto_sync_env_runner_states = True
         # Use the PULL-based `EnvRunnerStateServer` by default for async IMPALA/APPO:
         # EnvRunners pull the freshest weights/connector states at the top of each
-        # `sample()` call, rather than the Algorithm broadcasting (pushing) state, which
-        # can silently drop newer weight broadcasts under back-pressure while an
-        # EnvRunner is busy sampling. Inherited by APPO (`APPOConfig(IMPALAConfig)`).
+        # `sample()` call.
         self.use_env_runner_state_server = True
 
         # `.debugging()`
@@ -612,14 +610,9 @@ class IMPALA(Algorithm):
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
-        # PULL-based EnvRunner state sync: create a single, global, NAMED
+        # For pull-based EnvRunner state sync: create a single, global, NAMED
         # `EnvRunnerStateServer` actor holding the latest merged EnvRunner state.
-        # EnvRunners pull from it at the top of each `sample()` instead of the Algorithm
-        # broadcasting (pushing) state, which can silently drop newer weight broadcasts
-        # under back-pressure while an EnvRunner is busy sampling. If the server ever
-        # restarts (it comes back empty), the next per-iteration push re-seeds it and
-        # EnvRunners just keep their current weights until then - so it is not a single
-        # point of failure.
+        # EnvRunners pull from it at the top of each `sample()` call.
         self._env_runner_state_server = None
         if (
             self.config.enable_rl_module_and_learner
@@ -632,15 +625,11 @@ class IMPALA(Algorithm):
                 max_restarts=-1,
                 max_concurrency=self.config.env_runner_state_server_max_concurrency,
             )(EnvRunnerStateServer)
-            # Unique name: `self.trial_id` is "default" outside Ray Tune, so a uuid
-            # suffix prevents distinct Algorithms in one cluster from sharing - and
-            # silently corrupting - the same server.
             self._env_runner_state_server = server_cls.options(
                 name=f"EnvRunnerStateServer_{self.trial_id}_{uuid.uuid4().hex[:8]}",
             ).remote()
 
-            # Share the handle with the (remote, training) EnvRunners only. Eval
-            # EnvRunners receive weights via the regular `Algorithm.evaluate()` path.
+            # Share the handle with the (remote, training) EnvRunners only.
             def _share_state_server(env_runner, server=self._env_runner_state_server):
                 env_runner._env_runner_state_server = server
 
@@ -877,10 +866,8 @@ class IMPALA(Algorithm):
                         self._metrics_impala_training_step_sync_env_runner_state_time
                     ):
                         if self._env_runner_state_server is not None:
-                            # PULL model: assemble the merged state once and push it to
-                            # the single global server; EnvRunners pull it from there at
-                            # the top of `sample()`. A restarted (empty) server is
-                            # simply re-seeded by this push on the next weight sync.
+                            # Push the merged state to the single global server;
+                            # EnvRunners pull it at the top of `sample()`.
                             env_runner_state = (
                                 self.env_runner_group.get_merged_env_runner_state(
                                     config=self.config,
