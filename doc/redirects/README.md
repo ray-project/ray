@@ -32,9 +32,7 @@ mirrors the live configuration exactly.
 shows any difference between this file and the live configuration. An empty
 plan means no drift.
 
-`audit_live.py` is a deeper one-off auditor that probes docs.ray.io for
-broken or wrong-content targets. It drove the May-June 2026 cleanup that
-reduced the ruleset from 287 inherited rules to the current curated set:
-169 version-agnostic `page` rules plus 3 intentional version-pinned `exact`
-rules, all returning 301. The pre-cleanup snapshot is preserved in git
-history.
+The current ruleset is the result of a May-June 2026 cleanup that reduced
+287 inherited rules to a curated set: 169 version-agnostic `page` rules plus
+3 intentional version-pinned `exact` rules, all returning 301. The
+pre-cleanup snapshot is preserved in git history.
