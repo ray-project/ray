@@ -1072,7 +1072,7 @@ class TaskSummaries:
         total_actor_scheduled = 0
 
         for task in tasks:
-            key = task["name"] or task["func_or_class_name"]
+            key = task.get("name") or task.get("func_or_class_name")
             if key not in summary:
                 summary[key] = TaskSummaryPerFuncOrClassName(
                     func_or_class_name=key,
@@ -1172,7 +1172,7 @@ class TaskSummaries:
 
             # Use name first which allows users to customize the name of
             # their remote function call using the name option.
-            func_name = task["name"] or task["func_or_class_name"]
+            func_name = task.get("name") or task.get("func_or_class_name")
             task_id = task["task_id"]
             type_enum = TaskType.DESCRIPTOR.values_by_name[task["type"]].number
 
