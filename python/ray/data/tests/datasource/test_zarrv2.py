@@ -946,6 +946,30 @@ def test_rejects_zarr_v3(tmp_path, monkeypatch):
         zarrv2_datasource.ZarrV2Datasource(str(tmp_path))
 
 
+def test_explicit_filesystem_strips_uri_scheme(tmp_path):
+    """An explicit ``filesystem=`` plus a scheme-prefixed path must strip the
+    scheme so the store path is backend-relative. Regression: pyarrow
+    filesystems can't resolve a ``file://`` / ``gs://`` prefix in the path."""
+    store_path = tmp_path / "scheme.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(6, dtype="<i4"), (2,))})
+
+    ds = zarrv2_datasource.ZarrV2Datasource(
+        f"file://{store_path}", filesystem=pyarrow.fs.LocalFileSystem()
+    )
+    assert ds._store_path == str(store_path)
+    df = _execute_read_tasks(ds.get_read_tasks(parallelism=2))
+    assert len(df) == 3
+
+
+def test_get_read_tasks_parallelism_zero(tmp_path):
+    """parallelism=0 must not divide by zero; fall back to a single task."""
+    store_path = tmp_path / "p0.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(10, dtype="<i4"), (2,))})
+    ds = zarrv2_datasource.ZarrV2Datasource(str(store_path))
+    tasks = ds.get_read_tasks(parallelism=0)
+    assert len(tasks) >= 1
+
+
 if __name__ == "__main__":
     import sys
 

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
 import pandas as pd
+from fsspec.core import split_protocol
 from fsspec.spec import AbstractFileSystem
 
 from ray.data._internal.util import _check_import
@@ -193,7 +194,7 @@ def _load_metadata_from_array_paths(
             else f"{store_root}/.zarray"
         )
         try:
-            with fs.open(zarray_path, "r") as f:
+            with fs.open(zarray_path, "rb") as f:
                 raw_meta = json.load(f)
         except FileNotFoundError as e:
             raise ValueError(
@@ -226,7 +227,7 @@ def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
             array_path = normalize_storage_path(dirpath.removeprefix(store_prefix))
         zarray_path = f"{dirpath}/.zarray"
         try:
-            with fs.open(zarray_path, "r") as f:
+            with fs.open(zarray_path, "rb") as f:
                 raw = json.load(f)
         except FileNotFoundError:
             continue
@@ -492,7 +493,12 @@ class ZarrV2Datasource(Datasource):
                     f"fsspec.spec.AbstractFileSystem, got "
                     f"{type(filesystem).__name__}"
                 )
-            self._store_path = self.paths[0].rstrip("/")
+            # Strip any URI scheme (e.g. ``gs://`` / ``s3://``) so the path is
+            # backend-relative; pyarrow filesystems (wrapped in
+            # ``ArrowFSWrapper``) require this. Mirrors the ``filesystem is None``
+            # branch, which strips the scheme via ``_resolve_paths_and_filesystem``.
+            _, store_path = split_protocol(self.paths[0])
+            self._store_path = store_path.rstrip("/")
 
         if chunk_shapes is not None and not isinstance(
             chunk_shapes, (tuple, list, dict)
@@ -661,7 +667,7 @@ class ZarrV2Datasource(Datasource):
             ]
             if not descriptors:
                 continue
-            n_tasks = min(parallelism, len(descriptors))
+            n_tasks = max(1, min(parallelism, len(descriptors)))
             batch_size = math.ceil(len(descriptors) / n_tasks)
             for start in range(0, len(descriptors), batch_size):
                 batch = descriptors[start : start + batch_size]
@@ -713,7 +719,7 @@ class ZarrV2Datasource(Datasource):
         if not descriptors:
             return []
 
-        n_tasks = min(parallelism, len(descriptors))
+        n_tasks = max(1, min(parallelism, len(descriptors)))
         batch_size = math.ceil(len(descriptors) / n_tasks)
 
         read_tasks: List[ReadTask] = []
