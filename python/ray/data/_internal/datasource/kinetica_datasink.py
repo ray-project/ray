@@ -140,7 +140,12 @@ class KineticaDatasink(Datasink):
         self._mode = mode
         self._schema = schema
         self._table_settings = table_settings or KineticaTableSettings()
+
+        # Validate batch_size to prevent silent failures in _write_simple
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be a positive integer, got {batch_size}")
         self._batch_size = batch_size
+
         self._use_multihead = use_multihead
         self._options = options or {}
 
