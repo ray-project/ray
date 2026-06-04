@@ -800,10 +800,26 @@ class KineticaDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         """Whether this datasink supports distributed writes.
 
-        Returns False when table creation is deferred (APPEND mode without
-        schema and table doesn't exist) to prevent race conditions where
-        multiple workers try to create the same table simultaneously.
+        Returns False only when table creation is deferred (APPEND mode without
+        schema) to prevent race conditions where multiple workers try to create
+        the same table simultaneously.
+
+        Note: This property is checked by Ray Data before on_write_start() is
+        called, so we determine readiness based on configuration rather than
+        runtime state (_table_ready).
         """
+        # CREATE and OVERWRITE modes require schema upfront, so distributed
+        # writes are always safe (table structure is known).
+        if self._mode in (KineticaSinkMode.CREATE, KineticaSinkMode.OVERWRITE):
+            return True
+
+        # APPEND mode: safe if schema is provided (can create table if needed)
+        # or if _table_ready was set (table exists, checked in on_write_start).
+        # The only unsafe case is APPEND without schema where the table doesn't
+        # exist - schema must be inferred from first block by a single worker.
+        if self._mode == KineticaSinkMode.APPEND:
+            return self._schema is not None or self._table_ready
+
         return self._table_ready
 
     def get_name(self) -> str:
