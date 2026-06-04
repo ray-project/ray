@@ -625,10 +625,19 @@ class KineticaDatasource(Datasource):
             logger.warning(
                 "Parallel reads without sort_by may produce non-deterministic "
                 "results (duplicate or missing rows). Reducing parallelism "
-                f"from {effective_parallelism} to 1. Specify sort_by to enable "
-                "parallel reads with consistent ordering."
+                f"from {effective_parallelism} to 1. Specify sort_by with a "
+                "unique column (e.g., primary key) to enable parallel reads "
+                "with consistent ordering."
             )
             effective_parallelism = 1
+        elif self._sort_by and effective_parallelism > 1:
+            # Warn that sort_by must be unique for consistent parallel reads
+            logger.info(
+                f"Parallel reads enabled with sort_by='{self._sort_by}'. "
+                "For consistent results, ensure sort_by column(s) have unique "
+                "values (e.g., primary key). Non-unique sort keys may cause "
+                "duplicate or missing rows across parallel tasks."
+            )
 
         # Calculate partition sizes
         records_per_task = max(1, self._total_count // effective_parallelism)

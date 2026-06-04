@@ -223,8 +223,14 @@ class KineticaDatasink(Datasink):
             )
         return result
 
-    def _table_exists(self, client) -> bool:
+    def _table_exists(self, client: Any) -> bool:
         """Check if the target table exists.
+
+        Args:
+            client: GPUdb client instance.
+
+        Returns:
+            True if the table exists, False otherwise.
 
         Raises:
             GPUdbException: If an error occurs that is not related to the
