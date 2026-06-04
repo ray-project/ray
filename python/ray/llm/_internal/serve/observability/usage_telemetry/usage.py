@@ -325,8 +325,11 @@ def _push_model_telemetry(
         min_replicas = autoscaling_config.min_replicas
         max_replicas = autoscaling_config.max_replicas
     else:
-        # Fixed replica count; honor the configured value, defaulting to 1.
-        num_replicas = deployment_config.get("num_replicas") or 1
+        # Fixed replica count; honor the configured value (including 0),
+        # defaulting to 1 only when unset.
+        num_replicas = deployment_config.get("num_replicas")
+        if num_replicas is None:
+            num_replicas = 1
         min_replicas = max_replicas = num_replicas
 
     engine_config = model.get_engine_config()

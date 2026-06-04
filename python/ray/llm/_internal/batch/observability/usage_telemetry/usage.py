@@ -15,6 +15,10 @@ logger = get_logger(__name__)
 
 
 class BatchModelTelemetry(BaseModelExtended):
+    # Dedup identity only; never recorded as a tag value. A hash of model_source
+    # so distinct models that share an architecture stay separate in the dedup
+    # key while the cleartext model name never reaches the head-node actor.
+    model_id_hash: str = ""
     processor_config_name: str = ""
     model_architecture: str = ""
     batch_size: int = 0
@@ -52,8 +56,9 @@ class _TelemetryAgent:
     """Named Actor to keep the state of all deployed models and record telemetry."""
 
     def __init__(self):
-        # Keyed by telemetry identity so repeated identical processor builds
-        # overwrite rather than accumulate.
+        # Keyed by full telemetry identity (incl. model_id_hash) so repeated
+        # identical processor builds overwrite while distinct models/configs
+        # remain separate.
         self._tracking_telemetries: Dict[str, BatchModelTelemetry] = {}
         self._record_tag_func = record_extra_usage_tag
 
