@@ -31,6 +31,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
+    ENV_RUNNER_STATE_SERVER_PULL_TIMER,
     ENV_TO_MODULE_CONNECTOR,
     EPISODE_AGENT_RETURN_MEAN,
     EPISODE_AGENT_STEPS,
@@ -227,12 +228,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # newer weight broadcasts while this EnvRunner was busy in a long `sample()`.
         if self._env_runner_state_server is not None:
             try:
-                _server_state = ray.get(
-                    self._env_runner_state_server.pull.remote(),
-                    timeout=self.config.env_runner_state_server_pull_timeout_s,
-                )
-            except (ray.exceptions.RayActorError, ray.exceptions.GetTimeoutError):
-                # Server mid-restart/unreachable: keep current weights this round.
+                # Fully blocking (no timeout): always wait for the freshest weights
+                # rather than skip an update. Fall back to current weights only if the
+                # server is genuinely unavailable.
+                with self.metrics.log_time(ENV_RUNNER_STATE_SERVER_PULL_TIMER):
+                    _server_state = ray.get(self._env_runner_state_server.pull.remote())
+            except ray.exceptions.RayError:
+                # Server crashed/unavailable: keep current weights this round.
                 _server_state = None
             if (
                 _server_state

@@ -276,7 +276,8 @@ class TestAPPO(unittest.TestCase):
         ray.kill(algo._env_runner_state_server, no_restart=False)
 
         # Training must continue (EnvRunners keep their current weights through the gap)
-        # and the Algorithm must re-push its backup so the version recovers.
+        # and the next per-iteration push must re-seed the restarted server so the
+        # version recovers.
         for _ in range(3):
             results = algo.train()
         check_train_results_new_api_stack(results)

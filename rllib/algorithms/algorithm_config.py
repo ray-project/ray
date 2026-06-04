@@ -346,7 +346,6 @@ class AlgorithmConfig(_Config):
         self.broadcast_env_runner_states = True
         self.use_env_runner_state_server = False
         self.env_runner_state_server_max_concurrency = 16
-        self.env_runner_state_server_pull_timeout_s = 10.0
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -1882,7 +1881,6 @@ class AlgorithmConfig(_Config):
         broadcast_env_runner_states: Optional[bool] = NotProvided,
         use_env_runner_state_server: Optional[bool] = NotProvided,
         env_runner_state_server_max_concurrency: Optional[int] = NotProvided,
-        env_runner_state_server_pull_timeout_s: Optional[float] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
@@ -2020,10 +2018,6 @@ class AlgorithmConfig(_Config):
                 size) of the `EnvRunnerStateServer` actor, i.e. how many EnvRunner
                 `pull` requests it can serve concurrently. Raise this for very large
                 EnvRunner fleets. Only used when `use_env_runner_state_server=True`.
-            env_runner_state_server_pull_timeout_s: Timeout (seconds) for an EnvRunner's
-                `pull` from the `EnvRunnerStateServer`. On timeout (e.g. the server is
-                mid-restart), the EnvRunner keeps its current weights for that round
-                instead of blocking. Only used when `use_env_runner_state_server=True`.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2187,10 +2181,6 @@ class AlgorithmConfig(_Config):
         if env_runner_state_server_max_concurrency is not NotProvided:
             self.env_runner_state_server_max_concurrency = (
                 env_runner_state_server_max_concurrency
-            )
-        if env_runner_state_server_pull_timeout_s is not NotProvided:
-            self.env_runner_state_server_pull_timeout_s = (
-                env_runner_state_server_pull_timeout_s
             )
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats

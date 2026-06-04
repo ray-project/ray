@@ -1,6 +1,7 @@
 import copy
 import logging
 import queue
+import uuid
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 from typing_extensions import Self
@@ -46,7 +47,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
-    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.metrics.ray_metrics import (
@@ -616,11 +616,11 @@ class IMPALA(Algorithm):
         # `EnvRunnerStateServer` actor holding the latest merged EnvRunner state.
         # EnvRunners pull from it at the top of each `sample()` instead of the Algorithm
         # broadcasting (pushing) state, which can silently drop newer weight broadcasts
-        # under back-pressure while an EnvRunner is busy sampling. The Algorithm keeps a
-        # backup of the last pushed state, so the server (pure derived state) is
-        # recoverable and not a single point of failure.
+        # under back-pressure while an EnvRunner is busy sampling. If the server ever
+        # restarts (it comes back empty), the next per-iteration push re-seeds it and
+        # EnvRunners just keep their current weights until then - so it is not a single
+        # point of failure.
         self._env_runner_state_server = None
-        self._last_pushed_env_runner_state = None
         if (
             self.config.enable_rl_module_and_learner
             and self.config.enable_env_runner_and_connector_v2
@@ -632,11 +632,11 @@ class IMPALA(Algorithm):
                 max_restarts=-1,
                 max_concurrency=self.config.env_runner_state_server_max_concurrency,
             )(EnvRunnerStateServer)
+            # Unique name: `self.trial_id` is "default" outside Ray Tune, so a uuid
+            # suffix prevents distinct Algorithms in one cluster from sharing - and
+            # silently corrupting - the same server.
             self._env_runner_state_server = server_cls.options(
-                # Named (incl. trial_id to avoid Tune collisions) so it is re-acquirable
-                # via `ray.get_actor` after a restart.
-                name=f"EnvRunnerStateServer_{self.trial_id}",
-                get_if_exists=True,
+                name=f"EnvRunnerStateServer_{self.trial_id}_{uuid.uuid4().hex[:8]}",
             ).remote()
 
             # Share the handle with the (remote, training) EnvRunners only. Eval
@@ -879,7 +879,8 @@ class IMPALA(Algorithm):
                         if self._env_runner_state_server is not None:
                             # PULL model: assemble the merged state once and push it to
                             # the single global server; EnvRunners pull it from there at
-                            # the top of `sample()`. Keep a backup for server recovery.
+                            # the top of `sample()`. A restarted (empty) server is
+                            # simply re-seeded by this push on the next weight sync.
                             env_runner_state = (
                                 self.env_runner_group.get_merged_env_runner_state(
                                     config=self.config,
@@ -897,7 +898,6 @@ class IMPALA(Algorithm):
                                 )
                             )
                             self._env_runner_state_server.push.remote(env_runner_state)
-                            self._last_pushed_env_runner_state = env_runner_state
                         else:
                             self.env_runner_group.sync_env_runner_states(
                                 config=self.config,
@@ -913,38 +913,6 @@ class IMPALA(Algorithm):
                                 env_to_module=self.env_to_module_connector,
                                 module_to_env=self.module_to_env_connector,
                             )
-
-            # Recover the EnvRunnerStateServer if it was restarted (it comes back empty):
-            # re-push our backup so EnvRunners resume pulling fresh weights.
-            self._maybe_recover_env_runner_state_server()
-
-    def _maybe_recover_env_runner_state_server(self) -> None:
-        """Re-pushes the backup state if the `EnvRunnerStateServer` was restarted.
-
-        The server uses ``max_restarts=-1`` but comes back with empty state after a
-        restart. We compare its reported version (``WEIGHTS_SEQ_NO``) against our last
-        pushed backup and, if the server is behind (or unreachable mid-restart, handled
-        by the timeout), re-push the backup. This keeps the server from being a single
-        point of failure.
-        """
-        if (
-            self._env_runner_state_server is None
-            or self._last_pushed_env_runner_state is None
-        ):
-            return
-        backup_version = self._last_pushed_env_runner_state.get(WEIGHTS_SEQ_NO, 0)
-        try:
-            server_version = ray.get(
-                self._env_runner_state_server.get_version.remote(),
-                timeout=self.config.env_runner_state_server_pull_timeout_s,
-            )
-            if server_version < backup_version:
-                self._env_runner_state_server.push.remote(
-                    self._last_pushed_env_runner_state
-                )
-        except (ray.exceptions.RayActorError, ray.exceptions.GetTimeoutError):
-            # Server is mid-restart/unreachable; retry on the next training iteration.
-            return
 
     @override(Algorithm)
     def restore_env_runners(self, env_runner_group) -> List[int]:
