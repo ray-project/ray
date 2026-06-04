@@ -757,12 +757,14 @@ class KineticaDatasink(Datasink):
                 count_ins = getattr(response, "count_inserted", None)
                 if count_ins is None and hasattr(response, "get"):
                     count_ins = response.get("count_inserted", 0)
-                inserted += count_ins or 0
+                if count_ins is not None:
+                    inserted += count_ins
 
                 count_upd = getattr(response, "count_updated", None)
                 if count_upd is None and hasattr(response, "get"):
                     count_upd = response.get("count_updated", 0)
-                updated += count_upd or 0
+                if count_upd is not None:
+                    updated += count_upd
 
                 # Check for per-record errors in the response info map.
                 # When return_individual_errors is true, errors are reported via
