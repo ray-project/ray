@@ -812,35 +812,39 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
     # --- No-driver termination predicate + dispatch ---
 
     def _make_gcs(self, *jobs):
+        class _Config:
+            def __init__(self, ray_namespace):
+                self.ray_namespace = ray_namespace
+
         class _Job:
-            def __init__(self, dead, entrypoint):
+            def __init__(self, dead, ray_namespace):
                 self.is_dead = dead
-                self.entrypoint = entrypoint
+                self.config = _Config(ray_namespace)
 
         class _Gcs:
             def get_all_job_info(self, **_):
-                return {i: _Job(d, e) for i, (d, e) in enumerate(jobs)}
+                return {i: _Job(d, ns) for i, (d, ns) in enumerate(jobs)}
 
         return _Gcs()
 
-    def test_has_active_user_drivers_filters_dashboard(self):
+    def test_has_active_user_drivers_filters_internal(self):
         gcs = self._make_gcs(
-            (False, "ray-dashboard-DataHead-0"),
-            (False, "ray-dashboard-ServeHead-0"),
+            (False, "_ray_internal_dashboard"),
+            (False, "_ray_internal_something"),
         )
         self.provider._gcs_client = gcs
         assert self.provider._has_active_user_drivers() is False
 
     def test_has_active_user_drivers_counts_user_driver(self):
         gcs = self._make_gcs(
-            (False, "ray-dashboard-DataHead-0"),
-            (False, "python user_script.py"),
+            (False, "_ray_internal_dashboard"),
+            (False, "default"),
         )
         self.provider._gcs_client = gcs
         assert self.provider._has_active_user_drivers() is True
 
     def test_has_active_user_drivers_ignores_dead(self):
-        gcs = self._make_gcs((True, "python user_script.py"))
+        gcs = self._make_gcs((True, "default"))
         self.provider._gcs_client = gcs
         assert self.provider._has_active_user_drivers() is False
 
@@ -889,7 +893,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
         # Driver attaches → anchor cleared, no patch.
         with mock.patch("time.monotonic", return_value=50.0):
-            self.provider._gcs_client = self._make_gcs((False, "python a.py"))
+            self.provider._gcs_client = self._make_gcs((False, "default"))
             self.provider._evaluate_no_driver_termination()
         assert self.provider._no_driver_observed_since is None
         assert path not in self.mock_client._patches

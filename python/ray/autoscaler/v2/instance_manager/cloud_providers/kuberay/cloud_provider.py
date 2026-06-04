@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-from ray._raylet import GcsClient
+from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 
 # TODO(rickyx): We should eventually remove these imports
 # when we deprecate the v1 kuberay node provider.
@@ -676,7 +676,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._set_no_driver_annotation()
 
     def _has_active_user_drivers(self) -> bool:
-        """Returns True when GCS reports any non-dashboard driver still alive.
+        """Returns True when GCS reports any non-internal driver still alive.
 
         Fails closed: a failed GCS query is treated as drivers present.
         """
@@ -694,9 +694,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         for job in jobs.values():
             if job.is_dead:
                 continue
-            entrypoint = job.entrypoint or ""
-            # Dashboard subprocess modules submit jobs with this prefix.
-            if entrypoint.startswith("ray-dashboard-"):
+            # Ray-internal drivers (e.g. the dashboard) are not user activity.
+            if job.config.ray_namespace.startswith(RAY_INTERNAL_NAMESPACE_PREFIX):
                 continue
             return True
         return False
