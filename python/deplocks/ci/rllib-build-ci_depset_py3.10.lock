@@ -235,6 +235,7 @@ annotated-doc==0.0.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi
+    #   typer
 annotated-types==0.7.0 \
     --hash=sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53 \
     --hash=sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89
@@ -246,6 +247,8 @@ anyio==4.13.0 \
     --hash=sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   httpx
     #   starlette
     #   taskiq
     #   watchfiles
@@ -292,6 +295,10 @@ attrs==26.1.0 \
     #   jsonschema
     #   open-spiel
     #   referencing
+authlib==1.6.12 \
+    --hash=sha256:0656d8482f28fc8221929d5f35b2bde5d13e10555ebc06b4561b0d622e83b1bd \
+    --hash=sha256:e9229ad7fde610b139dd12f5edbe97eab9ee78bfb85691247e767727850b99ab
+    # via gradio
 billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
@@ -304,6 +311,110 @@ botocore==1.32.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiobotocore
+brotli==1.2.0 \
+    --hash=sha256:022426c9e99fd65d9475dce5c195526f04bb8be8907607e27e747893f6ee3e24 \
+    --hash=sha256:072e7624b1fc4d601036ab3f4f27942ef772887e876beff0301d261210bca97f \
+    --hash=sha256:09ac247501d1909e9ee47d309be760c89c990defbb2e0240845c892ea5ff0de4 \
+    --hash=sha256:0bbd5b5ccd157ae7913750476d48099aaf507a79841c0d04a9db4415b14842de \
+    --hash=sha256:0cf8c3b8ba93d496b2fae778039e2f5ecc7cff99df84df337ca31d8f2252896c \
+    --hash=sha256:14ef29fc5f310d34fc7696426071067462c9292ed98b5ff5a27ac70a200e5470 \
+    --hash=sha256:15b33fe93cedc4caaff8a0bd1eb7e3dab1c61bb22a0bf5bdfdfd97cd7da79744 \
+    --hash=sha256:1b1d6a4efedd53671c793be6dd760fcf2107da3a52331ad9ea429edf0902f27a \
+    --hash=sha256:1b557b29782a643420e08d75aea889462a4a8796e9a6cf5621ab05a3f7da8ef2 \
+    --hash=sha256:1b71754d5b6eda54d16fbbed7fce2d8bc6c052a1b91a35c320247946ee103502 \
+    --hash=sha256:1ce223652fd4ed3eb2b7f78fbea31c52314baecfac68db44037bb4167062a937 \
+    --hash=sha256:1e68cdf321ad05797ee41d1d09169e09d40fdf51a725bb148bff892ce04583d7 \
+    --hash=sha256:260d3692396e1895c5034f204f0db022c056f9e2ac841593a4cf9426e2a3faca \
+    --hash=sha256:26e8d3ecb0ee458a9804f47f21b74845cc823fd1bb19f02272be70774f56e2a6 \
+    --hash=sha256:2881416badd2a88a7a14d981c103a52a23a276a553a8aacc1346c2ff47c8dc17 \
+    --hash=sha256:29b7e6716ee4ea0c59e3b241f682204105f7da084d6254ec61886508efeb43bc \
+    --hash=sha256:2a7f1d03727130fc875448b65b127a9ec5d06d19d0148e7554384229706f9d1b \
+    --hash=sha256:2d39b54b968f4b49b5e845758e202b1035f948b0561ff5e6385e855c96625971 \
+    --hash=sha256:2e1ad3fda65ae0d93fec742a128d72e145c9c7a99ee2fcd667785d99eb25a7fe \
+    --hash=sha256:3173e1e57cebb6d1de186e46b5680afbd82fd4301d7b2465beebe83ed317066d \
+    --hash=sha256:3219bd9e69868e57183316ee19c84e03e8f8b5a1d1f2667e1aa8c2f91cb061ac \
+    --hash=sha256:350c8348f0e76fff0a0fd6c26755d2653863279d086d3aa2c290a6a7251135dd \
+    --hash=sha256:35d382625778834a7f3061b15423919aa03e4f5da34ac8e02c074e4b75ab4f84 \
+    --hash=sha256:3b90b767916ac44e93a8e28ce6adf8d551e43affb512f2377c732d486ac6514e \
+    --hash=sha256:3e1b35d56856f3ed326b140d3c6d9db91740f22e14b06e840fe4bb1923439a18 \
+    --hash=sha256:3ebe801e0f4e56d17cd386ca6600573e3706ce1845376307f5d2cbd32149b69a \
+    --hash=sha256:3f3c908bcc404c90c77d5a073e55271a0a498f4e0756e48127c35d91cf155947 \
+    --hash=sha256:40d918bce2b427a0c4ba189df7a006ac0c7277c180aee4617d99e9ccaaf59e6a \
+    --hash=sha256:465a0d012b3d3e4f1d6146ea019b5c11e3e87f03d1676da1cc3833462e672fb0 \
+    --hash=sha256:4735a10f738cb5516905a121f32b24ce196ab82cfc1e4ba2e3ad1b371085fd46 \
+    --hash=sha256:4ecdb3b6dc36e6d6e14d3a1bdc6c1057c8cbf80db04031d566eb6080ce283a48 \
+    --hash=sha256:50b1b799f45da91292ffaa21a473ab3a3054fa78560e8ff67082a185274431c8 \
+    --hash=sha256:54a50a9dad16b32136b2241ddea9e4df159b41247b2ce6aac0b3276a66a8f1e5 \
+    --hash=sha256:5732eff8973dd995549a18ecbd8acd692ac611c5c0bb3f59fa3541ae27b33be3 \
+    --hash=sha256:598e88c736f63a0efec8363f9eb34e5b5536b7b6b1821e401afcb501d881f59a \
+    --hash=sha256:640fe199048f24c474ec6f3eae67c48d286de12911110437a36a87d7c89573a6 \
+    --hash=sha256:66c02c187ad250513c2f4fce973ef402d22f80e0adce734ee4e4efd657b6cb64 \
+    --hash=sha256:67a91c5187e1eec76a61625c77a6c8c785650f5b576ca732bd33ef58b0dff49c \
+    --hash=sha256:6be67c19e0b0c56365c6a76e393b932fb0e78b3b56b711d180dd7013cb1fd984 \
+    --hash=sha256:6c12dad5cd04530323e723787ff762bac749a7b256a5bece32b2243dd5c27b21 \
+    --hash=sha256:71a66c1c9be66595d628467401d5976158c97888c2c9379c034e1e2312c5b4f5 \
+    --hash=sha256:7274942e69b17f9cef76691bcf38f2b2d4c8a5f5dba6ec10958363dcb3308a0a \
+    --hash=sha256:7547369c4392b47d30a3467fe8c3330b4f2e0f7730e45e3103d7d636678a808b \
+    --hash=sha256:7a47ce5c2288702e09dc22a44d0ee6152f2c7eda97b3c8482d826a1f3cfc7da7 \
+    --hash=sha256:7a61c06b334bd99bc5ae84f1eeb36bfe01400264b3c352f968c6e30a10f9d08b \
+    --hash=sha256:7ad8cec81f34edf44a1c6a7edf28e7b7806dfb8886e371d95dcf789ccd4e4982 \
+    --hash=sha256:7e9053f5fb4e0dfab89243079b3e217f2aea4085e4d58c5c06115fc34823707f \
+    --hash=sha256:7fa18d65a213abcfbb2f6cafbb4c58863a8bd6f2103d65203c520ac117d1944b \
+    --hash=sha256:81da1b229b1889f25adadc929aeb9dbc4e922bd18561b65b08dd9343cfccca84 \
+    --hash=sha256:82676c2781ecf0ab23833796062786db04648b7aae8be139f6b8065e5e7b1518 \
+    --hash=sha256:832c115a020e463c2f67664560449a7bea26b0c1fdd690352addad6d0a08714d \
+    --hash=sha256:844a8ceb8483fefafc412f85c14f2aae2fb69567bf2a0de53cdb88b73e7c43ae \
+    --hash=sha256:865cedc7c7c303df5fad14a57bc5db1d4f4f9b2b4d0a7523ddd206f00c121a16 \
+    --hash=sha256:88ef7d55b7bcf3331572634c3fd0ed327d237ceb9be6066810d39020a3ebac7a \
+    --hash=sha256:898be2be399c221d2671d29eed26b6b2713a02c2119168ed914e7d00ceadb56f \
+    --hash=sha256:8d4f47f284bdd28629481c97b5f29ad67544fa258d9091a6ed1fda47c7347cd1 \
+    --hash=sha256:92edab1e2fd6cd5ca605f57d4545b6599ced5dea0fd90b2bcdf8b247a12bd190 \
+    --hash=sha256:9322b9f8656782414b37e6af884146869d46ab85158201d82bab9abbcb971dc7 \
+    --hash=sha256:95db242754c21a88a79e01504912e537808504465974ebb92931cfca2510469e \
+    --hash=sha256:963a08f3bebd8b75ac57661045402da15991468a621f014be54e50f53a58d19e \
+    --hash=sha256:96fbe82a58cdb2f872fa5d87dedc8477a12993626c446de794ea025bbda625ea \
+    --hash=sha256:99cfa69813d79492f0e5d52a20fd18395bc82e671d5d40bd5a91d13e75e468e8 \
+    --hash=sha256:9c79f57faa25d97900bfb119480806d783fba83cd09ee0b33c17623935b05fa3 \
+    --hash=sha256:9e5825ba2c9998375530504578fd4d5d1059d09621a02065d1b6bfc41a8e05ab \
+    --hash=sha256:9fe11467c42c133f38d42289d0861b6b4f9da31e8087ca2c0d7ebb4543625526 \
+    --hash=sha256:a1778532b978d2536e79c05dac2d8cd857f6c55cd0c95ace5b03740824e0e2f1 \
+    --hash=sha256:a387225a67f619bf16bd504c37655930f910eb03675730fc2ad69d3d8b5e7e92 \
+    --hash=sha256:a56ef534b66a749759ebd091c19c03ef81eb8cd96f0d1d16b59127eaf1b97a12 \
+    --hash=sha256:aa47441fa3026543513139cb8926a92a8e305ee9c71a6209ef7a97d91640ea03 \
+    --hash=sha256:ac27a70bda257ae3f380ec8310b0a06680236bea547756c277b5dfe55a2452a8 \
+    --hash=sha256:acec55bb7c90f1dfc476126f9711a8e81c9af7fb617409a9ee2953115343f08d \
+    --hash=sha256:adedc4a67e15327dfdd04884873c6d5a01d3e3b6f61406f99b1ed4865a2f6d28 \
+    --hash=sha256:af43b8711a8264bb4e7d6d9a6d004c3a2019c04c01127a868709ec29962b6036 \
+    --hash=sha256:b232029d100d393ae3c603c8ffd7e3fe6f798c5e28ddca5feabb8e8fdb732997 \
+    --hash=sha256:b35c13ce241abdd44cb8ca70683f20c0c079728a36a996297adb5334adfc1c44 \
+    --hash=sha256:b63daa43d82f0cdabf98dee215b375b4058cce72871fd07934f179885aad16e8 \
+    --hash=sha256:b908d1a7b28bc72dfb743be0d4d3f8931f8309f810af66c906ae6cd4127c93cb \
+    --hash=sha256:ba76177fd318ab7b3b9bf6522be5e84c2ae798754b6cc028665490f6e66b5533 \
+    --hash=sha256:bba6e7e6cfe1e6cb6eb0b7c2736a6059461de1fa2c0ad26cf845de6c078d16c8 \
+    --hash=sha256:c0d6770111d1879881432f81c369de5cde6e9467be7c682a983747ec800544e2 \
+    --hash=sha256:c16ab1ef7bb55651f5836e8e62db1f711d55b82ea08c3b8083ff037157171a69 \
+    --hash=sha256:c1702888c9f3383cc2f09eb3e88b8babf5965a54afb79649458ec7c3c7a63e96 \
+    --hash=sha256:c25332657dee6052ca470626f18349fc1fe8855a56218e19bd7a8c6ad4952c49 \
+    --hash=sha256:c8565e3cdc1808b1a34714b553b262c5de5fbda202285782173ec137fd13709f \
+    --hash=sha256:cf9cba6f5b78a2071ec6fb1e7bd39acf35071d90a81231d67e92d637776a6a63 \
+    --hash=sha256:d206a36b4140fbb5373bf1eb73fb9de589bb06afd0d22376de23c5e91d0ab35f \
+    --hash=sha256:d2d085ded05278d1c7f65560aae97b3160aeb2ea2c0b3e26204856beccb60888 \
+    --hash=sha256:d8c05b1dfb61af28ef37624385b0029df902ca896a639881f594060b30ffc9a7 \
+    --hash=sha256:e310f77e41941c13340a95976fe66a8a95b01e783d430eeaf7a2f87e0a57dd0a \
+    --hash=sha256:e7c0af964e0b4e3412a0ebf341ea26ec767fa0b4cf81abb5e897c9338b5ad6a3 \
+    --hash=sha256:e80a28f2b150774844c8b454dd288be90d76ba6109670fe33d7ff54d96eb5cb8 \
+    --hash=sha256:e813da3d2d865e9793ef681d3a6b66fa4b7c19244a45b817d0cceda67e615990 \
+    --hash=sha256:e85190da223337a6b7431d92c799fca3e2982abd44e7b8dec69938dcc81c8e9e \
+    --hash=sha256:e99befa0b48f3cd293dafeacdd0d191804d105d279e0b387a32054c1180f3161 \
+    --hash=sha256:eda5a6d042c698e28bda2507a89b16555b9aa954ef1d750e1c20473481aff675 \
+    --hash=sha256:ef87b8ab2704da227e83a246356a2b179ef826f550f794b2c52cddb4efbd0196 \
+    --hash=sha256:f16dace5e4d3596eaeb8af334b4d2c820d34b8278da633ce4a00020b2eac981c \
+    --hash=sha256:f8d635cafbbb0c61327f942df2e3f474dde1cff16c3cd0580564774eaba1ee13 \
+    --hash=sha256:fc1530af5c3c275b8524f2e24841cbe2599d74462455e9bae5109e9ff42e9361 \
+    --hash=sha256:ff09cd8c5eec3b9d02d2408db41be150d8891c5566addce57513bf546e3d6c6d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
@@ -323,6 +434,8 @@ certifi==2026.4.22 \
     --hash=sha256:8d455352a37b71bf76a79caa83a3d6c25afee4a385d632127b6afb3963f1c580
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   httpcore
+    #   httpx
     #   requests
     #   sentry-sdk
 cffi==1.17.1 \
@@ -543,6 +656,7 @@ click==8.3.2 \
     #   mlflow-skinny
     #   ray
     #   tensorflow-datasets
+    #   typer
     #   uvicorn
     #   wandb
 click-didyoumean==0.3.1 \
@@ -691,6 +805,7 @@ cryptography==44.0.3 \
     --hash=sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   authlib
     #   mlflow
     #   pyopenssl
 cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
@@ -856,6 +971,7 @@ fastapi==0.133.0 \
     --hash=sha256:b900a2bf5685cdb0647a41d5900bdeafc3a9e8a28ac08c6246b76699e164d60d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   mlflow-skinny
     #   ray
 fastrlock==0.8.3 ; sys_platform != 'darwin' \
@@ -1156,6 +1272,7 @@ fsspec==2023.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   etils
+    #   gradio-client
     #   huggingface-hub
     #   ray
     #   s3fs
@@ -1237,6 +1354,19 @@ googleapis-common-protos==1.74.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-api-core
+gradio==6.15.2 \
+    --hash=sha256:3492eee59cbe4afd21e8f458fc229f0d92c17bdaacaefaf9580dd63a6406c82d \
+    --hash=sha256:67433b1889dc8526658196277ca9e34109f73aa65656635c0dc6afb542571f55
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   trackio
+gradio-client==2.5.0 \
+    --hash=sha256:4cde99bad62149595c30c90876ca2e405e3a13687ecf895474f3412cb476673d \
+    --hash=sha256:d43e2179c29076292a76485ad7ed2e6eaa19d14ac58283bd7f5beabfe4ca958c
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   hf-gradio
 graphene==3.4.3 \
     --hash=sha256:2a3786948ce75fe7e078443d37f609cbe5bb36ad8d6b828740ad3b95ed1a0aaa \
     --hash=sha256:820db6289754c181007a150db1f7fff544b94142b556d12e3ebc777a7bf36c71
@@ -1319,6 +1449,12 @@ greenlet==3.4.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   sqlalchemy
+groovy==0.1.2 \
+    --hash=sha256:25c1dc09b3f9d7e292458aa762c6beb96ea037071bf5e917fc81fb78d2231083 \
+    --hash=sha256:7f7975bab18c729a257a8b1ae9dcd70b7cafb1720481beae47719af57c35fa64
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 grpcio==1.76.0 \
     --hash=sha256:035d90bc79eaa4bed83f524331d55e35820725c9fbb00ffa1904d5550ed7ede3 \
     --hash=sha256:04bbe1bfe3a68bbfd4e52402ab7d4eb59d72d02647ae2042204326cf4bbad280 \
@@ -1407,6 +1543,7 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   httpcore
     #   uvicorn
 h5py==3.12.1 \
     --hash=sha256:018a4597f35092ae3fb28ee851fdc756d2b88c96336b8480e124ce1ac6fb9166 \
@@ -1440,6 +1577,12 @@ h5py==3.12.1 \
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   keras
     #   tensorflow
+hf-gradio==0.4.1 \
+    --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
+    --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 hf-xet==1.4.3 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' \
     --hash=sha256:0392c79b7cf48418cd61478c1a925246cf10639f4cd9d94368d8ca1e8df9ea07 \
     --hash=sha256:1feb0f3abeacee143367c326a128a2e2b60868ec12a36c225afb1d6c5a05e6d2 \
@@ -1469,6 +1612,12 @@ hf-xet==1.4.3 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or 
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   huggingface-hub
+httpcore==1.0.9 \
+    --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
+    --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   httpx
 httptools==0.7.1 \
     --hash=sha256:04c6c0e6c5fb0739c5b8a9eb046d298650a0ff38cf42537fc372b28dc7e4472c \
     --hash=sha256:0d92b10dbf0b3da4823cde6a96d18e6ae358a9daa741c71448975f6a2c339cad \
@@ -1514,6 +1663,14 @@ httptools==0.7.1 \
     --hash=sha256:f65744d7a8bdb4bda5e1fa23e4ba16832860606fcc09d674d56e425e991539ec \
     --hash=sha256:f72fdbae2dbc6e68b8239defb48e6a5937b12218e6ffc2c7846cc37befa84362
     # via uvicorn
+httpx==0.28.1 \
+    --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
+    --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   gradio-client
+    #   safehttpx
 huey==2.6.0 \
     --hash=sha256:1b9df9d370b49c6d5721ba8a01ac9a787cf86b3bdc584e4679de27b920395c3f \
     --hash=sha256:8d11f8688999d65266af1425b831f6e3773e99415027177b8734b0ffd5e251f6
@@ -1526,7 +1683,10 @@ huggingface-hub==0.36.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
+    #   gradio
+    #   gradio-client
     #   tokenizers
+    #   trackio
     #   transformers
 humanfriendly==10.0 ; (python_full_version < '3.11' and platform_machine != 'arm64') or (python_full_version < '3.11' and sys_platform != 'darwin') \
     --hash=sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477 \
@@ -1540,6 +1700,7 @@ idna==3.12 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   anyio
+    #   httpx
     #   requests
     #   yarl
 imageio==2.34.2 \
@@ -1585,6 +1746,7 @@ itsdangerous==2.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   flask
+    #   gradio
 jax==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
     --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
@@ -1616,6 +1778,7 @@ jinja2==3.1.6 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   flask
+    #   gradio
     #   memray
     #   torch
     #   torch-geometric
@@ -2062,6 +2225,7 @@ markupsafe==3.0.3 \
     --hash=sha256:f42d0984e947b8adf7dd6dde396e720934d12c506ce84eea8476409563607591
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   jinja2
     #   mako
     #   werkzeug
@@ -2645,6 +2809,12 @@ namex==0.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   keras
+narwhals==2.20.0 \
+    --hash=sha256:16e750ea5507d4ba6e8d03455b5f93a535e0405976561baea235bca5dc9f475d \
+    --hash=sha256:c10994975fa7dc5a68c2cffcddbd5908fc8ebb2d463c5bab085309c0ee1f551e
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   plotly
 networkx==3.2.1 \
     --hash=sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
@@ -2776,6 +2946,7 @@ numpy==2.2.6 \
     #   dm-env
     #   dm-tree
     #   etils
+    #   gradio
     #   gymnasium
     #   h5py
     #   imageio
@@ -2814,6 +2985,7 @@ numpy==2.2.6 \
     #   torchmetrics
     #   torchtext
     #   torchvision
+    #   trackio
     #   transformers
     #   xgboost
 nvidia-nccl-cu12==2.27.5 ; platform_machine != 'aarch64' and sys_platform == 'linux' \
@@ -3070,6 +3242,85 @@ optree==0.19.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   keras
+orjson==3.11.8 \
+    --hash=sha256:0022bb50f90da04b009ce32c512dc1885910daa7cb10b7b0cba4505b16db82a8 \
+    --hash=sha256:003646067cc48b7fcab2ae0c562491c9b5d2cbd43f1e5f16d98fd118c5522d34 \
+    --hash=sha256:01928d0476b216ad2201823b0a74000440360cef4fed1912d297b8d84718f277 \
+    --hash=sha256:01c4e5a6695dc09098f2e6468a251bc4671c50922d4d745aff1a0a33a0cf5b8d \
+    --hash=sha256:093d489fa039ddade2db541097dbb484999fcc65fc2b0ff9819141e2ab364f25 \
+    --hash=sha256:0b57f67710a8cd459e4e54eb96d5f77f3624eba0c661ba19a525807e42eccade \
+    --hash=sha256:0e32f7154299f42ae66f13488963269e5eccb8d588a65bc839ed986919fc9fac \
+    --hash=sha256:14439063aebcb92401c11afc68ee4e407258d2752e62d748b6942dad20d2a70d \
+    --hash=sha256:14778ffd0f6896aa613951a7fbf4690229aa7a543cb2bfbe9f358e08aafa9546 \
+    --hash=sha256:14f7b8fcb35ef403b42fa5ecfa4ed032332a91f3dc7368fbce4184d59e1eae0d \
+    --hash=sha256:1ab359aff0436d80bfe8a23b46b5fea69f1e18aaf1760a709b4787f1318b317f \
+    --hash=sha256:1cd0b77e77c95758f8e1100139844e99f3ccc87e71e6fc8e1c027e55807c549f \
+    --hash=sha256:25e0c672a2e32348d2eb33057b41e754091f2835f87222e4675b796b92264f06 \
+    --hash=sha256:29c009e7a2ca9ad0ed1376ce20dd692146a5d9fe4310848904b6b4fee5c5c137 \
+    --hash=sha256:3222adff1e1ff0dce93c16146b93063a7793de6c43d52309ae321234cdaf0f4d \
+    --hash=sha256:3223665349bbfb68da234acd9846955b1a0808cbe5520ff634bf253a4407009b \
+    --hash=sha256:3cf17c141617b88ced4536b2135c552490f07799f6ad565948ea07bef0dcb9a6 \
+    --hash=sha256:3f23426851d98478c8970da5991f84784a76682213cd50eb73a1da56b95239dc \
+    --hash=sha256:3f262401086a3960586af06c054609365e98407151f5ea24a62893a40d80dbbb \
+    --hash=sha256:436c4922968a619fb7fef1ccd4b8b3a76c13b67d607073914d675026e911a65c \
+    --hash=sha256:469ac2125611b7c5741a0b3798cd9e5786cbad6345f9f400c77212be89563bec \
+    --hash=sha256:4861bde57f4d253ab041e374f44023460e60e71efaa121f3c5f0ed457c3a701e \
+    --hash=sha256:48854463b0572cc87dac7d981aa72ed8bf6deedc0511853dc76b8bbd5482d36d \
+    --hash=sha256:53a0f57e59a530d18a142f4d4ba6dfc708dc5fdedce45e98ff06b44930a2a48f \
+    --hash=sha256:54153d21520a71a4c82a0dbb4523e468941d549d221dc173de0f019678cf3813 \
+    --hash=sha256:55120759e61309af7fcf9e961c6f6af3dde5921cdb3ee863ef63fd9db126cae6 \
+    --hash=sha256:5774c1fdcc98b2259800b683b19599c133baeb11d60033e2095fd9d4667b82db \
+    --hash=sha256:58a4a208a6fbfdb7a7327b8f201c6014f189f721fd55d047cafc4157af1bc62a \
+    --hash=sha256:58fb9b17b4472c7b1dcf1a54583629e62e23779b2331052f09a9249edf81675b \
+    --hash=sha256:5d8b5231de76c528a46b57010bbd83fb51e056aa0220a372fd5065e978406f1c \
+    --hash=sha256:5f8952d6d2505c003e8f0224ff7858d341fa4e33fef82b91c4ff0ef070f2393c \
+    --hash=sha256:61c9d357a59465736022d5d9ba06687afb7611dfb581a9d2129b77a6fcf78e59 \
+    --hash=sha256:6a3d159d5ffa0e3961f353c4b036540996bf8b9697ccc38261c0eac1fd3347a6 \
+    --hash=sha256:6a4a639049c44d36a6d1ae0f4a94b271605c745aee5647fa8ffaabcdc01b69a6 \
+    --hash=sha256:6ccdea2c213cf9f3d9490cbd5d427693c870753df41e6cb375bd79bcbafc8817 \
+    --hash=sha256:6dbe9a97bdb4d8d9d5367b52a7c32549bba70b2739c58ef74a6964a6d05ae054 \
+    --hash=sha256:6eda5b8b6be91d3f26efb7dc6e5e68ee805bc5617f65a328587b35255f138bf4 \
+    --hash=sha256:705b895b781b3e395c067129d8551655642dfe9437273211d5404e87ac752b53 \
+    --hash=sha256:708c95f925a43ab9f34625e45dcdadf09ec8a6e7b664a938f2f8d5650f6c090b \
+    --hash=sha256:735e2262363dcbe05c35e3a8869898022af78f89dde9e256924dc02e99fe69ca \
+    --hash=sha256:76070a76e9c5ae661e2d9848f216980d8d533e0f8143e6ed462807b242e3c5e8 \
+    --hash=sha256:7679bc2f01bb0d219758f1a5f87bb7c8a81c0a186824a393b366876b4948e14f \
+    --hash=sha256:88006eda83858a9fdf73985ce3804e885c2befb2f506c9a3723cdeb5a2880e3e \
+    --hash=sha256:883206d55b1bd5f5679ad5e6ddd3d1a5e3cac5190482927fdb8c78fb699193b5 \
+    --hash=sha256:8ac7381c83dd3d4a6347e6635950aa448f54e7b8406a27c7ecb4a37e9f1ae08b \
+    --hash=sha256:8e8c6218b614badf8e229b697865df4301afa74b791b6c9ade01d19a9953a942 \
+    --hash=sha256:9185589c1f2a944c17e26c9925dcdbc2df061cc4a145395c57f0c51f9b5dbfcd \
+    --hash=sha256:93de06bc920854552493c81f1f729fab7213b7db4b8195355db5fda02c7d1363 \
+    --hash=sha256:96163d9cdc5a202703e9ad1b9ae757d5f0ca62f4fa0cc93d1f27b0e180cc404e \
+    --hash=sha256:97c8f5d3b62380b70c36ffacb2a356b7c6becec86099b177f73851ba095ef623 \
+    --hash=sha256:97d823831105c01f6c8029faf297633dbeb30271892bd430e9c24ceae3734744 \
+    --hash=sha256:98bdc6cb889d19bed01de46e67574a2eab61f5cc6b768ed50e8ac68e9d6ffab6 \
+    --hash=sha256:9b48e274f8824567d74e2158199e269597edf00823a1b12b63d48462bbf5123e \
+    --hash=sha256:a5c370674ebabe16c6ccac33ff80c62bf8a6e59439f5e9d40c1f5ab8fd2215b7 \
+    --hash=sha256:b43dc2a391981d36c42fa57747a49dae793ef1d2e43898b197925b5534abd10a \
+    --hash=sha256:c154a35dd1330707450bb4d4e7dd1f17fa6f42267a40c1e8a1daa5e13719b4b8 \
+    --hash=sha256:c2bdf7b2facc80b5e34f48a2d557727d5c5c57a8a450de122ae81fa26a81c1bc \
+    --hash=sha256:c492a0e011c0f9066e9ceaa896fbc5b068c54d365fea5f3444b697ee01bc8625 \
+    --hash=sha256:c60c0423f15abb6cf78f56dff00168a1b582f7a1c23f114036e2bfc697814d5f \
+    --hash=sha256:c98121237fea2f679480765abd566f7713185897f35c9e6c2add7e3a9900eb61 \
+    --hash=sha256:ccd7ba1b0605813a0715171d39ec4c314cb97a9c85893c2c5c0c3a3729df38bf \
+    --hash=sha256:cdbc8c9c02463fef4d3c53a9ba3336d05496ec8e1f1c53326a1e4acc11f5c600 \
+    --hash=sha256:e0950ed1bcb9893f4293fd5c5a7ee10934fbf82c4101c70be360db23ce24b7d2 \
+    --hash=sha256:e6693ff90018600c72fd18d3d22fa438be26076cd3c823da5f63f7bab28c11cb \
+    --hash=sha256:ea56a955056a6d6c550cf18b3348656a9d9a4f02e2d0c02cabf3c73f1055d506 \
+    --hash=sha256:ebaed4cef74a045b83e23537b52ef19a367c7e3f536751e355a2a394f8648559 \
+    --hash=sha256:ec795530a73c269a55130498842aaa762e4a939f6ce481a7e986eeaa790e9da4 \
+    --hash=sha256:ed193ce51d77a3830cad399a529cd4ef029968761f43ddc549e1bc62b40d88f8 \
+    --hash=sha256:ee8db7bfb6fe03581bbab54d7c4124a6dd6a7f4273a38f7267197890f094675f \
+    --hash=sha256:f30491bc4f862aa15744b9738517454f1e46e56c972a2be87d70d727d5b2a8f8 \
+    --hash=sha256:f89b6d0b3a8d81e1929d3ab3d92bbc225688bd80a770c49432543928fe09ac55 \
+    --hash=sha256:fa72e71977bff96567b0f500fc5bfd2fdf915f34052c782a4c6ebbdaa97aa858 \
+    --hash=sha256:fe0b8c83e0f36247fc9431ce5425a5d95f9b3a689133d494831bdbd6f0bceb13 \
+    --hash=sha256:ff51f9d657d1afb6f410cb435792ce4e1fe427aab23d2fcd727a2876e21d4cb6
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   trackio
 ormsgpack==1.12.2 \
     --hash=sha256:0b39e629fd2e1c5b2f46f99778450b59454d1f901bc507963168985e79f09c5d \
     --hash=sha256:118576ea6006893aea811b17429bfc561b4778fad393f5f538c84af70b01260c \
@@ -3130,6 +3381,8 @@ packaging==26.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
+    #   gradio
+    #   gradio-client
     #   gunicorn
     #   huggingface-hub
     #   keras
@@ -3138,6 +3391,7 @@ packaging==26.1 \
     #   mlflow-skinny
     #   mlflow-tracing
     #   onnxruntime
+    #   plotly
     #   pytest
     #   ray
     #   skops
@@ -3207,8 +3461,10 @@ pandas==2.3.3 \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   mlflow
     #   ray
+    #   trackio
 pettingzoo==1.24.3 \
     --hash=sha256:23ed90517d2e8a7098bdaf5e31234b3a7f7b73ca578d70d1ca7b9d0cb0e37982 \
     --hash=sha256:91f9094f18e06fb74b98f4099cd22e8ae4396125e51719d50b30c9f1c7ab07e6
@@ -3324,11 +3580,13 @@ pillow==11.3.0 \
     --hash=sha256:fe27fb049cdcca11f11a7bfda64043c37b30e6b91f10cb5bab275806c32f6ab3
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   imageio
     #   matplotlib
     #   moviepy
     #   tensorboard
     #   torchvision
+    #   trackio
 pip==26.0.1 \
     --hash=sha256:bdb1b08f4274833d62c1aa29e20907365a2ceb950410df15fc9521bad440122b \
     --hash=sha256:c4037d8a277c89b320abe636d59f91e6d0922d08a05b60e85e53b296613346d8
@@ -3342,6 +3600,13 @@ platformdirs==4.9.6 \
     #   textual
     #   virtualenv
     #   wandb
+plotly==6.7.0 \
+    --hash=sha256:45eea0ff27e2a23ccd62776f77eb43aa1ca03df4192b76036e380bb479b892c6 \
+    --hash=sha256:ac8aca1c25c663a59b5b9140a549264a5badde2e057d79b8c772ae2920e32ff0
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/core-requirements.txt
+    #   trackio
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
@@ -3662,6 +3927,7 @@ pydantic==2.12.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi
+    #   gradio
     #   mlflow-skinny
     #   mlflow-tracing
     #   ray
@@ -3788,6 +4054,13 @@ pydantic-core==2.41.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pydantic
+pydub==0.25.1 \
+    --hash=sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6 \
+    --hash=sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   trackio
 pygame==2.5.2 \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
     --hash=sha256:074aa6c6e110c925f7f27f00c7733c6303407edc61d738882985091d1eb2ef17 \
@@ -3987,11 +4260,18 @@ python-dotenv==1.2.2 \
     #   mlflow-skinny
     #   moviepy
     #   uvicorn
+python-multipart==0.0.26 \
+    --hash=sha256:08fadc45918cd615e26846437f50c5d6d23304da32c341f289a617127b081f17 \
+    --hash=sha256:c0b169f8c4484c13b0dcf2ef0ec3a4adb255c4b7d18d8e420477d2b1dd03f185
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 pytz==2022.7.1 \
     --hash=sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   pandas
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
@@ -4070,6 +4350,7 @@ pyyaml==6.0.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
+    #   gradio
     #   huggingface-hub
     #   ml-collections
     #   mlflow-skinny
@@ -4238,6 +4519,7 @@ rich==13.7.1 \
     #   keras
     #   memray
     #   textual
+    #   typer
 rpds-py==0.30.0 \
     --hash=sha256:07ae8a593e1c3c6b82ca3292efbe73c30b61332fd612e05abee07c79359f292f \
     --hash=sha256:0a59119fc6e3f460315fe9d08149f8102aa322299deaa5cab5b40092345c2136 \
@@ -4370,6 +4652,12 @@ s3fs==2023.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
+safehttpx==0.1.7 \
+    --hash=sha256:c4f4a162db6993464d7ca3d7cc4af0ffc6515a606dfd220b9f82c6945d869cde \
+    --hash=sha256:db201c0978c41eddb8bb480f3eee59dd67304fdd91646035e9d9a720049a9d23
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 safetensors==0.7.0 \
     --hash=sha256:0071bffba4150c2f46cae1432d31995d77acfd9f8db598b5d1a2ce67e8440ad2 \
     --hash=sha256:07663963b67e8bd9f0b8ad15bb9163606cd27cc5a1b96235a50d8369803b96b0 \
@@ -4489,6 +4777,7 @@ semantic-version==2.10.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   comet-ml
+    #   gradio
 sentry-sdk==2.58.0 \
     --hash=sha256:688d1c704ddecf382ea3326f21a67453d4caa95592d722b7c780a36a9d23109e \
     --hash=sha256:c1144d947352d54e5b7daa63596d9f848adf684989c06c4f5a659f0c85a18f6f
@@ -4496,6 +4785,12 @@ sentry-sdk==2.58.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   comet-ml
     #   wandb
+shellingham==1.5.4 \
+    --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
+    --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   typer
 shimmy==2.0.0 \
     --hash=sha256:4244e693b0ff28bd5ce55e73c636cab953df2a1fafe639718158ee6510613dfe \
     --hash=sha256:a42d07806fc1ca5460439cb4799f32d4855a9e1138b39a39031e72fb8460a508
@@ -4710,6 +5005,7 @@ starlette==1.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi
+    #   gradio
     #   ray
 supersuit==3.9.3 \
     --hash=sha256:10f5d0ed208ddb92fba767a7889ada9f46894519077527d6af799a7767a13159 \
@@ -4997,6 +5293,13 @@ tomli==2.0.2 ; python_full_version < '3.11' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   alembic
     #   pytest
+    #   trackio
+tomlkit==0.13.3 \
+    --hash=sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1 \
+    --hash=sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 torch==2.9.0+cpu \
     --hash=sha256:28f6eb31b08180a5c5e98d5bc14eef6909c9f5a1dbff9632c3e02a8773449349 \
     --hash=sha256:2f49bb57a5fe0dc7f8e73ea9e5d36ebda2ea25b8a714a788f0fc2fc47d20a830 \
@@ -5106,12 +5409,22 @@ tqdm==4.67.1 \
     #   torch-geometric
     #   torchtext
     #   transformers
+trackio==0.20.2 \
+    --hash=sha256:8934715dca1e3ab8f4e9fe0dcf837a4393ab24f7d576e5f22dd65dc139482098
+    # via -r python/requirements/ml/core-requirements.txt
 transformers==4.36.2 \
     --hash=sha256:462066c4f74ee52516f12890dcc9ec71d1a5e97998db621668455117a54330f6 \
     --hash=sha256:d8068e897e47793281501e547d2bbdfc5b8556409c2cb6c3d9e2ca77d4c0b4ec
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
+typer==0.24.1 \
+    --hash=sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e \
+    --hash=sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
+    #   hf-gradio
 typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
@@ -5124,6 +5437,8 @@ typing-extensions==4.15.0 \
     #   etils
     #   exceptiongroup
     #   fastapi
+    #   gradio
+    #   gradio-client
     #   graphene
     #   grpcio
     #   gymnasium
@@ -5189,6 +5504,7 @@ uvicorn==0.22.0 \
     --hash=sha256:e9434d3bbf05f310e762147f769c9f21235ee118ba2d2bf1155a7196448bd996
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
     #   mlflow-skinny
     #   ray
 uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' \

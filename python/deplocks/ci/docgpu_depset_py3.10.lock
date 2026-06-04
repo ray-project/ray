@@ -523,6 +523,10 @@ attrs==26.1.0 \
     #   jupyter-cache
     #   open-spiel
     #   referencing
+authlib==1.6.12 \
+    --hash=sha256:0656d8482f28fc8221929d5f35b2bde5d13e10555ebc06b4561b0d622e83b1bd \
+    --hash=sha256:e9229ad7fde610b139dd12f5edbe97eab9ee78bfb85691247e767727850b99ab
+    # via gradio
 autograd==1.8.0 \
     --hash=sha256:107374ded5b09fc8643ac925348c0369e7b0e73bbed9565ffd61b8fd04425683 \
     --hash=sha256:4ab9084294f814cf56c280adbe19612546a35574d67c574b04933c7d2ecb7d78
@@ -763,7 +767,7 @@ botorch==0.16.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
-brotli==1.2.0 ; sys_platform != 'win32' \
+brotli==1.2.0 \
     --hash=sha256:022426c9e99fd65d9475dce5c195526f04bb8be8907607e27e747893f6ee3e24 \
     --hash=sha256:072e7624b1fc4d601036ab3f4f27942ef772887e876beff0301d261210bca97f \
     --hash=sha256:09ac247501d1909e9ee47d309be760c89c990defbb2e0240845c892ea5ff0de4 \
@@ -1395,6 +1399,7 @@ cryptography==44.0.3 \
     #   -r python/requirements/py313/test-requirements.txt
     #   adal
     #   aim
+    #   authlib
     #   azure-cli-core
     #   azure-identity
     #   joserfc
@@ -2292,13 +2297,14 @@ gpytorch==1.15.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botorch
-gradio==6.15.2 ; sys_platform != 'win32' \
+gradio==6.15.2 \
     --hash=sha256:3492eee59cbe4afd21e8f458fc229f0d92c17bdaacaefaf9580dd63a6406c82d \
     --hash=sha256:67433b1889dc8526658196277ca9e34109f73aa65656635c0dc6afb542571f55
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-gradio-client==2.5.0 ; sys_platform != 'win32' \
+    #   trackio
+gradio-client==2.5.0 \
     --hash=sha256:4cde99bad62149595c30c90876ca2e405e3a13687ecf895474f3412cb476673d \
     --hash=sha256:d43e2179c29076292a76485ad7ed2e6eaa19d14ac58283bd7f5beabfe4ca958c
     # via
@@ -2400,7 +2406,7 @@ greenlet==3.4.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   sqlalchemy
-groovy==0.1.2 ; sys_platform != 'win32' \
+groovy==0.1.2 \
     --hash=sha256:25c1dc09b3f9d7e292458aa762c6beb96ea037071bf5e917fc81fb78d2231083 \
     --hash=sha256:7f7975bab18c729a257a8b1ae9dcd70b7cafb1720481beae47719af57c35fa64
     # via
@@ -2604,7 +2610,7 @@ h5py==3.12.1 \
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   keras
     #   tensorflow
-hf-gradio==0.4.1 ; sys_platform != 'win32' \
+hf-gradio==0.4.1 \
     --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
     --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
     # via
@@ -2745,6 +2751,7 @@ huggingface-hub==0.36.2 \
     #   gradio-client
     #   timm
     #   tokenizers
+    #   trackio
     #   transformers
 humanfriendly==10.0 \
     --hash=sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477 \
@@ -2861,6 +2868,7 @@ itsdangerous==2.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   flask
+    #   gradio
 jax==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
     --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
@@ -4738,6 +4746,7 @@ numpy==2.2.6 \
     #   torch-geometric
     #   torchmetrics
     #   torchvision
+    #   trackio
     #   transformers
     #   triad
     #   utilsforecast
@@ -5161,7 +5170,7 @@ optuna==4.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/tune-requirements.txt
-orjson==3.11.8 ; python_full_version < '3.13' or sys_platform != 'win32' \
+orjson==3.11.8 \
     --hash=sha256:0022bb50f90da04b009ce32c512dc1885910daa7cb10b7b0cba4505b16db82a8 \
     --hash=sha256:003646067cc48b7fcab2ae0c562491c9b5d2cbd43f1e5f16d98fd118c5522d34 \
     --hash=sha256:01928d0476b216ad2201823b0a74000440360cef4fed1912d297b8d84718f277 \
@@ -5240,6 +5249,7 @@ orjson==3.11.8 ; python_full_version < '3.13' or sys_platform != 'win32' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
     #   tensordict
+    #   trackio
 ormsgpack==1.12.2 \
     --hash=sha256:0b39e629fd2e1c5b2f46f99778450b59454d1f901bc507963168985e79f09c5d \
     --hash=sha256:118576ea6006893aea811b17429bfc561b4778fad393f5f538c84af70b01260c \
@@ -5431,6 +5441,7 @@ pandas==2.3.3 \
     #   ray
     #   statsforecast
     #   statsmodels
+    #   trackio
     #   triad
     #   utilsforecast
 pandocfilters==1.5.1 \
@@ -5606,6 +5617,7 @@ pillow==11.3.0 \
     #   moviepy
     #   tensorboard
     #   torchvision
+    #   trackio
 pkginfo==1.12.1.2 \
     --hash=sha256:5cd957824ac36f140260964eba3c6be6442a8359b8c48f4adf90210f33a04b7b \
     --hash=sha256:c783ac885519cab2c34927ccfa6bf64b5a704d7c69afaea583dd9b7afe969343
@@ -5628,7 +5640,9 @@ plotly==6.7.0 \
     --hash=sha256:ac8aca1c25c663a59b5b9140a549264a5badde2e057d79b8c772ae2920e32ff0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/core-requirements.txt
     #   ax-platform
+    #   trackio
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
@@ -6171,12 +6185,13 @@ pydot==1.4.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-pydub==0.25.1 ; sys_platform != 'win32' \
+pydub==0.25.1 \
     --hash=sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6 \
     --hash=sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
+    #   trackio
 pygame==2.5.2 \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
     --hash=sha256:074aa6c6e110c925f7f27f00c7733c6303407edc61d738882985091d1eb2ef17 \
@@ -6729,7 +6744,7 @@ python-json-logger==4.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jupyter-events
-python-multipart==0.0.26 ; sys_platform != 'win32' \
+python-multipart==0.0.26 \
     --hash=sha256:08fadc45918cd615e26846437f50c5d6d23304da32c341f289a617127b081f17 \
     --hash=sha256:c0b169f8c4484c13b0dcf2ef0ec3a4adb255c4b7d18d8e420477d2b1dd03f185
     # via
@@ -7429,7 +7444,7 @@ s3transfer==0.8.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   boto3
-safehttpx==0.1.7 ; sys_platform != 'win32' \
+safehttpx==0.1.7 \
     --hash=sha256:c4f4a162db6993464d7ca3d7cc4af0ffc6515a606dfd220b9f82c6945d869cde \
     --hash=sha256:db201c0978c41eddb8bb480f3eee59dd67304fdd91646035e9d9a720049a9d23
     # via
@@ -7662,7 +7677,7 @@ serpent==1.42 ; python_full_version < '3.12' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   hpbandster
     #   pyro4
-shellingham==1.5.4 ; sys_platform != 'win32' \
+shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
     --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
     # via
@@ -8346,6 +8361,7 @@ tomli==2.0.2 ; python_full_version < '3.11' \
     #   jupytext
     #   mypy
     #   pytest
+    #   trackio
 tomlkit==0.13.3 \
     --hash=sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1 \
     --hash=sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0
@@ -8511,6 +8527,9 @@ tqdm==4.67.1 \
     #   statsforecast
     #   torch-geometric
     #   transformers
+trackio==0.20.2 \
+    --hash=sha256:8934715dca1e3ab8f4e9fe0dcf837a4393ab24f7d576e5f22dd65dc139482098
+    # via -r python/requirements/ml/core-requirements.txt
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
     --hash=sha256:b74e89e397b1ed28cc831db7aea759ba6640cb3de13090ca145426688ff1ac4f
@@ -8563,7 +8582,7 @@ trustme==0.9.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-typer==0.24.1 ; sys_platform != 'win32' \
+typer==0.24.1 \
     --hash=sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e \
     --hash=sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45
     # via
