@@ -56,16 +56,13 @@ PROPAGATED = [
 @pytest.fixture
 def patched_filesystem():
     """
-    Patch the pyarrow filesystem open so from_checkpoint doesn't touch disk.
+    Patch the pyarrow FileSystem so from_checkpoint doesn't touch disk.
     pickle.load is patched separately per-test to raise the target exception.
     """
-    with mock.patch(
-        "ray.rllib.utils.checkpoints.pyarrow.fs.FileSystem.from_uri"
-    ) as from_uri:
+    with mock.patch("ray.rllib.utils.checkpoints.pyarrow.fs.FileSystem") as mock_fs_cls:
         fs = mock.MagicMock()
-        # open_input_stream is used as a context manager
         fs.open_input_stream.return_value.__enter__.return_value = mock.MagicMock()
-        from_uri.return_value = (fs, "tmp/ckpt")
+        mock_fs_cls.from_uri.return_value = (fs, "tmp/ckpt")
         yield fs
 
 
