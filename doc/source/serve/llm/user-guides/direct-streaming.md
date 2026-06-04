@@ -97,7 +97,7 @@ If your policy needs the body, enable forwarding:
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
-With forwarding on, HAProxy buffers the request body and includes it in the routing call. To bound the memory this costs, it buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes (default 256 KiB; memory scales roughly as `2 * bufsize * maxconn`). When a request body is larger than that cap, HAProxy forwards only the leading bytes it captured and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
+With forwarding on, HAProxy buffers the request body and includes it in the routing call. To bound the memory this costs, it buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes; a larger buffer costs proportionally more memory across concurrent connections. When a request body is larger than that cap, HAProxy forwards only the leading bytes it captured and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
 
 :::{note}
 Truncation applies only to the copy of the body that HAProxy sends to the router for the routing decision. The request that HAProxy forwards to the chosen replica is the full request, so neither the prompt the model processes nor the response streamed back to the client is affected.
