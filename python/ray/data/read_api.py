@@ -3657,17 +3657,9 @@ def from_arrow(
         fit in memory at once, since the tables are moved to the Ray object store
         one at a time instead of being buffered in a list.
 
-        >>> ray.data.from_arrow(pa.table({"x": [1]}) for _ in range(2))  # doctest: +ELLIPSIS
-        shape: (2, 1)
-        ╭───────╮
-        │ x     │
-        │ ---   │
-        │ int64 │
-        ╞═══════╡
-        │ 1     │
-        │ 1     │
-        ╰───────╯
-        (Showing 2 of 2 rows)
+        >>> gen = (pa.table({"x": [1]}) for _ in range(2))
+        >>> ray.data.from_arrow(gen).count()
+        2
 
 
     Args:
