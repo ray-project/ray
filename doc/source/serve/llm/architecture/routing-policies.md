@@ -1,3 +1,4 @@
+(routing-policies-guide)=
 # Request routing
 
 Ray Serve LLM provides customizable request routing to optimize request distribution across replicas for different workload patterns. Request routing operates at the **replica selection level**, distinct from ingress-level model routing.
@@ -19,6 +20,10 @@ This document focuses on **request routing** (replica selection).
 ```
 HTTP Request → Ingress (model routing) → Request Router (replica selection) → Server Replica
 ```
+
+:::{note}
+With {ref}`direct streaming <direct-streaming-guide>` enabled, replica selection moves to an **ingress request router** that HAProxy queries before forwarding traffic directly to the chosen replica. It reuses the same `request_router_config` and policies described here, so the concepts below still apply.
+:::
 
 ## Request routing architecture
 
