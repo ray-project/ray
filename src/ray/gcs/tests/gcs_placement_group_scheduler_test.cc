@@ -443,7 +443,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestSchedulePlacementGroupReturnResource)
   ASSERT_EQ(1, raylet_clients_[0]->lease_callbacks.size());
   // Failed to create these two bundles.
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources(false));
-  ASSERT_EQ(0, raylet_clients_[0]->num_return_requested);
+  ASSERT_EQ(0, raylet_clients_[0]->num_remove_pg_bundles_requested);
   // Reply the placement_group creation request, then the placement_group should be
   // scheduled successfully.
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
@@ -564,12 +564,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  // Both bundles land on the same node, so GCS sends a single batched Cancel
+  // RPC carrying both bundle specs.
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[0]->num_bundles_removed, 2);
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
-  ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
+  ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
@@ -601,8 +602,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   scheduler_->MarkScheduleCancelled(placement_group_id);
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
@@ -640,8 +641,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   scheduler_->MarkScheduleCancelled(placement_group_id);
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
@@ -683,8 +684,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringPreparedPut)
   ASSERT_EQ(raylet_clients_[1]->commit_callbacks.size(), 0);
 
   // Raylet receives the cancel request.
-  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
 
   // Make sure there's no more bundles on nodes.
   auto bundles_on_node0 =
