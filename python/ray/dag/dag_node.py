@@ -376,7 +376,7 @@ class DAGNode(DAGNodeBase):
                 - resolved values representing user input at runtime
         """
         warnings.warn(
-            "DAGNode.execute() is deprecated and will be removed in a future release."
+            "DAGNode.execute() is deprecated and will be removed in a future release.",
             DeprecationWarning,
             stacklevel=2,
         )
