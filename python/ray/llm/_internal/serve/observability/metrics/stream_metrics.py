@@ -52,6 +52,7 @@ async def instrumented_stream(
     """Wraps an engine stream to record TTFT and TPOT metrics."""
     tags = {"api_type": api_type}
     start = time.perf_counter()
+    first_token_time = 0.0
     is_first = True
     prev = start
     try:
@@ -59,6 +60,7 @@ async def instrumented_stream(
             now = time.perf_counter()
             if is_first:
                 llm_ttft_ms.observe((now - start) * 1e3, tags)
+                first_token_time = now
                 is_first = False
             else:
                 llm_tpot_ms.observe((now - prev) * 1e3, tags)
@@ -67,5 +69,5 @@ async def instrumented_stream(
     finally:
         if not is_first:
             llm_generation_time_ms.observe(
-                (time.perf_counter() - start) * 1e3, tags
+                (prev - first_token_time) * 1e3, tags
             )
