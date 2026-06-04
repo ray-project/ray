@@ -62,24 +62,13 @@ export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 
 Then build and deploy a single-model application as usual:
 
-```python
-from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
-
-llm_config = LLMConfig(
-    model_loading_config={"model_id": "qwen-0.5b"},
-    deployment_config={"autoscaling_config": {"min_replicas": 1, "max_replicas": 4}},
-)
-
-app = build_openai_app({"llm_configs": [llm_config]})
-serve.run(app)
+```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_example.py
+:start-after: __direct_streaming_example_start__
+:end-before: __direct_streaming_example_end__
+:language: python
 ```
 
-When direct streaming is active, the build logs confirm the wiring:
-
-```
-Direct streaming enabled: LLMServer=ingress, LLMRouter=ingress_request_router
-```
+When direct streaming is active, Serve logs a confirmation at build time that the LLM server is acting as the ingress with an ingress request router attached.
 
 :::{tip}
 The HAProxy ingress sets `TCP_NODELAY` by default (`RAY_SERVE_HAPROXY_TCP_NODELAY=1`) so the first streamed chunk isn't held back by Nagle's algorithm. Keep it enabled for streaming workloads.
@@ -108,7 +97,7 @@ If you set `request_router_config`, direct streaming uses it as-is. Otherwise it
 
 ### Body-aware routers
 
-Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time-to-first-response. Body-independent policies are unaffected: round-robin and power of two ignore the body, and session-aware policies key on the header.
+Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time to first token. Body-independent policies are unaffected: round-robin and power of two ignore the body, and session-aware policies key on the header.
 
 If your policy needs the body, enable forwarding:
 
@@ -116,7 +105,7 @@ If your policy needs the body, enable forwarding:
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
-HAProxy then forwards the body (truncated for very large payloads) to the router so the policy can score against it.
+With forwarding on, HAProxy buffers the request body and includes it in the routing call. To bound the memory this costs, it buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes (default 256 KiB; memory scales roughly as `2 * bufsize * maxconn`). When a request body is larger than that cap, HAProxy forwards only the leading bytes it captured and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload. Truncation is fine for prefix-based policies, which only need the head of the prompt. Raise the buffer size if your policy needs to see more of large requests, keeping the memory tradeoff in mind.
 
 ### Session affinity
 
