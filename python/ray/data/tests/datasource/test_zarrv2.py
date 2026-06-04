@@ -1053,6 +1053,14 @@ def test_zarr_transient_error_classification(error_str, retryable):
     assert matched is retryable
 
 
+def test_rejects_zarr_v3(tmp_path, monkeypatch):
+    """read_zarr targets zarr-python 2.x; an incompatible v3 install must raise a
+    clear, actionable error at construction, not a cryptic ImportError mid-read."""
+    monkeypatch.setattr(zarr, "__version__", "3.0.1")
+    with pytest.raises(ImportError, match=r"zarr-python 2\.x"):
+        zarrv2_datasource.ZarrV2Datasource(str(tmp_path))
+
+
 if __name__ == "__main__":
     import sys
 

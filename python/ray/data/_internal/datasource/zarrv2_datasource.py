@@ -507,6 +507,20 @@ class ZarrV2Datasource(Datasource):
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
 
+        # This datasource targets Zarr v2 stores via zarr-python 2.x APIs
+        # (``zarr.util.normalize_storage_path``, ``.zarray`` metadata,
+        # ``zarr.open(fs.get_mapper(...))``) that were removed/reworked in
+        # zarr-python 3.x. Fail fast with an actionable message rather than a
+        # cryptic ImportError mid-read if an incompatible version is installed.
+        import zarr
+
+        if int(zarr.__version__.split(".")[0]) >= 3:
+            raise ImportError(
+                f"read_zarr supports zarr-python 2.x (Zarr v2 stores), but found "
+                f"zarr=={zarr.__version__}. Install a compatible version with "
+                f"`pip install 'zarr<3'`."
+            )
+
         self.allow_full_metadata_scan = allow_full_metadata_scan
         self.paths = [str(path)]
 
