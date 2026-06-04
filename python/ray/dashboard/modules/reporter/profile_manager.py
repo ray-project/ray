@@ -119,7 +119,12 @@ class CpuProfilingManager:
             return True, decode(stdout)
 
     async def cpu_profile(
-        self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
+        self,
+        pid: int,
+        format="flamegraph",
+        duration: float = 5,
+        native: bool = False,
+        idle: bool = False,
     ) -> (bool, str):
         """
         Perform CPU profiling on a specified process.
@@ -131,6 +136,9 @@ class CpuProfilingManager:
             duration (float, optional): The duration of the profiling
                 session in seconds. Default is 5 seconds.
             native (bool, optional): If True, includes native (C/C++) stack frames.
+                Default is False.
+            idle (bool, optional): If True, includes off-CPU / sleeping threads
+                (e.g. threads blocked on locks, I/O, or CUDA syncs).
                 Default is False.
 
         Returns:
@@ -170,6 +178,8 @@ class CpuProfilingManager:
         ]
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if idle:
+            cmd.append("--idle")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(

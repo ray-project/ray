@@ -95,7 +95,8 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
 Clicking "CPU Flame Graph" takes a number of stack trace samples and combine them into a flame graph visualization.
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
-parameter to enable native profiling.
+parameter to enable native profiling. To also include off-CPU (sleeping) threads, such as threads blocked on locks,
+I/O, or CUDA syncs, set the URL parameter ``idle=1``.
 
 .. image:: /images/flamegraph.png
    :align: center

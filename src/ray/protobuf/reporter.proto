@@ -36,6 +36,8 @@ message CpuProfilingRequest {
   optional uint32 duration = 3;
   // If using native flag for py-spy
   optional bool native = 4;
+  // If using idle flag for py-spy (include off-CPU / sleeping threads)
+  optional bool idle = 5;
 }
 
 message CpuProfilingReply {
