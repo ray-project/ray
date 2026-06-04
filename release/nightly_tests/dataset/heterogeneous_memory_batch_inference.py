@@ -138,11 +138,20 @@ def parse_args():
     p.add_argument("--cpu-batch-size", type=int, default=1024)
     p.add_argument("--gpu-batch-size", type=int, default=256)
     p.add_argument("--gpu-concurrency", type=int, default=8)
+    p.add_argument(
+        "--use-budget-scheduler",
+        action="store_true",
+        default=False,
+        help="Enable the budget-based scheduler instead of the default.",
+    )
     return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.use_budget_scheduler:
+        ctx = ray.data.DataContext.get_current()
+        ctx.use_budget_scheduler = True
     benchmark = Benchmark()
     benchmark.run_fn("heterogeneous-memory-batch-inference", main, args)
     benchmark.write_result()

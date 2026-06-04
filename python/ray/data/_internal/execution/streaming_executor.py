@@ -514,14 +514,15 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._budget_scheduler is not None:
                 post_task_indices = {t.task_index() for t in op.get_active_tasks()}
                 new_indices = post_task_indices - pre_task_indices
-                assert len(new_indices) == 1
-                budget_id = self._budget_scheduler.dispatch_task(
-                    op,
-                    input_bytes,
-                    input_task_ids=input_task_ids,
-                )
-                for task_index in new_indices:
-                    self._budget_task_ids[(op, task_index)] = budget_id
+                if new_indices:
+                    assert len(new_indices) == 1
+                    budget_id = self._budget_scheduler.dispatch_task(
+                        op,
+                        input_bytes,
+                        input_task_ids=input_task_ids,
+                    )
+                    for task_index in new_indices:
+                        self._budget_task_ids[(op, task_index)] = budget_id
 
             self._resource_manager.update_usages()
 
