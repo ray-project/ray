@@ -163,7 +163,35 @@ def make_realistic_schema_udf(
     return udf.__call__
 
 
+def _disable_operator_fusion() -> None:
+    """Stop Ray Data from fusing the chained map_batches into one operator.
+
+    Ray Data's optimizer fuses linear chains of compatible map operators
+    (same compute + remote args) into a single physical operator. With
+    identical map_batches that collapses the whole --num-operators chain into
+    one fused operator, so the scheduling topology has 1 operator no matter
+    what --num-operators is set to — defeating the purpose of this variant,
+    which exists to measure scheduling-loop cost as a function of the number
+    of operators. There's no public toggle (and batch_size/UDF differences
+    don't block map->map fusion), so remove the rule from the DeveloperAPI
+    physical ruleset.
+    """
+    from ray.data._internal.logical.optimizers import get_physical_ruleset
+    from ray.data._internal.logical.rules import FuseOperators
+
+    ruleset = get_physical_ruleset()
+    try:
+        ruleset.remove(FuseOperators)
+    except ValueError:
+        pass  # Already removed.
+
+
 def main(args: argparse.Namespace):
+    # Keep the chained operators separate so the topology actually has
+    # --num-operators operators (see the function docstring).
+    if args.num_operators > 1:
+        _disable_operator_fusion()
+
     benchmark = Benchmark()
 
     def benchmark_fn():
