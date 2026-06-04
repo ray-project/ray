@@ -616,27 +616,27 @@ class KineticaDatasource(Datasource):
             # Ensure parallelism is at least 1 to handle invalid values
             effective_parallelism = max(1, parallelism)
 
-        if not self._sort_by and effective_parallelism > 1:
-            # Without a deterministic sort order, offset-based pagination
-            # with parallelism > 1 will produce incorrect results (duplicates
-            # or missing rows) because Kinetica does not guarantee a stable
-            # row order across paginated get_records calls. Force single-task
-            # execution unless sort_by is specified.
+        if effective_parallelism > 1 and not self._sort_by:
+            # Without a sort order, offset-based pagination will produce
+            # non-deterministic results (duplicates or missing rows) because
+            # Kinetica does not guarantee stable row ordering.
             logger.warning(
                 "Parallel reads without sort_by may produce non-deterministic "
                 "results (duplicate or missing rows). Reducing parallelism "
                 f"from {effective_parallelism} to 1. Specify sort_by with a "
-                "unique column (e.g., primary key) to enable parallel reads "
-                "with consistent ordering."
+                "unique column (e.g., primary key) to enable parallel reads."
             )
             effective_parallelism = 1
-        elif self._sort_by and effective_parallelism > 1:
-            # Warn that sort_by must be unique for consistent parallel reads
+        elif effective_parallelism > 1 and self._sort_by:
+            # Parallel reads with sort_by are allowed, but require a unique
+            # sort column to guarantee consistent results. This matches how
+            # other database datasources (MongoDB, SQL) handle partitioning -
+            # they require a unique key for deterministic splits.
             logger.info(
                 f"Parallel reads enabled with sort_by='{self._sort_by}'. "
-                "For consistent results, ensure sort_by column(s) have unique "
-                "values (e.g., primary key). Non-unique sort keys may cause "
-                "duplicate or missing rows across parallel tasks."
+                "IMPORTANT: For consistent results, sort_by must be a column "
+                "with unique values (e.g., primary key). Non-unique sort keys "
+                "may cause duplicate or missing rows across parallel tasks."
             )
 
         # Calculate partition sizes
