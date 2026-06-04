@@ -246,6 +246,14 @@ class KineticaDatasource(Datasource):
         self._username = username
         self._password = password
         self._filter_expression = filter_expression
+
+        # Validate sort_by as a safe identifier
+        if sort_by is not None and not _is_valid_identifier(sort_by):
+            raise ValueError(
+                f"Invalid sort_by '{sort_by}'. "
+                "Column names must start with a letter or underscore and "
+                "contain only letters, digits, and underscores."
+            )
         self._sort_by = sort_by
 
         # Validate limit - None means no limit, positive integer means specific limit

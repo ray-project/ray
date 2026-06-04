@@ -5,8 +5,11 @@ This module provides bidirectional type conversion between PyArrow schemas
 and Kinetica column definitions.
 """
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 try:
     import pyarrow as pa
@@ -548,6 +551,17 @@ def convert_arrow_batch_to_records(
                 col_types[col_name] = "array"
             elif col_def.is_vector():
                 col_types[col_name] = "vector"
+                # Check if Arrow source is float64 - Kinetica vectors only support
+                # float32, so precision will be lost
+                arrow_field = batch.schema.field(col_name)
+                if pa.types.is_fixed_size_list(arrow_field.type):
+                    value_type = arrow_field.type.value_type
+                    if pa.types.is_float64(value_type):
+                        logger.warning(
+                            f"Column '{col_name}' contains float64 vectors but "
+                            "Kinetica's vector type only supports float32. "
+                            "Precision will be lost during conversion."
+                        )
             elif col_def.is_decimal:
                 col_types[col_name] = "decimal"
             else:
