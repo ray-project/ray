@@ -504,19 +504,23 @@ class KineticaDatasource(Datasource):
             current_offset = offset
             has_yielded = False
 
-            # Warn if pagination without sort_by could produce inconsistent results.
-            # When limit > batch_size, multiple offset-based fetches occur, and
-            # without a stable sort order, rows may be duplicated or skipped.
-            if limit > batch_size and not sort_by:
-                logger.warning(
-                    f"Reading {limit} records in batches of {batch_size} without "
-                    "sort_by may produce non-deterministic results (duplicate or "
-                    "missing rows). Specify sort_by for consistent ordering."
+            # When sort_by is not provided and we need to paginate (limit > batch_size),
+            # offset-based pagination without a stable sort order can produce
+            # duplicate or missing rows. To avoid this, fetch all records in one
+            # request when sort_by is not specified.
+            effective_batch_size = batch_size
+            if not sort_by and limit > batch_size:
+                logger.info(
+                    f"Fetching all {limit} records in a single request because "
+                    "sort_by is not specified (pagination without sort_by can "
+                    "produce inconsistent results). Specify sort_by to enable "
+                    "batched fetching."
                 )
+                effective_batch_size = limit
 
             try:
                 while records_remaining > 0:
-                    fetch_count = min(batch_size, records_remaining)
+                    fetch_count = min(effective_batch_size, records_remaining)
 
                     # Use appropriate method based on column selection
                     if columns:
