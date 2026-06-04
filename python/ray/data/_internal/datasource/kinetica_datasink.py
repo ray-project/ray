@@ -752,13 +752,17 @@ class KineticaDatasink(Datasink):
                     },
                 )
 
-                # Handle both attribute-style (AttrDict) and dict-style responses
-                inserted += getattr(response, "count_inserted", 0) or (
-                    response.get("count_inserted", 0) if hasattr(response, "get") else 0
-                )
-                updated += getattr(response, "count_updated", 0) or (
-                    response.get("count_updated", 0) if hasattr(response, "get") else 0
-                )
+                # Handle both attribute-style (AttrDict) and dict-style responses.
+                # Use explicit None check to preserve valid zero counts.
+                count_ins = getattr(response, "count_inserted", None)
+                if count_ins is None and hasattr(response, "get"):
+                    count_ins = response.get("count_inserted", 0)
+                inserted += count_ins or 0
+
+                count_upd = getattr(response, "count_updated", None)
+                if count_upd is None and hasattr(response, "get"):
+                    count_upd = response.get("count_updated", 0)
+                updated += count_upd or 0
 
                 # Check for per-record errors in the response info map.
                 # When return_individual_errors is true, errors are reported via
