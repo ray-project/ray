@@ -693,12 +693,6 @@ def deployment(
             "autoscaling_config is provided."
         )
 
-    if version is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
-            "Explicitly specifying version will raise an error in the future!"
-        )
-
     # check for deprecated environment variable usage
     if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
         warnings.warn(
