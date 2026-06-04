@@ -1051,6 +1051,7 @@ def read_kinetica(
     batch_size: int = 10000,
     use_multihead_io: bool = False,
     convert_special_types: bool = True,
+    partition_column: Optional[str] = None,
     options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -1093,6 +1094,12 @@ def read_kinetica(
             datasets on clustered deployments. Default is False.
         convert_special_types: If True, converts special types (arrays, JSON)
             on retrieval. Default is True.
+        partition_column: Column name for hash-based partitioning in parallel
+            reads. When specified, rows are deterministically assigned to read
+            tasks using MOD(HASH(column), parallelism), guaranteeing each row
+            is read by exactly one task. This enables safe parallel reads
+            without requiring a unique sort key. Should be a column with good
+            value distribution (e.g., primary key). Cannot be used with limit.
         options: Additional GPUdb client options.
         parallelism: This argument is deprecated. Use ``override_num_blocks``.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -1122,6 +1129,7 @@ def read_kinetica(
         batch_size=batch_size,
         use_multihead_io=use_multihead_io,
         convert_special_types=convert_special_types,
+        partition_column=partition_column,
         options=options,
     )
     return read_datasource(
