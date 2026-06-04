@@ -39,7 +39,7 @@ from benchmark import Benchmark, benchmark_py_modules
 from heterogeneous_memory_batch_inference import build_and_run_pipeline
 
 import ray
-from ray.util.state import list_nodes, list_tasks
+from ray.util.state import list_actors, list_nodes, list_tasks
 
 
 SUBCLUSTERS = ("tenant_a", "tenant_b")
@@ -105,6 +105,21 @@ def verify_placement() -> dict:
     nodes = list_nodes(detail=True, limit=1000)
     node_subcluster = {n.node_id: (n.labels or {}).get("subcluster") for n in nodes}
 
+    # For actor methods (e.g. ``MapWorker(...).submit``), TaskState.label_selector
+    # is None — the placement constraint lives on the actor's creation, not on
+    # each method call. Walk back to ActorState.label_selector for those.
+    actor_label_selector = {
+        a.actor_id: a.label_selector or {}
+        for a in list_actors(detail=True, limit=LIST_TASKS_LIMIT)
+    }
+
+    def _selector_for(t) -> Dict[str, str]:
+        if t.label_selector:
+            return t.label_selector
+        if t.actor_id and t.actor_id in actor_label_selector:
+            return actor_label_selector[t.actor_id]
+        return {}
+
     bad_on_labeled = []  # task on labeled node with mismatching selector
     bad_on_head = []  # dataset-shaped task that escaped to head / unlabeled node
     tasks_on_labeled = 0
@@ -116,7 +131,7 @@ def verify_placement() -> dict:
         node_sc = node_subcluster.get(t.node_id)
         if node_sc in SUBCLUSTERS:
             tasks_on_labeled += 1
-            want = (t.label_selector or {}).get("subcluster")
+            want = _selector_for(t).get("subcluster")
             if want != node_sc:
                 bad_on_labeled.append(
                     (t.task_id, t.name, t.func_or_class_name, want, node_sc)
