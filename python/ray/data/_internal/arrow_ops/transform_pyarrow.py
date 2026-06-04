@@ -150,6 +150,7 @@ def hash_partition(
     """
 
     import numpy as np
+    import pyarrow.compute as pac
 
     assert num_partitions > 0
 
@@ -160,24 +161,27 @@ def hash_partition(
 
     projected_table = table.select(hash_cols)
     partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # For every partition compile list of indices of rows falling
-    # under that partition
-    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
-    #       chunks w/in the individual columns, and therefore to improve performance
-    #       we attempt to defragment the table to potentially combine some of those
-    #       chunks into contiguous arrays.
-    # TODO: can we always combine chunks?
-    table = try_combine_chunked_columns(table)
+    # Sort rows by partition id so each partition occupies a contiguous range
+    # of the result, then carve out partitions with zero-copy slices. The N
+    # output partitions together form a permutation of `table`, so one big
+    # take + N slices is equivalent to N independent takes and pays the take
+    # fixed cost once.
+    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
+    counts = np.bincount(partitions_array, minlength=num_partitions)
+    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(counts)
 
+    sorted_table = take_table(table, sort_indices)
     return {
-        p: table.take(idx)
+        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p, idx in enumerate(indices)
-        if len(idx) > 0
+        for p in range(num_partitions)
+        if counts[p] > 0
     }
 
 
