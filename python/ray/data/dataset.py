@@ -870,6 +870,70 @@ class Dataset:
         return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    def with_columns(
+        self,
+        exprs: Dict[str, "Expr"],
+        *,
+        compute: Optional[ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        Add or overwrite multiple columns via expressions in a single projection.
+
+        This is the multi-column counterpart of :meth:`with_column`. All
+        expressions are evaluated within one projection over the existing
+        columns, which avoids the repeated work of chaining several
+        ``with_column`` calls.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = ray.data.range(100)
+            >>> ds.with_columns({
+            ...     "id_2": col("id") * 2,
+            ...     "id_3": col("id") * 3,
+            ... }).show(2)
+            {'id': 0, 'id_2': 0, 'id_3': 0}
+            {'id': 1, 'id_2': 2, 'id_3': 3}
+
+        Args:
+            exprs: A mapping from new column name to the expression that
+                defines its values. Column order follows the mapping's
+                insertion order.
+            compute: The compute strategy to use for the projection operation.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray for the map tasks (e.g., ``num_gpus=1``).
+
+        Returns:
+            A new dataset with the added or overwritten columns.
+        """
+        if not isinstance(exprs, dict) or not exprs:
+            raise ValueError(
+                f"`exprs` must be a non-empty dict of {{str: Expr}}, got " f"{exprs!r}."
+            )
+        for name, expr in exprs.items():
+            if not isinstance(name, str):
+                raise TypeError(
+                    f"Column names must be strings, got {type(name)} for "
+                    f"key {name!r}."
+                )
+            if not isinstance(expr, Expr):
+                raise TypeError(
+                    f"Expected an Expr for column {name!r}, got {type(expr)}."
+                )
+
+        from ray.data._internal.logical.operators import Project
+
+        project_op = Project(
+            exprs=[StarExpr(), *[expr.alias(name) for name, expr in exprs.items()]],
+            input_dependencies=[self._logical_plan.dag],
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(project_op, self.context)
+        return Dataset._from_parent(self, logical_plan)
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_column(
         self,
         column_name: str,
@@ -944,7 +1008,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators import Download, Project
+        from ray.data._internal.logical.operators import Download
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -958,15 +1022,11 @@ class Dataset:
                 filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
-        else:
-            project_op = Project(
-                exprs=[StarExpr(), expr.alias(column_name)],
-                input_dependencies=[self._logical_plan.dag],
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset._from_parent(self, logical_plan)
+            return Dataset._from_parent(self, logical_plan)
+
+        return self.with_columns(
+            {column_name: expr}, compute=compute, **ray_remote_args
+        )
 
     @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
