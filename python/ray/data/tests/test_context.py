@@ -36,6 +36,31 @@ def test_data_context_current_context_manager():
     assert DataContext.get_current() is original
 
 
+def test_parquet_reader_target_batch_size_bytes_default_and_mutable():
+    """``DataContext.parquet_reader_target_batch_size_bytes`` defaults to ``None``
+    (meaning fall back to ``target_min_block_size``) and is mutable."""
+    from ray.data.context import (
+        DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES,
+        DataContext,
+    )
+
+    assert DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES is None
+
+    ctx = DataContext.get_current()
+    original = ctx.parquet_reader_target_batch_size_bytes
+    try:
+        # Default matches the module-level default constant.
+        assert (
+            ctx.parquet_reader_target_batch_size_bytes
+            == DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
+        )
+        # Per-job override.
+        ctx.parquet_reader_target_batch_size_bytes = 64 * 1024
+        assert ctx.parquet_reader_target_batch_size_bytes == 64 * 1024
+    finally:
+        ctx.parquet_reader_target_batch_size_bytes = original
+
+
 if __name__ == "__main__":
     import sys
 

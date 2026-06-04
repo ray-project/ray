@@ -218,6 +218,29 @@ class ParquetFileReader(FileReader):
     def _make_format(self) -> pds.ParquetFileFormat:
         return pds.ParquetFileFormat(**self._parquet_format_kwargs)
 
+    def _resolve_batch_target_bytes(self) -> Optional[int]:
+        """Resolve the per-batch byte-size target.
+
+        Priority: ``ctx.parquet_reader_target_batch_size_bytes`` >
+        ``ctx.target_min_block_size``. Returns ``None`` when both are
+        unset, in which case ``_resolve_batch_size`` falls back to the
+        Arrow default.
+
+        Distinct from ``self._target_block_size`` (which is the *output
+        block* target after ``MapOperator`` shaping). We size individual
+        batches finer so a single read task emits many small Arrow
+        tables, mirroring V1's batch streaming and giving downstream
+        operators per-batch parallelism.
+        """
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
+        if ctx.parquet_reader_target_batch_size_bytes is not None:
+            return int(ctx.parquet_reader_target_batch_size_bytes)
+        if ctx.target_min_block_size is not None:
+            return int(ctx.target_min_block_size)
+        return None
+
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Determine batch size from explicit setting, metadata, or default.
@@ -228,6 +251,13 @@ class ParquetFileReader(FileReader):
         through to the metadata estimate and seed ``_sampled_batch_size`` with
         the result.  ``_on_batch_read`` later refines it from actual data, and
         subsequent ``read()`` calls on the same instance use the refined value.
+
+        The metadata-estimate uses :meth:`_resolve_batch_target_bytes` (V2's
+        ``parquet_reader_target_batch_size_bytes`` knob with
+        ``target_min_block_size`` fallback), *not* ``self._target_block_size``,
+        so that each read task emits many small batches whose total adds up
+        to the output block target downstream — rather than one giant batch
+        per output block.
         """
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
@@ -236,17 +266,19 @@ class ParquetFileReader(FileReader):
             return self._sampled_batch_size  # pyrefly: ignore[bad-return]
 
         batch_size = _ARROW_DEFAULT_BATCH_SIZE
-        if self._target_block_size is not None:
+        batch_target_bytes = self._resolve_batch_target_bytes()
+        if batch_target_bytes is not None:
             first_fragment = next(dataset.get_fragments(), None)
             if first_fragment is not None:
                 estimated = _estimate_batch_size_from_metadata(
-                    first_fragment, self._columns, self._target_block_size
+                    first_fragment, self._columns, batch_target_bytes
                 )
                 if estimated is not None:
                     logger.debug(
-                        "Estimated Parquet batch size: %d rows (target_block_size=%d)",
+                        "Estimated Parquet batch size: %d rows "
+                        "(batch_target_bytes=%d)",
                         estimated,
-                        self._target_block_size,
+                        batch_target_bytes,
                     )
                     batch_size = estimated
 
@@ -255,11 +287,16 @@ class ParquetFileReader(FileReader):
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:
-        """Refine batch size estimate from actual in-memory data."""
-        if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
+        """Refine batch size estimate from actual in-memory data.
+
+        Uses :meth:`_resolve_batch_target_bytes` so the refined value
+        stays consistent with the initial metadata estimate.
+        """
+        batch_target_bytes = self._resolve_batch_target_bytes()
+        if batch_target_bytes is None or table.nbytes == 0 or table.num_rows == 0:
             return
         row_size = table.nbytes / table.num_rows
-        self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+        self._sampled_batch_size = max(math.ceil(batch_target_bytes / row_size), 1)
 
     @override
     def _get_fragments_to_read(

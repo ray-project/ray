@@ -83,6 +83,14 @@ DEFAULT_USE_DATASOURCE_V2 = True
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
+# Default per-batch in-memory size target (in bytes) used by V2's
+# ``ParquetFileReader`` to derive a row-count batch size. Distinct from
+# ``target_max_block_size`` (which is the *output block* target after
+# ``MapOperator`` shaping). Smaller values mean a single read task emits
+# more, finer batches — more output blocks downstream. ``None`` falls back
+# to ``target_min_block_size`` (1 MiB default).
+DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = None
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -768,6 +776,14 @@ class DataContext:
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
+    # Per-batch in-memory size target (in bytes) used by V2's
+    # ``ParquetFileReader``. Smaller values mean a single read task emits more,
+    # finer Arrow batches — more output blocks downstream and better
+    # streaming-stage parallelism. When ``None``, falls back to
+    # ``target_min_block_size``.
+    parquet_reader_target_batch_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
