@@ -97,28 +97,36 @@ If your policy needs the body, enable forwarding:
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
-With forwarding on, HAProxy buffers the request body and includes it in the routing call. To bound the memory this costs, it buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes; a larger buffer costs proportionally more memory across concurrent connections. When a request body is larger than that cap, HAProxy forwards only the leading bytes it captured and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
+With forwarding on, HAProxy has to receive and buffer the request body before it can route, and that wait is what adds to TTFT: the more of the body it waits for, the longer routing is delayed (and the more memory it holds). To bound that cost, HAProxy buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes. When a request body is larger than that cap, HAProxy stops waiting, routes on the leading bytes it already has, and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
 
 :::{note}
 Truncation applies only to the copy of the body that HAProxy sends to the router for the routing decision. The request that HAProxy forwards to the chosen replica is the full request, so neither the prompt the model processes nor the response streamed back to the client is affected.
 
-The captured portion is always the head of the body, from the first byte up to the buffer cap; you can't select a different region. That's deliberate, because prefix-based policies key on the start of the prompt, where shared system prompts and few-shot examples live. The only knob is how much to capture: raise `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` to give a body-aware policy more of each request to match on, at the cost of more HAProxy memory.
+There is no setting that buffers the whole body for free: HAProxy can only route on what it has buffered, and buffering more of the body is exactly what costs TTFT. "Buffer everything" just means raising the cap until it covers your largest requests, which reintroduces the latency penalty truncation exists to avoid. The captured portion is always the head of the body (from the first byte up to the cap); you can't select a different region. That's a good fit for prefix-based policies, which key on the start of the prompt where shared system prompts and few-shot examples live. Raise `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` only if your policy needs to match deeper into the request and you can accept the added TTFT.
+
+To tune the cap against real traffic, watch the `serve_haproxy_ingress_router_truncations_total` metric (enable the ingress request router metrics with `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`): a high truncation rate means body-aware policies are routing on clipped prompts and may warrant a larger buffer. See [HAProxy ingress request router metrics](../../monitoring.md#haproxy-ingress-request-router-metrics) for the full set.
 :::
 
 ### Session affinity
 
 To pin all turns of a conversation to the same replica, send a session-id header with each request. HAProxy forwards the header to the ingress request router, which passes the session id to the configured policy. Session-aware policies such as `ConsistentHashRouter` then route every request with the same session id to one replica.
 
-The header name defaults to `x-session-id` and is configurable with `RAY_SERVE_SESSION_ID_HEADER_KEY`. Matching is case-insensitive and tolerant of `-` / `_` rewrites that some proxies introduce.
+The header name defaults to `x-session-id` and is configurable with `RAY_SERVE_SESSION_ID_HEADER_KEY`. Header matching ignores case and treats `-` and `_` as equivalent, so `X-Session-Id`, `x-session-id`, and `x_session_id` all match the same configured name. This matters because some reverse proxies (for example nginx and AWS API Gateway) rewrite `-` to `_` in header names; without this tolerance, such a rewrite would silently drop session affinity.
 
 (direct-streaming-limitations)=
 ## Limitations
 
 - **HAProxy required.** Direct streaming relies on HAProxy to forward traffic to replicas, so it only takes effect with `RAY_SERVE_ENABLE_HA_PROXY=1`.
 - **Single model per application.** `build_openai_app` raises if you pass more than one `LLMConfig` while direct streaming is enabled. Multi-model direct streaming isn't supported yet.
+- **No LoRA- or multiplex-aware routing.** The ingress request router doesn't forward the requested model or adapter id to the routing policy, so requests aren't steered to replicas that already have a given LoRA adapter loaded (the default `RoundRobinRouter` is multiplex-unaware). A single base model with adapters still serves, but without adapter affinity.
 - **No separate ingress configuration.** Because the `LLMServer` deployment is the ingress, `ingress_deployment_config` and `ingress_cls_config` aren't supported. Configure the server through each `LLMConfig.deployment_config` instead.
 - **Body-aware routing is opt-in.** HAProxy doesn't forward the request body to the router by default. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1` for policies that need it, such as prefix-aware routing.
 - **Single router replica.** The ingress request router runs with `num_replicas=1`.
+
+## Workarounds
+
+- **Serving multiple models.** Deploy each model as its own single-model direct streaming application on a distinct route prefix. Clients then target the per-model endpoint directly instead of selecting the model by the `model` field on one shared endpoint.
+- **LoRA / multiplexed serving.** If you depend on adapter-affinity routing, use the default (non-direct) ingress, which extracts the requested model id and routes multiplex-aware. See [Multi-LoRA deployment](multi-lora.md).
 
 ## See also
 
