@@ -25,6 +25,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/util/clock.h"
 #include "ray/util/process_interface.h"
 
 namespace ray {
@@ -49,7 +50,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          rpc::WorkerType worker_type,
          const std::string &ip_address,
          std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager);
+         rpc::ClientCallManager &client_call_manager,
+         ClockInterface &clock);
 
   rpc::WorkerType GetWorkerType() const override;
   void MarkDead() override;
@@ -147,7 +149,9 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
         granted_lease_->GetLeaseSpecification().RootDetachedActorId();
   }
 
-  absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return last_lease_grant_time_;
+  };
 
   bool IsRegistered() override { return rpc_client_ != nullptr; }
 
@@ -212,6 +216,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
+  /// Clock used for timing.
+  ClockInterface &clock_;
   /// The rpc client to send tasks to this worker.
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
   /// The address of this worker's owner. The owner is the worker that
@@ -225,9 +231,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// RayLease being assigned to this worker.
   std::optional<RayLease> granted_lease_;
-  /// Time when the last lease was granted to this worker.
-  absl::Time lease_grant_time_;
-  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU lease
+  /// Time when the last lease was granted to this worker, or std::nullopt if
+  /// no lease has ever been granted.
+  std::optional<absl::Time> last_lease_grant_time_;
+  /// Whether this worker ever held a GPU resource. Once it holds a GPU or non-GPU lease
   /// it can't switch to the other type.
   std::optional<bool> is_gpu_ = std::nullopt;
   /// Whether this worker can hold an actor. Once it holds an actor or a normal lease, it

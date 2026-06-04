@@ -120,15 +120,19 @@ class TestGangMasterInfoRegistry:
         mock_put.side_effect = fake_put
         mock_get.side_effect = fake_get
 
-        GangMasterInfoRegistry.register("gang-1", "10.0.0.1", 1111)
-        GangMasterInfoRegistry.register("gang-2", "10.0.0.2", 2222)
+        GangMasterInfoRegistry.register("gang-1", "10.0.0.1", 1111, "node-1")
+        GangMasterInfoRegistry.register("gang-2", "10.0.0.2", 2222, "node-2")
 
         loop = asyncio.get_event_loop()
-        addr1, port1 = loop.run_until_complete(GangMasterInfoRegistry.get("gang-1"))
-        addr2, port2 = loop.run_until_complete(GangMasterInfoRegistry.get("gang-2"))
+        addr1, port1, node1 = loop.run_until_complete(
+            GangMasterInfoRegistry.get("gang-1")
+        )
+        addr2, port2, node2 = loop.run_until_complete(
+            GangMasterInfoRegistry.get("gang-2")
+        )
 
-        assert (addr1, port1) == ("10.0.0.1", 1111)
-        assert (addr2, port2) == ("10.0.0.2", 2222)
+        assert (addr1, port1, node1) == ("10.0.0.1", 1111, "node-1")
+        assert (addr2, port2, node2) == ("10.0.0.2", 2222, "node-2")
 
 
 class TestBundleIndices:

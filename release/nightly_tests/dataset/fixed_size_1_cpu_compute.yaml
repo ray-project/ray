@@ -5,9 +5,3 @@ advanced_instance_config:
 
 head_node:
     instance_type: m5.2xlarge
-
-worker_nodes:
-    - instance_type: m5.2xlarge
-      min_nodes: 63
-      max_nodes: 63
-      market_type: ON_DEMAND

@@ -1360,14 +1360,13 @@ class SingleAgentEpisode:
         current `extra_model_output` values are added to the episode either by calling
         `self.add_env_step` or more directly (and manually) via
         `self.extra_model_outputs[key].append|extend()`. However, for certain
-        postprocessing steps, the entirety (or a slice) of an episode's
-        `extra_model_outputs` might have to be rewritten or a new key (a new type of
-        `extra_model_outputs`) must be inserted, which is when
+        postprocessing steps, an existing `extra_model_outputs` entry might have
+        to be overwritten fully or in slices, which is when
         `self.set_extra_model_outputs()` should be used.
 
         Args:
-            key: The `key` within `self.extra_model_outputs` to override data on or
-                to insert as a new key into `self.extra_model_outputs`.
+            key: Existing key in `self.extra_model_outputs` whose buffer should
+                be overwritten.
             new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
                 is still not numpy'ized yet. In case this episode has already been
