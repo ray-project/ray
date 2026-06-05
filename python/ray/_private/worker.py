@@ -61,6 +61,7 @@ from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import load_class
+from ray._private.accelerators import get_accelerator_manager_for_resource
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
@@ -1145,13 +1146,11 @@ class Worker:
         # starting in Ray v2.57, the runtime env agent injects env variables for
         # accelerator IDs (e.g. CUDA_VISIBLE_DEVICES). If they're present, return
         # them as the accelerator IDs.
-        from ray._private.accelerators import get_accelerator_manager_for_resource
-
         manager = get_accelerator_manager_for_resource(resource_name)
         if manager is not None:
             visible_ids = manager.get_current_process_visible_accelerator_ids()
             if visible_ids is not None:
-                return visible_ids
+                return [int(i) for i in visible_ids]
 
         return assigned_ids
 
