@@ -33,7 +33,6 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     ClusterResourceScheduler &cluster_resource_scheduler,
     rpc::RayletClientPool &raylet_client_pool)
     : io_context_(io_context),
-      return_timer_(io_context),
       gcs_table_storage_(gcs_table_storage),
       gcs_node_manager_(gcs_node_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),

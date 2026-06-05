@@ -464,9 +464,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   instrumented_io_context &io_context_;
 
-  /// A timer that ticks every cancel resource failure milliseconds.
-  boost::asio::deadline_timer return_timer_;
-
   /// Used to update placement group information upon creation, deletion, etc.
   gcs::GcsTableStorage &gcs_table_storage_;
 
