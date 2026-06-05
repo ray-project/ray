@@ -41,7 +41,7 @@ def _write_real_zarr_store(
     root = zarr.open_group(str(store_path), mode="w")
     for name, (data, chunks) in arrays.items():
         root.create_dataset(name, data=data, chunks=chunks, dtype=data.dtype)
-    zarr.consolidate_metadata(str(store_path))
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
     return store_path
 
 
@@ -69,7 +69,7 @@ def zarrv2_root_store(tmp_path) -> Path:
         dtype="<i4",
     )
     arr[:] = np.arange(20, dtype="<i4").reshape(5, 4)
-    zarr.consolidate_metadata(str(store_path))
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
     return store_path
 
 
@@ -108,7 +108,7 @@ def heterogeneous_zarrv2_store(tmp_path) -> Path:
         data=np.array([5, 12, 20], dtype="<i8"),
         chunks=(3,),
     )
-    zarr.consolidate_metadata(str(store_path))
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
     return store_path
 
 
@@ -153,7 +153,7 @@ def aligned_zarrv2_store(tmp_path) -> Path:
         data=np.arange(8, dtype="<i8"),
         chunks=(8,),
     )
-    zarr.consolidate_metadata(str(store_path))
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
     return store_path
 
 
@@ -910,7 +910,7 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
         compressor=numcodecs.get_codec({"id": "ray_zarr_test_codec"}),
     )
     arr[:] = np.arange(8, dtype="u1")
-    zarr.consolidate_metadata(str(store_path))
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
 
     if ray.is_initialized():
         ray.shutdown()
@@ -977,7 +977,7 @@ def test_align_axis_0_rejects_scalar_array(tmp_path):
     root = zarr.open_group(str(store_path), mode="w")
     root.create_dataset("vec", data=np.arange(8, dtype="<i4"), chunks=(4,))
     root.create_dataset("scalar", data=np.array(42, dtype="<i4"))  # 0-D
-    zarr.consolidate_metadata(str(store_path))
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
 
     with pytest.raises(ValueError, match=r"0-D \(scalar\)"):
         zarrv2_datasource.ZarrV2Datasource(str(store_path), align_axis_0=True)

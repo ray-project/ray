@@ -65,14 +65,15 @@ ignore-missing-imports = [
     "rapidsmpf.*",
     "rmm.*",
     "confluent_kafka.*",
+    "zarr.*",
 ]
 
-# zarr and numcodecs are installed in the data test images, so pyrefly resolves
-# their (strict) stubs -- but read_zarr targets their largely-untyped runtime
-# API, and the tests use it accordingly (e.g. str store paths, a custom codec).
-# Treat them as Any: ``ignore-missing-imports`` only applies to modules that
-# can't be found, not installed ones, so these belong here instead.
+# numcodecs' ``abc.Codec`` ABC declares its abstract ``encode``/``decode`` with
+# empty bodies, so pyrefly infers their return type as ``None`` and flags any
+# real codec subclass (like the one in test_zarrv2) as an inconsistent override
+# -- a numcodecs typing defect we can't satisfy without lying about the return
+# type. So treat numcodecs as Any. (``ignore-missing-imports`` only covers
+# modules that can't be found, not installed ones, so it belongs here.)
 replace-imports-with-any = [
-    "zarr.*",
     "numcodecs.*",
 ]
