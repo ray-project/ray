@@ -4,8 +4,7 @@ These tests do NOT require GPUs or the rapidsmpf/cudf/ucxx packages.
 All Ray actor calls are mocked so the tests run on a standard CPU cluster.
 """
 
-import types
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -846,33 +845,7 @@ class TestGPUHashAggregatePlanning:
         assert plan is not None
         assert plan.shuffle_key_columns == (hash_aggregate._GLOBAL_AGGREGATE_KEY,)
 
-    def test_gpu_hash_aggregate_actor_prunes_arrow_before_cudf_conversion(self):
-        converted_columns: List[List[str]] = []
-
-        class _FakeDataFrame(pd.DataFrame):
-            @classmethod
-            def from_arrow(cls, table: pa.Table) -> pd.DataFrame:
-                converted_columns.append(table.column_names)
-                if "unused" in table.column_names:
-                    raise AssertionError("unused column should have been pruned")
-                return table.to_pandas()
-
-        class _FakeShuffler:
-            def __init__(self, **kwargs: Any) -> None:
-                self.inserted_chunks = []
-
-            def insert_chunk(
-                self, table: pd.DataFrame, column_names: List[str]
-            ) -> None:
-                self.inserted_chunks.append((table, column_names))
-
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = _FakeDataFrame
-        fake_backend = types.ModuleType(
-            "ray.data._internal.gpu_shuffle.rapidsmpf_backend"
-        )
-        fake_backend.BulkRapidsMPFShuffler = _FakeShuffler
-
+    def test_required_columns_excludes_unused_input_columns(self):
         table = pa.table(
             {
                 "user_id": pa.array([0, 0, 1], type=pa.int64()),
@@ -884,171 +857,32 @@ class TestGPUHashAggregatePlanning:
             ("user_id",), (Count(), Sum("small")), input_schema=table.schema
         )
         assert plan is not None
+        assert plan.required_columns == ("user_id", "small")
 
-        actor_cls = hash_aggregate.GPUHashAggregateActor.__ray_actor_class__
-        with patch.dict(
-            "sys.modules",
-            {
-                "cudf": fake_cudf,
-                "ray.data._internal.gpu_shuffle.rapidsmpf_backend": fake_backend,
-            },
-        ):
-            actor = actor_cls(nranks=1, total_nparts=1, aggregation_plan=plan)
-            row_count = actor.insert_batch(table)
+        projected = table.select(list(plan.required_columns))
+        assert projected.column_names == ["user_id", "small"]
 
-        assert row_count == 3
-        assert converted_columns == [["user_id", "small"]]
-        assert actor._shuffler.inserted_chunks
-
-    def test_gpu_hash_aggregate_actor_prunes_all_columns_for_global_count(self):
-        converted_tables: List[pa.Table] = []
-
-        class _FakeDataFrame(pd.DataFrame):
-            @classmethod
-            def from_arrow(cls, table: pa.Table) -> pd.DataFrame:
-                converted_tables.append(table)
-                raise AssertionError("global count should not convert input columns")
-
-        class _FakeShuffler:
-            def __init__(self, **kwargs: Any) -> None:
-                self.inserted_chunks = []
-
-            def insert_chunk(
-                self, table: pd.DataFrame, column_names: List[str]
-            ) -> None:
-                self.inserted_chunks.append((table, column_names))
-
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = _FakeDataFrame
-        fake_backend = types.ModuleType(
-            "ray.data._internal.gpu_shuffle.rapidsmpf_backend"
-        )
-        fake_backend.BulkRapidsMPFShuffler = _FakeShuffler
-
+    def test_global_count_required_columns_empty(self):
         table = pa.table({"unused": pa.array([10, 20, 30], type=pa.int64())})
         plan = build_gpu_aggregation_plan(
             tuple(), (Count(),), input_schema=table.schema
         )
         assert plan is not None
+        assert plan.required_columns == ()
 
-        actor_cls = hash_aggregate.GPUHashAggregateActor.__ray_actor_class__
-        with patch.dict(
-            "sys.modules",
-            {
-                "cudf": fake_cudf,
-                "ray.data._internal.gpu_shuffle.rapidsmpf_backend": fake_backend,
-            },
-        ):
-            actor = actor_cls(nranks=1, total_nparts=1, aggregation_plan=plan)
-            row_count = actor.insert_batch(table)
-
-        assert row_count == 3
-        assert converted_tables == []
-
-        partial = actor._shuffler.inserted_chunks[0][0]
-        assert partial[plan.accumulator_columns[0]].iloc[0] == 3
-
-    def test_insert_batch_passes_merged_runtime_schema_to_partial_aggregate(self):
-        seen_schemas: List[Optional[pa.Schema]] = []
-        original_partial = hash_aggregate.GPUAggregationPlan.partial_aggregate
-
-        def _tracking_partial(self, df, input_schema=None):
-            seen_schemas.append(input_schema)
-            return original_partial(
-                self,
-                df,
-                input_schema=input_schema,
-            )
-
-        class _FakeDataFrame(pd.DataFrame):
-            @classmethod
-            def from_arrow(cls, table: pa.Table) -> pd.DataFrame:
-                return table.to_pandas()
-
-        class _FakeShuffler:
-            def __init__(self, **kwargs: Any) -> None:
-                self.inserted_chunks = []
-
-            def insert_chunk(
-                self, table: pd.DataFrame, column_names: List[str]
-            ) -> None:
-                self.inserted_chunks.append((table, column_names))
-
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = _FakeDataFrame
-        fake_backend = types.ModuleType(
-            "ray.data._internal.gpu_shuffle.rapidsmpf_backend"
-        )
-        fake_backend.BulkRapidsMPFShuffler = _FakeShuffler
-
-        block1 = pa.table(
-            {
-                "value": pa.array([1], type=pa.int8()),
-            }
-        )
-        block2 = pa.table(
-            {
-                "value": pa.array([2], type=pa.int32()),
-            }
-        )
+    def test_merge_input_schema_unifies_value_dtype_across_blocks(self):
+        block1 = pa.table({"value": pa.array([1], type=pa.int8())})
+        block2 = pa.table({"value": pa.array([2], type=pa.int32())})
         plan = build_gpu_aggregation_plan(tuple(), (Sum("value"),))
         assert plan is not None
 
-        actor_cls = hash_aggregate.GPUHashAggregateActor.__ray_actor_class__
-        with patch.dict(
-            "sys.modules",
-            {
-                "cudf": fake_cudf,
-                "ray.data._internal.gpu_shuffle.rapidsmpf_backend": fake_backend,
-            },
-        ), patch.object(
-            hash_aggregate.GPUAggregationPlan,
-            "partial_aggregate",
-            _tracking_partial,
-        ):
-            actor = actor_cls(nranks=1, total_nparts=1, aggregation_plan=plan)
-            actor.insert_batch(block1)
-            actor.insert_batch(block2)
+        runtime_schema = None
+        runtime_schema = plan.merge_input_schema(runtime_schema, block1.schema)
+        runtime_schema = plan.merge_input_schema(runtime_schema, block2.schema)
 
-        assert len(seen_schemas) == 2
-        assert seen_schemas[0].field("value").type == pa.int8()
-        assert seen_schemas[1].field("value").type == pa.int32()
-        assert actor._runtime_input_schema.field("value").type == pa.int32()
+        assert runtime_schema.field("value").type == pa.int32()
 
-    def test_insert_batch_uses_logical_schema_for_widened_shuffle_keys(self):
-        class _FakeDataFrame(pd.DataFrame):
-            @classmethod
-            def from_arrow(cls, table: pa.Table) -> pd.DataFrame:
-                return table.to_pandas()
-
-        class _FakeShuffler:
-            def __init__(self, **kwargs: Any) -> None:
-                self.inserted_chunks = []
-
-            def insert_chunk(
-                self, table: pd.DataFrame, column_names: List[str]
-            ) -> None:
-                self.inserted_chunks.append((table, column_names))
-
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = _FakeDataFrame
-        fake_backend = types.ModuleType(
-            "ray.data._internal.gpu_shuffle.rapidsmpf_backend"
-        )
-        fake_backend.BulkRapidsMPFShuffler = _FakeShuffler
-
-        block1 = pa.table(
-            {
-                "user_id": pa.array([1], type=pa.int8()),
-                "value": pa.array([1], type=pa.int64()),
-            }
-        )
-        block2 = pa.table(
-            {
-                "user_id": pa.array([300], type=pa.int32()),
-                "value": pa.array([2], type=pa.int64()),
-            }
-        )
+    def test_merge_input_schema_uses_logical_schema_for_shuffle_keys(self):
         logical_schema = pa.schema(
             [
                 ("user_id", pa.int32()),
@@ -1060,309 +894,18 @@ class TestGPUHashAggregatePlanning:
         )
         assert plan is not None
 
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            observed_only_partial = plan.partial_aggregate(
-                block1.to_pandas(), input_schema=block1.schema
-            )
-        assert str(observed_only_partial["user_id"].dtype) == "int32"
-
-        actor_cls = hash_aggregate.GPUHashAggregateActor.__ray_actor_class__
-        with patch.dict(
-            "sys.modules",
-            {
-                "cudf": fake_cudf,
-                "ray.data._internal.gpu_shuffle.rapidsmpf_backend": fake_backend,
-            },
-        ):
-            actor = actor_cls(nranks=1, total_nparts=1, aggregation_plan=plan)
-            actor.insert_batch(block1)
-            actor.insert_batch(block2)
-
-        first_partial = actor._shuffler.inserted_chunks[0][0]
-        second_partial = actor._shuffler.inserted_chunks[1][0]
-        assert first_partial["user_id"].iloc[0] == 1
-        assert str(first_partial["user_id"].dtype) == "int32"
-        assert second_partial["user_id"].iloc[0] == 300
-        assert str(second_partial["user_id"].dtype) == "int32"
-        assert actor._runtime_input_schema.field("user_id").type == pa.int32()
-
-    def test_sum_and_mean_schema_source_dtypes_use_cpu_like_accumulators(self):
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = pd.DataFrame
-        schema = pa.schema(
-            [
-                ("user_id", pa.int64()),
-                ("small", pa.int8()),
-                ("flag", pa.bool_()),
-                ("ratio", pa.float32()),
-            ]
+        runtime_schema = plan.merge_input_schema(
+            None, pa.schema([("user_id", pa.int8()), ("value", pa.int64())])
         )
-        plan = build_gpu_aggregation_plan(
-            ("user_id",),
-            (Sum("small"), Mean("flag"), Sum("ratio")),
-            input_schema=schema,
-        )
-        assert plan is not None
-
-        df = pd.DataFrame(
-            {
-                "user_id": pd.Series([0, 0, 1], dtype="int64"),
-                "small": pd.Series([100, 100, 1], dtype="int8"),
-                "flag": pd.Series([True, True, False], dtype="bool"),
-                "ratio": pd.Series([1.5, 2.5, 3.5], dtype="float32"),
-            }
+        runtime_schema = plan.merge_input_schema(
+            runtime_schema,
+            pa.schema([("user_id", pa.int32()), ("value", pa.int64())]),
         )
 
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            partial = plan.partial_aggregate(df, input_schema=schema)
+        assert runtime_schema.field("user_id").type == pa.int32()
+        assert runtime_schema.field("value").type == pa.int64()
 
-        sum_col = plan.accumulator_columns[0]
-        mean_sum_col = plan.accumulator_columns[1]
-        float_sum_col = plan.accumulator_columns[4]
-        group_zero = partial[partial["user_id"] == 0].iloc[0]
-
-        assert str(partial[sum_col].dtype) == "int64"
-        assert str(partial[mean_sum_col].dtype) == "int64"
-        assert str(partial[float_sum_col].dtype) == "float64"
-        assert group_zero[sum_col] == 200
-        assert group_zero[mean_sum_col] == 2
-        assert group_zero[float_sum_col] == 4.0
-
-    def test_empty_final_aggregate_preserves_output_dtypes(self):
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = pd.DataFrame
-        schema = pa.schema(
-            [
-                ("user_id", pa.int64()),
-                ("value", pa.int8()),
-            ]
-        )
-        plan = build_gpu_aggregation_plan(
-            ("user_id",),
-            (Count(), Sum("value"), Min("value"), Mean("value")),
-            input_schema=schema,
-        )
-        assert plan is not None
-
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            result = plan.final_aggregate(pd.DataFrame())
-
-        result_table = pa.Table.from_pandas(result, preserve_index=False)
-        expected_schema = pa.schema(
-            [
-                ("user_id", pa.int64()),
-                ("count()", pa.int64()),
-                ("sum(value)", pa.int64()),
-                ("min(value)", pa.int64()),
-                ("mean(value)", pa.float64()),
-            ]
-        )
-        assert result_table.schema.equals(expected_schema, check_metadata=False)
-
-        global_plan = build_gpu_aggregation_plan(
-            tuple(), (Count(),), input_schema=schema
-        )
-        assert global_plan is not None
-
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            global_result = global_plan.final_aggregate(pd.DataFrame())
-
-        global_table = pa.Table.from_pandas(global_result, preserve_index=False)
-        assert global_table.schema.equals(
-            pa.schema([("count()", pa.int64())]), check_metadata=False
-        )
-
-        runtime_plan = build_gpu_aggregation_plan(
-            ("user_id",),
-            (Count(), Sum("value")),
-            input_schema=pa.schema(
-                [
-                    ("user_id", pa.int64()),
-                    ("value", pa.int8()),
-                ]
-            ),
-        )
-        assert runtime_plan is not None
-
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            runtime_result = runtime_plan.final_aggregate(
-                pd.DataFrame(),
-                input_schema=pa.schema(
-                    [
-                        ("user_id", pa.int64()),
-                        ("value", pa.int8()),
-                    ]
-                ),
-            )
-
-        runtime_table = pa.Table.from_pandas(runtime_result, preserve_index=False)
-        assert runtime_table.schema.equals(
-            pa.schema(
-                [
-                    ("user_id", pa.int64()),
-                    ("count()", pa.int64()),
-                    ("sum(value)", pa.int64()),
-                ]
-            ),
-            check_metadata=False,
-        )
-
-    def test_custom_gpu_aggregate_fn_receives_input_schema(self):
-        class _CustomGPUAggregate(GPUAggregateFn):
-            def __init__(self) -> None:
-                super().__init__(
-                    "custom(value)",
-                    zero_factory=lambda: 0,
-                    on="value",
-                    ignore_nulls=True,
-                )
-                self.seen_schema: Optional[pa.Schema] = None
-
-            def aggregate_block(self, block: Any) -> int:
-                return 0
-
-            def combine(self, current_accumulator: int, new: int) -> int:
-                return current_accumulator + new
-
-            def gpu_required_columns(self) -> Tuple[str, ...]:
-                return ("value",)
-
-            def gpu_accumulator_columns(
-                self, accumulator_prefix: str
-            ) -> Tuple[str, ...]:
-                return (f"{accumulator_prefix}_acc",)
-
-            def gpu_partial_aggregate(
-                self,
-                df: pd.DataFrame,
-                key_columns: Tuple[str, ...],
-                *,
-                output_name: str,
-                accumulator_prefix: str,
-                input_schema: Any = None,
-            ) -> pd.DataFrame:
-                self.seen_schema = input_schema
-                return pd.DataFrame(
-                    {
-                        key_columns[0]: df[key_columns[0]],
-                        self.gpu_accumulator_columns(accumulator_prefix)[0]: df[
-                            "value"
-                        ],
-                    }
-                )
-
-            def gpu_final_aggregate(
-                self,
-                df: pd.DataFrame,
-                key_columns: Tuple[str, ...],
-                *,
-                output_name: str,
-                accumulator_prefix: str,
-            ) -> pd.DataFrame:
-                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
-                return pd.DataFrame(
-                    {
-                        key_columns[0]: df[key_columns[0]],
-                        output_name: df[acc_col],
-                    }
-                )
-
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = pd.DataFrame
-        schema = pa.schema([("user_id", pa.int64()), ("value", pa.int64())])
-        gpu_agg = _CustomGPUAggregate()
-        plan = build_gpu_aggregation_plan(("user_id",), (gpu_agg,), input_schema=schema)
-        assert plan is not None
-
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            partial = plan.partial_aggregate(
-                pd.DataFrame({"user_id": [1], "value": [2]}),
-                input_schema=schema,
-            )
-
-        assert gpu_agg.seen_schema is schema
-        assert partial.to_dict("list") == {
-            "user_id": [1],
-            plan.accumulator_columns[0]: [2],
-        }
-
-    def test_null_reductions_preserve_groups_and_accumulator_dtypes(self, monkeypatch):
-        fake_cudf = types.ModuleType("cudf")
-        fake_cudf.DataFrame = pd.DataFrame
-        original_group_aggregate = hash_aggregate._group_aggregate
-        original_group_count = hash_aggregate._group_count
-
-        def _drop_all_null_group_aggregate(
-            df, key_columns, target_column, aggregate_name, output_column
-        ):
-            result = original_group_aggregate(
-                df, key_columns, target_column, aggregate_name, output_column
-            )
-            counts = original_group_count(df, key_columns, target_column, "__count")
-            non_null_keys = counts[counts["__count"] > 0][list(key_columns)]
-            result = result.merge(non_null_keys, on=list(key_columns), how="inner")
-            if output_column in result.columns:
-                result[output_column] = result[output_column].astype(object)
-            return result
-
-        def _drop_zero_group_counts(df, key_columns, target_column, output_column):
-            result = original_group_count(df, key_columns, target_column, output_column)
-            return result[result[output_column] > 0]
-
-        monkeypatch.setattr(
-            hash_aggregate, "_group_aggregate", _drop_all_null_group_aggregate
-        )
-        monkeypatch.setattr(hash_aggregate, "_group_count", _drop_zero_group_counts)
-
-        schema = pa.schema([("user_id", pa.int64())])
-        plan = build_gpu_aggregation_plan(
-            ("user_id",), (Sum("value"),), input_schema=schema
-        )
-        assert plan is not None
-        acc_col = plan.accumulator_columns[0]
-
-        df = pd.DataFrame(
-            {
-                "user_id": pd.Series([0, 1, 2, 0], dtype="int64"),
-                "value": pd.Series([None, None, None, None], dtype="Int64"),
-            }
-        )
-        with patch.dict("sys.modules", {"cudf": fake_cudf}):
-            partial = plan.partial_aggregate(df)
-            assert str(partial[acc_col].dtype) == "Int64"
-
-            result = (
-                plan.final_aggregate(partial)
-                .sort_values("user_id")
-                .reset_index(drop=True)
-            )
-
-            assert result.to_dict("records") == [
-                {"user_id": 0, "sum(value)": None},
-                {"user_id": 1, "sum(value)": None},
-                {"user_id": 2, "sum(value)": None},
-            ]
-
-            count_plan = build_gpu_aggregation_plan(
-                ("user_id",),
-                (Count("value", ignore_nulls=True),),
-                input_schema=schema,
-            )
-            assert count_plan is not None
-
-            count_partial = count_plan.partial_aggregate(df)
-            count_result = (
-                count_plan.final_aggregate(count_partial)
-                .sort_values("user_id")
-                .reset_index(drop=True)
-            )
-
-            assert count_result.to_dict("records") == [
-                {"user_id": 0, "count(value)": 0},
-                {"user_id": 1, "count(value)": 0},
-                {"user_id": 2, "count(value)": 0},
-            ]
-
+    def test_normalize_output_arrow_null_schema(self):
         null_schema = pa.schema(
             [
                 ("user_id", pa.int64()),
@@ -1385,72 +928,6 @@ class TestGPUHashAggregatePlanning:
                 ("sum(value)", pa.null()),
             ]
         )
-
-        nan_key_plan = build_gpu_aggregation_plan(
-            ("item",), (Count(),), input_schema=pa.schema([("item", pa.null())])
-        )
-        nan_key_partial = pd.DataFrame(
-            {
-                "item": pd.Series([None], dtype=object),
-                nan_key_plan.accumulator_columns[0]: pd.Series([1], dtype="int64"),
-            }
-        )
-        normalized_nan_key_partial = nan_key_plan._normalize_partial_output(
-            nan_key_partial,
-            nan_key_partial,
-            ("item",),
-            input_schema=pa.schema([("item", pa.null())]),
-        )
-
-        assert str(normalized_nan_key_partial["item"].dtype) == "float64"
-        assert (
-            str(normalized_nan_key_partial[nan_key_plan.accumulator_columns[0]].dtype)
-            == "int64"
-        )
-
-        unknown_schema_plan = build_gpu_aggregation_plan(tuple(), (Sum("B"),))
-        assert unknown_schema_plan is not None
-        unknown_schema_acc_col = unknown_schema_plan.accumulator_columns[0]
-        int_input = pd.DataFrame(
-            {
-                "A": pd.Series([0], dtype="int64"),
-                "B": pd.Series([1], dtype="int64"),
-            }
-        )
-        int_partial = pd.DataFrame(
-            {
-                "A": pd.Series([0], dtype="int64"),
-                unknown_schema_acc_col: pd.Series([1], dtype="int64"),
-            }
-        )
-        double_input = pd.DataFrame(
-            {
-                "A": pd.Series([0], dtype="int64"),
-                "B": pd.Series([1.0], dtype="float64"),
-            }
-        )
-        double_partial = pd.DataFrame(
-            {
-                "A": pd.Series([0], dtype="int64"),
-                unknown_schema_acc_col: pd.Series([1.0], dtype="float64"),
-            }
-        )
-
-        normalized_int_partial = unknown_schema_plan._normalize_partial_output(
-            int_partial,
-            int_input,
-            ("A",),
-            input_schema=pa.schema([("A", pa.int64()), ("B", pa.int64())]),
-        )
-        normalized_double_partial = unknown_schema_plan._normalize_partial_output(
-            double_partial,
-            double_input,
-            ("A",),
-            input_schema=pa.schema([("A", pa.int64()), ("B", pa.float64())]),
-        )
-
-        assert str(normalized_int_partial[unknown_schema_acc_col].dtype) == "int64"
-        assert str(normalized_double_partial[unknown_schema_acc_col].dtype) == "float64"
 
     def test_sum_falls_back_when_cudf_min_count_unimplemented(self):
         class _FakeAggregated:
@@ -1782,6 +1259,427 @@ class TestGPUSingleRankRoundtrip:
 
 # ---------------------------------------------------------------------------
 # GPUHashAggregateActor — real GPU aggregate paths (conditional)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# GPUAggregationPlan — real cuDF execution (conditional)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.gpu
+class TestGPUAggregationPlanReal:
+    """Exercises aggregation plan methods with real cuDF on GPU hardware."""
+
+    def test_sum_and_mean_schema_source_dtypes_use_cudf_accumulators(
+        self, ray_with_gpu
+    ):
+        import cudf
+
+        schema = pa.schema(
+            [
+                ("user_id", pa.int64()),
+                ("small", pa.int8()),
+                ("flag", pa.bool_()),
+                ("ratio", pa.float32()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Sum("small"), Mean("flag"), Sum("ratio")),
+            input_schema=schema,
+        )
+        assert plan is not None
+
+        df = cudf.DataFrame(
+            {
+                "user_id": [0, 0, 1],
+                "small": np.array([100, 100, 1], dtype=np.int8),
+                "flag": [True, True, False],
+                "ratio": np.array([1.5, 2.5, 3.5], dtype=np.float32),
+            }
+        )
+        partial = plan.partial_aggregate(df, input_schema=schema)
+
+        sum_col = plan.accumulator_columns[0]
+        mean_sum_col = plan.accumulator_columns[1]
+        float_sum_col = plan.accumulator_columns[4]
+        group_zero = partial[partial["user_id"] == 0].iloc[0]
+
+        assert str(partial[sum_col].dtype) == "int64"
+        assert str(partial[mean_sum_col].dtype) == "int64"
+        assert str(partial[float_sum_col].dtype) == "float64"
+        assert group_zero[sum_col] == 200
+        assert group_zero[mean_sum_col] == 2
+        assert group_zero[float_sum_col] == pytest.approx(4.0)
+
+    def test_empty_final_aggregate_preserves_output_dtypes(self, ray_with_gpu):
+        import cudf
+
+        schema = pa.schema(
+            [
+                ("user_id", pa.int64()),
+                ("value", pa.int8()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Count(), Sum("value"), Min("value"), Mean("value")),
+            input_schema=schema,
+        )
+        assert plan is not None
+
+        result = plan.final_aggregate(cudf.DataFrame())
+        result_table = result.to_arrow(preserve_index=False)
+        expected_schema = pa.schema(
+            [
+                ("user_id", pa.int64()),
+                ("count()", pa.int64()),
+                ("sum(value)", pa.int64()),
+                ("min(value)", pa.int64()),
+                ("mean(value)", pa.float64()),
+            ]
+        )
+        assert result_table.schema.equals(expected_schema, check_metadata=False)
+
+        global_plan = build_gpu_aggregation_plan(
+            tuple(), (Count(),), input_schema=schema
+        )
+        assert global_plan is not None
+
+        global_result = global_plan.final_aggregate(cudf.DataFrame())
+        global_table = global_result.to_arrow(preserve_index=False)
+        assert global_table.schema.equals(
+            pa.schema([("count()", pa.int64())]), check_metadata=False
+        )
+
+        runtime_plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Count(), Sum("value")),
+            input_schema=pa.schema(
+                [
+                    ("user_id", pa.int64()),
+                    ("value", pa.int8()),
+                ]
+            ),
+        )
+        assert runtime_plan is not None
+
+        runtime_result = runtime_plan.final_aggregate(
+            cudf.DataFrame(),
+            input_schema=pa.schema(
+                [
+                    ("user_id", pa.int64()),
+                    ("value", pa.int8()),
+                ]
+            ),
+        )
+        runtime_table = runtime_result.to_arrow(preserve_index=False)
+        assert runtime_table.schema.equals(
+            pa.schema(
+                [
+                    ("user_id", pa.int64()),
+                    ("count()", pa.int64()),
+                    ("sum(value)", pa.int64()),
+                ]
+            ),
+            check_metadata=False,
+        )
+
+    def test_custom_gpu_aggregate_fn_receives_input_schema(self, ray_with_gpu):
+        import cudf
+
+        class _CustomGPUAggregate(GPUAggregateFn):
+            def __init__(self) -> None:
+                super().__init__(
+                    "custom(value)",
+                    zero_factory=lambda: 0,
+                    on="value",
+                    ignore_nulls=True,
+                )
+                self.seen_schema: Optional[pa.Schema] = None
+
+            def aggregate_block(self, block: Any) -> int:
+                return 0
+
+            def combine(self, current_accumulator: int, new: int) -> int:
+                return current_accumulator + new
+
+            def gpu_required_columns(self) -> Tuple[str, ...]:
+                return ("value",)
+
+            def gpu_accumulator_columns(
+                self, accumulator_prefix: str
+            ) -> Tuple[str, ...]:
+                return (f"{accumulator_prefix}_acc",)
+
+            def gpu_partial_aggregate(
+                self,
+                df: cudf.DataFrame,
+                key_columns: Tuple[str, ...],
+                *,
+                output_name: str,
+                accumulator_prefix: str,
+                input_schema: Any = None,
+            ) -> cudf.DataFrame:
+                self.seen_schema = input_schema
+                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+                return df[[key_columns[0], "value"]].rename(columns={"value": acc_col})
+
+            def gpu_final_aggregate(
+                self,
+                df: cudf.DataFrame,
+                key_columns: Tuple[str, ...],
+                *,
+                output_name: str,
+                accumulator_prefix: str,
+            ) -> cudf.DataFrame:
+                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+                return df[[key_columns[0], acc_col]].rename(
+                    columns={acc_col: output_name}
+                )
+
+            def gpu_partial_accumulator_dtypes(
+                self,
+                df: cudf.DataFrame,
+                accumulator_prefix: str,
+                *,
+                input_schema: Any = None,
+            ) -> Dict[str, Any]:
+                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+                return {acc_col: df["value"].dtype}
+
+            def gpu_final_output_dtypes(
+                self,
+                df: cudf.DataFrame,
+                output_name: str,
+                accumulator_prefix: str,
+                *,
+                input_schema: Any = None,
+            ) -> Dict[str, Any]:
+                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+                return {output_name: df[acc_col].dtype}
+
+        schema = pa.schema([("user_id", pa.int64()), ("value", pa.int32())])
+        gpu_agg = _CustomGPUAggregate()
+        plan = build_gpu_aggregation_plan(("user_id",), (gpu_agg,), input_schema=schema)
+        assert plan is not None
+
+        partial = plan.partial_aggregate(
+            cudf.DataFrame({"user_id": [1], "value": np.array([2], dtype=np.int32)}),
+            input_schema=schema,
+        )
+        result = plan.final_aggregate(partial, input_schema=schema)
+
+        assert gpu_agg.seen_schema is schema
+        assert partial.to_pandas().to_dict("list") == {
+            "user_id": [1],
+            plan.accumulator_columns[0]: [2],
+        }
+        assert str(partial[plan.accumulator_columns[0]].dtype) == "int32"
+        assert result.to_pandas().to_dict("list") == {
+            "user_id": [1],
+            "custom(value)": [2],
+        }
+        assert str(result["custom(value)"].dtype) == "int32"
+
+    def test_null_reductions_preserve_groups_and_accumulator_dtypes(
+        self, ray_with_gpu, monkeypatch
+    ):
+        import cudf
+
+        original_group_aggregate = hash_aggregate._group_aggregate
+        original_group_count = hash_aggregate._group_count
+
+        def _drop_all_null_group_aggregate(
+            df, key_columns, target_column, aggregate_name, output_column
+        ):
+            result = original_group_aggregate(
+                df, key_columns, target_column, aggregate_name, output_column
+            )
+            counts = original_group_count(df, key_columns, target_column, "__count")
+            non_null_keys = counts[counts["__count"] > 0][list(key_columns)]
+            result = result.merge(non_null_keys, on=list(key_columns), how="inner")
+            if output_column in result.columns:
+                result[output_column] = result[output_column].astype("float64")
+            return result
+
+        def _drop_zero_group_counts(df, key_columns, target_column, output_column):
+            result = original_group_count(df, key_columns, target_column, output_column)
+            return result[result[output_column] > 0]
+
+        monkeypatch.setattr(
+            hash_aggregate, "_group_aggregate", _drop_all_null_group_aggregate
+        )
+        monkeypatch.setattr(hash_aggregate, "_group_count", _drop_zero_group_counts)
+
+        schema = pa.schema([("user_id", pa.int64())])
+        plan = build_gpu_aggregation_plan(
+            ("user_id",), (Sum("value"),), input_schema=schema
+        )
+        assert plan is not None
+        acc_col = plan.accumulator_columns[0]
+
+        df = cudf.DataFrame(
+            {
+                "user_id": [0, 1, 2, 0],
+                "value": cudf.Series([None, None, None, None], dtype="int64"),
+            }
+        )
+        partial = plan.partial_aggregate(df)
+        assert str(partial[acc_col].dtype) == "int64"
+
+        result = (
+            plan.final_aggregate(partial)
+            .to_pandas()
+            .sort_values("user_id")
+            .reset_index(drop=True)
+        )
+        assert result["user_id"].tolist() == [0, 1, 2]
+        assert result["sum(value)"].isna().all()
+
+        count_plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (Count("value", ignore_nulls=True),),
+            input_schema=schema,
+        )
+        assert count_plan is not None
+
+        count_partial = count_plan.partial_aggregate(df)
+        count_result = (
+            count_plan.final_aggregate(count_partial)
+            .to_pandas()
+            .sort_values("user_id")
+            .reset_index(drop=True)
+        )
+        assert count_result.to_dict("records") == [
+            {"user_id": 0, "count(value)": 0},
+            {"user_id": 1, "count(value)": 0},
+            {"user_id": 2, "count(value)": 0},
+        ]
+
+    def test_partial_aggregate_widens_shuffle_key_to_logical_schema(self, ray_with_gpu):
+        import cudf
+
+        logical_schema = pa.schema(
+            [
+                ("user_id", pa.int32()),
+                ("value", pa.int64()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("user_id",), (Sum("value"),), input_schema=logical_schema
+        )
+        assert plan is not None
+
+        df = cudf.DataFrame(
+            {
+                "user_id": np.array([1], dtype=np.int8),
+                "value": np.array([1], dtype=np.int64),
+            }
+        )
+        partial = plan.partial_aggregate(
+            df,
+            input_schema=pa.schema([("user_id", pa.int8()), ("value", pa.int64())]),
+        )
+
+        assert partial["user_id"].iloc[0] == 1
+        assert str(partial["user_id"].dtype) == "int32"
+
+    def test_global_count_partial_aggregate(self, ray_with_gpu):
+        import cudf
+
+        plan = build_gpu_aggregation_plan(tuple(), (Count(),))
+        assert plan is not None
+
+        df = cudf.DataFrame(index=range(3))
+        partial = plan.partial_aggregate(df)
+        assert partial[plan.accumulator_columns[0]].iloc[0] == 3
+
+    def test_normalize_partial_output_null_key_column(self, ray_with_gpu):
+        import cudf
+
+        nan_key_plan = build_gpu_aggregation_plan(
+            ("item",), (Count(),), input_schema=pa.schema([("item", pa.null())])
+        )
+        nan_key_partial = cudf.DataFrame(
+            {
+                "item": cudf.Series([None], dtype="float64"),
+                nan_key_plan.accumulator_columns[0]: np.array([1], dtype=np.int64),
+            }
+        )
+        normalized_nan_key_partial = nan_key_plan._normalize_partial_output(
+            nan_key_partial,
+            nan_key_partial,
+            ("item",),
+            input_schema=pa.schema([("item", pa.null())]),
+        )
+
+        assert str(normalized_nan_key_partial["item"].dtype) == "float64"
+        assert (
+            str(normalized_nan_key_partial[nan_key_plan.accumulator_columns[0]].dtype)
+            == "int64"
+        )
+
+    def test_normalize_partial_output_unknown_schema_widening(self, ray_with_gpu):
+        import cudf
+
+        unknown_schema_plan = build_gpu_aggregation_plan(tuple(), (Sum("B"),))
+        assert unknown_schema_plan is not None
+        unknown_schema_acc_col = unknown_schema_plan.accumulator_columns[0]
+        int_input = cudf.DataFrame({"A": [0], "B": np.array([1], dtype=np.int64)})
+        int_partial = cudf.DataFrame(
+            {
+                "A": np.array([0], dtype=np.int64),
+                unknown_schema_acc_col: np.array([1], dtype=np.int64),
+            }
+        )
+        double_input = cudf.DataFrame(
+            {"A": [0], "B": np.array([1.0], dtype=np.float64)}
+        )
+        double_partial = cudf.DataFrame(
+            {
+                "A": np.array([0], dtype=np.int64),
+                unknown_schema_acc_col: np.array([1.0], dtype=np.float64),
+            }
+        )
+
+        normalized_int_partial = unknown_schema_plan._normalize_partial_output(
+            int_partial,
+            int_input,
+            ("A",),
+            input_schema=pa.schema([("A", pa.int64()), ("B", pa.int64())]),
+        )
+        normalized_double_partial = unknown_schema_plan._normalize_partial_output(
+            double_partial,
+            double_input,
+            ("A",),
+            input_schema=pa.schema([("A", pa.int64()), ("B", pa.float64())]),
+        )
+
+        assert str(normalized_int_partial[unknown_schema_acc_col].dtype) == "int64"
+        assert str(normalized_double_partial[unknown_schema_acc_col].dtype) == "float64"
+
+    def test_unsupported_cudf_dtype_cast_is_noop(self, monkeypatch):
+        cudf = pytest.importorskip("cudf")
+
+        df = cudf.DataFrame({"value": np.array([1, 2], dtype=np.int64)})
+
+        def raise_type_error(_self):
+            raise TypeError("unsupported cuDF dtype")
+
+        monkeypatch.setattr(hash_aggregate.DataType, "to_cudf_type", raise_type_error)
+
+        hash_aggregate._cast_column_to_dtype(
+            df, "value", hash_aggregate.DataType.from_numpy("int64")
+        )
+
+        assert df["value"].to_pandas().tolist() == [1, 2]
+        assert str(df["value"].dtype) == "int64"
+
+
+# ---------------------------------------------------------------------------
+# GPUHashAggregateActor — real GPU paths (conditional)
 # ---------------------------------------------------------------------------
 
 

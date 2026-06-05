@@ -16,10 +16,8 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
-    TypeAlias,
 )
 
-import numpy as np
 import pyarrow as pa
 
 import ray
@@ -42,19 +40,12 @@ from ray.data.block import (
     Schema,
 )
 from ray.data.context import DataContext
+from ray.data.datatype import DataType
 
 if typing.TYPE_CHECKING:
     import cudf
-    from pandas.api.extensions import ExtensionDtype
 
     from ray.data._internal.progress.base_progress import BaseProgressBar
-
-    # Column / cast dtypes: Arrow schemas, Pandas block schemas, and cuDF columns.
-    DTypeLike: TypeAlias = (
-        str | pa.DataType | np.dtype[np.generic] | ExtensionDtype | cudf.dtype
-    )
-else:
-    DTypeLike: TypeAlias = str | pa.DataType | np.dtype[np.generic]
 
 
 logger = logging.getLogger(__name__)
@@ -137,20 +128,36 @@ def _group_aggregate(
     return out.rename(columns={out.columns[-1]: output_column})
 
 
-def _get_column_dtype(df: cudf.DataFrame, column: str) -> Optional[DTypeLike]:
-    """Get the dtype of a column from a ``cudf.DataFrame``.
+def to_datatypes(
+    dtypes: Dict[str, Any],
+) -> Dict[str, Optional[DataType]]:
+    """Convert a dict of column names and dtypes to ``DataType`` values."""
+    return {column: DataType.from_dtype(dtype) for column, dtype in dtypes.items()}
+
+
+def _cudf_column_dtype(df: cudf.DataFrame, column: str) -> Optional[DataType]:
+    """Get the DataType of a column from a ``cudf.DataFrame``.
 
     Returns None if the column is not found.
     """
     if column not in df.columns:
         return None
-    return df[column].dtype
+
+    raw_dtype = df[column].dtype
+    try:
+        import cudf
+
+        if isinstance(df, cudf.DataFrame):
+            return DataType.from_cudf(raw_dtype)
+    except (AttributeError, ImportError, TypeError):
+        pass
+    return DataType.from_dtype(raw_dtype)
 
 
 def _schema_column_dtype(
     schema: Optional[Schema], column: Optional[str]
-) -> Optional[DTypeLike]:
-    """Get the logical dtype of a column from a ``Schema`` (Arrow or Pandas).
+) -> Optional[DataType]:
+    """Get the DataType of a column from a ``Schema`` (Arrow or Pandas).
 
     Returns None if the column is not found (or None).
     """
@@ -166,185 +173,94 @@ def _schema_column_dtype(
         return None
 
     if isinstance(schema, pa.Schema):
-        return schema.field(column).type
+        return DataType.from_dtype(schema.field(column).type)
 
     if isinstance(schema, PandasBlockSchema):
-        return schema.types[names.index(column)]
+        return DataType.from_dtype(schema.types[names.index(column)])
 
     return None
 
 
-def _is_null_dtype(dtype: Optional[DTypeLike]) -> bool:
-    """Check if a dtype is null-like (including PyArrow null type)."""
-    if dtype is None:
-        return False
-
-    if isinstance(dtype, pa.DataType):
-        return pa.types.is_null(dtype)
-
-    return str(dtype) == "null"
-
-
-def _is_boolean_dtype(dtype: Optional[DTypeLike]) -> bool:
-    """True if ``dtype`` is boolean-like."""
-    if dtype is None:
-        return False
-
-    if isinstance(dtype, pa.DataType):
-        return pa.types.is_boolean(dtype)
-
-    try:
-        from pandas.api.types import is_bool_dtype
-
-        return is_bool_dtype(dtype)
-    except (ImportError, TypeError):
-        return False
-
-
-def _is_floating_dtype(dtype: Optional[DTypeLike]) -> bool:
-    """True if ``dtype`` is floating-point."""
-    if dtype is None:
-        return False
-
-    if isinstance(dtype, pa.DataType):
-        return pa.types.is_floating(dtype)
-
-    try:
-        from pandas.api.types import is_float_dtype
-
-        return is_float_dtype(dtype)
-    except (ImportError, TypeError):
-        return False
-
-
-def _is_integer_dtype(dtype: Optional[DTypeLike]) -> bool:
-    """True if ``dtype`` is integer-like, excluding booleans."""
-    if dtype is None:
-        return False
-
-    if isinstance(dtype, pa.DataType):
-        return pa.types.is_integer(dtype)
-
-    try:
-        from pandas.api.types import is_bool_dtype, is_integer_dtype
-
-        return is_integer_dtype(dtype) and not is_bool_dtype(dtype)
-    except (ImportError, TypeError):
-        return False
-
-
-def _is_uint64_dtype(dtype: Optional[DTypeLike]) -> bool:
-    """True if ``dtype`` is uint64-like."""
-    if dtype is None:
-        return False
-
-    if isinstance(dtype, pa.DataType):
-        return pa.types.is_uint64(dtype)
-
-    try:
-        from pandas.api.types import is_unsigned_integer_dtype
-
-        itemsize = getattr(dtype, "itemsize", None)
-        if itemsize is None:
-            itemsize = np.dtype(dtype).itemsize
-        return is_unsigned_integer_dtype(dtype) and itemsize == 8
-    except (ImportError, TypeError, ValueError):
-        return False
-
-
-def _reduction_dtype(
-    dtype: Optional[DTypeLike], aggregation: str
-) -> Optional[DTypeLike]:
+def _reduction_dtype(dtype: Optional[DataType], aggregation: str) -> Optional[DataType]:
     """Return the CPU aggregate path's scalar reduction dtype for common dtypes."""
     if dtype is None:
         return None
 
-    if _is_null_dtype(dtype):
-        return "float64" if aggregation == "mean" else "int64"
+    if dtype.is_null_type():
+        return DataType.from_numpy("float64" if aggregation == "mean" else "int64")
 
     if aggregation in ("sum", "mean"):
-        if _is_boolean_dtype(dtype):
-            return "int64"
-        if _is_integer_dtype(dtype):
-            return "uint64" if _is_uint64_dtype(dtype) else "int64"
-        if _is_floating_dtype(dtype):
-            return "float64"
+        if dtype.is_boolean_type():
+            return DataType.from_numpy("int64")
+        if dtype.is_integer_type():
+            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
+        if dtype.is_floating_type():
+            return DataType.from_numpy("float64")
 
     if aggregation in ("min", "max"):
-        if _is_boolean_dtype(dtype):
-            return "bool"
-        if _is_integer_dtype(dtype):
-            return "uint64" if _is_uint64_dtype(dtype) else "int64"
-        if _is_floating_dtype(dtype):
-            return "float64"
+        if dtype.is_boolean_type():
+            return DataType.from_numpy("bool")
+        if dtype.is_integer_type():
+            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
+        if dtype.is_floating_type():
+            return DataType.from_numpy("float64")
 
     return None
 
 
-def _normalize_intermediate_dtype(
-    dtype: Optional[DTypeLike], aggregation: str
-) -> Optional[DTypeLike]:
-    """Normalize an intermediate dtype to a canonical ``cudf.dtype`` string.
+def _resolve_null_dtype(
+    dtype: Optional[DataType], aggregation: str
+) -> Optional[DataType]:
+    """Choose a concrete data type for null schema types.
 
-    Null dtypes are converted to ``float64`` for ``key`` and ``mean`` aggregations,
-    and ``int64`` otherwise.
+    Used for GPU shuffle key and accumulator columns whose input schema is
+    ``pa.null()`` (e.g. all-null columns with unknown type or empty columns).
+
+    Non-null dtypes are returned unchanged.
+
+    ``float64`` is used for shuffle keys and ``mean`` accumulators so those
+    columns can hold NaN/null values; ``int64`` is used for other accumulators.
     """
-    if isinstance(dtype, pa.DataType):
-        if pa.types.is_null(dtype):
-            return "float64" if aggregation in ("key", "mean") else "int64"
-        if pa.types.is_int8(dtype):
-            return "int8"
-        if pa.types.is_int16(dtype):
-            return "int16"
-        if pa.types.is_int32(dtype):
-            return "int32"
-        if pa.types.is_int64(dtype):
-            return "int64"
-        if pa.types.is_uint8(dtype):
-            return "uint8"
-        if pa.types.is_uint16(dtype):
-            return "uint16"
-        if pa.types.is_uint32(dtype):
-            return "uint32"
-        if pa.types.is_uint64(dtype):
-            return "uint64"
-        if pa.types.is_float32(dtype):
-            return "float32"
-        if pa.types.is_float64(dtype):
-            return "float64"
-        if pa.types.is_boolean(dtype):
-            return "bool"
-        if pa.types.is_string(dtype) or pa.types.is_large_string(dtype):
-            return "str"
-
-    if _is_null_dtype(dtype):
-        return "float64" if aggregation in ("key", "mean") else "int64"
+    if dtype is None:
+        return None
+    if dtype.is_null_type():
+        return DataType.from_numpy(
+            "float64" if aggregation in ("key", "mean") else "int64"
+        )
     return dtype
 
 
 def _cast_column_to_dtype(
-    df: cudf.DataFrame, column: str, dtype: Optional[DTypeLike]
+    df: cudf.DataFrame, column: str, dtype: Optional[DataType]
 ) -> None:
     """Cast a ``cudf.DataFrame`` column to specified dtype in place."""
     if dtype is None or column not in df.columns:
         return
+    dtype = DataType.from_dtype(dtype)
+    if dtype is None:
+        return
 
     try:
-        df[column] = df[column].astype(dtype)
+        cast_dtype = dtype.to_cudf_type()
+    except (TypeError, ValueError, NotImplementedError):
+        return
+
+    try:
+        df[column] = df[column].astype(cast_dtype)
     except (TypeError, ValueError, NotImplementedError):
         # fallback for handling all-null columns
-        try:
-            import cudf
+        is_all_null = len(df) == 0 or bool(df[column].isnull().all())
+        if not is_all_null:
+            return
 
-            is_all_null = len(df) == 0 or bool(df[column].isnull().all())
-            if isinstance(df, cudf.DataFrame) and is_all_null:
-                df[column] = cudf.Series([None] * len(df), dtype=dtype)
-        except (ImportError, TypeError, ValueError, NotImplementedError):
-            pass
+        import cudf
+
+        if isinstance(df, cudf.DataFrame) and hasattr(cudf, "Series"):
+            df[column] = cudf.Series([None] * len(df), dtype=cast_dtype)
 
 
 def _fill_missing_count(
-    result: cudf.DataFrame, count_column: str, dtype: Optional[DTypeLike] = None
+    result: cudf.DataFrame, count_column: str, dtype: Optional[DataType] = None
 ) -> None:
     """Fill missing counts with 0 and cast to specified dtype."""
     if count_column not in result.columns:
@@ -355,7 +271,7 @@ def _fill_missing_count(
 
 
 def _fill_missing_reduction(
-    result: cudf.DataFrame, reduction_column: str, dtype: Optional[DTypeLike] = None
+    result: cudf.DataFrame, reduction_column: str, dtype: Optional[DataType] = None
 ) -> None:
     """Fill any missing reduction values with None and cast to specified dtype."""
     if reduction_column not in result.columns:
@@ -378,7 +294,7 @@ def _all_counts_zero(df: cudf.DataFrame, count_column: str) -> bool:
 def _empty_dataframe(
     cudf_module: types.ModuleType,
     columns: Sequence[str],
-    dtypes: Optional[Dict[str, Optional[DTypeLike]]] = None,
+    dtypes: Optional[Dict[str, Optional[DataType]]] = None,
 ) -> cudf.DataFrame:
     """Create an empty ``cudf.DataFrame`` with specified columns and dtypes."""
     dtypes = dtypes or {}
@@ -445,7 +361,7 @@ class GPUAggregateFn(AggregateFnV2):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         """Return preferred dtypes for partial GPU accumulator columns."""
         return {
             column: None for column in self.gpu_accumulator_columns(accumulator_prefix)
@@ -456,7 +372,7 @@ class GPUAggregateFn(AggregateFnV2):
         output_name: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, pa.DataType]:
         """Return Arrow output type overrides for GPU final outputs."""
         return {}
 
@@ -467,7 +383,7 @@ class GPUAggregateFn(AggregateFnV2):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         """Return preferred GPU dtypes for final output columns."""
         return {}
 
@@ -489,7 +405,7 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         self,
         agg: AggregateFnV2,
         *,
-        source_dtype: Optional[DTypeLike] = None,
+        source_dtype: Optional[DataType] = None,
     ) -> None:
         self._wrapped = agg
         self.source_dtype = source_dtype
@@ -584,7 +500,7 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         """Return preferred dtypes for partial accumulator columns."""
         accumulator_columns = self.gpu_accumulator_columns(accumulator_prefix)
         return {
@@ -616,7 +532,7 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
         size_col = f"{accumulator_prefix}_partial_size"
         count_col = f"{accumulator_prefix}_partial_count"
-        acc_dtype = _get_column_dtype(df, acc_col)
+        acc_dtype = _cudf_column_dtype(df, acc_col)
 
         result, _ = self._group_with_optional_reduction(
             df,
@@ -639,13 +555,13 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         output_name: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, pa.DataType]:
         """Return the CPU Arrow types for the final output column."""
         source_dtype = self.source_dtype
         if source_dtype is None:
             source_dtype = _schema_column_dtype(input_schema, self.target_column)
 
-        if not _is_null_dtype(source_dtype):
+        if source_dtype is None or not source_dtype.is_null_type():
             return {}
 
         return {output_name: pa.null()}
@@ -654,7 +570,7 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         self,
         df: cudf.DataFrame,
         input_schema: Optional[Schema] = None,
-    ) -> Any:
+    ) -> Optional[DataType]:
         """Return the preferred GPU dtype for the target accumulator column.
 
         This specifies widened reduction dtypes for common dtypes to avoid overflows."""
@@ -663,17 +579,17 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
             reduction_dtype = _reduction_dtype(dtype, self._cudf_aggregate_name)
             if reduction_dtype is not None:
                 return reduction_dtype
-            return _normalize_intermediate_dtype(dtype, self._cudf_aggregate_name)
+            return _resolve_null_dtype(dtype, self._cudf_aggregate_name)
 
         dtype = _schema_column_dtype(input_schema, self.target_column)
         if dtype is not None:
             reduction_dtype = _reduction_dtype(dtype, self._cudf_aggregate_name)
             if reduction_dtype is not None:
                 return reduction_dtype
-            return _normalize_intermediate_dtype(dtype, self._cudf_aggregate_name)
+            return _resolve_null_dtype(dtype, self._cudf_aggregate_name)
 
-        dtype = _get_column_dtype(df, self.target_column)
-        return _normalize_intermediate_dtype(dtype, self._cudf_aggregate_name)
+        dtype = _cudf_column_dtype(df, self.target_column)
+        return _resolve_null_dtype(dtype, self._cudf_aggregate_name)
 
     def gpu_final_output_dtypes(
         self,
@@ -682,9 +598,9 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         """Return preferred GPU dtypes for final output columns on empty partitions."""
-        acc_dtype = _get_column_dtype(
+        acc_dtype = _cudf_column_dtype(
             df, self.gpu_accumulator_columns(accumulator_prefix)[0]
         )
         if acc_dtype is None:
@@ -702,10 +618,10 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         *,
         size_col: str,
         count_col: str,
-    ) -> Tuple[cudf.DataFrame, Any]:
+    ) -> Tuple[cudf.DataFrame, Optional[DataType]]:
         """Return a cuDF DataFrame with group size and count columns."""
         sizes = _group_size(df, key_columns, size_col)
-        count_dtype = _get_column_dtype(sizes, size_col)
+        count_dtype = _cudf_column_dtype(sizes, size_col)
         counts = _group_count(df, key_columns, target_column, count_col)
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
@@ -736,8 +652,8 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         count_col: str,
         aggregate_name: str,
         output_column: str,
-        output_dtype: Optional[DTypeLike],
-    ) -> Tuple[cudf.DataFrame, Any]:
+        output_dtype: Optional[DataType],
+    ) -> Tuple[cudf.DataFrame, Optional[DataType]]:
         """Group by key columns and aggregate the value column if the group counts are
         not all zero."""
         result, count_dtype = self._group_size_and_count(
@@ -768,7 +684,7 @@ class GPUCount(_BuiltinGPUAggregateFn):
 
     _cudf_aggregate_name = "count"
 
-    def __init__(self, agg: Count, *, source_dtype: Optional[DTypeLike] = None) -> None:
+    def __init__(self, agg: Count, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
 
     def gpu_empty_global_partial_values(
@@ -783,16 +699,16 @@ class GPUCount(_BuiltinGPUAggregateFn):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         accumulator_columns = self.gpu_accumulator_columns(accumulator_prefix)
-        return {accumulator_columns[0]: "int64"}
+        return {accumulator_columns[0]: DataType.from_numpy("int64")}
 
     def gpu_final_arrow_types(
         self,
         output_name: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, pa.DataType]:
         return {}
 
     def gpu_partial_aggregate(
@@ -809,7 +725,7 @@ class GPUCount(_BuiltinGPUAggregateFn):
             return _group_size(df, key_columns, acc_col)
 
         sizes = _group_size(df, key_columns, acc_col)
-        count_dtype = _get_column_dtype(sizes, acc_col)
+        count_dtype = _cudf_column_dtype(sizes, acc_col)
         counts = _group_count(df, key_columns, self.target_column, acc_col)
         result = sizes[list(key_columns)].merge(
             counts, on=list(key_columns), how="left"
@@ -836,8 +752,8 @@ class GPUCount(_BuiltinGPUAggregateFn):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
-        return {output_name: "int64"}
+    ) -> Dict[str, Optional[DataType]]:
+        return {output_name: DataType.from_numpy("int64")}
 
 
 class GPUSum(_BuiltinGPUAggregateFn):
@@ -845,7 +761,7 @@ class GPUSum(_BuiltinGPUAggregateFn):
 
     _cudf_aggregate_name = "sum"
 
-    def __init__(self, agg: Sum, *, source_dtype: Optional[DTypeLike] = None) -> None:
+    def __init__(self, agg: Sum, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
 
     def gpu_empty_global_partial_values(
@@ -860,7 +776,7 @@ class GPUMin(_BuiltinGPUAggregateFn):
 
     _cudf_aggregate_name = "min"
 
-    def __init__(self, agg: Min, *, source_dtype: Optional[DTypeLike] = None) -> None:
+    def __init__(self, agg: Min, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
 
     def _zero_factory(self) -> Any:
@@ -878,7 +794,7 @@ class GPUMax(_BuiltinGPUAggregateFn):
 
     _cudf_aggregate_name = "max"
 
-    def __init__(self, agg: Max, *, source_dtype: Optional[DTypeLike] = None) -> None:
+    def __init__(self, agg: Max, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
 
     def _zero_factory(self) -> Any:
@@ -896,7 +812,7 @@ class GPUMean(_BuiltinGPUAggregateFn):
 
     _cudf_aggregate_name = "mean"
 
-    def __init__(self, agg: Mean, *, source_dtype: Optional[DTypeLike] = None) -> None:
+    def __init__(self, agg: Mean, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
 
     def _zero_factory(self) -> Any:
@@ -923,14 +839,14 @@ class GPUMean(_BuiltinGPUAggregateFn):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         sum_col, count_col, null_count_col = self.gpu_accumulator_columns(
             accumulator_prefix
         )
         return {
             sum_col: self._target_accumulator_dtype(df, input_schema=input_schema),
-            count_col: "int64",
-            null_count_col: "int64",
+            count_col: DataType.from_numpy("int64"),
+            null_count_col: DataType.from_numpy("int64"),
         }
 
     def gpu_partial_aggregate(
@@ -982,7 +898,7 @@ class GPUMean(_BuiltinGPUAggregateFn):
         final_sum_col = f"{accumulator_prefix}_final_sum"
         final_count_col = f"{accumulator_prefix}_final_count"
         final_null_count_col = f"{accumulator_prefix}_final_null_count"
-        sum_dtype = _get_column_dtype(df, sum_col)
+        sum_dtype = _cudf_column_dtype(df, sum_col)
 
         counts = _group_aggregate(df, key_columns, count_col, "sum", final_count_col)
         null_counts = _group_aggregate(
@@ -1010,8 +926,8 @@ class GPUMean(_BuiltinGPUAggregateFn):
         accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
-        return {output_name: "float64"}
+    ) -> Dict[str, Optional[DataType]]:
+        return {output_name: DataType.from_numpy("float64")}
 
 
 class GPUAggregationPlan:
@@ -1084,23 +1000,25 @@ class GPUAggregationPlan:
         df: cudf.DataFrame,
         key_columns: Tuple[str, ...],
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
-        dtypes: Dict[str, Any] = {}
+    ) -> Dict[str, Optional[DataType]]:
+        dtypes: Dict[str, Optional[DataType]] = {}
         for column in key_columns:
             if column not in df.columns:
                 continue
             dtype = self._effective_column_dtype(column, input_schema)
             if dtype is not None:
-                dtype = _normalize_intermediate_dtype(dtype, "key")
+                dtype = _resolve_null_dtype(dtype, "key")
             else:
-                dtype = _get_column_dtype(df, column)
+                dtype = _cudf_column_dtype(df, column)
             dtypes[column] = dtype
         for agg, _, accumulator_prefix in self._iter_aggregations():
             dtypes.update(
-                agg.gpu_partial_accumulator_dtypes(
-                    df,
-                    accumulator_prefix,
-                    input_schema=input_schema,
+                to_datatypes(
+                    agg.gpu_partial_accumulator_dtypes(
+                        df,
+                        accumulator_prefix,
+                        input_schema=input_schema,
+                    )
                 )
             )
         return dtypes
@@ -1131,13 +1049,18 @@ class GPUAggregationPlan:
 
         for column in self.required_columns:
             observed_dtype = _schema_column_dtype(observed, column)
-            if observed_dtype is None or not isinstance(observed_dtype, pa.DataType):
+            if observed_dtype is None:
+                continue
+
+            try:
+                observed_arrow_dtype = observed_dtype.to_arrow_dtype()
+            except (AssertionError, TypeError, pa.ArrowNotImplementedError):
                 continue
 
             current_dtype = fields.get(column)
-            if current_dtype is None or _is_null_dtype(current_dtype):
-                fields[column] = observed_dtype
-            elif not current_dtype.equals(observed_dtype):
+            if current_dtype is None or pa.types.is_null(current_dtype):
+                fields[column] = observed_arrow_dtype
+            elif not current_dtype.equals(observed_arrow_dtype):
                 # Unify schemas using arrow_ops
                 try:
                     from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -1148,7 +1071,7 @@ class GPUAggregationPlan:
                         unify_schemas(
                             [
                                 pa.schema([(column, current_dtype)]),
-                                pa.schema([(column, observed_dtype)]),
+                                pa.schema([(column, observed_arrow_dtype)]),
                             ],
                             promote_types=True,
                         )
@@ -1176,7 +1099,7 @@ class GPUAggregationPlan:
 
     def _effective_column_dtype(
         self, column: str, runtime_input_schema: Optional[Schema] = None
-    ) -> Optional[DTypeLike]:
+    ) -> Optional[DataType]:
         dtype = _schema_column_dtype(self._input_schema, column)
         if dtype is not None:
             return dtype
@@ -1184,9 +1107,9 @@ class GPUAggregationPlan:
 
     def _final_arrow_types(
         self, input_schema: Optional[Schema] = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, pa.DataType]:
         input_schema = self._effective_input_schema(input_schema)
-        types: Dict[str, Any] = {}
+        types: Dict[str, pa.DataType] = {}
         for agg, output_name, _ in self._iter_aggregations():
             types.update(
                 agg.gpu_final_arrow_types(
@@ -1200,26 +1123,28 @@ class GPUAggregationPlan:
         self,
         df: cudf.DataFrame,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Optional[DataType]]:
         input_schema = self._effective_input_schema(input_schema)
-        dtypes: Dict[str, Any] = {}
+        dtypes: Dict[str, Optional[DataType]] = {}
 
         if not self._is_global:
             for column in self._shuffle_key_columns:
                 dtype = self._effective_column_dtype(column, input_schema)
                 if dtype is not None:
-                    dtype = _normalize_intermediate_dtype(dtype, "key")
+                    dtype = _resolve_null_dtype(dtype, "key")
                 else:
-                    dtype = _get_column_dtype(df, column)
+                    dtype = _cudf_column_dtype(df, column)
                 dtypes[column] = dtype
 
         for agg, output_name, accumulator_prefix in self._iter_aggregations():
             dtypes.update(
-                agg.gpu_final_output_dtypes(
-                    df,
-                    output_name,
-                    accumulator_prefix,
-                    input_schema=input_schema,
+                to_datatypes(
+                    agg.gpu_final_output_dtypes(
+                        df,
+                        output_name,
+                        accumulator_prefix,
+                        input_schema=input_schema,
+                    )
                 )
             )
         return dtypes

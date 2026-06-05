@@ -104,7 +104,7 @@ def _factory_methods(cls: type):
 @dataclass
 @_factory_methods
 class DataType:
-    """A simplified Ray Data DataType supporting Arrow, NumPy, and Python types."""
+    """A simplified Ray Data DataType supporting Arrow, NumPy, Python, and cuDF types."""
 
     # Physical dtype: The concrete type implementation (e.g., pa.list_(pa.int64()), np.float64, str)
     _physical_dtype: Union[pa.DataType, np.dtype, type]
@@ -227,12 +227,73 @@ class DataType:
                 if isinstance(pandas_dtype, np.dtype):
                     return pandas_dtype
                 else:
-                    # If pandas returns an extension dtype, fall back to object
-                    return np.dtype("object")
-            except (TypeError, NotImplementedError, pa.ArrowNotImplementedError):
+                    return np.dtype(pandas_dtype)
+            except (
+                TypeError,
+                ValueError,
+                NotImplementedError,
+                pa.ArrowNotImplementedError,
+            ):
                 return np.dtype("object")
         else:
             return np.dtype("object")
+
+    def to_cudf_type(self) -> Any:
+        """Convert the DataType to a dtype accepted by cuDF.
+
+        cuDF is imported lazily so Ray Data can be imported in environments that
+        don't install GPU dependencies.
+
+        Returns:
+            A dtype object accepted by ``cudf.Series.astype``.
+
+        Raises:
+            ImportError: If cuDF isn't installed.
+            TypeError: If this DataType can't be represented as a cuDF dtype.
+        """
+        try:
+            import cudf
+        except ImportError as exc:
+            raise ImportError(
+                "DataType.to_cudf_type() requires cuDF to be installed."
+            ) from exc
+
+        # simple types
+        if self.is_numpy_type():
+            return cudf.dtype(self._physical_dtype)
+
+        if self.is_python_type():
+            return cudf.dtype(self._physical_dtype)
+
+        pa_type = self._physical_dtype
+        if pa.types.is_string(pa_type) or pa.types.is_large_string(pa_type):
+            return "str"
+        if pa.types.is_null(pa_type):
+            raise TypeError("PyArrow null type can't be represented as a cuDF dtype.")
+
+        # try to convert to a numpy dtype first
+        numpy_dtype = self.to_numpy_dtype()
+        if numpy_dtype != np.dtype("object"):
+            return cudf.dtype(numpy_dtype)
+
+        # handle complex types
+        try:
+            from cudf.core import dtypes as cudf_dtypes
+
+            if pa.types.is_decimal(pa_type):
+                if pa_type.precision <= 9:
+                    return cudf_dtypes.Decimal32Dtype.from_arrow(pa_type)
+                if pa_type.precision <= 18:
+                    return cudf_dtypes.Decimal64Dtype.from_arrow(pa_type)
+                return cudf_dtypes.Decimal128Dtype.from_arrow(pa_type)
+            if pa.types.is_list(pa_type) or pa.types.is_large_list(pa_type):
+                return cudf_dtypes.ListDtype.from_arrow(pa_type)
+            if pa.types.is_struct(pa_type):
+                return cudf_dtypes.StructDtype.from_arrow(pa_type)
+        except (AttributeError, TypeError, ValueError):
+            pass
+
+        raise TypeError(f"DataType {self} can't be represented as a cuDF dtype.")
 
     def to_python_type(self) -> type:
         """Get the internal type if it's a Python type.
@@ -303,6 +364,127 @@ class DataType:
         if isinstance(numpy_dtype, str):
             numpy_dtype = np.dtype(numpy_dtype)
         return cls(_physical_dtype=numpy_dtype)
+
+    @classmethod
+    def from_cudf(cls, cudf_dtype: Any) -> "DataType":
+        """Create a DataType from a cuDF dtype.
+
+        cuDF is imported lazily so this method doesn't affect non-GPU
+        environments. The resulting DataType remains backed by Arrow, NumPy, or
+        Python types; cuDF dtype objects aren't stored directly.
+        """
+        try:
+            import cudf
+        except ImportError as exc:
+            raise ImportError(
+                "DataType.from_cudf() requires cuDF to be installed."
+            ) from exc
+
+        if not hasattr(cudf, "dtype"):
+            raise TypeError("cudf.dtype is not available.")
+
+        try:
+            normalized_dtype = cudf.dtype(cudf_dtype)
+        except (TypeError, ValueError):
+            normalized_dtype = cudf_dtype
+
+        if isinstance(normalized_dtype, np.dtype):
+            return cls.from_numpy(normalized_dtype)
+
+        to_arrow = getattr(normalized_dtype, "to_arrow", None)
+        if callable(to_arrow):
+            try:
+                arrow_dtype = to_arrow()
+                if isinstance(arrow_dtype, pa.DataType):
+                    return cls.from_arrow(arrow_dtype)
+            except (TypeError, ValueError, NotImplementedError):
+                pass
+
+        try:
+            return cls.from_numpy(np.dtype(normalized_dtype))
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                f"Cannot create DataType from cuDF dtype {cudf_dtype!r}."
+            ) from exc
+
+    @classmethod
+    def from_dtype(cls, dtype: Any) -> Optional["DataType"]:
+        """Convert a raw dtype object to ``DataType``, if supported.
+
+        Unlike :meth:`infer_dtype`, this accepts dtype descriptors (PyArrow,
+        NumPy, pandas extension, cuDF, etc.) rather than Python values.
+
+        Args:
+            dtype: A dtype object from any supported type system.
+
+        Returns:
+            The corresponding ``DataType``, or ``None`` if conversion is not
+            supported.
+        """
+        # shortcut if None or already a DataType
+        if dtype is None or isinstance(dtype, DataType):
+            return dtype
+
+        # simple types
+        if isinstance(dtype, pa.DataType):
+            return cls.from_arrow(dtype)
+        if isinstance(dtype, np.dtype):
+            return cls.from_numpy(dtype)
+        if isinstance(dtype, str):
+            try:
+                return cls.from_numpy(np.dtype(dtype))
+            except (TypeError, ValueError):
+                pass
+
+        if isinstance(dtype, type):
+            if issubclass(dtype, np.generic):
+                return cls.from_numpy(np.dtype(dtype))
+            return cls(dtype)
+
+        # complex types
+        try:
+            import pandas as pd
+            from pandas.api.extensions import ExtensionDtype
+
+            if isinstance(dtype, ExtensionDtype):
+                if isinstance(dtype, pd.ArrowDtype):
+                    return cls.from_arrow(dtype.pyarrow_dtype)
+                if isinstance(dtype, pd.StringDtype):
+                    return cls.from_arrow(pa.string())
+
+                to_arrow = getattr(dtype, "to_arrow", None)
+                if callable(to_arrow):
+                    try:
+                        arrow_dtype = to_arrow()
+                        if isinstance(arrow_dtype, pa.DataType):
+                            return cls.from_arrow(arrow_dtype)
+                    except (TypeError, ValueError, NotImplementedError):
+                        pass
+
+                numpy_dtype = getattr(dtype, "numpy_dtype", None)
+                if numpy_dtype is not None:
+                    return cls.from_numpy(np.dtype(numpy_dtype))
+
+                try:
+                    return cls.from_numpy(np.dtype(dtype))
+                except (TypeError, ValueError):
+                    pass
+        except ImportError:
+            pass
+
+        # cuDF types
+        try:
+            return cls.from_cudf(dtype)
+        except Exception:
+            pass
+
+        # fallback to numpy
+        try:
+            return cls.from_numpy(np.dtype(dtype))
+        except (TypeError, ValueError):
+            pass
+
+        return None
 
     @classmethod
     def infer_dtype(cls, value: Any) -> "DataType":
@@ -692,6 +874,52 @@ class DataType:
             return pa_type.value_type
         return pa_type
 
+    def is_null_type(self) -> bool:
+        """Check if this DataType represents a null type."""
+        if self.is_arrow_type():
+            return pa.types.is_null(self._physical_dtype)
+        return False
+
+    def is_boolean_type(self) -> bool:
+        """Check if this DataType represents a boolean type."""
+        if self.is_arrow_type():
+            return pa.types.is_boolean(self._get_underlying_arrow_type())
+        elif self.is_numpy_type():
+            return np.issubdtype(self._physical_dtype, np.bool_)
+        elif self.is_python_type():
+            return self._physical_dtype is bool
+        return False
+
+    def is_integer_type(self) -> bool:
+        """Check if this DataType represents an integer type, excluding booleans."""
+        if self.is_arrow_type():
+            return pa.types.is_integer(self._get_underlying_arrow_type())
+        elif self.is_numpy_type():
+            return np.issubdtype(
+                self._physical_dtype, np.integer
+            ) and not np.issubdtype(self._physical_dtype, np.bool_)
+        elif self.is_python_type():
+            return self._physical_dtype is int
+        return False
+
+    def is_floating_type(self) -> bool:
+        """Check if this DataType represents a floating-point type."""
+        if self.is_arrow_type():
+            return pa.types.is_floating(self._get_underlying_arrow_type())
+        elif self.is_numpy_type():
+            return np.issubdtype(self._physical_dtype, np.floating)
+        elif self.is_python_type():
+            return self._physical_dtype is float
+        return False
+
+    def is_uint64_type(self) -> bool:
+        """Check if this DataType represents an unsigned 64-bit integer."""
+        if self.is_arrow_type():
+            return pa.types.is_uint64(self._get_underlying_arrow_type())
+        elif self.is_numpy_type():
+            return self._physical_dtype == np.dtype("uint64")
+        return False
+
     def is_numerical_type(self) -> bool:
         """Check if this DataType represents a numerical type.
 
@@ -712,14 +940,14 @@ class DataType:
         if self.is_arrow_type():
             underlying = self._get_underlying_arrow_type()
             return (
-                pa.types.is_integer(underlying)
-                or pa.types.is_floating(underlying)
+                self.is_integer_type()
+                or self.is_floating_type()
                 or pa.types.is_decimal(underlying)
             )
         elif self.is_numpy_type():
             return (
-                np.issubdtype(self._physical_dtype, np.integer)
-                or np.issubdtype(self._physical_dtype, np.floating)
+                self.is_integer_type()
+                or self.is_floating_type()
                 or np.issubdtype(self._physical_dtype, np.complexfloating)
             )
         elif self.is_python_type():
