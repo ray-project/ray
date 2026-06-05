@@ -124,6 +124,10 @@ class RayParams:
         proxy_server_url: The proxy url to redirect dashboard backend request to.
             By default, the dashboard requests will be directed to the Ray api server.
             Ex: http://historyserver:8080
+        no_raylet: If True, do not start the raylet process on the head node.
+            This makes the head node a pure management node that only runs GCS,
+            Dashboard, and other management processes. Tasks, actors, and drivers
+            will not be scheduled on the head node. Only valid for head nodes.
     """
 
     def __init__(
@@ -186,6 +190,7 @@ class RayParams:
         node_id: Optional[str] = None,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
         proxy_server_url: Optional[str] = None,
+        no_raylet: Optional[bool] = False,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -245,6 +250,7 @@ class RayParams:
         self.cluster_id = cluster_id
         self.node_id = node_id
         self.proxy_server_url = proxy_server_url
+        self.no_raylet = no_raylet
 
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:

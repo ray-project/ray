@@ -218,6 +218,16 @@ def init_ray_and_catch_exceptions() -> Callable:
             self: Union[DashboardAgentModule, DashboardHeadModule], *args, **kwargs
         ):
             try:
+                if os.environ.get("RAY_HEAD_NO_RAYLET") == "1" and not isinstance(
+                    self, DashboardAgentModule
+                ):
+                    return Response(
+                        text=(
+                            "This API is unavailable because the head node "
+                            "is running in --no-raylet mode (no local raylet)."
+                        ),
+                        status=aiohttp.web.HTTPServiceUnavailable.status_code,
+                    )
                 if not ray.is_initialized():
                     try:
                         address = self.gcs_address

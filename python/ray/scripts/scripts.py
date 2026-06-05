@@ -795,6 +795,16 @@ Windows powershell users need additional escaping:
     "you can set this option to override the server url. "
     "Ex: --proxy-server-url=http://historyserver:8080 ",
 )
+@click.option(
+    "--no-raylet",
+    is_flag=True,
+    default=False,
+    help="If set, do not start the raylet process on the head node, making it "
+    "a pure management node (only GCS, Dashboard, and monitoring processes "
+    "will run). Tasks, actors, and job drivers will not be scheduled on "
+    "the head node. This option is only valid for head nodes. "
+    "When enabled, RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES is implicitly set to 1.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -844,8 +854,17 @@ def start(
     system_reserved_memory,
     cgroup_path,
     proxy_server_url,
+    no_raylet,
 ):
     """Start Ray processes manually on the local machine."""
+
+    # Validate --no-raylet is only used with --head before doing any work.
+    if no_raylet and not head:
+        cli_logger.abort(
+            "`{}` can only be used when starting a head node with `{}`.",
+            cf.bold("--no-raylet"),
+            cf.bold("--head"),
+        )
 
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
@@ -957,11 +976,32 @@ def start(
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
         proxy_server_url=proxy_server_url,
+        no_raylet=no_raylet,
         env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
         load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+
+    # When --no-raylet is set, implicitly enable driver scheduling on worker nodes
+    # and signal to dashboard subprocesses that ray.init() is unavailable.
+    if no_raylet:
+        os.environ["RAY_HEAD_NO_RAYLET"] = "1"
+        os.environ["RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES"] = "1"
+        if ray_params.ray_client_server_port:
+            cli_logger.warning(
+                "Ray Client Server is disabled in --no-raylet mode. "
+                "Use Job Submission API (ray job submit) or "
+                "connect to a worker node instead."
+            )
+        ray_params.ray_client_server_port = None
+        cli_logger.print(
+            "{}",
+            cf.bold(
+                "--no-raylet is set: head node will not start raylet. "
+                "RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES is implicitly set to 1."
+            ),
+        )
 
     if head:
         # Start head node.
@@ -1077,7 +1117,10 @@ def start(
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()
-        startup_msg = "Ray runtime started."
+        if no_raylet:
+            startup_msg = "Ray runtime started (head node in no-raylet mode)."
+        else:
+            startup_msg = "Ray runtime started."
         cli_logger.success("-" * len(startup_msg))
         cli_logger.success(startup_msg)
         cli_logger.success("-" * len(startup_msg))

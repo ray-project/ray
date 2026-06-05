@@ -245,6 +245,7 @@ class JobHead(SubprocessModule):
         # longer available (the corresponding agent process is dead)
         # {node_id: JobAgentSubmissionClient}
         self._agents: Dict[NodeID, JobAgentSubmissionClient] = dict()
+        self._head_agent_unavailable: bool = False
 
     async def get_target_agent(
         self, timeout_s: float = WAIT_AVAILABLE_AGENT_TIMEOUT
@@ -252,6 +253,10 @@ class JobHead(SubprocessModule):
         """
         Get a `JobAgentSubmissionClient`, which is a client for interacting with jobs
         via an agent process.
+
+        First tries the head node's agent. If the head node has no agent (e.g.
+        started with ``--no-raylet``), falls back to any available agent on a
+        worker node.
 
         Args:
             timeout_s: The timeout for the operation.
@@ -262,7 +267,32 @@ class JobHead(SubprocessModule):
         Raises:
             TimeoutError: If the operation times out.
         """
-        return await self._get_head_node_agent(timeout_s)
+        timeout_point = time.time() + timeout_s
+        exception = None
+        while time.time() < timeout_point:
+            if not self._head_agent_unavailable:
+                try:
+                    return await self._get_head_node_agent_once()
+                except Exception as e:
+                    exception = e
+                    self._head_agent_unavailable = True
+                    logger.info(
+                        f"Head node agent unavailable: {e}. "
+                        "Will use worker agents for job submission."
+                    )
+            try:
+                return await self._get_any_available_agent_once()
+            except Exception as e:
+                exception = e
+                logger.info(
+                    "No available agent found, retrying in "
+                    f"{TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
+                )
+                await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
+        raise TimeoutError(
+            f"Failed to get any available agent within {timeout_s} seconds. "
+            f"The last exception is {exception}"
+        )
 
     async def _get_head_node_agent_once(self) -> JobAgentSubmissionClient:
         head_node_id_hex = await get_head_node_id(self.gcs_client)
@@ -279,34 +309,35 @@ class JobHead(SubprocessModule):
 
         return self._agents[head_node_id]
 
-    async def _get_head_node_agent(self, timeout_s: float) -> JobAgentSubmissionClient:
-        """Retrieves HTTP client for `JobAgent` running on the Head node. If the head
-        node does not have an agent, it will retry every
-        `TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS` seconds indefinitely.
-
-        Args:
-            timeout_s: The timeout for the operation.
-
-        Returns:
-            A `JobAgentSubmissionClient` for interacting with jobs via the head node's agent process.
-
-        Raises:
-            TimeoutError: If the operation times out.
-        """
-        timeout_point = time.time() + timeout_s
-        exception = None
-        while time.time() < timeout_point:
-            try:
-                return await self._get_head_node_agent_once()
-            except Exception as e:
-                exception = e
-                logger.exception(
-                    f"Failed to get head node agent, retrying in {TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS} seconds..."
-                )
-                await asyncio.sleep(TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
-        raise TimeoutError(
-            f"Failed to get head node agent within {timeout_s} seconds. The last exception is {exception}"
+    async def _get_any_available_agent_once(self) -> JobAgentSubmissionClient:
+        """Find any available Dashboard Agent by scanning registered agent
+        addresses in GCS Internal KV."""
+        prefix = DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX
+        keys = await self.gcs_client.async_internal_kv_keys(
+            prefix.encode(),
+            namespace=KV_NAMESPACE_DASHBOARD,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
+        if not keys:
+            raise Exception("No dashboard agent registered in GCS")
+
+        for key in keys:
+            node_id_hex = key.decode().removeprefix(prefix)
+            node_id = NodeID.from_hex(node_id_hex)
+            if node_id in self._agents:
+                return self._agents[node_id]
+            try:
+                ip, http_port, _ = await self._fetch_agent_info(node_id)
+                agent_http_address = f"http://{build_address(ip, http_port)}"
+                self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
+                return self._agents[node_id]
+            except Exception:
+                logger.debug(
+                    f"Agent on node {node_id_hex[:8]} not reachable, " "trying next..."
+                )
+                continue
+
+        raise Exception("No reachable dashboard agent found")
 
     async def _fetch_agent_info(self, target_node_id: NodeID) -> Tuple[str, int, int]:
         """
