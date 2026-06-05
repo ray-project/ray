@@ -552,6 +552,38 @@ class TestReplicaSlotReservation:
             if not drain_task.done():
                 drain_task.cancel()
 
+    async def test_drain_honors_min_period_then_waits_for_late_arrival(self):
+        # The minimum draining period keeps the replica alive (listener open) so
+        # external load balancers deregister it. A request admitted *during* that
+        # period -- e.g. from a stale HAProxy worker on a pooled connection --
+        # must still be waited for, not cut when the period elapses.
+        replica = FakeServeReplicaForSlotReservation(graceful_shutdown_wait_loop_s=0.02)
+        min_period_s = 0.2
+
+        drain_task = asyncio.create_task(
+            replica._drain_ongoing_requests(min_draining_period_s=min_period_s)
+        )
+        try:
+            # Nothing in flight, but the minimum period has not elapsed yet.
+            await asyncio.sleep(0.1)
+            assert not drain_task.done(), "drain must honor the minimum period"
+
+            # A straggler arrives partway through the period.
+            replica._num_queued_requests = 1
+
+            # The period elapses, but the straggler is still in flight -> wait.
+            await asyncio.sleep(0.2)
+            assert (
+                not drain_task.done()
+            ), "drain must not exit while a late arrival is still in flight"
+
+            # Straggler finishes; only now may the drain complete.
+            replica._num_queued_requests = 0
+            await asyncio.wait_for(drain_task, timeout=1.0)
+        finally:
+            if not drain_task.done():
+                drain_task.cancel()
+
     async def test_queued_count_released_when_cancelled_while_waiting(self):
         # A request cancelled while waiting for capacity (e.g. a client
         # disconnect under load) must release its queued count. Otherwise the

@@ -1936,37 +1936,46 @@ class Replica:
         finally:
             self._semaphore.release()
 
-    async def _drain_ongoing_requests(self):
-        """Wait for any ongoing or queued requests to finish.
+    async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
+        """Wait until the minimum draining period has elapsed *and* there are no
+        ongoing or queued requests.
 
-        Sleep for a grace period before the first time we check the number of
-        requests to allow the notification to remove this replica to propagate to
-        callers first.
+        The ingress listener stays open for the whole drain, so requests can
+        still arrive during the minimum draining period -- before external load
+        balancers deregister this replica via the failing health check, or from
+        a stale HAProxy worker on a pooled connection. The loop must not exit
+        until both the period has elapsed and every such request has drained;
+        otherwise a late arrival is reset when the replica tears down, surfacing
+        to the client as a 5xx.
 
         Queued requests are counted alongside ongoing ones: a direct-ingress
         request that has been accepted but is still waiting for capacity is not
-        yet "ongoing", and exiting while it is queued would reset its connection
-        (surfacing to the client as a 5xx). The ingress listener stays open for
-        the duration of the drain; new requests stop arriving once the HAProxy
-        health check fails (it does as soon as ``_shutting_down`` is set), so
-        this count drains to zero on its own.
+        yet "ongoing", and exiting while it is queued would reset its connection.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
+        deadline = time.monotonic() + min_draining_period_s
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
             num_queued_requests = self._num_queued_requests
+            min_period_remaining_s = deadline - time.monotonic()
             # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
             logger.info(
                 f"[HARSHIT-TEST-01] draining {self._replica_id}: "
-                f"ongoing={num_ongoing_requests} queued={num_queued_requests}"
+                f"ongoing={num_ongoing_requests} queued={num_queued_requests} "
+                f"min_remaining={max(0.0, min_period_remaining_s):.1f}s"
             )
-            if num_ongoing_requests > 0 or num_queued_requests > 0:
+            if (
+                num_ongoing_requests > 0
+                or num_queued_requests > 0
+                or min_period_remaining_s > 0
+            ):
                 logger.info(
-                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
-                    f"because there are {num_ongoing_requests} ongoing and "
-                    f"{num_queued_requests} queued requests."
+                    f"Waiting for an additional {wait_loop_period_s}s to shut down: "
+                    f"{num_ongoing_requests} ongoing, {num_queued_requests} queued, "
+                    f"{max(0.0, min_period_remaining_s):.1f}s minimum draining "
+                    f"period remaining."
                 )
             else:
                 logger.info(
@@ -2002,25 +2011,22 @@ class Replica:
             f"queued={self._num_queued_requests}"
         )
 
-        coros = []
-        if (
-            RAY_SERVE_ENABLE_DIRECT_INGRESS
-            and self._ingress
-            and self._user_callable_initialized
-        ):
-            # In direct ingress mode, we need to wait at least
-            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
-            # balancers (e.g., ALB) time to deregister the replica, in addition to
-            # waiting for requests to drain.
-            coros.append(asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S))
-
         # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
+        # can skip the drain entirely.
         if self._user_callable_initialized:
-            coros.append(self._drain_ongoing_requests())
-
-        if coros:
-            await asyncio.gather(*coros)
+            # In direct ingress mode, stay alive for at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S so external load
+            # balancers (e.g., ALB) deregister this replica before it goes away.
+            # The drain enforces that minimum *and* waits for every in-flight or
+            # queued request -- including ones admitted during the period (e.g. by
+            # a stale HAProxy worker on a pooled connection) -- so a late arrival
+            # is served instead of being reset when the listener tears down.
+            min_draining_period_s = (
+                RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+                if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
+                else 0.0
+            )
+            await self._drain_ongoing_requests(min_draining_period_s)
 
         # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
         logger.info(
@@ -2029,13 +2035,16 @@ class Replica:
             f"queued={self._num_queued_requests})"
         )
 
-        await self.shutdown()
-
-        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
+        # Close the ingress listeners *before* tearing down user code so a late
+        # connection (e.g. from a stale HAProxy worker) can't be accepted into a
+        # replica that is mid-shutdown. Safe because the drain above guarantees
+        # there are no in-flight or queued requests left to cut.
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
         if self._direct_ingress_grpc_server_task:
             self._direct_ingress_grpc_server_task.cancel()
+
+        await self.shutdown()
 
     async def check_health(self):
         try:
