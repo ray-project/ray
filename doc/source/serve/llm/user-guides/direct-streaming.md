@@ -43,7 +43,7 @@ The `LLMServer` replica builds its ASGI app from the engine's native OpenAI-comp
 
 Ray Serve adds an internal router deployment that answers HAProxy's routing calls. For each request, HAProxy asks the router which replica to use over an internal endpoint, and the router returns that replica's backend host and port.
 
-Replica selection reuses the `LLMServer` deployment's configured request router, so the same routing policies you would use for any deployment apply here. When you don't configure one, direct streaming defaults to `RoundRobinRouter`. You control it through the public `request_router_config`, described in {ref}`direct-streaming-customize`. The router deployment and its endpoint are internal and may change.
+Replica selection reuses the `LLMServer` deployment's configured request router, so the same routing policies you would use for any deployment apply here. When you don't configure one, direct streaming defaults to `RoundRobinRouter`. This differs from Serve's general default of Power of Two Choices. You control it through the public `request_router_config`, described in {ref}`direct-streaming-customize`. The router deployment and its endpoint are internal and may change.
 
 The router picks a replica without reserving a capacity slot. The real request travels out-of-band through HAProxy, so Serve's capacity semaphore isn't load-bearing on this path, and skipping the reservation avoids an extra actor RPC per request.
 
@@ -85,7 +85,7 @@ If you set `request_router_config`, direct streaming uses it as-is. Otherwise it
 
 ### Body-aware routers
 
-Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time to first token (TTFT). Body-independent policies are unaffected. Round-robin and power of two ignore the body, and session-aware policies key on the header.
+Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time to first token (TTFT). Body-independent policies are unaffected. Round-robin and power of two ignore the body, and session-aware policies key on the header instead.
 
 If your policy needs the body, enable forwarding:
 
@@ -93,7 +93,7 @@ If your policy needs the body, enable forwarding:
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
-With forwarding on, HAProxy has to receive and buffer the request body before it can route. That wait adds to TTFT. The more of the body it waits for, the longer routing is delayed and the more memory HAProxy holds. To bound that cost, HAProxy buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes. When a request body is larger than that cap, HAProxy stops waiting, routes on the leading bytes it already has, and flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
+With forwarding on, HAProxy has to receive and buffer the request body before it can route. That wait adds to TTFT. The more of the body it waits for, the longer routing is delayed and the more memory HAProxy holds. To bound that cost, HAProxy buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes. When a request body is larger than that cap, HAProxy stops waiting and routes on the leading bytes it already has. It flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
 
 Truncation affects only the copy sent to the router, not the request forwarded to the replica or the response to the client. The captured portion is always the head of the body, which is what prefix-based policies match on. To tune the cap against real traffic, watch the `serve_haproxy_ingress_router_truncations_total` metric. Enable the ingress request router metrics with `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`. A high truncation rate means body-aware policies are routing on clipped prompts and may warrant a larger buffer. See [HAProxy ingress request router metrics](../../monitoring.md#haproxy-ingress-request-router-metrics) for the full set.
 
