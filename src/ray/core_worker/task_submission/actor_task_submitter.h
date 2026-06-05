@@ -340,6 +340,17 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks_;
 
+    struct InflightTaskMetadata {
+      int64_t send_time_ms;
+      std::string task_name;
+      int64_t task_depth;
+      int64_t sequence_number;
+      rpc::Address rpc_address;
+    };
+
+    /// Metadata for PushTask RPCs that are sent but have not received a reply yet.
+    absl::flat_hash_map<TaskAttempt, InflightTaskMetadata> inflight_task_metadata_;
+
     /// The max number limit of task capacity used for back pressure.
     /// If the number of tasks in requests >= max_pending_calls, it can't continue to
     /// push task to ClientQueue.

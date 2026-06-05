@@ -465,6 +465,13 @@ RAY_CONFIG(uint32_t, task_actor_unavailable_retry_delay_base_ms, 100)
 /// The maximum retry delay for ACTOR_UNAVAILABLE exponential backoff.
 RAY_CONFIG(uint32_t, task_actor_unavailable_retry_max_delay_ms, 5000)
 
+/// Timeout for actor PushTask RPCs that are sent but do not receive a reply.
+/// Disabled when set to 0.
+RAY_CONFIG(int64_t, task_actor_push_task_inflight_timeout_ms, 0)
+
+/// Whether to disconnect the actor RPC client when an in-flight PushTask times out.
+RAY_CONFIG(bool, task_actor_push_task_refresh_client_on_timeout, false)
+
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 

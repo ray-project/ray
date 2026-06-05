@@ -14,14 +14,17 @@
 
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/fake_actor_creator.h"
 #include "ray/core_worker/reference_counter.h"
@@ -131,7 +134,15 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             io_context,
             reference_counter_) {}
 
-  void TearDown() override { io_context.stop(); }
+  void TearDown() override {
+    RayConfig::instance().task_actor_push_task_inflight_timeout_ms() = 0;
+    RayConfig::instance().task_actor_push_task_refresh_client_on_timeout() = false;
+    io_context.stop();
+  }
+
+  void EnableInflightPushTaskTimeout(int64_t timeout_ms) {
+    RayConfig::instance().task_actor_push_task_inflight_timeout_ms() = timeout_ms;
+  }
 
   int64_t last_queue_warning_ = 0;
   FakeActorCreator actor_creator_;
@@ -188,6 +199,43 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
   // not reset `received_seq_nos`.
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+}
+
+TEST_P(ActorTaskSubmitterTest, TestInflightPushTaskTimeout) {
+  EnableInflightPushTaskTimeout(1);
+  auto allow_out_of_order_execution = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      allow_out_of_order_execution,
+                                      /*fail_if_actor_unreachable*/ true,
+                                      /*owned*/ false);
+  submitter_.ConnectActor(actor_id, addr, 0);
+
+  auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
+  submitter_.SubmitTask(task);
+  ASSERT_EQ(io_context.poll_one(), 1);
+  ASSERT_EQ(worker_client_->callbacks.size(), 1);
+
+  EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(0);
+  EXPECT_CALL(*task_manager_,
+              FailOrRetryPendingTask(task.TaskId(),
+                                     rpc::ErrorType::ACTOR_UNAVAILABLE,
+                                     _,
+                                     _,
+                                     /*mark_task_object_failed=*/false,
+                                     /*fail_immediately=*/false))
+      .Times(1)
+      .WillOnce(Return(true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  submitter_.CheckTimeoutTasks();
+
+  // The network reply can still arrive after the timeout. It should be ignored because
+  // the in-flight callback was already failed and erased by CheckTimeoutTasks().
+  ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
