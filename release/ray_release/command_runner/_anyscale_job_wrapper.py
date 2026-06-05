@@ -119,6 +119,7 @@ def collect_metrics(start_time: float, time_taken: float) -> bool:
     # (~7 minutes for a 24h test) but no less than 90s
     # and no more than 900s
     metrics_timeout = max(90, min(time_taken / 200, 900))
+    logger.info(f"Collecting Prometheus metrics (timeout: {metrics_timeout:.0f}s).")
     try:
         subprocess.run(
             [
@@ -131,9 +132,26 @@ def collect_metrics(start_time: float, time_taken: float) -> bool:
             timeout=metrics_timeout,
             check=True,
         )
+        logger.info("Metrics collection subprocess finished successfully.")
         return True
+    # TimeoutExpired and CalledProcessError are SubprocessError subclasses, so
+    # they must be caught first to differentiate them in the logs.
+    except subprocess.TimeoutExpired:
+        logger.error(
+            f"Metrics collection TIMED OUT after {metrics_timeout:.0f}s. The metrics "
+            "file may be missing or incomplete. This is a metrics-collection timeout, "
+            "distinct from an actual metric/OOM/spill issue."
+        )
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            f"Metrics collection subprocess exited with non-zero return code "
+            f"{e.returncode}. See the prometheus_metrics.py output above for the "
+            "specific failure."
+        )
+        return False
     except subprocess.SubprocessError:
-        logger.exception("Couldn't collect metrics.")
+        logger.exception("Couldn't collect metrics due to an unexpected error.")
         return False
 
 
@@ -233,71 +251,98 @@ def run_prepare_commands(
     return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
-def run_oom_check():
-    return_code = 0
+def _load_metrics_for_check(check_name: str, env_var: str) -> Optional[dict]:
+    """Load the Prometheus metrics file for a failure check.
+
+    Returns the parsed metrics dict, or ``None`` when the metrics could not be
+    obtained at all (file missing, unreadable, or an empty ``{}`` written
+    because every Prometheus query failed). In every ``None`` case this is a
+    metrics-collection/infra failure rather than an actual metric signal, and
+    the caller should treat it as such.
+    """
+    metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+    if not (metrics_path and Path(metrics_path).exists()):
+        logger.error(
+            f"{check_name}: {env_var} is set to 1, but no metrics file was found "
+            f"at path: {metrics_path}. Metrics collection failed entirely."
+        )
+        return None
     try:
-        metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
-        if metrics_path and Path(metrics_path).exists():
-            with open(metrics_path, "r") as f:
-                metrics = json.load(f)
-            oom_kills = metrics.get("worker_oom_kills")
-            if oom_kills is None:
-                logger.error("Could not retrieve 'worker_oom_kills' from metrics file")
-                return_code = 1
-            elif oom_kills:
-                logger.error(
-                    "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
-                )
-                return_code = 1
-            unexpected_failures = metrics.get("unexpected_worker_failures")
-            if unexpected_failures is None:
-                logger.error(
-                    "Could not retrieve 'unexpected_worker_failures' from metrics file"
-                )
-                return_code = 1
-            elif unexpected_failures:
-                logger.error(
-                    "Test failed: Unexpected worker failures detected "
-                    "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
-                    f"Details: {unexpected_failures}"
-                )
-                return_code = 1
-        else:
-            logger.error(
-                f"RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
-            )
-            return_code = 1
-    except (OSError, json.JSONDecodeError, AttributeError) as e:
-        logger.exception(f"Error during OOM check: {e}")
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        logger.error(f"{check_name}: could not read metrics file {metrics_path}: {e}")
+        return None
+    if not isinstance(metrics, dict) or not metrics:
+        logger.error(
+            f"{check_name}: metrics file at {metrics_path} is empty. "
+            "See the prometheus_metrics.py output above for the cause."
+        )
+        return None
+    return metrics
+
+
+def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
+    """Return True if ``key`` could not be collected (missing or null).
+
+    Distinguishes a metrics-collection/infra failure (logged here) from an
+    actual metric signal, which the caller inspects when this returns False.
+    A ``None`` value means the Prometheus query failed; an empty list ``[]``
+    means the query succeeded but matched no series (i.e. a healthy result).
+    """
+    if key not in metrics:
+        logger.error(
+            f"{check_name}: '{key}' is missing from the metrics file, like a collection issue."
+        )
+        return True
+    if metrics[key] is None:
+        logger.error(
+            f"{check_name}: '{key}' is None, likely the Prometheus query failed "
+            "(timeout / connection error / non-200)"
+        )
+        return True
+    return False
+
+
+def run_oom_check():
+    metrics = _load_metrics_for_check("OOM check", "RAYTEST_FAIL_ON_WORKER_OOM")
+    if metrics is None:
+        return 1
+
+    return_code = 0
+    if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
+        return_code = 1
+    elif metrics["worker_oom_kills"]:
+        logger.error(
+            f"Test failed: OOM worker kills detected. Details: {metrics['worker_oom_kills']}"
+        )
+        return_code = 1
+
+    if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
+        return_code = 1
+    elif metrics["unexpected_worker_failures"]:
+        logger.error(
+            "Test failed: Unexpected worker failures detected "
+            "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+            f"Details: {metrics['unexpected_worker_failures']}"
+        )
         return_code = 1
     return return_code
 
 
 def run_spilling_check():
+    metrics = _load_metrics_for_check("Spilling check", "RAYTEST_FAIL_ON_SPILLING")
+    if metrics is None:
+        return 1
+
     return_code = 0
-    try:
-        metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
-        if metrics_path and Path(metrics_path).exists():
-            with open(metrics_path, "r") as f:
-                metrics = json.load(f)
-            spilled_bytes = metrics.get("spilled_bytes")
-            if spilled_bytes is None:
-                logger.error("Could not retrieve 'spilled_bytes' from metrics file")
-                return_code = 1
-            elif spilled_bytes:
-                logger.error(
-                    "Test failed: unexpected object-store spilling detected. "
-                    f"Details: {spilled_bytes}"
-                )
-                return_code = 1
-        else:
-            logger.error(
-                "RAYTEST_FAIL_ON_SPILLING is set to 1, but no metrics file "
-                f"found at path: {metrics_path}"
-            )
-            return_code = 1
-    except (OSError, json.JSONDecodeError, AttributeError) as e:
-        logger.exception(f"Error during spilling check: {e}")
+    if _metric_unavailable("Spilling check", metrics, "spilled_bytes"):
+        return_code = 1
+    elif metrics["spilled_bytes"]:
+        logger.error(
+            "Test failed: unexpected object-store spilling detected. "
+            f"Details: {metrics['spilled_bytes']}"
+        )
         return_code = 1
     return return_code
 
