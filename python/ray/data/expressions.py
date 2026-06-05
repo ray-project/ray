@@ -121,6 +121,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_random(expr)
         elif isinstance(expr, UUIDExpr):
             return self.visit_uuid(expr)
+        elif isinstance(expr, UnnestExpr):
+            return self.visit_unnest(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -168,6 +170,10 @@ class _ExprVisitor(ABC, Generic[T]):
 
     @abstractmethod
     def visit_uuid(self, expr: "UUIDExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_unnest(self, expr: "UnnestExpr") -> T:
         pass
 
 
@@ -250,6 +256,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     def visit_uuid(self, expr: "UUIDExpr") -> "pyarrow.compute.Expression":
         raise TypeError("UUID expressions cannot be converted to PyArrow expressions")
 
+    def visit_unnest(self, expr: "UnnestExpr") -> "pyarrow.compute.Expression":
+        raise TypeError("UnnestExpr cannot be converted to a PyArrow expression")
+
 
 class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
     """Visitor that reports whether an expression can be lowered to PyArrow.
@@ -312,6 +321,9 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
         return False
 
     def visit_uuid(self, expr: "UUIDExpr") -> bool:
+        return False
+
+    def visit_unnest(self, expr: "UnnestExpr") -> bool:
         return False
 
 
@@ -1815,6 +1827,58 @@ class StarExpr(Expr):
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
+class UnnestExpr(Expr):
+    """
+    Wraps a struct-typed expression and expands its fields into
+    multiple sibling output columns during projection evaluation.
+    Only valid as a positional argument to with_columns().
+
+    See :func:`unnest` for the public constructor.
+    """
+
+    _NAME_SENTINEL: str = field(default="__unnest__", init=False, repr=False)
+
+    # The inner expression that evaluates to a StructArray.
+    inner: Expr
+
+    # UnnestExpr doesn't have a meaningful single data type; use object as placeholder.
+    data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+
+    @property
+    def name(self) -> str:
+        # Returns sentinel so existing code that calls .name on any Expr without
+        # an isinstance check gets a recognisable string instead of AttributeError.
+        # The evaluator and schema-inference code check isinstance(expr, UnnestExpr)
+        # before ever using .name, so the sentinel is never treated as a real column name.
+        return "__unnest__"
+
+    def alias(self, name: str) -> "Expr":
+        # UnnestExpr expands to N columns whose names come from the struct schema.
+        # There is no single name to alias to.
+        raise TypeError(
+            "UnnestExpr cannot be aliased. It produces multiple output "
+            "columns whose names are fixed by the struct field names. "
+            "Pass it directly to with_columns(): with_columns(unnest(expr))."
+        )
+
+    def structurally_equals(self, other: Any) -> bool:
+        return isinstance(other, UnnestExpr) and self.inner.structurally_equals(
+            other.inner
+        )
+
+    def to_field(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.Field"]:
+        # UnnestExpr maps to *multiple* fields, not one.
+        # exprlist_to_fields handles it inline; returning None here signals
+        # that single-field resolution is not applicable.
+        return None
+
+    def get_type(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.DataType"]:
+        # Cannot resolve to a single type — N child types emerge at eval time.
+        return None
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
 class MonotonicallyIncreasingIdExpr(Expr):
     """Expression that represents a monotonically increasing ID column."""
 
@@ -1934,6 +1998,7 @@ def expand_star_exprs(exprs: List[Expr], input_schema: "pyarrow.Schema") -> List
             # trailing copy so the renamed column keeps its source position.
             continue
         else:
+            # UnnestExpr and other computed expressions pass through unchanged.
             expanded.append(expr)
     return expanded
 
@@ -1994,10 +2059,25 @@ def exprlist_to_fields(
     # "column not found" error). ``ColumnExpr.to_field`` returns the input
     # field verbatim, so star-expanded columns preserve type and metadata.
     for expr in expand_star_exprs(exprs, input_schema):
-        resolved = expr.to_field(input_schema)
-        if resolved is None:
-            return None
-        _upsert_field(resolved)
+        if isinstance(expr, UnnestExpr):
+            # UnnestExpr expands into N child fields, resolved from the inner
+            # expression's return type declared via @udf(return_dtype=DataType.struct(...)).
+            inner_type = expr.inner.get_type(input_schema)
+            if inner_type is None:
+                # Cannot statically determine the struct schema (e.g., inner UDF
+                # has no declared return_dtype). Fall back to runtime inference.
+                return None
+            if not pyarrow.types.is_struct(inner_type):
+                # The inner expression isn't a struct; runtime will raise TypeError.
+                # Return None here so Dataset.schema() falls back to limit(1).
+                return None
+            for i in range(inner_type.num_fields):
+                _upsert_field(inner_type.field(i))
+        else:
+            resolved = expr.to_field(input_schema)
+            if resolved is None:
+                return None
+            _upsert_field(resolved)
 
     return output_fields
 
@@ -2243,6 +2323,51 @@ def uuid() -> UUIDExpr:
     return UUIDExpr()
 
 
+@DeveloperAPI(stability="alpha")
+def unnest(expr: "Expr") -> "UnnestExpr":
+    """
+    Expand a struct-typed expression into multiple sibling output columns.
+
+    Use inside ``with_columns()`` to expand a struct-returning UDF into
+    separate columns — one per struct field.
+
+    Args:
+        expr: An expression that evaluates to a PyArrow StructArray.
+              Typically a UDF decorated with
+              ``@udf(return_dtype=DataType.struct([...]))``.
+
+    Returns:
+        A :class:`UnnestExpr` that expands the struct into sibling columns.
+
+    Raises:
+        TypeError: If ``expr`` is not an :class:`Expr`.
+
+    Example::
+
+        from ray.data.expressions import col, udf, unnest
+        from ray.data.datatype import DataType
+        import pyarrow as pa, pyarrow.compute as pc
+
+        @udf(return_dtype=DataType.struct([
+            ("sum_ab", DataType.int64()),
+            ("product_ab", DataType.int64()),
+        ]))
+        def make_features(a: pa.Array, b: pa.Array) -> pa.StructArray:
+            return pa.StructArray.from_arrays(
+                [pc.add(a, b), pc.multiply(a, b)],
+                names=["sum_ab", "product_ab"],
+            )
+
+        ds = ds.with_columns(unnest(make_features(col("a"), col("b"))))
+    """
+    if not isinstance(expr, Expr):
+        raise TypeError(
+            f"unnest() expects an Expr, got {type(expr).__name__}. "
+            "Use col(), udf(), or a similar expression."
+        )
+    return UnnestExpr(inner=expr)
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -2263,6 +2388,7 @@ __all__ = [
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
+    "UnnestExpr",
     "MonotonicallyIncreasingIdExpr",
     "pyarrow_udf",
     "udf",
@@ -2273,6 +2399,7 @@ __all__ = [
     "random",
     "star",
     "uuid",
+    "unnest",
     "_ArrayNamespace",
     "_ListNamespace",
     "_StringNamespace",

@@ -16,6 +16,7 @@ from ray.data.expressions import (
     AliasExpr,
     Expr,
     StarExpr,
+    UnnestExpr,
     is_rename_expr,
 )
 
@@ -39,6 +40,12 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
     # opaque-schema input like ``MapBatches``), where we can't enumerate
     # columns and have to fall back to "all columns" (``None``).
     if any(isinstance(expr, StarExpr) for expr in exprs):
+        return None
+
+    # ``UnnestExpr`` output column names are only known at runtime (they come
+    # from the Arrow struct type, not from the expression tree). We cannot
+    # statically enumerate referenced columns when unnest is present.
+    if any(isinstance(expr, UnnestExpr) for expr in exprs):
         return None
 
     collector = _ColumnReferenceCollector()
@@ -144,6 +151,15 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         FuseOperators,
         are_remote_args_compatible,
     )
+
+    # Guard: never fuse two Projects when either contains an UnnestExpr.
+    # UnnestExpr output column names are only known at runtime from the Arrow
+    # struct type, so the static fusion analysis cannot correctly track which
+    # input columns are overwritten or produced.
+    if any(isinstance(e, UnnestExpr) for e in upstream_project.exprs) or any(
+        isinstance(e, UnnestExpr) for e in downstream_project.exprs
+    ):
+        return downstream_project
 
     # Check if remote args (num_cpus, num_gpus, etc.) are compatible
     if not are_remote_args_compatible(
@@ -276,7 +292,13 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 
 
 def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
-    return [e for e in exprs if not isinstance(e, StarExpr)]
+    """Filter out StarExpr and UnnestExpr from a projection list.
+
+    UnnestExpr is excluded because its output name (``__unnest__``) is a
+    sentinel, not a real column name. Including it in name-based analysis
+    (e.g. ``_analyze_upstream_project``) would produce incorrect results.
+    """
+    return [e for e in exprs if not isinstance(e, (StarExpr, UnnestExpr))]
 
 
 class ProjectionPushdown(Rule):

@@ -30,6 +30,7 @@ from ray.data.expressions import (
     UDFExpr,
     UnaryExpr,
     UUIDExpr,
+    UnnestExpr,
     _ExprVisitor,
     col,
     is_rename_expr,
@@ -702,6 +703,19 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             "It should only be used in Project operations."
         )
 
+    def visit_unnest(self, expr: UnnestExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit an unnest expression.
+
+        UnnestExpr produces multiple output columns and cannot be evaluated as
+        a single BlockColumn. It is expanded by eval_projection() before any
+        single-expression evaluation happens.
+        """
+        raise TypeError(
+            "UnnestExpr cannot be evaluated as a single expression. "
+            "It is handled by eval_projection() which expands it into "
+            "multiple output columns."
+        )
+
     def visit_download(self, expr: DownloadExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a download expression.
 
@@ -727,9 +741,9 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             The result of the monotonically_increasing_id expression as a BlockColumn.
         """
         ctx = TaskContext.get_current()
-        assert (
-            ctx is not None
-        ), "TaskContext is required for monotonically_increasing_id()"
+        assert ctx is not None, (
+            "TaskContext is required for monotonically_increasing_id()"
+        )
 
         # Key the counter by expression instance ID so that multiple expressions
         # in the same projection will have isolated row count state.
@@ -824,11 +838,13 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     Handles projection semantics including:
     - Empty projections
     - Star() expressions for preserving existing columns
+    - UnnestExpr for expanding struct-typed columns into sibling columns
     - Rename detection
     - Column ordering
 
     Args:
-        projection_exprs: List of expressions to evaluate (may include StarExpr)
+        projection_exprs: List of expressions to evaluate (may include StarExpr
+            and/or UnnestExpr)
         block: The block to project
 
     Returns:
@@ -881,7 +897,43 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
         projection_exprs = ordered_exprs + extra_exprs
 
-    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
+    # ---------------------------------------------------------------------------
+    # Expand UnnestExpr entries into (name, evaluated_array) pairs.
+    #
+    # An UnnestExpr wraps a struct-returning expression and expands its child
+    # fields into sibling output columns. We pre-process the projection list
+    # here — BEFORE the final eval loop — so the rest of the function sees only
+    # regular (name, column) pairs and can continue using the existing
+    # BlockAccessor / fill_column path unchanged.
+    # ---------------------------------------------------------------------------
+    names = []
+    output_cols = []
+
+    for expr in projection_exprs:
+        if isinstance(expr, UnnestExpr):
+            result = eval_expr(expr.inner, block)
+
+            # ChunkedArray → StructArray: flatten() only works on StructArray.
+            if isinstance(result, pa.ChunkedArray):
+                result = result.combine_chunks()
+
+            if not pa.types.is_struct(result.type):
+                raise TypeError(
+                    f"unnest() requires a struct-typed expression, "
+                    f"got {result.type}. "
+                    f"Ensure your UDF is decorated with "
+                    f"@udf(return_dtype=DataType.struct([...]))."
+                )
+
+            # pa.StructArray.flatten() is zero-copy: returns child arrays
+            # in field-index order.
+            child_arrays = result.flatten()
+            for i in range(result.type.num_fields):
+                names.append(result.type.field(i).name)
+                output_cols.append(child_arrays[i])
+        else:
+            names.append(expr.name)
+            output_cols.append(eval_expr(expr, block))
 
     # This clumsy workaround is necessary to be able to fill in Pyarrow tables
     # that has to be "seeded" from existing table with N rows, and couldn't be
