@@ -18,7 +18,6 @@ from typing import (
 )
 
 import numpy as np
-from packaging.version import parse as parse_version
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
@@ -89,7 +88,6 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockExecStats,
@@ -3240,25 +3238,12 @@ def read_hudi(
 def from_daft(df: "daft.DataFrame") -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_.
 
-    .. warning::
-
-        This function only works with PyArrow 13 or lower. For more details, see
-        https://github.com/ray-project/ray/issues/53278.
-
     Args:
         df: A Daft DataFrame
 
     Returns:
         A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
-    pyarrow_version = get_pyarrow_version()
-    assert pyarrow_version is not None
-    if pyarrow_version >= parse_version("14.0.0"):
-        raise RuntimeError(
-            "`from_daft` only works with PyArrow 13 or lower. For more details, see "
-            "https://github.com/ray-project/ray/issues/53278."
-        )
-
     # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such
     # that we can stream object references into a Ray dataset. Unfortunately this is
     # very tricky today because of the way Ray Datasources are implemented with a fully-
