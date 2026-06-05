@@ -298,10 +298,10 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
+        <WorkerGpuRow workerPID={pid} gpus={node.gpus} tpus={node.tpus} />
       </TableCell>
       <TableCell>
-        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
+        <WorkerGRAM workerPID={pid} gpus={node.gpus} tpus={node.tpus} />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>

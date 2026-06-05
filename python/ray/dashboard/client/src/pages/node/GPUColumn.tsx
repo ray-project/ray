@@ -2,22 +2,83 @@ import { Box, Tooltip, Typography } from "@mui/material";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
-import { GPUStats, NodeDetail } from "../../type/node";
+import { GPUStats, NodeDetail, TPUStats } from "../../type/node";
+import {
+  normalizeAccelerators,
+  UnifiedAcceleratorStat,
+} from "../../util/accelerator";
+import { memoryConverter } from "../../util/converter";
 
 export type NodeGPUEntryProps = {
   slot: number;
-  gpu: GPUStats;
+  accelerator: UnifiedAcceleratorStat;
 };
 
-export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
+const GpuTooltip = ({ gpu }: { gpu: GPUStats }) => {
   return (
-    <Tooltip title={gpu.name}>
+    <Box>
+      <Typography variant="body2">Name: {gpu.name}</Typography>
+      {gpu.temperatureC !== undefined && (
+        <Typography variant="body2">
+          Temperature: {gpu.temperatureC}°C
+        </Typography>
+      )}
+      {gpu.powerMw !== undefined && (
+        <Typography variant="body2">
+          Power Draw: {(gpu.powerMw / 1000).toFixed(1)} W
+        </Typography>
+      )}
+    </Box>
+  );
+};
+
+const TpuTooltip = ({ tpu }: { tpu: TPUStats }) => {
+  const tensorcoreUtilization = tpu.tensorcoreUtilization ?? 0;
+  const hbmUtilization = tpu.hbmUtilization ?? 0;
+
+  return (
+    <Box>
+      <Typography variant="body2">Name: {tpu.name}</Typography>
+      <Typography variant="body2">Type: {tpu.tpuType}</Typography>
+      <Typography variant="body2">Topology: {tpu.tpuTopology}</Typography>
+      <Typography variant="body2">
+        Tensorcore: {tensorcoreUtilization.toFixed(1)}%
+      </Typography>
+      <Typography variant="body2">
+        HBM Bandwidth: {hbmUtilization.toFixed(1)}%
+      </Typography>
+      <Typography variant="body2">
+        Used Memory: {memoryConverter(tpu.memoryUsed)} /{" "}
+        {memoryConverter(tpu.memoryTotal)}
+      </Typography>
+      <Typography variant="body2">
+        Free Memory: {memoryConverter(tpu.memoryTotal - tpu.memoryUsed)}
+      </Typography>
+    </Box>
+  );
+};
+
+export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({
+  accelerator,
+  slot,
+}) => {
+  const title =
+    accelerator.type === "GPU" && accelerator.rawGpu ? (
+      <GpuTooltip gpu={accelerator.rawGpu} />
+    ) : accelerator.type === "TPU" && accelerator.rawTpu ? (
+      <TpuTooltip tpu={accelerator.rawTpu} />
+    ) : (
+      accelerator.name
+    );
+
+  return (
+    <Tooltip title={title}>
       <Box sx={{ display: "flex", minWidth: 120 }}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
-        {gpu.utilizationGpu !== undefined ? (
+        {accelerator.utilization !== undefined ? (
           <UsageBar
-            percent={gpu.utilizationGpu}
-            text={`${gpu.utilizationGpu.toFixed(1)}%`}
+            percent={accelerator.utilization}
+            text={`${accelerator.utilization.toFixed(1)}%`}
           />
         ) : (
           <Typography color="textSecondary" component="span" variant="inherit">
@@ -30,11 +91,17 @@ export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
 };
 
 export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
+  const accelerators = normalizeAccelerators(node.gpus, node.tpus);
+
   return (
     <Box sx={{ minWidth: 120 }}>
-      {node.gpus !== undefined && node.gpus.length !== 0 ? (
-        node.gpus.map((gpu, i) => (
-          <NodeGPUEntry key={gpu.uuid} gpu={gpu} slot={gpu.index} />
+      {accelerators.length !== 0 ? (
+        accelerators.map((acc, i) => (
+          <NodeGPUEntry
+            key={acc.uuid || acc.name + acc.index}
+            accelerator={acc}
+            slot={acc.index}
+          />
         ))
       ) : (
         <Typography color="textSecondary" component="span" variant="inherit">
@@ -48,19 +115,33 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
 export const WorkerGpuRow = ({
   workerPID,
   gpus,
+  tpus,
 }: {
   workerPID: number | null;
   gpus?: GPUStats[];
+  tpus?: TPUStats[];
 }) => {
-  const workerGPUEntries = (gpus ?? [])
-    .map((gpu, i) => {
-      const process = gpu.processesPids?.find(
+  const accelerators = normalizeAccelerators(gpus, tpus);
+
+  const workerGPUEntries = accelerators
+    .map((acc, i) => {
+      // TPUs currently do not report per-process PIDs, so we skip them for worker rows
+      if (acc.type === "TPU") {
+        return undefined;
+      }
+      const process = acc.processesPids?.find(
         (process) => process.pid === workerPID,
       );
       if (!process) {
         return undefined;
       }
-      return <NodeGPUEntry key={gpu.uuid} gpu={gpu} slot={gpu.index} />;
+      return (
+        <NodeGPUEntry
+          key={acc.uuid || acc.name + acc.index}
+          accelerator={acc}
+          slot={acc.index}
+        />
+      );
     })
     .filter((entry) => entry !== undefined);
 
@@ -76,18 +157,18 @@ export const WorkerGpuRow = ({
 export const getSumGpuUtilization = (
   workerPID: number | null,
   gpus?: GPUStats[],
+  tpus?: TPUStats[],
 ) => {
-  // Get sum of all GPU utilization values for this worker PID. This is an
-  // aggregate of the WorkerGpuRow and follows the same logic.
-  const workerGPUUtilizationEntries = (gpus ?? [])
-    .map((gpu, i) => {
-      const process = gpu.processesPids?.find(
+  const accelerators = normalizeAccelerators(gpus, tpus);
+  const workerGPUUtilizationEntries = accelerators
+    .map((acc, i) => {
+      const process = acc.processesPids?.find(
         (process) => process.pid === workerPID,
       );
       if (!process) {
         return 0;
       }
-      return gpu.utilizationGpu || 0;
+      return acc.utilization || 0;
     })
     .filter((entry) => entry !== undefined);
   return workerGPUUtilizationEntries.reduce((a, b) => a + b, 0);

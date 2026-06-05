@@ -134,10 +134,15 @@ const ActorTable = ({
             const sumGpuUtilization = getSumGpuUtilization(
               actor.pid,
               actor.gpus,
+              actor.tpus,
             );
             return sumGpuUtilization * descMultiplier;
           case gramUsageSorterKey:
-            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
+            const sumGRAMUsage = getSumGRAMUsage(
+              actor.pid,
+              actor.gpus,
+              actor.tpus,
+            );
             return sumGRAMUsage * descMultiplier;
           default:
             return 0;
@@ -599,6 +604,7 @@ const ActorTable = ({
                 exitDetail,
                 requiredResources,
                 gpus,
+                tpus,
                 processStats,
                 mem,
                 labelSelector,
@@ -748,10 +754,10 @@ const ActorTable = ({
                     )}
                   </TableCell>
                   <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                    <WorkerGpuRow workerPID={pid} gpus={gpus} tpus={tpus} />
                   </TableCell>
                   <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
+                    <WorkerGRAM workerPID={pid} gpus={gpus} tpus={tpus} />
                   </TableCell>
                   <TableCell
                     align="center"
