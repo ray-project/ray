@@ -1,0 +1,21 @@
+applications:
+  - name: kv-llm
+    route_prefix: /
+    import_path: ray.serve.llm:build_openai_app
+    runtime_env:
+      env_vars:
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: qwen3-0.6b
+            model_source: Qwen/Qwen3-0.6B
+          accelerator_type: null
+          deployment_config:
+            autoscaling_config:
+              min_replicas: 0
+              initial_replicas: 0
+              max_replicas: 1
+            request_router_config:
+              request_router_class: ray.serve.llm.request_router.KVAwareRouter
