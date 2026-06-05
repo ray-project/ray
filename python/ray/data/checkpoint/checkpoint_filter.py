@@ -40,15 +40,20 @@ def _numpy_size(array: np.ndarray) -> int:
     total_size = array.nbytes
     if array.dtype == object:
         sample_count = 10**4
+        item_count = array.size
 
-        if len(array) <= sample_count:
+        if item_count <= sample_count:
             for item in array.flat:
                 total_size += sys.getsizeof(item)
         else:
             sample_total_size = 0
-            for item in array[:sample_count].flat:
-                sample_total_size += sys.getsizeof(item)
-            total_size += int(sample_total_size / sample_count * len(array))
+            flat_array = array.flat
+            for sample_index in range(sample_count):
+                item_index = (
+                    sample_index * item_count + item_count // 2
+                ) // sample_count
+                sample_total_size += sys.getsizeof(flat_array[item_index])
+            total_size += int(sample_total_size / sample_count * item_count)
     return total_size
 
 

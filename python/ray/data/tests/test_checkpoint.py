@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+import sys
 from typing import List, Literal, Union
 
 import numpy as np
@@ -35,6 +36,7 @@ from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
     NumpyArrayBasedCheckpointFilter,
+    _numpy_size,
 )
 from ray.data.checkpoint.checkpoint_writer import (
     PENDING_CHECKPOINT_SUFFIX,
@@ -61,6 +63,18 @@ pytestmark = [
     pytest.mark.usefixtures("restore_data_context"),
     pytest.mark.timeout(300),
 ]
+
+
+def test_numpy_size_object_array_samples_across_full_array():
+    sample_count = 10**4
+    small_items = [bytes(1) for _ in range(sample_count)]
+    large_items = [bytes(1000) for _ in range(sample_count)]
+    array = np.array(small_items + large_items, dtype=object)
+
+    actual_size = array.nbytes + sum(sys.getsizeof(item) for item in array.flat)
+
+    assert abs(_numpy_size(array) - actual_size) / actual_size < 0.01
+    assert abs(_numpy_size(array[::-1]) - actual_size) / actual_size < 0.01
 
 
 @pytest.fixture
