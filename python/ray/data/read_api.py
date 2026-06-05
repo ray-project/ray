@@ -930,13 +930,13 @@ def read_videos(
 @PublicAPI(stability="alpha")
 def read_zarr(
     path: str,
+    *,
     filesystem: "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem | None" = None,
     chunk_shapes: dict[str, list] | list | None = None,
     array_paths: list[str] | None = None,
     allow_full_metadata_scan: bool = False,
     align_axis_0: bool = False,
     overlap: int = 0,
-    *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     num_cpus: Optional[float] = None,
@@ -963,6 +963,15 @@ def read_zarr(
     Arrays read in the same call need not share any dimension. Different
     ranks, shapes, dtypes, and native chunk sizes coexist as separate rows.
 
+    .. note::
+
+        The ``chunk`` column is a tensor, and tensors of different rank or
+        dtype can't be combined into one batch.
+        Consume long-form per array (filter on the ``array`` column first),
+        or, when the arrays are row-aligned (share ``shape[0]``), use
+        ``align_axis_0=True`` so each array is its own column -- which is
+        batch-safe.
+
     Aligned (wide-form, ``align_axis_0=True``) — one row per axis-0
     chunk, with one column per selected array. Columns:
 
@@ -975,16 +984,6 @@ def read_zarr(
     don't, ``read_zarr`` raises ``ValueError`` with a hint pointing at the
     largest aligned subset. Use ``array_paths`` to pick which arrays to
     read — ``align_axis_0`` itself does not filter.
-
-    Which schema do I want? Stay on the default (long-form) when
-    reading one array, or when the arrays in the store don't all share
-    ``shape[0]`` (e.g., CMIP6 data variables alongside lat/lon coords,
-    anndata's ``X`` alongside ``var/*``, or OME-Zarr image+label arrays at
-    different resolutions). Switch to ``align_axis_0=True`` when you want
-    paired multi-array rows where each row is one "sample" or "timestep"
-    of every array at once — the canonical cases are supervised ML data
-    (paired ``images`` + ``labels``) and robotics imitation learning
-    (paired ``image`` + ``state`` + ``action`` at each timestep).
 
     Metadata discovery follows these rules:
 

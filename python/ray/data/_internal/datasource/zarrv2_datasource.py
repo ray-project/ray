@@ -77,6 +77,11 @@ class ZarrArrayMeta:
                 f"'shape' has rank {len(shape)} but 'chunks' has rank "
                 f"{len(chunks)}; they must have the same number of dimensions."
             )
+        if any(c <= 0 for c in chunks):
+            raise ValueError(
+                f"Invalid .zarray metadata for array path {array_path!r}: "
+                f"'chunks' must be positive, got {list(chunks)}."
+            )
         return cls(shape=shape, chunks=chunks, dtype=str(raw_meta["dtype"]))
 
     @property

@@ -994,6 +994,34 @@ def test_reads_zarr_zip_with_explicit_zip_filesystem(zarr_zip_store):
     assert len(df) == 2
 
 
+def test_align_axis_0_columns_unify_across_blocks(aligned_zarrv2_store):
+    """Wide-form gives each array its own column, so blocks combine cleanly
+    across the dataset even with trailing edge chunks of differing shape -- the
+    batch-safe schema for row-aligned arrays."""
+    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+    from ray.data.block import BlockAccessor
+
+    ds = zarrv2_datasource.ZarrV2Datasource(
+        str(aligned_zarrv2_store), align_axis_0=True, chunk_shapes=[3]
+    )
+    blocks = [block for task in ds.get_read_tasks(parallelism=64) for block in task()]
+    assert len(blocks) > 1  # actually exercise cross-block unification
+    schemas = [BlockAccessor.for_block(b).to_arrow().schema for b in blocks]
+    unified = unify_schemas(schemas)  # must not raise
+    assert {"t_start", "t_stop", "img", "state", "label"}.issubset(set(unified.names))
+
+
+@pytest.mark.parametrize("bad_chunks", [[0], [10, 0], [-2]])
+def test_rejects_non_positive_chunks(bad_chunks):
+    """Zero chunk dims would divide-by-zero in grid_shape and negative dims would
+    silently drop the array; both must raise at metadata parse time."""
+    shape = [10] * len(bad_chunks)
+    with pytest.raises(ValueError, match="'chunks' must be positive"):
+        zarrv2_datasource.ZarrArrayMeta.from_json(
+            {"shape": shape, "chunks": bad_chunks, "dtype": "<i4"}, "x"
+        )
+
+
 if __name__ == "__main__":
     import sys
 
