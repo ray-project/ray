@@ -422,72 +422,6 @@ def _resolve_read_remote_args(
     )
 
 
-_SAMPLE_FILES_CAP = 16
-
-
-def _compute_adaptive_parquet_chunk_size(
-    sample,
-    *,
-    num_buckets: int,
-    ctx: DataContext,
-    explicit_path_count: int,
-    sample_cap: int = _SAMPLE_FILES_CAP,
-) -> Optional[int]:
-    """Adaptive ``ParquetFileChunker`` target derived from the sample.
-
-    Returns the target chunk size in bytes, or ``None`` to leave the
-    chunker on its existing resolution path (explicit user override on
-    ``DataContext.parquet_chunker_target_chunk_size``, or the chunker's
-    own default).
-
-    The target is ``estimated_total_bytes // num_buckets``, clamped to
-    ``[ctx.target_min_block_size, ctx.target_max_block_size]``. The
-    intent is "one chunk per desired output bucket", so small-but-large
-    datasets (e.g. a single file) fan into enough manifest rows for
-    the partitioner to fill every bucket.
-
-    Returns ``None`` when:
-    - The user has set ``ctx.parquet_chunker_target_chunk_size``
-      explicitly (their choice wins).
-    - The sample is empty (no signal).
-    - ``num_buckets`` is non-positive or estimated total is zero.
-
-    When the sample is capped at ``sample_cap`` files (the listing
-    contained more), the estimated total is ``avg_file_size *
-    max(sample_count, explicit_path_count)``. ``explicit_path_count``
-    is a lower bound for directory inputs; if it under-counts, the
-    target lands at the ``target_min_block_size`` floor, so we
-    never *lose* parallelism — only potentially miss extra gains.
-    """
-    # User-set ctx knob wins — never override.
-    if ctx.parquet_chunker_target_chunk_size is not None:
-        return None
-
-    n = len(sample)
-    if n == 0:
-        return None
-    sample_bytes = int(sample.file_sizes.sum())
-
-    if n < sample_cap:
-        # Sample exhausted the listing — sample IS the dataset.
-        estimated_total_bytes = sample_bytes
-    else:
-        # Sample capped; extrapolate via avg file size × an at-least
-        # estimate of total file count.
-        avg_file_size = sample_bytes // n
-        estimated_total_bytes = avg_file_size * max(n, explicit_path_count)
-
-    if estimated_total_bytes <= 0 or num_buckets <= 0:
-        return None
-
-    import sys
-
-    raw = estimated_total_bytes // num_buckets
-    lo = ctx.target_min_block_size or 1
-    hi = ctx.target_max_block_size or sys.maxsize
-    return max(lo, min(hi, raw))
-
-
 @wrap_auto_init
 def _read_datasource_v2(
     datasource,
@@ -621,25 +555,11 @@ def _read_datasource_v2(
         mem_size=None,
     )
 
-    # Re-derive the file indexer with an adaptive chunker target so the
-    # listing stage produces enough manifest rows for the partitioner to
-    # fill ``num_buckets``. For a small dataset like a single 200 MiB
-    # parquet, this changes the per-task chunk size from 1 GiB (one chunk
-    # per file) down to ~total_size / num_buckets (many chunks per file).
-    # No-op when the user has explicitly set
-    # ``ctx.parquet_chunker_target_chunk_size`` — see
-    # ``_compute_adaptive_parquet_chunk_size``.
-    adaptive_chunk_target = _compute_adaptive_parquet_chunk_size(
-        sample,
-        num_buckets=num_buckets,
-        ctx=ctx,
-        explicit_path_count=len(list(datasource.paths)),
-    )
-    if adaptive_chunk_target is not None:
-        indexer = datasource._get_file_indexer(
-            target_chunk_size_override=adaptive_chunk_target
-        )
-
+    # The ``ParquetFileChunker`` (driven by the indexer above) reads each
+    # file's footer at listing time and splits on true row-group
+    # boundaries, so a single file fans into one chunk per row group —
+    # the partitioner then fills ``num_buckets`` from those chunks. No
+    # plan-time byte estimate is needed.
     partitioner = RoundRobinPartitioner(
         in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,

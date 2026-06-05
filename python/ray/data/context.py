@@ -539,10 +539,12 @@ class DataContext:
             driver-side first-file sampling for schema inference,
             ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
             remains the production path while V2 bakes.
-        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
-            ``ParquetFileChunker`` when splitting large Parquet files into
-            multiple read tasks. When ``None``, the chunker's built-in default
-            (currently 1 GiB) is used.
+        parquet_chunker_target_chunk_size: Target on-disk bytes per chunk used
+            by ``ParquetFileChunker``. The chunker reads each file's footer at
+            listing time and bundles consecutive row groups until their on-disk
+            size reaches this target (always at least one row group per chunk),
+            so normal-sized row groups map roughly 1:1 to chunks. When ``None``,
+            falls back to ``target_min_block_size``.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -781,8 +783,9 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
-    # chunker uses its built-in default (currently 1 GiB).
+    # Target on-disk bytes per chunk for ``ParquetFileChunker`` (bundles
+    # consecutive row groups up to this size, >= 1 row group). When ``None``,
+    # falls back to ``target_min_block_size``.
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE

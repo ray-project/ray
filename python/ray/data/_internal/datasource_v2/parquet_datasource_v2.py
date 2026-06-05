@@ -148,35 +148,10 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
     def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
         return self._shuffle
 
-    def _get_file_indexer(
-        self,
-        *,
-        target_chunk_size_override: Optional[int] = None,
-    ) -> FileIndexer:
-        """Build a ``FileIndexer`` for this datasource.
-
-        Args:
-            target_chunk_size_override: When not ``None`` and the
-                datasource's chunker is the default ``ParquetFileChunker``,
-                build a fresh ``ParquetFileChunker(target_chunk_size=...)``
-                so the listing-time chunker target matches the value
-                computed by ``read_api`` from sample data + desired
-                parallelism. Callers that supplied their own
-                ``file_chunker`` (e.g. a ``WholeFileChunker``) are not
-                overridden — their explicit choice wins.
-
-        Returns:
-            A ``NonSamplingFileIndexer`` configured with the datasource's
-            chunker (possibly re-constructed with the override target).
-        """
-        chunker = self._file_chunker
-        if target_chunk_size_override is not None and isinstance(
-            chunker, ParquetFileChunker
-        ):
-            chunker = ParquetFileChunker(target_chunk_size=target_chunk_size_override)
+    def _get_file_indexer(self) -> FileIndexer:
         return NonSamplingFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
-            file_chunker=chunker,
+            file_chunker=self._file_chunker,
         )
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
