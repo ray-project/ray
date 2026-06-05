@@ -272,7 +272,7 @@ class AsyncPartitionActor(PartitionActor):
                 store = self._registry.get(store_url)
                 async with sem:
                     meta = await obs.head_async(store, path)
-                return meta["size"] if isinstance(meta, dict) else meta.size
+                return meta["size"]
             except Exception:
                 return 0
 
