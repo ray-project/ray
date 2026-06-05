@@ -1,2 +1,2 @@
-pytorch-lightning==1.8.6
+pytorch-lightning==2.6.1
 numpy==1.26.4
