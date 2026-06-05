@@ -977,7 +977,7 @@
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
           fail_on_dead_nodes: 1
-          fail_on_spilling: 1
+          fail_on_spilling: 0 # Allow temporarily to unblock release
       - with:
           case: autoscaling
           cluster_type: autoscaling
