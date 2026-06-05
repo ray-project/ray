@@ -357,9 +357,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
           &group_to_bundles,
       const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
-  /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> listener);
-
   void HandleWaitingRemovedBundles();
 
  protected:
@@ -387,16 +384,18 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       const rpc::StatusCallback callback);
 
-  /// Cacnel prepared or committed resources from a node.
-  /// Nodes will be in charge of tracking state of a bundle.
-  /// This method is supposed to be idempotent.
+  /// Remove a placement group's bundles from a node. All bundles in the batch
+  /// must belong to the placement group and be located on the same node; the
+  /// raylet handles them in a single RPC. This method is idempotent.
   ///
-  /// \param bundle A description of the bundle to return.
-  /// \param node The node that the worker will be returned for.
-  /// \param max_retry The maximum times cancel request can be retried.
-  /// \param retry_cnt The number of times the cancel request is retried.
-  void CancelResourceReserve(
-      const std::shared_ptr<const BundleSpecification> &bundle_spec,
+  /// \param placement_group_id The placement group whose bundles are being removed.
+  /// \param bundle_specs Bundles to remove on the node.
+  /// \param node The node that the bundles are being removed from.
+  /// \param max_retry The maximum times the remove request can be retried.
+  /// \param current_retry_cnt The number of times the remove request has been retried.
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
       int current_retry_cnt);
@@ -501,9 +500,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
-
-  /// The resources changed listeners.
-  std::vector<std::function<void()>> resources_changed_listeners_;
 
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>

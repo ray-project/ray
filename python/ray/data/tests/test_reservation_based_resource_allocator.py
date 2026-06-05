@@ -149,21 +149,21 @@ class TestReservationOpResourceAllocator:
         # +-----+------------------+------------------+--------------+
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
-        # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
-        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
-        # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
-        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
+        # memory_budget[o2] = 0 + 225/2 = 112.5
+        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 112.5)
+        # memory_budget[o3] = 95 + 225/2 = 207.5
+        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207.5)
         # Test max_task_output_bytes_to_read.
-        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
-        assert allocator.max_task_output_bytes_to_read(o2) == 138
-        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257 (rounded down)
+        # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 137.5 -> int = 137
+        assert allocator.max_task_output_bytes_to_read(o2) == 137
+        # max_task_output_bytes_to_read(o3) = 207.5 + 50 = 257.5 -> int = 257
         assert allocator.max_task_output_bytes_to_read(o3) == 257
         # Test get_allocation.
         # allocation = budget + usage
-        # budget[o2] = (3, 0, 113), budget[o3] = (5, 0, 207)
+        # budget[o2] = (3, 0, 112.5), budget[o3] = (5, 0, 207.5)
         # usage[o2] = (6, 0, 500), usage[o3] = (2, 0, 125)
-        assert allocator.get_allocation(o2) == ExecutionResources(9, 0, 613)
-        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 332)
+        assert allocator.get_allocation(o2) == ExecutionResources(9, 0, 612.5)
+        assert allocator.get_allocation(o3) == ExecutionResources(7, 0, 332.5)
 
         # Test global_limits updated.
         global_limits = ExecutionResources(cpu=12, gpu=0, object_store_memory=800)
@@ -1172,27 +1172,27 @@ class TestReservationOpResourceAllocator:
         |     | (used/remaining) | _op_outputs      | resources    |
         |     |                  | (used/remaining) |              |
         +-----+------------------+------------------+--------------+
-        | op6 | 213/0            | 200/13           | 300-213=87   |
-        +-----+------------------+------------------+--------------+
-        | op8 | 50/163           | 50/163           | 0            |
-        +-----+------------------+------------------+--------------+
+        | op6 | 212.5/0          | 200/12.5         | 300-212.5=87.5 |
+        +-----+------------------+------------------+----------------+
+        | op8 | 50/162.5         | 50/162.5         | 0              |
+        +-----+------------------+------------------+----------------+
         """
         assert set(allocator._op_budgets.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
-            cpu=3.75, object_store_memory=213
+            cpu=3.75, object_store_memory=212.5
         )
         assert allocator._op_reserved[o8] == ExecutionResources(
-            cpu=3.75, object_store_memory=213
+            cpu=3.75, object_store_memory=212.5
         )
-        assert allocator._reserved_for_op_outputs[o6] == 212
-        assert allocator._reserved_for_op_outputs[o8] == 212
+        assert allocator._reserved_for_op_outputs[o6] == 212.5
+        assert allocator._reserved_for_op_outputs[o8] == 212.5
         assert allocator._total_shared == ExecutionResources(
             cpu=7.5, object_store_memory=850
         )
-        # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
+        # object_store_memory budget = 0 + (850 - 87.5) / 2 = 381.25
         assert allocator._op_budgets[o6] == ExecutionResources(
-            cpu=5.5, object_store_memory=381
+            cpu=5.5, object_store_memory=381.25
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator

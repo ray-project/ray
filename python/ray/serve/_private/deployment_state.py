@@ -6,11 +6,11 @@ import os
 import random
 import time
 import traceback
-from collections import defaultdict
+from collections import defaultdict, deque
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -58,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -1493,9 +1494,16 @@ class ActorReplicaWrapper:
 
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
+        stopped = False
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-            stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
+            if self._graceful_shutdown_ref is None:
+                # graceful_stop() failed to set the shutdown ref (e.g., the
+                # actor was not found at that time). Treat as not yet stopped;
+                # the next reconcile iteration will retry.
+                stopped = False
+            else:
+                stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
             if stopped:
                 try:
                     ray.get(self._graceful_shutdown_ref)
@@ -2828,6 +2836,9 @@ class DeploymentState:
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
+        self._recent_dead_replicas: Deque[ReplicaDetails] = deque(
+            maxlen=RAY_SERVE_RETAINED_DEAD_REPLICAS
+        )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
             DeploymentStatus.UPDATING,
@@ -3270,6 +3281,9 @@ class DeploymentState:
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
+
+    def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
+        return list(self._recent_dead_replicas)
 
     def broadcast_running_replicas_if_changed(self) -> None:
         """Broadcasts the set of running replicas over long poll if it has changed.
@@ -4701,6 +4715,15 @@ class DeploymentState:
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
 
+                # Retain replicas that allocated a log file so the dashboard can
+                # still show their logs after the actor is gone.
+                if replica.actor_details.log_file_path is not None:
+                    self._recent_dead_replicas.append(
+                        replica.actor_details.model_copy(
+                            update={"state": ReplicaState.STOPPED}
+                        )
+                    )
+
                 # Record shutdown duration metric.
                 if replica.shutdown_start_time is not None:
                     shutdown_duration_ms = (
@@ -5488,9 +5511,6 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
 
-        # TODO(jiaodong): Need to add some logic to prevent new replicas
-        # from being created once shutdown signal is sent.
-
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
@@ -5583,6 +5603,7 @@ class DeploymentStateManager:
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 replicas=deployment_state.list_replica_details(),
+                recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
             )
 
     def get_deployment_statuses(
@@ -5650,6 +5671,12 @@ class DeploymentStateManager:
         Returns:
             bool: Whether the target state has changed.
         """
+        if self._shutting_down:
+            logger.warning(
+                f"Ignoring deploy request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
+            return False
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
                 deployment_id
@@ -5688,6 +5715,13 @@ class DeploymentStateManager:
         self, deployment_id: DeploymentID, target_num_replicas: int
     ):
         """Set target number of replicas for a deployment."""
+        if self._shutting_down:
+            logger.warning(
+                f"Ignoring set_target_num_replicas request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
+            return
+
         self._validate_deployment_state_for_num_replica_update(deployment_id)
 
         deployment_state = self._deployment_states[deployment_id]
@@ -5856,6 +5890,13 @@ class DeploymentStateManager:
         Returns:
             True if the deployment was autoscaled, False otherwise.
         """
+        if self._shutting_down:
+            logger.warning(
+                f"Ignoring autoscale request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
+            return False
+
         if deployment_id not in self._deployment_states:
             return False
 

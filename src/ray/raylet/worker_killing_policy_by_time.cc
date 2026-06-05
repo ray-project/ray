@@ -43,7 +43,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) {
+    const MemoryUsageSnapshot &memory_usage_snapshot) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
   std::vector<std::string> alive_worker_debug_strings;
   for (const auto &worker_being_killed_or_should_retry : workers_being_killed_) {
@@ -60,7 +60,7 @@ TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
   workers_being_killed_ = remaining_alive_targets;
   if (workers_being_killed_.empty()) {
     workers_being_killed_ =
-        Policy(workers, process_memory_snapshot, system_memory_snapshot);
+        Policy(workers, process_memory_snapshot, memory_usage_snapshot);
     if (workers_being_killed_.empty()) {
       RAY_LOG_EVERY_MS(WARNING, 5000)
           << "Worker killer did not select any workers to "
@@ -81,65 +81,89 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) const {
+    const MemoryUsageSnapshot &memory_usage_snapshot) const {
   if (workers.empty()) {
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
   std::vector<std::shared_ptr<WorkerInterface>> sorted_workers;
-  // Filter workers without lease that are too small to be considered for killing.
-  std::copy_if(
-      workers.begin(),
-      workers.end(),
-      std::back_inserter(sorted_workers),
-      [threshold = idle_worker_killing_memory_threshold_bytes_,
-       &process_memory_snapshot](const std::shared_ptr<WorkerInterface> &worker) -> bool {
-        if (worker->GetGrantedLeaseId().IsNil()) {
-          int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
-              process_memory_snapshot, worker->GetProcess().GetId());
-          return used_memory >= threshold;
-        }
-        return true;
-      });
+  std::copy_if(workers.begin(),
+               workers.end(),
+               std::back_inserter(sorted_workers),
+               [this, &process_memory_snapshot](
+                   const std::shared_ptr<WorkerInterface> &worker) -> bool {
+                 StatusSetOr<int64_t, StatusT::NotFound> used_memory_or =
+                     MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+                         process_memory_snapshot, worker->GetProcess().GetId());
+                 int64_t used_memory = 0;
+                 if (used_memory_or.has_value()) {
+                   used_memory = used_memory_or.value();
+                 } else {
+                   RAY_LOG_EVERY_MS(WARNING, 60000) << used_memory_or.message();
+                 }
+                 // Only consider killing:
+                 // 1. Workers with a granted lease.
+                 // 2. Workers with a granted lease in the past.
+                 // 3. Workers without a granted lease but have a memory footprint larger
+                 // than the idle worker killing memory threshold.
+                 return !worker->GetGrantedLeaseId().IsNil() ||
+                        worker->GetLastGrantedLeaseTime().has_value() ||
+                        used_memory >= idle_worker_killing_memory_threshold_bytes_;
+               });
 
-  // Sort by:
-  // 1. First, we prioritize killing workers without granted lease larger
-  // than idle worker killing memory threshold. Note that workers without
-  // granted lease under the threshold are not considered for killing.
-  // 2. From there, we prioritize killing workers with leases and are retriable.
-  // 3. Lastly, we tiebreak by the newest worker based on the newest granted lease time.
   std::sort(
       sorted_workers.begin(),
       sorted_workers.end(),
-      [](const std::shared_ptr<WorkerInterface> &left,
-         const std::shared_ptr<WorkerInterface> &right) -> bool {
+      [&process_memory_snapshot](const std::shared_ptr<WorkerInterface> &left,
+                                 const std::shared_ptr<WorkerInterface> &right) -> bool {
         if (left->GetGrantedLeaseId().IsNil() && !right->GetGrantedLeaseId().IsNil()) {
           return true;
         }
         if (right->GetGrantedLeaseId().IsNil() && !left->GetGrantedLeaseId().IsNil()) {
           return false;
         }
-        if (left->GetGrantedLeaseId().IsNil() && right->GetGrantedLeaseId().IsNil()) {
-          return false;
-        }
 
-        if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
-            !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-          return true;
-        }
-        if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
-            right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-          return false;
-        }
+        if (!left->GetGrantedLeaseId().IsNil() && !right->GetGrantedLeaseId().IsNil()) {
+          if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
+              !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+            return true;
+          }
+          if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
+              right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+            return false;
+          }
 
-        return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
+          absl::Time left_granted_lease_time = left->GetLastGrantedLeaseTime().value();
+          absl::Time right_granted_lease_time = right->GetLastGrantedLeaseTime().value();
+          return left_granted_lease_time > right_granted_lease_time;
+        } else {
+          StatusSetOr<int64_t, StatusT::NotFound> left_memory_or =
+              MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                            left->GetProcess().GetId());
+          StatusSetOr<int64_t, StatusT::NotFound> right_memory_or =
+              MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                            right->GetProcess().GetId());
+          int64_t left_memory = 0;
+          if (left_memory_or.has_value()) {
+            left_memory = left_memory_or.value();
+          } else {
+            RAY_LOG_EVERY_MS(WARNING, 60000) << left_memory_or.message();
+          }
+          int64_t right_memory = 0;
+          if (right_memory_or.has_value()) {
+            right_memory = right_memory_or.value();
+          } else {
+            RAY_LOG_EVERY_MS(WARNING, 60000) << right_memory_or.message();
+          }
+          return left_memory > right_memory;
+        }
       });
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill;
   // continue to select workers until the memory to free is reached
   auto sorted_worker_it = sorted_workers.begin();
   int64_t memory_to_free_bytes =
-      system_memory_snapshot.used_bytes - threshold_bytes_ + kill_buffer_bytes_;
+      memory_usage_snapshot.used_bytes - threshold_bytes_ + kill_buffer_bytes_;
   int64_t memory_left_to_free = memory_to_free_bytes;
 
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
@@ -147,24 +171,44 @@ TimeBasedWorkerKillingPolicy::Policy(
     bool should_retry =
         !worker_to_kill->GetGrantedLeaseId().IsNil() &&
         worker_to_kill->GetGrantedLease().GetLeaseSpecification().IsRetriable();
-    workers_to_kill.push_back(std::make_pair(worker_to_kill, should_retry));
-
-    pid_t worker_pid = worker_to_kill->GetProcess().GetId();
-    const auto worker_pid_entry = process_memory_snapshot.find(worker_pid);
-    if (worker_pid_entry != process_memory_snapshot.end()) {
-      memory_left_to_free -= worker_pid_entry->second;
+    StatusSetOr<int64_t, StatusT::NotFound> used_memory_or =
+        MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+            process_memory_snapshot, worker_to_kill->GetProcess().GetId());
+    int64_t used_memory = 0;
+    if (used_memory_or.has_value()) {
+      used_memory = used_memory_or.value();
     } else {
-      RAY_LOG(WARNING) << absl::StrFormat(
-          "Attempting to kill worker with PID: %d, but can't account for memory usage of "
-          "this "
-          "worker to kill. The underlying process may have already been killed or died.",
-          worker_pid);
+      RAY_LOG_EVERY_MS(WARNING, 60000) << used_memory_or.message();
+    }
+
+    workers_to_kill.push_back(std::make_pair(worker_to_kill, should_retry));
+    memory_left_to_free -= used_memory;
+
+    if (!worker_to_kill->GetLastGrantedLeaseTime().has_value()) {
+      RAY_LOG_EVERY_MS(INFO, 10000) << absl::StrFormat(
+          "Cold start idle worker memory footprint exceeds idle worker killing memory "
+          "threshold. "
+          "Selecting idle worker to kill. PID: %d, Memory used: %d bytes, "
+          "Idle worker killing memory threshold: %d bytes. "
+          "Please consider reducing the idle worker memory footprint by reducing "
+          "import "
+          "or runtime environment sizes. If the memory footprint is expected, consider "
+          "setting the environment variable "
+          "`RAY_idle_worker_killing_memory_threshold_bytes` "
+          "to a higher value.",
+          worker_to_kill->GetProcess().GetId(),
+          used_memory,
+          idle_worker_killing_memory_threshold_bytes_);
     }
     sorted_worker_it++;
   }
 
   RAY_LOG(DEBUG) << absl::StrFormat(
-      "Needed to free %d bytes. Selected %d workers to kill: %s",
+      "Currently used memory: %d bytes, threshold: %d bytes, kill buffer: %d bytes. "
+      "Needed to free %d bytes. Selected %d workers to kill: %s.",
+      memory_usage_snapshot.used_bytes,
+      threshold_bytes_,
+      kill_buffer_bytes_,
       memory_to_free_bytes,
       workers_to_kill.size(),
       PolicyDebugString(workers_to_kill, process_memory_snapshot));
@@ -181,13 +225,14 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
   std::vector<std::string> worker_debug_strings;
   for (const auto &[worker, _] : workers) {
     pid_t pid = worker->GetProcess().GetId();
-    int64_t used_memory = 0;
-    const auto pid_entry = process_memory_snapshot.find(pid);
-    if (pid_entry != process_memory_snapshot.end()) {
-      used_memory = pid_entry->second;
+    StatusSetOr<int64_t, StatusT::NotFound> used_memory_or =
+        MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
+    std::string used_memory_gb = "Not Found";
+    if (used_memory_or.has_value()) {
+      used_memory_gb = absl::StrFormat(
+          "%.2f", static_cast<float>(used_memory_or.value()) / 1024 / 1024 / 1024);
     } else {
-      RAY_LOG_EVERY_MS(INFO, 60000) << absl::StrFormat(
-          "Can't find memory usage for PID, reporting zero. PID: %d", pid);
+      RAY_LOG_EVERY_MS(INFO, 60000) << used_memory_or.message();
     }
 
     if (worker_debug_strings.size() >= 10) {
@@ -198,13 +243,18 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
 
     bool retriable = !worker->GetGrantedLeaseId().IsNil() &&
                      worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
+    std::string worker_granted_time = "Cold idle worker";
+    if (worker->GetLastGrantedLeaseTime().has_value()) {
+      worker_granted_time = absl::FormatTime(worker->GetLastGrantedLeaseTime().value(),
+                                             absl::UTCTimeZone());
+    }
     worker_debug_strings.push_back(absl::StrFormat(
-        "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %d "
-        "bytes)",
+        "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %s "
+        "GiB)",
         worker->GetGrantedLeaseId().Hex(),
-        absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone()),
+        worker_granted_time,
         retriable ? "yes" : "no",
-        used_memory));
+        used_memory_gb));
   }
 
   result << absl::StrJoin(worker_debug_strings, ", ");

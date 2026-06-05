@@ -152,10 +152,8 @@ def test_repartition_target_num_rows_per_block(
     all_data = []
 
     for ref_bundle in ds.iter_internal_ref_bundles():
-        block, block_metadata = (
-            ray.get(ref_bundle.blocks[0][0]),
-            ref_bundle.blocks[0][1],
-        )
+        first = ref_bundle.blocks[0]
+        block, block_metadata = ray.get(first.ref), first.metadata
 
         # NOTE: Because our block rows % target_num_rows_per_block == 0, we can
         #       assert equality here
@@ -228,7 +226,7 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
     assert len(ref_bundles) == num_partitions
     for ref_bundle in ref_bundles:
         assert len(ref_bundle.blocks) == 1
-        metadata = ref_bundle.blocks[0][1]
+        metadata = ref_bundle.blocks[0].metadata
         assert metadata.num_rows == 0
         assert metadata.size_bytes == 0
 
@@ -422,36 +420,42 @@ def test_streaming_repartition_with_partial_last_block(
     """Test repartition with target_num_rows_per_block where last block has fewer rows.
     This test verifies:
     1. N-1 blocks have exactly target_num_rows_per_block rows
-    2. Only the last block can have fewer rows (remainder)
+    2. Exactly one block has fewer rows, and it can appear anywhere
+       in the output, StreamingRepartition does not guarantee ordering.
     """
     # Configure shuffle strategy
     ctx = DataContext.get_current()
     ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     num_rows = 101
+    target_num_rows_per_block = 20
 
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
-    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
+    ds = ds.repartition(
+        target_num_rows_per_block=target_num_rows_per_block, strict=True
+    )
 
     ds = ds.materialize()
 
     block_row_counts = []
     for ref_bundle in ds.iter_internal_ref_bundles():
-        for _, metadata in ref_bundle.blocks:
-            block_row_counts.append(metadata.num_rows)
+        for entry in ref_bundle.blocks:
+            block_row_counts.append(entry.metadata.num_rows)
 
     assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
 
-    # Verify that all blocks have 20 rows except one block with 10 rows
-    # The block with 10 rows should be the last one
+    # Verify that all blocks have 20 rows except one block with 1 row
+    # The smaller block may appear anywhere in the output order
+    remainder_blocks = [c for c in block_row_counts if c != target_num_rows_per_block]
     assert (
-        block_row_counts[-1] == 1
-    ), f"Expected last block to have 1 row, got {block_row_counts[-1]}"
-    assert all(
-        count == 20 for count in block_row_counts[:-1]
-    ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+        len(remainder_blocks) == 1
+    ), f"Expected exactly one remainder block, got {block_row_counts}"
+    assert remainder_blocks[0] == num_rows % target_num_rows_per_block, (
+        f"Expected remainder block to have {num_rows % target_num_rows_per_block} rows, "
+        f"got {remainder_blocks[0]}. Block counts: {block_row_counts}"
+    )
 
 
 def test_streaming_repartition_non_strict_mode(

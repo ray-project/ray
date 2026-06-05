@@ -19,16 +19,18 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
-    log 127.0.0.1:{{ config.syslog_port }} local0 debug
+    log {{ config.log_target }} local0 debug
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
+    {%- endif %}
+    {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
+    {%- else %}
+    tune.bufsize {{ config.bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
@@ -49,6 +51,16 @@ defaults
     log global
     option httplog
     option abortonclose
+    option splice-request
+    option splice-response
+    # On a retry, use a different slot (`1`). retry-on defaults to connect
+    # failures only (nothing was sent → safe to replay); override globally via
+    # RAY_SERVE_HAPROXY_RETRY_ON. Inherited by every backend.
+    option redispatch 1
+    retry-on {{ config.retry_on }}
+    {%- if config.retries is not none %}
+    retries {{ config.retries }}
+    {%- endif %}
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
@@ -56,9 +68,11 @@ defaults
     {%- if config.enable_hap_optimization %}
     option idle-close-on-response
     {%- endif %}
-    # Normalize 502 and 504 errors to 500 per Serve's default behavior
+    # Normalize 502/503/504 to 500 per Serve's default behavior. 503
+    # covers HAProxy's own "all retries exhausted / no server" response.
     {%- if config.error_file_path %}
     errorfile 502 {{ config.error_file_path }}
+    errorfile 503 {{ config.error_file_path }}
     errorfile 504 {{ config.error_file_path }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
@@ -72,6 +86,14 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if ingress_request_router_metrics_enabled and has_ingress_request_router %}
+    log global
+    # Per-request metrics for the ingress request router. Goes only to the
+    # rfc5424 target below; the inherited rfc3164 targets do not include the
+    # SD section, so their byte stream is unchanged.
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 info
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.ingress_request_router_app)] intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]]"
+    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
@@ -97,7 +119,9 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    {%- endif %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     # Fail loudly when the Lua dispatch did not pick a replica. Must appear
     # before the use_backend rules below so the request never falls back to
@@ -163,13 +187,20 @@ backend {{ backend.name or 'unknown' }}
 {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
+    # Keep the pinned data-plane path on the same connection policy as the
+    # primary backend. For streamed responses, forcing server-close can leave
+    # HAProxy holding unread server-side FINs under a burst while worker
+    # threads are still routing other requests.
     http-reuse always
-    # use-server falls through to LB if the pinned server is DOWN.
-    option redispatch
+    # Inherits the defaults block's `option redispatch 1` + retry-on, so a
+    # DOWN/slow pinned server falls through to a different replica instead of
+    # head-of-line-blocking on the original pick. One retry policy everywhere.
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
+    {%- if config.ingress_timeout_server_s is not none %}
+    timeout server {{ config.ingress_timeout_server_s }}s
+    {%- elif backend.timeout_server_s is not none %}
     timeout server {{ backend.timeout_server_s }}s
     {%- endif %}
     {%- if backend.timeout_http_keep_alive_s is not none %}

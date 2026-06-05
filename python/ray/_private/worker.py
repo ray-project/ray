@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from functools import wraps
 from types import TracebackType
 from typing import (
-    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,
@@ -39,9 +38,6 @@ from typing import (
     overload,
 )
 from urllib.parse import urlparse
-
-if TYPE_CHECKING:
-    import torch
 
 import colorama
 
@@ -810,7 +806,6 @@ class Worker:
     def put_object(
         self,
         value: Any,
-        owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
         _tensor_transport: Optional[str] = None,
     ):
@@ -824,7 +819,6 @@ class Worker:
 
         Args:
             value: The value to put in the object store.
-            owner_address: The serialized address of object's owner.
             _is_experimental_channel: An experimental flag for mutable
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
@@ -847,8 +841,8 @@ class Worker:
             )
         tensors = None
         from ray.experimental.rdt.util import (
+            is_one_sided_transport,
             normalize_and_validate_tensor_transport,
-            validate_one_sided,
         )
 
         tensor_transport = None
@@ -856,7 +850,11 @@ class Worker:
             tensor_transport = normalize_and_validate_tensor_transport(
                 _tensor_transport
             )
-            validate_one_sided(tensor_transport, "ray.put")
+            if not is_one_sided_transport(tensor_transport):
+                raise ValueError(
+                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}. "
+                    f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
+                )
         try:
             if tensor_transport is not None:
                 (
@@ -890,7 +888,6 @@ class Worker:
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
-            owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
             tensor_transport=tensor_transport,
@@ -906,13 +903,11 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(
-        self,
-        serialized_objects,
-        object_refs,
-        use_object_store: bool = False,
-    ):
-        rdt_objects: Dict[str, List["torch.Tensor"]] = {}
+    @staticmethod
+    def _get_rdt_ids(serialized_objects, object_refs) -> List[str]:
+        """Extract RDT object IDs from serialized objects."""
+        rdt_ids: List[str] = []
+        seen: set = set()
         for obj_ref, (_, metadata, tensor_transport) in zip(
             object_refs, serialized_objects
         ):
@@ -931,14 +926,27 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            if object_id not in rdt_objects:
-                # If using a non-object store transport, then tensors will be sent
-                # out-of-band. Get them before deserializing the object store data.
-                # The user can set use_object_store to fetch the RDT object
-                # through the object store.
-                rdt_objects[object_id] = self.rdt_manager.get_rdt_object(
-                    object_id, use_object_store
-                )
+            if object_id not in seen:
+                seen.add(object_id)
+                rdt_ids.append(object_id)
+
+        return rdt_ids
+
+    def deserialize_objects(
+        self,
+        serialized_objects,
+        object_refs,
+        rdt_objects: Optional[Dict[str, List[Any]]] = None,
+    ):
+        if rdt_objects is None:
+            # ObjectRefs were passed by task argument instead of ray.get.
+            # Get the RDT objects from the local store. The _ray_system
+            # concurrency group is responsible for fetching these in the
+            # background. Here, we just wait for the objects to appear locally.
+            rdt_objects = {}
+            rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
+            if rdt_ids:
+                rdt_objects = self.rdt_manager.get_rdt_objects(rdt_ids)
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -1011,8 +1019,24 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
+        # Get any RDT objects. This will launch a fetch per RDT object that is
+        # not already local.
+        rdt_objects = {}
+        rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
+        if rdt_ids:
+            # TODO(swang): Some of the timeout may have already passed. Pass in
+            # the remaining timeout, but the error message should still reflect
+            # the user's timeout.
+            rdt_objects = self.rdt_manager.fetch_and_get_rdt_objects(
+                rdt_ids,
+                timeout=timeout,
+                use_object_store=use_object_store,
+            )
+
         values = self.deserialize_objects(
-            serialized_objects, object_refs, use_object_store
+            serialized_objects,
+            object_refs,
+            rdt_objects=rdt_objects,
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
@@ -1870,17 +1894,11 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
-        available_memory_bytes = ray._private.utils.estimate_available_memory()
-        object_store_memory = ray._private.utils.resolve_object_store_memory(
-            available_memory_bytes, object_store_memory
-        )
-
         resource_isolation_config = ResourceIsolationConfig(
             enable_resource_isolation=enable_resource_isolation,
             cgroup_path=cgroup_path,
             system_reserved_cpu=system_reserved_cpu,
             system_reserved_memory=system_reserved_memory,
-            object_store_memory=object_store_memory,
         )
 
         # Use a random port by not specifying Redis port / GCS server port.
@@ -1902,7 +1920,6 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
-            available_memory_bytes=available_memory_bytes,
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
@@ -2377,7 +2394,9 @@ def print_worker_logs(
                     f"{message_for(data, line)}",
                     file=print_file,
                 )
-
+    if ray_constants.RAY_FLUSH_DRIVER_LOGS:
+        if hasattr(print_file, "flush"):
+            print_file.flush()
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
@@ -3019,12 +3038,7 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner [Experimental]: The actor that should own this object. This
-            allows creating objects with lifetimes decoupled from that of the
-            creating process. The owner actor must be passed a reference to the
-            object prior to the object creator exiting, otherwise the reference
-            will still be lost. *Note that this argument is an experimental API
-            and should be avoided if possible.*
+        _owner: This experimental argument has been removed in Ray 2.56.
         _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
             Currently, this only supports one-sided tensor transports such as "nixl".
             When this is None (default), Ray will use the object store.
@@ -3032,29 +3046,19 @@ def put(
     Returns:
         The object ref assigned to this value.
     """
+    if _owner is not None:
+        raise ValueError(
+            "The experimental `_owner` argument to `ray.put` has been removed in "
+            "Ray 2.56."
+        )
+
     worker = global_worker
     worker.check_connected()
-
-    if _owner is None:
-        serialize_owner_address = None
-    elif isinstance(_owner, ray.actor.ActorHandle):
-        # Ensure GlobalState is connected
-        ray._private.state.state._connect_and_get_accessor()
-        serialize_owner_address = (
-            ray._raylet._get_actor_serialized_owner_address_or_none(
-                ray._private.state.state.get_actor_info(_owner._actor_id)
-            )
-        )
-        if not serialize_owner_address:
-            raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-    else:
-        raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
     with profiling.profile("ray.put"):
         try:
             object_ref = worker.put_object(
                 value,
-                owner_address=serialize_owner_address,
                 _tensor_transport=_tensor_transport,
             )
         except ObjectStoreFullError:

@@ -10,6 +10,10 @@ import uuid
 import warnings
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
+from fastapi.routing import APIRoute
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response, StreamingResponse
+
 from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -20,6 +24,12 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorResponse,
 )
+from ray.llm._internal.serve.core.ingress.utils import (
+    NON_STREAMING_RESPONSE_TYPES,
+    _openai_json_wrapper,
+    _peek_at_generator,
+    _sanitize_chat_completion_request,
+)
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
@@ -27,6 +37,7 @@ from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
+from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
@@ -43,6 +54,46 @@ _PREWARM_PROMPT = " x"
 _PREWARM_MAX_TOKENS = 1
 _PREWARM_RETRY_INTERVAL_S = 5.0
 _PREWARM_MAX_RETRIES = 60
+
+
+# ---------------------------------------------------------------------------
+# Direct-streaming route helpers
+# ---------------------------------------------------------------------------
+#
+# Direct streaming exposes the engine-native ASGI app directly on the LLM
+# server replica (see ``LLMServer.__serve_build_asgi_app__``), eliminating the
+# separate ``OpenAiIngress`` deployment. For P/D, the engine-native
+# chat/completions routes would send traffic straight to the local decode
+# engine and bypass remote prefill, so ``PDOrchestratorMixin`` re-points just
+# those two routes at its own ``chat`` / ``completions`` (which orchestrate
+# prefill then decode). Every other route stays engine-native, identical to
+# non-P/D direct streaming.
+
+
+def _strip_routes(app, path: str) -> None:
+    """Remove the engine-native APIRoute(s) registered at ``path``."""
+    app.routes[:] = [
+        r for r in app.routes if not (isinstance(r, APIRoute) and r.path == path)
+    ]
+
+
+async def _pd_http_response(gen) -> Response:
+    """Shape a P/D orchestration generator into an OpenAI HTTP response.
+
+    Returns a JSON response when the first chunk is an error or a complete
+    (non-streaming) response, otherwise an SSE stream. Uses the same response
+    helpers as ``OpenAiIngress`` so the wire format matches the standard path.
+    """
+    first, gen = await _peek_at_generator(gen)
+    if isinstance(first, list):
+        first = first[0]
+    if isinstance(first, ErrorResponse):
+        return JSONResponse(
+            content=first.model_dump(), status_code=first.error.code or 400
+        )
+    if isinstance(first, NON_STREAMING_RESPONSE_TYPES):
+        return JSONResponse(content=first.model_dump())
+    return StreamingResponse(_openai_json_wrapper(gen), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +130,11 @@ class PDOrchestratorMixin:
             "remote_port": None,
         }
         prefill_request.max_tokens = 1
+        if hasattr(prefill_request, "max_completion_tokens"):
+            prefill_request.max_completion_tokens = 1
         prefill_request.stream = False
+        if hasattr(prefill_request, "stream_options"):
+            prefill_request.stream_options = None
         return prefill_request
 
     @staticmethod
@@ -112,7 +167,13 @@ class PDOrchestratorMixin:
 
         # 1. Remote prefill
         prefill_request = self._prepare_prefill_request(request)
-        prefill_gen = getattr(self._prefill_handle, method).remote(
+        prefill_handle = self._prefill_handle
+        if raw_request_info is not None:
+            session_id = session_id_from_headers(raw_request_info.headers)
+            if session_id:
+                prefill_handle = prefill_handle.options(session_id=session_id)
+
+        prefill_gen = getattr(prefill_handle, method).remote(
             prefill_request, raw_request_info
         )
         prefill_chunk = await prefill_gen.__anext__()
@@ -122,13 +183,40 @@ class PDOrchestratorMixin:
             yield prefill_chunk
             return
 
-        # 2. Local decode via own engine
+        # 2. Local decode via super().chat / super().completions so the
+        # standard LLMServer request pipeline (request_id, LoRA multiplex,
+        # batch_output_stream) runs on the decode side.
         decode_request = self._prepare_decode_request(request, prefill_chunk)
-
-        # Use parent LLMServer's chat/completions which goes through the local engine
         local_gen = await getattr(super(), method)(decode_request, raw_request_info)
         async for chunk in local_gen:
             yield chunk
+
+    # ---- Direct-streaming ASGI app ----
+
+    async def __serve_build_asgi_app__(self):
+        """Serve direct-streaming HTTP through P/D orchestration.
+
+        Start from the engine-native app (same as non-P/D direct streaming)
+        and re-point only ``/v1/chat/completions`` and ``/v1/completions`` at
+        this server's ``chat`` / ``completions``, which run remote prefill
+        then local decode. All other routes stay engine-native.
+        """
+        app = await super().__serve_build_asgi_app__()
+        _strip_routes(app, "/v1/chat/completions")
+        _strip_routes(app, "/v1/completions")
+
+        @app.post("/v1/chat/completions")
+        async def _pd_chat(body: ChatCompletionRequest, request: Request):
+            body = _sanitize_chat_completion_request(body)
+            raw_info = RawRequestInfo.from_starlette_request(request)
+            return await _pd_http_response(await self.chat(body, raw_info))
+
+        @app.post("/v1/completions")
+        async def _pd_completions(body: CompletionRequest, request: Request):
+            raw_info = RawRequestInfo.from_starlette_request(request)
+            return await _pd_http_response(await self.completions(body, raw_info))
+
+        return app
 
     # ---- Pre-warm ----
     #

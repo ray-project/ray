@@ -1,5 +1,6 @@
 """The SGLang engine processor."""
 
+import hashlib
 import logging
 from typing import Any, Dict, Optional
 
@@ -15,7 +16,6 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor.base import (
-    DEFAULT_MAX_TASKS_IN_FLIGHT,
     OfflineProcessorConfig,
     Processor,
     ProcessorBuilder,
@@ -184,9 +184,7 @@ def build_sglang_engine_processor(
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
                     **config.get_concurrency(autoscaling_enabled=True),
-                    max_tasks_in_flight_per_actor=config.experimental.get(
-                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
-                    ),
+                    max_tasks_in_flight_per_actor=config.max_tasks_in_flight_per_actor,
                 ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
@@ -253,6 +251,9 @@ def build_sglang_engine_processor(
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
+            model_id_hash=hashlib.sha256(
+                config.model_source.encode("utf-8")
+            ).hexdigest(),
             processor_config_name=type(config).__name__,
             model_architecture=architecture,
             batch_size=config.batch_size,
