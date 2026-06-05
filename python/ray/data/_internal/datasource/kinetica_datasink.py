@@ -350,9 +350,8 @@ class KineticaDatasink(Datasink):
     def _drop_table(self, client: Any) -> None:
         """Drop the target table if it exists.
 
-        Uses drop_table (not clear_table) to completely remove the table
-        including its schema, allowing OVERWRITE mode to apply a new schema.
-        clear_table only removes rows but keeps the table definition.
+        Uses Kinetica's clear_table API which drops the table completely
+        (including its schema), allowing OVERWRITE mode to apply a new schema.
 
         Uses the 'no_error_if_not_exists' option to avoid exceptions when the
         table doesn't exist, making this operation idempotent.
@@ -367,10 +366,9 @@ class KineticaDatasink(Datasink):
         from gpudb import GPUdbException
 
         try:
-            # Use drop_table to completely remove the table including schema.
-            # clear_table only removes rows but keeps the table definition,
-            # which would prevent applying a new schema in OVERWRITE mode.
-            client.drop_table(
+            # clear_table drops the table completely (including schema),
+            # allowing OVERWRITE mode to apply a new schema.
+            client.clear_table(
                 table_name=self._table_name,
                 options={"no_error_if_not_exists": "true"},
             )
