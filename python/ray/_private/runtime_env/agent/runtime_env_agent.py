@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Set, Tuple
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
+import ray._private.utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
@@ -264,6 +265,10 @@ class RuntimeEnvAgent:
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
 
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
+        )
+
         try:
             self._node_ip = ray.util.get_node_ip_address()
             self._node_prefix = f"[Node {self._node_ip}] "
@@ -334,11 +339,12 @@ class RuntimeEnvAgent:
 
             if resource_name in request.allocated_instances:
                 allocated_ids = list(request.allocated_instances[resource_name].ids)
-                if env_var in os.environ:
-                    original_ids = os.environ[env_var].split(",")
-                    allocated_ids_str = [
-                        str(original_ids[int(i)]) for i in allocated_ids
-                    ]
+                if (
+                    self.original_visible_accelerator_ids.get(resource_name, None)
+                    is not None
+                ):
+                    original_ids = self.original_visible_accelerator_ids[resource_name]
+                    allocated_ids_str = {str(original_ids[i]) for i in allocated_ids}
                 else:
                     allocated_ids_str = [str(i) for i in allocated_ids]
                 context.env_vars[env_var] = ",".join(allocated_ids_str)

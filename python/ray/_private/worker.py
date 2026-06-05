@@ -1138,7 +1138,22 @@ class Worker:
                 for resource_id, _ in assignment:
                     assigned_ids.add(resource_id)
 
-        return list(assigned_ids)
+        assigned_ids = list(assigned_ids)
+        if not assigned_ids:
+            return []
+
+        # starting in Ray v2.57, the runtime env agent injects env variables for
+        # accelerator IDs (e.g. CUDA_VISIBLE_DEVICES). If they're present, return
+        # them as the accelerator IDs.
+        from ray._private.accelerators import get_accelerator_manager_for_resource
+
+        manager = get_accelerator_manager_for_resource(resource_name)
+        if manager is not None:
+            visible_ids = manager.get_current_process_visible_accelerator_ids()
+            if visible_ids is not None:
+                return visible_ids
+
+        return assigned_ids
 
     def shutdown_rdt_manager(self):
         if self._rdt_manager:
