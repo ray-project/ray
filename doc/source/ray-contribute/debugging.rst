@@ -1,5 +1,5 @@
 .. meta::
-    :description: Debugging guide for Ray contributors, covering how to launch Ray processes under gdb, valgrind, and profilers using RAY_{PROCESS}_{DEBUGGER} environment variables. Use this to debug crashing or misbehaving Ray core processes.
+    :description: Debugging guide for Ray contributors, covering how to launch Ray processes under gdb, valgrind, and profilers using RAY_{PROCESS_NAME}_{DEBUGGER} environment variables. Use this to debug crashing or misbehaving Ray core processes.
 
 Debugging for Ray Developers
 ============================
