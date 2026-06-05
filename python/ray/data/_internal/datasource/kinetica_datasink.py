@@ -154,20 +154,46 @@ class KineticaDatasink(Datasink):
         self._schema_string: Optional[str] = None
         self._column_properties: Optional[Dict[str, List[str]]] = None
 
-        # Validate configuration and set up table immediately (fail-fast)
-        self._initialize_table()
+        # Track whether table setup has been performed
+        self._table_initialized: bool = False
+
+        # Validate configuration (no DDL side effects - those happen in on_write_start)
+        self._validate_config()
+
+    def _validate_config(self) -> None:
+        """Validate configuration without performing DDL operations.
+
+        This is called during __init__ to validate parameters early.
+        DDL operations (CREATE/DROP TABLE) are deferred to on_write_start
+        to follow Ray's datasink contract.
+
+        Raises:
+            GPUdbException: If CREATE/OVERWRITE mode is used without a schema.
+        """
+        from gpudb import GPUdbException
+
+        # CREATE and OVERWRITE modes require a schema upfront
+        if self._mode == KineticaSinkMode.CREATE:
+            if self._schema is None:
+                raise GPUdbException("Schema must be provided when using mode='create'")
+
+        elif self._mode == KineticaSinkMode.OVERWRITE:
+            if self._schema is None:
+                raise GPUdbException(
+                    "Schema must be provided when using mode='overwrite'"
+                )
+        # APPEND mode: schema is optional (can use existing table schema)
 
     def _initialize_table(self) -> None:
-        """Validate configuration and set up the table.
+        """Set up the table for writing.
 
-        This is called during __init__ to provide fail-fast behavior.
-        Validates that:
-        - CREATE/OVERWRITE modes have a schema
-        - CREATE mode doesn't have an existing table
-        - APPEND mode has an existing table
+        This is called from on_write_start when the write job actually begins.
+        Performs DDL operations (CREATE/DROP TABLE) as needed based on mode.
 
-        For CREATE/OVERWRITE, the table is created here.
-        For APPEND, column definitions are loaded from the existing table.
+        For CREATE: Creates new table (fails if table exists).
+        For OVERWRITE: Drops existing table and creates new one.
+        For APPEND: Creates table if it doesn't exist and schema is provided,
+                   otherwise uses existing table schema.
         """
         from gpudb import GPUdbException
 
@@ -184,8 +210,6 @@ class KineticaDatasink(Datasink):
                     f"Table '{self._table_name}' already exists. "
                     "Use mode='append' or mode='overwrite'."
                 )
-            if self._schema is None:
-                raise GPUdbException("Schema must be provided when using mode='create'")
             columns = arrow_schema_to_kinetica_columns(
                 self._schema,
                 primary_keys=self._table_settings.primary_keys,
@@ -195,10 +219,6 @@ class KineticaDatasink(Datasink):
             self._column_defs = self._columns_to_dicts(columns)
 
         elif self._mode == KineticaSinkMode.OVERWRITE:
-            if self._schema is None:
-                raise GPUdbException(
-                    "Schema must be provided when using mode='overwrite'"
-                )
             if table_exists:
                 self._drop_table(client)
             columns = arrow_schema_to_kinetica_columns(
@@ -210,14 +230,28 @@ class KineticaDatasink(Datasink):
             self._column_defs = self._columns_to_dicts(columns)
 
         elif self._mode == KineticaSinkMode.APPEND:
-            if not table_exists:
-                raise GPUdbException(
-                    f"Table '{self._table_name}' does not exist. "
-                    "Use mode='create' to create a new table, or verify the "
-                    "table name is correct."
+            if table_exists:
+                # Table exists - get schema from existing table
+                record_type = self._get_existing_record_type(client)
+                self._column_defs = self._columns_to_dicts(record_type.columns)
+            elif self._schema is not None:
+                # Table doesn't exist but schema provided - create table
+                columns = arrow_schema_to_kinetica_columns(
+                    self._schema,
+                    primary_keys=self._table_settings.primary_keys,
+                    shard_keys=self._table_settings.shard_keys,
                 )
-            record_type = self._get_existing_record_type(client)
-            self._column_defs = self._columns_to_dicts(record_type.columns)
+                self._create_table(client, columns)
+                self._column_defs = self._columns_to_dicts(columns)
+            else:
+                # Table doesn't exist and no schema - can't proceed
+                raise GPUdbException(
+                    f"Table '{self._table_name}' does not exist and no schema "
+                    "was provided. Either provide a schema to create the table, "
+                    "or use mode='create' with an explicit schema."
+                )
+
+        self._table_initialized = True
 
     def _init_client(self):
         """Create and return a GPUdb client instance."""
@@ -420,14 +454,20 @@ class KineticaDatasink(Datasink):
         """
         Called before writing begins.
 
-        Table setup is done in __init__ for fail-fast behavior, so this
-        method only stores the schema if provided by Ray Data framework.
+        Performs table setup (DDL operations) when the write job actually starts.
+        This follows Ray's datasink contract where side effects should not occur
+        during datasink instantiation, only when writes begin.
 
         Args:
             schema: Optional PyArrow schema passed by Ray Data framework.
         """
+        # Store schema if provided by Ray Data framework
         if schema is not None and self._schema is None:
             self._schema = schema
+
+        # Perform table setup (CREATE/DROP) when writes actually begin
+        if not self._table_initialized:
+            self._initialize_table()
 
     def _get_record_type(self):
         """Reconstruct GPUdbRecordType from stored schema info."""
@@ -548,7 +588,6 @@ class KineticaDatasink(Datasink):
             Write statistics.
         """
         from ray.data._internal.datasource.kinetica_type_utils import (
-            arrow_schema_to_kinetica_columns,
             convert_arrow_batch_to_records,
         )
 
