@@ -16,6 +16,7 @@ from ray.data.expressions import (
     UDFExpr,
     UnaryExpr,
     UUIDExpr,
+    UnnestExpr,
     _CallableClassUDF,
     _ExprVisitor,
 )
@@ -108,6 +109,10 @@ class _ExprVisitorBase(_ExprVisitor[None]):
     def visit_uuid(self, expr: "UUIDExpr") -> None:
         """Visit a uuid expression (no columns to collect)."""
         pass
+
+    def visit_unnest(self, expr: "UnnestExpr") -> None:
+        """Default implementation: recursively visit the inner expression."""
+        self.visit(expr.inner)
 
 
 class _ColumnReferenceCollector(_ExprVisitorBase):
@@ -425,6 +430,18 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         return expr
 
+    def visit_unnest(self, expr: "UnnestExpr") -> Expr:
+        """Visit an unnest expression and rewrite its inner expression.
+
+        Args:
+            expr: The unnest expression.
+
+        Returns:
+            A new UnnestExpr with the rewritten inner expression.
+        """
+        new_inner = self.visit(expr.inner)
+        return UnnestExpr(inner=new_inner)
+
 
 def _is_col_expr(expr: Expr) -> bool:
     return isinstance(expr, ColumnExpr) or (
@@ -567,6 +584,13 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_uuid(self, expr: "UUIDExpr") -> str:
         return self._make_tree_lines("UUID()", expr=expr)
 
+    def visit_unnest(self, expr: "UnnestExpr") -> str:
+        return self._make_tree_lines(
+            "UNNEST",
+            children=[("inner", expr.inner)],
+            expr=expr,
+        )
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -669,6 +693,11 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_uuid(self, expr: "UUIDExpr") -> str:
         """Visit a uuid expression and return its inline representation."""
         return "uuid()"
+
+    def visit_unnest(self, expr: "UnnestExpr") -> str:
+        """Visit an unnest expression and return its inline representation."""
+        inner_str = self.visit(expr.inner)
+        return f"unnest({inner_str})"
 
 
 class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
