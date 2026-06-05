@@ -16,9 +16,11 @@ conda init
 # Conda 26.3.1 crashes on Windows when it tries to clean up a locked exe during
 # a build-variant swap. Preventing self-update avoids that code path.
 conda config --set auto_update_conda false
-conda install -q -y python="${PYTHON_FULL_VERSION}" requests=2.32.3
+
 # Force CA trust stack to the newest versions available at build time.
-conda update -c conda-forge -q -y ca-certificates certifi
+conda update -c conda-forge --override-channels -q -y ca-certificates certifi
+conda install -c conda-forge --override-channels -q -y \
+  python="${PYTHON_FULL_VERSION}" requests=2.32.3
 
 # Install torch first, as some dependencies (e.g. torch-spline-conv) need torch to be
 # installed for their own install.
