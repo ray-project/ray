@@ -1,0 +1,41 @@
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+  py313:
+    PYTHON_VERSION: "3.13"
+    PYTHON_SHORT: "313"
+
+depsets:
+  # Shared torch layer for cu130 GPU release tests. Expands the gpu-cu130 base
+  # image deps (which already carry cupy-cuda13x) with a CUDA 13.x torch build.
+  # Consumed via `python_depset` by compiled_graphs_GPU_cu130 and
+  # jobs_check_cuda_available (cu130 variants).
+  - name: gpu_cu130_py${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_gpu_cu130_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_gpu_cu130.in
+    # Constrain to the gpu-cu130 base image lock so this torch layer stays a
+    # consistent superset of the image it is installed onto (e.g. cupy-cuda13x
+    # matches the base instead of floating to latest).
+    constraints:
+      - python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/gpu_cu130_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cu130
+      - --python-version=${PYTHON_VERSION}
+      - --unsafe-package ray
+      - --python-platform=linux
+    build_arg_sets:
+      - py310
+      - py311
+      - py312
+      - py313

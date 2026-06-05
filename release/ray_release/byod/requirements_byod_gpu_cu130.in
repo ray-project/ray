@@ -1,0 +1,4 @@
+# Extra cu130-only requirements layered onto the gpu-cu130 base image.
+# cupy-cuda12x is relaxed out of the cu130 ray_img chain (see rayimg.depsets.yaml)
+# and replaced with the CUDA 13.x build here.
+cupy-cuda13x
