@@ -1010,14 +1010,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
       false;
 
-  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
-  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
-
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
 
-  // Controls the lifecycle of the CgroupManager.
+  // Controls the lifecycle of the CgroupManager. Declared before
+  // `memory_monitors_` so that ThresholdMemoryMonitor (which holds a reference
+  // to the manager and polls on a background thread) is destroyed -- and its
+  // poll thread joined -- before the manager itself is torn down.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   std::atomic_bool &shutting_down_;
 
