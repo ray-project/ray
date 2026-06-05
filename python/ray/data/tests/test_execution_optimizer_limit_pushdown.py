@@ -454,6 +454,57 @@ def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
     assert len(res) == 5 and all(r["count()"] == 1 for r in res)
 
 
+def test_limit_pushdown_zip(ray_start_regular_shared_2_cpus):
+    """Test limit pushdown behavior with Zip operations."""
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100)
+    ds = ds1.zip(ds2).limit(5)
+
+    expected_plan = "Read[ReadRange] -> Limit[limit=5], Read[ReadRange] -> Limit[limit=5] -> Zip[Zip] -> Limit[limit=5]"
+    _check_valid_plan_and_result(
+        ds,
+        expected_plan,
+        [{"id": i, "id_1": i} for i in range(5)],
+        check_ordering=False,
+    )
+
+
+def test_limit_pushdown_zip_with_maprows(ray_start_regular_shared_2_cpus):
+    """Limit after Zip + MapRows: limit should be pushed before the MapRows
+    and inside each Zip branch."""
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100)
+    ds = ds1.zip(ds2).map(lambda x: x).limit(5)
+
+    expected_plan = (
+        "Read[ReadRange] -> Limit[limit=5], "
+        "Read[ReadRange] -> Limit[limit=5] -> Zip[Zip] -> "
+        "Limit[limit=5] -> MapRows[Map(<lambda>)]"
+    )
+    _check_valid_plan_and_result(
+        ds,
+        expected_plan,
+        [{"id": i, "id_1": i} for i in range(5)],
+        check_ordering=False,
+    )
+
+
+def test_limit_pushdown_zip_with_sort(ray_start_regular_shared_2_cpus):
+    """Limit after Zip + Sort: limit must NOT push through the Sort."""
+    ds1 = ray.data.range(100)
+    ds2 = ray.data.range(100)
+    ds = ds1.zip(ds2).sort("id").limit(5)
+
+    expected_plan = (
+        "Read[ReadRange], "
+        "Read[ReadRange] -> "
+        "Zip[Zip] -> Sort[Sort] -> Limit[limit=5]"
+    )
+    _check_valid_plan_and_result(
+        ds, expected_plan, [{"id": i, "id_1": i} for i in range(5)]
+    )
+
+
 def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
     """
     Complex end-to-end case:

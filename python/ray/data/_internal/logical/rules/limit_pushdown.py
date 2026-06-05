@@ -12,6 +12,7 @@ from ray.data._internal.logical.operators import (
     Read,
     ReadFiles,
     Union,
+    Zip,
 )
 
 __all__ = [
@@ -31,6 +32,12 @@ class LimitPushdownRule(Rule):
     - Project operations (column selection)
     - MapRows operations (row-wise transformations that preserve row count)
     - Union operations (limits are prepended to each branch)
+    - Zip operations (limits are prepended to each branch). Zip pairs rows
+        positionally, so the first ``n`` zipped rows only depend on the first
+        ``n`` rows of each branch. Note: zip requires its inputs to have equal
+        row counts. For inputs that violate this contract (unequal lengths),
+        pushing the limit can make the zip succeed (truncated) instead of
+        raising the usual ``ValueError``.
 
     We stop at:
     - Any operator that can modify the number of output rows (Sort, Shuffle, Aggregate, Read etc.)
@@ -57,8 +64,8 @@ class LimitPushdownRule(Rule):
                     )
 
                 # If no fusion, apply pushdown logic
-                if isinstance(upstream_op, Union):
-                    return self._push_limit_into_union(node)
+                if isinstance(upstream_op, (Union, Zip)):
+                    return self._push_limit_into_nary_branches(node)
                 else:
                     return self._push_limit_down(node)
 
@@ -77,36 +84,36 @@ class LimitPushdownRule(Rule):
 
         def transform(node: LogicalOperator) -> LogicalOperator:
             if isinstance(node, Limit):
-                if isinstance(node.input_dependencies[0], Union):
-                    return self._push_limit_into_union(node)
+                if isinstance(node.input_dependencies[0], (Union, Zip)):
+                    return self._push_limit_into_nary_branches(node)
                 return self._push_limit_down(node)
             return node
 
         # ``_apply_transform`` returns the (potentially new) root of the DAG.
         return op._apply_transform(transform)
 
-    def _push_limit_into_union(self, limit_op: Limit) -> Limit:
-        """Push `limit_op` INTO every branch of its upstream Union
-        and preserve the global limit.
+    def _push_limit_into_nary_branches(self, limit_op: Limit) -> Limit:
+        """Push `limit_op` INTO every branch of its upstream n-ary operator
+        (Union or Zip) and preserve the global limit.
 
         Existing topology:
-            child₁ , child₂ , …  ->  Union  ->  Limit
+            child₁ , child₂ , …  ->  NAry  ->  Limit
 
         New topology:
             child₁ -> Limit ->│
                                │
-            child₂ -> Limit ->┤ Union ──► Limit   (original)
+            child₂ -> Limit ->┤ NAry ──► Limit   (original)
                                │
             …    -> Limit  ->│
 
         Example (skip duplicate limit on a branch that already has it):
             before:
-                child -> Limit(n) -> Union -> Limit(n)
+                child -> Limit(n) -> NAry -> Limit(n)
             after:
-                child -> Limit(n) -> Union -> Limit(n)   (no extra branch limit inserted)
+                child -> Limit(n) -> NAry -> Limit(n)   (no extra branch limit inserted)
         """
-        union_op = limit_op.input_dependencies[0]
-        assert isinstance(union_op, Union)
+        nary_op = limit_op.input_dependencies[0]
+        assert isinstance(nary_op, (Union, Zip))
 
         def _branch_has_limit(op: LogicalOperator, limit: int) -> bool:
             current = op
@@ -124,7 +131,7 @@ class LimitPushdownRule(Rule):
 
         # Insert a branch-local Limit and push it further upstream.
         branch_tails: List[LogicalOperator] = []
-        for child in union_op.input_dependencies:
+        for child in nary_op.input_dependencies:
             # Avoid inserting a duplicate Limit on a branch that already has the same
             # limit upstream of row-preserving ops.
             if _branch_has_limit(child, limit_op.limit):
@@ -132,16 +139,16 @@ class LimitPushdownRule(Rule):
                 continue
             raw_limit = Limit(limit_op.limit, input_dependencies=[child])
 
-            if isinstance(raw_limit.input_dependencies[0], Union):
-                # This represents the limit operator appended after the union.
-                pushed_tail = self._push_limit_into_union(raw_limit)
+            if isinstance(raw_limit.input_dependencies[0], (Union, Zip)):
+                # This represents the limit operator appended after the n-ary op.
+                pushed_tail = self._push_limit_into_nary_branches(raw_limit)
             else:
                 # This represents the operator that takes place of the original limit position.
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        new_union = Union(*branch_tails)
-        return Limit(limit_op.limit, input_dependencies=[new_union])
+        new_nary = type(nary_op)(*branch_tails)
+        return Limit(limit_op.limit, input_dependencies=[new_nary])
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
         """Push a single limit down through compatible operators conservatively.
