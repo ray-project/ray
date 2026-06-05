@@ -2792,7 +2792,9 @@ obstore==0.10.0 \
     --hash=sha256:f4e69ce8e579227f6416c4e547c485a9ff84425ec92fd95107f2ad0cfb02f1cc \
     --hash=sha256:f84be7473d5b2484059563126b1ac71377aecb2ed3db78c7fb3fddeb7f263b2c \
     --hash=sha256:fedac1464b8835063a5661da8dd33519d0d24988d2b256c92b5841c26b18ce28
-# via -r python/requirements/ml/py313/data-test-requirements.txt
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   -r python/requirements/ml/py313/data-test-requirements.txt
 opencensus==0.11.4 \
     --hash=sha256:a18487ce68bc19900336e0ff4655c5a116daf10c1b3685ece8d971bddad6a864 \
     --hash=sha256:cbef87d8b8773064ab60e5c2a1ced58bbaa38a6d052c41aec224958ce544eff2
