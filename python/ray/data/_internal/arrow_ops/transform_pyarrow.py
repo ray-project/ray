@@ -111,8 +111,12 @@ def _hash_partition(
         # Struct/list/map columns become dicts/lists in pandas, which are
         # unhashable. Use row-by-row hashing on PyArrow scalars instead.
         partitions = np.zeros((table.num_rows,), dtype=np.int64)
-        for i in range(table.num_rows):
-            _tuple = tuple(c[i] for c in table.columns)
+
+        # Hoist per-column lookups out of the row loop. Iterating columns in
+        # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
+        # of per-row __getitem__ calls, which avoids Python-side method dispatch
+        # on every element.
+        for i, _tuple in enumerate(zip(*table.columns)):
             partitions[i] = hash(_tuple) % num_partitions
     else:
         # Use pandas' vectorized hash (xxhash-based) instead of a Python
@@ -146,6 +150,7 @@ def hash_partition(
     """
 
     import numpy as np
+    import pyarrow.compute as pac
 
     assert num_partitions > 0
 
@@ -156,24 +161,27 @@ def hash_partition(
 
     projected_table = table.select(hash_cols)
     partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # For every partition compile list of indices of rows falling
-    # under that partition
-    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
-    #       chunks w/in the individual columns, and therefore to improve performance
-    #       we attempt to defragment the table to potentially combine some of those
-    #       chunks into contiguous arrays.
-    # TODO: can we always combine chunks?
-    table = try_combine_chunked_columns(table)
+    # Sort rows by partition id so each partition occupies a contiguous range
+    # of the result, then carve out partitions with zero-copy slices. The N
+    # output partitions together form a permutation of `table`, so one big
+    # take + N slices is equivalent to N independent takes and pays the take
+    # fixed cost once.
+    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
+    counts = np.bincount(partitions_array, minlength=num_partitions)
+    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(counts)
 
+    sorted_table = take_table(table, sort_indices)
     return {
-        p: table.take(idx)
+        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p, idx in enumerate(indices)
-        if len(idx) > 0
+        for p in range(num_partitions)
+        if counts[p] > 0
     }
 
 
@@ -333,6 +341,37 @@ def _unify_schemas_pyarrow(
 
     promote_options = "permissive" if promote_types else "default"
     return pyarrow.unify_schemas(schemas, promote_options=promote_options)
+
+
+def reorder_columns_by_schema(
+    table: "pyarrow.Table", schema: "pyarrow.Schema"
+) -> "pyarrow.Table":
+    """Return `table` with its columns in the order of `schema.names`.
+
+    No-op when the column orders already match. Use before a positional
+    operation like `Table.cast(schema)` or
+    `RecordBatchReader.from_batches(schema, ...)` so blocks that share
+    the same field names in a different order — common when upstream
+    UDFs build dicts whose key order varies across workers — don't trip
+    the positional schema check.
+
+    Raises `ValueError` if `table` has any columns not in `schema.names`
+    (selecting on `schema.names` would silently drop them) and via
+    `Table.select` if `table` is missing any column in `schema.names`.
+    Callers reconciling field-set mismatches (e.g. via `unify_schemas`)
+    must handle that case before calling here.
+    """
+    if table.schema.names == schema.names:
+        return table
+    target_names = set(schema.names)
+    extra = [n for n in table.schema.names if n not in target_names]
+    if extra:
+        raise ValueError(
+            f"Table has columns not in target schema: {extra}. "
+            f"reorder_columns_by_schema only reorders an existing field set; "
+            f"reconcile the column set before calling."
+        )
+    return table.select(schema.names)
 
 
 def unify_schemas(

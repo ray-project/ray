@@ -41,6 +41,7 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import print_next_steps_context_note
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
     attach_cluster,
@@ -890,17 +891,11 @@ def start(
             )
     labels_dict = {**labels_from_file, **labels_from_string}
 
-    available_memory_bytes = ray._private.utils.estimate_available_memory()
-    object_store_memory = ray._private.utils.resolve_object_store_memory(
-        available_memory_bytes, object_store_memory
-    )
-
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
 
     # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
@@ -934,7 +929,6 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
-        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
@@ -1089,6 +1083,7 @@ def start(
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
         with cli_logger.group("Next steps"):
+            print_next_steps_context_note(cli_logger, cf)
             dashboard_url = node.address_info["webui_url"]
             if ray_constants.ENABLE_RAY_CLUSTER:
                 cli_logger.print("To add another node to this Ray cluster, run")

@@ -359,6 +359,9 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -408,13 +411,13 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
 /// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
@@ -623,6 +626,13 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// A probe task is only posted after a previous probe task has completed.
 RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
+/// How often to probe each io_context for loop latency and health.
+RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
+
+/// If a probe has been outstanding longer than this, the io_context is marked
+/// unhealthy.
+RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -667,6 +677,12 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+// The threshold of the memory usage in bytes for the idle worker
+// to be considered as a candidate for killing.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
 
 /// The soft limit of the number of workers to keep around.
 /// We apply this limit to the idle workers instead of total workers,
@@ -837,7 +853,9 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
+RAY_CONFIG(std::string,
+           custom_unit_instance_resources,
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -969,14 +987,14 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+           std::max<int64_t>(1, ray::CpuMonitorUtils::GetCpuLimit() / 4));
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
+           ray::CpuMonitorUtils::GetCpuLimit() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -1119,10 +1137,3 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
-
-// The threshold of the memory usage in bytes for the idle worker to be considered as
-// a candidate for killing.
-// TODO: We should clean it up after the memory monitor is revamped.
-RAY_CONFIG(int64_t,
-           idle_worker_killing_memory_threshold_bytes,
-           1024 * 1024 * 1024)  // 1GB

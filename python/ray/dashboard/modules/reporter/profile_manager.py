@@ -81,7 +81,9 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler_name = "py-spy"
 
-    async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
+    async def trace_dump(
+        self, pid: int, native: bool = False, subprocesses: bool = False
+    ) -> (bool, str):
         """
         Capture and dump a trace for a specified process.
 
@@ -89,6 +91,8 @@ class CpuProfilingManager:
             pid: The process ID (PID) of the target process for trace capture.
             native (bool, optional): If True, includes native (C/C++) stack frames.
                 Default is False.
+            subprocesses (bool, optional): If True, also dumps stack traces for
+                child processes of the target process. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -103,6 +107,8 @@ class CpuProfilingManager:
         # We
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(
@@ -119,7 +125,13 @@ class CpuProfilingManager:
             return True, decode(stdout)
 
     async def cpu_profile(
-        self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
+        self,
+        pid: int,
+        format="flamegraph",
+        duration: float = 5,
+        native: bool = False,
+        idle: bool = False,
+        subprocesses: bool = False,
     ) -> (bool, str):
         """
         Perform CPU profiling on a specified process.
@@ -132,6 +144,12 @@ class CpuProfilingManager:
                 session in seconds. Default is 5 seconds.
             native (bool, optional): If True, includes native (C/C++) stack frames.
                 Default is False.
+            idle (bool, optional): If True, includes off-CPU / sleeping threads
+                (e.g. threads blocked on locks, I/O, or CUDA syncs).
+                Default is False.
+            subprocesses (bool, optional): If True, also profiles child
+                processes of the target process (e.g. data loader or
+                multiprocess inference workers). Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -170,6 +188,10 @@ class CpuProfilingManager:
         ]
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if idle:
+            cmd.append("--idle")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(
