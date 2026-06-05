@@ -906,7 +906,7 @@ async def _resolve_size(
     import obstore as obs
 
     try:
-        store_url, path = _split_uri(uri)
+        store_url, path = _split_obstore_uri(uri)
         store = registry.get(store_url)
         async with semaphore:
             meta = await obs.head_async(store, path)

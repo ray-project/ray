@@ -19,6 +19,7 @@ from ray.data._internal.planner._obstore_download import (
     _is_obstore_supported_url,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
+    _resolve_size,
     _S3FSSessionCredentialProvider,
     _split_obstore_uri,
     download_bytes_async,
@@ -271,6 +272,44 @@ class TestStoreRegistryRegionInjection:
         ) as probe:
             reg.get("https://bucket.s3.us-east-1.amazonaws.com")
         probe.assert_not_called()
+
+
+# TestResolveSizeRewrite — the HEAD size probe must apply the same path-style
+# -> s3:// rewrite as the download paths. Otherwise a cross-region path-style
+# URL keeps the regional HTTPS store, hits BareRedirect, returns size 0, and
+# wrongly skips ranged downloads even when a whole-file GET would succeed.
+class TestResolveSizeRewrite:
+    def test_resolve_size_rewrites_path_style_uri(self):
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            return MagicMock(name="store")
+
+        registry = StoreRegistry()
+        registry._from_url = fake_from_url
+
+        async def fake_head_async(store, path):
+            captured["path"] = path
+            return {"size": 4096}
+
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ), patch("obstore.head_async", side_effect=fake_head_async):
+            size = asyncio.run(
+                _resolve_size(
+                    "https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin",
+                    registry,
+                    asyncio.Semaphore(),
+                )
+            )
+
+        # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
+        assert size == 4096
+        assert captured["store_url"] == "s3://cross-region-bucket"
+        assert captured["path"] == "key.bin"
 
 
 # TestDownloadHelpers
