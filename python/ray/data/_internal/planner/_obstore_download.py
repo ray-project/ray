@@ -550,6 +550,8 @@ def _discover_aws_bucket_region(bucket: str) -> Optional[str]:
         if bucket in _BUCKET_REGION_CACHE:
             return _BUCKET_REGION_CACHE[bucket]
 
+    # Probe outside the lock so concurrent first-time lookups don't serialize
+    # on a network round-trip.
     region: Optional[str] = None
     try:
         region = pyarrow.fs.resolve_s3_region(bucket)
@@ -559,8 +561,16 @@ def _discover_aws_bucket_region(bucket: str) -> Optional[str]:
         logger.debug("Failed to discover region for bucket %r: %s", bucket, e)
 
     with _BUCKET_REGION_CACHE_LOCK:
+        # Another thread may have resolved the same bucket while we probed.
+        # A real region must win over a ``None`` result: never let a failed
+        # probe overwrite a region a concurrent thread already cached, or
+        # later ``StoreRegistry.get`` calls would skip region injection and
+        # cross-region downloads could fail intermittently.
+        cached = _BUCKET_REGION_CACHE.get(bucket)
+        if cached is not None:
+            return cached
         _BUCKET_REGION_CACHE[bucket] = region
-    return region
+        return region
 
 
 class StoreRegistry:

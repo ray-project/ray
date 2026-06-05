@@ -175,6 +175,26 @@ class TestBucketRegionDiscovery:
         with patch("pyarrow.fs.resolve_s3_region", side_effect=AttributeError("no S3")):
             assert _discover_aws_bucket_region("no-s3-support") is None
 
+    def test_none_result_does_not_overwrite_cached_region(self):
+        # Race: this thread probes (outside the lock) and gets None, while a
+        # concurrent thread resolves and caches the real region. The failed
+        # probe must not clobber the cached region, otherwise later
+        # StoreRegistry.get calls skip region injection and cross-region
+        # downloads fail intermittently.
+        self._clear_cache()
+
+        def resolve_then_simulate_concurrent_win(bucket):
+            # Stand in for another thread caching the real region mid-probe.
+            _BUCKET_REGION_CACHE[bucket] = "us-west-2"
+            return None
+
+        with patch(
+            "pyarrow.fs.resolve_s3_region",
+            side_effect=resolve_then_simulate_concurrent_win,
+        ):
+            assert _discover_aws_bucket_region("racy-bucket") == "us-west-2"
+        assert _BUCKET_REGION_CACHE["racy-bucket"] == "us-west-2"
+
 
 # TestStoreRegistryRegionInjection — verify region discovery happens at
 # store-construction time for s3:// URLs without an explicit region, and is
