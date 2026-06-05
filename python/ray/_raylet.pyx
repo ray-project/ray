@@ -2686,9 +2686,11 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
 cdef void call_actor_shutdown() noexcept nogil:
     """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
-        core_worker = ray._private.worker.global_worker.core_worker
-        if core_worker.current_actor_is_asyncio():
-            core_worker.stop_and_join_asyncio_threads_if_exist()
+        worker = ray._private.worker.global_worker
+        if hasattr(worker, "core_worker"):
+            core_worker = worker.core_worker
+            if core_worker.current_actor_is_asyncio():
+                core_worker.stop_and_join_asyncio_threads_if_exist()
 
         _call_actor_shutdown()
 
