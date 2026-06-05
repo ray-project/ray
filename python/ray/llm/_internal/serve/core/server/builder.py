@@ -16,6 +16,14 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
+    KV_ROUTER_ACTOR_NAME,
+    KVRouterActor,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+)
+from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -33,6 +41,29 @@ DEFAULT_DEPLOYMENT_OPTIONS = {
 
 def _get_deployment_name(llm_config: LLMConfig) -> str:
     return llm_config.model_id.replace("/", "--").replace(".", "_")
+
+
+def _maybe_attach_kv_router_actor(deployment_options: dict) -> None:
+    """Attach the KVRouterActor which maintains the global KV radix tree
+    when the deployment's request router is a KVAwareRouter.
+    """
+    request_router_config = deployment_options.get("request_router_config")
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    if not isinstance(request_router_config, RequestRouterConfig):
+        return
+    if not issubclass(request_router_config.get_request_router_class(), KVAwareRouter):
+        return
+
+    # TODO (jeffreywang): KVRouterActor requires init_kwargs such as block_size.
+    deployment_options["deployment_actors"] = [
+        *deployment_options.get("deployment_actors", []),
+        DeploymentActorConfig(
+            name=KV_ROUTER_ACTOR_NAME,
+            actor_class=KVRouterActor,
+            actor_options={"num_cpus": 0},
+        ),
+    ]
 
 
 def build_llm_deployment(
@@ -75,6 +106,8 @@ def build_llm_deployment(
     deployment_options = maybe_apply_llm_deployment_config_defaults(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
+
+    _maybe_attach_kv_router_actor(deployment_options)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
