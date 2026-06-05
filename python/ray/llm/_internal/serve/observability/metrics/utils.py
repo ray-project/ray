@@ -1,9 +1,4 @@
-import time
-from enum import Enum
-from typing import (
-    List,
-    TypeVar,
-)
+from typing import List
 
 # Histogram buckets for short-range latencies measurements:
 # Min=1ms, Max=30s
@@ -29,37 +24,3 @@ SHORT_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS: List[float] = [
     20000,
     30000,
 ]
-
-# Histogram buckets for long-range latencies measurements:
-# Min=10ms, Max=300s
-LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS = [
-    x * 10 for x in SHORT_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS
-]
-
-
-class ClockUnit(int, Enum):
-    ms = 1000
-    s = 1
-
-
-class MsClock:
-    """A clock that tracks intervals in milliseconds"""
-
-    def __init__(self, unit: ClockUnit = ClockUnit.ms):
-        self.reset()
-        self.unit = unit.value
-        self.start_time = time.perf_counter()
-
-    def reset(self):
-        self.start_time = time.perf_counter()
-
-    def interval(self):
-        return (time.perf_counter() - self.start_time) * self.unit
-
-    def reset_interval(self):
-        interval = self.interval()
-        self.reset()
-        return interval
-
-
-T = TypeVar("T")
