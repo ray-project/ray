@@ -1900,15 +1900,24 @@ class Replica:
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
         reserved_slot_token = request_metadata._reserved_slot_token
-        if reserved_slot_token:
-            if reserved_slot_token not in self._reserved_slots:
-                raise RuntimeError(
-                    "Request tried to consume an unknown reserved slot "
-                    f"{reserved_slot_token}."
-                )
-            self._reserved_slots.remove(reserved_slot_token)
-        else:
-            await self._semaphore.acquire()
+        # Count the request as queued while it waits for capacity, decrementing
+        # in a ``finally`` that wraps the wait. A request cancelled while waiting
+        # for a slot (e.g. a client disconnect under load) must not leak the
+        # count: graceful shutdown waits for queued requests to reach zero, so a
+        # leaked count would stall it until the hard shutdown timeout.
+        self._num_queued_requests += 1
+        try:
+            if reserved_slot_token:
+                if reserved_slot_token not in self._reserved_slots:
+                    raise RuntimeError(
+                        "Request tried to consume an unknown reserved slot "
+                        f"{reserved_slot_token}."
+                    )
+                self._reserved_slots.remove(reserved_slot_token)
+            else:
+                await self._semaphore.acquire()
+        finally:
+            self._num_queued_requests -= 1
 
         try:
             try:
@@ -1920,21 +1929,31 @@ class Replica:
             self._semaphore.release()
 
     async def _drain_ongoing_requests(self):
-        """Wait for any ongoing requests to finish.
+        """Wait for any ongoing or queued requests to finish.
 
-        Sleep for a grace period before the first time we check the number of ongoing
+        Sleep for a grace period before the first time we check the number of
         requests to allow the notification to remove this replica to propagate to
         callers first.
+
+        Queued requests are counted alongside ongoing ones: a direct-ingress
+        request that has been accepted but is still waiting for capacity is not
+        yet "ongoing", and exiting while it is queued would reset its connection
+        (surfacing to the client as a 5xx). The ingress listener stays open for
+        the duration of the drain; new requests stop arriving once the HAProxy
+        health check fails (it does as soon as ``_shutting_down`` is set), so
+        this count drains to zero on its own.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
-            if num_ongoing_requests > 0:
+            num_queued_requests = self._num_queued_requests
+            if num_ongoing_requests > 0 or num_queued_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
-                    f"because there are {num_ongoing_requests} ongoing requests."
+                    f"because there are {num_ongoing_requests} ongoing and "
+                    f"{num_queued_requests} queued requests."
                 )
             else:
                 logger.info(
@@ -2417,10 +2436,7 @@ class Replica:
             )
 
         with self._wrap_request(request_metadata):
-            self._num_queued_requests += 1
             async with self._start_request(request_metadata):
-                self._num_queued_requests -= 1
-
                 # Use the generic disconnect detecting wrapper
                 result_gen = call_unary()
                 replica_response_generator = ReplicaResponseGenerator(
@@ -2652,7 +2668,6 @@ class Replica:
         first_message_peeked = False
 
         with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
 
             async def send_user_message(msg: Dict):
                 nonlocal response_started
@@ -2678,8 +2693,6 @@ class Replica:
 
             async def call_asgi():
                 async with self._start_request(request_metadata):
-                    self._num_queued_requests -= 1
-
                     if (
                         not self._user_callable_wrapper._run_user_code_in_separate_thread
                     ):

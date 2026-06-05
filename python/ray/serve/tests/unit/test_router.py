@@ -424,6 +424,7 @@ class FakeServeReplicaForSlotReservation(ServeReplica):
         )
         self._metrics_manager = FakeReplicaMetricsManager()
         self._reserved_slots = set()
+        self._num_queued_requests = 0
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
 
@@ -526,6 +527,60 @@ class TestReplicaSlotReservation:
         finally:
             if not drain_task.done():
                 drain_task.cancel()
+
+    async def test_drain_waits_for_queued_requests(self):
+        # A request that has been accepted but is still waiting for capacity is
+        # counted as queued, not ongoing. Graceful shutdown must wait for it:
+        # exiting while it is queued would reset its connection (surfacing to
+        # the client as a 5xx).
+        replica = FakeServeReplicaForSlotReservation(graceful_shutdown_wait_loop_s=0.01)
+
+        # Simulate a request that has been admitted and is waiting for a slot.
+        replica._num_queued_requests = 1
+        assert replica.get_num_ongoing_requests() == 0
+
+        drain_task = asyncio.create_task(replica._drain_ongoing_requests())
+        try:
+            await asyncio.sleep(0.1)
+            assert (
+                not drain_task.done()
+            ), "drain should still be running while a request is queued"
+
+            replica._num_queued_requests = 0
+            await asyncio.wait_for(drain_task, timeout=1.0)
+        finally:
+            if not drain_task.done():
+                drain_task.cancel()
+
+    async def test_queued_count_released_when_cancelled_while_waiting(self):
+        # A request cancelled while waiting for capacity (e.g. a client
+        # disconnect under load) must release its queued count. Otherwise the
+        # leaked count would stall graceful shutdown -- which waits for queued
+        # requests to reach zero -- until the hard shutdown timeout.
+        replica = FakeServeReplicaForSlotReservation(max_ongoing_requests=1)
+
+        # Hold the only slot so the next request blocks acquiring the semaphore.
+        async with replica._start_request(dummy_request_metadata()):
+            assert replica.get_num_ongoing_requests() == 1
+            assert replica._num_queued_requests == 0
+
+            async def blocked_request():
+                async with replica._start_request(dummy_request_metadata()):
+                    pass
+
+            task = asyncio.create_task(blocked_request())
+            # Let it reach the semaphore wait; it is now counted as queued.
+            await asyncio.sleep(0.05)
+            assert replica._num_queued_requests == 1
+
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            # The queued count is released despite the cancellation.
+            assert replica._num_queued_requests == 0
+
+        assert replica.get_num_ongoing_requests() == 0
 
     async def test_direct_ingress_request_is_rejected(self):
         replica = FakeServeReplicaForSlotReservation()
