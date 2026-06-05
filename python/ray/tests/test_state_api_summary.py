@@ -70,30 +70,35 @@ async def test_api_manager_summary_tasks(state_api_manager):
             [
                 generate_task_event(
                     id=ids[0].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[1].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[2].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[3].binary(),
+                    name="",
                     func_or_class=first_task_name,
                     state=TaskStatus.RUNNING,
                     type=TaskType.NORMAL_TASK,
                 ),
                 generate_task_event(
                     id=ids[4].binary(),
+                    name="",
                     func_or_class=second_task_name,
                     state=TaskStatus.PENDING_NODE_ASSIGNMENT,
                     type=TaskType.ACTOR_TASK,
