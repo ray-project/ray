@@ -1900,11 +1900,9 @@ class Replica:
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
         reserved_slot_token = request_metadata._reserved_slot_token
-        # Count the request as queued while it waits for capacity, decrementing
-        # in a ``finally`` that wraps the wait. A request cancelled while waiting
-        # for a slot (e.g. a client disconnect under load) must not leak the
-        # count: graceful shutdown waits for queued requests to reach zero, so a
-        # leaked count would stall it until the hard shutdown timeout.
+        # Count the request as queued until it acquires a slot; decrement in a
+        # finally so a cancel while waiting for capacity can't leak the count
+        # (graceful shutdown waits for queued requests to reach zero).
         self._num_queued_requests += 1
         try:
             if reserved_slot_token:
@@ -1937,20 +1935,14 @@ class Replica:
             self._semaphore.release()
 
     async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
-        """Wait until the minimum draining period has elapsed *and* there are no
-        ongoing or queued requests.
+        """Wait until the minimum draining period has elapsed and no ongoing or
+        queued requests remain.
 
-        The ingress listener stays open for the whole drain, so requests can
-        still arrive during the minimum draining period -- before external load
-        balancers deregister this replica via the failing health check, or from
-        a stale HAProxy worker on a pooled connection. The loop must not exit
-        until both the period has elapsed and every such request has drained;
-        otherwise a late arrival is reset when the replica tears down, surfacing
-        to the client as a 5xx.
-
-        Queued requests are counted alongside ongoing ones: a direct-ingress
-        request that has been accepted but is still waiting for capacity is not
-        yet "ongoing", and exiting while it is queued would reset its connection.
+        The listener stays open during the drain, so requests can still arrive
+        (e.g. from a stale HAProxy worker on a pooled connection). Exiting while
+        one is in flight would reset it, so the loop waits for both conditions.
+        Queued requests count too: one still waiting for capacity isn't "ongoing"
+        yet but must not be dropped.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
         deadline = time.monotonic() + min_draining_period_s
@@ -2014,13 +2006,11 @@ class Replica:
         # If the replica was never initialized it never served traffic, so we
         # can skip the drain entirely.
         if self._user_callable_initialized:
-            # In direct ingress mode, stay alive for at least
+            # In direct ingress mode, stay alive at least
             # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S so external load
-            # balancers (e.g., ALB) deregister this replica before it goes away.
-            # The drain enforces that minimum *and* waits for every in-flight or
-            # queued request -- including ones admitted during the period (e.g. by
-            # a stale HAProxy worker on a pooled connection) -- so a late arrival
-            # is served instead of being reset when the listener tears down.
+            # balancers deregister this replica. The drain enforces that minimum
+            # and waits for any request admitted during it, so a late arrival is
+            # served, not reset.
             min_draining_period_s = (
                 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
                 if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
@@ -2035,10 +2025,9 @@ class Replica:
             f"queued={self._num_queued_requests})"
         )
 
-        # Close the ingress listeners *before* tearing down user code so a late
-        # connection (e.g. from a stale HAProxy worker) can't be accepted into a
-        # replica that is mid-shutdown. Safe because the drain above guarantees
-        # there are no in-flight or queued requests left to cut.
+        # Close the listeners before tearing down user code so a late connection
+        # can't be accepted into a mid-shutdown replica. Safe: the drain above
+        # guarantees nothing is in flight.
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
         if self._direct_ingress_grpc_server_task:
