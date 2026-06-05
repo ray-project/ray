@@ -323,24 +323,20 @@ class _AutoscalingCoordinatorActor:
     def _merge_and_send_requests(self):
         """Merge requests and send them to Ray Autoscaler.
 
-        Each bundle is tagged either with the requester's per-bundle
-        selector (when set) or its subcluster_selector, so the
-        autoscaler scales the right subcluster.
+        Each bundle's forwarded selector is the union of its per-bundle
+        ``requested_label_selectors`` entry and the requester's
+        ``subcluster_selector``. The subcluster pin wins on key conflict,
+        so the autoscaler always sees the correct subcluster regardless
+        of what the per-bundle selectors contain.
         """
         self._purge_expired_requests()
         merged_req: List[ResourceDict] = []
         merged_selectors: List[Dict[str, str]] = []
         for requester_id, req in self._ongoing_reqs.items():
             merged_req.extend(req.requested_resources)
-            subcluster_selector = self._subcluster_selectors.get(requester_id)
-            if any(req.requested_label_selectors):
-                merged_selectors.extend(req.requested_label_selectors)
-            elif subcluster_selector:
-                merged_selectors.extend(
-                    [subcluster_selector] * len(req.requested_resources)
-                )
-            else:
-                merged_selectors.extend([{}] * len(req.requested_resources))
+            subcluster_selector = self._subcluster_selectors.get(requester_id) or {}
+            for per_bundle in req.requested_label_selectors:
+                merged_selectors.append({**per_bundle, **subcluster_selector})
         if any(merged_selectors):
             self._send_resources_request(merged_req, label_selectors=merged_selectors)
         else:

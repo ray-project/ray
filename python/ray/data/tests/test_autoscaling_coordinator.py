@@ -527,6 +527,39 @@ def test_label_selectors_are_forwarded_to_sdk():
     )
 
 
+def test_sdk_forwarding_merges_subcluster_into_each_bundle():
+    """Each forwarded bundle is ``per_bundle ∪ subcluster_selector``:
+    non-subcluster per-bundle keys are preserved, the registry's
+    subcluster wins on collision, and empty per-bundle entries pick up
+    the subcluster as well."""
+    mock_send = Mock()
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=mock_send,
+        get_cluster_nodes=lambda: CLUSTER_NODES_WITHOUT_HEAD,
+    )
+
+    coord.request_resources(
+        requester_id="r",
+        resources=[{"CPU": 1}, {"CPU": 1}],
+        label_selectors=[
+            # Non-subcluster key + colliding subcluster key in the same dict.
+            {"node_id": "n1", "__subcluster__": "wrong"},
+            # Empty per-bundle entry — should still receive the subcluster.
+            {},
+        ],
+        subcluster_selector={"__subcluster__": "training"},
+        expire_after_s=10,
+    )
+    mock_send.assert_called_once_with(
+        [{"CPU": 1}, {"CPU": 1}],
+        label_selectors=[
+            {"node_id": "n1", "__subcluster__": "training"},
+            {"__subcluster__": "training"},
+        ],
+    )
+
+
 def test_label_selectors_length_mismatch_raises():
     coord = _AutoscalingCoordinatorActor(
         get_current_time=lambda: 0,
