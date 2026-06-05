@@ -1464,14 +1464,15 @@ class TestTryCreateGpudbTable:
 # ============================================================================
 
 
-class TestKineticaDatasinkDeferredCreation:
-    """Tests for deferred table creation in KineticaDatasink.
+class TestKineticaDatasinkTableCreation:
+    """Tests for table creation in KineticaDatasink.
 
-    Note: Since supports_distributed_writes returns False for deferred creation,
-    only a single worker runs - no race condition handling is needed.
+    Table DDL (CREATE/DROP) is performed in on_write_start(), following
+    Ray's datasink contract where side effects should not occur in __init__.
     """
 
     @patch.object(KineticaDatasink, "_init_client")
+    @patch.object(KineticaDatasink, "_table_exists")
     @patch.object(KineticaDatasink, "_create_table")
     @patch.object(KineticaDatasink, "_create_gpudb_table")
     @patch(
@@ -1482,105 +1483,107 @@ class TestKineticaDatasinkDeferredCreation:
         "ray.data._internal.datasource.kinetica_type_utils."
         "convert_arrow_batch_to_records"
     )
-    def test_deferred_creation_creates_table(
+    def test_on_write_start_creates_table(
         self,
         mock_convert,
         mock_arrow_to_kinetica,
         mock_create_gpudb_table,
         mock_create_table,
+        mock_table_exists,
         mock_init_client,
     ):
-        """Test deferred creation creates table.
+        """Test that on_write_start creates the table when it doesn't exist.
 
-        Note: _create_table sets _schema_string and _column_properties,
-        so no separate _get_existing_record_type call is needed.
+        Table DDL (CREATE/DROP) is performed in on_write_start(), not in
+        __init__ or write(), following Ray's datasink contract.
         """
         mock_client = MagicMock()
         mock_init_client.return_value = mock_client
+        mock_table_exists.return_value = False  # Table doesn't exist
 
         mock_arrow_to_kinetica.return_value = []
         mock_convert.return_value = [{"id": 1}]
         mock_create_gpudb_table.return_value = None
 
-        # Create datasink without schema (deferred creation)
+        # Create datasink with schema (table creation happens in on_write_start)
+        schema = pa.schema([pa.field("id", pa.int64())])
         ds = KineticaDatasink(
             url="http://localhost:9191",
             table_name="test_table",
             mode=KineticaSinkMode.APPEND,
+            schema=schema,
             use_multihead=False,
         )
-        ds._column_defs = None  # Simulate deferred creation
 
-        # Create test data
+        # Call on_write_start to trigger table creation
+        # (This is what Ray Data framework calls before write())
+        ds.on_write_start()
+
+        # Verify table was created in on_write_start
+        mock_create_table.assert_called_once()
+
+        # Create test data and write
         rb = pa.record_batch([pa.array([1])], names=["id"])
         block_data = pa.Table.from_batches([rb])
 
         ctx = TaskContext(task_idx=0, op_name="test_write")
         ds.write([block_data], ctx=ctx)
 
-        # Verify table was created
-        mock_create_table.assert_called_once()
-        # _create_table sets _schema_string/_column_properties,
-        # so _get_existing_record_type is not called (no redundant network call)
-
     @patch.object(KineticaDatasink, "_init_client")
+    @patch.object(KineticaDatasink, "_table_exists")
     @patch.object(KineticaDatasink, "_create_table")
     @patch(
         "ray.data._internal.datasource.kinetica_type_utils."
         "arrow_schema_to_kinetica_columns"
     )
-    def test_deferred_creation_error_propagated(
+    def test_on_write_start_error_propagated(
         self,
         mock_arrow_to_kinetica,
         mock_create_table,
+        mock_table_exists,
         mock_init_client,
     ):
-        """Test that errors during deferred creation are propagated."""
+        """Test that errors during table creation in on_write_start are propagated."""
         mock_client = MagicMock()
         mock_init_client.return_value = mock_client
+        mock_table_exists.return_value = False  # Table doesn't exist
 
-        # Simulate a real error
+        # Simulate a real error during table creation
         mock_create_table.side_effect = Exception("Connection refused")
 
         mock_arrow_to_kinetica.return_value = []
 
-        # Create datasink without schema
+        # Create datasink with schema (table creation happens in on_write_start)
+        schema = pa.schema([pa.field("id", pa.int64())])
         ds = KineticaDatasink(
             url="http://localhost:9191",
             table_name="test_table",
             mode=KineticaSinkMode.APPEND,
+            schema=schema,
             use_multihead=False,
         )
-        ds._column_defs = None
 
-        # Create test data
-        rb = pa.record_batch([pa.array([1])], names=["id"])
-        block_data = pa.Table.from_batches([rb])
-
-        ctx = TaskContext(task_idx=0, op_name="test_write")
-
-        # Should raise the real error
+        # Should raise the real error when on_write_start tries to create the table
         with pytest.raises(Exception, match="Connection refused"):
-            ds.write([block_data], ctx=ctx)
+            ds.on_write_start()
 
-    def test_supports_distributed_writes_false_for_deferred(self):
-        """Test that distributed writes are disabled for deferred creation.
+    def test_supports_distributed_writes_always_true(self):
+        """Test that distributed writes are always supported.
 
-        This ensures only a single worker runs when the table doesn't exist
-        and schema is unknown, preventing race conditions.
+        Table DDL (CREATE/DROP) is performed in on_write_start() before any
+        writes begin, so all modes have a known table structure by the time
+        distributed writes start.
         """
-        with patch(
-            "ray.data._internal.datasource.kinetica_datasink."
-            "KineticaDatasink._init_client"
-        ):
-            ds = KineticaDatasink(
-                url="http://localhost:9191",
-                table_name="test_table",
-                mode=KineticaSinkMode.APPEND,
-            )
-            # _table_ready is False when deferred
-            assert ds._table_ready is False
-            assert ds.supports_distributed_writes is False
+        ds = KineticaDatasink(
+            url="http://localhost:9191",
+            table_name="test_table",
+            mode=KineticaSinkMode.APPEND,
+        )
+        # Table initialization is deferred to on_write_start
+        assert ds._table_initialized is False
+        # But distributed writes are always supported since on_write_start
+        # runs before any write() calls
+        assert ds.supports_distributed_writes is True
 
 
 # ============================================================================

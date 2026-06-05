@@ -313,10 +313,32 @@ class KineticaDatasource(Datasource):
                 )
         self._partition_column = partition_column
 
-        # Validate table exists and get schema/count immediately (fail-fast)
+        # Table info is fetched lazily in get_read_tasks() to follow Ray's
+        # datasource contract - side effects should not occur in __init__
+        self._total_count: Optional[int] = None
+        self._arrow_schema: Optional["pa.Schema"] = None
+        self._avg_row_size: Optional[int] = None
+        self._table_info_initialized: bool = False
+
+    def _initialize_table_info(self) -> None:
+        """Fetch table info from the database.
+
+        This is called from get_read_tasks() when reads actually begin,
+        following Ray's datasource contract where side effects should not
+        occur during datasource instantiation.
+
+        Retrieves:
+        - Total record count
+        - Arrow schema
+        - Average row size estimate
+        """
+        if self._table_info_initialized:
+            return
+
         client = self._init_client()
         self._total_count, self._arrow_schema = self._get_table_info(client)
         self._avg_row_size = self._estimate_row_size(client)
+        self._table_info_initialized = True
 
     def _init_client(self):
         """Create and return a GPUdb client instance."""
@@ -679,11 +701,14 @@ class KineticaDatasource(Datasource):
         Returns:
             List of ReadTask objects.
         """
-        # Table info already retrieved in __init__ for fail-fast validation
+        # Initialize table info when reads actually begin (lazy initialization)
+        # This follows Ray's datasource contract - side effects in get_read_tasks,
+        # not in __init__
+        self._initialize_table_info()
+
         if self._total_count == 0:
             return []
 
-        # Row size was estimated in __init__
         avg_row_size = self._avg_row_size
 
         # Handle parallelism=-1 (auto-detect) by computing based on data size.
