@@ -1591,10 +1591,13 @@ class Node:
             # If the process did not exit, force kill it.
             if process.poll() is None:
                 process.kill()
-                # The reason we usually don't call process.wait() here is that
+                # The reason we usually don't set timeout=None here is that
                 # there's some chance we'd end up waiting a really long time.
-                if wait:
-                    process.wait()
+                # After kill, wait must be called
+                try:
+                    process.wait(timeout=None if wait else 1)
+                except subprocess.TimeoutExpired:
+                    pass
 
         del self.all_processes[process_type]
 
