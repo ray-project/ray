@@ -131,62 +131,49 @@ def test_split_obstore_uri(uri, expected_store_url, expected_path):
     assert path == expected_path
 
 
-# TestBucketRegionDiscovery — exercise the HEAD-probe path used by
-# StoreRegistry to discover the real region of cross-region S3 buckets.
+# TestBucketRegionDiscovery — exercise the region-discovery path used by
+# StoreRegistry to find the real region of cross-region S3 buckets. Region
+# resolution is delegated to ``pyarrow.fs.resolve_s3_region``; these tests
+# patch it to avoid real network calls.
 class TestBucketRegionDiscovery:
     @staticmethod
     def _clear_cache():
         _BUCKET_REGION_CACHE.clear()
 
-    def test_region_from_200_response(self):
-        # Same-region buckets respond 200 OK with x-amz-bucket-region.
+    def test_resolved_region_is_returned(self):
+        # Whether the bucket is same-region (200 OK) or cross-region (301
+        # PermanentRedirect), PyArrow reads x-amz-bucket-region and returns it.
         self._clear_cache()
-        mock_resp = MagicMock()
-        mock_resp.headers = {"x-amz-bucket-region": "us-east-1"}
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            assert _discover_aws_bucket_region("east-bucket") == "us-east-1"
-
-    def test_region_from_301_redirect(self):
-        # Cross-region buckets respond 301 PermanentRedirect. The header is on
-        # the HTTPError, not on a raised-then-lost response. This is the
-        # path the user's workload actually hits.
-        import urllib.error
-
-        self._clear_cache()
-        mock_headers = MagicMock()
-        mock_headers.get.return_value = "us-west-2"
-        err = urllib.error.HTTPError(
-            url="https://s3.us-east-1.amazonaws.com/cross-region-bucket",
-            code=301,
-            msg="Moved Permanently",
-            hdrs=mock_headers,
-            fp=None,
-        )
-        err.headers = mock_headers
-        with patch("urllib.request.urlopen", side_effect=err):
+        with patch("pyarrow.fs.resolve_s3_region", return_value="us-west-2"):
             assert _discover_aws_bucket_region("cross-region-bucket") == "us-west-2"
 
     def test_cache_hit_avoids_second_probe(self):
-        # First call probes; second call must not invoke urlopen.
+        # First call probes; second call must not invoke resolve_s3_region.
         self._clear_cache()
-        mock_resp = MagicMock()
-        mock_resp.headers = {"x-amz-bucket-region": "eu-west-1"}
-        with patch("urllib.request.urlopen", return_value=mock_resp) as urlopen:
+        with patch("pyarrow.fs.resolve_s3_region", return_value="eu-west-1") as resolve:
             _discover_aws_bucket_region("euro-bucket")
             _discover_aws_bucket_region("euro-bucket")
-            assert urlopen.call_count == 1
+            assert resolve.call_count == 1
 
-    def test_network_failure_returns_none_and_caches(self):
-        # On network errors (e.g. probing a non-AWS bucket via this code path)
-        # return None so StoreRegistry leaves obstore's defaults intact for
-        # MinIO/R2/etc. Cache the negative result so we don't keep probing.
+    def test_failure_returns_none_and_caches(self):
+        # On resolution failure (network error, non-AWS endpoint) return None
+        # so StoreRegistry leaves obstore's defaults intact for MinIO/R2/etc.
+        # Cache the negative result so we don't keep probing.
         self._clear_cache()
         with patch(
-            "urllib.request.urlopen", side_effect=ConnectionError("nope")
-        ) as urlopen:
+            "pyarrow.fs.resolve_s3_region", side_effect=OSError("nope")
+        ) as resolve:
             assert _discover_aws_bucket_region("unreachable") is None
             assert _discover_aws_bucket_region("unreachable") is None
-            assert urlopen.call_count == 1
+            assert resolve.call_count == 1
+
+    def test_missing_resolve_s3_region_returns_none(self):
+        # PyArrow builds compiled without S3 support lack resolve_s3_region,
+        # so the attribute access raises AttributeError; discovery must degrade
+        # to None rather than propagate it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", side_effect=AttributeError("no S3")):
+            assert _discover_aws_bucket_region("no-s3-support") is None
 
 
 # TestStoreRegistryRegionInjection — verify region discovery happens at

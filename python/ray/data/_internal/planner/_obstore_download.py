@@ -531,38 +531,31 @@ _BUCKET_REGION_CACHE: Dict[str, Optional[str]] = {}
 _BUCKET_REGION_CACHE_LOCK = threading.Lock()
 
 
-def _discover_aws_bucket_region(bucket: str, *, timeout: float = 5.0) -> Optional[str]:
-    """Discover an AWS S3 bucket's region via a HEAD probe.
+def _discover_aws_bucket_region(bucket: str) -> Optional[str]:
+    """Discover an AWS S3 bucket's region, cached per-process.
 
-    Cached per-process. AWS returns ``x-amz-bucket-region`` in the response
-    headers for both 200 OK and 301 PermanentRedirect, so the probe is cheap
-    whether or not the default endpoint happens to be the correct region.
+    Delegates to :func:`pyarrow.fs.resolve_s3_region`, which issues a HEAD
+    probe and reads ``x-amz-bucket-region`` (AWS returns it for both 200 OK
+    and 301 PermanentRedirect responses). PyArrow is already a required Ray
+    Data dependency and caches region lookups in its C++ S3 layer; the extra
+    per-process dict here also caches negative results, so a bucket that can't
+    be resolved (network error, non-AWS endpoint, or a PyArrow build without
+    S3 support) is probed at most once.
 
-    Returns ``None`` on network errors, non-AWS endpoints, or any case where
-    the header is absent. Callers fall back to obstore's default region
-    handling, which preserves prior behavior for non-AWS S3-compatible
-    backends (MinIO, R2, etc.).
+    Returns ``None`` when the region cannot be determined. Callers fall back
+    to obstore's default region handling, which preserves prior behavior for
+    non-AWS S3-compatible backends (MinIO, R2, etc.).
     """
     with _BUCKET_REGION_CACHE_LOCK:
         if bucket in _BUCKET_REGION_CACHE:
             return _BUCKET_REGION_CACHE[bucket]
 
-    import urllib.error
-    import urllib.request
-
     region: Optional[str] = None
     try:
-        req = urllib.request.Request(
-            f"https://s3.us-east-1.amazonaws.com/{bucket}",
-            method="HEAD",
-        )
-        try:
-            resp = urllib.request.urlopen(req, timeout=timeout)
-            region = resp.headers.get("x-amz-bucket-region")
-        except urllib.error.HTTPError as e:
-            # 301 PermanentRedirect / 403 / 404 still carry the header.
-            region = e.headers.get("x-amz-bucket-region") if e.headers else None
+        region = pyarrow.fs.resolve_s3_region(bucket)
     except Exception as e:
+        # Includes AttributeError on PyArrow builds compiled without S3
+        # support, where ``resolve_s3_region`` is absent.
         logger.debug("Failed to discover region for bucket %r: %s", bucket, e)
 
     with _BUCKET_REGION_CACHE_LOCK:
