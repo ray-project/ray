@@ -159,6 +159,11 @@ const ActorTable = ({
     maxPage,
   } = sliceToPage(sortedActors, pageNo, pageSize ?? 10);
 
+  // Check if any actor in the list has GPUs to determine GPU/GRAM column visibility
+  const hasGPU = Object.values(actors).some(
+    (actor) => actor.gpus && actor.gpus.length > 0,
+  );
+
   const columns = [
     { label: "" },
     { label: "ID" },
@@ -340,6 +345,11 @@ const ActorTable = ({
       ),
     },
   ];
+
+  // Hide GPU and GRAM columns when no actors have GPUs
+  const visibleColumns = hasGPU
+    ? columns
+    : columns.filter((col) => col.label !== "GPU" && col.label !== "GRAM");
 
   return (
     <React.Fragment>
@@ -565,7 +575,7 @@ const ActorTable = ({
         <Table>
           <TableHead>
             <TableRow>
-              {columns.map(({ label, helpInfo }) => (
+              {visibleColumns.map(({ label, helpInfo }) => (
                 <TableCell align="center" key={label}>
                   <Box
                     display="flex"
@@ -747,12 +757,16 @@ const ActorTable = ({
                       </PercentageBar>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
-                  </TableCell>
-                  <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
-                  </TableCell>
+                  {hasGPU && (
+                    <>
+                      <TableCell>
+                        <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                      </TableCell>
+                      <TableCell>
+                        <WorkerGRAM workerPID={pid} gpus={gpus} />
+                      </TableCell>
+                    </>
+                  )}
                   <TableCell
                     align="center"
                     style={{
