@@ -2042,12 +2042,13 @@ class MultiAgentEpisode:
     ) -> None:
         """Overwrites all or some of this Episode's extra model outputs with `new_data`.
 
-        This is a helper method to batch `SingleAgentEpisode.set_extra_model_outputs`.
-        For more detail, see `SingleAgentEpisode.set_extra_model_outputs`.
+        This batches `SingleAgentEpisode.set_extra_model_outputs` calls for the
+        agent IDs provided in `new_data`. For more detail, see
+        `SingleAgentEpisode.set_extra_model_outputs`.
 
         Args:
-            key: The `key` within `self.extra_model_outputs` to override data on or
-                to insert as a new key into `self.extra_model_outputs`.
+            key: Existing extra model output key to override on each target agent
+                episode.
             new_data: A dict mapping agent IDs to new extra model outputs data.
                 Each value in the dict is the new extra model outputs data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode

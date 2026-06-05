@@ -10,7 +10,7 @@ from freezegun import freeze_time
 
 import ray
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import BlockEntry, PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -328,8 +328,11 @@ class TestResourceManager:
         input = make_ref_bundles([[x] for x in range(1)])[0]
         # Set block metadata size_bytes to 1 (rather than mocking the method on the
         # instance, which doesn't survive dataclasses.replace in OpBufferQueue.pop).
-        block_ref, block_meta = input.blocks[0]
-        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
+        entry = input.blocks[0]
+        input = replace(
+            input,
+            blocks=[BlockEntry(entry.ref, replace(entry.metadata, size_bytes=1))],
+        )
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)
@@ -628,6 +631,56 @@ class TestResourceManager:
         resource_manager.set_external_consumer_bytes(150)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(buf).object_store_memory == 150
+
+    def test_external_consumer_bytes_surfaced_in_op_usage_str(
+        self, restore_data_context
+    ):
+        """The terminal operator's verbose usage string should include
+        external_consumer=... when an external consumer is registered, so users
+        can see how much of the operator's object-store memory is held by a
+        downstream iterator vs. the operator's own queues."""
+        cluster_resources = ExecutionResources(cpu=10, gpu=0, object_store_memory=1000)
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: cluster_resources,
+            DataContext.get_current(),
+        )
+
+        for op in [o1, o2, o3]:
+            op.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+
+        resource_manager.update_usages()
+
+        # No external consumer yet: nothing extra in the usage string.
+        terminal_str = resource_manager.get_op_usage_str(o3, verbose=True)
+        upstream_str = resource_manager.get_op_usage_str(o2, verbose=True)
+        assert "external_consumer=" not in terminal_str
+        assert "external_consumer=" not in upstream_str
+
+        # Register an external consumer. Only the terminal operator's string
+        # should pick up `external_consumer=...`.
+        resource_manager.set_external_consumer_bytes(200)
+        resource_manager.update_usages()
+        terminal_str = resource_manager.get_op_usage_str(o3, verbose=True)
+        upstream_str = resource_manager.get_op_usage_str(o2, verbose=True)
+        assert "external_consumer=200.0B" in terminal_str
+        assert "external_consumer=" not in upstream_str
+
+        # The field is inside the existing `(in=...,out=...)` parenthetical.
+        assert ",external_consumer=" in terminal_str
+
+        # Non-verbose output omits the field (existing format unchanged).
+        terminal_str_brief = resource_manager.get_op_usage_str(o3, verbose=False)
+        assert "external_consumer=" not in terminal_str_brief
 
     def test_topology_rejects_multiple_terminal_operators(self, restore_data_context):
         ctx = DataContext.get_current()
