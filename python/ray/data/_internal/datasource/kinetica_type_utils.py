@@ -173,7 +173,9 @@ def arrow_to_kinetica_type(
     if pa.types.is_float64(arrow_type):
         return GPUdbRecordColumn._ColumnType.DOUBLE, []
 
-    # Decimal types
+    # Decimal types - precision and scale are encoded in the property string.
+    # GPUdbRecordColumn.__init__ parses "decimal(p,s)" and sets the column's
+    # precision and scale attributes automatically.
     if pa.types.is_decimal(arrow_type):
         precision = arrow_type.precision
         scale = arrow_type.scale

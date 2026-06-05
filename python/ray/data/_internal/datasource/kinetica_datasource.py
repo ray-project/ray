@@ -313,9 +313,10 @@ class KineticaDatasource(Datasource):
                 )
         self._partition_column = partition_column
 
-        # Cache for schema and record count
-        self._arrow_schema: Optional["pa.Schema"] = None
-        self._total_count: Optional[int] = None
+        # Validate table exists and get schema/count immediately (fail-fast)
+        client = self._init_client()
+        self._total_count, self._arrow_schema = self._get_table_info(client)
+        self._avg_row_size = self._estimate_row_size(client)
 
     def _init_client(self):
         """Create and return a GPUdb client instance."""
@@ -678,16 +679,12 @@ class KineticaDatasource(Datasource):
         Returns:
             List of ReadTask objects.
         """
-        client = self._init_client()
-
-        # Get table info using GPUdbTable
-        self._total_count, self._arrow_schema = self._get_table_info(client)
-
+        # Table info already retrieved in __init__ for fail-fast validation
         if self._total_count == 0:
             return []
 
-        # Estimate row size for metadata
-        avg_row_size = self._estimate_row_size(client)
+        # Row size was estimated in __init__
+        avg_row_size = self._avg_row_size
 
         # Handle parallelism=-1 (auto-detect) by computing based on data size.
         # Use min_records_per_task to determine a reasonable parallelism.
