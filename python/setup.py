@@ -280,6 +280,7 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "watchfiles",
             "mmh3",
+            "jinja2",
         ],
         "tune": [
             # TODO: Remove pydantic dependency from tune once tune doesn't import train

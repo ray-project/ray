@@ -53,10 +53,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller_health_metrics_tracker import (
     ControllerHealthMetricsTracker,
 )
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
-    get_proxy_actor_class,
-)
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     DeploymentStateManager,
@@ -74,6 +71,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.proxy_actor_class import get_proxy_actor_class
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
