@@ -359,7 +359,7 @@ backend api_backend
     server api_server1 127.0.0.1:8001 check
     server api_server2 127.0.0.1:8002 check
     # Fallback to head node's Serve proxy when no ingress replicas are available
-    server api_fallback_server 127.0.0.1:8500 check backup
+    server api_fallback_server 127.0.0.1:8500 check backup inter 2s fastinter 500ms fall 3
 backend web_backend
     log global
     # Enable HTTP connection reuse for better performance

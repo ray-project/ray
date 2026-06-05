@@ -182,7 +182,7 @@ backend {{ backend.name or 'unknown' }}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
-    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup inter 2s fastinter 500ms fall 3
     {%- endif %}
 {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
