@@ -18,7 +18,6 @@ class PreemptionInfo:
         deadline_ms: UNIX timestamp in milliseconds by which the affected nodes
             are expected to be reclaimed, as reported by Ray Core's
             ``get_draining_nodes``. ``0`` means the source reported no deadline.
-            (Divide by 1000 to compare against ``time.time()``.)
         preempted_ranks: Worker `world_rank` whose nodes are being reclaimed, expanded to all ranks in the same failure domain
             (e.g., all ranks in a fate-shared TPU slice). Sorted ascending.
         preempted_node_ids: Node IDs being reclaimed, hex-encoded as returned
@@ -95,10 +94,6 @@ class PreemptionWatcher:
         """
         per_node = {nid: sorted(set(ranks)) for nid, ranks in node_to_ranks.items()}
 
-        # Wrap the whole build: any failure (GCS unavailable, a malformed node
-        # entry, a TPU-label lookup error) must fall back to per-node domains
-        # rather than fail the actor's __init__ — which, under max_restarts=-1,
-        # would otherwise spin in a restart loop.
         try:
             all_nodes = ray.nodes()
 
@@ -171,6 +166,8 @@ class PreemptionWatcher:
                 self._on_drain_change(relevant)
                 self._last_drained = relevant
         except Exception:
+            # TODO(lehui): consider exponential backoff when the drain API keeps
+            # failing, instead of retrying at the fixed poll interval.
             logger.warning("PreemptionWatcher poll failed", exc_info=True)
 
     def _on_drain_change(self, drained: Dict[str, int]) -> None:
