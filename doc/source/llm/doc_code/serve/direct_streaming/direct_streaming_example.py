@@ -6,11 +6,12 @@ Structure:
 2. Docs example (between __direct_streaming_example_start/end__): Embedded in Sphinx docs via literalinclude.
 3. Test validation (deployment status polling + cleanup)
 
-Scope: validates the documented build/deploy snippet (config and the
-``build_openai_app`` call signature). Direct streaming itself is toggled by the
-``RAY_SERVE_ENABLE_HA_PROXY`` / ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING``
-environment variables shown in the guide; the data path requires HAProxy and is
-exercised by the serve HAProxy test suites, not here.
+Scope: builds and deploys the documented snippet with direct streaming enabled.
+The bazel target sets ``RAY_SERVE_ENABLE_HA_PROXY`` and
+``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING``, so build_openai_app returns the
+direct streaming deployment and the app reaches RUNNING on the HAProxy ingress.
+The end-to-end streaming data path is covered by the openai-compatibility
+direct-streaming test suite.
 """
 
 import time

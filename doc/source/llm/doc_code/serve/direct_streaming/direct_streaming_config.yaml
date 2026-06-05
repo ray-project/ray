@@ -1,0 +1,14 @@
+# config.yaml
+applications:
+  - name: llm-direct-streaming
+    route_prefix: /
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: qwen-0.5b
+            model_source: Qwen/Qwen2.5-0.5B-Instruct
+          deployment_config:
+            autoscaling_config:
+              min_replicas: 1
+              max_replicas: 4

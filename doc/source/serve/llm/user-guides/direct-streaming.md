@@ -47,6 +47,14 @@ Replica selection reuses the `LLMServer` deployment's configured request router,
 
 The router picks a replica without reserving a capacity slot. The real request travels out-of-band through HAProxy, so Serve's capacity semaphore isn't load-bearing on this path, and skipping the reservation avoids an extra actor RPC per request.
 
+## Supported serving patterns
+
+Direct streaming works with the single-model builders for the OpenAI, data parallel attention, and prefill/decode patterns:
+
+- **OpenAI** (`build_openai_app`): the `LLMServer` deployment serves the engine app directly.
+- **Data parallel attention** (`build_dp_openai_app`): the `DPServer` deployment serves the engine app directly. See {doc}`data-parallel-attention`.
+- **Prefill/decode disaggregation** (`build_pd_openai_app`): the decode server serves the engine app directly, while `/v1/chat/completions` and `/v1/completions` route through prefill/decode orchestration (remote prefill, then local decode). Other routes stay engine-native. See {doc}`prefill-decode`.
+
 ## Enable direct streaming
 
 Direct streaming runs on top of the HAProxy ingress. Set both environment variables before starting Serve:
@@ -58,11 +66,29 @@ export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 
 Then build and deploy a single-model application:
 
+::::{tab-set}
+:::{tab-item} Python
 ```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_example.py
 :start-after: __direct_streaming_example_start__
 :end-before: __direct_streaming_example_end__
 :language: python
 ```
+:::
+
+:::{tab-item} YAML
+```{literalinclude} ../../../llm/doc_code/serve/direct_streaming/direct_streaming_config.yaml
+:language: yaml
+```
+
+Run `serve run` from a shell where both environment variables are still exported, so the controller enables HAProxy and direct streaming when it builds the application:
+
+```bash
+serve run config.yaml
+```
+:::
+::::
+
+The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`. Ray Serve LLM also adds `GET /v1/models/{id}`, so clients can call `client.models.retrieve(...)` as they would against the standalone ingress.
 
 To confirm direct streaming is active, open the Serve dashboard and check that the ingress request router deployment (listed as `LLMRouter`) is running alongside your model deployment.
 
