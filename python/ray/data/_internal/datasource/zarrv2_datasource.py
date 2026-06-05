@@ -259,7 +259,9 @@ def _read_chunk(
     """
     indexer = tuple(slice(s, e) for s, e in chunk_slices)
     arr = root if array_name == "" else root[array_name]
-    return arr[indexer]
+    # ``arr`` is a zarr Array here (the caller resolves a concrete array path),
+    # but zarr's types widen it to Array | Group; asarray pins the ndarray return.
+    return np.asarray(arr[indexer])
 
 
 @dataclass(frozen=True)

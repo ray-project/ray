@@ -866,48 +866,42 @@ def test_read_zarr_integration_public_s3(ray_start_regular_shared):
 # ---------------------------------------------------------------------------
 
 
-# Hook string registers a custom (non-stdlib) codec in each worker process.
-# numcodecs.registry is process-local — built-in codecs (blosc, gzip, zstd)
-# register themselves at import time, but anything else (including
-# ``imagecodecs_jpegxl``) must be explicitly registered in every process
-# that decodes chunks. Ray workers are separate Python processes, so the
-# driver's registration does NOT propagate. The standard fix is to run
-# this registration in each worker via ``runtime_env``'s
-# ``worker_process_setup_hook``.
-_CUSTOM_CODEC_HOOK = """
-import numcodecs
-import numpy as np
-
-class _RayZarrTestCodec(numcodecs.abc.Codec):
-    codec_id = "ray_zarr_test_codec"
-
-    def encode(self, buf):
-        return bytes(buf)
-
-    def decode(self, buf, out=None):
-        arr = np.frombuffer(buf, dtype=np.uint8)
-        if out is not None:
-            out[:] = arr.view(out.dtype)
-            return out
-        return arr.copy()
-
-numcodecs.register_codec(_RayZarrTestCodec)
-"""
-
-
 def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
     """``worker_process_setup_hook`` runs once per worker, before any task,
-    registering the codec in the worker's process. Chunk decode succeeds.
+    registering a custom codec in the worker's process so chunk decode succeeds.
 
-    Builds a tiny Zarr store compressed with a custom codec that numcodecs
-    doesn't auto-register. The driver registers the codec briefly to write
-    the store; Ray workers need their own registration to decode chunks,
-    which the ``worker_process_setup_hook`` arranges.
+    numcodecs' registry is process-local: built-in codecs (blosc, gzip, zstd)
+    self-register at import, but a custom codec must be registered in every
+    process that decodes chunks. Ray workers are separate processes, so the
+    driver's registration does not propagate -- ``worker_process_setup_hook``
+    runs the registration in each worker. The hook is passed as a *callable*
+    (cloud-pickled to the workers), not a code string; defining it locally keeps
+    the codec class out of the importable module surface.
     """
     import numcodecs
 
+    def _register_codec():
+        """Register the test codec in the current process (driver and workers)."""
+        import numcodecs
+        import numpy as np
+
+        class _RayZarrTestCodec(numcodecs.abc.Codec):
+            codec_id = "ray_zarr_test_codec"
+
+            def encode(self, buf):
+                return bytes(buf)
+
+            def decode(self, buf, out=None):
+                arr = np.frombuffer(buf, dtype=np.uint8)
+                if out is not None:
+                    out[:] = arr.view(out.dtype)
+                    return out
+                return arr.copy()
+
+        numcodecs.register_codec(_RayZarrTestCodec)
+
     # Register driver-side so we can write the store.
-    exec(_CUSTOM_CODEC_HOOK, {})
+    _register_codec()
 
     store_path = tmp_path / "codec_test.zarr"
     arr = zarr.open(
@@ -927,7 +921,7 @@ def test_custom_codec_succeeds_with_worker_setup_hook(tmp_path):
         num_cpus=1,
         logging_level=logging.ERROR,
         log_to_driver=False,
-        runtime_env={"worker_process_setup_hook": _CUSTOM_CODEC_HOOK},
+        runtime_env={"worker_process_setup_hook": _register_codec},
     )
     try:
         ds = ray.data.read_zarr(str(store_path))
