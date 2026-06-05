@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray._common.usage.usage_lib import TagKey
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
+    BatchModelTelemetry,
     get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor import ProcessorBuilder
@@ -35,6 +36,7 @@ def test_push_telemetry_report():
         recorder.record.remote(key, value)
 
     telemetry_agent = get_or_create_telemetry_agent()
+    ray.get(telemetry_agent.remote_telemetry_agent._reset.remote())
     telemetry_agent._update_record_tag_func(record_tag_func)
 
     config = vLLMEngineProcessorConfig(
@@ -73,14 +75,50 @@ def test_push_telemetry_report():
     assert telemetry == {
         TagKey.LLM_BATCH_PROCESSOR_CONFIG_NAME: "vLLMEngineProcessorConfig,HttpRequestProcessorConfig",
         TagKey.LLM_BATCH_MODEL_ARCHITECTURE: "OPTForCausalLM,",
-        TagKey.LLM_BATCH_SIZE: "64,0",
+        TagKey.LLM_BATCH_SIZE: "64,64",
         TagKey.LLM_BATCH_ACCELERATOR_TYPE: "A10G,",
         TagKey.LLM_BATCH_CONCURRENCY: "4,4",
         TagKey.LLM_BATCH_TASK_TYPE: "generate,",
         TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,0",
         TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,0",
-        TagKey.LLM_BATCH_DATA_PARALLEL_SIZE: "0,0",
+        TagKey.LLM_BATCH_DATA_PARALLEL_SIZE: "1,0",
     }, f"actual telemetry: {telemetry}"
+
+
+def test_telemetry_dedups_by_model_identity():
+    """Distinct models sharing reported fields stay separate; identical builds merge."""
+    recorder = FakeTelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = get_or_create_telemetry_agent()
+    ray.get(telemetry_agent.remote_telemetry_agent._reset.remote())
+    telemetry_agent._update_record_tag_func(record_tag_func)
+
+    # Two distinct models with identical reported fields (same architecture/config).
+    common = dict(
+        model_architecture="LlamaForCausalLM",
+        batch_size=64,
+        concurrency=4,
+        task_type="generate",
+    )
+    telemetry_agent.push_telemetry_report(
+        BatchModelTelemetry(model_id_hash="hash_a", **common)
+    )
+    telemetry_agent.push_telemetry_report(
+        BatchModelTelemetry(model_id_hash="hash_b", **common)
+    )
+    # A repeated identical build of model A must not add a third entry.
+    telemetry_agent.push_telemetry_report(
+        BatchModelTelemetry(model_id_hash="hash_a", **common)
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert (
+        telemetry[TagKey.LLM_BATCH_MODEL_ARCHITECTURE]
+        == "LlamaForCausalLM,LlamaForCausalLM"
+    ), f"actual telemetry: {telemetry}"
 
 
 if __name__ == "__main__":
