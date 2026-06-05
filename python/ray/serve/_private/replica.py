@@ -2447,8 +2447,6 @@ class Replica:
                         self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
-                    # Record the status code and re-raise so `_wrap_request`'s
-                    # error handling sets the span attributes and exception.
                     status_code_callback(status.code.name)
                     raise e
                 finally:
