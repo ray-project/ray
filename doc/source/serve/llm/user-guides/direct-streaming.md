@@ -37,7 +37,7 @@ Client → HAProxy ─┤                             ↓
                   └─ (2) forward request ──→ LLMServer replica → engine
 ```
 
-The `LLMServer` replica builds its ASGI app from the engine's native OpenAI-compatible FastAPI app, such as vLLM's API server, after the engine starts, so streaming responses are served directly from the engine frontend.
+The `LLMServer` replica builds its ASGI app from the engine's native OpenAI-compatible FastAPI app, such as vLLM's API server, after the engine starts. Streaming responses are then served directly from the engine frontend.
 
 ### Ingress request router
 
