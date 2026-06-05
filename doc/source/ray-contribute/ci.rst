@@ -1,3 +1,6 @@
+.. meta::
+    :description: Explains the continuous integration workflow on Ray pull requests, including the microcheck default test set, how to add tests to it, and the full suite that runs at merge time. Read this to understand which tests run on your PR and how to trigger more.
+
 CI Testing Workflow on PRs
 ==========================
 
