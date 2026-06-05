@@ -48,7 +48,11 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    *        Re-applied to the latest total bytes on every poll.
    * @param min_memory_free_bytes the min amount of free space to maintain. When set,
    *        the effective threshold is max(total * usage_threshold,
-   *        total - min_memory_free_bytes). Pass kNull to disable.
+   *        total - min_memory_free_bytes) -- i.e. the *later* of the two trip
+   *        points (note: this matches the existing MemoryMonitorUtils
+   *        semantics; despite the field name "min_memory_free", a higher
+   *        min_memory_free_bytes raises the trigger threshold rather than
+   *        lowering it). Pass kNull to disable.
    * @param monitor_interval_ms the frequency to update the usage. 0 disables the monitor
    *        and callbacks won't fire.
    * @param resource_isolation_enabled flag to determine if resource isolation is enabled.

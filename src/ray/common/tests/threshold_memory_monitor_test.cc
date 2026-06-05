@@ -22,6 +22,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
@@ -60,7 +61,15 @@ class FakeBoundedCgroupManager : public CgroupManagerInterface {
 
 class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
  protected:
-  void TearDown() override { instance.reset(); }
+  // The monitor holds a const-reference to the cgroup manager and polls on a
+  // background thread, so the manager must outlive the monitor. TearDown
+  // destroys the monitor (joining its poll thread) before clearing
+  // owned_cgroup_managers_, so tests don't need to think about ordering even
+  // when they construct a manager as a local variable.
+  void TearDown() override {
+    instance.reset();
+    owned_cgroup_managers_.clear();
+  }
 
   ThresholdMemoryMonitor &MakeThresholdMemoryMonitor(
       float usage_threshold,
@@ -85,14 +94,16 @@ class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
       const std::string &root_cgroup_path,
       const std::string &user_cgroup_path,
       const std::string &system_cgroup_path,
-      const CgroupManagerInterface &cgroup_manager) {
+      std::unique_ptr<CgroupManagerInterface> cgroup_manager) {
+    CgroupManagerInterface &cgroup_manager_ref = *cgroup_manager;
+    owned_cgroup_managers_.push_back(std::move(cgroup_manager));
     instance = std::make_unique<ThresholdMemoryMonitor>(
         std::move(kill_workers_callback),
         usage_threshold,
         /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
         monitor_interval_ms,
         /*resource_isolation_enabled=*/true,
-        cgroup_manager,
+        cgroup_manager_ref,
         root_cgroup_path,
         user_cgroup_path,
         system_cgroup_path);
@@ -100,6 +111,10 @@ class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
   }
 
   NoopCgroupManager noop_cgroup_manager_;
+  // Declared before `instance` so it is destroyed AFTER `instance` (C++ tears
+  // down members in reverse declaration order); also cleared explicitly in
+  // TearDown for symmetry.
+  std::vector<std::unique_ptr<CgroupManagerInterface>> owned_cgroup_managers_;
   std::unique_ptr<ThresholdMemoryMonitor> instance;
 };
 
@@ -196,8 +211,6 @@ TEST_F(ThresholdMemoryMonitorTest,
   // Total monitored = user_anon + user_shmem = 600+200 = 800 MB > threshold
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  FakeBoundedCgroupManager cgroup_manager(
-      static_cast<int64_t>(total_memory_bytes * 0.7f));
   MakeResourceIsolatedThresholdMemoryMonitor(
       0.7f /*usage_threshold*/,
       1 /*refresh_interval_ms*/,
@@ -205,7 +218,8 @@ TEST_F(ThresholdMemoryMonitorTest,
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir,
-      cgroup_manager);
+      std::make_unique<FakeBoundedCgroupManager>(
+          static_cast<int64_t>(total_memory_bytes * 0.7f)));
 
   has_checked_once->wait();
 }
@@ -239,8 +253,6 @@ TEST_F(
   // threshold
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  FakeBoundedCgroupManager cgroup_manager(
-      static_cast<int64_t>(total_memory_bytes * 0.7f));
   MakeResourceIsolatedThresholdMemoryMonitor(
       0.7f /*usage_threshold*/,
       1 /*refresh_interval_ms*/,
@@ -248,7 +260,8 @@ TEST_F(
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir,
-      cgroup_manager);
+      std::make_unique<FakeBoundedCgroupManager>(
+          static_cast<int64_t>(total_memory_bytes * 0.7f)));
 
   has_checked_once->wait();
 }
@@ -296,10 +309,21 @@ TEST_F(ThresholdMemoryMonitorTest, TestThresholdTracksRuntimeCgroupLimitChanges)
   {
     std::ofstream out(cgroup_dir + "/" + MemoryMonitorUtils::kCgroupsV2MemoryMaxPath,
                       std::ios::trunc);
+    ASSERT_TRUE(out.is_open()) << "Failed to open mock memory.max for rewrite.";
     out << shrunk_total_bytes << "\n";
+    out.flush();
+    ASSERT_TRUE(out.good())
+        << "Failed to rewrite mock memory.max -- the runtime-resize half of "
+           "this test cannot run.";
   }
 
-  has_triggered->wait();
+  // Bounded wait so a regression that breaks runtime threshold tracking
+  // surfaces as a test failure rather than a hung test process.
+  ASSERT_EQ(boost::cv_status::no_timeout,
+            has_triggered->wait_for(boost::chrono::seconds(15)))
+      << "Threshold monitor did not trigger within 15s after the cgroup "
+         "memory.max was rewritten to "
+      << shrunk_total_bytes << " bytes.";
 }
 
 TEST_F(ThresholdMemoryMonitorTest,
@@ -330,8 +354,6 @@ TEST_F(ThresholdMemoryMonitorTest,
   std::shared_ptr<std::atomic<bool>> callback_triggered =
       std::make_shared<std::atomic<bool>>(false);
 
-  FakeBoundedCgroupManager cgroup_manager(
-      static_cast<int64_t>(total_memory_bytes * 0.7f));
   MakeResourceIsolatedThresholdMemoryMonitor(
       0.7f /*usage_threshold*/,
       1 /*refresh_interval_ms*/,
@@ -339,7 +361,8 @@ TEST_F(ThresholdMemoryMonitorTest,
       "" /*root_cgroup_path*/,
       user_cgroup_dir,
       system_cgroup_dir,
-      cgroup_manager);
+      std::make_unique<FakeBoundedCgroupManager>(
+          static_cast<int64_t>(total_memory_bytes * 0.7f)));
 
   std::this_thread::sleep_for(std::chrono::seconds(5));
 

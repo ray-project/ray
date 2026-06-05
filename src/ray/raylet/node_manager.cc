@@ -245,11 +245,17 @@ NodeManager::NodeManager(
       ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
+      // cgroup_manager_ is declared BEFORE memory_monitors_ in the header so
+      // that ThresholdMemoryMonitor (which holds a reference to the manager
+      // and polls on a background thread) is destroyed -- and its poll thread
+      // joined -- before the manager itself is torn down. Pass *cgroup_manager_
+      // to the factory so the captured reference points at the object now
+      // owned by the member.
+      cgroup_manager_(std::move(cgroup_manager)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                     config.enable_resource_isolation,
-                                                    *cgroup_manager)),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
-      cgroup_manager_(std::move(cgroup_manager)),
+                                                    *cgroup_manager_)),
       shutting_down_(shutting_down),
       clock_(clock),
       acceptor_(std::move(acceptor)),
