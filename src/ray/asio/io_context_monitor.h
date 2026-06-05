@@ -59,10 +59,12 @@ class IOContextMonitor {
 
  private:
   struct ProbeState {
-    ProbeState(std::string name,
-               instrumented_io_context &io_context,
-               std::shared_ptr<ClockInterface> clock)
-        : name(std::move(name)), io_context(io_context), clock(std::move(clock)) {}
+    ProbeState(std::string name_val,
+               instrumented_io_context &io_context_val,
+               std::shared_ptr<ClockInterface> clock_val)
+        : name(std::move(name_val)),
+          io_context(io_context_val),
+          clock(std::move(clock_val)) {}
 
     const std::string name;
     instrumented_io_context &io_context;
