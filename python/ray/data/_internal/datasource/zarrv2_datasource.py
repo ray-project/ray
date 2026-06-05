@@ -69,11 +69,15 @@ class ZarrArrayMeta:
                 f"Invalid .zarray metadata for array path {array_path!r}: "
                 f"missing required key(s) {missing}."
             )
-        return cls(
-            shape=tuple(int(x) for x in raw_meta["shape"]),
-            chunks=tuple(int(x) for x in raw_meta["chunks"]),
-            dtype=str(raw_meta["dtype"]),
-        )
+        shape = tuple(int(x) for x in raw_meta["shape"])
+        chunks = tuple(int(x) for x in raw_meta["chunks"])
+        if len(shape) != len(chunks):
+            raise ValueError(
+                f"Invalid .zarray metadata for array path {array_path!r}: "
+                f"'shape' has rank {len(shape)} but 'chunks' has rank "
+                f"{len(chunks)}; they must have the same number of dimensions."
+            )
+        return cls(shape=shape, chunks=chunks, dtype=str(raw_meta["dtype"]))
 
     @property
     def rank(self) -> int:
@@ -465,6 +469,8 @@ class ZarrV2Datasource(Datasource):
         #   2. ``.zip`` URL/path: auto-wrap with fsspec's ZipFileSystem.
         #   3. Otherwise delegate to Ray Data's standard URL to filesystem
         #      helper (the same one every other ``read_*`` API uses).
+        # "store path" is the path to the Zarr store, relative to the filesystem root.
+        # It is used to construct the Zarr root object.
         if filesystem is None and self.paths[0].endswith(".zip"):
             import fsspec
 
@@ -495,12 +501,21 @@ class ZarrV2Datasource(Datasource):
                     f"fsspec.spec.AbstractFileSystem, got "
                     f"{type(filesystem).__name__}"
                 )
-            # Strip any URI scheme (e.g. ``gs://`` / ``s3://``) so the path is
-            # backend-relative; pyarrow filesystems (wrapped in
-            # ``ArrowFSWrapper``) require this. Mirrors the ``filesystem is None``
-            # branch, which strips the scheme via ``_resolve_paths_and_filesystem``.
-            _, store_path = split_protocol(self.paths[0])
-            self._store_path = store_path.rstrip("/")
+            from fsspec.implementations.zip import ZipFileSystem
+
+            if isinstance(self._fs, ZipFileSystem) and self.paths[0].endswith(".zip"):
+                # An explicit archive filesystem: the store is the archive root,
+                # not a ``.zip``-named entry inside it. (A real sub-path within
+                # the archive is preserved by the scheme-strip below.)
+                self._store_path = ""
+            else:
+                # Strip any URI scheme (e.g. ``gs://`` / ``s3://``) so the path
+                # is backend-relative; pyarrow filesystems (wrapped in
+                # ``ArrowFSWrapper``) require this. Mirrors the
+                # ``filesystem is None`` branch, which strips the scheme via
+                # ``_resolve_paths_and_filesystem``.
+                _, store_path = split_protocol(self.paths[0])
+                self._store_path = store_path.rstrip("/")
 
         if chunk_shapes is not None and not isinstance(
             chunk_shapes, (tuple, list, dict)
@@ -551,9 +566,17 @@ class ZarrV2Datasource(Datasource):
         if not align_axis_0:
             self._aligned_array_names = None
         else:
+            scalar_arrays = sorted(
+                name for name, meta in self._metadata_by_path.items() if not meta.shape
+            )
+            if scalar_arrays:
+                raise ValueError(
+                    f"align_axis_0=True requires every selected array to have "
+                    f"at least one axis, but these are 0-D (scalar): "
+                    f"{scalar_arrays}. Drop them with array_paths=[...]."
+                )
             shape0_by_array = {
-                name: meta.shape[0] if meta.shape else 0
-                for name, meta in self._metadata_by_path.items()
+                name: meta.shape[0] for name, meta in self._metadata_by_path.items()
             }
             if len(set(shape0_by_array.values())) > 1:
                 raise ValueError(

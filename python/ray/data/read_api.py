@@ -1048,12 +1048,13 @@ def read_zarr(
         Zarr stores compressed with non-stdlib codecs (e.g.,
         ``imagecodecs_jpegxl`` for UMI camera arrays) require the codec
         package to be imported and registered in every Ray worker, not
-        just the driver. Use ``ray.init`` with a worker setup hook::
+        just the driver. Register them with a ``worker_process_setup_hook``
+        -- pass an importable callable or its dotted path (a string of code
+        is *not* accepted; a string is interpreted as an import path)::
 
-            ray.init(runtime_env={"worker_process_setup_hook": (
-                "import imagecodecs.numcodecs; "
-                "imagecodecs.numcodecs.register_codecs()"
-            )})
+            ray.init(runtime_env={
+                "worker_process_setup_hook": "imagecodecs.numcodecs.register_codecs"
+            })
 
         Driver-side ``.zmetadata`` parsing succeeds without this, but chunk
         decode in workers will fail with a ``numcodecs`` registry lookup

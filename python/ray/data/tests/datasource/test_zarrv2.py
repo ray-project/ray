@@ -961,6 +961,39 @@ def test_get_read_tasks_parallelism_zero(tmp_path):
     assert len(tasks) >= 1
 
 
+def test_rejects_shape_chunks_rank_mismatch():
+    """Malformed .zarray whose shape/chunks ranks differ must raise, not silently
+    plan reads over a dimension prefix (grid/slice zip to the shorter rank)."""
+    with pytest.raises(ValueError, match=r"'shape' has rank 2 but 'chunks' has rank 1"):
+        zarrv2_datasource.ZarrArrayMeta.from_json(
+            {"shape": [10, 10], "chunks": [5], "dtype": "<i4"}, "x"
+        )
+
+
+def test_align_axis_0_rejects_scalar_array(tmp_path):
+    """align_axis_0=True with a 0-D (scalar) array must raise a clear error
+    rather than an IndexError when reading the (empty) axis-0 chunk size."""
+    store_path = tmp_path / "scalar.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    root.create_dataset("vec", data=np.arange(8, dtype="<i4"), chunks=(4,))
+    root.create_dataset("scalar", data=np.array(42, dtype="<i4"))  # 0-D
+    zarr.consolidate_metadata(str(store_path))
+
+    with pytest.raises(ValueError, match=r"0-D \(scalar\)"):
+        zarrv2_datasource.ZarrV2Datasource(str(store_path), align_axis_0=True)
+
+
+def test_reads_zarr_zip_with_explicit_zip_filesystem(zarr_zip_store):
+    """A .zip path read through an explicitly-passed fsspec ZipFileSystem must
+    resolve the store at the archive root (store path ``""``), not treat the
+    ``.zip`` name as an entry inside the archive."""
+    zip_fs = fsspec.filesystem("zip", fo=str(zarr_zip_store))
+    ds = zarrv2_datasource.ZarrV2Datasource(str(zarr_zip_store), filesystem=zip_fs)
+    assert ds._store_path == ""
+    df = _execute_read_tasks(ds.get_read_tasks(parallelism=2))
+    assert len(df) == 2
+
+
 if __name__ == "__main__":
     import sys
 
