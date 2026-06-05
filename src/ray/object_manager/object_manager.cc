@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "ray/asio/asio_util.h"
+#include "ray/common/filter_local_objects_util.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/exponential_backoff.h"
@@ -638,7 +639,7 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-// TODO(aaronscalene) will delete local_only=false and related dead code in #63213
+// TODO(#63213) will delete local_only=false and related dead code
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
@@ -748,25 +749,18 @@ void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
 
 std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
     const WorkerID &worker_id) const {
-  return GetLocalObjectsMatchedBy(
-      [&worker_id](const ObjectInfo &info) { return info.owner_worker_id == worker_id; });
+  return GetLocalObjectsFilteredBy(local_objects_,
+                                   [&worker_id](const LocalObjectInfo &info) {
+                                     return info.object_info.owner_worker_id == worker_id;
+                                   });
 }
 
 std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
     const NodeID &node_id) const {
-  return GetLocalObjectsMatchedBy(
-      [&node_id](const ObjectInfo &info) { return info.owner_node_id == node_id; });
-}
-
-std::vector<ObjectID> ObjectManager::GetLocalObjectsMatchedBy(
-    const std::function<bool(const ObjectInfo &)> &matches) const {
-  std::vector<ObjectID> matched;
-  for (const auto &[object_id, info] : local_objects_) {
-    if (matches(info.object_info)) {
-      matched.push_back(object_id);
-    }
-  }
-  return matched;
+  return GetLocalObjectsFilteredBy(local_objects_,
+                                   [&node_id](const LocalObjectInfo &info) {
+                                     return info.object_info.owner_node_id == node_id;
+                                   });
 }
 
 std::string ObjectManager::DebugString() const {

@@ -893,7 +893,8 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       publisher.get(),
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; },
-      /*spread_free_local_objects=*/[](const ObjectID &, const std::vector<NodeID> &) {},
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");

@@ -291,11 +291,6 @@ class ObjectManager : public ObjectManagerInterface,
   friend class TestObjectManager;
   friend uint32_t NumRemoteFreeObjectsRequests(const ObjectManager &object_manager);
 
-  /// Return IDs of local plasma-resident objects whose ObjectInfo satisfies
-  /// `matches`.
-  std::vector<ObjectID> GetLocalObjectsMatchedBy(
-      const std::function<bool(const ObjectInfo &)> &matches) const;
-
   /// Spread the Free request to all objects managers.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.

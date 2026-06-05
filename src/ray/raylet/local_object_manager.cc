@@ -22,6 +22,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/filter_local_objects_util.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {
@@ -88,7 +89,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    // TODO(aaronscalene) will delete pubsub and update testing in #63181
+    // TODO(#63181) will delete pubsub and update testing
     auto owner_dead_callback = [owner_address](const std::string &object_id_binary,
                                                const Status &) {};
 
@@ -106,9 +107,9 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 }
 
 void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
-  // This is called for both primary and secondary copies. For secondary copies, they
-  // should just be queued up to be freed below. For primary copies, additional
-  // bookkeeping is needed to ensure there is no regression.
+  // Called for both primary and secondary copies. For primary copies, do primary
+  // copy bookkeeping. For secondary copies, there is no primary copy bookkeeping,
+  // so the only work below is enqueueing for the next free batch.
   auto it = local_objects_.find(object_id);
   if (it != local_objects_.end() && !it->second.is_freed_) {
     // Mark the object as freed. NOTE(swang): We have to mark this instead of
@@ -147,30 +148,20 @@ void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
 
 std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedBy(
     const WorkerID &worker_id) const {
-  return GetLocalObjectsMatchedBy([&worker_id](const rpc::Address &owner) {
-    return WorkerID::FromBinary(owner.worker_id()) == worker_id;
-  });
+  return GetLocalObjectsFilteredBy(
+      local_objects_, [&worker_id](const LocalObjectInfo &info) {
+        return !info.is_freed_ &&
+               WorkerID::FromBinary(info.owner_address_.worker_id()) == worker_id;
+      });
 }
 
 std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedByOwnersOn(
     const NodeID &node_id) const {
-  return GetLocalObjectsMatchedBy([&node_id](const rpc::Address &owner) {
-    return NodeID::FromBinary(owner.node_id()) == node_id;
-  });
-}
-
-std::vector<ObjectID> LocalObjectManager::GetLocalObjectsMatchedBy(
-    const std::function<bool(const rpc::Address &)> &matches) const {
-  std::vector<ObjectID> matched;
-  for (const auto &[object_id, info] : local_objects_) {
-    if (info.is_freed_) {
-      continue;
-    }
-    if (matches(info.owner_address_)) {
-      matched.push_back(object_id);
-    }
-  }
-  return matched;
+  return GetLocalObjectsFilteredBy(
+      local_objects_, [&node_id](const LocalObjectInfo &info) {
+        return !info.is_freed_ &&
+               NodeID::FromBinary(info.owner_address_.node_id()) == node_id;
+      });
 }
 
 void LocalObjectManager::FlushFreeObjects() {

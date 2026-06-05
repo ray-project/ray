@@ -49,8 +49,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
-      std::function<void(const ObjectID &object_id, const std::vector<NodeID> &locations)>
-          spread_free_local_objects,
+      std::function<void(const ObjectID &object_id,
+                         const absl::flat_hash_set<NodeID> &locations)>
+          free_object_on_nodes_async,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
@@ -59,7 +60,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
-        spread_free_local_objects_(std::move(spread_free_local_objects)),
+        free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -783,8 +784,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Called to send free local object RPCs to all raylets that hold a copy of
   /// the object.
   const std::function<void(const ObjectID &object_id,
-                           const std::vector<NodeID> &locations)>
-      spread_free_local_objects_;
+                           const absl::flat_hash_set<NodeID> &locations)>
+      free_object_on_nodes_async_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

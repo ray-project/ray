@@ -312,8 +312,7 @@ class FakeRayletClient : public RayletClientInterface {
     num_cancel_local_task_requested += 1;
   }
 
-  void FreeLocalObjects(const FreeLocalObjectsRequest &request,
-                        const ClientCallback<FreeLocalObjectsReply> &callback) override {
+  void FreeLocalObjects(const FreeLocalObjectsRequest &request) override {
     num_free_local_objects_requested += 1;
   }
 

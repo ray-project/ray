@@ -356,7 +356,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
  private:
   /// Release pinned bookkeeping and delete plasma copies for `object_ids`.
-  Status FreeLocalObjects(const std::vector<ObjectID> &object_ids);
+  void FreeLocalObjects(const std::vector<ObjectID> &object_ids);
 
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 

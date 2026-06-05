@@ -846,8 +846,7 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
       locations_set.insert(*it->second.pinned_at_node_id_);
     }
     if (!locations_set.empty()) {
-      std::vector<NodeID> locations(locations_set.begin(), locations_set.end());
-      spread_free_local_objects_(it->first, locations);
+      free_object_on_nodes_async_(it->first, locations_set);
     }
   }
 

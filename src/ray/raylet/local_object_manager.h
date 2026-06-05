@@ -273,10 +273,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   void DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
                             int64_t num_retries = kDefaultSpilledObjectDeleteRetries);
 
-  /// Return ids of non-freed local objects whose owner satisfies `matches`.
-  std::vector<ObjectID> GetLocalObjectsMatchedBy(
-      const std::function<bool(const rpc::Address &)> &matches) const;
-
   const NodeID self_node_id_;
   const std::string self_node_address_;
   const int self_node_port_;

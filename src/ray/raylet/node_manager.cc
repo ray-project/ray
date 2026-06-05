@@ -985,7 +985,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
     ids.insert(id);
   }
-  RAY_UNUSED(FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
@@ -1019,7 +1019,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
     ids.insert(id);
   }
-  RAY_UNUSED(FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end())));
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
@@ -3743,17 +3743,14 @@ void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
   for (const auto &object_id_str : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_str));
   }
-  send_reply_callback(FreeLocalObjects(object_ids), nullptr, nullptr);
+  FreeLocalObjects(object_ids);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-Status NodeManager::FreeLocalObjects(const std::vector<ObjectID> &object_ids) {
-  if (object_ids.empty()) {
-    return Status::OK();
-  }
+void NodeManager::FreeLocalObjects(const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
     local_object_manager_.ReleaseFreedLocalObject(object_id);
   }
-  return Status::OK();
 }
 
 }  // namespace ray::raylet
