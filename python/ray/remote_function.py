@@ -200,19 +200,19 @@ class RemoteFunction:
                 for this task or for the lifetime of the actor.
             num_gpus: The quantity of GPUs to reserve
                 for this task or for the lifetime of the actor.
-            resources (Dict[str, float]): The quantity of various custom resources
+            resources: The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
                 This is a dictionary mapping strings (resource names) to floats.
-            name (str): A human-readable name for the task. If set, the name appears
+            name: A human-readable name for the task. If set, the name appears
                 alongside the task in the Ray Dashboard, logs, and the State API
                 (for example, ``ray list tasks``), which is useful for debugging
                 and observability. Names don't need to be unique. Defaults to
                 the remote function's name.
-            label_selector (Dict[str, str]): If specified, the labels required for the node on
+            label_selector: If specified, the labels required for the node on
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
-            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
+            fallback_strategy: If specified, expresses soft constraints
                 through a list of decorator options to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
@@ -233,7 +233,7 @@ class RemoteFunction:
                 crashes unexpectedly. The minimum valid value is 0,
                 the default is 3 (default), and a value of -1 indicates
                 infinite retries.
-            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+            runtime_env: Specifies the runtime environment for
                 this actor or task and its children. See
                 :ref:`runtime-environments` for detailed documentation.
             retry_exceptions: This specifies whether application-level errors
