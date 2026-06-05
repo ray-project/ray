@@ -19,7 +19,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
-DEFAULT_SUBCLUSTER_LABEL_KEY = "subcluster"
+# Label key the cluster autoscaler uses to bucket nodes by subcluster.
+# Hardcoded so all components agree without per-Dataset configuration.
+SUBCLUSTER_LABEL_KEY = "__subcluster__"
+# Sentinel for "no subcluster" — used as both a node-label fallback and
+# the bucket key for unlabeled nodes in ``_cluster_node_resources``.
+DEFAULT_SUBCLUSTER: Optional[str] = None
 
 
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
@@ -73,12 +78,10 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         requester_id: str,
         autoscaling_coordinator_actor=None,  # For testing only: injects an actor instead of using the shared named singleton.
-        subcluster_label_key: str = DEFAULT_SUBCLUSTER_LABEL_KEY,
         subcluster_selector: Optional[Dict[str, str]] = None,
     ):
         self._requester_id = requester_id
-        self._subcluster_label_key = subcluster_label_key
-        # Label selector keyed by ``subcluster_label_key`` pinning this
+        # Label selector keyed by ``SUBCLUSTER_LABEL_KEY`` pinning this
         # requester to a single subcluster.
         self._subcluster_selector = subcluster_selector
         self._cached_allocated_resources: List[ResourceDict] = []
@@ -91,11 +94,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
-        # Lazy: avoids creating the actor in __init__. Mismatched keys across
-        # callers raise from get_or_create_autoscaling_coordinator.
-        return get_or_create_autoscaling_coordinator(
-            subcluster_label_key=self._subcluster_label_key
-        )
+        # Lazy: avoids creating the actor in __init__.
+        return get_or_create_autoscaling_coordinator()
 
     def request_resources(
         self,
@@ -198,20 +198,17 @@ class _AutoscalingCoordinatorActor:
             [List[ResourceDict], Optional[List[Dict[str, str]]]], None
         ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
-        subcluster_label_key: str = DEFAULT_SUBCLUSTER_LABEL_KEY,
     ):
         self._get_current_time = get_current_time
         self._send_resources_request = send_resources_request
         self._get_cluster_nodes = get_cluster_nodes
-        self._subcluster_label_key = subcluster_label_key
 
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
         # Per-requester subcluster selector. Drives SDK forwarding and
         # remaining-resources eligibility.
         self._subcluster_selectors: Dict[str, Optional[Dict[str, str]]] = {}
-        # Node resources bucketed by their ``subcluster_label_key`` value.
-        # Nodes without the key fall under ``None``. Multiple nodes with the
-        # same subcluster contribute their resource dicts to the same list.
+        # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
+        # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
         self._cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = {}
         # Lock for thread-safe access to shared state from the background
         self._lock = threading.Lock()
@@ -388,7 +385,7 @@ class _AutoscalingCoordinatorActor:
         for node in nodes:
             # Safeguard against case where the value of Labels is None.
             labels = node.get("Labels") or {}
-            subcluster = labels.get(self._subcluster_label_key)
+            subcluster = labels.get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
             cluster_node_resources.setdefault(subcluster, []).append(node["Resources"])
         if cluster_node_resources == self._cluster_node_resources:
             return False
@@ -400,11 +397,7 @@ class _AutoscalingCoordinatorActor:
         """Reallocate cluster resources.
 
         Each requester's subcluster comes from its ``subcluster_selector``.
-        Explicit allocation: a per-bundle ``requested_label_selectors``
-        entry that names a subcluster wins over the requester-wide
-        ``subcluster_selector``. Remaining-resources eligibility:
-        ``subcluster_selector`` only — a requester without one is
-        eligible only for the ``None`` bucket.
+        A requester without one is eligible only for the ``None`` bucket.
         """
         now = self._get_current_time()
         cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = copy.deepcopy(
@@ -419,21 +412,13 @@ class _AutoscalingCoordinatorActor:
 
         def _subcluster_of(requester_id: str) -> Optional[str]:
             selector = self._subcluster_selectors.get(requester_id)
-            return (selector or {}).get(self._subcluster_label_key)
+            return (selector or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
 
         # TODO(hchen): Optimize the following triple loop.
         for requester_id, ongoing_req in live_items:
             ongoing_req.allocated_resources = []
-            requester_subcluster = _subcluster_of(requester_id)
-            for bundle, selector in zip(
-                ongoing_req.requested_resources,
-                ongoing_req.requested_label_selectors,
-            ):
-                # Per-bundle pin wins when present (heterogeneous trainer
-                # case); else use requester-wide affiliation.
-                subcluster = (
-                    selector.get(self._subcluster_label_key) or requester_subcluster
-                )
+            subcluster = _subcluster_of(requester_id)
+            for bundle in ongoing_req.requested_resources:
                 for node_resource in cluster_node_resources.get(subcluster, []):
                     if self._maybe_subtract_resources(node_resource, bundle):
                         ongoing_req.allocated_resources.append(bundle)
@@ -469,32 +454,12 @@ class _AutoscalingCoordinatorActor:
 
 _get_or_create_lock = threading.Lock()
 
-# First ``subcluster_label_key`` seen in this driver process; later callers
-# must agree, otherwise ``get_if_exists=True`` would silently drop their key.
-_AGREED_SUBCLUSTER_LABEL_KEY: Optional[str] = None
 
-
-def get_or_create_autoscaling_coordinator(
-    subcluster_label_key: str = DEFAULT_SUBCLUSTER_LABEL_KEY,
-):
-    """Get or create the AutoscalingCoordinator actor.
-
-    The actor is a named singleton, so only the first caller's
-    ``subcluster_label_key`` reaches it. Subsequent callers in the same
-    driver process must agree on the key or this raises ``ValueError``.
-    """
-    global _AGREED_SUBCLUSTER_LABEL_KEY
-    # Lock guards both Ray Core's no-concurrent-actor-create rule and the
-    # first-write race on _AGREED_SUBCLUSTER_LABEL_KEY.
+def get_or_create_autoscaling_coordinator():
+    """Get or create the AutoscalingCoordinator actor."""
+    # NOTE: Ray Core doesn't allow creating the same actor from multiple
+    # threads simultaneously, hence the lock.
     with _get_or_create_lock:
-        if _AGREED_SUBCLUSTER_LABEL_KEY is None:
-            _AGREED_SUBCLUSTER_LABEL_KEY = subcluster_label_key
-        elif _AGREED_SUBCLUSTER_LABEL_KEY != subcluster_label_key:
-            raise ValueError(
-                f"AutoscalingCoordinator already uses subcluster_label_key="
-                f"{_AGREED_SUBCLUSTER_LABEL_KEY!r}; got {subcluster_label_key!r}."
-            )
-
         # Create the actor on the local node to reduce network overhead.
         scheduling_strategy = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
@@ -509,4 +474,4 @@ def get_or_create_autoscaling_coordinator(
             lifetime="detached",
             scheduling_strategy=scheduling_strategy,
         )
-        return actor_cls.remote(subcluster_label_key=subcluster_label_key)
+        return actor_cls.remote()

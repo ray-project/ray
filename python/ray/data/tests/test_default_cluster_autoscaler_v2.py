@@ -756,14 +756,14 @@ def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
         DefaultClusterAutoscalerV2(
             resource_manager=Mock(),
             execution_id="exec-1",
-            label_selector={"subcluster": "training"},
+            label_selector={"__subcluster__": "training"},
         )
-    assert captured["subcluster_selector"] == {"subcluster": "training"}
+    assert captured["subcluster_selector"] == {"__subcluster__": "training"}
 
 
-def test_create_cluster_autoscaler_forwards_label_selector_and_key(monkeypatch):
-    """The factory reads ``label_selector`` and ``subcluster_label_key`` from
-    ``execution_options`` and forwards both to ``DefaultClusterAutoscalerV2``."""
+def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
+    """The factory reads ``label_selector`` from ``execution_options`` and
+    forwards it to ``DefaultClusterAutoscalerV2``."""
     captured = {}
 
     class _StubV2:
@@ -774,8 +774,7 @@ def test_create_cluster_autoscaler_forwards_label_selector_and_key(monkeypatch):
 
     data_context = Mock()
     data_context.execution_options.resource_limits = Mock()
-    data_context.execution_options.label_selector = {"subcluster": "training"}
-    data_context.execution_options.subcluster_label_key = "tier"
+    data_context.execution_options.label_selector = {"__subcluster__": "training"}
 
     create_cluster_autoscaler(
         topology=Mock(),
@@ -783,8 +782,7 @@ def test_create_cluster_autoscaler_forwards_label_selector_and_key(monkeypatch):
         data_context=data_context,
         execution_id="exec-1",
     )
-    assert captured["label_selector"] == {"subcluster": "training"}
-    assert captured["subcluster_label_key"] == "tier"
+    assert captured["label_selector"] == {"__subcluster__": "training"}
 
 
 if __name__ == "__main__":
