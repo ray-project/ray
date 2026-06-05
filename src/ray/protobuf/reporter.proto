@@ -23,6 +23,8 @@ message GetTracebackRequest {
   uint32 pid = 1;
   // If using native flag for py-spy
   optional bool native = 2;
+  // If using subprocesses flag for py-spy (also profile child processes)
+  optional bool subprocesses = 3;
 }
 
 message GetTracebackReply {
@@ -36,6 +38,10 @@ message CpuProfilingRequest {
   optional uint32 duration = 3;
   // If using native flag for py-spy
   optional bool native = 4;
+  // If using idle flag for py-spy (include off-CPU / sleeping threads)
+  optional bool idle = 5;
+  // If using subprocesses flag for py-spy (also profile child processes)
+  optional bool subprocesses = 6;
 }
 
 message CpuProfilingReply {
