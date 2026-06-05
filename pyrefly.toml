@@ -65,6 +65,14 @@ ignore-missing-imports = [
     "rapidsmpf.*",
     "rmm.*",
     "confluent_kafka.*",
+]
+
+# zarr and numcodecs are installed in the data test images, so pyrefly resolves
+# their (strict) stubs -- but read_zarr targets their largely-untyped runtime
+# API, and the tests use it accordingly (e.g. str store paths, a custom codec).
+# Treat them as Any: ``ignore-missing-imports`` only applies to modules that
+# can't be found, not installed ones, so these belong here instead.
+replace-imports-with-any = [
     "zarr.*",
     "numcodecs.*",
 ]
