@@ -734,59 +734,31 @@ class TestClusterAutoscaling:
         assert scaling_records[0].levelno == logging.DEBUG
 
 
-def test_v2_autoscaler_forwards_label_selector_per_bundle():
-    """``DefaultClusterAutoscalerV2`` tags every bundle with the
-    DataContext's label_selector when calling the coordinator."""
-    mock_coord = Mock()
+def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
+    """``DefaultClusterAutoscalerV2`` forwards the DataContext's
+    ``label_selector`` to the ``DefaultAutoscalingCoordinator`` it
+    constructs."""
+    from ray.data._internal.cluster_autoscaler import default_cluster_autoscaler_v2
+
+    captured = {}
+
+    class _StubProxy:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+        def request_resources(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(
+        default_cluster_autoscaler_v2, "DefaultAutoscalingCoordinator", _StubProxy
+    )
     with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
-        autoscaler = DefaultClusterAutoscalerV2(
+        DefaultClusterAutoscalerV2(
             resource_manager=Mock(),
             execution_id="exec-1",
-            autoscaling_coordinator=mock_coord,
             label_selector={"subcluster": "training"},
         )
-    autoscaler._send_resource_request([{"CPU": 1}, {"CPU": 2}])
-    call_kwargs = mock_coord.request_resources.call_args.kwargs
-    assert call_kwargs["label_selectors"] == [
-        {"subcluster": "training"},
-        {"subcluster": "training"},
-    ]
-    assert call_kwargs["subcluster_label_selector"] == {"subcluster": "training"}
-
-
-def test_v2_autoscaler_omits_label_selector_when_unset():
-    """No DataContext label_selector -> no per-bundle list, no affiliation."""
-    mock_coord = Mock()
-    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=Mock(),
-            execution_id="exec-1",
-            autoscaling_coordinator=mock_coord,
-        )
-    autoscaler._send_resource_request([{"CPU": 1}])
-    kwargs = mock_coord.request_resources.call_args.kwargs
-    assert kwargs["label_selectors"] is None
-    assert kwargs["subcluster_label_selector"] is None
-
-
-def test_v2_autoscaler_forwards_label_selector_on_empty_request():
-    """Empty resource_request still carries the requester-wide
-    label_selector so the coordinator keeps this requester pinned to its
-    subcluster for remaining-resources eligibility."""
-    mock_coord = Mock()
-    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=Mock(),
-            execution_id="exec-1",
-            autoscaling_coordinator=mock_coord,
-            label_selector={"subcluster": "training"},
-        )
-    # The registration / idle path sends an empty resource list.
-    autoscaler._send_resource_request([])
-    kwargs = mock_coord.request_resources.call_args.kwargs
-    assert kwargs["resources"] == []
-    assert kwargs["label_selectors"] is None
-    assert kwargs["subcluster_label_selector"] == {"subcluster": "training"}
+    assert captured["subcluster_selector"] == {"subcluster": "training"}
 
 
 def test_create_cluster_autoscaler_forwards_label_selector_and_key(monkeypatch):

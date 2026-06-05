@@ -610,14 +610,14 @@ def test_label_selector_disjoint_requesters_dont_cross_talk():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 4}],
-        subcluster_label_selector={"subcluster": "training"},
+        subcluster_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
     coord.request_resources(
         requester_id="val",
         resources=[{"CPU": 4}],
-        subcluster_label_selector={"subcluster": "validation"},
+        subcluster_selector={"subcluster": "validation"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -659,7 +659,7 @@ def test_labeled_and_unlabeled_requesters_are_isolated():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 1}],
-        subcluster_label_selector={"subcluster": "training"},
+        subcluster_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -685,7 +685,7 @@ def test_label_selector_unmatched_yields_no_allocation():
     coord.request_resources(
         requester_id="ghost",
         resources=[{"CPU": 1}],
-        subcluster_label_selector={"subcluster": "nonexistent"},
+        subcluster_selector={"subcluster": "nonexistent"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -699,7 +699,7 @@ def test_label_selector_partial_fit_when_demand_exceeds_capacity():
     coord.request_resources(
         requester_id="val",
         resources=[{"CPU": 3}, {"CPU": 3}, {"CPU": 3}],
-        subcluster_label_selector={"subcluster": "validation"},
+        label_selectors=[{"subcluster": "validation"}] * 3,
         expire_after_s=10,
     )
     # Validation has one 4-CPU node; only the first 3-CPU bundle fits.
@@ -753,7 +753,7 @@ def test_full_tick_exercises_update_merge_reallocate():
     coord.request_resources(
         requester_id="train",
         resources=[{"CPU": 1}],
-        subcluster_label_selector={"subcluster": "training"},
+        subcluster_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -805,11 +805,12 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
     eligible only for leftovers from its own subcluster."""
     coord = _make_coordinator(LABELED_CLUSTER_NODES)
 
-    # Idle "train" requester: no bundles, still affiliated with training.
+    # Idle "train" requester: no bundles, still affiliated with training
+    # via the requester-wide ``label_selector``.
     coord.request_resources(
         requester_id="train_idle",
         resources=[],
-        subcluster_label_selector={"subcluster": "training"},
+        subcluster_selector={"subcluster": "training"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -818,7 +819,7 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
     coord.request_resources(
         requester_id="val_active",
         resources=[{"CPU": 2}],
-        subcluster_label_selector={"subcluster": "validation"},
+        subcluster_selector={"subcluster": "validation"},
         expire_after_s=10,
         request_remaining=True,
     )
@@ -839,6 +840,57 @@ def test_labeled_requester_with_empty_resources_stays_pinned():
         f"val_active should get 2 explicit + 2 leftover = 4 CPU, got "
         f"{val_active_cpu} (alloc={val_active_alloc})"
     )
+
+
+def test_proxy_forwards_label_selector_from_init():
+    """``DefaultAutoscalingCoordinator`` forwards the ``label_selector``
+    it was constructed with on every request, so the actor can store the
+    requester's subcluster affiliation."""
+    mock_actor = Mock()
+    proxy = DefaultAutoscalingCoordinator(
+        requester_id="r",
+        autoscaling_coordinator_actor=mock_actor,
+        subcluster_selector={"subcluster": "training"},
+    )
+    proxy.request_resources(resources=[{"CPU": 1}, {"CPU": 2}], expire_after_s=10)
+    kwargs = mock_actor.request_resources.remote.call_args.kwargs
+    assert kwargs["subcluster_selector"] == {"subcluster": "training"}
+
+
+def test_proxy_forwards_label_selector_on_empty_resources():
+    """The proxy carries its ``label_selector`` even on the empty /
+    registration path, so the actor keeps the requester pinned to its
+    subcluster for remaining-resources eligibility."""
+    mock_actor = Mock()
+    proxy = DefaultAutoscalingCoordinator(
+        requester_id="r",
+        autoscaling_coordinator_actor=mock_actor,
+        subcluster_selector={"subcluster": "training"},
+    )
+    proxy.request_resources(resources=[], expire_after_s=10, request_remaining=True)
+    kwargs = mock_actor.request_resources.remote.call_args.kwargs
+    assert kwargs["resources"] == []
+    assert kwargs["subcluster_selector"] == {"subcluster": "training"}
+
+
+def test_proxy_passes_caller_label_selectors_through():
+    """If the caller passes per-bundle ``label_selectors``, the proxy
+    forwards them as-is (used by callers that want per-bundle
+    constraints beyond subcluster, e.g. node pins)."""
+    mock_actor = Mock()
+    proxy = DefaultAutoscalingCoordinator(
+        requester_id="r",
+        autoscaling_coordinator_actor=mock_actor,
+        subcluster_selector={"subcluster": "training"},
+    )
+    proxy.request_resources(
+        resources=[{"CPU": 1}],
+        label_selectors=[{"node_id": "n1"}],
+        expire_after_s=10,
+    )
+    kwargs = mock_actor.request_resources.remote.call_args.kwargs
+    assert kwargs["label_selectors"] == [{"node_id": "n1"}]
+    assert kwargs["subcluster_selector"] == {"subcluster": "training"}
 
 
 def test_get_or_create_raises_on_mismatched_subcluster_label_key(

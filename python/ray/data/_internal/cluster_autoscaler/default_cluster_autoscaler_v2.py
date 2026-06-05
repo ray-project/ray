@@ -205,6 +205,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             autoscaling_coordinator = DefaultAutoscalingCoordinator(
                 requester_id=self._requester_id,
                 subcluster_label_key=subcluster_label_key,
+                subcluster_selector=label_selector,
             )
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
@@ -323,23 +324,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 # keeping explicit autoscaler demand alive.
                 resource_request = []
 
-        # Make autoscaler resource request. Tag each bundle with the
-        # dataset-level ``label_selector`` so the autoscaler scales the right
-        # subcluster. Also forward it as a requester-wide
-        # ``subcluster_label_selector`` unconditionally: idle/registration
-        # ticks send empty resources but must still carry the affiliation,
-        # otherwise the coordinator treats this requester as unlabeled.
-        label_selectors: Optional[List[Dict[str, str]]] = None
-        if self._label_selector and resource_request:
-            label_selectors = [dict(self._label_selector) for _ in resource_request]
         self._autoscaling_coordinator.request_resources(
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
             request_remaining=True,
-            label_selectors=label_selectors,
-            subcluster_label_selector=(
-                dict(self._label_selector) if self._label_selector else None
-            ),
         )
         if resource_request and update_non_empty_request_state:
             self._last_non_empty_resource_request = [
