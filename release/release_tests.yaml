@@ -1395,6 +1395,27 @@
           python_depset: gpu_cu130_py3.13.lock
         cluster_compute: compute_tpl_gpu_node.yaml
 
+- name: "jobs_check_cuda_version_cu130_py{{python}}"
+  python: "{{python}}"
+  group: Jobs tests
+  team: serve
+  frequency: nightly
+  working_dir: jobs_tests
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu130
+      python_depset: gpu_cu130_py{{python}}.lock
+    cluster_compute: compute_tpl_gpu_node.yaml
+  run:
+    timeout: 600
+    script: python workloads/jobs_check_cuda_version.py --expected-cuda-version 13.0
+    wait_for_nodes:
+      num_nodes: 2
+
 - name: jobs_specify_num_gpus
   python: "3.10"
   group: Jobs tests
