@@ -712,6 +712,7 @@
       --num-operators {{num_operators}}
       --num-scalar-cols 200
       --num-array-cols 400
+      --blocks-per-worker 4
 
 
 ######################

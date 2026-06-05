@@ -96,6 +96,17 @@ def parse_args() -> argparse.Namespace:
             "_update_allocated_budgets work that scales with N_ops."
         ),
     )
+    parser.add_argument(
+        "--blocks-per-worker",
+        type=int,
+        default=BLOCKS_PER_WORKER,
+        help=(
+            "Number of input blocks per worker. Total blocks = "
+            "blocks_per_worker * num_workers. Lower it to shorten the run "
+            "(fewer scheduling-loop steps / less data); the per-step "
+            "scheduling-loop duration metric is ~invariant to this."
+        ),
+    )
     args = parser.parse_args()
     if args.num_scalar_cols + args.num_array_cols <= 0:
         parser.error(
@@ -103,6 +114,8 @@ def parse_args() -> argparse.Namespace:
         )
     if args.num_operators < 1:
         parser.error("--num-operators must be >= 1.")
+    if args.blocks_per_worker < 1:
+        parser.error("--blocks-per-worker must be >= 1.")
     if args.num_workers < args.num_operators:
         parser.error(
             f"--num-workers ({args.num_workers}) must be >= --num-operators "
@@ -195,7 +208,7 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
-        num_blocks = BLOCKS_PER_WORKER * args.num_workers
+        num_blocks = args.blocks_per_worker * args.num_workers
         rows_per_block = _rows_per_block(
             args.num_scalar_cols,
             args.num_array_cols,
