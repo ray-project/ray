@@ -147,7 +147,7 @@ class LimitPushdownRule(Rule):
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        new_nary = type(nary_op)(*branch_tails)
+        new_nary = nary_op._with_new_input_dependencies(branch_tails)
         return Limit(limit_op.limit, input_dependencies=[new_nary])
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
