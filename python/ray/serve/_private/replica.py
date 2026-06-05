@@ -1919,6 +1919,14 @@ class Replica:
         finally:
             self._num_queued_requests -= 1
 
+        # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
+        if self._shutting_down:
+            logger.info(
+                f"[HARSHIT-TEST-01] request {request_metadata.request_id} "
+                f"acquired a slot on {self._replica_id} while draining "
+                f"(direct_ingress={request_metadata.is_direct_ingress})"
+            )
+
         try:
             try:
                 self._metrics_manager.inc_num_ongoing_requests(request_metadata)
@@ -1949,6 +1957,11 @@ class Replica:
 
             num_ongoing_requests = self.get_num_ongoing_requests()
             num_queued_requests = self._num_queued_requests
+            # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
+            logger.info(
+                f"[HARSHIT-TEST-01] draining {self._replica_id}: "
+                f"ongoing={num_ongoing_requests} queued={num_queued_requests}"
+            )
             if num_ongoing_requests > 0 or num_queued_requests > 0:
                 logger.info(
                     f"Waiting for an additional {wait_loop_period_s}s to shut down "
@@ -1982,6 +1995,13 @@ class Replica:
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
+        # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
+        logger.info(
+            f"[HARSHIT-TEST-01] graceful shutdown START for {self._replica_id}: "
+            f"ongoing={self.get_num_ongoing_requests()} "
+            f"queued={self._num_queued_requests}"
+        )
+
         coros = []
         if (
             RAY_SERVE_ENABLE_DIRECT_INGRESS
@@ -2001,6 +2021,13 @@ class Replica:
 
         if coros:
             await asyncio.gather(*coros)
+
+        # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
+        logger.info(
+            f"[HARSHIT-TEST-01] drain complete for {self._replica_id}; tearing "
+            f"down ingress server now (ongoing={self.get_num_ongoing_requests()} "
+            f"queued={self._num_queued_requests})"
+        )
 
         await self.shutdown()
 
@@ -2621,6 +2648,13 @@ class Replica:
             headers.get(SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8")).decode("utf-8")
             or generate_request_id()
         )
+        # [HARSHIT-TEST-01] temporary drain diagnostics (remove after testing).
+        if self._shutting_down:
+            logger.info(
+                f"[HARSHIT-TEST-01] request {request_id} arrived WHILE DRAINING "
+                f"on {self._replica_id} (ongoing={self.get_num_ongoing_requests()} "
+                f"queued={self._num_queued_requests})"
+            )
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
         session_id = parse_session_id_header(headers)
