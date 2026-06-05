@@ -281,6 +281,8 @@ class ReportHead(SubprocessModule):
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -290,12 +292,14 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            "Sending stack trace request to {}:{} with native={}".format(
-                ip, pid, native
+            "Sending stack trace request to {}:{} with native={}, subprocesses={}".format(
+                ip, pid, native, subprocesses
             )
         )
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+            reporter_pb2.GetTracebackRequest(
+                pid=pid, native=native, subprocesses=subprocesses
+            )
         )
 
         """
@@ -371,6 +375,10 @@ class ReportHead(SubprocessModule):
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # Default not using `--idle` for profiling
+        idle = req.query.get("idle", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
         addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
@@ -387,12 +395,17 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
 
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                idle=idle,
+                subprocesses=subprocesses,
             )
         )
 
@@ -470,12 +483,16 @@ class ReportHead(SubprocessModule):
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
         logger.info(
-            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
+            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, subprocesses={subprocesses}"
         )
         pid = int(pid)
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+            reporter_pb2.GetTracebackRequest(
+                pid=pid, native=native, subprocesses=subprocesses
+            )
         )
         if reply.success:
             logger.info("Returning stack trace, size {}".format(len(reply.output)))
@@ -493,6 +510,10 @@ class ReportHead(SubprocessModule):
             duration: Optional. Duration in seconds for profiling (default: 5, max: 60).
             format: Optional. Output format (default: "flamegraph").
             native: Optional. Whether to use native profiling (default: false).
+            idle: Optional. Whether to include off-CPU / sleeping threads
+                in the profile (default: false).
+            subprocesses: Optional. Whether to also profile child processes
+                of the worker (default: false).
 
         Raises:
             ValueError: If pid is not provided.
@@ -536,12 +557,21 @@ class ReportHead(SubprocessModule):
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # Default not using `--idle` for profiling
+        idle = req.query.get("idle", False) == "1"
+        # Default not using `--subprocesses` for profiling
+        subprocesses = req.query.get("subprocesses", False) == "1"
         logger.info(
-            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                idle=idle,
+                subprocesses=subprocesses,
             )
         )
         if reply.success:
