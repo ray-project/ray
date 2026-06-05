@@ -1,4 +1,4 @@
-pyarrow==17.0.0
+pyarrow==23.0.1
 numpy
 datasets
 hudi
