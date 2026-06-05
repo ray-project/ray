@@ -41,19 +41,11 @@ class PreemptionCallback(WorkerGroupCallback):
         # this also prevents leaking an orphaned watcher across a reschedule.
         self._stop_watcher()
 
-        # distributed_context is assigned to every worker before this hook runs,
-        # so it's always populated here.
         node_to_ranks: Dict[str, List[int]] = {}
         for w in worker_group.get_workers():
             node_to_ranks.setdefault(w.metadata.node_id, []).append(
                 w.distributed_context.world_rank
             )
-
-        if not node_to_ranks:
-            logger.debug(
-                "PreemptionCallback: no ranks with node IDs; skipping watcher."
-            )
-            return
 
         watcher_cls = ray.remote(num_cpus=0, max_restarts=-1)(PreemptionWatcher)
         self._watcher = watcher_cls.remote(

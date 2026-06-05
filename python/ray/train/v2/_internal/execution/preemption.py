@@ -210,3 +210,7 @@ class PreemptionWatcher:
         )
         # TODO(lehui): fan out mark_preempt(info) to the worker actors here
         # so the UDF can read it via ray.train.preemption_status().
+        # TODO(lehui): the controller's PreemptingState (stage 4) must coalesce
+        # all drains seen within a single preemption window into one restart, so
+        # a staggered drain (e.g. node A at t, node B at t+60s) doesn't trigger
+        # back-to-back worker-group restarts (flapping).
