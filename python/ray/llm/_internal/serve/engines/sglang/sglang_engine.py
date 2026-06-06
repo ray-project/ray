@@ -12,7 +12,7 @@ import copy
 import json
 import signal
 import time
-import asyncio 
+import asyncio
 import uuid
 from typing import (
     Any,
@@ -45,6 +45,7 @@ from ray.llm._internal.serve.core.server.llm_server import (
 
 
 class SGLangServer:
+
     def __init__(self, llm_config: LLMConfig):
 
         self._llm_config = llm_config
@@ -452,10 +453,6 @@ class SGLangServer:
                 for t in tasks:
                     t.cancel()
             return
-
-            
-
-            
 
         results = await self._generate_and_extract_metadata(request, prompts_to_process)
 
