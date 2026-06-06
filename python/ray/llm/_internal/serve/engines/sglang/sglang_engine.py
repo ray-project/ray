@@ -436,16 +436,21 @@ class SGLangServer:
             ]
 
             finished_tasks = 0
-            while finished_tasks < active_tasks:
-                item = await queue.get()
-                if item is None:
-                    finished_tasks += 1
-                elif isinstance(item, Exception):
-                    for t in tasks:
-                        t.cancel()
-                    raise item
-                else:
-                    yield item
+            try:
+                while finished_tasks < active_tasks:
+                    item = await queue.get()
+                    if item is None:
+                        finished_tasks += 1
+                    elif isinstance(item, Exception):
+                        for t in tasks:
+                            t.cancel()
+                        raise item
+                    else:
+                        yield item
+            finally:
+                # Cancel all producer tasks on early exit or client disconnect
+                for t in tasks:
+                    t.cancel()
             return
 
             
