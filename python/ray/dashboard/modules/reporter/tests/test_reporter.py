@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
@@ -195,6 +197,56 @@ def test_fix_grpc_metrics():
 
     fix_grpc_metric(metric)
     assert metric == expected_fixed_metric
+
+
+def test_export_histogram_data_normalizes_mixed_attribute_sets():
+    metric = OTelMetric(name="test_histogram", description="Test Histogram")
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([0, 1, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_a"))
+    )
+    data_point.attributes.append(
+        KeyValue(key="SessionName", value=AnyValue(string_value="session_1"))
+    )
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([1, 0, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_b"))
+    )
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+
+    ReporterAgent._export_histogram_data(agent, metric)
+
+    agent._open_telemetry_metric_recorder.register_histogram_metric.assert_called_once_with(
+        "test_histogram", "Test Histogram", [1.0, 2.0]
+    )
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_called_once()
+    (
+        _,
+        batch_data_points,
+    ) = (
+        agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.call_args.args
+    )
+
+    assert batch_data_points == [
+        {
+            "tags": {"Component": "worker_a", "SessionName": "session_1"},
+            "bucket_counts": [0, 1, 0],
+        },
+        {
+            "tags": {"Component": "worker_b", "SessionName": ""},
+            "bucket_counts": [1, 0, 0],
+        },
+    ]
 
 
 @pytest.fixture(autouse=True)
