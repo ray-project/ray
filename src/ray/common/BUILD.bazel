@@ -300,6 +300,7 @@ ray_cc_library(
     ],
     deps = [
         ":constants",
+        ":ray_config",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/thirdparty:sha256",
         "//src/ray/util:logging",

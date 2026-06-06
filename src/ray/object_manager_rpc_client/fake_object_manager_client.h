@@ -55,6 +55,12 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
     free_objects_callbacks.push_back(callback);
   }
 
+  void MoveCompleted(const MoveCompletedRequest &request,
+                     const ClientCallback<MoveCompletedReply> &callback) override {
+    num_move_completed_requests++;
+    move_completed_callbacks.push_back(callback);
+  }
+
   bool ReplyPush(const Status &status = Status::OK()) {
     if (push_callbacks.empty()) {
       return false;
@@ -88,6 +94,17 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
     return true;
   }
 
+  bool ReplyMoveCompleted(const Status &status = Status::OK()) {
+    if (move_completed_callbacks.empty()) {
+      return false;
+    }
+    MoveCompletedReply reply;
+    auto callback = move_completed_callbacks.front();
+    move_completed_callbacks.pop_front();
+    callback(status, std::move(reply));
+    return true;
+  }
+
   const std::string &GetAddress() const { return address_; }
 
   int GetPort() const { return port_; }
@@ -95,10 +112,12 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
   uint32_t num_push_requests = 0;
   uint32_t num_pull_requests = 0;
   uint32_t num_free_objects_requests = 0;
+  uint32_t num_move_completed_requests = 0;
 
   std::list<ClientCallback<PushReply>> push_callbacks;
   std::list<ClientCallback<PullReply>> pull_callbacks;
   std::list<ClientCallback<FreeObjectsReply>> free_objects_callbacks;
+  std::list<ClientCallback<MoveCompletedReply>> move_completed_callbacks;
 
   std::string address_;
   int port_;

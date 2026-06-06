@@ -57,7 +57,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       int max_io_workers,
       bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
-      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
+      std::function<void(const std::vector<ObjectID> &, bool)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory,
@@ -162,7 +162,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
-  void FlushFreeObjects() override;
+  void FlushFreeObjects(bool local_only = false) override;
 
   /// Returns true if the object has been marked for deletion through the
   /// eviction notification.
@@ -211,6 +211,14 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   std::string DebugString() const override;
 
+  /// Release an object that has been freed by its owner (or by move semantics).
+  void ReleaseFreedObject(const ObjectID &object_id, bool local_only = false) override;
+
+  /// Return the owner address for a locally pinned object, or nullopt if the
+  /// object isn't in `local_objects_`. Used by move semantics to know who to
+  /// notify when the primary copy is moved.
+  std::optional<rpc::Address> GetOwnerAddress(const ObjectID &object_id) const override;
+
  private:
   struct LocalObjectInfo {
     LocalObjectInfo(const rpc::Address &owner_address,
@@ -246,9 +254,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
-
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
 
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.
@@ -287,7 +292,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   rpc::CoreWorkerClientPool &owner_client_pool_;
 
   /// A callback to call when an object has been freed.
-  std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
+  std::function<void(const std::vector<ObjectID> &, bool)> on_objects_freed_;
 
   /// Hashmap from local objects that we are waiting to free to metadata about
   /// the object including their owner address.
@@ -319,6 +324,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
   absl::flat_hash_set<ObjectID> objects_pending_deletion_;
+
+  /// [karticam] Objects that were released locally via move semantics
+  /// (local_only=true) but still need to be broadcast to other nodes
+  /// when the owner's eviction message arrives.
+  absl::flat_hash_set<ObjectID> moved_out_pending_broadcast_;
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.

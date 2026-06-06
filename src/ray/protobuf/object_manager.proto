@@ -49,12 +49,27 @@ message FreeObjectsRequest {
   repeated bytes object_ids = 1;
 }
 
+// Tell the receiver raylet that a plasma move-semantics push has completed and
+// the receiver is now the primary copy holder for this object. The receiver
+// should pin the object locally (so it is not LRU-evicted), subscribe to the
+// owner's eviction channel, and inform the owner that the primary location
+// has moved to this node.
+message MoveCompletedRequest {
+  // The object whose primary copy was moved to the receiver.
+  bytes object_id = 1;
+  // The owner of the object. Needed by the receiver to subscribe to the
+  // owner's eviction channel and to send the primary-location update.
+  Address owner_address = 2;
+}
+
 // Reply for request
 message PushReply {
 }
 message PullReply {
 }
 message FreeObjectsReply {
+}
+message MoveCompletedReply {
 }
 
 service ObjectManagerService {
@@ -67,4 +82,8 @@ service ObjectManagerService {
   // Tell remote object manager to free some objects
   // Failure: Retries, it's idempotent.
   rpc FreeObjects(FreeObjectsRequest) returns (FreeObjectsReply);
+  // Notify the receiver that a move-semantics push has completed and it is now
+  // the primary copy holder. Fire-and-forget; the sender (producer) does not
+  // need the reply to make progress.
+  rpc MoveCompleted(MoveCompletedRequest) returns (MoveCompletedReply);
 }

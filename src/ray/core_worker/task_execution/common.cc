@@ -15,8 +15,11 @@
 #include "ray/core_worker/task_execution/common.h"
 
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
+
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace core {
@@ -70,12 +73,18 @@ void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReferen
 }
 
 void ActorTaskExecutionArgWaiter::MarkReady(int64_t tag) {
+  // RAY_LOG(INFO) << "[karticam] ActorTaskExecutionArgWaiter::MarkReady: tag=" << tag
+  //               << " thread=" << std::this_thread::get_id()
+  //               << " (about to fire on_args_ready callback)";
   auto it = in_flight_waits_.find(tag);
   RAY_CHECK(it != in_flight_waits_.end())
       << "MarkReady called on a non-existent tag. This likely means it was called twice "
          "for the same tag mistakenly.";
   it->second();
   in_flight_waits_.erase(it);
+  // RAY_LOG(INFO) << "[karticam] ActorTaskExecutionArgWaiter::MarkReady DONE: tag=" <<
+  // tag
+  //               << " thread=" << std::this_thread::get_id();
 }
 }  // namespace core
 }  // namespace ray

@@ -260,6 +260,11 @@ message ObjectLocationUpdate {
   // by the same worker. If the outer ObjectID is still in scope, then the
   // owner can add the dynamically created ObjectID to its ref count.
   optional bytes generator_id = 4;
+  // When set, indicates that the primary (pinned) copy of this object has
+  // moved to this node id via plasma move semantics. The owner should update
+  // its pinned_at_node_id_ tracking so lineage reconstruction triggers
+  // correctly if this new primary node later dies.
+  optional bytes primary_moved_to_node_id = 5;
 }
 
 message GetObjectLocationsOwnerRequest {

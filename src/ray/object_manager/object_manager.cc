@@ -18,6 +18,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -181,6 +182,10 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
+  // RAY_LOG(INFO) << "[karticam] Object added " << object_id
+  //               << " size=" << (object_info.data_size + object_info.metadata_size)
+  //               << " used_memory=" << used_memory_
+  //               << " num_local_objects=" << local_objects_.size();
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
   // Give the pull manager a chance to pin actively pulled objects.
@@ -210,6 +215,10 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
+  // RAY_LOG(INFO) << "[karticam] Object deleted " << object_id
+  //               << " size=" << (object_info.data_size + object_info.metadata_size)
+  //               << " used_memory=" << used_memory_
+  //               << " num_local_objects=" << local_objects_.size();
   object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
@@ -298,6 +307,9 @@ void ObjectManager::MarkObjectFailed(const ObjectID &object_id,
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
+    // RAY_LOG(INFO) << "[karticam] SendPullRequest: local_node=" << self_node_id_
+    //               << " asking remote_node=" << client_id
+    //               << " for object_id=" << object_id;
     // Try pulling from the client.
     rpc_service_.post(
         [this, object_id, client_id, rpc_client]() {
@@ -503,29 +515,62 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
-  push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
-        rpc_service_.post(
-            [=]() {
-              // Post to the multithreaded RPC event loop so that data is copied
-              // off of the main thread.
-              SendObjectChunk(
-                  push_id,
-                  object_id,
-                  node_id,
-                  chunk_id,
-                  rpc_client,
-                  [=](const Status &status) {
-                    // Post back to the main event loop because the
-                    // PushManager is not thread-safe.
-                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
-                                        "ObjectManager.Push");
-                  },
-                  chunk_reader,
-                  from_disk);
-            },
-            "ObjectManager.Push");
-      });
+  auto num_chunks = chunk_reader->GetNumChunks();
+  bool move_semantics_enabled = RayConfig::instance().enable_plasma_move_semantics();
+
+  // RAY_LOG(INFO) << "[karticam] Push start from PushObjectInternal: local_node="
+  //               << self_node_id_ << " sending to remote_node=" << node_id
+  //               << " object_id=" << object_id << " num_chunks=" << num_chunks
+  //               << " total_bytes=" << chunk_reader->GetObject().GetObjectSize();
+
+  if (move_semantics_enabled) {
+    auto push_key = std::make_pair(object_id, node_id);
+    push_ack_tracking_[push_key] = {
+        static_cast<int64_t>(num_chunks), 0, /*failed=*/false};
+  }
+
+  push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
+    rpc_service_.post(
+        [=]() {
+          // Post to the multithreaded RPC event loop so that data is copied
+          // off of the main thread.
+          SendObjectChunk(
+              push_id,
+              object_id,
+              node_id,
+              chunk_id,
+              rpc_client,
+              [=](const Status &status) {
+                // Post back to the main event loop because the
+                // PushManager is not thread-safe.
+                main_service_->post(
+                    [this, object_id, node_id, status, move_semantics_enabled]() {
+                      push_manager_->OnChunkComplete();
+                      if (move_semantics_enabled) {
+                        auto key = std::make_pair(object_id, node_id);
+                        auto it = push_ack_tracking_.find(key);
+                        if (it != push_ack_tracking_.end()) {
+                          if (!status.ok()) {
+                            it->second.failed = true;
+                          }
+                          it->second.acked_chunks++;
+                          if (it->second.acked_chunks == it->second.total_chunks) {
+                            bool success = !it->second.failed;
+                            push_ack_tracking_.erase(it);
+                            if (success && on_push_complete_) {
+                              on_push_complete_(object_id, node_id);
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "ObjectManager.Push");
+              },
+              chunk_reader,
+              from_disk);
+        },
+        "ObjectManager.Push");
+  });
 }
 
 void ObjectManager::SendObjectChunk(
@@ -618,6 +663,11 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t chunk_index,
                                        const std::string &data) {
   num_bytes_received_total_ += data.size();
+  // if (chunk_index == 0) {
+  //   RAY_LOG(INFO) << "[karticam] Receive start: local_node=" << self_node_id_
+  //                 << " receiving from remote_node=" << node_id
+  //                 << " object_id=" << object_id << " object_size=" << data_size;
+  // }
   RAY_LOG(DEBUG).WithField(object_id)
       << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
       << " of object, chunk index: " << chunk_index
@@ -661,8 +711,9 @@ void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
-      << "Received pull request from node for object";
+  // RAY_LOG(INFO) << "[karticam] HandlePull: local_node=" << self_node_id_
+  //               << " received pull request from remote_node=" << node_id
+  //               << " for object_id=" << object_id;
 
   main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
                       "ObjectManager.HandlePull");
@@ -680,8 +731,58 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void ObjectManager::HandleMoveCompleted(rpc::MoveCompletedRequest request,
+                                        rpc::MoveCompletedReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  // Reply immediately — the producer doesn't need to block on our handling.
+  // Hop onto the main service so the callback runs alongside other
+  // ObjectManager / NodeManager state mutations.
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  rpc::Address owner_address = request.owner_address();
+  main_service_->post(
+      [this, object_id, owner_address]() {
+        if (on_move_completed_) {
+          on_move_completed_(object_id, owner_address);
+        }
+      },
+      "ObjectManager.MoveCompleted");
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void ObjectManager::NotifyMoveCompleted(const ObjectID &object_id,
+                                        const NodeID &peer_node_id,
+                                        const rpc::Address &owner_address) {
+  auto rpc_client = GetRpcClient(peer_node_id);
+  if (rpc_client == nullptr) {
+    RAY_LOG(WARNING).WithField(object_id).WithField(peer_node_id)
+        << "NotifyMoveCompleted: no rpc client for peer; primary location will "
+           "remain stale on the owner until the object is re-resolved.";
+    return;
+  }
+  rpc::MoveCompletedRequest request;
+  request.set_object_id(object_id.Binary());
+  *request.mutable_owner_address() = owner_address;
+  rpc_client->MoveCompleted(
+      request,
+      [object_id, peer_node_id](const Status &status,
+                                const rpc::MoveCompletedReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING).WithField(object_id).WithField(peer_node_id)
+              << "MoveCompleted RPC failed: " << status
+              << ". Primary location on the owner may be stale; lineage "
+                 "reconstruction may not trigger if this peer dies.";
+        }
+      });
+}
+
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
+  // RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects called for "
+  //               << object_ids.size() << " objects, local_only=" << local_only
+  //               << " used_memory_before=" << used_memory_;
+  // for (const auto &obj_id : object_ids) {
+  //   RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects -> " << obj_id;
+  // }
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
     std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>

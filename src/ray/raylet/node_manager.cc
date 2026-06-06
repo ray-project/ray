@@ -302,6 +302,62 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
+
+  if (RayConfig::instance().enable_plasma_move_semantics()) {
+    // Producer side: after a successful push, notify the destination raylet
+    // that it is now the primary copy holder, then release our local copy.
+    object_manager_.SetOnPushComplete(
+        [this](const ObjectID &object_id, const NodeID &peer_node_id) {
+          // ray.put() objects have no producing task, so they cannot be
+          // reconstructed via lineage. If we let the primary copy migrate
+          // off the put-er's node and the new primary node dies, the object
+          // is permanently lost (OBJECT_UNRECONSTRUCTABLE_PUT). Keep the
+          // local copy as the only safe primary.
+          if (ObjectID::IsForPut(object_id)) {
+            return;
+          }
+          auto owner_address = local_object_manager_.GetOwnerAddress(object_id);
+          if (owner_address.has_value()) {
+            // Tell the consumer raylet: pin this object and inform the owner
+            // that the primary location moved. This is the signal the owner
+            // needs to update `pinned_at_node_id_`, which is what gates
+            // lineage reconstruction on subsequent node death.
+            object_manager_.NotifyMoveCompleted(object_id, peer_node_id, *owner_address);
+          } else {
+            RAY_LOG(WARNING).WithField(object_id)
+                << "Move-semantics push completed but local owner address is "
+                   "missing; skipping primary-move notification. Lineage "
+                   "reconstruction may not trigger if peer "
+                << peer_node_id << " dies.";
+          }
+          local_object_manager_.ReleaseFreedObject(object_id, /*local_only=*/true);
+        });
+
+    // Consumer side: when we receive a MoveCompleted RPC, pin the just-arrived
+    // object locally (preventing LRU eviction, subscribing to owner eviction)
+    // and report the primary location move to the owner via the location-update
+    // batch path.
+    object_manager_.SetOnMoveCompleted([this](const ObjectID &object_id,
+                                              const rpc::Address &owner_address) {
+      std::vector<ObjectID> ids{object_id};
+      std::vector<std::unique_ptr<RayObject>> results;
+      if (!GetObjectsFromPlasma(ids, &results) || results.empty() ||
+          results[0] == nullptr) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "MoveCompleted received but object is not in local plasma; "
+               "skipping primary pin. Likely the consumer's plasma evicted "
+               "or aborted the just-received object.";
+        return;
+      }
+      // Pin locally + subscribe to owner's eviction channel. Mirrors the path
+      // a producer worker takes after sealing its returns.
+      local_object_manager_.PinObjectsAndWaitForFree(
+          ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+      // Tell the owner the primary location has moved to this node so that
+      // ResetObjectsOnRemovedNode triggers recovery if this node later dies.
+      object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
+    });
+  }
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
@@ -1731,6 +1787,19 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   auto object_ids = FlatbufferToObjectIds(*message->object_ids());
   int64_t tag = message->tag();
+  // [karticam] Log when a worker asks the raylet to fetch actor task args.
+  // This is the IPC entry point — the worker has queued an actor task and is
+  // now telling the raylet to pull the task's by-ref args to this node.
+  // {
+  //   std::stringstream ids_ss;
+  //   for (const auto &id : object_ids) {
+  //     ids_ss << id << " ";
+  //   }
+  //   RAY_LOG(INFO) << "[karticam] ProcessWaitForActorCallArgsRequestMessage: "
+  //                 << "raylet=" << self_node_id_ << " tag=" << tag
+  //                 << " object_count=" << object_ids.size() << " object_ids=[ "
+  //                 << ids_ss.str() << "]";
+  // }
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
@@ -1743,6 +1812,18 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
                      object_ids.size(),
                      [this, client, tag](const std::vector<ObjectID> &ready,
                                          const std::vector<ObjectID> &remaining) {
+                       // [karticam] All requested args are now local on this raylet.
+                       // About to send IPC reply to the worker telling it the args
+                       // are ready, so its actor task can run.
+                       // std::stringstream ready_ss;
+                       // for (const auto &id : ready) {
+                       //   ready_ss << id << " ";
+                       // }
+                       // RAY_LOG(INFO) << "[karticam] WaitForActorCallArgs complete: "
+                       //               << "raylet=" << self_node_id_ << " tag=" << tag
+                       //               << " ready_count=" << ready.size() << "
+                       //               ready_ids=[ "
+                       //               << ready_ss.str() << "]";
                        RAY_CHECK(remaining.empty());
                        std::shared_ptr<WorkerInterface> worker =
                            worker_pool_.GetRegisteredWorker(client);

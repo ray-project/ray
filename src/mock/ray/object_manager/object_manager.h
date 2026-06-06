@@ -60,6 +60,20 @@ class MockObjectManager : public ObjectManagerInterface {
   MOCK_METHOD(void, HandleNodeRemoved, (const NodeID &node_id), (override));
   MOCK_METHOD(void, HandleObjectAdded, (const ObjectInfo &object_info), (override));
   MOCK_METHOD(void, HandleObjectDeleted, (const ObjectID &object_id), (override));
+  MOCK_METHOD(void,
+              SetOnPushComplete,
+              (std::function<void(const ObjectID &, const NodeID &)> fn),
+              (override));
+  MOCK_METHOD(void,
+              SetOnMoveCompleted,
+              (std::function<void(const ObjectID &, const rpc::Address &)> fn),
+              (override));
+  MOCK_METHOD(void,
+              NotifyMoveCompleted,
+              (const ObjectID &object_id,
+               const NodeID &peer_node_id,
+               const rpc::Address &owner_address),
+              (override));
 };
 
 }  // namespace ray

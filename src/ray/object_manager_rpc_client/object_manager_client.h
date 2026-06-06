@@ -78,6 +78,14 @@ class ObjectManagerClient : public ObjectManagerClientInterface {
                          /*method_timeout_ms*/ -1,
                          override)
 
+  /// Notify remote object manager that a move-semantics push has completed and
+  /// it is the new primary copy holder.
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService,
+                         MoveCompleted,
+                         grpc_client_manager_->GetGrpcClient(),
+                         /*method_timeout_ms*/ -1,
+                         override)
+
  private:
   std::unique_ptr<GrpcClientManager<ObjectManagerService>> grpc_client_manager_;
 };

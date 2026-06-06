@@ -76,6 +76,14 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                            const ObjectID &generator_id,
                            const bool spilled_to_local_storage) override;
 
+  /// Tell the owner that the primary copy of an object has moved to a node
+  /// via plasma move semantics. Buffers an ObjectLocationUpdate with
+  /// `primary_moved_to_node_id = node_id` and flushes it through the shared
+  /// UpdateObjectLocationBatch path.
+  void ReportObjectPrimaryMoved(const ObjectID &object_id,
+                                const NodeID &node_id,
+                                const rpc::Address &owner_address) override;
+
   void RecordMetrics(uint64_t duration_ms) override;
 
   std::string DebugString() const override;

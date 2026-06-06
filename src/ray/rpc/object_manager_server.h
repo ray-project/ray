@@ -34,10 +34,11 @@ class ServerCallFactory;
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(                     \
       ObjectManagerService, METHOD, -1, ClusterIdAuthType::NO_AUTH)
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull) \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(FreeObjects)
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS               \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push)        \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull)        \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(FreeObjects) \
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(MoveCompleted)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
@@ -61,6 +62,12 @@ class ObjectManagerServiceHandler {
   virtual void HandleFreeObjects(FreeObjectsRequest request,
                                  FreeObjectsReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
+  /// Handle a `MoveCompleted` request. Notifies the receiver raylet that a
+  /// plasma move-semantics push has completed and the receiver is now the
+  /// primary copy holder for the object.
+  virtual void HandleMoveCompleted(MoveCompletedRequest request,
+                                   MoveCompletedReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.

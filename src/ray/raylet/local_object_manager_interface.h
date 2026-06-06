@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,7 +49,7 @@ class LocalObjectManagerInterface {
                                          const std::string &,
                                          std::function<void(const ray::Status &)>) = 0;
 
-  virtual void FlushFreeObjects() = 0;
+  virtual void FlushFreeObjects(bool local_only = false) = 0;
 
   virtual bool ObjectPendingDeletion(const ObjectID &) = 0;
 
@@ -67,6 +68,17 @@ class LocalObjectManagerInterface {
   virtual bool HasLocallySpilledObjects() const = 0;
 
   virtual std::string DebugString() const = 0;
+
+  /// Release an object (e.g., after move semantics push completion).
+  /// If local_only is true, only frees locally without broadcasting
+  /// FreeObjectsRequest to other nodes (used by move semantics).
+  virtual void ReleaseFreedObject(const ObjectID &, bool local_only = false) = 0;
+
+  /// Return the owner address associated with a locally pinned object, if
+  /// known. Returns std::nullopt if the object is not in `local_objects_`
+  /// (e.g., not pinned by this raylet). Used by move semantics to look up
+  /// who to notify when the local copy is released.
+  virtual std::optional<rpc::Address> GetOwnerAddress(const ObjectID &) const = 0;
 };
 
 };  // namespace raylet

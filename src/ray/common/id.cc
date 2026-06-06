@@ -18,6 +18,7 @@
 
 #include "absl/time/clock.h"
 #include "ray/common/constants.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/macros.h"
 
 extern "C" {
@@ -264,6 +265,15 @@ bool ObjectID::IsActorID(const ObjectID &object_id) {
     }
   }
   return true;
+}
+
+bool ObjectID::IsForPut(const ObjectID &object_id) {
+  // Put indices are produced by WorkerContext::GetNextPutIndex as
+  //   num_returns + max_num_generator_returns + ++put_counter
+  // so they are always strictly greater than max_num_generator_returns.
+  // Task returns and generator returns have indices in [1, max_num_generator_returns].
+  // See the comment on ObjectID::IsForPut in id.h for caveats.
+  return object_id.ObjectIndex() > RayConfig::instance().max_num_generator_returns();
 }
 
 ActorID ObjectID::ToActorID(const ObjectID &object_id) {
