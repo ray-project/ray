@@ -78,7 +78,7 @@ export type GPUStats = {
 export type ProcessTPUUsage = {
   // This tpu usage stats from a process
   pid: number;
-  tpuMemoryUsage: number;
+  tpuMemoryUsage: number; // in bytes (differs from ProcessGPUUsage which is in MiB)
 };
 
 export type TPUStats = {

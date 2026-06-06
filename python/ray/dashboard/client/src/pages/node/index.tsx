@@ -72,21 +72,21 @@ const columns = [
     ),
   },
   {
-    label: "GPU",
+    label: "Accelerator",
     helpInfo: (
       <Typography>
-        Usage of each GPU device. If no GPU usage is detected, here are the
+        Usage of each accelerator device (e.g. GPU, TPU). If no usage is detected, here are the
         potential root causes:
         <br />
-        1. non-GPU Ray image is used on this node. Switch to a GPU Ray image and
+        1. Non-accelerator Ray image is used on this node. Switch to an appropriate image and
         try again. <br />
-        2. Non Nvidia or AMD GPUs are being used.
+        2. Non Nvidia, AMD, or Google TPU accelerators are being used.
         <br />
-        3. pynvml or pyamdsmi module raises an exception.
+        3. pynvml, pyamdsmi, or TPU plugin raises an exception.
       </Typography>
     ),
   },
-  { label: "GRAM" },
+  { label: "Accelerator Memory" },
   { label: "Object Store Memory" },
   {
     label: "Disk(root)",
@@ -413,4 +413,3 @@ export const ClusterMainPageLayout = () => {
 };
 
 export default Nodes;
-// cache bust

@@ -6,10 +6,11 @@ import { GPUStats, NodeDetail, TPUStats } from "../../type/node";
 import {
   normalizeAccelerators,
 } from "../../util/accelerator";
+import { memoryConverter } from "../../util/converter";
 
 const GRAM_COL_WIDTH = 120;
 
-export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
+export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
   const accelerators = normalizeAccelerators(node.gpus, node.tpus);
 
   const nodeGRAMEntries = accelerators.map((acc, i) => {
@@ -20,7 +21,7 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
       total: acc.memoryTotal,
       slot: acc.index,
     };
-    return <GRAMEntry {...props} />;
+    return <AcceleratorMemoryEntry {...props} />;
   });
   return (
     <div style={{ minWidth: 60 }}>
@@ -35,7 +36,7 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
   );
 };
 
-export const WorkerGRAM = ({
+export const WorkerAcceleratorMemory = ({
   workerPID,
   gpus,
   tpus,
@@ -48,10 +49,6 @@ export const WorkerGRAM = ({
 
   const workerGRAMEntries = accelerators
     .map((acc, i) => {
-      // TPUs currently do not report per-process PIDs, so we skip them for worker rows
-      if (acc.type === "TPU") {
-        return undefined;
-      }
       const process = acc.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
       );
@@ -65,7 +62,7 @@ export const WorkerGRAM = ({
         utilization: process.memoryUsage, // This is already unified
         slot: acc.index,
       };
-      return <GRAMEntry {...props} />;
+      return <AcceleratorMemoryEntry {...props} />;
     })
     .filter((entry) => entry !== undefined);
 
@@ -78,7 +75,7 @@ export const WorkerGRAM = ({
   );
 };
 
-export const getSumGRAMUsage = (
+export const getSumAcceleratorMemoryUsage = (
   workerPID: number | null,
   gpus?: GPUStats[],
   tpus?: TPUStats[],
@@ -100,23 +97,20 @@ export const getSumGRAMUsage = (
 };
 
 const getMemDisplayRatioNoPercent = (used: number, total: number) => {
-  let unit = "MiB"
-  if (total >= 1024) {
-    used /= 1024
-    total /= 1024
-    unit = "GiB"
-  }
-  return `${used.toFixed(1)}${unit}/${total.toFixed(1)}${unit}`;
+  // Convert MiB back to bytes for the memoryConverter
+  const usedBytes = used * 1024 * 1024;
+  const totalBytes = total * 1024 * 1024;
+  return `${memoryConverter(usedBytes)}/${memoryConverter(totalBytes)}`;
 };
 
-type GRAMEntryProps = {
+type AcceleratorMemoryEntryProps = {
   gpuName: string;
   slot: number;
   utilization: number;
   total: number;
 };
 
-const GRAMEntry: React.FC<GRAMEntryProps> = ({
+const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   gpuName,
   slot,
   utilization,

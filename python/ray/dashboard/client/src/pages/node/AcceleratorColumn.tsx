@@ -9,7 +9,7 @@ import {
 } from "../../util/accelerator";
 import { memoryConverter } from "../../util/converter";
 
-export type NodeGPUEntryProps = {
+export type NodeAcceleratorEntryProps = {
   slot: number;
   accelerator: UnifiedAcceleratorStat;
 };
@@ -58,7 +58,7 @@ const TpuTooltip = ({ tpu }: { tpu: TPUStats }) => {
   );
 };
 
-export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({
+export const NodeAcceleratorEntry: React.FC<NodeAcceleratorEntryProps> = ({
   accelerator,
   slot,
 }) => {
@@ -90,14 +90,14 @@ export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({
   );
 };
 
-export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
+export const NodeAcceleratorView = ({ node }: { node: NodeDetail }) => {
   const accelerators = normalizeAccelerators(node.gpus, node.tpus);
 
   return (
     <Box sx={{ minWidth: 120 }}>
       {accelerators.length !== 0 ? (
         accelerators.map((acc, i) => (
-          <NodeGPUEntry
+          <NodeAcceleratorEntry
             key={acc.uuid || acc.name + acc.index}
             accelerator={acc}
             slot={acc.index}
@@ -112,7 +112,7 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
   );
 };
 
-export const WorkerGpuRow = ({
+export const WorkerAcceleratorRow = ({
   workerPID,
   gpus,
   tpus,
@@ -125,10 +125,6 @@ export const WorkerGpuRow = ({
 
   const workerGPUEntries = accelerators
     .map((acc, i) => {
-      // TPUs currently do not report per-process PIDs, so we skip them for worker rows
-      if (acc.type === "TPU") {
-        return undefined;
-      }
       const process = acc.processesPids?.find(
         (process) => process.pid === workerPID,
       );
@@ -136,7 +132,7 @@ export const WorkerGpuRow = ({
         return undefined;
       }
       return (
-        <NodeGPUEntry
+        <NodeAcceleratorEntry
           key={acc.uuid || acc.name + acc.index}
           accelerator={acc}
           slot={acc.index}
@@ -154,7 +150,7 @@ export const WorkerGpuRow = ({
   );
 };
 
-export const getSumGpuUtilization = (
+export const getSumAcceleratorUtilization = (
   workerPID: number | null,
   gpus?: GPUStats[],
   tpus?: TPUStats[],
