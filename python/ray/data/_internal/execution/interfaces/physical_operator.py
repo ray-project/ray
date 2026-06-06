@@ -34,6 +34,7 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
+from ray.experimental.locations import get_local_object_locations
 
 if TYPE_CHECKING:
 
@@ -111,6 +112,20 @@ TaskDoneCallbackType = Callable[
 
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
+
+    # Measurement-only telemetry (process-wide, across all DataOpTasks): how
+    # often a block's size is known locally via `get_local_object_locations`
+    # (no RPC), and whether that local `object_size` matches `meta.size_bytes`
+    # obtained from `ray.get(meta_ref)`. This informs whether the per-pair
+    # `ray.get(meta_ref)` in `on_data_ready` can be replaced by the local size
+    # lookup. The lookup is local but still adds per-pair overhead, so this is
+    # intended for measurement runs, not production.
+    _size_probe_total = 0
+    _size_probe_local_hits = 0
+    _size_probe_match = 0
+    _size_probe_mismatch = 0
+    # Emit a cumulative snapshot every this many probed pairs.
+    _SIZE_PROBE_LOG_EVERY = 5000
 
     def __init__(
         self,
@@ -272,6 +287,10 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
+            # Measurement-only: compare the block's locally-known object size
+            # (no RPC) against `meta.size_bytes` from the ray.get above. Probe
+            # before `_pending_block_ref` is reset below.
+            self._record_local_size_probe(meta.size_bytes)
             self._output_ready_callback(
                 RefBundle(
                     [BlockEntry(self._pending_block_ref, meta)],
@@ -287,6 +306,52 @@ class DataOpTask(OpTask):
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    def _record_local_size_probe(self, meta_size_bytes: int) -> None:
+        """Measurement-only: how often is the block's size known locally, and
+        does it match the metadata size?
+
+        Looks up ``self._pending_block_ref``'s ``object_size`` via
+        ``get_local_object_locations`` (local, no RPC) and compares it to
+        ``meta_size_bytes`` (``meta.size_bytes`` from ``ray.get(meta_ref)``,
+        the source of truth). Accumulates process-wide counters and logs a
+        cumulative snapshot every ``_SIZE_PROBE_LOG_EVERY`` probed pairs.
+
+        Note: this is pure instrumentation — it does NOT change behavior. The
+        existing ``ray.get(meta_ref)`` path still drives emits and budgets.
+        """
+        cls = DataOpTask
+        cls._size_probe_total += 1
+
+        info = get_local_object_locations([self._pending_block_ref]).get(
+            self._pending_block_ref
+        )
+        local_size = info.get("object_size") if info is not None else None
+
+        if local_size is not None:
+            cls._size_probe_local_hits += 1
+            if local_size == meta_size_bytes:
+                cls._size_probe_match += 1
+            else:
+                cls._size_probe_mismatch += 1
+
+        if cls._size_probe_total % cls._SIZE_PROBE_LOG_EVERY == 0:
+            total = cls._size_probe_total
+            hits = cls._size_probe_local_hits
+            hit_pct = 100.0 * hits / total
+            match_pct = 100.0 * cls._size_probe_match / hits if hits else 0.0
+            logger.info(
+                "[local-size-probe] %d/%d (%.1f%%) pairs had a local object_size; "
+                "of those %d/%d (%.1f%%) matched meta.size_bytes "
+                "(%d mismatched).",
+                hits,
+                total,
+                hit_pct,
+                cls._size_probe_match,
+                hits,
+                match_pct,
+                cls._size_probe_mismatch,
+            )
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
         if max_bytes_to_read == 0:
