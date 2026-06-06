@@ -1063,8 +1063,9 @@ class Worker:
             # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
-        if hasattr(self, "core_worker"):
-            self.core_worker.run_task_loop()
+        core_worker = getattr(self, "core_worker", None)
+        if core_worker is not None:
+            core_worker.run_task_loop()
         sys.exit(0)
 
     def print_logs(self):

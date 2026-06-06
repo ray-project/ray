@@ -2675,8 +2675,8 @@ cdef void call_actor_shutdown() noexcept nogil:
     """C++ wrapper function that calls the Python actor shutdown callback."""
     with gil:
         worker = ray._private.worker.global_worker
-        if hasattr(worker, "core_worker"):
-            core_worker = worker.core_worker
+        core_worker = getattr(worker, "core_worker", None)
+        if core_worker is not None:
             if core_worker.current_actor_is_asyncio():
                 core_worker.stop_and_join_asyncio_threads_if_exist()
 
