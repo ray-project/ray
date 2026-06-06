@@ -16,6 +16,7 @@
     "axios": "^0.21.1",
     "copy-to-clipboard": "^3.3.2",
     "dayjs": "^1.9.4",
+    "form-data": "^3.0.4",
     "js-yaml": "^4.1.0",
     "lodash": "^4.17.20",
     "lowlight": "^2.9.0",
