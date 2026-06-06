@@ -34,7 +34,7 @@ import { NodeRows } from "./NodeRow";
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
 };
-const columns = [
+const getColumns = (hasOnlyGPUs: boolean, hasOnlyTPUs: boolean) => [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
   { label: "State" },
@@ -72,7 +72,7 @@ const columns = [
     ),
   },
   {
-    label: "Accelerator",
+    label: hasOnlyGPUs ? "GPU" : hasOnlyTPUs ? "TPU" : "Accelerator",
     helpInfo: (
       <Typography>
         Usage of each accelerator device (e.g. GPU, TPU). If no usage is detected, here are the
@@ -86,7 +86,13 @@ const columns = [
       </Typography>
     ),
   },
-  { label: "Accelerator Memory" },
+  {
+    label: hasOnlyGPUs
+      ? "GRAM"
+      : hasOnlyTPUs
+        ? "HBM"
+        : "Accelerator Memory",
+  },
   { label: "Object Store Memory" },
   {
     label: "Disk(root)",
@@ -246,6 +252,10 @@ const Nodes = () => {
     constrainedPage,
     maxPage,
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
+
+  const hasGPUs = nodeList.some((node) => node.gpus && node.gpus.length > 0);
+  const hasTPUs = nodeList.some((node) => node.tpus && node.tpus.length > 0);
+  const columns = getColumns(hasGPUs, hasTPUs);
 
   return (
     <Box
