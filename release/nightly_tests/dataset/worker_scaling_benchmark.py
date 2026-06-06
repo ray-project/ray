@@ -199,6 +199,39 @@ def _disable_operator_fusion() -> None:
         pass  # Already removed.
 
 
+def _reset_local_size_probe() -> None:
+    """Reset DataOpTask's local-size probe counters if present.
+
+    The probe (get_local_object_locations hit rate vs meta.size_bytes) only
+    exists on Ray builds that include it; this is a no-op otherwise.
+    """
+    try:
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            DataOpTask,
+        )
+
+        reset = getattr(DataOpTask, "reset_local_size_probe", None)
+        if reset is not None:
+            reset()
+    except Exception:
+        pass
+
+
+def _local_size_probe_stats() -> Dict[str, object]:
+    """Return DataOpTask.local_size_probe_stats() if the probe is present, else {}."""
+    try:
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            DataOpTask,
+        )
+
+        stats = getattr(DataOpTask, "local_size_probe_stats", None)
+        if stats is not None:
+            return stats()
+    except Exception:
+        pass
+    return {}
+
+
 def main(args: argparse.Namespace):
     # Keep the chained operators separate so the topology actually has
     # --num-operators operators (see the function docstring).
@@ -208,6 +241,8 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
+        # Start this run's local-size probe counters clean (no-op without probe).
+        _reset_local_size_probe()
         num_blocks = args.blocks_per_worker * args.num_workers
         rows_per_block = _rows_per_block(
             args.num_scalar_cols,
@@ -265,6 +300,9 @@ def main(args: argparse.Namespace):
         metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
         metrics["num_operators"] = args.num_operators
         metrics["workers_per_operator"] = workers_per_operator
+        # Local block-size probe: hit rate of get_local_object_locations vs
+        # meta.size_bytes (empty on Ray builds without the probe).
+        metrics.update(_local_size_probe_stats())
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
