@@ -1060,10 +1060,10 @@ class TaskSummaries:
     total_actor_tasks: int
     #: Total scheduled actors.
     total_actor_scheduled: int
-    summary_by: str = "task_name"
+    summary_by: str = "func_name"
 
     @classmethod
-    def to_summary_by_task_name(cls, *, tasks: List[Dict]) -> "TaskSummaries":
+    def to_summary_by_func_name(cls, *, tasks: List[Dict]) -> "TaskSummaries":
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as TaskState.
         summary = {}
