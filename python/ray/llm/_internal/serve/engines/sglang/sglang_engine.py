@@ -403,38 +403,54 @@ class SGLangServer:
             gen_id = f"sglang-gen-{uuid.uuid4().hex}"
             created = int(time.time())
 
-            async def _collect_stream(i: int, prompt_string: str) -> list:
-                """Collect all SSE chunks for one prompt into a list."""
-                chunks = []
-                async for delta_text, finish_reason in self._stream_generate(
-                    request, prompt_string
-                ):
-                    chunks.append(
-                        self._build_sse_chunk(
-                            gen_id,
-                            "text_completion",
-                            created,
-                            request.model,
-                            {
-                                "index": i,
-                                "text": delta_text,
-                                "logprobs": None,
-                                "finish_reason": finish_reason,
-                            },
+            queue: asyncio.Queue = asyncio.Queue()
+            active_tasks = len(prompts_to_process)
+
+            async def _produce_stream(i: int, prompt_string: str) -> None:
+                try:
+                    async for delta_text, finish_reason in self._stream_generate(
+                        request, prompt_string
+                    ):
+                        await queue.put(
+                            self._build_sse_chunk(
+                                gen_id,
+                                "text_completion",
+                                created,
+                                request.model,
+                                {
+                                    "index": i,
+                                    "text": delta_text,
+                                    "logprobs": None,
+                                    "finish_reason": finish_reason,
+                                },
+                            )
                         )
-                    )
-                return chunks
+                except Exception as e:
+                    await queue.put(e)
+                finally:
+                    await queue.put(None)
+
+            tasks = [
+                asyncio.create_task(_produce_stream(i, p))
+                for i, p in enumerate(prompts_to_process)
+            ]
+
+            finished_tasks = 0
+            while finished_tasks < active_tasks:
+                item = await queue.get()
+                if item is None:
+                    finished_tasks += 1
+                elif isinstance(item, Exception):
+                    for t in tasks:
+                        t.cancel()
+                    raise item
+                else:
+                    yield item
+            return
 
             
 
-            # Run all prompt streams concurrently instead of sequentially
-            all_chunks = await asyncio.gather(
-                *[_collect_stream(i, p) for i, p in enumerate(prompts_to_process)]
-            )
-            for prompt_chunks in all_chunks:
-                for chunk in prompt_chunks:
-                    yield chunk
-            return
+            
 
         results = await self._generate_and_extract_metadata(request, prompts_to_process)
 
