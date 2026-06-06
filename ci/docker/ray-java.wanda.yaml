@@ -13,6 +13,8 @@ srcs:
   - gen_ray_pkg.py
   - release/BUILD.bazel
   - release/requirements_py310.txt
+  - python/deplocks/ci/BUILD.bazel
+  - python/deplocks/ci/ci_windows_depset.lock
   - ci/build/container_resource_utils.py
 build_args:
   - ARCH_SUFFIX

@@ -43,6 +43,12 @@ tqdm
 networkx
 pip_requirements_parser
 
+# Pinned to match the previously-working release/requirements_py310.txt: the
+# Windows agent's conda pyOpenSSL (imported by botocore via urllib3) is built
+# against this cryptography; newer cryptography (47.x) breaks it at import
+# (OpenSSL X509StoreFlags). cryptography 42.0.5 still supports Python 3.8.
+cryptography==42.0.5
+
 # Upgrades
 # Capped below 4.14: 4.14.0 dropped Python 3.8, and these wheels are executed by
 # the Windows agent's py3.8 launcher (see header).
