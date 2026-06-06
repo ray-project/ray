@@ -12,6 +12,7 @@ import copy
 import json
 import signal
 import time
+import asyncio 
 import uuid
 from typing import (
     Any,
@@ -401,22 +402,38 @@ class SGLangServer:
         if request.stream:
             gen_id = f"sglang-gen-{uuid.uuid4().hex}"
             created = int(time.time())
-            for i, prompt_string in enumerate(prompts_to_process):
+
+            async def _collect_stream(i: int, prompt_string: str) -> list:
+                """Collect all SSE chunks for one prompt into a list."""
+                chunks = []
                 async for delta_text, finish_reason in self._stream_generate(
                     request, prompt_string
                 ):
-                    yield self._build_sse_chunk(
-                        gen_id,
-                        "text_completion",
-                        created,
-                        request.model,
-                        {
-                            "index": i,
-                            "text": delta_text,
-                            "logprobs": None,
-                            "finish_reason": finish_reason,
-                        },
+                    chunks.append(
+                        self._build_sse_chunk(
+                            gen_id,
+                            "text_completion",
+                            created,
+                            request.model,
+                            {
+                                "index": i,
+                                "text": delta_text,
+                                "logprobs": None,
+                                "finish_reason": finish_reason,
+                            },
+                        )
                     )
+                return chunks
+
+            
+
+            # Run all prompt streams concurrently instead of sequentially
+            all_chunks = await asyncio.gather(
+                *[_collect_stream(i, p) for i, p in enumerate(prompts_to_process)]
+            )
+            for prompt_chunks in all_chunks:
+                for chunk in prompt_chunks:
+                    yield chunk
             return
 
         results = await self._generate_and_extract_metadata(request, prompts_to_process)
