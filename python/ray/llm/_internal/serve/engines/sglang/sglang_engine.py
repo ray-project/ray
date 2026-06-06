@@ -8,11 +8,11 @@ Community SGLang support is in early development. Track progress and
 provide feedback at https://github.com/ray-project/ray/issues/61114.
 """
 
+import asyncio
 import copy
 import json
 import signal
 import time
-import asyncio
 import uuid
 from typing import (
     Any,
@@ -45,7 +45,6 @@ from ray.llm._internal.serve.core.server.llm_server import (
 
 
 class SGLangServer:
-
     def __init__(self, llm_config: LLMConfig):
 
         self._llm_config = llm_config
@@ -435,7 +434,7 @@ class SGLangServer:
                 asyncio.create_task(_produce_stream(i, p))
                 for i, p in enumerate(prompts_to_process)
             ]
-
+            
             finished_tasks = 0
             try:
                 while finished_tasks < active_tasks:
@@ -449,7 +448,6 @@ class SGLangServer:
                     else:
                         yield item
             finally:
-                # Cancel all producer tasks on early exit or client disconnect
                 for t in tasks:
                     t.cancel()
             return
