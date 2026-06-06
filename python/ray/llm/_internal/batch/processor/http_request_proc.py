@@ -35,9 +35,17 @@ class HttpRequestProcessorConfig(ProcessorConfig):
     )
     headers: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="The query header. Note that we will add "
-        "'Content-Type: application/json' to be the header for sure "
-        "because we only deal with requests body in JSON.",
+        description="The query header. Note that when 'content_type' is "
+        "'application/json' (the default), 'Content-Type: application/json' is "
+        "added to the header automatically.",
+    )
+    content_type: str = Field(
+        default="application/json",
+        description="The content type of the request body. Either "
+        "'application/json' (default), which serializes each row's 'payload' to "
+        "a JSON body, or 'multipart/form-data', which sends each row's 'payload' "
+        "as a multipart form. Use 'multipart/form-data' to upload files, e.g. "
+        "for OpenAI's audio transcription API.",
     )
     qps: Optional[int] = Field(
         default=None,
@@ -117,6 +125,7 @@ def build_http_request_processor(
                 max_retries=config.max_retries,
                 base_retry_wait_time_in_s=config.base_retry_wait_time_in_s,
                 session_factory=config.session_factory,
+                content_type=config.content_type,
             ),
             map_batches_kwargs=build_cpu_stage_map_kwargs(http_request_stage_cfg),
         )

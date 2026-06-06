@@ -138,6 +138,83 @@ async def test_http_request_udf_with_retry(mock_response):
         )
 
 
+@pytest.mark.asyncio
+async def test_http_request_udf_multipart(mock_session):
+    """multipart/form-data requests are sent as an aiohttp.FormData body and do
+    not set the Content-Type header manually (aiohttp adds the boundary)."""
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        additional_header={"Authorization": "Bearer 1234567890"},
+        qps=None,
+        session_factory=lambda: mock_session,  # noqa: E731
+        content_type="multipart/form-data",
+    )
+
+    batch = {
+        "__data": [
+            {
+                "payload": {
+                    "model": "whisper-1",
+                    "file": {
+                        "content": b"audio-bytes",
+                        "filename": "audio.mp3",
+                        "content_type": "audio/mpeg",
+                    },
+                }
+            }
+        ]
+    }
+
+    async for result in udf(batch):
+        assert result["__data"][0]["http_response"]["response"] == "test"
+
+    post = mock_session.__aenter__.return_value.post
+    post.assert_called_once()
+    args, kwargs = post.call_args
+    assert args[0] == "http://test.com/api"
+    # Content-Type must NOT be set manually for multipart requests.
+    assert kwargs["headers"] == {"Authorization": "Bearer 1234567890"}
+    assert isinstance(kwargs["data"], aiohttp.FormData)
+
+
+def test_http_request_udf_invalid_content_type():
+    with pytest.raises(ValueError, match="Unsupported content_type"):
+        HttpRequestUDF(
+            data_column="__data",
+            expected_input_keys=["payload"],
+            url="http://test.com/api",
+            content_type="text/plain",
+        )
+
+
+def test_build_form_data():
+    """_build_form_data maps payload entries to file and regular form fields."""
+    form = HttpRequestUDF._build_form_data(
+        {
+            "file": {
+                "content": b"audio-bytes",
+                "filename": "audio.mp3",
+                "content_type": "audio/mpeg",
+            },
+            "raw_bytes": b"raw",
+            "model": "whisper-1",
+            "temperature": 0,
+        }
+    )
+    assert isinstance(form, aiohttp.FormData)
+    # aiohttp stores fields as (content_disposition_options, headers, value).
+    fields = {opts["name"]: (opts, value) for opts, _headers, value in form._fields}
+    assert set(fields) == {"file", "raw_bytes", "model", "temperature"}
+    assert fields["file"][0]["filename"] == "audio.mp3"
+    assert fields["file"][1] == b"audio-bytes"
+    assert fields["raw_bytes"][0]["filename"] == "raw_bytes"
+    assert fields["model"][1] == "whisper-1"
+    # Non-string scalars are JSON-encoded.
+    assert fields["temperature"][1] == "0"
+
+
 def test_numpy_encoder():
     """Test NumpyEncoder correctly serializes numpy data types."""
     data = {
@@ -220,6 +297,62 @@ async def test_http_request_udf_with_numpy_payload_server(numpy_payload_server):
     assert len(results) == 10
     for result in results:
         assert result["http_response"]["response"] == "success"
+
+
+@pytest.fixture
+async def multipart_server():
+    # Handler that parses the multipart form and verifies the uploaded file.
+    async def handler(request):
+        reader = await request.multipart()
+        fields = {}
+        files = {}
+        async for part in reader:
+            if part.filename:
+                files[part.name] = (part.filename, await part.read())
+            else:
+                fields[part.name] = await part.text()
+        assert fields["model"] == "whisper-1"
+        assert files["file"][0] == "audio.mp3"
+        assert files["file"][1] == b"hello-audio"
+        return aiohttp.web.json_response({"response": "transcribed"})
+
+    app = aiohttp.web.Application()
+    app.router.add_post("/", handler)
+    server = TestServer(app)
+    await server.start_server()
+    yield server
+    await server.close()
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_multipart_server(multipart_server):
+    """End-to-end test that multipart file uploads reach the server, exercising
+    the HttpRequestProcessorConfig.content_type wiring."""
+    data = [
+        {
+            "payload": {
+                "model": "whisper-1",
+                "file": {
+                    "content": b"hello-audio",
+                    "filename": "audio.mp3",
+                    "content_type": "audio/mpeg",
+                },
+            }
+        }
+    ]
+    config = HttpRequestProcessorConfig(
+        url=str(multipart_server.make_url("/")),
+        content_type="multipart/form-data",
+        qps=None,
+    )
+
+    processor = ProcessorBuilder.build(config)
+    ds = processor(ray.data.from_items(data * 3))
+    results = await asyncio.to_thread(ds.take_all)
+
+    assert len(results) == 3
+    for result in results:
+        assert result["http_response"]["response"] == "transcribed"
 
 
 if __name__ == "__main__":
