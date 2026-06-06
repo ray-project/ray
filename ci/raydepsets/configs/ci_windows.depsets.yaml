@@ -1,0 +1,17 @@
+# Dependency set for the Windows CI driver binaries
+# (//ci/ray_ci:test_in_docker and //ci/ray_ci:build_in_docker_windows).
+#
+# These py_binaries have their deps bundled by bazel but are executed by the
+# Windows agent's non-hermetic Python 3.8 conda base, so the lock is resolved for
+# Python 3.8. It omits the docs toolchain (and twine) so that typing-extensions
+# can be pinned <4.14 (4.14.0 dropped Python 3.8). See
+# release/requirements_windows.in for details.
+depsets:
+  - name: ci_windows_depset
+    operation: compile
+    requirements:
+      - release/requirements_windows.in
+    output: python/deplocks/ci/ci_windows_depset.lock
+    append_flags:
+      - --python-version=3.8
+      - --python-platform=windows

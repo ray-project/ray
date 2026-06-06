@@ -1,0 +1,57 @@
+# Requirements for the Windows CI driver binaries
+# (//ci/ray_ci:test_in_docker and //ci/ray_ci:build_in_docker_windows).
+#
+# These are non-hermetic py_binaries: bazel resolves/bundles their deps as wheels
+# (pip_parse), but the binary is executed by the Windows agent's conda-base
+# interpreter (Python 3.8), since it has no exec_compatible_with on the hermetic
+# toolchain. This set is therefore resolved for Python 3.8 so every pinned
+# version is genuinely importable on the agent. Two things are required to make
+# the 3.8 resolution succeed:
+#   * EXCLUDE release/requirements-doc.txt — the docs toolchain pulls pydantic,
+#     which forces typing-extensions>=4.14.1 (and 4.14.0 dropped Python 3.8).
+#     The docs closure is only needed by //ci/ray_ci/doc on Linux, so it stays
+#     in release/requirements_py310.in.
+#   * DROP twine — twine==6.2.0 requires Python >=3.9 and is only used by
+#     //ci/ray_ci/automation (not the Windows driver binaries), so it is not
+#     part of this set.
+#
+# Keep the package list below in sync with release/requirements_py310.in (minus
+# the `-r requirements-doc.txt` line).
+aioboto3
+anyscale >= 0.26.14
+azure-identity
+azure-storage-blob
+bazel-runfiles
+boto3
+click
+freezegun
+google-cloud-storage
+jinja2
+msal
+protobuf >= 3.15.3, != 3.19.5
+pytest
+responses
+pyyaml
+pybuildkite
+requests >= 2.31.0
+docker >= 7.1.0
+aws_requests_auth
+
+# Below are requirements only used by ray_ci
+tzdata
+tqdm
+networkx
+pip_requirements_parser
+
+# Upgrades
+# Capped below 4.14: 4.14.0 dropped Python 3.8, and these wheels are executed by
+# the Windows agent's py3.8 launcher (see header).
+typing-extensions>=4.10,<4.14
+jsonschema>=4.23.0
+certifi>=2025.1.31
+h11>=0.16.0
+google-cloud-logging
+packaging==25.0
+
+# Pinned to match the previously-working release/requirements_py310.txt set.
+anyscale==0.26.74

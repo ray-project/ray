@@ -1,0 +1,6 @@
+# Exposes the Windows CI driver lock so WORKSPACE's py_deps_windows pip_parse can
+# reference it as //python/deplocks/ci:ci_windows_depset.lock.
+exports_files(
+    ["ci_windows_depset.lock"],
+    visibility = ["//visibility:public"],
+)

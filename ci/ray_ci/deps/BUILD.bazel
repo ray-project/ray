@@ -1,0 +1,7 @@
+# Per-package aliases that route the Windows CI driver's third-party deps to the
+# right pip repo by target platform: @py_deps_windows (Python 3.8) on Windows,
+# @py_deps_py310 everywhere else. Generated from WINDOWS_DRIVER_DEPS.
+# See //ci/ray_ci:ci_require.bzl.
+load("//ci/ray_ci:ci_require.bzl", "ci_require_aliases")
+
+ci_require_aliases()
