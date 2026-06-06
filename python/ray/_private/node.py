@@ -484,7 +484,7 @@ class Node:
                     "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
                     "to be set to a writable directory."
                 )
-            session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
+            session_name_file = os.path.join(rocksdb_storage_path, "session_name")
             try:
                 with open(session_name_file, "rb") as f:
                     persisted = f.read().strip()
@@ -1414,7 +1414,7 @@ class Node:
                     "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path "
                     "to be set to a writable directory."
                 )
-            session_name_file = os.path.join(rocksdb_storage_path, ".session_name")
+            session_name_file = os.path.join(rocksdb_storage_path, "session_name")
             os.makedirs(rocksdb_storage_path, exist_ok=True)
             # Atomic, durable write: tmp + fsync + rename + dir fsync.
             # The internal_kv_put below fsyncs through rocksdb's WAL, so
@@ -1426,7 +1426,7 @@ class Node:
             # for MANIFEST writes.
             tmp_fd, tmp_path = tempfile.mkstemp(
                 dir=rocksdb_storage_path,
-                prefix=".session_name.",
+                prefix="session_name.",
                 suffix=".tmp",
             )
             try:
