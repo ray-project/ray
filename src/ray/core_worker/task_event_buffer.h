@@ -30,6 +30,8 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_event_interface.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -188,6 +190,13 @@ class TaskStatusEvent : public TaskEvent {
   /// to be filled.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
+  /// Convert this status event into RayEventInterface objects for recording through
+  /// RayEventRecorder (the path that replaces the direct TaskEventBuffer->aggregator
+  /// send). Produces a TaskLifecycleEvent always, plus a (Actor)TaskDefinitionEvent when
+  /// task_spec_ is set. Reuses the same population helpers as ToRpcRayEvents.
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+  ToRayEventInterfaces();
+
   bool IsProfileEvent() const override { return false; }
 
  private:
@@ -242,6 +251,12 @@ class TaskProfileEvent : public TaskEvent {
   /// Note: The extra data will be moved when this is called and will no longer be usable.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
+  /// Convert this profile event into a RayEventInterface (a single TaskProfileEvents) for
+  /// recording through RayEventRecorder. Unlike ToRpcRayEvents this copies the extra data
+  /// (the same TaskProfileEvent may still be flushed to GCS/export via the buffer).
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+  ToRayEventInterfaces();
+
   bool IsProfileEvent() const override { return true; }
 
   void SetEndTime(int64_t end_time) { end_time_ = end_time; }
@@ -269,6 +284,24 @@ class TaskProfileEvent : public TaskEvent {
   /// The current Ray session name.
   std::string session_name_;
 };
+
+/// Build and record the RayEventInterface objects for a task status change directly into
+/// `ray_event_recorder`. This is the call-site-parallel path that replaces the legacy
+/// TaskEventBuffer->aggregator send: producers call this alongside their existing
+/// TaskEventBuffer recording. Applies the same per-task gate (spec.EnableTaskEvents()) as
+/// TaskEventBuffer::RecordTaskStatusEventIfNeeded, so it is a no-op when task events are
+/// disabled for the task. The recorder additionally self-gates on RAY_enable_ray_event.
+void RecordTaskStatusEventToRecorderIfNeeded(
+    ray::observability::RayEventRecorderInterface &ray_event_recorder,
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    const TaskSpecification &spec,
+    rpc::TaskStatus status,
+    const std::string &session_name,
+    const NodeID &node_id,
+    bool include_task_info = false,
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt);
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
 enum TaskEventBufferCounter {
