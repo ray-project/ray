@@ -43,16 +43,23 @@ export const normalizeAccelerators = (
   }
   if (tpus) {
     tpus.forEach((tpu) => {
+      if (tpu.memoryTotal <= 0) {
+        // Sometimes neighboring chips are reported with placeholders like no
+        // memory capacity; these should be omitted on the dashboard.
+        return
+      }
       normalized.push({
         name: tpu.name,
         index: tpu.index,
         type: "TPU",
         utilization: tpu.tensorcoreUtilization,
-        memoryUsed: tpu.memoryUsed,
-        memoryTotal: tpu.memoryTotal,
+        // Convert Bytes to MiB to match GPUStats
+        memoryUsed: tpu.memoryUsed / (1024 * 1024),
+        memoryTotal: tpu.memoryTotal / (1024 * 1024),
         processesPids: tpu.processesPids?.map((p: ProcessTPUUsage) => ({
           pid: p.pid,
-          memoryUsage: p.tpuMemoryUsage,
+          // ProcessTPUUsage memory is also in bytes, convert if present
+          memoryUsage: p.tpuMemoryUsage / (1024 * 1024),
         })),
         rawTpu: tpu,
       });

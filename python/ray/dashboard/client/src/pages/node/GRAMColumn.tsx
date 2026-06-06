@@ -99,8 +99,15 @@ export const getSumGRAMUsage = (
   return workerGRAMEntries.reduce((a, b) => a + b, 0);
 };
 
-const getMiBRatioNoPercent = (used: number, total: number) =>
-  `${used}MiB/${total}MiB`;
+const getMemDisplayRatioNoPercent = (used: number, total: number) => {
+  let unit = "MiB"
+  if (total >= 1024) {
+    used /= 1024
+    total /= 1024
+    unit = "GiB"
+  }
+  return `${used.toFixed(1)}${unit}/${total.toFixed(1)}${unit}`;
+};
 
 type GRAMEntryProps = {
   gpuName: string;
@@ -115,7 +122,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   utilization,
   total,
 }) => {
-  const ratioStr = getMiBRatioNoPercent(utilization, total);
+  const ratioStr = getMemDisplayRatioNoPercent(utilization, total);
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
