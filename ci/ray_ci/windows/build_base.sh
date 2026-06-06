@@ -18,12 +18,19 @@ conda init
 # in-place `conda install python=${PYTHON_FULL_VERSION}` either crashes
 # (conda#15760) or -- with auto_update_conda disabled -- silently no-ops and
 # leaves `base` on 3.8, which then mismatches the py310 bazel deps and blows up
-# at test time. A fresh env sidesteps both failure modes. The env is put first
-# on PATH by windows.build.Dockerfile so `python`/`pip` below and bazel at test
-# time all resolve to it.
+# at test time. A fresh env sidesteps both failure modes. We put it first on
+# PATH below for this build; windows.build.Dockerfile does the same on the
+# image's machine PATH so bazel resolves to it at test time.
 conda create -y -n "${RAY_CONDA_ENV}" python="${PYTHON_FULL_VERSION}" requests=2.32.3
 # Force CA trust stack to the newest versions available at build time.
 conda update -n "${RAY_CONDA_ENV}" -c conda-forge -y ca-certificates certifi
+
+# Put the env first on PATH for the rest of this build so `python`/`pip` below
+# resolve to it. (Test-time PATH is set on the image's machine PATH by
+# windows.build.Dockerfile, because on Windows the base PATH lives in the
+# registry, not in Docker ENV.)
+env_root="/c/Miniconda3/envs/${RAY_CONDA_ENV}"
+export PATH="${env_root}:${env_root}/Library/mingw-w64/bin:${env_root}/Library/usr/bin:${env_root}/Library/bin:${env_root}/Scripts:${env_root}/bin:${PATH}"
 
 # Fail the build loudly here if the interpreter on PATH is not the expected
 # version, rather than letting the mismatch surface as a confusing import error
