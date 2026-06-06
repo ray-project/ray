@@ -36,18 +36,18 @@ pybuildkite
 requests >= 2.31.0
 docker >= 7.1.0
 aws_requests_auth
+# botocore imports urllib3.contrib.pyopenssl (urllib3 1.26.x), which imports
+# OpenSSL. Without pyopenssl in the bundle, the driver falls through to the
+# Windows agent's stale conda pyOpenSSL, which references an OpenSSL flag that
+# modern cryptography dropped and crashes at import (X509_V_FLAG_NOTIFY_POLICY).
+# Bundling a current pyopenssl in runfiles shadows the conda copy.
+pyopenssl
 
 # Below are requirements only used by ray_ci
 tzdata
 tqdm
 networkx
 pip_requirements_parser
-
-# Pinned to match the previously-working release/requirements_py310.txt: the
-# Windows agent's conda pyOpenSSL (imported by botocore via urllib3) is built
-# against this cryptography; newer cryptography (47.x) breaks it at import
-# (OpenSSL X509StoreFlags). cryptography 42.0.5 still supports Python 3.8.
-cryptography==42.0.5
 
 # Upgrades
 # Capped below 4.14: 4.14.0 dropped Python 3.8, and these wheels are executed by
