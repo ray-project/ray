@@ -3,9 +3,7 @@ import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
 import { GPUStats, NodeDetail, TPUStats } from "../../type/node";
-import {
-  normalizeAccelerators,
-} from "../../util/accelerator";
+import { normalizeAccelerators } from "../../util/accelerator";
 import { memoryConverter } from "../../util/converter";
 
 const GRAM_COL_WIDTH = 120;

@@ -75,11 +75,11 @@ const getColumns = (hasOnlyGPUs: boolean, hasOnlyTPUs: boolean) => [
     label: hasOnlyGPUs ? "GPU" : hasOnlyTPUs ? "TPU" : "Accelerator",
     helpInfo: (
       <Typography>
-        Usage of each accelerator device (e.g. GPU, TPU). If no usage is detected, here are the
-        potential root causes:
+        Usage of each accelerator device (e.g. GPU, TPU). If no usage is
+        detected, here are the potential root causes:
         <br />
-        1. Non-accelerator Ray image is used on this node. Switch to an appropriate image and
-        try again. <br />
+        1. Non-accelerator Ray image is used on this node. Switch to an
+        appropriate image and try again. <br />
         2. Non Nvidia, AMD, or Google TPU accelerators are being used.
         <br />
         3. pynvml, pyamdsmi, or TPU plugin raises an exception.
@@ -87,11 +87,7 @@ const getColumns = (hasOnlyGPUs: boolean, hasOnlyTPUs: boolean) => [
     ),
   },
   {
-    label: hasOnlyGPUs
-      ? "GRAM"
-      : hasOnlyTPUs
-        ? "HBM"
-        : "Accelerator Memory",
+    label: hasOnlyGPUs ? "GRAM" : hasOnlyTPUs ? "HBM" : "Accelerator Memory",
   },
   { label: "Object Store Memory" },
   {

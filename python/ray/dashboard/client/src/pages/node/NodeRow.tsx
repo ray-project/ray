@@ -26,7 +26,10 @@ import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { NodeAcceleratorView, WorkerAcceleratorRow } from "./AcceleratorColumn";
-import { NodeAcceleratorMemory, WorkerAcceleratorMemory } from "./AcceleratorMemoryColumn";
+import {
+  NodeAcceleratorMemory,
+  WorkerAcceleratorMemory,
+} from "./AcceleratorMemoryColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -298,10 +301,18 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerAcceleratorRow workerPID={pid} gpus={node.gpus} tpus={node.tpus} />
+        <WorkerAcceleratorRow
+          workerPID={pid}
+          gpus={node.gpus}
+          tpus={node.tpus}
+        />
       </TableCell>
       <TableCell>
-        <WorkerAcceleratorMemory workerPID={pid} gpus={node.gpus} tpus={node.tpus} />
+        <WorkerAcceleratorMemory
+          workerPID={pid}
+          gpus={node.gpus}
+          tpus={node.tpus}
+        />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>

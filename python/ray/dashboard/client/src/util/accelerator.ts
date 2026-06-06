@@ -1,4 +1,9 @@
-import { GPUStats, ProcessGPUUsage, ProcessTPUUsage, TPUStats } from "../type/node";
+import {
+  GPUStats,
+  ProcessGPUUsage,
+  ProcessTPUUsage,
+  TPUStats,
+} from "../type/node";
 
 export type UnifiedProcessAcceleratorUsage = {
   pid: number;
@@ -46,7 +51,7 @@ export const normalizeAccelerators = (
       if (tpu.memoryTotal <= 0) {
         // Sometimes neighboring chips are reported with placeholders like no
         // memory capacity; these should be omitted on the dashboard.
-        return
+        return;
       }
       normalized.push({
         name: tpu.name,

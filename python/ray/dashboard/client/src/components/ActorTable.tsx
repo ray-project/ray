@@ -760,10 +760,18 @@ const ActorTable = ({
                     )}
                   </TableCell>
                   <TableCell>
-                    <WorkerAcceleratorRow workerPID={pid} gpus={gpus} tpus={tpus} />
+                    <WorkerAcceleratorRow
+                      workerPID={pid}
+                      gpus={gpus}
+                      tpus={tpus}
+                    />
                   </TableCell>
                   <TableCell>
-                    <WorkerAcceleratorMemory workerPID={pid} gpus={gpus} tpus={tpus} />
+                    <WorkerAcceleratorMemory
+                      workerPID={pid}
+                      gpus={gpus}
+                      tpus={tpus}
+                    />
                   </TableCell>
                   <TableCell
                     align="center"
