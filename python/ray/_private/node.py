@@ -409,18 +409,9 @@ class Node:
 
             # Grace period to let the Raylet register with the GCS.
             # We retry in a loop in case it takes longer than expected.
-            # On pod-delete recovery with the RocksDB GCS backend, the
-            # raylet may take longer to register because GCS is replaying
-            # state from the persisted store. Allow operator override
-            # via RAY_raylet_start_wait_time_s.
             time.sleep(0.1)
             start_time = time.monotonic()
-            default_wait = (
-                "60" if os.environ.get("RAY_gcs_storage") == "rocksdb" else "30"
-            )
-            raylet_start_wait_time_s = int(
-                os.environ.get("RAY_raylet_start_wait_time_s", default_wait)
-            )
+            raylet_start_wait_time_s = 30
             while True:
                 try:
                     # Will raise a RuntimeError if the node info is not available.
@@ -1175,12 +1166,20 @@ class Node:
         ]
 
         if self._ray_params.gcs_server_port == 0:
-            # GCS startup is slower with the RocksDB backend (opens two
-            # DB instances at /tables and /kv, replays WAL, validates
-            # cluster-id marker), so the default 30s wait for the port
-            # file can elapse before GCS has finished initializing.
-            # Bump to 120s when RAY_gcs_storage=rocksdb; operator
-            # override via RAY_gcs_server_port_wait_time_s.
+            # The GCS port file is published only at the very end of
+            # startup: GcsServer binds its RPC port after GcsInitData
+            # loads the full persisted table set (GetAll over the job,
+            # node, actor, actor-task-spec, and placement-group tables)
+            # and every manager is constructed. With the RocksDB backend
+            # this is meaningfully slower than in-memory -- two on-disk
+            # DB instances are opened (column-family discovery, WAL
+            # replay, manifest read) and those table scans hit disk, the
+            # latter growing with cluster state on restart recovery (the
+            # port file lives on ephemeral /tmp, so a restarted head
+            # re-enters this path over an existing store). The default
+            # 30s wait can elapse before the port is bound, so bump it to
+            # 120s when RAY_gcs_storage=rocksdb; operator override via
+            # RAY_gcs_server_port_wait_time_s.
             default_wait = (
                 "120" if os.environ.get("RAY_gcs_storage") == "rocksdb" else "30"
             )
