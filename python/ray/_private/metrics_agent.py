@@ -785,6 +785,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         self.temp_dir = temp_dir
         self.session_dir = session_dir if session_dir else temp_dir
         self._symlink_created = False
+        self._use_fallback_copy = False
         self.default_service_discovery_flush_period = 5
 
         # The last service discovery content that PrometheusServiceDiscoveryWriter has seen
@@ -834,24 +835,35 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         # so that existing Prometheus configurations that reference the old
         # path continue to work. Only attempt once to avoid unnecessary disk
         # I/O, race conditions, and log flooding on every periodic write.
-        if self.session_dir != self.temp_dir and not self._symlink_created:
+        if self.session_dir != self.temp_dir:
             legacy_path = os.path.join(
                 self.temp_dir,
                 ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE,
             )
-            try:
-                if os.path.islink(legacy_path) or os.path.exists(legacy_path):
-                    os.remove(legacy_path)
-                os.symlink(self.get_target_file_name(), legacy_path)
-                self._symlink_created = True
-            except OSError:
-                logger.warning(
-                    f"Failed to create backward-compatible symlink at "
-                    f"{legacy_path}. Existing Prometheus configurations "
-                    f"referencing this path may not work."
-                )
-                # Mark as created to avoid retrying and flooding logs.
-                self._symlink_created = True
+            if not self._symlink_created and not self._use_fallback_copy:
+                try:
+                    if os.path.islink(legacy_path) or os.path.exists(legacy_path):
+                        os.remove(legacy_path)
+                    os.symlink(self.get_target_file_name(), legacy_path)
+                    self._symlink_created = True
+                except OSError:
+                    logger.warning(
+                        f"Failed to create backward-compatible symlink at "
+                        f"{legacy_path}. Falling back to copying the service discovery file."
+                    )
+                    self._use_fallback_copy = True
+
+            if self._use_fallback_copy:
+                try:
+                    import shutil
+
+                    temp_legacy_path = legacy_path + ".tmp"
+                    shutil.copy(self.get_target_file_name(), temp_legacy_path)
+                    os.replace(temp_legacy_path, legacy_path)
+                except OSError as e:
+                    logger.warning(
+                        f"Failed to copy service discovery file to legacy path {legacy_path}: {e}"
+                    )
 
     def get_target_file_name(self):
         return os.path.join(
