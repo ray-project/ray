@@ -128,6 +128,48 @@ class TestClusterAutoscaling:
         ):
             assert _get_node_resource_spec_and_count() == expected
 
+    def test_get_node_resource_spec_and_count_filters_by_subcluster(self):
+        """Only nodes whose ``__subcluster__`` label matches contribute to
+        the counts. Prevents ``try_trigger_scaling`` from pulling shapes
+        and counts from foreign subclusters into a labeled requester's
+        active / pending bundles."""
+        node_table = [
+            {
+                "Resources": self._node_type1,
+                "Labels": {"__subcluster__": "training"},
+                "Alive": True,
+            },
+            {
+                "Resources": self._node_type1,
+                "Labels": {"__subcluster__": "training"},
+                "Alive": True,
+            },
+            {
+                "Resources": self._node_type2,
+                "Labels": {"__subcluster__": "validation"},
+                "Alive": True,
+            },
+            {
+                "Resources": self._node_type3,
+                "Labels": {},
+                "Alive": True,
+            },
+        ]
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
+        ):
+            assert _get_node_resource_spec_and_count(subcluster="training") == {
+                _NodeResourceSpec.of(
+                    cpu=self._node_type1["CPU"],
+                    gpu=self._node_type1.get("GPU", 0),
+                    mem=self._node_type1["memory"],
+                ): 2,
+            }
+
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("mem_util", [0.5, 0.75])

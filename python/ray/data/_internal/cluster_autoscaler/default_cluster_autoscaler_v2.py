@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import ray
 from .base_autoscaling_coordinator import AutoscalingCoordinator, ResourceDict
 from .default_autoscaling_coordinator import (
+    DEFAULT_SUBCLUSTER,
+    SUBCLUSTER_LABEL_KEY,
     DefaultAutoscalingCoordinator,
 )
 from .resource_utilization_gauge import (
@@ -69,8 +71,22 @@ class _NodeResourceSpec:
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
 
-def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
-    """Get the unique node resource specs and their count in the cluster."""
+def _get_node_resource_spec_and_count(
+    subcluster: Optional[str] = DEFAULT_SUBCLUSTER,
+) -> Dict[_NodeResourceSpec, int]:
+    """Get the unique node resource specs and their count in the cluster,
+    scoped to a single subcluster.
+
+    ``subcluster`` is the value at ``SUBCLUSTER_LABEL_KEY`` to match
+    against. The default ``DEFAULT_SUBCLUSTER`` (None) selects nodes with
+    no subcluster label.
+
+    Seed entries from ``cluster_config`` (count 0) aren't subcluster-
+    filtered because ``NodeGroupConfig`` doesn't expose labels; pending-
+    bundle demand for foreign shapes still gets tagged with this
+    requester's subcluster selector by the coordinator, so the autoscaler
+    can't satisfy it on the wrong subcluster.
+    """
     nodes_resource_spec_count = defaultdict(int)
 
     cluster_config = ray._private.state.state.get_cluster_config()
@@ -84,11 +100,16 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
             )
             nodes_resource_spec_count[node_resource_spec] = 0
 
-    # Filter out the head node.
+    # Filter out the head node and nodes outside the requester's subcluster.
     node_resources = [
         node["Resources"]
         for node in ray.nodes()
-        if node["Alive"] and "node:__internal_head__" not in node["Resources"]
+        if (
+            node["Alive"]
+            and "node:__internal_head__" not in node["Resources"]
+            and (node.get("Labels") or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
+            == subcluster
+        )
     ]
 
     for r in node_resources:
@@ -162,9 +183,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
         low_util_request_release_delay_s: float = DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S,  # noqa: E501
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
-        get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
-            _get_node_resource_spec_and_count
-        ),
+        get_node_counts: Optional[Callable[[], Dict[_NodeResourceSpec, int]]] = None,
         get_time: Callable[[], float] = time.time,
         label_selector: Optional[Dict[str, str]] = None,
     ):
@@ -206,6 +225,14 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 subcluster_selector=label_selector,
             )
         self._autoscaling_coordinator = autoscaling_coordinator
+        if get_node_counts is None:
+            # Scope node-shape/count discovery to this requester's subcluster
+            # so try_trigger_scaling doesn't pull node shapes / counts from
+            # other subclusters into ``active_bundles`` / ``pending_bundles``.
+            subcluster = (label_selector or {}).get(SUBCLUSTER_LABEL_KEY)
+            get_node_counts = lambda: _get_node_resource_spec_and_count(  # noqa: E731
+                subcluster=subcluster
+            )
         self._get_node_counts = get_node_counts
         self._get_time = get_time
         self._autoscaling_enabled = is_autoscaling_enabled()
