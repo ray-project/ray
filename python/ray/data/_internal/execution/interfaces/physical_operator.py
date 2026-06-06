@@ -353,6 +353,33 @@ class DataOpTask(OpTask):
                 cls._size_probe_mismatch,
             )
 
+    @classmethod
+    def reset_local_size_probe(cls) -> None:
+        """Reset the process-wide local-size probe counters (call before a run)."""
+        cls._size_probe_total = 0
+        cls._size_probe_local_hits = 0
+        cls._size_probe_match = 0
+        cls._size_probe_mismatch = 0
+
+    @classmethod
+    def local_size_probe_stats(cls) -> Dict[str, Any]:
+        """Return the cumulative local-size probe stats (see
+        `_record_local_size_probe`) as a flat dict suitable for benchmark
+        metrics: total probed pairs, local-size hits + hit %, and how many of
+        those hits matched `meta.size_bytes` + match %."""
+        total = cls._size_probe_total
+        hits = cls._size_probe_local_hits
+        return {
+            "local_size_probe_total": total,
+            "local_size_probe_hits": hits,
+            "local_size_probe_hit_pct": (100.0 * hits / total) if total else 0.0,
+            "local_size_probe_match": cls._size_probe_match,
+            "local_size_probe_match_pct": (
+                100.0 * cls._size_probe_match / hits if hits else 0.0
+            ),
+            "local_size_probe_mismatch": cls._size_probe_mismatch,
+        }
+
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
         if max_bytes_to_read == 0:
             # Whenever provided `max_bytes_to_read == 0` we treat as task
