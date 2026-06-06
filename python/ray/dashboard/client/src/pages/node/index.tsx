@@ -34,7 +34,21 @@ import { NodeRows } from "./NodeRow";
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
 };
-const getColumns = (hasOnlyGPUs: boolean, hasOnlyTPUs: boolean) => [
+const acceleratorColumnLabels = {
+  gpu: {
+    utilization: "GPUs",
+    memory: "GRAM",
+  },
+  tpu: {
+    utilization: "TPUs",
+    memory: "HBM",
+  },
+  generic: {
+    utilization: "Accelerators",
+    memory: "Accelerator Memory",
+  },
+};
+const getColumns = (acceleratorType: keyof typeof acceleratorColumnLabels) => [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
   { label: "State" },
@@ -72,7 +86,7 @@ const getColumns = (hasOnlyGPUs: boolean, hasOnlyTPUs: boolean) => [
     ),
   },
   {
-    label: hasOnlyGPUs ? "GPU" : hasOnlyTPUs ? "TPU" : "Accelerator",
+    label: acceleratorColumnLabels[acceleratorType].utilization,
     helpInfo: (
       <Typography>
         Usage of each accelerator device (e.g. GPU, TPU). If no usage is
@@ -87,7 +101,7 @@ const getColumns = (hasOnlyGPUs: boolean, hasOnlyTPUs: boolean) => [
     ),
   },
   {
-    label: hasOnlyGPUs ? "GRAM" : hasOnlyTPUs ? "HBM" : "Accelerator Memory",
+    label: acceleratorColumnLabels[acceleratorType].memory,
   },
   { label: "Object Store Memory" },
   {
@@ -249,9 +263,16 @@ const Nodes = () => {
     maxPage,
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
-  const hasGPUs = nodeList.some((node) => node.gpus && node.gpus.length > 0);
-  const hasTPUs = nodeList.some((node) => node.tpus && node.tpus.length > 0);
-  const columns = getColumns(hasGPUs, hasTPUs);
+  const accelerators: (keyof typeof acceleratorColumnLabels)[] = [];
+  if (nodeList.some((node) => node.gpus && node.gpus.length > 0)) {
+    accelerators.push("gpu");
+  }
+  if (nodeList.some((node) => node.tpus && node.tpus.length > 0)) {
+    accelerators.push("tpu");
+  }
+  const accelerator = accelerators.length !== 1 ? "generic" : accelerators[0];
+
+  const columns = getColumns(accelerator);
 
   return (
     <Box
