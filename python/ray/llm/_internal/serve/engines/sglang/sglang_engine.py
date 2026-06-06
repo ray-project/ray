@@ -434,7 +434,6 @@ class SGLangServer:
                 asyncio.create_task(_produce_stream(i, p))
                 for i, p in enumerate(prompts_to_process)
             ]
-            
             finished_tasks = 0
             try:
                 while finished_tasks < active_tasks:
