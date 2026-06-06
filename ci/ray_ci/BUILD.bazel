@@ -61,7 +61,12 @@ py_library(
         ci_require("boto3"),
         ci_require("pyyaml"),
         ci_require("click"),
-    ],
+    ] + select({
+        # Bundle pyopenssl on Windows so it shadows the agent's stale conda
+        # pyOpenSSL (see //ci/ray_ci/deps:aliases.bzl). No-op elsewhere.
+        "@platforms//os:windows": ["//ci/ray_ci/deps:pyopenssl_windows"],
+        "//conditions:default": [],
+    }),
 )
 
 py_library(

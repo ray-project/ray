@@ -22,3 +22,15 @@ def ci_require_aliases():
             }),
             visibility = ["//visibility:public"],
         )
+
+    # Windows-only: pyopenssl is bundled so it lands in the driver's runfiles and
+    # shadows the agent's stale conda pyOpenSSL (botocore imports OpenSSL via
+    # urllib3.contrib.pyopenssl). It is an optional botocore extra, so nothing
+    # pulls it transitively; the driver must depend on it explicitly. It is not
+    # in @py_deps_py310, so this alias has no default branch and must only be
+    # referenced from a select() //conditions:windows branch.
+    native.alias(
+        name = "pyopenssl_windows",
+        actual = _windows_require("pyopenssl"),
+        visibility = ["//visibility:public"],
+    )
