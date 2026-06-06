@@ -234,8 +234,13 @@ class HttpRequestUDF(StatefulStageUDF):
                         await asyncio.sleep(wait_time)
                         continue
                 if not resp_json:
+                    # Look up the payload by IDX_IN_BATCH_COLUMN: ``batch`` only
+                    # holds the normal rows, but idx_in_batch_column is the index
+                    # into the original full batch, so ``batch[...]`` could be
+                    # out of range (or the wrong row) when the batch has error
+                    # rows.
                     raise RuntimeError(
-                        f"Reached maximum retries of {self.max_retries} for input row {batch[idx_in_batch_column]}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
+                        f"Reached maximum retries of {self.max_retries} for input row {payloads[idx_in_batch_column]}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
                     )
                 yield {
                     self.IDX_IN_BATCH_COLUMN: idx_in_batch_column,

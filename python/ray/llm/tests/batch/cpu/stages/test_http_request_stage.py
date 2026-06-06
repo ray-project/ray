@@ -253,6 +253,46 @@ async def test_http_request_udf_with_error_rows(mock_session):
     assert mock_session.__aenter__.return_value.post.call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_http_request_udf_retry_exhausted_with_error_rows(mock_response):
+    """When retries are exhausted for a row in a batch that also contains error
+    rows, the RuntimeError must look the payload up by IDX_IN_BATCH_COLUMN
+    rather than indexing the (error-row-filtered) batch list, which would raise
+    a masking IndexError."""
+    session = AsyncMock()
+    session.post.return_value.__aenter__.side_effect = [
+        mock_response,  # original index 0: success
+        asyncio.TimeoutError(),  # original index 2: fails, no retries left
+    ]
+    session_cm = AsyncMock()
+    session_cm.__aenter__.return_value = session
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        max_retries=0,
+        base_retry_wait_time_in_s=1,
+        qps=None,
+        session_factory=lambda: session_cm,  # noqa: E731
+    )
+
+    # Index 1 is an error row, so the failing normal row keeps original index 2,
+    # which is out of range for the 2-element normal-rows batch.
+    batch = {
+        "__data": [
+            {"payload": {"text": "ok"}},
+            {"__inference_error__": "boom"},
+            {"payload": {"text": "fails"}},
+        ]
+    }
+
+    with patch("asyncio.sleep"):
+        with pytest.raises(RuntimeError, match=r"Reached maximum retries.*fails"):
+            async for _ in udf(batch):
+                pass
+
+
 def test_build_form_data():
     """_build_form_data maps payload entries to file and regular form fields."""
     form = HttpRequestUDF._build_form_data(
