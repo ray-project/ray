@@ -1098,7 +1098,7 @@ class TaskSummaries:
             total_tasks=total_tasks,
             total_actor_tasks=total_actor_tasks,
             total_actor_scheduled=total_actor_scheduled,
-            summary_by="task_name",
+            summary_by="func_name",
         )
 
     @classmethod
