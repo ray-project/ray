@@ -144,10 +144,22 @@ class GeneralAdvantageEstimation(ConnectorV2):
             # vf-preds are recomputed with each `forward_train` call anyway to compute
             # the vf loss.
             # Standardize advantages (used for more stable and better weighted
-            # policy gradient computations).
-            module_advantages = (module_advantages - module_advantages.mean()) / max(
-                1e-4, module_advantages.std()
-            )
+            # policy gradient computations). Restrict mean/std to timesteps that
+            # contribute to the loss: AddOneTsToEpisodesAndTruncate appends one
+            # bootstrap phantom timestep per episode chunk and writes
+            # ``Columns.LOSS_MASK = False`` for it, so including those rows in
+            # the standardization stats biases them (#57989).
+            if Columns.LOSS_MASK in batch[module_id]:
+                loss_mask = unpad_data_if_necessary(
+                    episode_lens,
+                    convert_to_numpy(batch[module_id][Columns.LOSS_MASK]),
+                ).astype(bool)
+                mean = module_advantages.mean(where=loss_mask)
+                std = module_advantages.std(where=loss_mask)
+            else:
+                mean = module_advantages.mean()
+                std = module_advantages.std()
+            module_advantages = (module_advantages - mean) / max(1e-4, std)
 
             # Zero-pad the new computations, if necessary.
             if module.is_stateful():
