@@ -81,9 +81,15 @@ class HttpRequestUDF(StatefulStageUDF):
         self.is_multipart = self.content_type == self.MULTIPART_CONTENT_TYPE
         # For multipart requests, aiohttp sets the "Content-Type" header
         # (including the boundary) from the FormData object, so we must not set
-        # it ourselves.
+        # it ourselves. We also drop any user-supplied "Content-Type" from
+        # additional_header: aiohttp only auto-generates the multipart boundary
+        # when no Content-Type is set, so leaving one in would break uploads.
         if self.is_multipart:
-            self.headers = {**self.additional_header}
+            self.headers = {
+                k: v
+                for k, v in self.additional_header.items()
+                if k.lower() != "content-type"
+            }
         else:
             self.headers = {
                 "Content-Type": self.JSON_CONTENT_TYPE,
@@ -126,6 +132,11 @@ class HttpRequestUDF(StatefulStageUDF):
     def _build_request_body(self, payload: Dict[str, Any]) -> Any:
         """Build the ``data`` argument for a single request from its payload."""
         if self.is_multipart:
+            if not isinstance(payload, dict):
+                raise TypeError(
+                    'For multipart/form-data, each row\'s "payload" must be a '
+                    f"dict, but got {type(payload).__name__}: {payload!r}"
+                )
             # A FormData object is consumed when the request is sent, so a fresh
             # one must be built for every (re)try.
             return self._build_form_data(payload)
@@ -145,7 +156,10 @@ class HttpRequestUDF(StatefulStageUDF):
         # demand. This is required for multipart requests because an aiohttp
         # FormData object is consumed once it is sent and cannot be reused on
         # retries.
-        payloads = [None] * len(batch)
+        # Keyed by IDX_IN_BATCH_COLUMN rather than a list: ``batch`` only
+        # contains the normal (non-error) rows, but IDX_IN_BATCH_COLUMN is the
+        # row's index in the original, full batch, so it can exceed len(batch).
+        payloads = {}
         for row in batch:
             payloads[row[self.IDX_IN_BATCH_COLUMN]] = row["payload"]
 

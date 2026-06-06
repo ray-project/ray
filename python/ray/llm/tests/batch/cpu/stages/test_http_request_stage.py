@@ -189,6 +189,70 @@ def test_http_request_udf_invalid_content_type():
         )
 
 
+def test_http_request_udf_multipart_drops_user_content_type():
+    """A user-supplied Content-Type must be dropped for multipart requests so
+    aiohttp can generate the multipart boundary itself."""
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        additional_header={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer 1234567890",
+        },
+        content_type="multipart/form-data",
+    )
+    assert udf.headers == {"Authorization": "Bearer 1234567890"}
+
+
+def test_http_request_udf_multipart_rejects_non_dict_payload():
+    """A non-dict payload for multipart requests raises a clear TypeError
+    instead of a cryptic AttributeError from FormData construction."""
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        content_type="multipart/form-data",
+    )
+    with pytest.raises(TypeError, match="must be a dict"):
+        udf._build_request_body(["not", "a", "dict"])
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_with_error_rows(mock_session):
+    """When the batch contains error rows, the UDF only receives the normal
+    rows, but IDX_IN_BATCH_COLUMN still indexes into the original batch. The
+    payload lookup must handle indices that exceed the number of normal rows."""
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        qps=None,
+        session_factory=lambda: mock_session,  # noqa: E731
+    )
+
+    # The middle row is an error row, so normal rows have original indices 0 and
+    # 2 -- index 2 is out of range for a list of length 2 (the bug this guards).
+    batch = {
+        "__data": [
+            {"payload": {"text": "hello0"}},
+            {"__inference_error__": "boom"},
+            {"payload": {"text": "hello2"}},
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 3
+    # Both normal rows got their responses; the error row is passed through.
+    assert results[0]["http_response"]["response"] == "test"
+    assert results[2]["http_response"]["response"] == "test"
+    assert results[1]["__inference_error__"] == "boom"
+    assert mock_session.__aenter__.return_value.post.call_count == 2
+
+
 def test_build_form_data():
     """_build_form_data maps payload entries to file and regular form fields."""
     form = HttpRequestUDF._build_form_data(
