@@ -1,6 +1,7 @@
 {
   "batch_size": 64,
   "concurrency": 1,
+  "elapsed_s": 97.82327209226787,
   "engine_metrics": {
     "generation_token_throughput_tok_per_s": 1022.2516366624807,
     "generation_tokens_total": 100000.0,
@@ -19,5 +20,7 @@
     "samples": 1000,
     "throughput_req_per_s": 10.222516366624806
   },
-  "model": "facebook/opt-1.3b"
+  "model": "facebook/opt-1.3b",
+  "samples": 1000,
+  "throughput_req_per_s": 10.222516366624806
 }
