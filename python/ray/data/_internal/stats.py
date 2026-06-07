@@ -867,6 +867,8 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
             "Ray is not initialized. Driver might be not connected to Ray."
         )
 
+    # `_global_node` is None under Ray Client (the driver is not a cluster
+    # worker), so only log the cluster_id when it is available.
     global_node = ray._private.worker._global_node
     if global_node is not None:
         logger.debug(f"Stats Actor located on cluster_id={global_node.cluster_id}")

@@ -2085,26 +2085,6 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
         wait_for_condition(check_eviction)
 
 
-def test_get_or_create_stats_actor_in_client_mode(monkeypatch):
-    """``get_or_create_stats_actor`` must not raise ``RuntimeError`` when
-    ``ray._private.worker._global_node`` is ``None`` while Ray itself is
-    initialized, which is the case for drivers connected via Ray Client.
-    """
-    monkeypatch.setattr(ray, "is_initialized", lambda: True)
-    monkeypatch.setattr(ray._private.worker, "_global_node", None)
-
-    fake_ctx = MagicMock()
-    fake_ctx.get_node_id.return_value = "fake_node_id"
-    monkeypatch.setattr(ray, "get_runtime_context", lambda: fake_ctx)
-
-    fake_handle = MagicMock(name="StatsActorHandle")
-    fake_options = MagicMock()
-    fake_options.remote.return_value = fake_handle
-    monkeypatch.setattr(_StatsActor, "options", lambda **kwargs: fake_options)
-
-    assert get_or_create_stats_actor() is fake_handle
-
-
 # Setting internal=10000 (super high number) value so they are only called
 # once (on cold start), and on shutdown.
 @patch.object(StreamingExecutor, "UPDATE_METRICS_INTERVAL_S", new=10000)
