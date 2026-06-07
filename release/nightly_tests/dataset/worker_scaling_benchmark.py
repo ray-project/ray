@@ -141,10 +141,36 @@ def make_realistic_schema_udf(
     return udf.__call__
 
 
+def _reset_local_size_probe() -> None:
+    """Reset the local-size probe counters if present (no-op otherwise)."""
+    try:
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            reset_local_size_probe,
+        )
+
+        reset_local_size_probe()
+    except Exception:
+        pass
+
+
+def _local_size_probe_stats() -> Dict[str, object]:
+    """Return local_size_probe_stats() if the probe is present, else {}."""
+    try:
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            local_size_probe_stats,
+        )
+
+        return local_size_probe_stats()
+    except Exception:
+        return {}
+
+
 def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
+        # Start this run's local-size probe counters clean (no-op without probe).
+        _reset_local_size_probe()
         num_blocks = BLOCKS_PER_WORKER * args.num_workers
         rows_per_block = _rows_per_block(
             args.num_scalar_cols,
@@ -184,6 +210,9 @@ def main(args: argparse.Namespace):
             args.num_array_cols,
         )
         metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
+        # Local block-size probe: hit rate + object_size vs meta.size_bytes
+        # closeness (empty on Ray builds without the probe).
+        metrics.update(_local_size_probe_stats())
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)

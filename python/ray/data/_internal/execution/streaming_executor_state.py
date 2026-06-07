@@ -51,43 +51,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# How often (in scheduler-loop iterations) to log the size-known rate
-# for deferred meta fetches. ~1× per minute at typical iteration cadence.
-_METADATA_PREFETCH_LOG_EVERY_N_ITERS = 100
-
-# Module-level counters for the deferred meta-fetch (size-known) rate
-# across all scheduler-loop iterations of the process. Logged
-# periodically by ``_log_metadata_prefetch_rate_if_due``.
-_metadata_prefetch_pairs_seen = 0
-_metadata_prefetch_pairs_size_known = 0
-_metadata_prefetch_iters_since_log = 0
-
-
-def _log_metadata_prefetch_rate_if_due() -> None:
-    """Emit a debug log every ``_METADATA_PREFETCH_LOG_EVERY_N_ITERS``
-    scheduler iterations summarizing the fraction of pairs whose
-    block size was locally known (and therefore eligible for the
-    batched ``ray.get`` instead of per-ref).
-    """
-    global _metadata_prefetch_iters_since_log
-    _metadata_prefetch_iters_since_log += 1
-    if _metadata_prefetch_iters_since_log < _METADATA_PREFETCH_LOG_EVERY_N_ITERS:
-        return
-    _metadata_prefetch_iters_since_log = 0
-    seen = _metadata_prefetch_pairs_seen
-    known = _metadata_prefetch_pairs_size_known
-    if seen == 0:
-        return
-    logger.debug(
-        "process_completed_tasks deferred meta-fetch: "
-        "%d / %d (%.1f%%) pairs had known block size and went into the "
-        "batched ray.get; remainder used per-ref ray.get inside on_data_ready.",
-        known,
-        seen,
-        100.0 * known / seen,
-    )
-
-
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
@@ -705,12 +668,11 @@ def process_completed_tasks(
         #    shared ``deferred`` list. Inside it, every pulled pair is
         #    appended to ``deferred`` instead of being emitted; budget
         #    arithmetic uses block_ref's local ``object_size`` when
-        #    known, or a synchronous per-ref ``ray.get`` for the
-        #    metadata when not. NO ``RefBundle`` is emitted during the
-        #    on_data_ready loop in deferred mode.
+        #    known, or the operator's running average block size when not
+        #    (no per-ref ``ray.get``). NO ``RefBundle`` is emitted during
+        #    the on_data_ready loop.
         # 3. After all on_data_ready calls finish, issue ONE batched
-        #    ``ray.get`` covering the deferred entries whose
-        #    ``meta_bytes`` is still ``None`` (the known-size ones).
+        #    ``ray.get`` covering all deferred entries' ``meta_refs``.
         # 4. Replay ``deferred`` in append order — preserving today's
         #    per-op, per-task, per-pair emission order exactly.
         # 5. Fire ``task_done_callback`` for any task whose
@@ -769,14 +731,8 @@ def process_completed_tasks(
                     task.on_task_finished()
 
         # Steps 3–5: batched fetch + replay + postponed done callbacks.
-        # Track size-known rate before replay clears ``meta_bytes is None``.
-        global _metadata_prefetch_pairs_seen
-        global _metadata_prefetch_pairs_size_known
-        _metadata_prefetch_pairs_seen += len(deferred)
-        _metadata_prefetch_pairs_size_known += sum(
-            1 for d in deferred if d.meta_bytes is None
-        )
-        _log_metadata_prefetch_rate_if_due()
+        # `replay_deferred_emits` records the local-size hit rate / closeness
+        # telemetry (it has both the local object_size and the exact size).
         replay_deferred_emits(deferred, tasks_for_done_check)
 
     # Pull any operator outputs into the streaming op state.
