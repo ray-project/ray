@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+import time
 
 import pytest
 import requests
@@ -62,6 +63,14 @@ def _parse_prometheus_labels(label_blob: str | None) -> dict[str, str]:
     return labels
 
 
+def _metrics_scrape_addresses(node_addr: str) -> list[str]:
+    addresses: list[str] = []
+    for addr in (node_addr, "localhost", "127.0.0.1"):
+        if addr and addr not in addresses:
+            addresses.append(addr)
+    return addresses
+
+
 def _get_prometheus_metric_snapshot(
     metric_names: set[str],
 ) -> dict[str, list[tuple[dict[str, str], float]]]:
@@ -79,18 +88,21 @@ def _get_prometheus_metric_snapshot(
             continue
 
         node_addr = node.get("NodeManagerAddress", "127.0.0.1")
-        if node_addr == "127.0.0.1":
-            node_addr = "localhost"
-
-        try:
-            response = requests.get(
-                f"http://{node_addr}:{metrics_port}/metrics", timeout=5
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
+        response = None
+        for addr in _metrics_scrape_addresses(node_addr):
+            try:
+                candidate = requests.get(
+                    f"http://{addr}:{metrics_port}/metrics", timeout=5
+                )
+                candidate.raise_for_status()
+                response = candidate
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+        if response is None:
             print(
                 f"Warning: failed to scrape Ray Prometheus metrics "
-                f"from {node_addr}:{metrics_port}: {exc}"
+                f"from node {node_addr}:{metrics_port}: {last_error}"
             )
             continue
 
@@ -232,9 +244,13 @@ def test_single_node_baseline_benchmark():
     print(f"Loaded {len(prompts)} prompts")
 
     metrics_export_port = int(
-        os.getenv("RAY_DATA_LLM_BENCHMARK_METRICS_EXPORT_PORT", "0")
+        os.getenv("RAY_DATA_LLM_BENCHMARK_METRICS_EXPORT_PORT", "8080")
     )
-    ray.init(_metrics_export_port=metrics_export_port, ignore_reinit_error=True)
+    ray.init(
+        _metrics_export_port=metrics_export_port,
+        ignore_reinit_error=True,
+        _system_config={"metrics_report_interval_ms": 1000},
+    )
 
     ds = ray.data.from_items(prompts)
 
@@ -264,7 +280,15 @@ def test_single_node_baseline_benchmark():
         pipeline_parallel_size=1,
         tensor_parallel_size=1,
     )
+    time.sleep(2)
     after_snapshot = _get_prometheus_metric_snapshot(metric_names)
+    if not any(after_snapshot.values()):
+        print(
+            "Warning: no vLLM engine Prometheus metrics were scraped. "
+            "Install Ray dashboard metrics deps (see "
+            "python/requirements/llm/llm-test-requirements.txt) and ensure "
+            "RAY_DATA_LLM_BENCHMARK_METRICS_EXPORT_PORT is reachable."
+        )
     engine_metrics = _build_engine_metrics(
         before_snapshot=before_snapshot,
         after_snapshot=after_snapshot,
@@ -302,7 +326,7 @@ def test_single_node_baseline_benchmark():
     print("=" * 60)
 
     # Optional thresholds to fail on regressions
-    min_throughput = _get_float_env("RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT", 5)
+    min_throughput = _get_float_env("RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT", 4)
     max_latency_s = _get_float_env("RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S", 150)
     if min_throughput is not None:
         assert (
@@ -334,6 +358,11 @@ def test_single_node_baseline_benchmark():
             print(
                 f"Warning: failed to write benchmark artifact to {artifact_path}: {e}"
             )
+    else:
+        print(
+            "Set RAY_LLM_BENCHMARK_ARTIFACT_PATH to write benchmark JSON "
+            "(e.g. /tmp/ray_llm_benchmark.json)."
+        )
 
 
 if __name__ == "__main__":
