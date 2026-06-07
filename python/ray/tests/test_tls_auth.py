@@ -234,5 +234,128 @@ finally:
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_tls_without_client_auth_server_credentials(use_tls):
+    """Test that RAY_TLS_CLIENT_AUTH=0 sets require_client_auth=False."""
+    from unittest import mock
+
+    os.environ["RAY_TLS_CLIENT_AUTH"] = "0"
+    try:
+        from ray._common.tls_utils import add_port_to_grpc_server
+
+        server = mock.MagicMock()
+        server.add_secure_port.return_value = 12345
+
+        # Verify ssl_server_credentials was called with require_client_auth=False
+        with mock.patch("grpc.ssl_server_credentials") as mock_ssl:
+            mock_ssl.return_value = mock.MagicMock()
+            result = add_port_to_grpc_server(server, "localhost:12345")
+            mock_ssl.assert_called_once()
+            call_kwargs = mock_ssl.call_args
+            assert call_kwargs[1]["require_client_auth"] is False
+            assert call_kwargs[1]["root_certificates"] is None
+        # Verify add_secure_port was called (TLS is enabled)
+        assert server.add_secure_port.called
+        assert result == 12345
+    finally:
+        os.environ["RAY_TLS_CLIENT_AUTH"] = "1"
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_tls_with_client_auth_enabled_by_default(use_tls):
+    """Test that RAY_TLS_CLIENT_AUTH defaults to enabled (backward compat)."""
+    from unittest import mock
+
+    # Ensure RAY_TLS_CLIENT_AUTH is NOT set, so it defaults to "1"
+    os.environ.pop("RAY_TLS_CLIENT_AUTH", None)
+
+    from ray._common.tls_utils import add_port_to_grpc_server
+
+    server = mock.MagicMock()
+    with mock.patch("grpc.ssl_server_credentials") as mock_ssl:
+        mock_ssl.return_value = mock.MagicMock()
+        add_port_to_grpc_server(server, "localhost:12345")
+        mock_ssl.assert_called_once()
+        call_kwargs = mock_ssl.call_args
+        assert call_kwargs[1]["require_client_auth"] is True
+        assert call_kwargs[1]["root_certificates"] is not None
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_init_with_tls_no_client_auth(use_tls):
+    """Test that Ray can start with TLS enabled but client auth disabled."""
+    env = build_env()
+    env["RAY_TLS_CLIENT_AUTH"] = "0"
+    run_string_as_driver(
+        """
+import ray
+try:
+    ray.init()
+    # Basic put/get to verify the connection works
+    obj_ref = ray.put(42)
+    assert ray.get(obj_ref) == 42
+finally:
+    ray.shutdown()
+    """,
+        env=env,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_load_certs_from_env_client_without_client_auth(use_tls, tmp_path):
+    """Test load_certs_from_env behavior for client without client auth (only CA cert)."""
+    from ray._common.tls_utils import load_certs_from_env
+
+    ca_cert_file = tmp_path / "ca.crt"
+    ca_cert_file.write_bytes(b"dummy_ca_cert")
+
+    env_backup = os.environ.copy()
+    os.environ["RAY_TLS_CA_CERT"] = str(ca_cert_file)
+    # Remove server cert/key from environment
+    os.environ.pop("RAY_TLS_SERVER_CERT", None)
+    os.environ.pop("RAY_TLS_SERVER_KEY", None)
+
+    try:
+        # Client side without client auth should NOT raise exception, and load ca_cert.
+        # It should ignore server cert/key even if they point to non-existent paths.
+        os.environ["RAY_TLS_SERVER_CERT"] = "/nonexistent/path/server.crt"
+        os.environ["RAY_TLS_SERVER_KEY"] = "/nonexistent/path/server.key"
+        server_cert, private_key, ca_cert = load_certs_from_env(
+            server_side=False, client_auth=False
+        )
+        assert server_cert is None
+        assert private_key is None
+        assert ca_cert == b"dummy_ca_cert"
+
+        # Client side WITH client auth (mTLS) should raise RuntimeError/FileNotFoundError
+        # due to missing/invalid server cert/key.
+        with pytest.raises((RuntimeError, FileNotFoundError)):
+            load_certs_from_env(server_side=False, client_auth=True)
+
+        # Server side without client auth should raise RuntimeError/FileNotFoundError
+        # due to missing/invalid server cert/key.
+        with pytest.raises((RuntimeError, FileNotFoundError)):
+            load_certs_from_env(server_side=True, client_auth=False)
+    finally:
+        os.environ.clear()
+        os.environ.update(env_backup)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

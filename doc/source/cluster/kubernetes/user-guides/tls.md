@@ -142,6 +142,7 @@ To enable TLS authentication in your Ray cluster, set the following environment 
 - `RAY_TLS_SERVER_CERT`: Location of a certificate file which is presented to other endpoints so as to achieve mutual authentication (i.e. `tls.crt`).
 - `RAY_TLS_SERVER_KEY`: Location of a private key file which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate (i.e. `tls.key`).
 - `RAY_TLS_CA_CERT`: Location of a CA certificate file which allows TLS to decide whether an endpoint’s certificate has been signed by the correct authority (i.e. `ca.crt`).
+- `RAY_TLS_CLIENT_AUTH`: Either 1 or 0 to enable/disable client certificate authentication. When set to 0, the gRPC server will not require client certificates, allowing server-only TLS without mutual TLS (mTLS). Default: 1.
 
 For more information on how to configure Ray with TLS authentication, please refer to [Ray's document](https://docs.ray.io/en/latest/ray-core/configure.html#tls-authentication).
 

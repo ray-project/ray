@@ -249,6 +249,7 @@ You enable TLS by setting environment variables.
 - ``RAY_TLS_SERVER_CERT``: Location of a `certificate file (tls.crt)`, which Ray presents to other endpoints to achieve mutual authentication.
 - ``RAY_TLS_SERVER_KEY``: Location of a `private key file (tls.key)`, which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
 - ``RAY_TLS_CA_CERT``: Location of a `CA certificate file (ca.crt)`, which allows TLS to decide whether an the correct authority signed the endpoint's certificate.
+- ``RAY_TLS_CLIENT_AUTH``: Either 1 or 0 to enable/disable client certificate authentication. When set to 0, the gRPC server will not require client certificates, allowing server-only TLS without mutual TLS (mTLS). Default: 1.
 
 Step 4: Verify TLS authentication
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

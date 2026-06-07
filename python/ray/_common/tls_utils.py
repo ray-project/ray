@@ -71,31 +71,48 @@ def add_port_to_grpc_server(server, address):
     import grpc
 
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        require_client_auth = os.environ.get("RAY_TLS_CLIENT_AUTH", "1").lower() in (
+            "1",
+            "true",
+        )
+        server_cert_chain, private_key, ca_cert = load_certs_from_env(
+            server_side=True, client_auth=require_client_auth
+        )
         credentials = grpc.ssl_server_credentials(
             [(private_key, server_cert_chain)],
-            root_certificates=ca_cert,
-            require_client_auth=ca_cert is not None,
+            root_certificates=ca_cert if require_client_auth else None,
+            require_client_auth=require_client_auth,
         )
         return server.add_secure_port(address, credentials)
     else:
         return server.add_insecure_port(address)
 
 
-def load_certs_from_env():
-    tls_env_vars = ["RAY_TLS_SERVER_CERT", "RAY_TLS_SERVER_KEY", "RAY_TLS_CA_CERT"]
-    if any(v not in os.environ for v in tls_env_vars):
-        raise RuntimeError(
-            "If the environment variable RAY_USE_TLS is set to true "
-            "then RAY_TLS_SERVER_CERT, RAY_TLS_SERVER_KEY and "
-            "RAY_TLS_CA_CERT must also be set."
-        )
+def load_certs_from_env(server_side=True, client_auth=True):
+    require_server_certs = server_side or client_auth
+    require_ca_cert = not server_side or client_auth
 
-    with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
-        server_cert_chain = f.read()
-    with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
-        private_key = f.read()
-    with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
-        ca_cert = f.read()
+    server_cert_chain = None
+    private_key = None
+    ca_cert = None
+
+    if require_server_certs:
+        for var in ["RAY_TLS_SERVER_CERT", "RAY_TLS_SERVER_KEY"]:
+            if var not in os.environ:
+                raise RuntimeError(
+                    f"The environment variable {var} must be set when TLS is enabled."
+                )
+        with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
+            server_cert_chain = f.read()
+        with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
+            private_key = f.read()
+
+    if require_ca_cert:
+        if "RAY_TLS_CA_CERT" not in os.environ:
+            raise RuntimeError(
+                "The environment variable RAY_TLS_CA_CERT must be set when TLS is enabled."
+            )
+        with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
+            ca_cert = f.read()
 
     return server_cert_chain, private_key, ca_cert
