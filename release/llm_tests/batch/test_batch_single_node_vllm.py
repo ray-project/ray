@@ -344,6 +344,9 @@ def test_single_node_baseline_benchmark():
             "model": MODEL_ID,
             "batch_size": BATCH_SIZE,
             "concurrency": CONCURRENCY,
+            "samples": int(result.samples),
+            "throughput_req_per_s": float(result.throughput),
+            "elapsed_s": float(result.elapsed_s),
             "job_metrics": job_metrics,
             "engine_metrics": engine_metrics,
         }
