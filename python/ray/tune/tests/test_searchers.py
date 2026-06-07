@@ -835,6 +835,9 @@ class BayesOptHashPrecisionTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             BayesOptSearch(repeat_float_precision=5.5)
 
+        with self.assertRaises(TypeError):
+            BayesOptSearch(repeat_float_precision=True)
+
 
 if __name__ == "__main__":
     import sys
