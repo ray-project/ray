@@ -1,34 +1,33 @@
 """Dashboard head module that periodically queries Prometheus for an
-allowlisted set of hourly aggregates, dumps the result to a file in the
-session directory, and optionally POSTs the same batch to a configured
-endpoint.
+allowlisted set of **cluster-level** metric aggregates, writes the summary
+to a file in the session directory, and POSTs it to a telemetry endpoint.
 
 Lifecycle is modeled on ``UsageStatsHead``: a periodic loop driven by
 ``async_loop_forever`` runs a blocking ``_collect_sync`` in a thread pool.
 On each cycle the module:
 
-  1. issues PromQL aggregate queries against the local Prometheus (one per
-     ``(metric, agg)`` pair in the allowlist),
-  2. flattens the matrix-of-series response into long-table sample rows,
-  3. writes the batch JSON to ``<session_dir>/databricks_telemetry_latest_batch.json``,
-  4. if ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` is set, POSTs the batch JSON
-     to that URL (no auth; the receiver is expected to accept
-     unauthenticated writes the same way ``usage-stats.ray.io`` does),
-     splitting the batch across multiple size-capped requests when it
-     exceeds the receiver's single-record limit (see ``_chunk_batch``),
-  5. writes a status mirror to ``<session_dir>/databricks_telemetry_status.json``.
+  1. issues one instant PromQL query per ``(metric, agg)`` in the
+     allowlist, each an outer cross-series reducer wrapped around a
+     ``*_over_time`` window and filtered by ``{SessionName='<session>'}``,
+     so every query returns a single cluster scalar;
+  2. also counts cluster nodes from the per-node series;
+  3. packs the ``<metric>_<agg> -> value`` pairs into a ``UsageStats``-shaped
+     envelope's ``extra_usage_tags`` (schema ``0.1`` — no new receiver
+     schema, no ``samples[]``, no chunking);
+  4. writes the summary to ``<session_dir>/databricks_telemetry_latest_batch.json``;
+  5. POSTs it to ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` (default the
+     HTTPS usage-stats sink; set the env var empty for write-only mode);
+  6. writes a status mirror.
 
 The local file is always produced regardless of POST outcome — it is the
 operator's audit trail and is intentionally decoupled from network
-reachability of the endpoint. POST failures are tracked separately
-(``total_post_failed`` / ``last_post_error``) so that a transient
-endpoint outage does not look like a collection failure.
+reachability. POST failures are tracked separately
+(``total_post_failed`` / ``last_post_error``) so a transient endpoint
+outage does not look like a collection failure.
 
 Failures on individual PromQL queries are logged at DEBUG and skipped so a
-single missing series does not abort the whole batch. A failed batch
-assembly (network error against Prometheus, JSON parse error) is counted
-in ``total_failed`` and surfaced via ``last_error`` in the status file.
-The next cycle re-queries Prometheus over a fresh window.
+single missing metric does not abort the whole summary. The next cycle
+re-queries Prometheus over a fresh window.
 """
 
 import asyncio
@@ -52,30 +51,20 @@ from ray.dashboard.modules.databricks_telemetry.constants import (
     DATABRICKS_TELEMETRY_ENABLED_ENV_VAR,
     DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR,
     DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR,
-    DATABRICKS_TELEMETRY_MAX_POST_BYTES_ENV_VAR,
+    DEFAULT_ENDPOINT,
     DEFAULT_INTERVAL_S,
-    DEFAULT_MAX_POST_BYTES,
     DEFAULT_POST_TIMEOUT_S,
     DEFAULT_PROMETHEUS_HOST,
     METRIC_ALLOWLIST,
+    NODE_COUNT_METRIC,
     PROMETHEUS_HOST_ENV_VAR,
     SCHEMA_VERSION,
     STATUS_FILE,
     TELEMETRY_SOURCE,
-    MetricSpec,
 )
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
-
-# Compact JSON separators (no spaces). Used for the POST body and for chunk
-# size accounting so the two agree exactly to the byte. Also trims ~10% off
-# the wire size vs. the default ``", "`` / ``": "`` separators.
-_COMPACT_SEPARATORS = (",", ":")
-
-# Bytes held back from ``max_post_bytes`` when packing a chunk, so the
-# serialized request stays strictly under the cap despite any rounding.
-_CHUNK_SAFETY_MARGIN = 256
 
 
 # --- Env-var readers (evaluated per call so changes take effect) ---------
@@ -99,83 +88,88 @@ def _prometheus_host() -> str:
 
 
 def _telemetry_endpoint() -> str:
-    """Return the configured POST endpoint, or empty string if unset.
+    """Return the POST endpoint.
 
-    An empty value disables the POST step; the local audit file is still
-    written. This is the v1 default — operators opt in by setting the
-    env var to a concrete URL.
+    Defaults to ``DEFAULT_ENDPOINT`` (the HTTPS usage-stats sink). Set the
+    env var to an empty string for write-only mode (the local audit file is
+    still written).
     """
-    return os.getenv(DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR, "").strip()
-
-
-def _max_post_bytes() -> int:
-    """Per-request body size cap used to chunk the batch POST.
-
-    Defaults to ``DEFAULT_MAX_POST_BYTES`` (sized for the Firehose-backed
-    receiver). A non-positive or unparseable override disables chunking by
-    falling back to the default.
-    """
-    try:
-        value = int(
-            os.getenv(DATABRICKS_TELEMETRY_MAX_POST_BYTES_ENV_VAR, DEFAULT_MAX_POST_BYTES)
-        )
-    except ValueError:
-        return DEFAULT_MAX_POST_BYTES
-    return value if value > 0 else DEFAULT_MAX_POST_BYTES
+    return os.getenv(DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR, DEFAULT_ENDPOINT).strip()
 
 
 # --- PromQL construction --------------------------------------------------
 
 
-def _build_promql(metric: str, agg: str, window_s: int, session_name: str) -> str:
-    """Return the PromQL string that yields one value per series for ``agg``.
+def _build_promql(
+    metric: str, metric_type: str, agg: str, window_s: int, session_name: str
+) -> str:
+    """Return the PromQL that yields ONE cluster scalar for ``agg``.
 
-    ``window_s`` is rendered as ``[<N>s]`` and applied as a range selector.
+    An outer cross-series reducer is wrapped around the per-series
+    ``*_over_time`` window so the result collapses every node/operator
+    series to a single value:
 
-    ``session_name`` filters to this Ray session via the ``SessionName`` label
-    that ``ReporterAgent`` stamps on every metric (see
-    ``dashboard/modules/reporter/reporter_agent.py``'s ``record_and_export``
-    call with ``global_tags={"SessionName": ...}``).
+      avg -> ``avg(avg_over_time(...))``   typical cluster value
+      max -> ``max(max_over_time(...))``   absolute worst moment
+      min -> ``min(min_over_time(...))``   least-loaded node's quietest point
+      p95 -> ``avg(quantile_over_time(0.95, ...))``  mean per-node 1h-p95
+      sum -> ``sum(last_over_time(...))``  total now (gauge), or
+             ``sum(increase(...))``        events in the window (counter)
 
-    The filter is essential, not defensive. Managed environments expose a
-    shared Prometheus-compatible ingress that carries series from many
-    clusters in the same organization (e.g. Anyscale's customer monitoring
-    endpoint on workspaces returns thousands of series per metric across
-    every running cluster). Without ``{SessionName='<our session>'}`` we
-    would collect metrics from unrelated tenants on every cycle.
+    ``session_name`` filters to this Ray session via the ``SessionName``
+    label that ``ReporterAgent`` stamps on every metric. The filter is
+    essential: a shared monitoring ingress carries series from many
+    clusters, so without it we would aggregate across unrelated tenants.
     """
     selector = f"{metric}{{SessionName='{session_name}'}}"
     window = f"[{window_s}s]"
     if agg == "avg":
-        return f"avg_over_time({selector}{window})"
+        return f"avg(avg_over_time({selector}{window}))"
     if agg == "max":
-        return f"max_over_time({selector}{window})"
+        return f"max(max_over_time({selector}{window}))"
     if agg == "min":
-        return f"min_over_time({selector}{window})"
-    if agg == "last":
-        return f"last_over_time({selector}{window})"
-    if agg == "p50":
-        return f"quantile_over_time(0.5, {selector}{window})"
+        return f"min(min_over_time({selector}{window}))"
     if agg == "p95":
-        return f"quantile_over_time(0.95, {selector}{window})"
-    if agg == "p99":
-        return f"quantile_over_time(0.99, {selector}{window})"
-    if agg == "rate":
-        return f"rate({selector}{window})"
-    if agg == "increase":
-        return f"increase({selector}{window})"
+        return f"avg(quantile_over_time(0.95, {selector}{window}))"
+    if agg == "sum":
+        if metric_type == "counter":
+            return f"sum(increase({selector}{window}))"
+        return f"sum(last_over_time({selector}{window}))"
     raise ValueError(f"Unsupported aggregation: {agg!r}")
+
+
+def _node_count_queries(window_s: int, session_name: str) -> Dict[str, str]:
+    """PromQL for cluster node counts, derived by ``count``-ing node series.
+
+    ``count(...)`` counts the number of matching series (one per node) — it
+    ignores the metric values, so it yields a node count, not a CPU count.
+    """
+    sel = f"{NODE_COUNT_METRIC}{{SessionName='{session_name}'}}"
+    worker = f"{NODE_COUNT_METRIC}{{SessionName='{session_name}',IsHeadNode='false'}}"
+    head = f"{NODE_COUNT_METRIC}{{SessionName='{session_name}',IsHeadNode='true'}}"
+    return {
+        "ray_cluster_num_nodes": f"count({sel})",
+        "ray_cluster_num_workers": f"count({worker})",
+        "ray_cluster_num_head": f"count({head})",
+        "ray_cluster_num_nodes_peak": f"max_over_time(count({sel})[{window_s}s:60s])",
+    }
+
+
+# --- Value formatting -----------------------------------------------------
+
+
+def _format_value(value: float) -> str:
+    """Render a scalar for ``extra_usage_tags`` (a ``Dict[str, str]``)."""
+    if value == int(value):
+        return str(int(value))
+    return f"{value:.6g}"
 
 
 # --- Atomic file write ----------------------------------------------------
 
 
 def _atomic_write_json(dir_path: str, file_name: str, data: Dict[str, Any]) -> None:
-    """Write ``data`` to ``<dir_path>/<file_name>`` atomically.
-
-    Uses a temp-then-rename pattern so concurrent readers never see a
-    partially written file.
-    """
+    """Write ``data`` to ``<dir_path>/<file_name>`` atomically."""
     dir_obj = Path(dir_path)
     destination = dir_obj / file_name
     temp = dir_obj / f"{file_name}.tmp"
@@ -186,68 +180,12 @@ def _atomic_write_json(dir_path: str, file_name: str, data: Dict[str, Any]) -> N
     temp.rename(destination)
 
 
-# --- Batch chunking -------------------------------------------------------
-
-
-def _chunk_batch(batch: Dict[str, Any], max_bytes: int) -> List[Dict[str, Any]]:
-    """Split ``batch`` into one or more POST payloads, each <= ``max_bytes``.
-
-    Each chunk carries the full envelope (every batch field except
-    ``samples``) plus its slice of ``samples`` and ``chunk_index`` /
-    ``num_chunks`` so the receiver can reassemble the logical batch. A batch
-    with no samples yields a single empty chunk. A single sample row larger
-    than the byte budget cannot be split, so it is emitted in its own chunk
-    (which may exceed ``max_bytes``) rather than dropped — the caller logs
-    and posts it anyway.
-
-    Greedy O(n) packing: samples are serialized once and accumulated until
-    the next one would overflow the per-request budget.
-    """
-    envelope = {k: v for k, v in batch.items() if k != "samples"}
-    samples = batch.get("samples") or []
-
-    # Bytes consumed by the envelope, the chunk counters, and an empty
-    # ``samples`` array — i.e. everything that is not sample content. Sized
-    # with the same compact separators the POST body uses so the accounting
-    # is exact. ``num_chunks`` is stamped with a wide placeholder so adding
-    # its real (smaller-or-equal-width) value never grows the envelope.
-    overhead = len(
-        json.dumps(
-            {**envelope, "chunk_index": 0, "num_chunks": 999999, "samples": []},
-            separators=_COMPACT_SEPARATORS,
-        ).encode()
-    )
-    budget = max(1, max_bytes - overhead - _CHUNK_SAFETY_MARGIN)
-
-    groups: List[List[Dict[str, Any]]] = []
-    current: List[Dict[str, Any]] = []
-    current_size = 0  # serialized bytes of accumulated sample content
-    for sample in samples:
-        s_size = len(json.dumps(sample, separators=_COMPACT_SEPARATORS).encode())
-        add = s_size + (1 if current else 0)  # +1 for the ``,`` separator
-        if current and current_size + add > budget:
-            groups.append(current)
-            current = []
-            current_size = 0
-            add = s_size
-        current.append(sample)
-        current_size += add
-    if current or not groups:
-        groups.append(current)
-
-    num_chunks = len(groups)
-    return [
-        {**envelope, "chunk_index": i, "num_chunks": num_chunks, "samples": group}
-        for i, group in enumerate(groups)
-    ]
-
-
 class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
-    """Periodic Prometheus-aggregate collector.
+    """Periodic cluster-level Prometheus-aggregate collector.
 
     Runs inside the dashboard process on the head node; no subprocess, no
-    Ray actor. Output lands in the session directory; nothing leaves the
-    cluster in this v1.
+    Ray actor. Output lands in the session directory; the same summary is
+    POSTed to the configured endpoint.
     """
 
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
@@ -258,107 +196,61 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
         self.seq_no = 0
         self.last_error: Optional[str] = None
         self.last_success_ts_ms: Optional[int] = None
-        self.last_sample_count: Optional[int] = None
-        # POST-side counters. Kept separate from total_success/total_failed
-        # so a transient endpoint outage does not look like a collection
-        # failure — the local audit file is still produced on every cycle.
+        self.last_metric_count: Optional[int] = None
+        # POST-side counters, kept separate from collection so a transient
+        # endpoint outage does not look like a collection failure.
         self.total_post_success = 0
         self.total_post_failed = 0
         self.last_post_ts_ms: Optional[int] = None
         self.last_post_status_code: Optional[int] = None
         self.last_post_error: Optional[str] = None
-        # Number of chunked requests the last cycle's batch was split into.
-        self.last_post_num_chunks: Optional[int] = None
 
     # --- POST --------------------------------------------------------
 
-    def _post_batch(self, batch: Dict[str, Any]) -> None:
-        """POST ``batch`` to ``RAY_DATABRICKS_TELEMETRY_ENDPOINT``.
+    def _post_summary(self, body: Dict[str, Any]) -> None:
+        """POST ``body`` to ``RAY_DATABRICKS_TELEMETRY_ENDPOINT``.
 
-        No-op when the env var is unset / empty (write-only mode).
-
-        The batch is split by ``_chunk_batch`` so no single request exceeds
-        ``_max_post_bytes()`` (the receiver forwards each request to a
-        Firehose ``put_record`` call that hard-caps a record at ~1 MB). Each
-        chunk is an independent POST and is accounted independently in
-        ``total_post_success`` / ``total_post_failed``: a transient failure
-        on one chunk does not discard the rest, and the local audit file
-        (the whole batch) has already been written regardless.
-
-        Mirrors ``UsageStatsClient.report_usage_data`` otherwise:
-        unauthenticated POST, ``Content-Type: application/json``, 10s
-        timeout, ``raise_for_status``. Caller does not raise on failure.
+        No-op when the env var is empty (write-only mode). Mirrors
+        ``UsageStatsClient.report_usage_data``: ``Content-Type:
+        application/json``, 10s timeout, ``raise_for_status``. The summary
+        is ~2 KB, so it is a single unchunked request. The caller does not
+        raise on failure — the audit file has already been written.
         """
         endpoint = _telemetry_endpoint()
         if not endpoint:
             return
-
-        max_bytes = _max_post_bytes()
-        chunks = _chunk_batch(batch, max_bytes)
-        self.last_post_num_chunks = len(chunks)
-
-        first_error: Optional[str] = None
-        last_status: Optional[int] = None
-        for chunk in chunks:
-            body = json.dumps(chunk, separators=_COMPACT_SEPARATORS).encode()
-            # Size check before sending. A chunk can legitimately exceed the
-            # cap only when it holds a single sample too large to split; post
-            # it anyway (the receiver will reject it) but surface the reason.
-            if len(body) > max_bytes:
-                logger.warning(
-                    "Databricks telemetry chunk %d/%d is %d bytes, over the "
-                    "%d-byte cap (single oversized sample); posting anyway",
-                    chunk["chunk_index"] + 1,
-                    chunk["num_chunks"],
-                    len(body),
-                    max_bytes,
-                )
-            try:
-                resp = requests.post(
-                    endpoint,
-                    headers={"Content-Type": "application/json"},
-                    data=body,
-                    timeout=DEFAULT_POST_TIMEOUT_S,
-                )
-                resp.raise_for_status()
-            except Exception as e:
-                response = getattr(e, "response", None)
-                last_status = getattr(response, "status_code", None)
-                if first_error is None:
-                    first_error = str(e)
-                self.total_post_failed += 1
-                logger.info(
-                    "Databricks telemetry POST failed "
-                    "(seq=%d, chunk=%d/%d, endpoint=%s): %s",
-                    self.seq_no,
-                    chunk["chunk_index"] + 1,
-                    chunk["num_chunks"],
-                    endpoint,
-                    e,
-                )
-                continue
-            last_status = resp.status_code
-            self.total_post_success += 1
-
-        self.last_post_status_code = last_status
-        if first_error is None:
-            self.last_post_error = None
-            self.last_post_ts_ms = int(time.time() * 1000)
-        else:
-            self.last_post_error = first_error
+        try:
+            resp = requests.post(
+                endpoint,
+                headers={"Content-Type": "application/json"},
+                json=body,
+                timeout=DEFAULT_POST_TIMEOUT_S,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            response = getattr(e, "response", None)
+            self.last_post_status_code = getattr(response, "status_code", None)
+            self.last_post_error = str(e)
+            self.total_post_failed += 1
+            logger.info(
+                "Databricks telemetry POST failed (seq=%d, endpoint=%s): %s",
+                self.seq_no,
+                endpoint,
+                e,
+            )
+            return
+        self.last_post_status_code = resp.status_code
+        self.last_post_error = None
+        self.last_post_ts_ms = int(time.time() * 1000)
+        self.total_post_success += 1
 
     # --- Prometheus query --------------------------------------------
 
-    def _query_prometheus(
-        self,
-        query: str,
-        eval_ts_s: int,
-    ) -> List[Dict[str, Any]]:
-        """Issue an instant query against the local Prometheus.
+    def _query_prometheus(self, query: str, eval_ts_s: int) -> List[Dict[str, Any]]:
+        """Issue an instant query and return the raw ``data.result`` array.
 
-        Returns the raw ``data.result`` array. Raises on transport or
-        non-success Prometheus response so the caller can account the
-        failure per-query and continue with the rest of the batch.
+        Raises on transport or non-success Prometheus response so the
+        caller can account the failure per-query and continue.
         """
         url = f"{_prometheus_host()}/api/v1/query"
         params = {"query": query, "time": eval_ts_s}
@@ -372,84 +264,73 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             )
         return payload.get("data", {}).get("result", []) or []
 
-    # --- Batch assembly ----------------------------------------------
+    @staticmethod
+    def _extract_scalar(result: List[Dict[str, Any]]) -> Optional[float]:
+        """Pull the single scalar from an aggregated instant-vector result.
 
-    def _flatten_result(
-        self,
-        spec: MetricSpec,
-        agg: str,
-        result: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-        """Convert one Prometheus instant-vector result into long-table rows."""
-        samples: List[Dict[str, Any]] = []
+        Returns ``None`` for an empty result (no matching series) or a
+        NaN/Inf value.
+        """
         for entry in result:
-            labels = dict(entry.get("metric") or {})
-            # __name__ is redundant with spec.name (and may be missing for
-            # derived expressions like rate()/quantile_over_time()).
-            labels.pop("__name__", None)
-
             value_pair = entry.get("value")
             if not value_pair or len(value_pair) != 2:
                 continue
-            ts_s, raw = value_pair
             try:
-                value = float(raw)
+                value = float(value_pair[1])
             except (TypeError, ValueError):
-                # Prometheus returns "NaN" / "+Inf" / "-Inf" as strings; skip.
                 continue
-            # Drop NaN/Inf so the consumer side does not have to filter.
             if value != value or value in (float("inf"), float("-inf")):
                 continue
+            return value
+        return None
 
-            samples.append(
-                {
-                    "ts_ms": int(float(ts_s) * 1000),
-                    "metric": spec.name,
-                    "agg": agg,
-                    "attrs": labels,
-                    "value": value,
-                }
-            )
-        return samples
+    # --- Summary assembly --------------------------------------------
 
-    def _build_batch(self) -> Dict[str, Any]:
+    def _query_scalar(self, query: str, eval_ts_s: int, label: str) -> Optional[float]:
+        try:
+            result = self._query_prometheus(query, eval_ts_s)
+        except Exception as e:
+            logger.debug("Prometheus query failed for %s: %s", label, e)
+            return None
+        return self._extract_scalar(result)
+
+    def _build_summary(self) -> Dict[str, Any]:
         eval_ts_s = int(time.time())
         eval_ts_ms = eval_ts_s * 1000
-        interval_s = _collector_interval_s()
-        window_start_ms = eval_ts_ms - interval_s * 1000
+        window_s = _collector_interval_s()
 
-        samples: List[Dict[str, Any]] = []
+        tags: Dict[str, str] = {}
+
+        # One cluster scalar per (metric, agg).
         for spec in METRIC_ALLOWLIST:
             for agg in spec.aggs:
-                query = _build_promql(spec.name, agg, interval_s, self.session_name)
-                try:
-                    result = self._query_prometheus(query, eval_ts_s)
-                except Exception as e:
-                    # Skip this (metric, agg); continue with the rest so a
-                    # single missing series doesn't abort the whole batch.
-                    logger.debug(
-                        "Prometheus query failed for %s/%s: %s", spec.name, agg, e
-                    )
-                    continue
-                samples.extend(self._flatten_result(spec, agg, result))
+                query = _build_promql(
+                    spec.name, spec.type, agg, window_s, self.session_name
+                )
+                value = self._query_scalar(query, eval_ts_s, f"{spec.name}/{agg}")
+                if value is not None:
+                    tags[f"{spec.name}_{agg}"] = _format_value(value)
 
-        # v0.2 schema. Field names track the ``ray-project/telemetry``
-        # ``UsageStats`` conventions (``session_id``, ``seq_number``) and add
-        # the receiver-required ``source`` / ``collect_timestamp_ms``. The
-        # local audit file holds the whole batch as a single document; the
-        # POST path may split ``samples`` across multiple chunked requests
-        # (see ``_chunk_batch`` / ``_post_batch``).
+        # Cluster node counts (count of node series, not values).
+        for key, query in _node_count_queries(window_s, self.session_name).items():
+            value = self._query_scalar(query, eval_ts_s, key)
+            if value is not None:
+                tags[key] = _format_value(value)
+
+        # Cluster identity goes in extra_usage_tags: the UsageStats
+        # top-level forbids unknown fields (Extra.forbid), so cluster_id /
+        # session_id / ray_version cannot be added there.
+        tags["cluster_id"] = self.gcs_client.cluster_id.hex()
+        tags["session_id"] = self.session_name
+        tags["ray_version"] = ray.__version__
+
+        # UsageStats (schema 0.1) envelope; metrics live in extra_usage_tags.
         return {
             "schema_version": SCHEMA_VERSION,
             "source": TELEMETRY_SOURCE,
             "collect_timestamp_ms": eval_ts_ms,
-            "session_id": self.session_name,
             "seq_number": self.seq_no,
-            "ray_version": ray.__version__,
-            "cluster_id": self.gcs_client.cluster_id.hex(),
-            "batch_window_start_ms": window_start_ms,
-            "batch_window_end_ms": eval_ts_ms,
-            "samples": samples,
+            "extra_usage_tags": tags,
         }
 
     # --- Cycle entry points -------------------------------------------
@@ -465,14 +346,12 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             "total_failed": self.total_failed,
             "last_error": self.last_error,
             "last_success_ts_ms": self.last_success_ts_ms,
-            "last_sample_count": self.last_sample_count,
+            "last_metric_count": self.last_metric_count,
             "total_post_success": self.total_post_success,
             "total_post_failed": self.total_post_failed,
             "last_post_status_code": self.last_post_status_code,
             "last_post_error": self.last_post_error,
             "last_post_ts_ms": self.last_post_ts_ms,
-            "last_post_num_chunks": self.last_post_num_chunks,
-            "max_post_bytes": _max_post_bytes(),
             "allowlist": [spec.name for spec in METRIC_ALLOWLIST],
         }
 
@@ -481,28 +360,25 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             return
 
         try:
-            batch = self._build_batch()
-            sample_count = len(batch["samples"])
+            summary = self._build_summary()
+            metric_count = len(summary["extra_usage_tags"])
             try:
-                _atomic_write_json(self.session_dir, BATCH_FILE, batch)
+                _atomic_write_json(self.session_dir, BATCH_FILE, summary)
             except Exception as e:
-                # Treat a failure to persist the batch as a cycle failure —
-                # we have no other side effect to call this cycle a success.
                 raise RuntimeError(f"failed to write {BATCH_FILE}: {e}") from e
             self.last_error = None
-            self.last_success_ts_ms = batch["batch_window_end_ms"]
-            self.last_sample_count = sample_count
+            self.last_success_ts_ms = summary["collect_timestamp_ms"]
+            self.last_metric_count = metric_count
             self.total_success += 1
             logger.info(
-                "Databricks telemetry collected %d samples (seq=%d) → %s",
-                sample_count,
+                "Databricks telemetry collected %d cluster metrics (seq=%d) → %s",
+                metric_count,
                 self.seq_no,
                 BATCH_FILE,
             )
-            # POST after the file write succeeds. Tracked independently
-            # so a transient endpoint outage does not flip total_success
-            # back to total_failed — the audit file is on disk regardless.
-            self._post_batch(batch)
+            # POST after the file write succeeds. Tracked independently so a
+            # transient endpoint outage does not flip total_success.
+            self._post_summary(summary)
         except Exception as e:
             self.last_error = str(e)
             self.total_failed += 1

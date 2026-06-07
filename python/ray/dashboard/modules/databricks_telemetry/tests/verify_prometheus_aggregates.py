@@ -159,5 +159,41 @@ assert aggregation_proven, (
     "applied. Try a longer window or run a CPU-burning workload first."
 )
 
+# --- Cluster-level queries (the shapes the forwarder now posts) ----------
+#
+# The forwarder collapses every series to a single cluster scalar with an
+# outer reducer wrapped around the per-series window (see ``_build_promql``).
+# These run unscoped (no SessionName) for the smoke test; each must still
+# collapse to a single scalar.
+print("\n=== Cluster-level summary queries ===")
+cluster_queries = {
+    "cpu_util_avg": f"avg(avg_over_time(ray_node_cpu_utilization[{WINDOW}]))",
+    "cpu_util_min": f"min(min_over_time(ray_node_cpu_utilization[{WINDOW}]))",
+    "cpu_util_max": f"max(max_over_time(ray_node_cpu_utilization[{WINDOW}]))",
+    "cpu_util_p95": f"avg(quantile_over_time(0.95, ray_node_cpu_utilization[{WINDOW}]))",
+    "cpu_count_sum": f"sum(last_over_time(ray_node_cpu_count[{WINDOW}]))",
+    "num_nodes": "count(ray_node_cpu_count)",
+}
+cluster_vals: dict = {}
+for key, q in cluster_queries.items():
+    try:
+        res = promql(q)
+    except Exception as e:
+        print(f"  !! {key} query failed: {e}")
+        continue
+    # An outer aggregation collapses to <= 1 series.
+    assert len(res) <= 1, f"{key} returned {len(res)} series; expected one scalar"
+    cluster_vals[key] = float(res[0]["value"][1]) if res else None
+    print(f"  {key:14s} = {cluster_vals[key]}")
+
+if {"cpu_util_avg", "cpu_util_p95", "cpu_util_max"} <= cluster_vals.keys() and all(
+    cluster_vals[k] is not None
+    for k in ("cpu_util_avg", "cpu_util_p95", "cpu_util_max")
+):
+    a, p, m = (
+        cluster_vals[k] for k in ("cpu_util_avg", "cpu_util_p95", "cpu_util_max")
+    )
+    assert a <= p + 1e-6 <= m + 1e-6, f"cluster avg/p95/max out of order: {a},{p},{m}"
+
 print("\nAll checks passed.")
 sys.exit(0)

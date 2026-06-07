@@ -1,16 +1,19 @@
 """Constants and metric allowlist for the Prometheus telemetry collector.
 
 This module is intentionally small: it is the audited surface for what we
-read from Prometheus and write to disk. Reviewers should treat additions to
-``METRIC_ALLOWLIST`` with the same care as additions to
+read from Prometheus and post off-cluster. Reviewers should treat
+additions to ``METRIC_ALLOWLIST`` with the same care as additions to
 ``src/ray/protobuf/usage.proto``'s ``TagKey`` enum.
 
-The collector writes each batch to the session directory regardless of
-whether ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` is configured. When the
-endpoint env var is set, the same batch JSON is also POSTed there
-without authentication (matching ``UsageStatsHead``'s posture; the data
-sensitivity is the same — anonymous aggregates per cluster). Unsetting
-the env var leaves the cluster in write-only mode.
+The collector emits a **cluster-level summary**, not a per-series time
+series. Each cycle reduces every allowlisted metric to one cluster scalar
+per aggregation (see ``_build_promql``), packs the ~few-dozen
+``<metric>_<agg> -> value`` pairs into a ``UsageStats``-shaped envelope's
+``extra_usage_tags``, writes it to the session directory, and (unless the
+endpoint is empty) POSTs it. The summary carries no node IPs, operator, or
+dataset names, so it is anonymous. Time is captured by the per-event
+``collect_timestamp_ms``; the downstream reconstructs a series by stacking
+the hourly events.
 """
 
 from dataclasses import dataclass, field
@@ -21,14 +24,9 @@ from typing import List, Tuple
 DATABRICKS_TELEMETRY_ENABLED_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENABLED"
 DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_INTERVAL_S"
 
-# POST destination. Unset / empty disables the POST and leaves the
+# POST destination. Set to empty to disable the POST and leave the
 # collector in write-only mode (the local audit file is still produced).
 DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR = "RAY_DATABRICKS_TELEMETRY_ENDPOINT"
-
-# Override for the per-request size cap used when chunking the batch POST.
-DATABRICKS_TELEMETRY_MAX_POST_BYTES_ENV_VAR = (
-    "RAY_DATABRICKS_TELEMETRY_MAX_POST_BYTES"
-)
 
 # Reused from the existing Grafana/Prometheus integration.
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
@@ -38,48 +36,48 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 DEFAULT_INTERVAL_S = 3600
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 
+# Default POST endpoint. HTTPS is required: the usage-stats CloudFront
+# distribution is HTTPS-only and returns 403 for plain ``http://``. This is
+# the same sink Ray's usage stats already post to, unauthenticated.
+DEFAULT_ENDPOINT = "https://usage-stats.ray.io/"
+
 # POST timeout. Matches ``UsageStatsClient.report_usage_data``.
 DEFAULT_POST_TIMEOUT_S = 10
 
-# Max serialized bytes for a single POST request body. The telemetry
-# receiver (``ray-project/telemetry``) forwards each request to a Kinesis
-# Firehose ``put_record`` call, which hard-caps a single record at 1000 KiB
-# (1,024,000 bytes). The receiver also re-serializes the body and appends a
-# few fields (``server_receive_timestamp_ms``, CloudFront geo headers, a
-# trailing newline), so we leave headroom and chunk anything larger across
-# multiple POSTs. Override via the env var above for other receivers.
-DEFAULT_MAX_POST_BYTES = 900_000
+# --- Payload envelope ------------------------------------------------------
+
+# We reuse the existing ``UsageStats`` schema (``ray-project/telemetry``
+# ``telemetry/schemas/v_0_1.py``, registered ``"0.1"``) and put our metrics
+# in its free-form ``extra_usage_tags``. No new receiver schema, no
+# ``samples[]`` array, no chunking.
+SCHEMA_VERSION = "0.1"
+
+# Value of the ``source`` field. Identifies the producer to the receiver
+# (mirrors ``UsageStats.source``).
+TELEMETRY_SOURCE = "databricks_telemetry"
 
 # --- Local output files ----------------------------------------------------
 
 # Operational status (success/failure counts, last error, allowlist).
 STATUS_FILE = "databricks_telemetry_status.json"
 
-# Full samples dump from the most recent successful cycle. Lets operators
-# audit exactly what the collector pulled.
+# The exact summary posted on the most recent cycle. Lets operators audit
+# what the collector shipped.
 BATCH_FILE = "databricks_telemetry_latest_batch.json"
-
-# Wire format version. Bumped if the payload schema changes incompatibly.
-#
-# 0.2: renamed ``session_name`` -> ``session_id`` and ``seq_no`` ->
-# ``seq_number`` to match the ``ray-project/telemetry`` ``UsageStats``
-# field conventions, added the required ``source`` and
-# ``collect_timestamp_ms`` fields, and added per-request ``chunk_index`` /
-# ``num_chunks`` so a batch that exceeds the receiver's single-record size
-# limit can be split across multiple POSTs and reassembled downstream.
-SCHEMA_VERSION = "0.2"
-
-# Value of the ``source`` field in every posted batch. Identifies the
-# producer to the telemetry receiver (mirrors ``UsageStats.source``).
-TELEMETRY_SOURCE = "databricks_telemetry"
 
 # --- Allowlist -------------------------------------------------------------
 
-# Aggregation function names supported by ``_build_promql`` below. Each maps
-# to a PromQL ``*_over_time`` form (or ``rate``/``increase`` for counters).
-SUPPORTED_AGGS = frozenset(
-    {"avg", "max", "min", "last", "p50", "p95", "p99", "rate", "increase"}
-)
+# Cluster-level aggregations supported by ``_build_promql``:
+#   avg/max/min/p95 -> cross-node statistical reducers (intensive metrics,
+#       e.g. utilization percentages);
+#   sum             -> cross-series total (extensive metrics: counts, bytes,
+#       cores; and counters, via ``increase`` over the window).
+SUPPORTED_AGGS = frozenset({"avg", "max", "min", "p95", "sum"})
+
+# Per-node series whose *count* gives the cluster node count. Every node's
+# ReporterAgent emits it, so ``count(...)`` of this series counts nodes (the
+# values — CPU counts — are summed separately as ``ray_node_cpu_count_sum``).
+NODE_COUNT_METRIC = "ray_node_cpu_count"
 
 
 @dataclass(frozen=True)
@@ -88,9 +86,11 @@ class MetricSpec:
 
     Attributes:
         name: Prometheus metric name, including the ``ray_`` prefix.
-        type: ``"gauge"`` or ``"counter"``. Used only to pick sensible
-            default aggregations and to document intent.
-        aggs: Aggregation functions to compute over the report window.
+        type: ``"gauge"`` or ``"counter"``. Selects the inner per-series
+            function for the ``sum`` aggregation (``last_over_time`` for a
+            gauge's current value, ``increase`` for a counter's windowed
+            delta).
+        aggs: Cluster aggregations to emit (subset of ``SUPPORTED_AGGS``).
     """
 
     name: str
@@ -105,62 +105,35 @@ class MetricSpec:
             )
 
 
-# CPU + memory + GPU + OOM signals for v1, plus per-operator Ray Data
+# Cluster-level CPU + memory + GPU + OOM signals, plus aggregate Ray Data
 # resource usage. Additions require code review (see module docstring).
 #
-# Counter-typed metrics ship as ``increase`` (events in the window) and
-# ``rate`` (events per second). Gauges ship as min/max/avg/p95/last
-# depending on what makes sense for the metric.
-#
-# Series cardinality: node-level metrics are emitted one series per
-# (instance, RayNodeType) by ReporterAgent; GPU metrics add a GpuIndex
-# label; Ray Data metrics carry (dataset, operator). All labels survive
-# ``avg_over_time``/``max_over_time`` aggregation and reach the
-# downstream consumer in ``samples[].attrs``.
+# Intensive metrics (percentages) reduce across nodes with avg/max/min/p95.
+# Extensive metrics (counts/bytes/cores) and counters reduce with sum.
+# Memory / GPU-memory utilization % is derived downstream from the summed
+# used / available bytes — Ray exports no direct utilization gauge.
 METRIC_ALLOWLIST: List[MetricSpec] = [
     # --- Node CPU ----------------------------------------------------
     MetricSpec("ray_node_cpu_utilization", "gauge", ("avg", "max", "min", "p95")),
-    MetricSpec("ray_node_cpu_count", "gauge", ("last",)),
-    # --- Node memory -------------------------------------------------
-    # Utilization % is derived downstream from used / (used + available).
-    # Ray does not export a single ``ray_node_mem_utilization`` gauge.
-    MetricSpec("ray_node_mem_used", "gauge", ("avg", "max", "min")),
-    MetricSpec("ray_node_mem_available", "gauge", ("avg", "max", "min")),
-    MetricSpec("ray_node_mem_total", "gauge", ("last",)),
+    MetricSpec("ray_node_cpu_count", "gauge", ("sum",)),  # total cluster CPUs
+    # --- Node memory (bytes; util % derived downstream) --------------
+    MetricSpec("ray_node_mem_used", "gauge", ("sum",)),
+    MetricSpec("ray_node_mem_available", "gauge", ("sum",)),
+    MetricSpec("ray_node_mem_total", "gauge", ("sum",)),
     # --- Node GPU ----------------------------------------------------
-    # One series per (instance, GpuIndex, GpuDeviceName). Cluster-wide
-    # GPU utilization is recovered by averaging across the GpuIndex
-    # dimension downstream.
-    MetricSpec("ray_node_gpus_utilization", "gauge", ("avg", "max", "min")),
-    # GPU memory utilization % is derived downstream from
-    # gram_used / (gram_used + gram_available).
-    MetricSpec("ray_node_gram_used", "gauge", ("avg", "max", "min")),
-    MetricSpec("ray_node_gram_available", "gauge", ("avg", "max", "min")),
-    # --- OOMs --------------------------------------------------------
-    # Ray's memory monitor proactively evicts workers when the node is
-    # above the memory threshold (src/ray/raylet/node_manager.cc:3160).
-    # ``Type`` label distinguishes Driver / Actor / Task / IdleWorker
-    # evictions.
-    MetricSpec("ray_memory_manager_worker_eviction", "counter", ("increase", "rate")),
-    # Broader signal — any SYSTEM_ERROR worker disconnect, which per
-    # src/ray/raylet/metrics.h:159 includes kernel OOM kills (SIGKILL)
-    # that bypass Ray's own monitor.
-    MetricSpec(
-        "ray_node_manager_unexpected_worker_failure",
-        "counter",
-        ("increase", "rate"),
-    ),
-    # --- Ray Data per-operator resource usage ------------------------
-    # Source: python/ray/data/_internal/stats.py:294-303,289-293. Tag
-    # keys: ``(dataset, operator)``.
-    #
-    # GPU memory per operator is *not* exported to Prometheus by Ray
-    # Data — only in-process via ``DatasetStats``. Listed in the PR
-    # description as a known gap.
-    MetricSpec("ray_data_cpu_usage_cores", "gauge", ("avg", "max", "min")),
-    MetricSpec("ray_data_gpu_usage_cores", "gauge", ("avg", "max", "min")),
-    # Object-store bytes held per operator. This is the closest
-    # Prometheus proxy for per-operator memory; per-operator process
-    # RSS is not exported.
-    MetricSpec("ray_data_current_bytes", "gauge", ("avg", "max", "min")),
+    MetricSpec("ray_node_gpus_utilization", "gauge", ("avg", "max", "min", "p95")),
+    MetricSpec("ray_node_gram_used", "gauge", ("sum",)),
+    MetricSpec("ray_node_gram_available", "gauge", ("sum",)),
+    # --- OOM / worker-failure counters (events over the window) ------
+    # Memory monitor evictions (src/ray/raylet/node_manager.cc) and the
+    # broader SYSTEM_ERROR worker disconnect signal (src/ray/raylet/
+    # metrics.h) which includes kernel OOM SIGKILLs.
+    MetricSpec("ray_memory_manager_worker_eviction", "counter", ("sum",)),
+    MetricSpec("ray_node_manager_unexpected_worker_failure", "counter", ("sum",)),
+    # --- Ray Data aggregate resource usage ---------------------------
+    # Per-operator series (python/ray/data/_internal/stats.py) summed
+    # across operators into a cluster-wide total.
+    MetricSpec("ray_data_cpu_usage_cores", "gauge", ("sum",)),
+    MetricSpec("ray_data_gpu_usage_cores", "gauge", ("sum",)),
+    MetricSpec("ray_data_current_bytes", "gauge", ("sum",)),
 ]
