@@ -2393,7 +2393,9 @@ def print_worker_logs(
                     f"{message_for(data, line)}",
                     file=print_file,
                 )
-
+    if ray_constants.RAY_FLUSH_DRIVER_LOGS:
+        if hasattr(print_file, "flush"):
+            print_file.flush()
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 

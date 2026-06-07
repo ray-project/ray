@@ -95,11 +95,14 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
+            scheduler: The resource scheduler to make scaling decisions.
+            cloud_provider: The cloud provider interface.
             cloud_resource_monitor: The cloud resource monitor for monitoring resource
                 availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
+            autoscaling_config: The autoscaling config.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
@@ -271,8 +274,10 @@ class Reconciler:
             7. Handle any stuck instances with timeouts.
 
         Args:
+            autoscaling_state: The autoscaling state populated by this reconcile loop.
             instance_manager: The instance manager to reconcile.
             scheduler: The resource scheduler to make scaling decisions.
+            cloud_provider: The cloud provider interface.
             cloud_resource_monitor: The cloud resource monitor for monitoring resource
                 availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
@@ -1149,6 +1154,9 @@ class Reconciler:
             ),
             cloud_resource_availabilities=(
                 cloud_resource_monitor.get_resource_availabilities()
+            ),
+            recoverable_resource_availabilities=(
+                cloud_resource_monitor.get_recoverable_resource_availabilities()
             ),
         )
 

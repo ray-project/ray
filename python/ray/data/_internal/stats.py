@@ -26,6 +26,9 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
@@ -158,13 +161,29 @@ class _StatsAccumulator:
 
 
 class Timer:
-    """Helper class for tracking accumulated time (in seconds)."""
+    """Helper class for tracking accumulated time (in seconds).
+
+    Every value passed to :meth:`add` is also fed into an internal
+    :class:`DistributionTracker` (a KLL sketch with bounded memory) so
+    :meth:`percentile` can return an approximate p-th percentile at any
+    time. The sketch uses O(k log(n/k)) memory (k=200 by default), so it
+    stays a few kilobytes regardless of how many samples are added —
+    safe for long-running production jobs.
+
+    Percentile accuracy is the KLL guarantee — roughly 1.65% rank error
+    at the default k=200. When the optional ``datasketches`` dependency
+    is not installed, :meth:`percentile` returns 0 (the other stats are
+    unaffected).
+    """
 
     def __init__(self):
         self._total: float = 0
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
+        # Bounded-memory percentile backend. add() forwards every value
+        # to ``add_sample`` and ``percentile`` reads from it.
+        self._distribution: DistributionTracker = DistributionTracker()
 
     @contextmanager
     def timer(self) -> None:
@@ -181,6 +200,7 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
+        self._distribution.add_sample(value)
 
     def get(self) -> float:
         return self._total
@@ -193,6 +213,70 @@ class Timer:
 
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
+
+    def percentile(self, p: float) -> float:
+        """Approximate ``p``-th percentile in seconds.
+
+        Backed by the internal :class:`DistributionTracker`'s KLL
+        sketch. Returns 0 when no samples have been added or the
+        optional ``datasketches`` package is unavailable.
+
+        Args:
+            p: Percentile as a fraction in ``[0.0, 1.0]`` (e.g. ``0.9``
+                for p90 — not ``90``). Values outside this range raise
+                ``ValueError``.
+
+        Returns:
+            The approximate p-th percentile of all samples seen, or 0
+            when the sketch has no data / no backend.
+
+        Raises:
+            ValueError: If ``p`` is outside ``[0.0, 1.0]``.
+        """
+        if not 0.0 <= p <= 1.0:
+            raise ValueError(
+                f"p must be in [0.0, 1.0], got {p!r}. "
+                "Pass a fraction like 0.9, not a percent like 90."
+            )
+        q = self._distribution._quantile(p)
+        return q if q is not None else 0
+
+    def as_dict(self) -> Dict[str, Optional[float]]:
+        """Return a JSON-serializable snapshot of the accumulated stats.
+
+        Only the scalar fields are included. ``_distribution`` (a
+        :class:`DistributionTracker`) is intentionally omitted because it
+        is not JSON-serializable and its sketch is not meant to be
+        persisted across checkpoints. ``_min`` / ``_max`` are reported as
+        ``None`` when no samples have been added (rather than the ``inf``
+        sentinel, which JSON cannot represent).
+        """
+        return {
+            "_total": self._total,
+            "_min": self._min if self._total_count > 0 else None,
+            "_max": self._max if self._total_count > 0 else None,
+            "_total_count": self._total_count,
+        }
+
+    def from_dict(self, state: Optional[Dict[str, Optional[float]]]) -> None:
+        """Restore the scalar stats from a dict produced by :meth:`as_dict`.
+
+        ``_distribution`` is left untouched (it keeps the empty tracker
+        created in ``__init__``), mirroring that the sketch is not
+        persisted. A non-dict ``state`` is ignored, and a ``None`` value
+        for any field falls back to its empty-Timer default (``.get``'s
+        default only fires on a missing key, not a present ``None``).
+        """
+        if not isinstance(state, dict):
+            return
+        _total = state.get("_total")
+        self._total = _total if _total is not None else 0.0
+        _total_count = state.get("_total_count")
+        self._total_count = _total_count if _total_count is not None else 0.0
+        _min = state.get("_min")
+        self._min = _min if _min is not None else float("inf")
+        _max = state.get("_max")
+        self._max = _max if _max is not None else 0.0
 
 
 class _DatasetStatsBuilder:
@@ -864,14 +948,16 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     does not exist in the connected cluster. The _StatsActor is pinned on
     on driver process' node.
     """
-    if ray._private.worker._global_node is None:
+    if not ray.is_initialized():
         raise RuntimeError(
-            "Global node is not initialized. Driver might be not connected to Ray."
+            "Ray is not initialized. Driver might be not connected to Ray."
         )
 
-    current_cluster_id = ray._private.worker._global_node.cluster_id
-
-    logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
+    # `_global_node` is None under Ray Client (the driver is not a cluster
+    # worker), so only log the cluster_id when it is available.
+    global_node = ray._private.worker._global_node
+    if global_node is not None:
+        logger.debug(f"Stats Actor located on cluster_id={global_node.cluster_id}")
 
     # so it fate-shares with the driver.
     label_selector = {
@@ -1037,7 +1123,9 @@ class DatasetStats:
         self.dataset_uuid: str = UNKNOWN_UUID
         self.time_total_s: float = 0
 
-        # Streaming executor stats
+        # Streaming executor stats. Timer's KLL-sketch percentile
+        # backend has bounded memory, so p50/p90 tracking is always on
+        # — no opt-in needed.
         self.streaming_exec_schedule_s: Timer = Timer()
 
         # Iteration stats, filled out if the user iterates over the dataset.
@@ -1165,6 +1253,8 @@ class DatasetStats:
         streaming_exec_schedule_s = schedule_timer.get()
         streaming_exec_schedule_avg_s = schedule_timer.avg()
         streaming_exec_schedule_max_s = schedule_timer.max()
+        streaming_exec_schedule_p50_s = schedule_timer.percentile(0.5)
+        streaming_exec_schedule_p90_s = schedule_timer.percentile(0.9)
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1180,6 +1270,8 @@ class DatasetStats:
             streaming_exec_schedule_s,
             streaming_exec_schedule_avg_s,
             streaming_exec_schedule_max_s,
+            streaming_exec_schedule_p50_s,
+            streaming_exec_schedule_p90_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1217,6 +1309,11 @@ class DatasetStatsSummary:
     streaming_exec_schedule_s: float
     streaming_exec_schedule_avg_s: float
     streaming_exec_schedule_max_s: float
+    # KLL-sketch-approximate percentiles (k=200, ~1.65% rank error).
+    # 0 when no samples have been added, or when the optional
+    # ``datasketches`` dependency is unavailable.
+    streaming_exec_schedule_p50_s: float
+    streaming_exec_schedule_p90_s: float
 
     def to_string(
         self,

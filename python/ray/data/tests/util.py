@@ -20,6 +20,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data.block import Block
+from ray.data.expressions import Expr
 
 
 @ray.remote
@@ -81,6 +82,22 @@ def named_values(col_names, tuples):
 
 def extract_values(col_name, tuples):
     return [t[col_name] for t in tuples]
+
+
+def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
+    """Assert two expression lists match element-wise.
+
+    ``Expr`` overloads ``==`` to build a comparison expression (e.g.
+    ``col("a") == 5``), so it can't be used to compare exprs for equality;
+    use ``structurally_equals`` instead.
+    """
+    actual_names = [e.name for e in actual]
+    expected_names = [e.name for e in expected]
+    assert len(actual) == len(expected), (actual_names, expected_names)
+    assert all(a.structurally_equals(b) for a, b in zip(actual, expected)), (
+        actual_names,
+        expected_names,
+    )
 
 
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):

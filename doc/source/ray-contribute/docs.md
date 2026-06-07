@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How to contribute to the Ray documentation: building the docs locally, the Google developer style guide enforced by Vale, and the conventions for writing and previewing pages. Use this when editing or adding Ray documentation."
+---
+
 # Contributing to the Ray Documentation
 
 There are many ways to contribute to the Ray documentation, and we're always looking for new contributors.
