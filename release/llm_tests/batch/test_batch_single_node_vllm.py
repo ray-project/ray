@@ -89,6 +89,8 @@ def _get_prometheus_metric_snapshot(
 
         node_addr = node.get("NodeManagerAddress", "127.0.0.1")
         response = None
+        last_error = None
+
         for addr in _metrics_scrape_addresses(node_addr):
             try:
                 candidate = requests.get(
@@ -199,11 +201,16 @@ def _build_engine_metrics(
 def _build_job_metrics(
     result, samples: int, engine_metrics: dict[str, float | None]
 ) -> dict:
-    avg_job_latency_s = result.elapsed_s / samples if samples > 0 else None
+    request_latency_stats_s = result.request_latency_stats_s
+    mean_request_latency_s = (
+        float(request_latency_stats_s["mean"])
+        if request_latency_stats_s is not None
+        else None
+    )
     engine_e2e_s = engine_metrics.get("mean_e2e_latency_s")
     ray_data_overhead_per_req_s = (
-        max(0.0, avg_job_latency_s - engine_e2e_s)
-        if avg_job_latency_s is not None and engine_e2e_s is not None
+        max(0.0, mean_request_latency_s - engine_e2e_s)
+        if mean_request_latency_s is not None and engine_e2e_s is not None
         else None
     )
 
@@ -211,7 +218,8 @@ def _build_job_metrics(
         "samples": int(samples),
         "elapsed_s": float(result.elapsed_s),
         "throughput_req_per_s": float(result.throughput),
-        "avg_job_latency_s": avg_job_latency_s,
+        "mean_request_latency_s": mean_request_latency_s,
+        "request_latency_stats_s": request_latency_stats_s,
         "engine_mean_e2e_latency_s": engine_e2e_s,
         "estimated_ray_data_overhead_per_req_s": ray_data_overhead_per_req_s,
     }
@@ -319,6 +327,8 @@ def test_single_node_baseline_benchmark():
         "ENGINE_TOTAL_TOKEN_THROUGHPUT_TOK_PER_S:",
         engine_metrics["total_token_throughput_tok_per_s"],
     )
+    print("MEAN_REQUEST_LATENCY_S:", job_metrics["mean_request_latency_s"])
+    print("REQUEST_LATENCY_STATS_S:", job_metrics["request_latency_stats_s"])
     print(
         "ESTIMATED_RAY_DATA_OVERHEAD_PER_REQUEST_S:",
         job_metrics["estimated_ray_data_overhead_per_req_s"],

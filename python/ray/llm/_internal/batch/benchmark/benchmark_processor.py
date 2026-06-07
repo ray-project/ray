@@ -11,7 +11,9 @@ import argparse
 import sys
 from dataclasses import dataclass
 from enum import Enum
+from statistics import mean
 from time import perf_counter, sleep
+from typing import Any
 
 import ray
 from .dataset import ShareGPTDataset
@@ -119,6 +121,45 @@ def _build_serve_deployment_config(
     )
 
 
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    k = (len(sorted_values) - 1) * (p / 100.0)
+    lower = int(k)
+    upper = min(lower + 1, len(sorted_values) - 1)
+    if lower == upper:
+        return sorted_values[lower]
+    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * (
+        k - lower
+    )
+
+
+def _summarize_request_latencies(
+    rows: list[dict[str, Any]]
+) -> dict[str, float | int] | None:
+    latencies: list[float] = []
+    for row in rows:
+        if row.get("__inference_error__", ""):
+            continue
+        latency = row.get("time_taken_llm")
+        if not isinstance(latency, (int, float)) or latency < 0:
+            continue
+        latencies.append(float(latency))
+
+    if not latencies:
+        return None
+
+    return {
+        "count": len(latencies),
+        "mean": mean(latencies),
+        "p50": _percentile(latencies, 50),
+        "p90": _percentile(latencies, 90),
+        "p95": _percentile(latencies, 95),
+        "p99": _percentile(latencies, 99),
+    }
+
+
 @dataclass(slots=True)
 class BenchmarkResult:
     mode: Mode
@@ -126,6 +167,7 @@ class BenchmarkResult:
     concurrency: int
     samples: int
     elapsed_s: float
+    request_latency_stats_s: dict[str, float | int] | None = None
 
     @property
     def throughput(self) -> float:
@@ -140,6 +182,12 @@ class BenchmarkResult:
         print(f"Concurrency : {self.concurrency}")
         print(f"Time (s)    : {self.elapsed_s:.2f}")
         print(f"Throughput  : {self.throughput:.2f} req/s")
+        if self.request_latency_stats_s is not None:
+            print(
+                "Req latency : "
+                f"{self.request_latency_stats_s['mean']:.4f} s mean "
+                f"(n={self.request_latency_stats_s['count']})"
+            )
         print("=" * 60)
 
 
@@ -427,7 +475,7 @@ def run_processor(
     total_samples = dataset.count()
 
     start = perf_counter()
-    processor(dataset).materialize()
+    processed = processor(dataset).materialize()
     elapsed = perf_counter() - start
 
     return BenchmarkResult(
@@ -436,6 +484,7 @@ def run_processor(
         concurrency=kwargs.get("concurrency"),
         samples=total_samples,
         elapsed_s=elapsed,
+        request_latency_stats_s=_summarize_request_latencies(processed.take_all()),
     )
 
 
