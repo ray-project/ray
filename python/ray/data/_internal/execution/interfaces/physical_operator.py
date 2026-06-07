@@ -320,6 +320,11 @@ class DataOpTask(OpTask):
         # flag set and fires the callback once the replay is complete.
         self._task_done_pending: bool = False
 
+        # Count of this task's deferred pairs not yet emitted by the async
+        # ``MetadataPrefetcher``. The postponed ``task_done_callback`` fires
+        # only once this reaches 0 (all of the task's bundles emitted).
+        self._pending_emit_count: int = 0
+
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
 
@@ -540,12 +545,8 @@ def replay_deferred_emits(
        ``tasks_for_done_check`` whose ``_task_done_pending`` flag is
        set, using its now-final ``_last_block_meta``.
     """
-    # Imports kept lazy to avoid a physical_operator ↔ block.py
-    # import cycle at module load.
-    from ray.data.block import BlockMetadataWithSchema
-
     if deferred:
-        # Batched fetch for the known-size subset.
+        # Batched fetch for entries whose bytes weren't already stashed.
         to_fetch = [d.meta_ref for d in deferred if d.meta_bytes is None]
         if to_fetch:
             try:
@@ -577,38 +578,54 @@ def replay_deferred_emits(
             if d.meta_bytes is None:
                 # The fetch failed for this ref; skip emit.
                 continue
-            meta_with_schema: BlockMetadataWithSchema = pickle.loads(d.meta_bytes)
-            meta = meta_with_schema.metadata
-            # Feed the per-op running average with the exact size, so future
-            # local-size misses can estimate the budget without a ray.get.
-            _record_block_size(d.task._operator_name, meta.size_bytes)
-            # Telemetry: local object_size hit rate + closeness to exact size.
-            _record_local_size_probe(d.local_object_size, meta.size_bytes)
-            d.task._output_ready_callback(
-                RefBundle(
-                    [(d.block_ref, meta)],
-                    owns_blocks=True,
-                    schema=meta_with_schema.schema,
-                ),
-            )
-            d.task._last_block_meta = meta
+            _emit_deferred_entry(d, d.meta_bytes)
 
     # Fire any postponed ``task_done_callback`` now that
     # ``_last_block_meta`` reflects the deferred-replay state.
     for task in tasks_for_done_check:
-        if not task._task_done_pending:
-            continue
-        task._task_done_callback(
-            None,  # exception
-            task._last_block_meta.task_exec_stats
-            if task._last_block_meta is not None
-            else None,
-            TaskExecDriverStats(
-                task_output_backpressure_s=task._total_output_backpressure_s,
-            ),
-        )
-        task._has_finished = True
-        task._task_done_pending = False
+        if task._task_done_pending:
+            _fire_task_done(task)
+
+
+def _emit_deferred_entry(d: DeferredEmit, meta_bytes: bytes) -> None:
+    """Emit one deferred pair's ``RefBundle`` from its fetched ``meta_bytes``,
+    update ``_last_block_meta``, and record the per-op average + probe
+    telemetry. Shared by ``replay_deferred_emits`` (synchronous) and the
+    background ``MetadataPrefetcher`` (async)."""
+    # Lazy import to avoid a physical_operator <-> block.py cycle at load.
+    from ray.data.block import BlockMetadataWithSchema
+
+    meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
+    meta = meta_with_schema.metadata
+    # Feed the per-op running average with the exact size, so future
+    # local-size misses can estimate the budget without a ray.get.
+    _record_block_size(d.task._operator_name, meta.size_bytes)
+    # Telemetry: local object_size hit rate + closeness to exact size.
+    _record_local_size_probe(d.local_object_size, meta.size_bytes)
+    d.task._output_ready_callback(
+        RefBundle(
+            [(d.block_ref, meta)],
+            owns_blocks=True,
+            schema=meta_with_schema.schema,
+        ),
+    )
+    d.task._last_block_meta = meta
+
+
+def _fire_task_done(task: "DataOpTask") -> None:
+    """Fire a task's postponed end-of-stream ``task_done_callback`` using its
+    now-final ``_last_block_meta``."""
+    task._task_done_callback(
+        None,  # exception
+        task._last_block_meta.task_exec_stats
+        if task._last_block_meta is not None
+        else None,
+        TaskExecDriverStats(
+            task_output_backpressure_s=task._total_output_backpressure_s,
+        ),
+    )
+    task._has_finished = True
+    task._task_done_pending = False
 
 
 class MetadataOpTask(OpTask):

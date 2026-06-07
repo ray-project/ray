@@ -1523,6 +1523,62 @@ class TestDataOpTask:
         # Expect: task_a's two bundles in size order, then task_b's two.
         assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
 
+    def test_metadata_prefetcher_emits_in_per_op_order(self, ray_start_regular_shared):
+        """The async ``MetadataPrefetcher`` fetches ``meta_ref``s on a
+        background thread and emits each op's RefBundles in append order
+        (same sequence the synchronous replay would produce), and fires the
+        postponed done callback only after all of a task's pairs are emitted."""
+        from ray.data._internal.execution.metadata_prefetcher import (
+            MetadataPrefetcher,
+        )
+
+        gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
+        gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
+
+        outputs: list[tuple[int, int]] = []  # (task_idx, bytes)
+        done: list[int] = []
+        task_a = DataOpTask(
+            0,
+            gen_a,
+            output_ready_callback=lambda b: outputs.append((0, b.size_bytes())),
+            task_done_callback=lambda *a: done.append(0),
+        )
+        task_b = DataOpTask(
+            1,
+            gen_b,
+            output_ready_callback=lambda b: outputs.append((1, b.size_bytes())),
+            task_done_callback=lambda *a: done.append(1),
+        )
+
+        ray.wait([gen_a, gen_b], fetch_local=False)
+
+        prefetcher = MetadataPrefetcher()
+        prefetcher.start()
+        try:
+            # A single drain pulls both ready pairs and (on the trailing
+            # StopIteration) sets ``_task_done_pending`` for the postponed
+            # done callback.
+            deferred_a: list = []
+            deferred_b: list = []
+            task_a.on_data_ready(None, deferred_a)
+            task_b.on_data_ready(None, deferred_b)
+            assert task_a._task_done_pending and task_b._task_done_pending
+
+            prefetcher.submit("a", deferred_a, [task_a])
+            prefetcher.submit("b", deferred_b, [task_b])
+
+            deadline = time.time() + 30
+            while len(outputs) < 4 and time.time() < deadline:
+                prefetcher.drain()
+                time.sleep(0.01)
+        finally:
+            prefetcher.stop()
+
+        # Per-op append order preserved; ops emitted in submit (FIFO) order.
+        assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
+        # Done callbacks fire only after each task's pairs are fully emitted.
+        assert sorted(done) == [0, 1]
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )

@@ -22,6 +22,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -156,6 +157,10 @@ class StreamingExecutor(Executor, threading.Thread):
             description="Duration of the scheduling loop in seconds",
             tag_keys=("dataset",),
         )
+
+        # Fetches deferred block metadata on a background thread so the
+        # scheduling loop never blocks on ``ray.get(meta_refs)``.
+        self._metadata_prefetcher = MetadataPrefetcher()
 
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
@@ -296,6 +301,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            # Stop the background metadata-fetch thread (after the loop thread
+            # that feeds it has been joined).
+            self._metadata_prefetcher.stop()
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -389,6 +397,8 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the output node's outqueue.
         """
         exc: Optional[Exception] = None
+        # Start the background metadata-fetch thread before the loop uses it.
+        self._metadata_prefetcher.start()
         try:
             # Run scheduling loop until complete.
             while True:
@@ -478,6 +488,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._backpressure_policies,
             self._max_errored_blocks,
             output_backpressure_guard=self._output_backpressure_guard,
+            metadata_prefetcher=self._metadata_prefetcher,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

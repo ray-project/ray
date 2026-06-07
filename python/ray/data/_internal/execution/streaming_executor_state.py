@@ -46,6 +46,7 @@ from ray.data._internal.util import (
 )
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
@@ -583,6 +584,7 @@ def process_completed_tasks(
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
     output_backpressure_guard: OutputBackpressureGuard,
+    metadata_prefetcher: Optional["MetadataPrefetcher"] = None,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -595,6 +597,9 @@ def process_completed_tasks(
         output_backpressure_guard: Escape hatch for streaming output
             backpressure. Bumps a fully-throttled output limit (0 bytes) to
             1 byte when the guard signals a stall.
+        metadata_prefetcher: If provided, deferred ``meta_ref``s are fetched on
+            its background thread and emitted (in per-op order) as they become
+            ready, instead of a synchronous batched ``ray.get`` on this thread.
     Returns:
         The number of errored blocks.
     """
@@ -664,34 +669,37 @@ def process_completed_tasks(
         #
         # 1. Iterate per-op (existing order: topology order, tasks
         #    sorted by index, per-op budget shared across tasks).
-        # 2. Each ``DataOpTask.on_data_ready`` is invoked with the
-        #    shared ``deferred`` list. Inside it, every pulled pair is
-        #    appended to ``deferred`` instead of being emitted; budget
+        # 2. Each ``DataOpTask.on_data_ready`` is invoked with its op's
+        #    ``op_deferred`` list. Inside it, every pulled pair is
+        #    appended to that list instead of being emitted; budget
         #    arithmetic uses block_ref's local ``object_size`` when
         #    known, or the operator's running average block size when not
         #    (no per-ref ``ray.get``). NO ``RefBundle`` is emitted during
         #    the on_data_ready loop.
-        # 3. After all on_data_ready calls finish, issue ONE batched
-        #    ``ray.get`` covering all deferred entries' ``meta_refs``.
-        # 4. Replay ``deferred`` in append order — preserving today's
-        #    per-op, per-task, per-pair emission order exactly.
+        # 3. Hand each op's pairs to the ``MetadataPrefetcher`` (background
+        #    ``ray.get``), or, with no prefetcher, do one synchronous batched
+        #    ``ray.get`` + replay on this thread.
+        # 4. Emit in per-op append order — preserving today's per-op,
+        #    per-task, per-pair emission order exactly.
         # 5. Fire ``task_done_callback`` for any task whose
-        #    ``_task_done_pending`` flag is set, using its now-final
-        #    ``_last_block_meta`` from the replay.
-        deferred: List[DeferredEmit] = []
-        tasks_for_done_check: List[DataOpTask] = []
+        #    ``_task_done_pending`` flag is set, once all its pairs are emitted.
+        # Sync-fallback accumulators (used only when no prefetcher is given).
+        sync_deferred: List[DeferredEmit] = []
+        sync_tasks_for_done: List[DataOpTask] = []
 
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            op_deferred: List[DeferredEmit] = []
+            op_data_tasks: List[DataOpTask] = []
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
                             remaining_output_budget.get(state, None),
-                            deferred_emits=deferred,
+                            deferred_emits=op_deferred,
                         )
-                        tasks_for_done_check.append(task)
+                        op_data_tasks.append(task)
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
                             remaining_output_budget[state] = max(
@@ -730,10 +738,21 @@ def process_completed_tasks(
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
 
-        # Steps 3–5: batched fetch + replay + postponed done callbacks.
-        # `replay_deferred_emits` records the local-size hit rate / closeness
-        # telemetry (it has both the local object_size and the exact size).
-        replay_deferred_emits(deferred, tasks_for_done_check)
+            if metadata_prefetcher is not None:
+                # Async: queue this op's pairs for background fetch; they emit
+                # in per-op order in `drain()` once their metadata is ready.
+                metadata_prefetcher.submit(state, op_deferred, op_data_tasks)
+            else:
+                sync_deferred.extend(op_deferred)
+                sync_tasks_for_done.extend(op_data_tasks)
+
+        if metadata_prefetcher is not None:
+            # Emit whatever's ready (including pairs deferred in prior
+            # iterations whose metadata has since arrived), in per-op order.
+            metadata_prefetcher.drain()
+        else:
+            # Synchronous: one batched ray.get + replay on this thread.
+            replay_deferred_emits(sync_deferred, sync_tasks_for_done)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
