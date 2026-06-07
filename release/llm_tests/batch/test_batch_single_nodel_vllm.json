@@ -1,26 +1,34 @@
 {
   "batch_size": 64,
   "concurrency": 1,
-  "elapsed_s": 97.82327209226787,
+  "elapsed_s": 92.24715958256274,
   "engine_metrics": {
-    "generation_token_throughput_tok_per_s": 1022.2516366624807,
+    "generation_token_throughput_tok_per_s": 1084.0442182991915,
     "generation_tokens_total": 100000.0,
-    "mean_e2e_latency_s": 0.6940999999999885,
+    "mean_e2e_latency_s": 0.697599999999989,
     "mean_tpot_s": 0.004999999999999916,
     "prompt_tokens_total": 181435.0,
     "request_count": 1000,
-    "total_token_throughput_tok_per_s": 2876.9738936410527,
+    "total_token_throughput_tok_per_s": 3050.8798457703297,
     "total_tokens_total": 281435.0
   },
   "job_metrics": {
-    "avg_job_latency_s": 0.09782327209226788,
-    "elapsed_s": 97.82327209226787,
-    "engine_mean_e2e_latency_s": 0.6940999999999885,
-    "estimated_ray_data_overhead_per_req_s": 0.0,
+    "elapsed_s": 92.24715958256274,
+    "engine_mean_e2e_latency_s": 0.697599999999989,
+    "estimated_ray_data_overhead_per_req_s": 1.2083100637985504,
+    "mean_request_latency_s": 1.9059100637985393,
+    "request_latency_stats_s": {
+      "count": 1000,
+      "mean": 1.9059100637985393,
+      "p50": 1.912128391675651,
+      "p90": 2.4330865245312454,
+      "p95": 2.4665048825554545,
+      "p99": 2.5074012399464847
+    },
     "samples": 1000,
-    "throughput_req_per_s": 10.222516366624806
+    "throughput_req_per_s": 10.840442182991914
   },
   "model": "facebook/opt-1.3b",
   "samples": 1000,
-  "throughput_req_per_s": 10.222516366624806
+  "throughput_req_per_s": 10.840442182991914
 }
