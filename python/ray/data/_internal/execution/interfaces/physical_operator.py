@@ -115,15 +115,22 @@ class DataOpTask(OpTask):
 
     # Measurement-only telemetry (process-wide, across all DataOpTasks): how
     # often a block's size is known locally via `get_local_object_locations`
-    # (no RPC), and whether that local `object_size` matches `meta.size_bytes`
-    # obtained from `ray.get(meta_ref)`. This informs whether the per-pair
-    # `ray.get(meta_ref)` in `on_data_ready` can be replaced by the local size
-    # lookup. The lookup is local but still adds per-pair overhead, so this is
-    # intended for measurement runs, not production.
+    # (no RPC), and *how close* that local `object_size` is to `meta.size_bytes`
+    # obtained from `ray.get(meta_ref)`. They are related but not identical
+    # quantities (`object_size` is the object-store size = serialized data +
+    # object metadata, with Arrow IPC framing/padding; `meta.size_bytes` is the
+    # logical block nbytes), so we report the aggregate ratio, the within-1%
+    # rate, and the worst-case relative difference rather than exact equality.
+    # This informs whether the per-pair `ray.get(meta_ref)` in `on_data_ready`
+    # can be replaced by the local size lookup. The lookup is local but still
+    # adds per-pair overhead, so this is intended for measurement runs, not
+    # production.
     _size_probe_total = 0
     _size_probe_local_hits = 0
-    _size_probe_match = 0
-    _size_probe_mismatch = 0
+    _size_probe_sum_object = 0  # sum of object_size over local hits
+    _size_probe_sum_meta = 0  # sum of meta.size_bytes over local hits
+    _size_probe_within_1pct = 0  # hits where |object-meta|/meta <= 1%
+    _size_probe_max_rel_diff = 0.0  # worst-case |object-meta|/meta
     # Emit a cumulative snapshot every this many probed pairs.
     _SIZE_PROBE_LOG_EVERY = 5000
 
@@ -309,13 +316,16 @@ class DataOpTask(OpTask):
 
     def _record_local_size_probe(self, meta_size_bytes: int) -> None:
         """Measurement-only: how often is the block's size known locally, and
-        does it match the metadata size?
+        how close is it to the metadata size?
 
         Looks up ``self._pending_block_ref``'s ``object_size`` via
         ``get_local_object_locations`` (local, no RPC) and compares it to
         ``meta_size_bytes`` (``meta.size_bytes`` from ``ray.get(meta_ref)``,
-        the source of truth). Accumulates process-wide counters and logs a
-        cumulative snapshot every ``_SIZE_PROBE_LOG_EVERY`` probed pairs.
+        the source of truth). ``object_size`` (serialized data + object
+        metadata) is consistently a bit larger than the logical
+        ``meta.size_bytes``, so we track the aggregate ratio, the within-1%
+        rate, and the worst-case relative difference instead of exact equality.
+        Logs a cumulative snapshot every ``_SIZE_PROBE_LOG_EVERY`` probed pairs.
 
         Note: this is pure instrumentation — it does NOT change behavior. The
         existing ``ray.get(meta_ref)`` path still drives emits and budgets.
@@ -330,27 +340,29 @@ class DataOpTask(OpTask):
 
         if local_size is not None:
             cls._size_probe_local_hits += 1
-            if local_size == meta_size_bytes:
-                cls._size_probe_match += 1
-            else:
-                cls._size_probe_mismatch += 1
+            cls._size_probe_sum_object += local_size
+            cls._size_probe_sum_meta += meta_size_bytes
+            if meta_size_bytes > 0:
+                rel_diff = abs(local_size - meta_size_bytes) / meta_size_bytes
+                if rel_diff <= 0.01:
+                    cls._size_probe_within_1pct += 1
+                if rel_diff > cls._size_probe_max_rel_diff:
+                    cls._size_probe_max_rel_diff = rel_diff
 
         if cls._size_probe_total % cls._SIZE_PROBE_LOG_EVERY == 0:
-            total = cls._size_probe_total
-            hits = cls._size_probe_local_hits
-            hit_pct = 100.0 * hits / total
-            match_pct = 100.0 * cls._size_probe_match / hits if hits else 0.0
+            stats = cls.local_size_probe_stats()
             logger.info(
                 "[local-size-probe] %d/%d (%.1f%%) pairs had a local object_size; "
-                "of those %d/%d (%.1f%%) matched meta.size_bytes "
-                "(%d mismatched).",
-                hits,
-                total,
-                hit_pct,
-                cls._size_probe_match,
-                hits,
-                match_pct,
-                cls._size_probe_mismatch,
+                "object_size/meta.size_bytes ratio=%.4f; within 1%%: %d/%d (%.1f%%); "
+                "max rel diff %.2f%%.",
+                stats["local_size_probe_hits"],
+                stats["local_size_probe_total"],
+                stats["local_size_probe_hit_pct"],
+                stats["local_size_probe_size_ratio"],
+                stats["local_size_probe_within_1pct"],
+                stats["local_size_probe_hits"],
+                stats["local_size_probe_within_1pct_pct"],
+                stats["local_size_probe_max_rel_diff_pct"],
             )
 
     @classmethod
@@ -358,26 +370,36 @@ class DataOpTask(OpTask):
         """Reset the process-wide local-size probe counters (call before a run)."""
         cls._size_probe_total = 0
         cls._size_probe_local_hits = 0
-        cls._size_probe_match = 0
-        cls._size_probe_mismatch = 0
+        cls._size_probe_sum_object = 0
+        cls._size_probe_sum_meta = 0
+        cls._size_probe_within_1pct = 0
+        cls._size_probe_max_rel_diff = 0.0
 
     @classmethod
     def local_size_probe_stats(cls) -> Dict[str, Any]:
         """Return the cumulative local-size probe stats (see
         `_record_local_size_probe`) as a flat dict suitable for benchmark
-        metrics: total probed pairs, local-size hits + hit %, and how many of
-        those hits matched `meta.size_bytes` + match %."""
+        metrics: total probed pairs, local-size hit rate, and how *close* the
+        local object_size is to meta.size_bytes (aggregate ratio, within-1%
+        rate, worst-case relative difference)."""
         total = cls._size_probe_total
         hits = cls._size_probe_local_hits
         return {
             "local_size_probe_total": total,
             "local_size_probe_hits": hits,
             "local_size_probe_hit_pct": (100.0 * hits / total) if total else 0.0,
-            "local_size_probe_match": cls._size_probe_match,
-            "local_size_probe_match_pct": (
-                100.0 * cls._size_probe_match / hits if hits else 0.0
+            # object_size / meta.size_bytes over local hits (~1.0 means the
+            # local size is a faithful proxy for the budget's size_bytes).
+            "local_size_probe_size_ratio": (
+                cls._size_probe_sum_object / cls._size_probe_sum_meta
+                if cls._size_probe_sum_meta
+                else 0.0
             ),
-            "local_size_probe_mismatch": cls._size_probe_mismatch,
+            "local_size_probe_within_1pct": cls._size_probe_within_1pct,
+            "local_size_probe_within_1pct_pct": (
+                100.0 * cls._size_probe_within_1pct / hits if hits else 0.0
+            ),
+            "local_size_probe_max_rel_diff_pct": 100.0 * cls._size_probe_max_rel_diff,
         }
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
