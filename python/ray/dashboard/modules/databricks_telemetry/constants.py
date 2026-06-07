@@ -112,14 +112,19 @@ class MetricSpec:
 # Extensive metrics (counts/bytes/cores) and counters reduce with sum.
 # Memory / GPU-memory utilization % is derived downstream from the summed
 # used / available bytes — Ray exports no direct utilization gauge.
+#
+# Deliberately NOT collected — already in the usage-stats report
+# (UsageStatsToReport, python/ray/_common/usage/usage_lib.py): cluster CPU
+# count (total_num_cpus), total memory (total_memory_gb), GPU count
+# (total_num_gpus), and node count (total_num_nodes). We only collect the
+# *runtime/utilization* signals usage stats lacks.
 METRIC_ALLOWLIST: List[MetricSpec] = [
     # --- Node CPU ----------------------------------------------------
     MetricSpec("ray_node_cpu_utilization", "gauge", ("avg", "max", "min", "p95")),
-    MetricSpec("ray_node_cpu_count", "gauge", ("sum",)),  # total cluster CPUs
-    # --- Node memory (bytes; util % derived downstream) --------------
+    # --- Node memory (bytes; util % = used/(used+available) downstream) ----
+    # mem_total omitted: cluster capacity is total_memory_gb in usage stats.
     MetricSpec("ray_node_mem_used", "gauge", ("sum",)),
     MetricSpec("ray_node_mem_available", "gauge", ("sum",)),
-    MetricSpec("ray_node_mem_total", "gauge", ("sum",)),
     # --- Node GPU ----------------------------------------------------
     MetricSpec("ray_node_gpus_utilization", "gauge", ("avg", "max", "min", "p95")),
     MetricSpec("ray_node_gram_used", "gauge", ("sum",)),

@@ -37,12 +37,16 @@ cluster scalar with an outer PromQL aggregation (see §1.2). The result is
 `source` = where Ray reads the value. `meaning` = what one cluster scalar
 represents. `aggs` = which cluster reductions we emit.
 
+We collect only the **runtime/utilization** signals the usage-stats report
+does *not* already carry (see "Deliberately excluded" below).
+`source` = where Ray reads the value. `meaning` = what one cluster scalar
+represents. `aggs` = which cluster reductions we emit.
+
 | Metric | Source | Meaning | Aggs (cluster) |
 |---|---|---|---|
-| _node count_ (derived) | count of `ray_node_cpu_count` series | Nodes in the cluster | count (now), count by `RayNodeType`, peak over 1h |
+| _node count_ (derived) | count of `ray_node_cpu_count` series, by type | Worker/head node counts + hourly peak | count by type, peak over 1h |
 | `ray_node_cpu_utilization` | `psutil.cpu_percent()` / cgroup | Whole-node system CPU %, all processes | avg, max, min, p95 |
-| `ray_node_cpu_count` | `psutil.cpu_count` | Logical CPUs | sum (total cluster CPUs) |
-| `ray_node_mem_used` / `_available` / `_total` | `psutil.virtual_memory` / cgroup | Node memory bytes | sum → util % derived |
+| `ray_node_mem_used` / `_available` | `psutil.virtual_memory` / cgroup | Node memory bytes (used/available) | sum → util % derived |
 | `ray_node_gpus_utilization` | GPU provider (NVML) | Per-GPU utilization % | avg, max, min, p95 |
 | `ray_node_gram_used` / `_available` | GPU provider | Per-GPU memory bytes | sum → util % derived |
 | `ray_memory_manager_worker_eviction` | raylet memory monitor | Worker evictions (counter) | sum of 1h increase |
@@ -50,14 +54,32 @@ represents. `aggs` = which cluster reductions we emit.
 | `ray_data_cpu_usage_cores` / `gpu_usage_cores` | Ray Data stats | Cores used by Data operators | sum across operators |
 | `ray_data_current_bytes` | Ray Data stats | Object-store bytes held by operators | sum across operators |
 
+**Deliberately excluded — already in the usage-stats report**
+(`UsageStatsToReport`, `python/ray/_common/usage/usage_lib.py`), which
+`UsageStatsHead` POSTs to the same `https://usage-stats.ray.io/` sink:
+
+| Not collected | Already reported as |
+|---|---|
+| cluster CPU count (`ray_node_cpu_count` sum) | `total_num_cpus` |
+| total memory (`ray_node_mem_total` sum) | `total_memory_gb` |
+| GPU count | `total_num_gpus` |
+| alive node count | `total_num_nodes` |
+
+This collector's value is the **runtime** signals usage stats lacks
+(utilization %, memory used/available, OOM counts, Ray Data usage). Note
+`ray_data_current_bytes` (object-store bytes *held* by operators) is
+distinct from `total_object_store_memory_gb` (object-store *capacity*), so
+it is kept.
+
 Notes:
 - **Intensive vs extensive reduction.** Percentages (CPU/GPU util) reduce
   across nodes with `avg`/`max`/`min`/`p95` (a cluster-wide `sum` of
-  percentages is meaningless). Additive quantities (bytes, cores, counts)
-  reduce with `sum`.
+  percentages is meaningless). Additive quantities (bytes, cores) reduce
+  with `sum`.
 - **Utilization % is derived**, not exported: memory util =
-  `sum(mem_used) / (sum(mem_used) + sum(mem_available))`; same for GPU
-  memory. There is no `ray_node_mem_utilization` gauge.
+  `sum(mem_used) / (sum(mem_used) + sum(mem_available))` — no `mem_total`
+  needed; same for GPU memory. There is no `ray_node_mem_utilization`
+  gauge.
 
 ### 1.2 PromQL emitted
 
@@ -83,12 +105,13 @@ Additive metrics use `sum`, not these statistical reducers — counters
 (OOM/worker-failure) as `sum(increase(M[3600s]))` and additive gauges
 (counts/bytes/cores) as `sum(last_over_time(M[3600s]))` — see §1.1.
 
-**Node count** is a `count` over the node series, not a value reduction:
+**Node count** is a `count` over the node series, not a value reduction.
+The plain alive-node count is excluded (it's `total_num_nodes` in usage
+stats); we emit only the head/worker split and the hourly peak:
 
 | Key | PromQL | Meaning |
 |---|---|---|
-| `ray_cluster_num_nodes` | `count(ray_node_cpu_count{SessionName='S'})` | nodes up now |
-| `ray_cluster_num_workers` / `_head` | `count(ray_node_cpu_count{SessionName='S', RayNodeType='worker'})` | by node type |
+| `ray_cluster_num_workers` / `_head` | `count(ray_node_cpu_count{SessionName='S', IsHeadNode='false'})` | by node type |
 | `ray_cluster_num_nodes_peak` | `max_over_time(count(ray_node_cpu_count{SessionName='S'})[3600s:60s])` | peak over the hour (autoscaling churn) |
 
 Counting the `ray_node_cpu_count` series (every node's reporter emits it)
@@ -124,13 +147,11 @@ top level is `Extra.forbid` and would reject undeclared keys.
     "ray_node_cpu_utilization_max": "96.0",
     "ray_node_cpu_utilization_min": "3.1",
     "ray_node_cpu_utilization_p95": "78.5",
-    "ray_node_cpu_count_sum": "2864",
     "ray_node_mem_used_sum": "1379000000000",
     "ray_node_mem_available_sum": "812000000000",
     "ray_memory_manager_worker_eviction_sum": "4",
     "ray_node_manager_unexpected_worker_failure_sum": "1",
     "ray_data_cpu_usage_cores_sum": "612",
-    "ray_cluster_num_nodes": "359",
     "ray_cluster_num_workers": "358",
     "ray_cluster_num_head": "1",
     "ray_cluster_num_nodes_peak": "359",

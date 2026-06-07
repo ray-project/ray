@@ -143,12 +143,15 @@ def _node_count_queries(window_s: int, session_name: str) -> Dict[str, str]:
 
     ``count(...)`` counts the number of matching series (one per node) — it
     ignores the metric values, so it yields a node count, not a CPU count.
+
+    The plain alive-node count is omitted: usage stats already reports it as
+    ``total_num_nodes`` (UsageStatsToReport). We only emit what it lacks —
+    the head/worker split and the hourly peak (autoscaling churn).
     """
     sel = f"{NODE_COUNT_METRIC}{{SessionName='{session_name}'}}"
     worker = f"{NODE_COUNT_METRIC}{{SessionName='{session_name}',IsHeadNode='false'}}"
     head = f"{NODE_COUNT_METRIC}{{SessionName='{session_name}',IsHeadNode='true'}}"
     return {
-        "ray_cluster_num_nodes": f"count({sel})",
         "ray_cluster_num_workers": f"count({worker})",
         "ray_cluster_num_head": f"count({head})",
         "ray_cluster_num_nodes_peak": f"max_over_time(count({sel})[{window_s}s:60s])",
