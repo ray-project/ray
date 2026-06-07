@@ -293,6 +293,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(actor_manager),
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
+                                                /*ray_event_recorder=*/nullptr,
                                                 getpid(),
                                                 fake_task_by_state_gauge_,
                                                 fake_actor_by_state_gauge_,

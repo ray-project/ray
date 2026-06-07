@@ -31,6 +31,8 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/metric_constants.h"
+#include "ray/observability/metrics.h"
 #include "ray/pubsub/posting_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -704,6 +706,24 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       {{"worker_id", worker_id.Hex()}});
 
+  // Create the task-event RayEventRecorder. It owns a second EventAggregatorClient (the
+  // TaskEventBuffer keeps its own during the migration; this one becomes the sole sender
+  // once the buffer's aggregator path is removed). The recorder + its deps are owned by
+  // the process (deps) / CoreWorker (recorder); see core_worker_process.h for lifetime.
+  ray_event_recorder_aggregator_client_ =
+      (options.metrics_agent_port > 0)
+          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                             *client_call_manager_)
+          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
+  auto ray_event_recorder = std::make_unique<observability::RayEventRecorder>(
+      *ray_event_recorder_aggregator_client_,
+      ray_event_recorder_io_context_->GetIoService(),
+      RayConfig::instance().ray_event_recorder_max_queued_events(),
+      observability::kMetricSourceCoreWorker,
+      *ray_event_recorder_dropped_events_counter_,
+      local_node_id);
+  ray_event_recorder->StartExportingEvents();
+
   auto core_worker =
       std::make_shared<CoreWorker>(std::move(options),
                                    std::move(worker_context),
@@ -735,6 +755,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
+                                   std::move(ray_event_recorder),
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_,
@@ -862,6 +883,15 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
+
+  // Dependencies for the task-event RayEventRecorder. The recorder gets its own dedicated
+  // io thread (mirroring TaskEventBuffer's dedicated io thread) for its periodic export.
+  // Use `new` + guaranteed copy elision (not make_unique) since ray::stats::Count is not
+  // movable; this mirrors how the gauges above are constructed.
+  ray_event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetRayEventRecorderDroppedEventsCounterMetric()));
+  ray_event_recorder_io_context_ =
+      std::make_unique<InstrumentedIOContextWithThread>("ray_event_recorder");
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

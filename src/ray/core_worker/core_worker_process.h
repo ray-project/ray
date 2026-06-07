@@ -18,10 +18,13 @@
 #include <memory>
 #include <string>
 
+#include "ray/asio/asio_util.h"
 #include "ray/common/metrics.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
+#include "ray/observability/ray_event_recorder.h"
+#include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/mutex_protected.h"
 
@@ -178,6 +181,15 @@ class CoreWorkerProcessImpl {
   /// Shared client call manager across all gRPC clients in the core worker process.
   /// This is used by the CoreWorker and the MetricsAgentClient.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  /// Dependencies of the task-event RayEventRecorder (the path that is replacing the
+  /// direct TaskEventBuffer->aggregator send). The recorder itself is owned by
+  /// CoreWorker, but these must out-live it, so they are declared here (before
+  /// core_worker_) and torn down after it. The recorder runs its periodic export on its
+  /// own dedicated thread, mirroring TaskEventBuffer's dedicated io thread.
+  std::unique_ptr<InstrumentedIOContextWithThread> ray_event_recorder_io_context_;
+  std::unique_ptr<ray::stats::Count> ray_event_recorder_dropped_events_counter_;
+  std::unique_ptr<rpc::EventAggregatorClient> ray_event_recorder_aggregator_client_;
 
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
