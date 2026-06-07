@@ -89,6 +89,10 @@ class BayesOptSearch(Searcher):
             we terminate the experiment.
         skip_duplicate: skip duplicate config
         analysis: Optionally, the previous analysis to integrate.
+        repeat_float_precision: Decimal precision used when hashing float
+            values in a config to detect duplicate suggestions. Higher
+            values make the duplicate check stricter, so fewer distinct
+            configurations are treated as repeats and skipped. Defaults to 5.
 
     Tune automatically converts search spaces to BayesOptSearch's format:
 
@@ -151,6 +155,7 @@ class BayesOptSearch(Searcher):
         patience: int = 5,
         skip_duplicate: bool = True,
         analysis: Optional["ExperimentAnalysis"] = None,
+        repeat_float_precision: int = 5,
     ):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
@@ -160,8 +165,11 @@ class BayesOptSearch(Searcher):
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._config_counter = defaultdict(int)
         self._patience = patience
-        # int: Precision at which to hash values.
-        self.repeat_float_precision = 5
+        if repeat_float_precision < 0:
+            raise ValueError("repeat_float_precision must be non-negative.")
+        # int: Precision at which to hash float values when checking for
+        # duplicate suggestions.
+        self.repeat_float_precision = repeat_float_precision
         if self._patience <= 0:
             raise ValueError("patience must be set to a value greater than 0!")
         self._skip_duplicate = skip_duplicate
