@@ -812,7 +812,14 @@ class Expr(ABC):
             >>> ds = ds.with_column("x_filled", col("x").fill_null(0))
             >>> # Result: x_filled = [1, 0]
         """
-        return _create_pyarrow_compute_udf(pc.fill_null)(self, fill_value)
+
+        @pyarrow_udf(return_dtype=self.data_type)
+        def fill_null_udf(arr: pyarrow.Array) -> pyarrow.Array:
+            if pyarrow.types.is_null(arr.type):
+                arr = arr.cast(pyarrow.scalar(fill_value).type)
+            return pc.fill_null(arr, fill_value)
+
+        return fill_null_udf(self)
 
     @property
     def arr(self) -> "_ArrayNamespace":

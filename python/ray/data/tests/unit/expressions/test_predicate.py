@@ -129,6 +129,13 @@ class TestFillNull:
         result = eval_expr(expr, sample_data)
         assert result.tolist() == ["Alice", "unknown", "Charlie", "Diana", "unknown"]
 
+    def test_fill_null_all_null_column(self):
+        """Test fill_null on an all-null column (null-typed Arrow array)."""
+        data = pd.DataFrame({"value": [None, None, None]})
+        expr = col("value").fill_null(0)
+        result = eval_expr(expr, data)
+        assert result.tolist() == [0, 0, 0]
+
 
 class TestNullPredicateCombinations:
     """Tests for null predicates combined with other operations."""
