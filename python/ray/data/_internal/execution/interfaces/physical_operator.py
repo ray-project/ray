@@ -131,6 +131,12 @@ class DataOpTask(OpTask):
     _size_probe_sum_meta = 0  # sum of meta.size_bytes over local hits
     _size_probe_within_1pct = 0  # hits where |object-meta|/meta <= 1%
     _size_probe_max_rel_diff = 0.0  # worst-case |object-meta|/meta
+    # Histogram of per-hit relative difference |object-meta|/meta, used to
+    # derive p50/p90. Bucket i covers [i*_REL_DIFF_BUCKET, (i+1)*_REL_DIFF_BUCKET);
+    # the last bucket is an overflow for rel diffs >= 100%.
+    _REL_DIFF_BUCKET = 0.001  # 0.1% resolution
+    _REL_DIFF_NBUCKETS = 1001  # 0..100% in 0.1% steps + overflow
+    _size_probe_rel_diff_hist: List[int] = [0] * _REL_DIFF_NBUCKETS
     # Emit a cumulative snapshot every this many probed pairs.
     _SIZE_PROBE_LOG_EVERY = 5000
 
@@ -348,22 +354,44 @@ class DataOpTask(OpTask):
                     cls._size_probe_within_1pct += 1
                 if rel_diff > cls._size_probe_max_rel_diff:
                     cls._size_probe_max_rel_diff = rel_diff
+                bucket = int(rel_diff / cls._REL_DIFF_BUCKET)
+                if bucket >= cls._REL_DIFF_NBUCKETS:
+                    bucket = cls._REL_DIFF_NBUCKETS - 1
+                cls._size_probe_rel_diff_hist[bucket] += 1
 
         if cls._size_probe_total % cls._SIZE_PROBE_LOG_EVERY == 0:
             stats = cls.local_size_probe_stats()
             logger.info(
                 "[local-size-probe] %d/%d (%.1f%%) pairs had a local object_size; "
-                "object_size/meta.size_bytes ratio=%.4f; within 1%%: %d/%d (%.1f%%); "
-                "max rel diff %.2f%%.",
+                "object_size/meta.size_bytes ratio=%.4f; rel diff p50=%.2f%% "
+                "p90=%.2f%% max=%.2f%%; within 1%%: %.1f%%.",
                 stats["local_size_probe_hits"],
                 stats["local_size_probe_total"],
                 stats["local_size_probe_hit_pct"],
                 stats["local_size_probe_size_ratio"],
-                stats["local_size_probe_within_1pct"],
-                stats["local_size_probe_hits"],
-                stats["local_size_probe_within_1pct_pct"],
+                stats["local_size_probe_rel_diff_p50_pct"],
+                stats["local_size_probe_rel_diff_p90_pct"],
                 stats["local_size_probe_max_rel_diff_pct"],
+                stats["local_size_probe_within_1pct_pct"],
             )
+
+    @classmethod
+    def _rel_diff_percentile(cls, frac: float) -> float:
+        """Approximate percentile (as a percent) of the per-hit relative
+        difference |object_size - meta.size_bytes| / meta.size_bytes, from the
+        histogram. Returns the lower edge of the bucket containing the
+        percentile (0.1% resolution)."""
+        hist = cls._size_probe_rel_diff_hist
+        total = sum(hist)
+        if total == 0:
+            return 0.0
+        target = frac * total
+        cumulative = 0
+        for i, count in enumerate(hist):
+            cumulative += count
+            if cumulative >= target:
+                return 100.0 * i * cls._REL_DIFF_BUCKET
+        return 100.0 * (cls._REL_DIFF_NBUCKETS - 1) * cls._REL_DIFF_BUCKET
 
     @classmethod
     def reset_local_size_probe(cls) -> None:
@@ -374,6 +402,7 @@ class DataOpTask(OpTask):
         cls._size_probe_sum_meta = 0
         cls._size_probe_within_1pct = 0
         cls._size_probe_max_rel_diff = 0.0
+        cls._size_probe_rel_diff_hist = [0] * cls._REL_DIFF_NBUCKETS
 
     @classmethod
     def local_size_probe_stats(cls) -> Dict[str, Any]:
@@ -399,6 +428,10 @@ class DataOpTask(OpTask):
             "local_size_probe_within_1pct_pct": (
                 100.0 * cls._size_probe_within_1pct / hits if hits else 0.0
             ),
+            # Per-hit relative-difference distribution (object_size vs
+            # meta.size_bytes), as percentages.
+            "local_size_probe_rel_diff_p50_pct": cls._rel_diff_percentile(0.50),
+            "local_size_probe_rel_diff_p90_pct": cls._rel_diff_percentile(0.90),
             "local_size_probe_max_rel_diff_pct": 100.0 * cls._size_probe_max_rel_diff,
         }
 
