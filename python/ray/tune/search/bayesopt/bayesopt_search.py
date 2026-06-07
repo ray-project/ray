@@ -165,6 +165,8 @@ class BayesOptSearch(Searcher):
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._config_counter = defaultdict(int)
         self._patience = patience
+        if not isinstance(repeat_float_precision, int):
+            raise TypeError("repeat_float_precision must be an integer.")
         if repeat_float_precision < 0:
             raise ValueError("repeat_float_precision must be non-negative.")
         # int: Precision at which to hash float values when checking for

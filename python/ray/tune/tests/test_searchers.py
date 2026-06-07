@@ -822,12 +822,18 @@ class BayesOptHashPrecisionTest(unittest.TestCase):
         searcher = BayesOptSearch(repeat_float_precision=16)
         self.assertEqual(searcher.repeat_float_precision, 16)
 
-    def testNegativeRepeatFloatPrecisionRaises(self):
+    def testInvalidRepeatFloatPrecisionRaises(self):
         pytest.importorskip("bayes_opt")
         from ray.tune.search.bayesopt import BayesOptSearch
 
         with self.assertRaises(ValueError):
             BayesOptSearch(repeat_float_precision=-1)
+
+        with self.assertRaises(TypeError):
+            BayesOptSearch(repeat_float_precision="5")
+
+        with self.assertRaises(TypeError):
+            BayesOptSearch(repeat_float_precision=5.5)
 
 
 if __name__ == "__main__":
