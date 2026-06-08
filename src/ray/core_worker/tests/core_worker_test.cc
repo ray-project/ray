@@ -50,6 +50,7 @@
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/object_manager/plasma/fake_plasma_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
@@ -293,7 +294,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(actor_manager),
                                                 task_execution_service_,
                                                 std::move(task_event_buffer),
-                                                /*ray_event_recorder=*/nullptr,
+                                                std::make_unique<observability::FakeRayEventRecorder>(),
                                                 getpid(),
                                                 fake_task_by_state_gauge_,
                                                 fake_actor_by_state_gauge_,
