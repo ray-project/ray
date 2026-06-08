@@ -17,7 +17,7 @@ from typing import (
 )
 
 import ray
-from .ref_bundle import RefBundle
+from .ref_bundle import BlockEntry, RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
@@ -604,7 +604,7 @@ def _emit_deferred_entry(d: DeferredEmit, meta_bytes: bytes) -> None:
     _record_local_size_probe(d.local_object_size, meta.size_bytes)
     d.task._output_ready_callback(
         RefBundle(
-            [(d.block_ref, meta)],
+            [BlockEntry(d.block_ref, meta)],
             owns_blocks=True,
             schema=meta_with_schema.schema,
         ),
