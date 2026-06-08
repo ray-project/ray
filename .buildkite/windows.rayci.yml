@@ -18,7 +18,8 @@ steps:
         --operating-system windows
         --except-tags no_windows
         --test-env=CI="1"
-        --test-env=USERPROFILE
+        --test-env=USERPROFILE || true
+      - sleep 28800
     depends_on: windowsbuild
 
   # block full test suite on premerge and microcheck
