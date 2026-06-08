@@ -6,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -81,19 +81,21 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler_name = "py-spy"
 
-    async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
-        """
-        Capture and dump a trace for a specified process.
+    async def trace_dump(
+        self, pid: int, native: bool = False, subprocesses: bool = False
+    ) -> Tuple[bool, str]:
+        """Capture and dump a trace for a specified process.
 
         Args:
             pid: The process ID (PID) of the target process for trace capture.
-            native (bool, optional): If True, includes native (C/C++) stack frames.
+            native: If True, includes native (C/C++) stack frames.
                 Default is False.
+            subprocesses: If True, also dumps stack traces for
+                child processes of the target process. Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the trace capture operation and a string with the
-                trace data or an error message.
+             A tuple containing a boolean indicating the success of the trace
+                capture operation and a string with the trace data or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
@@ -103,6 +105,8 @@ class CpuProfilingManager:
         # We
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(
@@ -119,24 +123,31 @@ class CpuProfilingManager:
             return True, decode(stdout)
 
     async def cpu_profile(
-        self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
-    ) -> (bool, str):
-        """
-        Perform CPU profiling on a specified process.
+        self,
+        pid: int,
+        format: str = "flamegraph",
+        duration: float = 5,
+        native: bool = False,
+        idle: bool = False,
+        subprocesses: bool = False,
+    ) -> Tuple[bool, str]:
+        """Perform CPU profiling on a specified process.
 
         Args:
             pid: The process ID (PID) of the target process to be profiled.
-                format (str, optional): The format of the CPU profile output.
-                Default is "flamegraph".
-            duration (float, optional): The duration of the profiling
-                session in seconds. Default is 5 seconds.
-            native (bool, optional): If True, includes native (C/C++) stack frames.
-                Default is False.
+            format: The format of the CPU profile output. Default is "flamegraph".
+            duration: The duration of the profiling session in seconds.
+                Default is 5 seconds.
+            native: If True, includes native (C/C++) stack frames. Default is False.
+            idle: If True, includes off-CPU / sleeping threads (e.g. threads
+                blocked on locks, I/O, or CUDA syncs). Default is False.
+            subprocesses: If True, also profiles child
+                processes of the target process (e.g. data loader or
+                multiprocess inference workers). Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the profiling operation and a string with the
-                profile data or an error message.
+            A tuple containing a boolean indicating the success of the profiling
+                operation and a string with the profile data or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
@@ -170,6 +181,10 @@ class CpuProfilingManager:
         ]
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if idle:
+            cmd.append("--idle")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(
@@ -198,23 +213,18 @@ class MemoryProfilingManager:
         profiler_filename: str,
         format: str = "flamegraph",
         leaks: bool = False,
-    ) -> (bool, str):
-        """
-        Convert the Memray profile result to specified format.
+    ) -> Tuple[bool, str]:
+        """Convert the Memray profile result to specified format.
 
         Args:
             pid: The process ID (PID) associated with the profiling operation.
-                profiler_filename: The filename of the profiler output to
-                be processed.
-            format (str, optional): The format of the profile result.
-                Default is "flamegraph".
-            leaks (bool, optional): If True, include memory leak information in
-                the profile result.
+            profiler_filename: The filename of the profiler output to be processed.
+            format: The format of the profile result. Default is "flamegraph".
+            leaks: If True, include memory leak information in the profile result.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string with the processed profile result
-                or an error message.
+            A tuple containing a boolean indicating the success of the operation
+                and a string with the processed profile result or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
@@ -271,23 +281,20 @@ class MemoryProfilingManager:
         native: bool = False,
         trace_python_allocators: bool = False,
         verbose: bool = False,
-    ) -> (bool, str):
-        """
-        Attach a Memray profiler to a specified process.
+    ) -> Tuple[bool, str]:
+        """Attach a Memray profiler to a specified process.
 
         Args:
             pid: The process ID (PID) of the target process which
                 the profiler attached to.
-            native (bool, optional): If True, includes native (C/C++) stack frames.
+            native: If True, includes native (C/C++) stack frames. Default is False.
+            trace_python_allocators: If True, includes Python stack frames.
                 Default is False.
-            trace_python_allocators (bool, optional): If True, includes Python
-                stack frames. Default is False.
-            verbose (bool, optional): If True, enables verbose output.
-                Default is False.
+            verbose: If True, enables verbose output. Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string of a success message or an error message.
+            A tuple containing a boolean indicating the success of the operation
+                and a string of a success message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
@@ -333,19 +340,17 @@ class MemoryProfilingManager:
         self,
         pid: int,
         verbose: bool = False,
-    ) -> (bool, str):
-        """
-        Detach a profiler from a specified process.
+    ) -> Tuple[bool, str]:
+        """Detach a profiler from a specified process.
 
         Args:
             pid: The process ID (PID) of the target process the
                 profiler detached from.
-            verbose (bool, optional): If True, enables verbose output.
-                Default is False.
+            verbose: If True, enables verbose output. Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string of a success message or an error message.
+            A tuple containing a boolean indicating the success of the operation
+                and a string of a success message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
