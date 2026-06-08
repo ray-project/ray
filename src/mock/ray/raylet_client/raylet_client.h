@@ -166,8 +166,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(void,
               FreeLocalObjects,
-              (const rpc::FreeLocalObjectsRequest &request,
-               const rpc::ClientCallback<rpc::FreeLocalObjectsReply> &callback),
+              (const rpc::FreeLocalObjectsRequest &request),
               (override));
 };
 
