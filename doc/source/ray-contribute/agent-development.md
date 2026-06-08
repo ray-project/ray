@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How to configure and use AI coding agents like Claude Code on the Ray codebase, including the repository's shared CLAUDE.md instructions, rules, skills, and personal environment setup. Read this to work effectively with AI coding agents when developing Ray."
+---
+
 (agent-development)=
 
 # Using Agents for Development

@@ -105,6 +105,10 @@ def client_mode_hook(
             local (non-client) implementation. They are stripped before the
             call is redirected to the Ray Client, so the client API does not
             need to accept them. On the local path they pass through unchanged.
+            as a decorator.
+
+    Returns:
+        The wrapped function that dispatches to the regular or client version.
     """
 
     def decorator(func: F) -> F:

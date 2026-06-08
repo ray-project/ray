@@ -15,14 +15,17 @@ from ray.llm._internal.serve.utils.server_utils import (
 logger = get_logger(__file__)
 
 
-def get_request_id(request) -> str:
+def get_request_id(request: Request) -> str:
     """Fetches request-id from Starlette's request object.
 
     NOTE: This method relies on "request_id" value to be injected into the
-    Starlette's `request.state` via `inject_request_id` middleware
+    Starlette's ``request.state`` via ``inject_request_id`` middleware.
 
-    :param request: Starlette request object
-    :return: (optional) Id allowing to identify particular user
+    Args:
+        request: Starlette request object.
+
+    Returns:
+        Id allowing to identify the particular request, or ``None`` if not set.
     """
     return getattr(request.state, "request_id", None)
 
@@ -163,13 +166,16 @@ class SetRequestIdMiddleware:
         return await self.app(scope, receive, send)
 
 
-def get_user_id(request) -> Optional[str]:
+def get_user_id(request: Request) -> Optional[str]:
     """Fetches user id inside Starlette's request object.
 
     NOTE: This method relies on "user_id" value to be injected into the
-    Starlette's `request.state` via authentication middleware
+    Starlette's ``request.state`` via authentication middleware.
 
-    :param request: Starlette request object
-    :return: (optional) Id identifying particular user
+    Args:
+        request: Starlette request object.
+
+    Returns:
+        Id identifying the particular user, or ``None`` if not set.
     """
     return getattr(request.state, "user_id", None)
