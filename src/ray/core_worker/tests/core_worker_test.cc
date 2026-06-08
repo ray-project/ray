@@ -152,7 +152,7 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        [](const ObjectID &, const std::vector<NodeID> &) {},
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
