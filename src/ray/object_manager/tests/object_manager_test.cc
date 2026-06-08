@@ -76,8 +76,6 @@ class ObjectManagerTest : public ::testing::Test {
         [](const ObjectID &object_id) -> std::string { return ""; },
         // pin_object
         [](const ObjectID &object_id) -> std::unique_ptr<RayObject> { return nullptr; },
-        // fail_pull_request
-        [](const ObjectID &object_id, rpc::ErrorType error_type) {},
         fake_plasma_client_,
         nullptr,
         [](const std::string &address,
@@ -87,6 +85,12 @@ class ObjectManagerTest : public ::testing::Test {
               address, port, client_call_manager);
         },
         rpc_context_);
+  }
+
+  void InstallPullPlaceholder(const ObjectID &object_id, int64_t size) {
+    rpc::Address owner;
+    ASSERT_TRUE(
+        object_manager_->buffer_pool_.CreateChunk(object_id, owner, size, 0, 0).ok());
   }
 
   NodeID local_node_id_;
@@ -103,5 +107,25 @@ class ObjectManagerTest : public ::testing::Test {
   std::unique_ptr<ObjectManager> object_manager_;
   std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 };
+
+TEST_F(ObjectManagerTest, MarkObjectFailedReleasesPlaceholderAndWritesSentinel) {
+  // While a pull is in flight, we put an unsealed buffer at that
+  // ObjectID slot in plasma (so we can stream chunks into it). If the
+  // pull fails (e.g., the owner dies or it times out), we must release
+  // the slot before writing the error sentinel; otherwise the write
+  // collides with the slot and we pull forever.
+  ObjectID id = ObjectID::FromRandom();
+  InstallPullPlaceholder(id, 100);
+  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_.contains(id));
+  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_[id].second.empty());
+
+  object_manager_->MarkObjectFailed(id, rpc::ErrorType::OWNER_DIED);
+
+  ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_.contains(id));
+  std::string expected_meta =
+      std::to_string(static_cast<int>(rpc::ErrorType::OWNER_DIED));
+  const auto &actual_meta = fake_plasma_client_->objects_in_plasma_[id].second;
+  EXPECT_EQ(std::string(actual_meta.begin(), actual_meta.end()), expected_meta);
+}
 
 }  // namespace ray

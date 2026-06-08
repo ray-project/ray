@@ -1,3 +1,6 @@
+.. meta::
+    :description: Step-by-step instructions for building Ray from source, including Python-only fast-loop development, full C++ editable installs, manylinux wheels, and Docker images. Use this to set up a development environment for making and testing changes to Ray.
+
 .. _building-ray:
 
 Building Ray from source

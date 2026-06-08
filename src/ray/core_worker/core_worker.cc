@@ -4508,8 +4508,8 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
   return raylet_client_pool_->GetOrConnectByAddress(address);
 }
 
-void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
-                                        const std::vector<NodeID> &locations) {
+void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
+                                        const absl::flat_hash_set<NodeID> &locations) {
   rpc::FreeLocalObjectsRequest request;
   request.add_object_ids(object_id.Binary());
 
@@ -4518,16 +4518,7 @@ void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
     if (client == nullptr) {
       continue;
     }
-    client->FreeLocalObjects(
-        request,
-        [object_id, node_id](const Status &status,
-                             const rpc::FreeLocalObjectsReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(WARNING).WithField(object_id)
-                << "FreeLocalObjects RPC to node " << node_id
-                << " failed: " << status.ToString();
-          }
-        });
+    client->FreeLocalObjects(request);
   }
 }
 

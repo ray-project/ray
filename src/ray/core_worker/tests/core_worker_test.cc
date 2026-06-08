@@ -151,7 +151,7 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        [](const ObjectID &, const std::vector<NodeID> &) {},
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
@@ -650,12 +650,13 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
   auto is_node_dead = [](const NodeID &) { return false; };
-  auto spread_free_local_objects = [](const ObjectID &, const std::vector<NodeID> &) {};
+  auto free_object_on_nodes_async = [](const ObjectID &,
+                                       const absl::flat_hash_set<NodeID> &) {};
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,
                                is_node_dead,
-                               spread_free_local_objects,
+                               free_object_on_nodes_async,
                                *std::make_shared<ray::observability::FakeGauge>(),
                                *std::make_shared<ray::observability::FakeGauge>());
 

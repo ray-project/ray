@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-from ray._raylet import GcsClient
+from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 
 # TODO(rickyx): We should eventually remove these imports
 # when we deprecate the v1 kuberay node provider.
@@ -42,6 +42,12 @@ from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
+# Annotation the KubeRay operator acts on to terminate the cluster.
+NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
+
+AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
+NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
+
 
 class KubeRayProvider(ICloudInstanceProvider):
     """
@@ -75,11 +81,20 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
         )
+        self._gcs_client = gcs_client
 
         # Below are states that are cached locally.
         self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
+
+        # Below are states for idle-cluster termination tracking.
+        # Monotonic timestamp when no driver was first observed; None resets it.
+        self._no_driver_observed_since: Optional[float] = None
+        # Latest GCS job end time seen; a newer one means a driver came and went.
+        self._last_seen_job_end_time = 0
+        # No-driver timeout (seconds) from the CR; None disables the feature.
+        self._no_driver_timeout_seconds: Optional[float] = None
 
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
@@ -123,6 +138,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
+        self._evaluate_no_driver_termination()
         return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
@@ -460,9 +476,16 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._refresh_no_driver_timeout_seconds()
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
+
+    def _refresh_no_driver_timeout_seconds(self) -> None:
+        """Reads noDriverTimeoutSeconds from the RayCluster CR."""
+        opts = self._ray_cluster["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
+        secs = opts.get(NO_DRIVER_TIMEOUT_SECONDS_KEY)
+        self._no_driver_timeout_seconds = float(secs) if secs is not None else None
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -632,6 +655,97 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
+
+    def _evaluate_no_driver_termination(self) -> None:
+        """Patches the no-driver-TTL annotation once no driver held for the timeout.
+
+        Detached actors do not count as a driver.
+        """
+        # Feature disabled or a driver is attached: reset the anchor.
+        if self._no_driver_timeout_seconds is None:
+            self._no_driver_observed_since = None
+            return
+        has_active_driver, latest_job_end_time = self._driver_status()
+        if has_active_driver:
+            self._no_driver_observed_since = None
+            return
+
+        # A driver finished since the last check: it was attached during the
+        # no-driver window, so restart the timer.
+        if latest_job_end_time > self._last_seen_job_end_time:
+            self._last_seen_job_end_time = latest_job_end_time
+            self._no_driver_observed_since = None
+
+        # Anchor on the first loop with no driver, then dispatch once the
+        # no-driver window reaches the timeout.
+        now = time.monotonic()
+        if self._no_driver_observed_since is None:
+            self._no_driver_observed_since = now
+        if now - self._no_driver_observed_since < self._no_driver_timeout_seconds:
+            return
+        self._set_no_driver_annotation()
+
+    def _driver_status(self) -> Tuple[bool, int]:
+        """Returns whether a non-internal driver is alive and the latest job end time.
+
+        Fails closed: a failed GCS query reports a driver as present.
+        """
+        try:
+            jobs = self._gcs_client.get_all_job_info(
+                skip_submission_job_info_field=True,
+                skip_is_running_tasks_field=True,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to query GCS job table; treating as drivers attached."
+            )
+            return True, self._last_seen_job_end_time
+
+        has_active_driver = False
+        latest_job_end_time = 0
+        for job in jobs.values():
+            # Ray-internal drivers (e.g. the dashboard) are not user activity.
+            if job.config.ray_namespace.startswith(RAY_INTERNAL_NAMESPACE_PREFIX):
+                continue
+            if job.is_dead:
+                latest_job_end_time = max(latest_job_end_time, job.end_time)
+            else:
+                has_active_driver = True
+        return has_active_driver, latest_job_end_time
+
+    def _set_no_driver_annotation(self) -> None:
+        """Sets `ray.io/no-driver-ttl-expired=true` on the RayCluster CR.
+
+        Idempotent via the CR cached this reconcile loop; PATCH errors are swallowed.
+        """
+        annotations = self._ray_cluster.get("metadata", {}).get("annotations", {})
+        if annotations.get(NO_DRIVER_TTL_EXPIRED_ANNOTATION) == "true":
+            return
+
+        path = f"rayclusters/{self._cluster_name}"
+        # Merge patch covers missing and present annotations in one call.
+        payload = {
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
+        }
+        try:
+            self._k8s_api_client.patch(
+                path,
+                payload,
+                content_type="application/merge-patch+json",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to PATCH %s=true on RayCluster %s",
+                NO_DRIVER_TTL_EXPIRED_ANNOTATION,
+                self._cluster_name,
+            )
+            return
+
+        logger.info(
+            "Set %s=true on RayCluster %s.",
+            NO_DRIVER_TTL_EXPIRED_ANNOTATION,
+            self._cluster_name,
+        )
 
     def _get_head_pod_resource_version(self) -> str:
         """

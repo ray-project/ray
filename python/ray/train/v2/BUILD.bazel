@@ -14,7 +14,6 @@ doctest(
             "tests/**",
             "horovod/**",
             "jax/**",
-            # TODO(tseah): enable this after CI has torchft dependencies
             "examples/pytorch/torchft_linear_example.py",
         ],
     ),
@@ -140,7 +139,7 @@ py_test(
 
 py_test(
     name = "test_collective",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_collective.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
@@ -716,6 +715,7 @@ py_test(
     tags = [
         "exclusive",
         "team:ml",
+        "torchft",
         "train_v2",
     ],
     deps = [

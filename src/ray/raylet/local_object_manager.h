@@ -30,8 +30,8 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/clock.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 
 namespace ray {
 
@@ -58,7 +58,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       IObjectDirectory *object_directory,
       ray::observability::MetricInterface &object_store_memory_gauge,
-      ray::raylet::SpillManagerMetrics &spill_manager_metrics)
+      ray::raylet::SpillManagerMetrics &spill_manager_metrics,
+      ClockInterface &clock)
       : self_node_id_(node_id),
         io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
@@ -66,7 +67,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         io_worker_pool_(io_worker_pool),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(std::move(on_objects_freed)),
-        last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         max_spilling_file_size_bytes_(
             RayConfig::instance().max_spilling_file_size_bytes()),
@@ -78,7 +78,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
         object_directory_(object_directory),
         object_store_memory_gauge_(object_store_memory_gauge),
-        spill_manager_metrics_(spill_manager_metrics) {
+        spill_manager_metrics_(spill_manager_metrics),
+        clock_(clock) {
     if (max_spilling_file_size_bytes_ > 0) {
       RAY_CHECK_GE(max_spilling_file_size_bytes_, min_spilling_size_) << absl::StrFormat(
           "Misconfiguration: max_spilling_file_size_bytes (%lld) must be >= "
@@ -266,10 +267,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   void DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
                             int64_t num_retries = kDefaultSpilledObjectDeleteRetries);
 
-  /// Return ids of non-freed local objects whose owner satisfies `matches`.
-  std::vector<ObjectID> GetLocalObjectsMatchedBy(
-      const std::function<bool(const rpc::Address &)> &matches) const;
-
   const NodeID self_node_id_;
 
   /// The io_service/thread this class runs in.
@@ -315,10 +312,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// The field is used to dedup the same restore request while restoration is in
   /// progress.
   absl::flat_hash_set<ObjectID> objects_pending_restore_;
-
-  /// The time that we last sent a FreeObjects request to other nodes for
-  /// objects that have gone out of scope in the application.
-  uint64_t last_free_objects_at_ms_ = 0;
 
   /// Objects that are out of scope in the application and that should be freed
   /// from plasma. The cache is flushed when it reaches the
@@ -425,6 +418,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   ray::observability::MetricInterface &object_store_memory_gauge_;
   ray::raylet::SpillManagerMetrics &spill_manager_metrics_;
+
+  /// Clock used for timing.
+  ClockInterface &clock_;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
 };

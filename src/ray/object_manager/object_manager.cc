@@ -23,9 +23,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/clock.h"
+#include "ray/common/filter_local_objects_util.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/network_util.h"
+#include "ray/util/time.h"
 
 namespace ray {
 
@@ -67,7 +71,6 @@ ObjectManager::ObjectManager(
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
     const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
     std::unique_ptr<ObjectStoreRunner> object_store_internal,
     std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
@@ -117,6 +120,9 @@ ObjectManager::ObjectManager(
     // created and will cause a leak if we never receive the rest of the
     // object. This is a no-op if the object is already sealed or evicted.
     buffer_pool_.AbortCreate(object_id);
+  };
+  auto fail_pull_request = [this](const ObjectID &object_id, rpc::ErrorType error_type) {
+    MarkObjectFailed(object_id, error_type);
   };
   auto get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   const int64_t available_memory = std::max<int64_t>(config.object_store_memory, 0);
@@ -248,6 +254,43 @@ void ObjectManager::CancelPull(uint64_t request_id) {
   for (const auto &object_id : objects_to_cancel) {
     object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
                                                   object_id);
+  }
+}
+
+void ObjectManager::MarkObjectFailed(const ObjectID &object_id,
+                                     rpc::ErrorType error_type) {
+  // TODO(swang): Ideally we should return the error directly to the client
+  // that needs this object instead of storing the object in plasma, which is
+  // not guaranteed to succeed. This avoids hanging the client if plasma is not
+  // reachable.
+  RAY_LOG(DEBUG).WithField(object_id)
+      << "Mark the object as failed due to " << error_type;
+  // Release any in flight pull placeholder first, otherwise the error
+  // sentinel write below would silently collide with it.
+  buffer_pool_.AbortCreate(object_id);
+  const std::string meta = std::to_string(static_cast<int>(error_type));
+  std::shared_ptr<Buffer> data;
+  Status status = buffer_pool_store_client_->TryCreateImmediately(
+      object_id,
+      rpc::Address{},
+      0,
+      reinterpret_cast<const uint8_t *>(meta.c_str()),
+      meta.length(),
+      &data,
+      plasma::flatbuf::ObjectSource::ErrorStoredByRaylet);
+  if (status.ok()) {
+    status = buffer_pool_store_client_->Seal(object_id);
+  }
+  if (!status.ok() && !status.IsObjectExists()) {
+    std::ostringstream stream;
+    stream << "A plasma error (" << status.ToString()
+           << ") occurred while saving error code to object " << object_id
+           << ". Anyone who's getting this object may hang forever.";
+    std::string error_message = stream.str();
+    RAY_LOG(ERROR) << error_message;
+    auto error_data = gcs::CreateErrorTableData(
+        "task", error_message, absl::FromUnixMillis(current_time_ms()));
+    gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
   }
 }
 
@@ -661,25 +704,18 @@ void ObjectManager::HandleNodeRemoved(const NodeID &node_id) {
 
 std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedBy(
     const WorkerID &worker_id) const {
-  return GetLocalObjectsMatchedBy(
-      [&worker_id](const ObjectInfo &info) { return info.owner_worker_id == worker_id; });
+  return GetLocalObjectsFilteredBy(local_objects_,
+                                   [&worker_id](const LocalObjectInfo &info) {
+                                     return info.object_info.owner_worker_id == worker_id;
+                                   });
 }
 
 std::vector<ObjectID> ObjectManager::GetLocalObjectsOwnedByOwnersOn(
     const NodeID &node_id) const {
-  return GetLocalObjectsMatchedBy(
-      [&node_id](const ObjectInfo &info) { return info.owner_node_id == node_id; });
-}
-
-std::vector<ObjectID> ObjectManager::GetLocalObjectsMatchedBy(
-    const std::function<bool(const ObjectInfo &)> &matches) const {
-  std::vector<ObjectID> matched;
-  for (const auto &[object_id, info] : local_objects_) {
-    if (matches(info.object_info)) {
-      matched.push_back(object_id);
-    }
-  }
-  return matched;
+  return GetLocalObjectsFilteredBy(local_objects_,
+                                   [&node_id](const LocalObjectInfo &info) {
+                                     return info.object_info.owner_node_id == node_id;
+                                   });
 }
 
 std::string ObjectManager::DebugString() const {
