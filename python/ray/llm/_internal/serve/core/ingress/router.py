@@ -1,10 +1,15 @@
 import json
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.serve.core.ingress.tokenizer import (
+    REQUEST_TOKEN_IDS_KWARG,
+    TokenizeError,
+    Tokenizer,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -87,7 +92,8 @@ class LLMRouter:
         200 ``{"host": str, "port": int, "replica_id": str}``: pick
             succeeded.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
-            treats any non-200 as a routing failure.
+            treats any non-200 as a routing failure. When using KV aware routing,
+            a pre-routing ``/tokenize`` rejection is surfaced here.
 
     Health:
         ``GET /health`` is exposed as a human-operator convenience.
@@ -98,9 +104,14 @@ class LLMRouter:
     # keeps the guard safe before __init__ runs.
     _warned_no_routing_key: bool = False
 
-    async def __init__(self, server: DeploymentHandle):
+    async def __init__(
+        self, server: DeploymentHandle, pre_routing_tokenization: bool = False
+    ):
         self._handle: DeploymentHandle = server
         self._handle._init()
+        # Pre-routing tokenization is only useful to a KV-aware request router,
+        # which scores replicas based on the prompt token IDs.
+        self._tokenizer = Tokenizer(self._handle) if pre_routing_tokenization else None
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -118,6 +129,16 @@ class LLMRouter:
                 "limit.",
                 body_truncated,
             )
+        # Tokenize only a parseable, routable body; a truncated or unparseable
+        # body has no routing payload, so fall back to token-less routing.
+        request_token_ids = None
+        if self._tokenizer is not None and routing_payload is not None:
+            try:
+                request_token_ids = await self._tokenizer.tokenize(
+                    vars(routing_payload)
+                )
+            except TokenizeError as e:
+                raise HTTPException(status_code=e.status_code, detail=e.message)
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
         # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
@@ -133,6 +154,7 @@ class LLMRouter:
             host, port, replica_id = await self._pick_replica(
                 handle=handle,
                 routing_payload=routing_payload,
+                request_token_ids=request_token_ids,
             )
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
@@ -146,6 +168,7 @@ class LLMRouter:
         self,
         handle: DeploymentHandle,
         routing_payload: Optional[SimpleNamespace] = None,
+        request_token_ids: Optional[List[int]] = None,
     ) -> Tuple[str, int, str]:
         """Pick a backend HTTP replica via the deployment's request router.
 
@@ -159,6 +182,9 @@ class LLMRouter:
         as on the normal path. When ``None``, nothing is forwarded. The router
         sees empty ``args`` and falls back to its default load-balanced pick.
 
+        ``request_token_ids``, when present, is forwarded as a keyword arg so a
+        KV-aware request router can score replicas on prompt-prefix overlap.
+
         ``_reserve=False`` short-circuits the replica-side ``reserve_slot``
         actor RPC and the rejection-retry loop: the real request goes out via
         HAProxy, so Serve's capacity semaphore isn't load-bearing here, and
@@ -166,9 +192,11 @@ class LLMRouter:
         local round-robin implementation.
         """
         route_args = (routing_payload,) if routing_payload is not None else ()
+        choose_replica_kwargs = {"_reserve": False}
+        if request_token_ids is not None:
+            choose_replica_kwargs[REQUEST_TOKEN_IDS_KWARG] = request_token_ids
         async with handle.choose_replica(
-            *route_args,
-            _reserve=False,
+            *route_args, **choose_replica_kwargs
         ) as selection:
             replica = selection._replica
             endpoint = replica.backend_http_endpoint

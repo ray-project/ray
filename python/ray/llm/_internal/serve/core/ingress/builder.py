@@ -22,6 +22,9 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
+    is_kv_aware_routing,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -86,14 +89,23 @@ def _build_openai_ingress_request_router(*, server: Application) -> Application:
     backend currently expects a single endpoint. TODO(eicherseiji): expose
     these as a user-overridable IngressRequestRouterConfig once HAProxy
     supports multiple router replicas.
+
+    Pre-routing tokenization is wired on only when ``server`` uses a
+    KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-    return serve.deployment(
+    deployment = serve.deployment(
         LLMRouter,
         num_replicas=1,
         max_ongoing_requests=1000,
-    ).bind(server=server)
+    )
+    return deployment.bind(
+        server=server,
+        pre_routing_tokenization=is_kv_aware_routing(
+            server._bound_deployment._deployment_config.request_router_config
+        ),
+    )
 
 
 class IngressClsConfig(BaseModelExtended):
