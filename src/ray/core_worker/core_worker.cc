@@ -424,6 +424,7 @@ CoreWorker::CoreWorker(
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
                                                     *task_event_buffer_,
+                                                    *ray_event_recorder_,
                                                     execute_task,
                                                     *actor_task_execution_arg_waiter_,
                                                     options_.initialize_thread_callback);
@@ -2765,6 +2766,7 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
   return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
+                                                *ray_event_recorder_,
                                                 *worker_context_,
                                                 options_.node_ip_address,
                                                 event_name,
