@@ -162,9 +162,12 @@ class VLLMEngineConfig(BaseModelExtended):
         return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
-        runtime_env = self.runtime_env or {}
-        runtime_env.setdefault("env_vars", {})
-        env_vars = runtime_env["env_vars"]
+        # Build a fresh runtime_env (and env_vars dict) so this is a pure read
+        # of self. Callers fold the result into the replica runtime_env and must
+        # not mutate self.runtime_env as a side effect. The ``or {}`` also keeps
+        # an explicit ``env_vars: None`` from raising.
+        runtime_env = dict(self.runtime_env or {})
+        env_vars = dict(runtime_env.get("env_vars") or {})
 
         # Propagate env vars to the runtime env
         for env_var in ENV_VARS_TO_PROPAGATE:
@@ -177,6 +180,8 @@ class VLLMEngineConfig(BaseModelExtended):
             )
             if fractional_gpu is not None:
                 env_vars["VLLM_RAY_PER_WORKER_GPUS"] = str(fractional_gpu)
+
+        runtime_env["env_vars"] = env_vars
         return runtime_env
 
     @classmethod

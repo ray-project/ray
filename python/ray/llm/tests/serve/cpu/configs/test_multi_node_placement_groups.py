@@ -482,5 +482,110 @@ class TestAcceleratorTypeValidation:
         assert config.accelerator_type == "L4"
 
 
+def test_fractional_gpu_sets_per_worker_gpus_env_on_replica():
+    """A fractional GPU bundle must expose VLLM_RAY_PER_WORKER_GPUS to the engine.
+
+    The vLLM engine runs in a subprocess of the replica actor and reads
+    VLLM_RAY_PER_WORKER_GPUS (default 1.0) to size each worker's GPU request, so
+    get_deployment_options must place the derived value on the replica actor's
+    runtime_env. Otherwise the engine requests a full GPU and fractional serving
+    fails to start. Regression test for #63875.
+    """
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config={"bundles": [{"GPU": 0.25, "CPU": 1}]},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+    assert env_vars["VLLM_RAY_PER_WORKER_GPUS"] == "0.25"
+
+
+def test_explicit_per_worker_gpus_env_is_preserved():
+    """A user-provided VLLM_RAY_PER_WORKER_GPUS must win over the derived value."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-1.3b",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(distributed_executor_backend="ray"),
+        placement_group_config={"bundles": [{"GPU": 0.25, "CPU": 1}]},
+        runtime_env={"env_vars": {"VLLM_RAY_PER_WORKER_GPUS": "0.2"}},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+    assert env_vars["VLLM_RAY_PER_WORKER_GPUS"] == "0.2"
+
+
+def test_non_fractional_gpu_does_not_set_per_worker_gpus_env():
+    """Full-GPU bundles must not inject a fractional per-worker GPU value."""
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config={"bundles": [{"GPU": 1, "CPU": 1}]},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    env_vars = serve_options["ray_actor_options"]["runtime_env"].get("env_vars", {})
+    assert "VLLM_RAY_PER_WORKER_GPUS" not in env_vars
+
+
+def test_all_engine_derived_env_vars_reach_replica(monkeypatch):
+    """Every engine-derived env var -- not only VLLM_RAY_PER_WORKER_GPUS -- must
+    reach the replica actor. get_deployment_options consumes the engine's
+    runtime_env builder wholesale, so a future derived var cannot re-open the
+    gap in #63875.
+    """
+
+    def fake_derive(self):
+        return {
+            "env_vars": {
+                "VLLM_RAY_PER_WORKER_GPUS": "0.25",
+                "SOME_NEW_DERIVED_VAR": "x",
+            }
+        }
+
+    monkeypatch.setattr(
+        VLLMEngineConfig, "get_runtime_env_with_local_env_vars", fake_derive
+    )
+
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config={"bundles": [{"GPU": 0.25, "CPU": 1}]},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+    assert env_vars["VLLM_RAY_PER_WORKER_GPUS"] == "0.25"
+    assert env_vars["SOME_NEW_DERIVED_VAR"] == "x"
+
+
+def test_get_runtime_env_with_local_env_vars_does_not_mutate_self():
+    """The builder must be pure: deriving env vars must not write back into
+    self.runtime_env, otherwise folding the result into the replica runtime_env
+    would leak into the config.
+    """
+    llm_config = get_llm_config_with_placement_group(
+        placement_group_config={"bundles": [{"GPU": 0.25, "CPU": 1}]},
+    )
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env_before = engine_config.runtime_env
+
+    out = engine_config.get_runtime_env_with_local_env_vars()
+
+    # The derived value is present in the returned dict ...
+    assert out["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.25"
+    # ... but self was not mutated as a side effect.
+    assert engine_config.runtime_env == runtime_env_before
+    if runtime_env_before is not None:
+        assert "VLLM_RAY_PER_WORKER_GPUS" not in (
+            runtime_env_before.get("env_vars") or {}
+        )
+
+
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
