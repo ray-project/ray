@@ -2,6 +2,7 @@ import copy
 import json
 import math
 import os
+import re
 from dataclasses import asdict
 from typing import List, Tuple
 
@@ -49,9 +50,12 @@ ROW_HEIGHT = 1  # Height of row container
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
 ) -> Tuple[str, List[str], str]:
-    """
-    Reads environment variable configs for overriding uid, global_filters,
-    and the log link URL for a given dashboard.
+    """Reads environment variable configs for overriding uid, global_filters, and the log link URL for a given dashboard.
+
+    Args:
+        dashboard_config: The dashboard whose env-var overrides are read.
+            ``dashboard_config.name`` selects the env-var suffix and
+            ``default_uid`` is used as a fallback.
 
     Returns:
       Tuple with format uid, global_filters, log_link_url
@@ -171,7 +175,12 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
-    """
+    """Render the Grafana dashboard JSON for the given config.
+
+    Args:
+        dashboard_config: Configuration describing the panels and base
+            template JSON file to use for rendering.
+
     Returns:
       Tuple with format dashboard_content, uid
     """
@@ -189,12 +198,13 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     for variable in variables:
         if "definition" not in variable:
             continue
-        variable["definition"] = variable["definition"].format(
-            global_filters=global_filters_str
-        )
-        variable["query"]["query"] = variable["query"]["query"].format(
-            global_filters=global_filters_str
-        )
+        definition = variable["definition"].format(global_filters=global_filters_str)
+        query = variable["query"]["query"].format(global_filters=global_filters_str)
+        if not global_filters_str:
+            definition = _clean_empty_filters(definition)
+            query = _clean_empty_filters(query)
+        variable["definition"] = definition
+        variable["query"]["query"] = query
 
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
@@ -490,6 +500,20 @@ def _generate_grafana_panels(
     return panels
 
 
+def _clean_empty_filters(expr: str) -> str:
+    """Clean up malformed PromQL when global_filters is empty.
+
+    Removes artifacts like trailing/leading commas in label matchers:
+      ", ," → ","
+      ", }" → "}"
+      "{ ," → "{"
+    """
+    expr = re.sub(r",\s*,", ",", expr)
+    expr = re.sub(r",\s*}", "}", expr)
+    expr = re.sub(r"{\s*,", "{", expr)
+    return expr
+
+
 def gen_incrementing_alphabets(length):
     assert 65 + length < 96, "we only support up to 26 targets at a time."
     # 65: ascii code of 'A'.
@@ -502,11 +526,13 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
         panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
         template = copy.deepcopy(target.template.value)
+        global_filters_str = ",".join(panel_global_filters)
+        expr = target.expr.format(global_filters=global_filters_str)
+        if not global_filters_str:
+            expr = _clean_empty_filters(expr)
         template.update(
             {
-                "expr": target.expr.format(
-                    global_filters=",".join(panel_global_filters)
-                ),
+                "expr": expr,
                 "legendFormat": target.legend,
                 "refId": ref_id,
             }

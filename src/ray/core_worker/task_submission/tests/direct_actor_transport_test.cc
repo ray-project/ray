@@ -56,8 +56,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         publisher.get(),
         subscriber.get(),
         /*is_node_dead=*/[](const NodeID &) { return false; },
-        /*spread_free_local_objects=*/
-        [](const ObjectID &, const std::vector<NodeID> &) {},
+        /*free_object_on_nodes_async=*/
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge,
         fake_owned_object_size_gauge,
         /*lineage_pinning_enabled=*/false);

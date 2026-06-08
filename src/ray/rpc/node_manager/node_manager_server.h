@@ -52,7 +52,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RemovePlacementGroupBundles)    \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ResizeLocalResourceInstances)   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)           \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)                \
@@ -142,9 +142,9 @@ class NodeManagerServiceHandler {
       rpc::CommitBundleResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelResourceReserve(
-      rpc::CancelResourceReserveRequest request,
-      rpc::CancelResourceReserveReply *reply,
+  virtual void HandleRemovePlacementGroupBundles(
+      rpc::RemovePlacementGroupBundlesRequest request,
+      rpc::RemovePlacementGroupBundlesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleResizeLocalResourceInstances(
