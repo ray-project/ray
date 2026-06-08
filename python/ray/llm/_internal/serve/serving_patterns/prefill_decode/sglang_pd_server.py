@@ -25,6 +25,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
@@ -46,7 +47,18 @@ class SGLangPDPrefillServer(LLMServer):
     No orchestration logic lives here — this server is a pure executor.
     """
 
-    pass
+    # _default_engine_cls is set so that LLMServer._get_default_engine_class()
+    # returns SGLangServer without falling through to the vLLM import path.
+    _default_engine_cls = SGLangServer
+
+    @classmethod
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        # LLMServer.get_deployment_options calls get_engine_config(), which
+        # unconditionally imports vLLM. The SGLang byod image uninstalls vLLM,
+        # so that path fails. SGLangServer.get_deployment_options reads GPU
+        # resource requirements directly from engine_kwargs (tp_size, pp_size)
+        # without touching vLLM, so we delegate to it instead.
+        return SGLangServer.get_deployment_options(llm_config)
 
 
 class SGLangPDDecodeServer(LLMServer):
@@ -66,6 +78,8 @@ class SGLangPDDecodeServer(LLMServer):
 
     The proxy is not involved in the bootstrap handshake or KV transfer.
     """
+
+    _default_engine_cls = SGLangServer
 
     async def __init__(
         self,
@@ -209,3 +223,7 @@ class SGLangPDDecodeServer(LLMServer):
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._pd_handle_request(request, raw_request_info)
+
+    @classmethod
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        return SGLangServer.get_deployment_options(llm_config)
