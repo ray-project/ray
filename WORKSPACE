@@ -77,18 +77,11 @@ load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps"
 
 install_py_deps_py310()
 
-# Windows CI driver deps (see ci/raydepsets/configs/ci_windows.depsets.yaml).
-# Routed to the Windows driver binaries via the platform select in
-# //ci/ray_ci/deps:aliases.bzl; never used on Linux/macOS, so its wheels are only
-# fetched on Windows builds. No python_interpreter_target is set: pip_parse only
-# transcribes the lock into whl_library targets at parse time (it does not filter
-# by environment markers), so the parse-host interpreter version is irrelevant.
-# Wheels are selected at fetch time by the build host's interpreter -- on the
-# Windows agent that is the conda-base Python 3.8 the driver runs under, so the
-# py3.8-only entries (`python_full_version < '3.9'` markers) resolve correctly.
-# Using a hermetic python3_8 here broke aarch64 Linux builds: Ray's pinned
-# rules_python ships no aarch64-unknown-linux-gnu build for Python 3.8, so the
-# interpreter repo could not be created and repo-mapping computation cycled.
+# Windows CI driver deps; wheels fetched only on Windows via the select in
+# //ci/ray_ci/deps:aliases.bzl. No python_interpreter_target: pip_parse just
+# transcribes the lock (no marker filtering at parse time), and the Windows agent
+# fetches under its own Python 3.8. A hermetic python3_8 here broke aarch64 Linux
+# builds, since Ray's rules_python has no aarch64-linux build for 3.8.
 pip_parse(
     name = "py_deps_windows",
     requirements_lock = "//python/deplocks/ci:ci_windows_depset.lock",
