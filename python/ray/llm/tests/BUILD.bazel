@@ -78,7 +78,35 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/cpu/**/test_*.py"]),
+    # *_direct_streaming.py files run only in the dedicated target below,
+    # which sets the direct-streaming + HAProxy env they require.
+    files = glob(
+        ["serve/cpu/**/test_*.py"],
+        exclude = ["serve/cpu/**/*_direct_streaming.py"],
+    ),
+    tags = [
+        "cpu",
+        "exclusive",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Direct-streaming session-affinity tests
+py_test_module_list(
+    size = "large",
+    data = glob(["serve/**/*.yaml"]),
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    files = [
+        "serve/cpu/deployments/prefill_decode_disagg/test_pd_direct_streaming.py",
+        "serve/cpu/deployments/routers/test_router_direct_streaming.py",
+    ],
     tags = [
         "cpu",
         "exclusive",
