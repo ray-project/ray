@@ -521,11 +521,11 @@ class StoreRegistry:
                         "Downloading over unencrypted HTTP. "
                         "Consider using https:// instead."
                     )
-            self._cache[store_url] = self._from_url(
-                store_url,
-                retry_config=self._retry_config,
+            from_url_kwargs: Any = {
+                "retry_config": self._retry_config,
                 **kwargs,
-            )
+            }
+            self._cache[store_url] = self._from_url(store_url, **from_url_kwargs)
         return self._cache[store_url]
 
 
@@ -804,7 +804,7 @@ async def _resolve_size(
         store = registry.get(store_url)
         async with semaphore:
             meta = await obs.head_async(store, path)
-        return meta["size"] if isinstance(meta, dict) else meta.size
+        return meta["size"]
     except Exception:
         return 0
 
@@ -907,7 +907,7 @@ async def _fetch_chunk(
                 f"Range request for {uri!r} returned {len(chunk)} "
                 f"bytes, expected {expected}"
             )
-        result[start:end] = chunk
+        result[start:end] = bytes(chunk)
 
 
 async def _fetch(uri: str, registry: StoreRegistry) -> bytes:

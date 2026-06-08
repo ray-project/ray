@@ -84,7 +84,7 @@ def start_service(
     add_unique_suffix: bool = True,
     cloud: Optional[str] = None,
     env_vars: Optional[Dict[str, str]] = None,
-    timeout_s: int = 600,  # seconds
+    timeout_s: int = 900,  # seconds
 ):
     """Starts an Anyscale Service with the specified configs.
 
