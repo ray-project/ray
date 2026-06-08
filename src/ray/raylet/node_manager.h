@@ -712,9 +712,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// before detecing an EOF on the socket.
   void CheckForUnexpectedWorkerDisconnects();
 
-  /// Push an error to the driver if this node is full of actors and so we are
+  /// Warn and trigger a cluster wide GC if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
-  void WarnResourceDeadlock();
+  void WarnAndGCStuckActors();
 
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();
