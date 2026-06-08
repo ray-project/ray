@@ -3,6 +3,8 @@ from typing import Optional, Tuple
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
+from ray.llm._internal.serve.utils.server_utils import extract_model_id_from_body
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
@@ -49,6 +51,16 @@ class LLMRouter:
         ``choose_replica`` so session-aware policies (e.g.
         ``ConsistentHashRouter``) pin all turns of a session to one replica.
 
+    Multiplex (LoRA) affinity:
+        When the deployment has a LoRA config (``multiplex_enabled``), this
+        handler reads the requested ``model`` from the forwarded body and, if
+        it names a LoRA adapter (``base:adapter``), applies
+        ``handle.options(multiplexed_model_id=...)`` before ``choose_replica``
+        so multiplex-aware policies (e.g. ``PowerOfTwoChoicesRouter``) steer to
+        a replica that already has the adapter loaded. Requires the body to be
+        forwarded (``RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1``); without
+        it the model id is unavailable and routing falls back to load balancing.
+
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str}``: pick
             succeeded.
@@ -60,9 +72,13 @@ class LLMRouter:
         Serve uses ``check_health()`` for replica readiness, not HTTP.
     """
 
-    async def __init__(self, server: DeploymentHandle):
+    async def __init__(self, server: DeploymentHandle, multiplex_enabled: bool = False):
         self._handle: DeploymentHandle = server
         self._handle._init()
+        # Only parse the body for a multiplexed model id when the deployment
+        # actually has a LoRA config; otherwise the requested model is always
+        # the base model and there is nothing to pin on.
+        self._multiplex_enabled = multiplex_enabled
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -76,9 +92,13 @@ class LLMRouter:
             (v for k, v in request.headers.items() if _matches_session_id_header(k)),
             None,
         )
-        handle = (
-            self._handle.options(session_id=session_id) if session_id else self._handle
-        )
+        options = {}
+        if session_id:
+            options["session_id"] = session_id
+        multiplexed_model_id = self._multiplexed_model_id(body)
+        if multiplexed_model_id:
+            options["multiplexed_model_id"] = multiplexed_model_id
+        handle = self._handle.options(**options) if options else self._handle
         try:
             host, port, replica_id = await self._pick_replica(
                 handle=handle,
@@ -88,6 +108,22 @@ class LLMRouter:
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
         return {"host": host, "port": port, "replica_id": replica_id}
+
+    def _multiplexed_model_id(self, body: bytes) -> Optional[str]:
+        """Return the requested LoRA adapter id to pin on, or None.
+
+        None means "no multiplex hint" (base model, multiplex disabled, or body
+        unavailable), in which case routing falls back to load balancing. A
+        base-model request must not set ``multiplexed_model_id``: doing so would
+        pin every base request to one replica instead of balancing across all
+        of them (the same reasoning as ``OpenAiIngress`` in ingress.py).
+        """
+        if not self._multiplex_enabled:
+            return None
+        model_id = extract_model_id_from_body(body)
+        if model_id and get_base_model_id(model_id) != model_id:
+            return model_id
+        return None
 
     @router_app.get("/health")
     async def health(self):
@@ -101,9 +137,10 @@ class LLMRouter:
     ) -> Tuple[str, int, str]:
         """Pick a backend HTTP replica via the deployment's request router.
 
-        ``handle`` is the LLMServer deployment handle, optionally configured
-        with ``.options(session_id=...)`` by the caller so session-aware
-        routers see the session id on ``RequestMetadata``.
+        ``handle`` is the LLMServer deployment handle, optionally configured by
+        the caller with ``.options(session_id=...)`` and/or
+        ``.options(multiplexed_model_id=...)`` so session-aware and
+        multiplex-aware routers see those fields on ``RequestMetadata``.
 
         ``request_body`` (possibly a HAProxy-truncated prefix, indicated by
         ``body_truncated``) is forwarded to ``choose_replica`` so a future

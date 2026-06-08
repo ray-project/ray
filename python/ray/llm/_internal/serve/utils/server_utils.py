@@ -1,9 +1,11 @@
 import asyncio
+import json
+import re
 import threading
 import time
 import traceback
 from functools import partial
-from typing import Awaitable, Callable, TypeVar
+from typing import Awaitable, Callable, Optional, TypeVar
 
 from fastapi import HTTPException, status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
@@ -211,6 +213,30 @@ def get_serve_request_id() -> str:
 
 def get_model_request_id(model: str):
     return model + "-" + get_serve_request_id()
+
+
+def extract_model_id_from_body(body: bytes) -> Optional[str]:
+    """Best-effort extraction of the OpenAI ``model`` field from a request body.
+
+    Used by the direct-streaming path, where the request body (or a
+    HAProxy-truncated prefix of it) is the only place the requested model /
+    adapter id is available. Returns None when the body is empty, unparseable,
+    or has no ``model`` field; callers must treat None as "no multiplex hint"
+    and fall back to load balancing.
+    """
+    if not body:
+        return None
+    try:
+        payload = json.loads(body)
+    except (ValueError, TypeError):
+        # Body may be a truncated prefix (HAProxy bufsize cap) and not valid
+        # JSON. Fall back to a shallow regex for the leading ``model`` field.
+        match = re.search(rb'"model"\s*:\s*"([^"]+)"', body)
+        return match.group(1).decode("utf-8", "replace") if match else None
+    if isinstance(payload, dict):
+        model = payload.get("model")
+        return model if isinstance(model, str) and model else None
+    return None
 
 
 def replace_prefix(model: str) -> str:

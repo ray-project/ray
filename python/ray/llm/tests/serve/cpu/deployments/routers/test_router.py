@@ -20,6 +20,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.utils.server_utils import extract_model_id_from_body
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -56,9 +57,10 @@ class _DirectRouterReplica:
         self.backend_http_endpoint = endpoint
 
 
-def _new_direct_router(handle=None):
+def _new_direct_router(handle=None, multiplex_enabled=False):
     router = LLMRouter.__new__(LLMRouter)
     router._handle = handle or MagicMock()
+    router._multiplex_enabled = multiplex_enabled
     return router
 
 
@@ -145,6 +147,49 @@ class TestDirectStreamingLLMRouter:
         router._pick_replica.assert_called_once_with(
             handle=router._handle, request_body=body, body_truncated=True
         )
+
+    @pytest.mark.parametrize(
+        ("multiplex_enabled", "model", "expected"),
+        [
+            (False, "base:adapter", None),  # disabled -> never pin
+            (True, "base", None),  # base model -> load balance, don't pin
+            (True, "base:adapter", "base:adapter"),  # adapter -> pin
+            (True, None, None),  # no model field -> nothing to pin
+        ],
+    )
+    def test_multiplexed_model_id(self, multiplex_enabled, model, expected):
+        router = _new_direct_router(multiplex_enabled=multiplex_enabled)
+        body = b"{}" if model is None else b'{"model":"%s"}' % model.encode()
+        assert router._multiplexed_model_id(body) == expected
+
+    @pytest.mark.asyncio
+    async def test_route_pins_adapter_via_options(self):
+        """An adapter request sets multiplexed_model_id on the handle."""
+        router = _new_direct_router(multiplex_enabled=True)
+        pinned_handle = router._handle.options.return_value
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+        )
+
+        await router.route(_FakeRequest(b'{"model":"base:adapter"}'))
+
+        router._handle.options.assert_called_once_with(
+            multiplexed_model_id="base:adapter"
+        )
+        assert router._pick_replica.call_args.kwargs["handle"] is pinned_handle
+
+    @pytest.mark.asyncio
+    async def test_route_does_not_pin_base_model(self):
+        """A base-model request routes on the bare handle (no options copy)."""
+        router = _new_direct_router(multiplex_enabled=True)
+        router._pick_replica = AsyncMock(
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+        )
+
+        await router.route(_FakeRequest(b'{"model":"base"}'))
+
+        router._handle.options.assert_not_called()
+        assert router._pick_replica.call_args.kwargs["handle"] is router._handle
 
     @pytest.mark.asyncio
     async def test_route_returns_503_on_pick_failure(self):
@@ -428,6 +473,23 @@ class TestOpenAiIngress:
         assert len(captured_raw_request_infos) == 1
         assert isinstance(captured_raw_request_infos[0], RawRequestInfo)
         assert captured_raw_request_infos[0].headers == mock_headers
+
+
+class TestExtractModelIdFromBody:
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            (b'{"model":"m","prompt":"hi"}', "m"),
+            (b'{"prompt":"hi","model":"base:adapter"}', "base:adapter"),
+            (b"", None),  # empty body
+            (b'{"prompt":"hi"}', None),  # no model field
+            (b'{"model":123}', None),  # non-string model
+            (b'{"model":"m","prompt":"' + b"x" * 2048, "m"),  # truncated -> regex
+            (b"not json at all", None),  # unparseable, no model
+        ],
+    )
+    def test_extract_model_id_from_body(self, body, expected):
+        assert extract_model_id_from_body(body) == expected
 
 
 if __name__ == "__main__":

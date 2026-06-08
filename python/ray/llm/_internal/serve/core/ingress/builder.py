@@ -17,9 +17,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.server.builder import (
-    build_llm_deployment,
-)
+from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.config import RequestRouterConfig
@@ -76,11 +74,18 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
-def _build_openai_ingress_request_router(*, server: Application) -> Application:
+def _build_openai_ingress_request_router(
+    *, server: Application, multiplex_enabled: bool = False
+) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
     The returned Application is attached to the ingress application with
     ``Application._with_ingress_request_router``.
+
+    ``multiplex_enabled`` tells the router to read the requested model id from
+    the request body and pin LoRA-adapter requests to a replica that already
+    holds the adapter (see ``LLMRouter``). Set it when the deployment has a
+    LoRA config.
 
     ``num_replicas`` is pinned to 1 because HAProxy's ingress request router
     backend currently expects a single endpoint. TODO(eicherseiji): expose
@@ -93,7 +98,7 @@ def _build_openai_ingress_request_router(*, server: Application) -> Application:
         LLMRouter,
         num_replicas=1,
         max_ongoing_requests=1000,
-    ).bind(server=server)
+    ).bind(server=server, multiplex_enabled=multiplex_enabled)
 
 
 class IngressClsConfig(BaseModelExtended):
@@ -234,7 +239,10 @@ def build_openai_app(builder_config: dict) -> Application:
             "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
         return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=direct_deployment)
+            _build_openai_ingress_request_router(
+                server=direct_deployment,
+                multiplex_enabled=llm_configs[0].lora_config is not None,
+            )
         )
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
