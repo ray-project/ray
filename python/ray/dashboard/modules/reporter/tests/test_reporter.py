@@ -983,7 +983,7 @@ def test_report_per_component_stats(tmp_path):
             cpu_records,
             num_fds_records,
             comp,
-            float(stats["memory_full_info"].uss) / 1.0e6,
+            float(stats["memory_full_info"].uss),
             stats["cpu_percent"],
             stats["num_fds"],
         )

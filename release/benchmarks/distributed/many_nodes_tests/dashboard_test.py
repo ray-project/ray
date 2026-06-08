@@ -132,7 +132,9 @@ class DashboardTestAtScale:
         )
 
         return Result(
-            success=True, result=result, memory_mb=max(memories) if memories else None
+            success=True,
+            result=result,
+            memory_mb=max(memories) / 1.0e6 if memories else None,
         )
 
     def update_release_test_result(self, release_result: dict):

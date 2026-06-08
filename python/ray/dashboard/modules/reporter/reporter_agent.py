@@ -363,19 +363,19 @@ METRICS_GAUGES = {
         "component_mem_shared_bytes",
         "SHM usage of all components of the node. "
         "It is equivalent to the top command's SHR column.",
-        "MiB",
+        "bytes",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_rss_bytes": Gauge(
         "component_rss_bytes",
         "RSS usage of all components on the node.",
-        "MiB",
+        "bytes",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_uss_bytes": Gauge(
         "component_uss_bytes",
         "USS usage of all components on the node.",
-        "MiB",
+        "bytes",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_num_fds": Gauge(
