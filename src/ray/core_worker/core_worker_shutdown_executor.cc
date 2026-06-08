@@ -351,6 +351,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         core_worker->worker_context_->GetCurrentActorID().IsNil(),
         core_worker->options_.session_name,
         core_worker->GetCurrentNodeId());
+    core_worker->ray_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
     core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 

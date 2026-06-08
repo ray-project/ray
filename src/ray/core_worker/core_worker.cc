@@ -470,6 +470,7 @@ CoreWorker::CoreWorker(
           options_.session_name,
           GetCurrentNodeId(),
           std::make_shared<const TaskSpecification>(std::move(spec)));
+      ray_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
       task_event_buffer_->AddTaskEvent(std::move(task_event));
     }
   }
@@ -631,6 +632,7 @@ void CoreWorker::Disconnect(
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name,
         GetCurrentNodeId());
+    ray_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
@@ -3020,6 +3022,16 @@ Status CoreWorker::ExecuteTask(
                                                         rpc::TaskStatus::RUNNING,
                                                         /*include_task_info=*/false,
                                                         update));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(*ray_event_recorder_,
+                                                  task_spec.TaskId(),
+                                                  task_spec.JobId(),
+                                                  task_spec.AttemptNumber(),
+                                                  task_spec,
+                                                  rpc::TaskStatus::RUNNING,
+                                                  options_.session_name,
+                                                  GetCurrentNodeId(),
+                                                  /*include_task_info=*/false,
+                                                  update);
 
   worker_context_->SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -4927,6 +4939,17 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      *ray_event_recorder_,
+      task_id,
+      worker_context_->GetCurrentJobID(),
+      attempt_number,
+      *current_task,
+      rpc::TaskStatus::NIL,
+      options_.session_name,
+      GetCurrentNodeId(),
+      /*include_task_info=*/false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
 void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
@@ -4948,6 +4971,17 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      *ray_event_recorder_,
+      task_id,
+      worker_context_->GetCurrentJobID(),
+      attempt_number,
+      *current_task,
+      rpc::TaskStatus::NIL,
+      options_.session_name,
+      GetCurrentNodeId(),
+      /*include_task_info=*/false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
 void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
@@ -4966,6 +5000,17 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      *ray_event_recorder_,
+      task_id,
+      worker_context_->GetCurrentJobID(),
+      running_task_it->second.AttemptNumber(),
+      running_task_it->second,
+      rpc::TaskStatus::NIL,
+      options_.session_name,
+      GetCurrentNodeId(),
+      /*include_task_info=*/false,
+      worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));
 }
 
 void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
