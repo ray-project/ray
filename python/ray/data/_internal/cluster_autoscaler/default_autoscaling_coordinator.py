@@ -116,9 +116,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             request_remaining=request_remaining,
             priority=priority,
             label_selectors=label_selectors,
-            subcluster_selector=(
-                dict(self._subcluster_selector) if self._subcluster_selector else None
-            ),
+            subcluster_selector=self._subcluster_selector,
         )
 
     def cancel_request(self) -> None:
@@ -204,8 +202,7 @@ class _AutoscalingCoordinatorActor:
         self._get_cluster_nodes = get_cluster_nodes
 
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
-        # Per-requester subcluster selector. Drives SDK forwarding and
-        # remaining-resources eligibility.
+        # Map from requester id to its subcluster selector.
         self._subcluster_selectors: Dict[str, Optional[Dict[str, str]]] = {}
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
@@ -453,21 +450,22 @@ _get_or_create_lock = threading.Lock()
 
 def get_or_create_autoscaling_coordinator():
     """Get or create the AutoscalingCoordinator actor."""
-    # NOTE: Ray Core doesn't allow creating the same actor from multiple
-    # threads simultaneously, hence the lock.
+    # Create the actor on the local node,
+    # to reduce network overhead.
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        ray.get_runtime_context().get_node_id(),
+        soft=False,
+    )
+    actor_cls = ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)(
+        _AutoscalingCoordinatorActor
+    ).options(
+        name="AutoscalingCoordinator",
+        namespace="AutoscalingCoordinator",
+        get_if_exists=True,
+        lifetime="detached",
+        scheduling_strategy=scheduling_strategy,
+    )
+    # NOTE: Need the following lock, because Ray Core doesn't allow creating the same
+    # actor from multiple threads simultaneously.
     with _get_or_create_lock:
-        # Create the actor on the local node to reduce network overhead.
-        scheduling_strategy = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
-        actor_cls = ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)(
-            _AutoscalingCoordinatorActor
-        ).options(
-            name="AutoscalingCoordinator",
-            namespace="AutoscalingCoordinator",
-            get_if_exists=True,
-            lifetime="detached",
-            scheduling_strategy=scheduling_strategy,
-        )
         return actor_cls.remote()

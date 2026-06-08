@@ -81,11 +81,17 @@ def _get_node_resource_spec_and_count(
     against. The default ``DEFAULT_SUBCLUSTER`` (None) selects nodes with
     no subcluster label.
 
-    Seed entries from ``cluster_config`` (count 0) aren't subcluster-
-    filtered because ``NodeGroupConfig`` doesn't expose labels; pending-
-    bundle demand for foreign shapes still gets tagged with this
-    requester's subcluster selector by the coordinator, so the autoscaler
-    can't satisfy it on the wrong subcluster.
+    Quirk: the returned dict also contains a ``shape: 0`` entry for every
+    node type registered in ``cluster_config.node_group_configs`` that
+    isn't currently active in this subcluster. ``get_cluster_config()``
+    reports node-type shapes but not labels, so the only way to know a
+    shape's subcluster is to inspect live nodes. Harmless: for example,
+    if foo nodes only exist in the training subcluster, the validation
+    dataset will emit pending-bundle scale-up demand for foo nodes
+    stamped with the validation label, which the autoscaler can never
+    satisfy.
+
+    TODO: get labels from cluster config so the catalog can be filtered.
     """
     nodes_resource_spec_count = defaultdict(int)
 
@@ -200,7 +206,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             )
 
         self._resource_limits = resource_limits
-        self._label_selector = label_selector
+        self._label_selector = label_selector or {}
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -229,7 +235,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             # Scope node-shape/count discovery to this requester's subcluster
             # so try_trigger_scaling doesn't pull node shapes / counts from
             # other subclusters into ``active_bundles`` / ``pending_bundles``.
-            subcluster = (label_selector or {}).get(SUBCLUSTER_LABEL_KEY)
+            subcluster = self._label_selector.get(
+                SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER
+            )
             get_node_counts = lambda: _get_node_resource_spec_and_count(  # noqa: E731
                 subcluster=subcluster
             )
@@ -349,6 +357,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 # keeping explicit autoscaler demand alive.
                 resource_request = []
 
+        # Make autoscaler resource request.
         self._autoscaling_coordinator.request_resources(
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
