@@ -1815,7 +1815,7 @@ pyroaring==1.0.4
     # via pyiceberg
 pysocks==1.7.1
     # via requests
-pyspark==3.4.1
+pyspark==3.4.4
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   raydp
