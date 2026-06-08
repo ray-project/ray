@@ -29,6 +29,7 @@ UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
+    ray::observability::RayEventRecorderInterface &ray_event_recorder,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
@@ -40,6 +41,7 @@ UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
+      ray_event_recorder_(ray_event_recorder),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),
       execute_task_(std::move(execute_task)),
@@ -185,6 +187,16 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
+    worker::RecordTaskStatusEventToRecorderIfNeeded(
+        ray_event_recorder_,
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+        task_event_buffer_.GetSessionName(),
+        task_event_buffer_.GetNodeID(),
+        /*include_task_info=*/false);
     const TaskAttempt task_attempt{task_spec.TaskId(), task_spec.AttemptNumber()};
     waiter_.OnArgsReady(task_attempt, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
@@ -197,6 +209,16 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
           task,
           rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
           /* include_task_info */ false));
+      worker::RecordTaskStatusEventToRecorderIfNeeded(
+          ray_event_recorder_,
+          task.TaskId(),
+          task.JobId(),
+          task.AttemptNumber(),
+          task,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+          task_event_buffer_.GetSessionName(),
+          task_event_buffer_.GetNodeID(),
+          /*include_task_info=*/false);
 
       request.MarkDependenciesResolved();
       RunRequestWithResolvedDependencies(std::move(request));
@@ -209,6 +231,16 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
+    worker::RecordTaskStatusEventToRecorderIfNeeded(
+        ray_event_recorder_,
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+        task_event_buffer_.GetSessionName(),
+        task_event_buffer_.GetNodeID(),
+        /*include_task_info=*/false);
     request.MarkDependenciesResolved();
     RunRequestWithResolvedDependencies(std::move(request));
   }
