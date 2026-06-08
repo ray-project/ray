@@ -59,19 +59,7 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
-# Hermetic Python 3.8, used only as the pip_parse interpreter for the Windows CI
-# driver deps (@py_deps_windows). The Windows agent's conda base is Python 3.8,
-# so those bundled deps must be resolved/installed for 3.8 (the lock carries
-# py3.8-only packages and `python_full_version < '3.9'` markers that a 3.10
-# interpreter would mis-resolve). Not registered as a toolchain.
-python_register_toolchains(
-    name = "python3_8",
-    python_version = "3.8",
-    register_toolchains = False,
-)
-
 load("@python3_10//:defs.bzl", python310 = "interpreter")
-load("@python3_8//:defs.bzl", python38 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
@@ -89,13 +77,20 @@ load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps"
 
 install_py_deps_py310()
 
-# Windows CI driver deps, resolved for and installed with Python 3.8 (see
-# ci/raydepsets/configs/ci_windows.depsets.yaml). Routed to the Windows driver
-# binaries via the platform select in //ci/ray_ci:ci_require.bzl; never used on
-# Linux/macOS, so its wheels are only fetched on Windows builds.
+# Windows CI driver deps (see ci/raydepsets/configs/ci_windows.depsets.yaml).
+# Routed to the Windows driver binaries via the platform select in
+# //ci/ray_ci/deps:aliases.bzl; never used on Linux/macOS, so its wheels are only
+# fetched on Windows builds. No python_interpreter_target is set: pip_parse only
+# transcribes the lock into whl_library targets at parse time (it does not filter
+# by environment markers), so the parse-host interpreter version is irrelevant.
+# Wheels are selected at fetch time by the build host's interpreter -- on the
+# Windows agent that is the conda-base Python 3.8 the driver runs under, so the
+# py3.8-only entries (`python_full_version < '3.9'` markers) resolve correctly.
+# Using a hermetic python3_8 here broke aarch64 Linux builds: Ray's pinned
+# rules_python ships no aarch64-unknown-linux-gnu build for Python 3.8, so the
+# interpreter repo could not be created and repo-mapping computation cycled.
 pip_parse(
     name = "py_deps_windows",
-    python_interpreter_target = python38,
     requirements_lock = "//python/deplocks/ci:ci_windows_depset.lock",
 )
 
