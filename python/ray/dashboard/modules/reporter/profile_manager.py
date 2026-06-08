@@ -1,4 +1,3 @@
-from typing import Tuple
 import asyncio
 import logging
 import os
@@ -7,7 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -91,13 +90,12 @@ class CpuProfilingManager:
             pid: The process ID (PID) of the target process for trace capture.
             native: If True, includes native (C/C++) stack frames.
                 Default is False.
-            subprocesses (bool, optional): If True, also dumps stack traces for
+            subprocesses: If True, also dumps stack traces for
                 child processes of the target process. Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the trace capture operation and a string with the
-                trace data or an error message.
+             A tuple containing a boolean indicating the success of the trace
+                capture operation and a string with the trace data or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
@@ -127,7 +125,7 @@ class CpuProfilingManager:
     async def cpu_profile(
         self,
         pid: int,
-        format="flamegraph",
+        format: str = "flamegraph",
         duration: float = 5,
         native: bool = False,
         idle: bool = False,
@@ -141,17 +139,15 @@ class CpuProfilingManager:
             duration: The duration of the profiling session in seconds.
                 Default is 5 seconds.
             native: If True, includes native (C/C++) stack frames. Default is False.
-            idle (bool, optional): If True, includes off-CPU / sleeping threads
-                (e.g. threads blocked on locks, I/O, or CUDA syncs).
-                Default is False.
-            subprocesses (bool, optional): If True, also profiles child
+            idle: If True, includes off-CPU / sleeping threads (e.g. threads
+                blocked on locks, I/O, or CUDA syncs). Default is False.
+            subprocesses: If True, also profiles child
                 processes of the target process (e.g. data loader or
                 multiprocess inference workers). Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the profiling operation and a string with the
-                profile data or an error message.
+            A tuple containing a boolean indicating the success of the profiling
+                operation and a string with the profile data or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
@@ -227,9 +223,8 @@ class MemoryProfilingManager:
             leaks: If True, include memory leak information in the profile result.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string with the processed profile result
-                or an error message.
+            A tuple containing a boolean indicating the success of the operation
+                and a string with the processed profile result or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
@@ -298,8 +293,8 @@ class MemoryProfilingManager:
             verbose: If True, enables verbose output. Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string of a success message or an error message.
+            A tuple containing a boolean indicating the success of the operation
+                and a string of a success message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
@@ -354,8 +349,8 @@ class MemoryProfilingManager:
             verbose: If True, enables verbose output. Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the operation and a string of a success message or an error message.
+            A tuple containing a boolean indicating the success of the operation
+                and a string of a success message or an error message.
         """
         memray = shutil.which(self.profiler_name)
         if memray is None:
