@@ -8,16 +8,27 @@ def get_dag_node_str(
     body_line,
 ):
     indent = _get_indentation()
-    other_args_to_resolve_lines = _get_other_args_to_resolve_lines(
-        dag_node._bound_other_args_to_resolve
+
+    def format_attr(val):
+        formatted = _format_value(val)
+        lines = formatted.split("\n")
+        if len(lines) == 1:
+            return lines[0]
+        return "\n".join([lines[0]] + [f"{indent}{line}" for line in lines[1:]])
+
+    options = (
+        {k: v for k, v in dag_node._bound_options.items() if v}
+        if dag_node._bound_options
+        else {}
     )
+
     return (
         f"({dag_node.__class__.__name__}, {dag_node._stable_uuid})(\n"
         f"{indent}body={body_line}\n"
-        f"{indent}args={_get_args_lines(dag_node._bound_args)}\n"
-        f"{indent}kwargs={_get_kwargs_lines(dag_node._bound_kwargs)}\n"
-        f"{indent}options={_get_options_lines(dag_node._bound_options)}\n"
-        f"{indent}other_args_to_resolve={other_args_to_resolve_lines}\n"
+        f"{indent}args={format_attr(dag_node._bound_args)}\n"
+        f"{indent}kwargs={format_attr(dag_node._bound_kwargs)}\n"
+        f"{indent}options={format_attr(options)}\n"
+        f"{indent}other_args_to_resolve={format_attr(dag_node._bound_other_args_to_resolve)}\n"
         f")"
     )
 
@@ -59,10 +70,13 @@ def _format_value(val) -> str:
         if not val:
             return empty_val
 
-        # 3. The unified formatting logic (only written once!)
+        # 3. Sort sets alphabetically to guarantee deterministic output across OSes!
+        items_to_iterate = sorted(val, key=str) if isinstance(val, set) else val
+
+        # 4. The unified formatting logic (only written once!)
         lines = []
         indent = _get_indentation()
-        for ele in val:
+        for ele in items_to_iterate:
             formatted_ele = _format_value(ele)
             ele_lines = formatted_ele.split("\n")
             for i, line in enumerate(ele_lines):
@@ -75,103 +89,3 @@ def _format_value(val) -> str:
         return f"{open_b}\n" + "\n".join(indented_lines) + f"\n{close_b}"
     else:
         return str(val)
-
-
-def _get_args_lines(bound_args):
-    """Pretty prints bounded args of a DAGNode, and recursively handle
-    DAGNode in list / dict containers.
-    """
-    if not bound_args:
-        return "[]"
-    indent = _get_indentation()
-    lines = []
-    for arg in bound_args:
-        formatted_arg = _format_value(arg)
-        arg_lines = formatted_arg.split("\n")
-        for i, line in enumerate(arg_lines):
-            if i == len(arg_lines) - 1:
-                lines.append(f"{indent}{line},")
-            else:
-                lines.append(f"{indent}{line}")
-
-    args_line = "["
-    for line in lines:
-        args_line += f"\n{indent}{line}"
-    args_line += f"\n{indent}]"
-
-    return args_line
-
-
-def _get_kwargs_lines(bound_kwargs):
-    """Pretty prints bounded kwargs of a DAGNode, and recursively handle
-    DAGNode in list / dict containers.
-    """
-    if not bound_kwargs:
-        return "{}"
-    indent = _get_indentation()
-    kwargs_lines = []
-    for key, val in bound_kwargs.items():
-        formatted_val = _format_value(val)
-        val_lines = formatted_val.split("\n")
-        if len(val_lines) == 1:
-            kwargs_lines.append(f"{indent}{key}: {val_lines[0]},")
-        else:
-            kwargs_lines.append(f"{indent}{key}: {val_lines[0]}")
-            for line in val_lines[1:]:
-                kwargs_lines.append(f"{indent}{line}")
-            kwargs_lines[-1] += ","
-
-    kwargs_line = "{"
-    for line in kwargs_lines:
-        kwargs_line += f"\n{indent}{line}"
-    kwargs_line += f"\n{indent}}}"
-
-    return kwargs_line
-
-
-def _get_options_lines(bound_options):
-    """Pretty prints .options() in DAGNode. Only prints non-empty values."""
-    if not bound_options:
-        return "{}"
-    indent = _get_indentation()
-    options_lines = []
-    for key, val in bound_options.items():
-        if val:
-            options_lines.append(f"{indent}{key}: " + str(val))
-
-    options_line = "{"
-    for line in options_lines:
-        options_line += f"\n{indent}{line}"
-    options_line += f"\n{indent}}}"
-    return options_line
-
-
-def _get_other_args_to_resolve_lines(other_args_to_resolve):
-    if not other_args_to_resolve:
-        return "{}"
-    indent = _get_indentation()
-    other_args_to_resolve_lines = []
-    for key, val in other_args_to_resolve.items():
-        if isinstance(val, DAGNode):
-            node_repr_lines = str(val).split("\n")
-            for index, node_repr_line in enumerate(node_repr_lines):
-                if index == 0:
-                    other_args_to_resolve_lines.append(
-                        f"{indent}{key}:"
-                        + f"{indent}"
-                        + "\n"
-                        + f"{indent}{indent}{indent}"
-                        + node_repr_line
-                    )
-                else:
-                    other_args_to_resolve_lines.append(
-                        f"{indent}{indent}" + node_repr_line
-                    )
-        else:
-            other_args_to_resolve_lines.append(f"{indent}{key}: " + str(val))
-
-    other_args_to_resolve_line = "{"
-    for line in other_args_to_resolve_lines:
-        other_args_to_resolve_line += f"\n{indent}{line}"
-    other_args_to_resolve_line += f"\n{indent}}}"
-    return other_args_to_resolve_line
