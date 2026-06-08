@@ -69,65 +69,6 @@ def _resolve_aggregation_names(aggregation_fns: Sequence[AggregateFn]) -> List[s
     return resolved_names
 
 
-def _group_size(
-    df: cudf.DataFrame, key_columns: Tuple[str, ...], output_column: str
-) -> cudf.DataFrame:
-    """Group by key columns and return the size of each group."""
-    grouped = df.groupby(list(key_columns), dropna=False)
-    out = grouped.size().reset_index()
-    return out.rename(columns={out.columns[-1]: output_column})
-
-
-def _group_count(
-    df: cudf.DataFrame,
-    key_columns: Tuple[str, ...],
-    target_column: str,
-    output_column: str,
-) -> cudf.DataFrame:
-    """Group by key columns and return the count of each group."""
-    grouped = df.groupby(list(key_columns), dropna=False)
-    out = grouped[target_column].count().reset_index()
-    return out.rename(columns={out.columns[-1]: output_column})
-
-
-def _group_aggregate(
-    df: cudf.DataFrame,
-    key_columns: Tuple[str, ...],
-    target_column: str,
-    aggregate_name: str,
-    output_column: str,
-) -> cudf.DataFrame:
-    """Group by key columns and aggregate the target column for each group using the
-    specified aggregation.
-
-    Args:
-        df: The input cuDF DataFrame.
-        key_columns: The key columns to group by.
-        target_column: The column to aggregate.
-        aggregate_name: The name of the aggregation to use.
-        output_column: The name of the final output column.
-
-    Returns:
-        A cuDF DataFrame with the key columns and the final output column.
-    """
-    grouped = df.groupby(list(key_columns), dropna=False)
-    column_group = grouped[target_column]
-
-    if aggregate_name == "sum":
-        try:
-            # try to match Ray/Pandas behavior
-            aggregated = column_group.sum(min_count=1)
-        except (TypeError, NotImplementedError):
-            # fallback if min_count is not supported
-            aggregated = column_group.sum()
-    else:
-        # all other aggregations
-        aggregated = getattr(column_group, aggregate_name)()
-
-    out = aggregated.reset_index()
-    return out.rename(columns={out.columns[-1]: output_column})
-
-
 def to_datatypes(
     dtypes: Dict[str, Any],
 ) -> Dict[str, Optional[DataType]]:
@@ -313,11 +254,6 @@ class GPUAggregateFn(AggregateFnV2):
     """
 
     @abc.abstractmethod
-    def gpu_required_columns(self) -> Tuple[str, ...]:
-        """Return the input columns required by the GPU implementation."""
-        ...
-
-    @abc.abstractmethod
     def gpu_accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
         """Return intermediate GPU accumulator column names."""
         ...
@@ -394,7 +330,7 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
     Supported builtin aggregations: count, sum, min, max, mean.
 
     Args:
-        agg: Original built-in aggregate instance.
+        cpu_agg: Original built-in CPU aggregate instance from plan.
         source_dtype: Source dtype of the target column. If not provided, it will
             be inferred from the input schema.
     """
@@ -403,16 +339,16 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
 
     def __init__(
         self,
-        agg: AggregateFnV2,
+        cpu_agg: AggregateFnV2,
         *,
         source_dtype: Optional[DataType] = None,
     ) -> None:
-        self._wrapped = agg
+        self._wrapped = cpu_agg
         self.source_dtype = source_dtype
         super().__init__(
-            agg.name,
-            on=agg.get_target_column(),
-            ignore_nulls=agg._ignore_nulls,
+            cpu_agg.name,
+            on=cpu_agg.get_target_column(),
+            ignore_nulls=cpu_agg._ignore_nulls,
             zero_factory=self._zero_factory,
         )
 
@@ -435,10 +371,6 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
     @property
     def ignore_nulls(self) -> bool:
         return self._ignore_nulls
-
-    def gpu_required_columns(self) -> Tuple[str, ...]:
-        """Return the required columns (target column) for the builtin aggregation."""
-        return (self.target_column,) if self.target_column is not None else tuple()
 
     def gpu_accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
         """Return the intermediate accumulator columns from partial aggregations.
@@ -619,10 +551,17 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         size_col: str,
         count_col: str,
     ) -> Tuple[cudf.DataFrame, Optional[DataType]]:
-        """Return a cuDF DataFrame with group size and count columns."""
-        sizes = _group_size(df, key_columns, size_col)
+        """Return a cuDF DataFrame with group size (including nulls) and count
+        (excluding nulls) columns."""
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
         count_dtype = _cudf_column_dtype(sizes, size_col)
-        counts = _group_count(df, key_columns, target_column, count_col)
+
+        counts = grouped[target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
         result = sizes.merge(counts, on=list(key_columns), how="left")
         _fill_missing_count(result, count_col, count_dtype)
         return result, count_dtype
@@ -667,12 +606,13 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
             result[output_column] = None
             _cast_column_to_dtype(result, output_column, output_dtype)
         else:
-            aggregated = _group_aggregate(
-                df,
-                key_columns,
-                value_column,
-                aggregate_name,
-                output_column,
+            column_group = df.groupby(list(key_columns), dropna=False)[value_column]
+            # Note: cuDF groupby/sum does not support min_count (rapidsai/cudf#9009)
+            # Null-group semantics are handled via size/count columns instead.
+            aggregated = getattr(column_group, aggregate_name)()
+            aggregated = aggregated.reset_index()
+            aggregated = aggregated.rename(
+                columns={aggregated.columns[-1]: output_column}
             )
             result = result.merge(aggregated, on=list(key_columns), how="left")
             _fill_missing_reduction(result, output_column, output_dtype)
@@ -721,12 +661,18 @@ class GPUCount(_BuiltinGPUAggregateFn):
         input_schema: Optional[Schema] = None,
     ) -> cudf.DataFrame:
         acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+        grouped = df.groupby(list(key_columns), dropna=False)
         if self.target_column is None or not self.ignore_nulls:
-            return _group_size(df, key_columns, acc_col)
+            result = grouped.size().reset_index()
+            return result.rename(columns={result.columns[-1]: acc_col})
 
-        sizes = _group_size(df, key_columns, acc_col)
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: acc_col})
         count_dtype = _cudf_column_dtype(sizes, acc_col)
-        counts = _group_count(df, key_columns, self.target_column, acc_col)
+
+        counts = grouped[self.target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: acc_col})
+
         result = sizes[list(key_columns)].merge(
             counts, on=list(key_columns), how="left"
         )
@@ -742,7 +688,10 @@ class GPUCount(_BuiltinGPUAggregateFn):
         accumulator_prefix: str,
     ) -> cudf.DataFrame:
         acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
-        result = _group_aggregate(df, key_columns, acc_col, "sum", output_name)
+        result = (
+            df.groupby(list(key_columns), dropna=False)[acc_col].sum().reset_index()
+        )
+        result = result.rename(columns={result.columns[-1]: output_name})
         return result[list(key_columns) + [output_name]]
 
     def gpu_final_output_dtypes(
@@ -900,14 +849,19 @@ class GPUMean(_BuiltinGPUAggregateFn):
         final_null_count_col = f"{accumulator_prefix}_final_null_count"
         sum_dtype = _cudf_column_dtype(df, sum_col)
 
-        counts = _group_aggregate(df, key_columns, count_col, "sum", final_count_col)
-        null_counts = _group_aggregate(
-            df, key_columns, null_count_col, "sum", final_null_count_col
+        accumulator_columns = [count_col, null_count_col, sum_col]
+        aggregated = (
+            df.groupby(list(key_columns), dropna=False)[accumulator_columns]
+            .sum()
+            .reset_index()
         )
-        result = counts.merge(null_counts, on=list(key_columns), how="left")
-
-        sums = _group_aggregate(df, key_columns, sum_col, "sum", final_sum_col)
-        result = result.merge(sums, on=list(key_columns), how="left")
+        result = aggregated.rename(
+            columns={
+                count_col: final_count_col,
+                null_count_col: final_null_count_col,
+                sum_col: final_sum_col,
+            }
+        )
         _fill_missing_reduction(result, final_sum_col, sum_dtype)
 
         result[output_name] = result[final_sum_col] / result[final_count_col]
@@ -960,7 +914,9 @@ class GPUAggregationPlan:
         self._is_global = len(key_columns) == 0
         global_key = _GLOBAL_AGGREGATE_KEY
         required_columns = {
-            column for agg in gpu_aggregates for column in agg.gpu_required_columns()
+            column
+            for agg in gpu_aggregates
+            if (column := agg.get_target_column()) is not None
         }
         while global_key in required_columns:
             global_key = f"_{global_key}"
@@ -983,9 +939,9 @@ class GPUAggregationPlan:
     def required_columns(self) -> Tuple[str, ...]:
         columns = list(self._key_columns)
         for agg in self._gpu_aggregates:
-            for column in agg.gpu_required_columns():
-                if column not in columns:
-                    columns.append(column)
+            target_column = agg.get_target_column()
+            if target_column is not None and target_column not in columns:
+                columns.append(target_column)
         return tuple(columns)
 
     @property

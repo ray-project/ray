@@ -25,7 +25,6 @@ from ray.data._internal.gpu_shuffle.hash_aggregate import (
     GPUAggregateFn,
     GPUHashAggregateActor,
     GPUHashAggregateOperator,
-    _group_aggregate,
     build_gpu_aggregation_plan,
 )
 from ray.data._internal.gpu_shuffle.hash_shuffle import (
@@ -929,51 +928,6 @@ class TestGPUHashAggregatePlanning:
             ]
         )
 
-    def test_sum_falls_back_when_cudf_min_count_unimplemented(self):
-        class _FakeAggregated:
-            def reset_index(self):
-                return pd.DataFrame({"user_id": [1], "value": [3]})
-
-        class _FakeGroupedColumn:
-            def __init__(self):
-                self.sum_calls = []
-
-            def sum(self, **kwargs):
-                self.sum_calls.append(kwargs)
-                if "min_count" in kwargs:
-                    raise NotImplementedError("min_count is not implemented yet")
-                return _FakeAggregated()
-
-        class _FakeGrouped:
-            def __init__(self, grouped_column):
-                self._grouped_column = grouped_column
-
-            def __getitem__(self, column):
-                assert column == "value"
-                return self._grouped_column
-
-        class _FakeDataFrame:
-            def __init__(self, grouped_column):
-                self._grouped_column = grouped_column
-
-            def groupby(self, columns, dropna=False):
-                assert columns == ["user_id"]
-                assert dropna is False
-                return _FakeGrouped(self._grouped_column)
-
-        grouped_column = _FakeGroupedColumn()
-
-        result = _group_aggregate(
-            _FakeDataFrame(grouped_column),
-            ("user_id",),
-            "value",
-            "sum",
-            "total",
-        )
-
-        assert grouped_column.sum_calls == [{"min_count": 1}, {}]
-        assert result.to_dict("list") == {"user_id": [1], "total": [3]}
-
 
 # ---------------------------------------------------------------------------
 # GPUShuffleActor: deferred import guard
@@ -1405,9 +1359,6 @@ class TestGPUAggregationPlanReal:
             def combine(self, current_accumulator: int, new: int) -> int:
                 return current_accumulator + new
 
-            def gpu_required_columns(self) -> Tuple[str, ...]:
-                return ("value",)
-
             def gpu_accumulator_columns(
                 self, accumulator_prefix: str
             ) -> Tuple[str, ...]:
@@ -1488,30 +1439,87 @@ class TestGPUAggregationPlanReal:
     ):
         import cudf
 
-        original_group_aggregate = hash_aggregate._group_aggregate
-        original_group_count = hash_aggregate._group_count
+        original_group_with_optional_reduction = (
+            hash_aggregate._BuiltinGPUAggregateFn._group_with_optional_reduction
+        )
+        original_gpu_partial_aggregate = hash_aggregate.GPUCount.gpu_partial_aggregate
 
-        def _drop_all_null_group_aggregate(
-            df, key_columns, target_column, aggregate_name, output_column
+        def _drop_all_null_group_with_optional_reduction(
+            self,
+            df,
+            key_columns,
+            *,
+            value_column,
+            size_col,
+            count_col,
+            aggregate_name,
+            output_column,
+            output_dtype,
         ):
-            result = original_group_aggregate(
-                df, key_columns, target_column, aggregate_name, output_column
+            result, count_dtype = original_group_with_optional_reduction(
+                self,
+                df,
+                key_columns,
+                value_column=value_column,
+                size_col=size_col,
+                count_col=count_col,
+                aggregate_name=aggregate_name,
+                output_column=output_column,
+                output_dtype=output_dtype,
             )
-            counts = original_group_count(df, key_columns, target_column, "__count")
+            if hash_aggregate._all_counts_zero(result, count_col):
+                return result, count_dtype
+            grouped = df.groupby(list(key_columns), dropna=False)
+            out = grouped[value_column].count().reset_index()
+            counts = out.rename(columns={out.columns[-1]: "__count"})
             non_null_keys = counts[counts["__count"] > 0][list(key_columns)]
             result = result.merge(non_null_keys, on=list(key_columns), how="inner")
             if output_column in result.columns:
                 result[output_column] = result[output_column].astype("float64")
-            return result
+            return result, count_dtype
 
-        def _drop_zero_group_counts(df, key_columns, target_column, output_column):
-            result = original_group_count(df, key_columns, target_column, output_column)
-            return result[result[output_column] > 0]
+        def _gpu_partial_aggregate_drop_zero_counts(
+            self,
+            df,
+            key_columns,
+            *,
+            output_name,
+            accumulator_prefix,
+            input_schema=None,
+        ):
+            acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+            if self.target_column is None or not self.ignore_nulls:
+                return original_gpu_partial_aggregate(
+                    self,
+                    df,
+                    key_columns,
+                    output_name=output_name,
+                    accumulator_prefix=accumulator_prefix,
+                    input_schema=input_schema,
+                )
+
+            grouped = df.groupby(list(key_columns), dropna=False)
+            result = grouped.agg(
+                **{acc_col: (self.target_column, "count")}
+            ).reset_index()
+            count_dtype = hash_aggregate._cudf_column_dtype(result, acc_col)
+            counts = result[result[acc_col] > 0]
+            result = result[list(key_columns)].merge(
+                counts, on=list(key_columns), how="left"
+            )
+            hash_aggregate._fill_missing_count(result, acc_col, count_dtype)
+            return result[list(key_columns) + [acc_col]]
 
         monkeypatch.setattr(
-            hash_aggregate, "_group_aggregate", _drop_all_null_group_aggregate
+            hash_aggregate._BuiltinGPUAggregateFn,
+            "_group_with_optional_reduction",
+            _drop_all_null_group_with_optional_reduction,
         )
-        monkeypatch.setattr(hash_aggregate, "_group_count", _drop_zero_group_counts)
+        monkeypatch.setattr(
+            hash_aggregate.GPUCount,
+            "gpu_partial_aggregate",
+            _gpu_partial_aggregate_drop_zero_counts,
+        )
 
         schema = pa.schema([("user_id", pa.int64())])
         plan = build_gpu_aggregation_plan(
@@ -1749,6 +1757,53 @@ class TestGPUHashAggregateActorReal:
         assert result["min(value)"].tolist() == [1, 2, 10]
         assert result["max(value)"].tolist() == [1, 3, 10]
         assert result["mean(value)"].tolist() == pytest.approx([1.0, 2.5, 10.0])
+
+    def test_grouped_aggregate_output_has_unique_join_keys(self, ray_with_gpu):
+        import cudf
+
+        schema = pa.schema(
+            [
+                ("key1", pa.int64()),
+                ("key2", pa.int64()),
+                ("value", pa.int64()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("key1", "key2"),
+            (
+                Min(on="value", alias_name="min_value"),
+                Count(alias_name="row_count"),
+            ),
+            input_schema=schema,
+        )
+        assert plan is not None
+
+        df = cudf.DataFrame(
+            {
+                "key1": [0, 0, 1],
+                "key2": [10, 10, 20],
+                "value": [5, 6, 7],
+            }
+        )
+        partial = plan.partial_aggregate(df, input_schema=schema)
+        result = plan.final_aggregate(partial, input_schema=schema)
+        result_table = result.to_arrow(preserve_index=False)
+
+        assert result_table.column_names == ["key1", "key2", "min_value", "row_count"]
+        assert len(result_table.column_names) == len(set(result_table.column_names))
+
+        key_table = pa.table(
+            {
+                "key1": pa.array([0, 1], type=pa.int64()),
+                "key2": pa.array([10, 20], type=pa.int64()),
+            }
+        )
+        joined = key_table.join(
+            result_table,
+            keys=["key1", "key2"],
+            join_type="inner",
+        )
+        assert joined.num_rows == 2
 
     def test_global_builtin_aggregates_real_gpu(self, ray_with_gpu):
         plan = build_gpu_aggregation_plan(
