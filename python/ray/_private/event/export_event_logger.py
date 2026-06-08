@@ -218,6 +218,9 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
     Args:
         log_type: The type of the export event.
         sink_dir: The directory to sink event logs.
+
+    Returns:
+        The export event logger adapter for the given log type.
     """
     with _export_event_logger_lock:
         global _export_event_logger
@@ -240,6 +243,9 @@ def check_export_api_enabled(
 
     Args:
         source: The source of the export event.
+
+    Returns:
+        True if the export API is enabled for the given source, else False.
     """
     if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
         return True
