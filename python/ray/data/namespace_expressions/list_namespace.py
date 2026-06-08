@@ -358,9 +358,12 @@ class _ListNamespace:
             A UDFExpr whose lists hold the elements present in both lists, in the
             order they appear in the first list.
         """
-        return self._apply_set_operation(
-            other, lambda a, b: [x for x in dict.fromkeys(a) if x in set(b)]
-        )
+
+        def _intersection(a, b):
+            b_set = set(b)
+            return [x for x in dict.fromkeys(a) if x in b_set]
+
+        return self._apply_set_operation(other, _intersection)
 
     def difference(self, other: "Expr") -> "UDFExpr":
         """Set difference of each list and the corresponding list in ``other``.
@@ -372,9 +375,12 @@ class _ListNamespace:
             A UDFExpr whose lists hold the elements in the first list but not the
             second, in the order they appear in the first list.
         """
-        return self._apply_set_operation(
-            other, lambda a, b: [x for x in dict.fromkeys(a) if x not in set(b)]
-        )
+
+        def _difference(a, b):
+            b_set = set(b)
+            return [x for x in dict.fromkeys(a) if x not in b_set]
+
+        return self._apply_set_operation(other, _difference)
 
     def _apply_set_operation(self, other: "Expr", op) -> "UDFExpr":
         # Set operations change list lengths, so a FixedSizeList result type must
