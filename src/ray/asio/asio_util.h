@@ -23,7 +23,6 @@
 #include <utility>
 
 #include "ray/asio/instrumented_io_context.h"
-#include "ray/util/array.h"
 #include "ray/util/thread_utils.h"
 
 template <typename Duration>
@@ -110,16 +109,15 @@ class InstrumentedIOContextWithThread {
 /// SYNOPSIS:
 /// ```
 /// struct YourPolicy {
-///     // List of all IO Context names. We will create 1 thread + 1
-///     // instrumented_io_context for each. Must be unique and should not contain empty
-///     // names.
-///     constexpr static std::array<std::string_view, N> kAllDedicatedIOContextNames;
-///     // List of bools to enable lag probe for each dedicated io context.
-///     constexpr static std::array<bool, N> kAllDedicatedIOContextEnableLagProbe;
+///     // Metadata for all dedicated IO contexts. We will create 1 thread + 1
+///     // instrumented_io_context for each. Each element must expose at least a
+///     // `name` (unique, non-empty std::string_view) and an `enable_lag_probe`
+///     // (bool) member. Policies may add extra members for their own use.
+///     constexpr static std::array<SomeMetadataStruct, N> kAllDedicatedIOContexts;
 ///
-///     // For a given T, returns an index to kAllDedicatedIOContextNames, or -1 for the
+///     // For a given T, returns an index into kAllDedicatedIOContexts, or -1 for the
 ///     // default io context.
-///     constexpr static std::string_view GetDedicatedIOContextIndex<T>();
+///     constexpr static int GetDedicatedIOContextIndex<T>();
 /// }
 /// ```
 ///
@@ -136,24 +134,22 @@ class IOContextProvider {
  public:
   explicit IOContextProvider(instrumented_io_context &default_io_context)
       : default_io_context_(default_io_context) {
-    for (size_t i = 0; i < Policy::kAllDedicatedIOContextNames.size(); i++) {
-      const auto &name = Policy::kAllDedicatedIOContextNames[i];
-      bool enable_lag_probe = Policy::kAllDedicatedIOContextEnableLagProbe[i];
+    for (size_t i = 0; i < Policy::kAllDedicatedIOContexts.size(); i++) {
+      const auto &metadata = Policy::kAllDedicatedIOContexts[i];
       dedicated_io_contexts_[i] = std::make_unique<InstrumentedIOContextWithThread>(
-          std::string(name), enable_lag_probe);
+          std::string(metadata.name), metadata.enable_lag_probe);
     }
   }
 
   // Gets IOContext registered for type T. If the type is not registered in
-  // Policy::kAllDedicatedIOContextNames, it's a compile error.
+  // Policy::kAllDedicatedIOContexts, it's a compile error.
   template <typename T>
   instrumented_io_context &GetIOContext() const {
     constexpr int index = Policy::template GetDedicatedIOContextIndex<T>();
     static_assert(
-        index >= -1 &&
-            index < static_cast<int>(Policy::kAllDedicatedIOContextNames.size()),
+        index >= -1 && index < static_cast<int>(Policy::kAllDedicatedIOContexts.size()),
         "index out of bound, invalid GetDedicatedIOContextIndex implementation! Index "
-        "can only be -1 or within range of kAllDedicatedIOContextNames");
+        "can only be -1 or within range of kAllDedicatedIOContexts");
 
     if constexpr (index == -1) {
       return default_io_context_;
@@ -175,26 +171,34 @@ class IOContextProvider {
  private:
   // Validating the Policy is valid.
   static constexpr bool CheckNoEmpty() {
-    for (const auto &name : Policy::kAllDedicatedIOContextNames) {
-      if (name.empty()) {
+    for (const auto &metadata : Policy::kAllDedicatedIOContexts) {
+      if (metadata.name.empty()) {
         return false;
       }
     }
     return true;
   }
+  // Warning: O(n^2) complexity. Only used in a constexpr context.
+  static constexpr bool NamesAreUnique() {
+    const auto &contexts = Policy::kAllDedicatedIOContexts;
+    for (size_t i = 0; i < contexts.size(); ++i) {
+      for (size_t j = i + 1; j < contexts.size(); ++j) {
+        if (contexts[i].name == contexts[j].name) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
   static_assert(CheckNoEmpty(),
-                "kAllDedicatedIOContextNames must not contain empty strings.");
-  static_assert(ray::ArrayIsUnique(Policy::kAllDedicatedIOContextNames),
-                "kAllDedicatedIOContextNames must not contain duplicate elements.");
-  static_assert(Policy::kAllDedicatedIOContextNames.size() ==
-                    Policy::kAllDedicatedIOContextEnableLagProbe.size(),
-                "kAllDedicatedIOContextNames and kAllDedicatedIOContextEnableLagProbe "
-                "must have the same size.");
+                "kAllDedicatedIOContexts names must not contain empty strings.");
+  static_assert(NamesAreUnique(),
+                "kAllDedicatedIOContexts names must not contain duplicate elements.");
 
   // Using unique_ptr because the class has no default constructor, so it's not easy
   // to initialize objects directly in the array.
   std::array<std::unique_ptr<InstrumentedIOContextWithThread>,
-             Policy::kAllDedicatedIOContextNames.size()>
+             Policy::kAllDedicatedIOContexts.size()>
       dedicated_io_contexts_;
   instrumented_io_context &default_io_context_;
 };
