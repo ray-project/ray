@@ -47,9 +47,7 @@ aiobotocore==2.8.0
     #   aioboto3
     #   s3fs
 aiofiles==24.1.0
-    # via
-    #   aim
-    #   gradio
+    # via aim
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.13.5
@@ -539,7 +537,7 @@ fairscale==0.4.6
     # via -r python/requirements/ml/py313/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.121.0
+fastapi==0.133.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -560,8 +558,6 @@ fastrlock==0.8.3 ; sys_platform != "darwin"
     #   cupy-cuda12x
 feather-format==0.4.1
     # via -r python/requirements/py313/test-requirements.txt
-ffmpy==1.0.0
-    # via gradio
 filelock==3.29.0
     # via
     #   -r python/requirements.txt
@@ -714,12 +710,14 @@ googleapis-common-protos==1.74.0
     #   tensorflow-metadata
 gpytorch==1.15.2
     # via botorch
-gradio==5.50.0 ; platform_system != "Windows"
+gradio==6.15.2 ; platform_system != "Windows"
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
-gradio-client==1.14.0
-    # via gradio
+gradio-client==2.5.0
+    # via
+    #   gradio
+    #   hf-gradio
 graphemeu==0.7.2
     # via alive-progress
 graphene==3.4.3
@@ -780,6 +778,8 @@ h5py==3.12.1
     #   tensorflow
 halo==0.0.31
     # via -r python/requirements/cloud-requirements.txt
+hf-gradio==0.4.1
+    # via gradio
 hf-xet==1.4.3
     # via huggingface-hub
 hjson==3.1.0
@@ -1373,6 +1373,8 @@ oauth2client==4.1.3
     #   google-apitools
 oauthlib==3.3.1
     # via requests-oauthlib
+obstore==0.10.0
+    # via -r python/requirements/ml/py313/data-test-requirements.txt
 onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/py313/rllib-requirements.txt
 onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10"
@@ -1935,6 +1937,7 @@ pytz==2022.7.1
     #   -r python/requirements/py313/test-requirements.txt
     #   aim
     #   clickhouse-connect
+    #   gradio
     #   pandas
     #   snowflake-connector-python
 pyu2f==0.1.5
@@ -2102,8 +2105,6 @@ ruamel-yaml==0.17.40
     #   yahp
 ruamel-yaml-clib==0.2.15
     # via ruamel-yaml
-ruff==0.15.11
-    # via gradio
 s3fs==2023.12.1
     # via -r python/requirements/ml/py313/core-requirements.txt
 s3torchconnector==1.4.3
@@ -2266,7 +2267,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.5.1
     # via cmdstanpy
-starlette==0.49.3
+starlette==1.0.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2513,6 +2514,7 @@ typer==0.24.1
     # via
     #   -r python/requirements.txt
     #   gradio
+    #   hf-gradio
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
 types-pyyaml==6.0.12.2
@@ -2555,6 +2557,7 @@ typing-extensions==4.15.0
     #   mypy
     #   myst-nb
     #   nevergrad
+    #   obstore
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
@@ -2581,7 +2584,9 @@ typing-extensions==4.15.0
 typing-inspect==0.9.0
     # via pyre-extensions
 typing-inspection==0.4.2
-    # via pydantic
+    # via
+    #   fastapi
+    #   pydantic
 tzdata==2026.1
     # via
     #   arrow
@@ -2668,7 +2673,6 @@ websockets==15.0.1
     #   -r python/requirements/py313/test-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   aim
-    #   gradio-client
 werkzeug==2.3.8
     # via
     #   -r python/requirements/py313/test-requirements.txt

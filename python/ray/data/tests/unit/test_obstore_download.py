@@ -1226,24 +1226,19 @@ class TestObstoreRangeSplitDownload:
             import obstore as obs
 
             call_count = 0
+            original_get_range = obs.get_range_async
 
             async def _failing_range(*args, **kwargs):
                 nonlocal call_count
                 call_count += 1
                 if call_count == 2:
                     raise OSError("simulated network failure")
-                return await obs.__wrapped_get_range(*args, **kwargs)
+                return await original_get_range(*args, **kwargs)
 
-            obs.__wrapped_get_range = obs.get_range_async
-            try:
-                with patch.object(obs, "get_range_async", side_effect=_failing_range):
-                    results = asyncio.run(
-                        _download_uris_with_obstore(
-                            [uri], "uri", file_sizes=[len(content)]
-                        )
-                    )
-            finally:
-                del obs.__wrapped_get_range
+            with patch.object(obs, "get_range_async", side_effect=_failing_range):
+                results = asyncio.run(
+                    _download_uris_with_obstore([uri], "uri", file_sizes=[len(content)])
+                )
 
         # Ranged failed, but simple GET fallback should succeed.
         assert results == [content]

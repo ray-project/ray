@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import uuid
+import warnings
 from itertools import chain
 from typing import (
     Any,
@@ -23,7 +24,7 @@ from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.util.types import Device
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 
 T = TypeVar("T")
 
@@ -383,6 +384,11 @@ class DAGNode(DAGNodeBase):
             The result of executing the DAG (an ``ObjectRef`` or an
             ``ActorHandle`` depending on the root node type).
         """
+        warnings.warn(
+            "DAGNode.execute() is deprecated and will be removed in a future release.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)
