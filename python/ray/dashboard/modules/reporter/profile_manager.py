@@ -1,3 +1,4 @@
+from typing import Tuple
 import asyncio
 import logging
 import os
@@ -81,13 +82,17 @@ class CpuProfilingManager:
         self.profile_dir_path.mkdir(exist_ok=True)
         self.profiler_name = "py-spy"
 
-    async def trace_dump(self, pid: int, native: bool = False) -> (bool, str):
+    async def trace_dump(
+        self, pid: int, native: bool = False, subprocesses: bool = False
+    ) -> Tuple[bool, str]:
         """Capture and dump a trace for a specified process.
 
         Args:
             pid: The process ID (PID) of the target process for trace capture.
             native: If True, includes native (C/C++) stack frames.
                 Default is False.
+            subprocesses (bool, optional): If True, also dumps stack traces for
+                child processes of the target process. Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -102,6 +107,8 @@ class CpuProfilingManager:
         # We
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(
@@ -120,10 +127,12 @@ class CpuProfilingManager:
     async def cpu_profile(
         self,
         pid: int,
-        format: str = "flamegraph",
+        format="flamegraph",
         duration: float = 5,
         native: bool = False,
-    ) -> (bool, str):
+        idle: bool = False,
+        subprocesses: bool = False,
+    ) -> Tuple[bool, str]:
         """Perform CPU profiling on a specified process.
 
         Args:
@@ -132,6 +141,12 @@ class CpuProfilingManager:
             duration: The duration of the profiling session in seconds.
                 Default is 5 seconds.
             native: If True, includes native (C/C++) stack frames. Default is False.
+            idle (bool, optional): If True, includes off-CPU / sleeping threads
+                (e.g. threads blocked on locks, I/O, or CUDA syncs).
+                Default is False.
+            subprocesses (bool, optional): If True, also profiles child
+                processes of the target process (e.g. data loader or
+                multiprocess inference workers). Default is False.
 
         Returns:
             Tuple[bool, str]: A tuple containing a boolean indicating the success
@@ -170,6 +185,10 @@ class CpuProfilingManager:
         ]
         if sys.platform == "linux" and native:
             cmd.append("--native")
+        if idle:
+            cmd.append("--idle")
+        if subprocesses:
+            cmd.append("--subprocesses")
         if await _can_passwordless_sudo():
             cmd = ["sudo", "-n"] + cmd
         process = await asyncio.create_subprocess_exec(
@@ -198,7 +217,7 @@ class MemoryProfilingManager:
         profiler_filename: str,
         format: str = "flamegraph",
         leaks: bool = False,
-    ) -> (bool, str):
+    ) -> Tuple[bool, str]:
         """Convert the Memray profile result to specified format.
 
         Args:
@@ -267,7 +286,7 @@ class MemoryProfilingManager:
         native: bool = False,
         trace_python_allocators: bool = False,
         verbose: bool = False,
-    ) -> (bool, str):
+    ) -> Tuple[bool, str]:
         """Attach a Memray profiler to a specified process.
 
         Args:
@@ -326,7 +345,7 @@ class MemoryProfilingManager:
         self,
         pid: int,
         verbose: bool = False,
-    ) -> (bool, str):
+    ) -> Tuple[bool, str]:
         """Detach a profiler from a specified process.
 
         Args:

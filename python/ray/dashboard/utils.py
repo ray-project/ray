@@ -783,3 +783,15 @@ def compose_state_message(
 def close_logger_file_descriptor(logger_instance):
     for handler in logger_instance.handlers:
         handler.close()
+
+
+async def get_head_node_id(gcs_client: GcsClient, timeout: int = 30) -> Optional[str]:
+    """Fetches Head node id persisted in GCS"""
+    head_node_id_hex_bytes = await gcs_client.async_internal_kv_get(
+        ray_constants.KV_HEAD_NODE_ID_KEY,
+        namespace=ray_constants.KV_NAMESPACE_JOB,
+        timeout=timeout,
+    )
+    if head_node_id_hex_bytes is None:
+        return None
+    return head_node_id_hex_bytes.decode()

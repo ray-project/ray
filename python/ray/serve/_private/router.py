@@ -1731,6 +1731,11 @@ class SingletonThreadRouter(Router):
         asyncio event loop thread. It returns a `concurrent.futures.Future` that
         can be awaited or queried from the calling thread.
 
+        Args:
+            request_meta: Metadata describing the inbound request.
+            *request_args: Positional arguments forwarded to the replica handler.
+            **request_kwargs: Keyword arguments forwarded to the replica handler.
+
         Returns:
             A concurrent.futures.Future resolving to the ReplicaResult representing
             the assigned request.
