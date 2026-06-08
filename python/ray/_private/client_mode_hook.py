@@ -89,6 +89,9 @@ def client_mode_hook(func: F) -> F:
     Args:
         func: This function. This is set when this function is used
             as a decorator.
+
+    Returns:
+        The wrapped function that dispatches to the regular or client version.
     """
 
     from ray.util.client import ray
