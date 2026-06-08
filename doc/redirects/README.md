@@ -32,7 +32,10 @@ mirrors the live configuration exactly.
 shows any difference between this file and the live configuration. An empty
 plan means no drift.
 
-The current ruleset is the result of a May-June 2026 cleanup that reduced
-287 inherited rules to a curated set: 169 version-agnostic `page` rules plus
-3 intentional version-pinned `exact` rules, all returning 301. The
-pre-cleanup snapshot is preserved in git history.
+The ruleset began as a May-June 2026 cleanup that reduced 287 inherited rules
+to a curated set of 169 version-agnostic `page` rules plus 3 intentional
+version-pinned `exact` rules, all returning 301. The pre-cleanup snapshot is
+preserved in git history. A later legacy-version 404-coverage pass
+added 21 `page` catch-all rules that land high-traffic out-of-support docs
+paths, which have no equivalent on current docs, on the nearest surviving
+section index.

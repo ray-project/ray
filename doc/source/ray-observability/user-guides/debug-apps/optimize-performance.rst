@@ -86,7 +86,9 @@ actions for active workers, actors, and jobs.
    :width: 80%
 
 Clicking "Stack Trace" returns the current stack trace sample using ``py-spy``. By default, only the Python stack
-trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
+trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux). To also
+dump stack traces for child processes of the target (for example, data loader or multiprocess inference workers),
+set the URL parameter ``subprocesses=1``.
 
 .. image:: /images/stack.png
    :align: center
@@ -95,7 +97,9 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
 Clicking "CPU Flame Graph" takes a number of stack trace samples and combine them into a flame graph visualization.
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
-parameter to enable native profiling.
+parameter to enable native profiling. To also include off-CPU (sleeping) threads, such as threads blocked on locks,
+I/O, or CUDA syncs, set the URL parameter ``idle=1``. To also profile child processes of the target (for example,
+data loader or multiprocess inference workers), set the URL parameter ``subprocesses=1``.
 
 .. image:: /images/flamegraph.png
    :align: center
