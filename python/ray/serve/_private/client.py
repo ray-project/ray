@@ -254,6 +254,11 @@ class ServeControllerClient:
     def _wait_for_application_running(self, name: str, timeout_s: int = -1):
         """Waits for the named application to enter "RUNNING" status.
 
+        Args:
+            name: the application name to wait on.
+            timeout_s: maximum time to wait, in seconds. A negative value waits
+                indefinitely.
+
         Raises:
             RuntimeError: if the application enters the "DEPLOY_FAILED" status instead.
             TimeoutError: if this doesn't happen before timeout_s.
