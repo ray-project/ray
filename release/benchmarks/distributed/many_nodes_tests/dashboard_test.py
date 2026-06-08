@@ -126,7 +126,7 @@ class DashboardTestAtScale:
 
         # Get the memory usage.
         memories = get_system_metric_for_component(
-            "ray_component_uss_mb",
+            "ray_component_uss_bytes",
             "dashboard",
             os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
         )

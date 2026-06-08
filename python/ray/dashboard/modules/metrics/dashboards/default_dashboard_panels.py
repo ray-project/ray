@@ -407,7 +407,7 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='(sum(ray_component_rss_mb{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (Component)) - (sum(ray_component_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (Component))',
+                expr='(sum(ray_component_rss_bytes{{instance=~"$Instance",{global_filters}}}) by (Component)) - (sum(ray_component_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (Component))',
                 legend="{{Component}}",
             ),
             Target(

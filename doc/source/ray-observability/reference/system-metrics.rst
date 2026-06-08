@@ -93,9 +93,15 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_node_cgroup_mem_total`
      - `instance`
      - The container memory limit per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
-   * - `ray_component_uss_mb`
+   * - `ray_component_rss_bytes`
      - `Component`, `instance`
-     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+     - The measured resident set size in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_mem_shared_bytes`
+     - `Component`, `instance`
+     - The measured shared memory in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_uss_bytes`
+     - `Component`, `instance`
+     - The measured unique set size in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_component_cpu_percentage`
      - `Component`, `instance`
      - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.

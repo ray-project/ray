@@ -67,7 +67,7 @@ if __name__ == "__main__":
         assert False, "Job has failed."
 
     uss_mb_for_agent_component = get_system_metric_for_component(
-        "ray_component_uss_mb",
+        "ray_component_uss_bytes",
         "agent",
         os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
     )
