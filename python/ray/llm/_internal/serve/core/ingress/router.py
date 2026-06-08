@@ -3,8 +3,7 @@ from typing import Optional, Tuple
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
-from ray.llm._internal.common.utils.lora_utils import get_base_model_id
-from ray.llm._internal.serve.utils.server_utils import extract_model_id_from_body
+from ray.llm._internal.serve.utils.server_utils import extract_adapter_id_from_body
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
@@ -120,10 +119,7 @@ class LLMRouter:
         """
         if not self._multiplex_enabled:
             return None
-        model_id = extract_model_id_from_body(body)
-        if model_id and get_base_model_id(model_id) != model_id:
-            return model_id
-        return None
+        return extract_adapter_id_from_body(body)
 
     @router_app.get("/health")
     async def health(self):

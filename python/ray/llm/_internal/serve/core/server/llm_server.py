@@ -17,7 +17,6 @@ import ray
 from ray import serve
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import import_attr
-from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
@@ -38,7 +37,7 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.llm._internal.serve.utils.server_utils import (
-    extract_model_id_from_body,
+    extract_adapter_id_from_body,
     get_serve_request_id,
 )
 
@@ -101,14 +100,20 @@ def _merge_replica_actor_and_child_actor_bundles(
     ]
 
 
+# Cap how much of a direct-streaming request body is buffered to read the
+# OpenAI ``model`` field. The field sits near the start, so a small prefix is
+# enough; bounding it avoids buffering large (e.g. multimodal) bodies in memory.
+_DIRECT_STREAMING_BODY_PEEK_LIMIT = 256 * 1024
+
+
 class _DirectStreamingLoRAMiddleware:
     """ASGI middleware that resolves per-request LoRA adapters for direct streaming.
 
     The data-plane request reaches the engine ASGI app directly (HAProxy ->
-    replica backend port), bypassing ``_run_request``. This middleware buffers
-    the body, reads the OpenAI ``model`` field, and for an adapter request
-    downloads + registers + advertises the adapter via the server before
-    replaying the buffered body to the engine app. Non-POST requests pass
+    replica backend port), bypassing ``_run_request``. This middleware buffers a
+    bounded prefix of the body, reads the OpenAI ``model`` field, and for an
+    adapter request downloads + registers + advertises the adapter via the
+    server before replaying the body to the engine app. Non-POST requests pass
     through untouched.
     """
 
@@ -121,25 +126,41 @@ class _DirectStreamingLoRAMiddleware:
             await self._app(scope, receive, send)
             return
 
-        # Buffer the body so we can peek the model id, then replay it. The
-        # replica needs the full body to serve the request anyway.
+        # Buffer only enough of the body to peek the model id, then replay the
+        # buffered prefix and stream the rest on demand. Buffering the whole
+        # body would OOM on large (e.g. multimodal) payloads, and the model id
+        # sits near the start anyway; a truncated prefix is handled by
+        # extract_model_id_from_body's regex fallback.
         messages = []
+        body_chunks = []
+        buffered = 0
         while True:
             message = await receive()
             messages.append(message)
-            if not message.get("more_body", False):
+            if message.get("type") == "http.request":
+                chunk = message.get("body", b"")
+                body_chunks.append(chunk)
+                buffered += len(chunk)
+            if buffered >= _DIRECT_STREAMING_BODY_PEEK_LIMIT or not message.get(
+                "more_body", False
+            ):
                 break
-        body = b"".join(m.get("body", b"") for m in messages)
 
-        await self._server._maybe_resolve_lora_for_direct_streaming(body)
+        await self._server._maybe_resolve_lora_for_direct_streaming(
+            b"".join(body_chunks)
+        )
 
         message_iter = iter(messages)
 
         async def replay():
+            # Replay the buffered prefix, then defer to the real transport so the
+            # engine streams the remainder and still observes client disconnects
+            # (used to abort in-flight generation). Returning http.disconnect
+            # here instead would abort streaming as soon as the body is read.
             try:
                 return next(message_iter)
             except StopIteration:
-                return {"type": "http.disconnect"}
+                return await receive()
 
         await self._app(scope, replay, send)
 
@@ -379,14 +400,14 @@ class LLMServer(LLMServerProtocol):
         advertised here instead. Best-effort: extraction or load failures are
         logged and swallowed so the engine's own handling still runs.
         """
-        model_id = extract_model_id_from_body(body)
-        if not model_id or get_base_model_id(model_id) == model_id:
+        adapter_id = extract_adapter_id_from_body(body)
+        if not adapter_id:
             return
         try:
-            await self._resolve_lora_adapter(model_id)
+            await self._resolve_lora_adapter(adapter_id)
         except Exception:
             logger.exception(
-                "Failed to resolve LoRA adapter '%s' for direct streaming.", model_id
+                "Failed to resolve LoRA adapter '%s' for direct streaming.", adapter_id
             )
 
     def _batch_output_stream(
