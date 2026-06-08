@@ -95,7 +95,7 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
-            scheduler: The resource scheduler used to compute target node counts.
+            scheduler: The resource scheduler to make scaling decisions.
             cloud_provider: The cloud instance provider used to launch and
                 terminate nodes.
             cloud_resource_monitor: The cloud resource monitor for monitoring
@@ -278,7 +278,7 @@ class Reconciler:
             7. Handle any stuck instances with timeouts.
 
         Args:
-            autoscaling_state: The autoscaling state to fill in.
+            autoscaling_state: The autoscaling state populated by this reconcile loop.
             instance_manager: The instance manager to reconcile.
             scheduler: The resource scheduler to make scaling decisions.
             cloud_provider: The cloud instance provider used to launch and

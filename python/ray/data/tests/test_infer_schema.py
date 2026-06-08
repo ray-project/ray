@@ -155,6 +155,43 @@ class TestProject:
         )
 
 
+class TestDropColumns:
+    """Phase 3: ``Dataset.drop_columns`` reshapes into a ``Project`` over
+    the surviving columns when the input schema is known, so the typed
+    chain stays intact through it."""
+
+    def test_drop_columns_static_schema(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path)).drop_columns(["b"])
+        # Reshaped to a ``Project`` (not a UDF ``MapBatches``), so the
+        # typed schema chain survives.
+        assert isinstance(ds._logical_plan.dag, Project)
+        assert _static_schema(ds) == pa.schema(
+            [pa.field("a", pa.int32()), pa.field("k", pa.string())]
+        )
+
+    def test_drop_columns_missing_raises_eagerly(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = ray.data.read_parquet(str(parquet_path))
+        with pytest.raises(KeyError, match="not found in dataset schema"):
+            ds.drop_columns(["does_not_exist"])
+
+    def test_drop_columns_after_map_batches_falls_back(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        # Input schema is unknown downstream of ``map_batches``, so the
+        # implementation falls back to a ``MapBatches`` closure and the
+        # typed-chain guarantee no longer holds.
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .map_batches(lambda b: b)
+            .drop_columns(["b"])
+        )
+        assert ds.schema(fetch_if_missing=False) is None
+
+
 class TestAggregate:
     def test_groupby_multi_aggs(self, ray_start_regular_shared_2_cpus, parquet_path):
         ds = (
