@@ -1,22 +1,5 @@
-# Requirements for the Windows CI driver binaries
-# (//ci/ray_ci:test_in_docker and //ci/ray_ci:build_in_docker_windows).
-#
-# These are non-hermetic py_binaries: bazel resolves/bundles their deps as wheels
-# (pip_parse), but the binary is executed by the Windows agent's conda-base
-# interpreter (Python 3.8), since it has no exec_compatible_with on the hermetic
-# toolchain. This set is therefore resolved for Python 3.8 so every pinned
-# version is genuinely importable on the agent. Two things are required to make
-# the 3.8 resolution succeed:
-#   * EXCLUDE release/requirements-doc.txt — the docs toolchain pulls pydantic,
-#     which forces typing-extensions>=4.14.1 (and 4.14.0 dropped Python 3.8).
-#     The docs closure is only needed by //ci/ray_ci/doc on Linux, so it stays
-#     in release/requirements_py310.in.
-#   * DROP twine — twine==6.2.0 requires Python >=3.9 and is only used by
-#     //ci/ray_ci/automation (not the Windows driver binaries), so it is not
-#     part of this set.
-#
-# Keep the package list below in sync with release/requirements_py310.in (minus
-# the `-r requirements-doc.txt` line).
+# Windows CI driver deps, pip-installed into the agent's Python 3.8 env.
+# Keep in sync with release/requirements_py310.in (minus the docs toolchain and twine).
 aioboto3
 anyscale >= 0.26.14
 azure-identity
@@ -36,28 +19,15 @@ pybuildkite
 requests >= 2.31.0
 docker >= 7.1.0
 aws_requests_auth
-# botocore imports urllib3.contrib.pyopenssl (urllib3 1.26.x), which imports
-# OpenSSL. Without pyopenssl in the bundle, the driver falls through to the
-# Windows agent's stale conda pyOpenSSL, which references an OpenSSL flag that
-# modern cryptography dropped and crashes at import (X509_V_FLAG_NOTIFY_POLICY).
-# Bundling a current pyopenssl in runfiles shadows the conda copy.
 pyopenssl
-
-# Below are requirements only used by ray_ci
 tzdata
 tqdm
 networkx
 pip_requirements_parser
-
-# Upgrades
-# Capped below 4.14: 4.14.0 dropped Python 3.8, and these wheels are executed by
-# the Windows agent's py3.8 launcher (see header).
 typing-extensions>=4.10,<4.14
 jsonschema>=4.23.0
 certifi>=2025.1.31
 h11>=0.16.0
 google-cloud-logging
 packaging==25.0
-
-# Pinned to match the previously-working release/requirements_py310.txt set.
 anyscale==0.26.74

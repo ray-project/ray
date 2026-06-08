@@ -77,20 +77,6 @@ load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps"
 
 install_py_deps_py310()
 
-# Windows CI driver deps; wheels fetched only on Windows via the select in
-# //ci/ray_ci/deps:aliases.bzl. No python_interpreter_target: pip_parse just
-# transcribes the lock (no marker filtering at parse time), and the Windows agent
-# fetches under its own Python 3.8. A hermetic python3_8 here broke aarch64 Linux
-# builds, since Ray's rules_python has no aarch64-linux build for 3.8.
-pip_parse(
-    name = "py_deps_windows",
-    requirements_lock = "//python/deplocks/ci:ci_windows_depset.lock",
-)
-
-load("@py_deps_windows//:requirements.bzl", install_py_deps_windows = "install_deps")
-
-install_py_deps_windows()
-
 register_toolchains("//bazel:py310_toolchain")
 
 register_execution_platforms(

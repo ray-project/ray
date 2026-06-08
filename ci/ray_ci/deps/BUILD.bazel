@@ -1,4 +1,3 @@
-# Per-package deps aliases: @py_deps_windows on Windows, @py_deps_py310 elsewhere.
 load("//ci/ray_ci/deps:aliases.bzl", "ci_require_aliases")
 
 ci_require_aliases()
