@@ -213,6 +213,40 @@ Next, configure the VLM processor with the essential settings:
     :start-after: __vlm_video_config_example_start__
     :end-before: __vlm_video_config_example_end__
 
+Ray Data LLM forwards ``mm_processor_kwargs`` to vLLM, which invokes
+the model's HuggingFace processor with it. The accepted keys are
+defined by the HF processor and differ by model family, for example
+``max_pixels`` on Qwen2-VL, ``size`` on Qwen3-VL. Refer to the HF
+processor source for your model, for example `Qwen3VLVideoProcessor
+<https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L86>`_.
+
+.. note::
+
+   Understanding multimodal arguments:
+
+   - ``engine_kwargs.limit_mm_per_prompt={"video": 1}``: caps the number of videos per request.
+   - ``engine_kwargs.mm_processor_kwargs.size``: per-frame resize budget;
+     inputs are resized to fall within the range
+     ``shortest_edge`` to ``longest_edge`` in total pixels.
+   - ``engine_kwargs.mm_processor_kwargs.do_sample_frames=False``: skip the
+     HF processor's own frame sampling because ``media_io_kwargs`` already
+     produced the final frames. Set this whenever frame sampling has
+     already happened upstream.
+   - ``prepare_multimodal_stage.model_config_kwargs.allowed_local_media_path``:
+     required for ``file://`` or local-path media inputs.
+   - ``prepare_multimodal_stage.model_config_kwargs.media_io_kwargs``:
+     frame sampling at decode time.
+
+
+.. warning::
+   If a multimodal input exceeds ``mm_processor_kwargs.size``, the HF
+   processor's `smart_resize
+   <https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L35>`_
+   downscales it automatically. Size ``size.longest_edge``
+   to the largest input you expect to process: ``height * width`` for an
+   image, ``num_frames * height * width`` for a video.
+
+
 Define preprocessing and postprocessing functions to convert dataset rows into
 the format expected by the VLM and extract model responses. Within the preprocessor,
 structure video data as part of an OpenAI-compatible message.
@@ -573,15 +607,41 @@ For multi-turn conversations or complex agentic workflows, share a vLLM engine a
 Troubleshooting
 ---------------
 
+vLLM compatibility
+~~~~~~~~~~~~~~~~~~
+
+Each Ray release is fully tested with a compatible vLLM version.
+
+.. list-table::
+   :header-rows: 1
+   :widths: auto
+
+   * - Ray release
+     - vLLM version
+   * - 2.56.0
+     - 0.22.0
+   * - 2.55.0
+     - 0.18.0
+   * - 2.54.0
+     - 0.15.0
+   * - 2.53.0
+     - 0.12.0
+   * - 2.52.0
+     - 0.11.0
+   * - 2.51.0
+     - 0.11.0
+   * - 2.50.0
+     - 0.10.2
+
 GPU memory and CUDA OOM
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 If you encounter CUDA out of memory errors, try these strategies:
 
-- **Reduce batch size**: Start with 8-16 and increase gradually
-- **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
-- **Decrease ``max_model_len``**: Use shorter context lengths
-- **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
+- Reduce batch size: Start with 8-16 and increase gradually
+- Lower ``max_num_batched_tokens``: Reduce from 4096 to 2048 or 1024
+- Decrease ``max_model_len``: Use shorter context lengths
+- Set ``gpu_memory_utilization``: Use 0.75-0.85 instead of default 0.90
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -623,7 +683,6 @@ vLLM NIXL EP dependency incompatibility
    Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime
    and vLLM build in your environment.
 
-
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
 
 
@@ -635,6 +694,6 @@ If you encounter issues not covered in this guide:
 - `Ray GitHub Issues <https://github.com/ray-project/ray/issues>`_ - Report bugs or request features
 - `Ray Slack <https://ray-distributed.slack.com>`_ - Get help from the community
 - `Ray Discourse Forum <https://discuss.ray.io>`_ - Ask questions and share knowledge
-- `Ray LLM Office Hours <https://docs.google.com/document/d/1n3-Jw_4su8yilo9zdi5OciAduoz6H_VmdL8i9sL4f-E/edit?tab=t.e700ayqsx3v3>`_ - Learn about new features, ask questions, and get guidance from the team
+- `Ray LLM Office Hours <https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month>`_ - Learn about new features, ask questions, and get guidance from the team
 
   - `Past Office Hours Recordings <https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN>`_ - View recordings from previous sessions
