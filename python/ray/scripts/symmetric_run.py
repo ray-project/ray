@@ -19,12 +19,21 @@ import psutil
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
 
 
-def check_ray_already_started() -> bool:
-    import ray._private.services as services
+def check_ray_already_started(target_address: str) -> bool:
+    """Return True if a Ray cluster matching `target_address` is already running.
 
-    # Try auto-detecting the Ray instance.
+    Multiple Ray clusters with distinct GCS addresses are allowed to coexist on
+    the same host (the Slurm/HPC use case). Only block when the requested
+    address conflicts with an existing cluster.
+    """
+    # Inline import to avoid circular import with ray.scripts.scripts.
+    import ray._private.services as services
+    from ray.scripts.scripts import is_same_gcs_address
+
     running_gcs_addresses = services.find_gcs_addresses()
-    return len(running_gcs_addresses) > 0
+    return any(
+        is_same_gcs_address(addr, target_address) for addr in running_gcs_addresses
+    )
 
 
 def check_cluster_ready(nnodes, timeout=CLUSTER_WAIT_TIMEOUT):
@@ -125,6 +134,27 @@ SEPARATOR REQUIREMENT:
     The '--' separator is mandatory and must appear between Ray start
     arguments and the entrypoint command. This ensures clear separation
     between the two sets of arguments.
+
+MULTIPLE INSTANCES ON SAME HOST:
+
+    Use a distinct --address per instance. Also pass distinct values
+    for --dashboard-port and --dashboard-agent-listen-port; otherwise
+    the second cluster will crash on port conflict. Shutdown is
+    per-address:
+
+        Before:  [A :6380]  [B :6381]
+        ray stop --address 127.0.0.1:6380
+        After:   [stopped]  [B :6381]
+
+    Example:
+
+        ray symmetric-run --address 127.0.0.1:6380 \
+            --dashboard-port 8265 --dashboard-agent-listen-port 52365 \
+            -- python -c "import time; print('A'); time.sleep(10); print('A done')"
+
+        ray symmetric-run --address 127.0.0.1:6381 \
+            --dashboard-port 8266 --dashboard-agent-listen-port 52366 \
+            -- python -c "import time; print('B'); time.sleep(10); print('B done')"
 """,
 )
 @click.option(
@@ -162,8 +192,12 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     if not entrypoint_on_head:
         raise click.ClickException("No entrypoint command provided.")
 
-    if check_ray_already_started():
-        raise click.ClickException("Ray is already started on this node.")
+    if check_ray_already_started(address):
+        raise click.ClickException(
+            f"A Ray cluster with gcs address {address} is already started on this "
+            "node. To run multiple symmetric-run instances on the same node, "
+            "use distinct --address values (e.g., different gcs ports)."
+        )
 
     # 1. Parse address and check if we are on the head node.
     gcs_host_port = ray._common.network_utils.parse_address(address)
@@ -261,8 +295,17 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
         # This can be triggered by ctrl-c on the user's side.
         click.echo("Interrupted by user.", err=True)
     finally:
-        # Stop Ray cluster.
-        subprocess.run(["ray", "stop"])
+        # Stop Ray cluster. Use the resolved host/port (not the original
+        # `address` string) so cleanup still matches the running processes
+        # if DNS fails or the hostname resolves differently at stop time.
+        subprocess.run(
+            [
+                "ray",
+                "stop",
+                "--address",
+                ray._common.network_utils.build_address(resolved_gcs_host, gcs_port),
+            ]
+        )
 
         # Propagate the exit code of the user script.
         if result is not None and result.returncode != 0:

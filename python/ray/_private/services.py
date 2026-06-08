@@ -1080,13 +1080,24 @@ def start_ray_process(
     )
 
 
-def start_reaper(fate_share=None):
+def start_reaper(
+    gcs_address: Optional[str] = None,
+    fate_share: Optional[bool] = None,
+):
     """Start the reaper process.
 
     This is a lightweight process that simply
     waits for its parent process to die and then terminates its own
     process group. This allows us to ensure that ray processes are always
     terminated properly so long as that process itself isn't SIGKILLed.
+
+    Args:
+        gcs_address: If provided, included in the reaper's cmdline so
+            `ray stop --address` can identify and stop it together with
+            the rest of the cluster. Skipped when unknown (e.g., user
+            requested --port=0 and the actual port is not yet bound).
+        fate_share: Whether to share fate between the reaper and this
+            process.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1112,6 +1123,8 @@ def start_reaper(fate_share=None):
 
     reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
+    if gcs_address:
+        command.append(f"--gcs-address={gcs_address}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REAPER,
