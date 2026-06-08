@@ -1,4 +1,9 @@
-"""Driver dep aliases: bundled from @py_deps_py310 off Windows, unbundled on Windows."""
+"""Driver dep aliases: bundled from @py_deps_py310 off Windows, unbundled on Windows.
+
+TODO(elliot-barn): Drop the Windows branch of the select() below once the Windows CI
+system Python is upgraded to 3.10 — the driver deps can then be bundled on Windows
+like everywhere else. See //bazel:ci_require.bzl for the full removal checklist.
+"""
 
 load("@py_deps_py310//:requirements.bzl", _require = "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
