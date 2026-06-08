@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
 #include <string>
 
 #include "absl/types/optional.h"
@@ -118,6 +119,7 @@ class SpilledObjectReader : public IObjectReader {
   const uint64_t metadata_offset_;
   const uint64_t metadata_size_;
   const rpc::Address owner_address_;
+  std::shared_ptr<int> spill_file_fd_;
 };
 
 }  // namespace ray

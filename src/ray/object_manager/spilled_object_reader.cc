@@ -14,29 +14,42 @@
 
 #include "ray/object_manager/spilled_object_reader.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <fstream>
+#include <memory>
 #include <regex>
 #include <string>
 #include <utility>
 
+#include "absl/strings/internal/resize_uninitialized.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace {
 const size_t UINT64_size = sizeof(uint64_t);
 
-bool ReadFileSection(const std::string &path,
-                     uint64_t offset,
-                     uint64_t size,
-                     std::string &output) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file.seekg(static_cast<std::streamoff>(offset))) {
+bool AppendFileSection(int fd, uint64_t offset, uint64_t size, std::string &output) {
+  if (fd < 0) {
     return false;
   }
   const size_t old_size = output.size();
-  output.resize(old_size + size);
-  file.read(&output[old_size], static_cast<std::streamsize>(size));
-  return static_cast<uint64_t>(file.gcount()) == size;
+  // Grow `output` without value-initializing the new bytes (pread overwrites
+  // them); std::string::resize would needlessly zero-fill first.
+  absl::strings_internal::STLStringResizeUninitialized(&output, old_size + size);
+  ssize_t n = pread(fd, &output[old_size], size, static_cast<off_t>(offset));
+  return n >= 0 && static_cast<uint64_t>(n) == size;
+}
+
+std::shared_ptr<int> OpenSharedFd(const std::string &path) {
+  int fd = open(path.c_str(), O_RDONLY);
+  return std::shared_ptr<int>(new int(fd), [](int *p) {
+    if (*p >= 0) {
+      close(*p);
+    }
+    delete p;
+  });
 }
 }  // namespace
 
@@ -101,7 +114,9 @@ SpilledObjectReader::SpilledObjectReader(std::string file_path,
       data_size_(data_size),
       metadata_offset_(metadata_offset),
       metadata_size_(metadata_size),
-      owner_address_(std::move(owner_address)) {}
+      owner_address_(std::move(owner_address)) {
+  spill_file_fd_ = OpenSharedFd(file_path_);
+}
 
 /* static */ bool SpilledObjectReader::ParseObjectURL(const std::string &object_url,
                                                       std::string &file_path,
@@ -185,12 +200,14 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
 bool SpilledObjectReader::ReadFromDataSection(uint64_t offset,
                                               uint64_t size,
                                               std::string &output) const {
-  return ReadFileSection(file_path_, data_offset_ + offset, size, output);
+  return AppendFileSection(
+      spill_file_fd_ ? *spill_file_fd_ : -1, data_offset_ + offset, size, output);
 }
 
 bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
                                                   uint64_t size,
                                                   std::string &output) const {
-  return ReadFileSection(file_path_, metadata_offset_ + offset, size, output);
+  return AppendFileSection(
+      spill_file_fd_ ? *spill_file_fd_ : -1, metadata_offset_ + offset, size, output);
 }
 }  // namespace ray

@@ -155,6 +155,7 @@ ray_cc_library(
     deps = [
         ":object_reader",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/strings:internal",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_prod",
     ],
