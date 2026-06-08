@@ -1,32 +1,28 @@
 """Dashboard head module that periodically queries Prometheus for an
-allowlisted set of **cluster-level** metric aggregates, writes the summary
-to a file in the session directory, and POSTs it to a telemetry endpoint.
+allowlisted set of **cluster-level** metric aggregates and records each as an
+**extra usage tag**, so the existing ``UsageStatsHead`` ships them in its
+hourly usage-stats report. This module does **no** HTTP POST of its own.
 
 Lifecycle is modeled on ``UsageStatsHead``: a periodic loop driven by
 ``async_loop_forever`` runs a blocking ``_collect_sync`` in a thread pool.
 On each cycle the module:
 
-  1. issues one instant PromQL query per ``(metric, agg)`` in the
-     allowlist, each an outer cross-series reducer wrapped around a
-     ``*_over_time`` window and filtered by ``{SessionName='<session>'}``,
-     so every query returns a single cluster scalar;
-  2. also counts cluster nodes from the per-node series;
-  3. packs the ``<metric>_<agg> -> value`` pairs into a ``UsageStats``-shaped
-     envelope's ``extra_usage_tags`` (schema ``0.1`` — no new receiver
-     schema, no ``samples[]``, no chunking);
-  4. writes the summary to ``<session_dir>/databricks_telemetry_latest_batch.json``;
-  5. POSTs it to ``RAY_DATABRICKS_TELEMETRY_ENDPOINT`` (default the
-     HTTPS usage-stats sink; set the env var empty for write-only mode);
-  6. writes a status mirror.
-
-The local file is always produced regardless of POST outcome — it is the
-operator's audit trail and is intentionally decoupled from network
-reachability. POST failures are tracked separately
-(``total_post_failed`` / ``last_post_error``) so a transient endpoint
-outage does not look like a collection failure.
+  1. issues one instant PromQL query per ``(metric, agg)`` in the allowlist,
+     each an outer cross-series reducer wrapped around a ``*_over_time``
+     window and filtered by ``{SessionName='<session>'}``, so every query
+     returns a single cluster scalar;
+  2. also counts cluster nodes (head/worker split + hourly peak);
+  3. records each ``<metric>_<agg> -> value`` via ``record_extra_usage_tag``
+     (the key must exist in the ``TagKey`` enum), which writes to the GCS
+     internal KV store. ``UsageStatsHead`` reads those on its next report and
+     POSTs them as part of ``extra_usage_tags`` — no separate POST, endpoint,
+     auth, or chunking here;
+  4. writes an audit mirror of the recorded tags to
+     ``<session_dir>/databricks_telemetry_latest_batch.json`` and a status
+     file.
 
 Failures on individual PromQL queries are logged at DEBUG and skipped so a
-single missing metric does not abort the whole summary. The next cycle
+single missing metric does not abort the whole cycle. The next cycle
 re-queries Prometheus over a fresh window.
 """
 
@@ -43,24 +39,19 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-import ray
 import ray.dashboard.utils as dashboard_utils
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.modules.databricks_telemetry.constants import (
     BATCH_FILE,
     DATABRICKS_TELEMETRY_ENABLED_ENV_VAR,
-    DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR,
     DATABRICKS_TELEMETRY_INTERVAL_S_ENV_VAR,
-    DEFAULT_ENDPOINT,
     DEFAULT_INTERVAL_S,
-    DEFAULT_POST_TIMEOUT_S,
     DEFAULT_PROMETHEUS_HOST,
     METRIC_ALLOWLIST,
     NODE_COUNT_METRIC,
     PROMETHEUS_HOST_ENV_VAR,
-    SCHEMA_VERSION,
     STATUS_FILE,
-    TELEMETRY_SOURCE,
 )
 from ray.dashboard.utils import async_loop_forever
 
@@ -85,16 +76,6 @@ def _collector_interval_s() -> int:
 
 def _prometheus_host() -> str:
     return os.getenv(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST)
-
-
-def _telemetry_endpoint() -> str:
-    """Return the POST endpoint.
-
-    Defaults to ``DEFAULT_ENDPOINT`` (the HTTPS usage-stats sink). Set the
-    env var to an empty string for write-only mode (the local audit file is
-    still written).
-    """
-    return os.getenv(DATABRICKS_TELEMETRY_ENDPOINT_ENV_VAR, DEFAULT_ENDPOINT).strip()
 
 
 # --- PromQL construction --------------------------------------------------
@@ -162,7 +143,7 @@ def _node_count_queries(window_s: int, session_name: str) -> Dict[str, str]:
 
 
 def _format_value(value: float) -> str:
-    """Render a scalar for ``extra_usage_tags`` (a ``Dict[str, str]``)."""
+    """Render a scalar as a usage-tag string value."""
     if value == int(value):
         return str(int(value))
     return f"{value:.6g}"
@@ -187,8 +168,8 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
     """Periodic cluster-level Prometheus-aggregate collector.
 
     Runs inside the dashboard process on the head node; no subprocess, no
-    Ray actor. Output lands in the session directory; the same summary is
-    POSTed to the configured endpoint.
+    Ray actor, no HTTP POST. Output is recorded as extra usage tags (shipped
+    by ``UsageStatsHead``) and mirrored to the session directory for audit.
     """
 
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
@@ -200,61 +181,12 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
         self.last_error: Optional[str] = None
         self.last_success_ts_ms: Optional[int] = None
         self.last_metric_count: Optional[int] = None
-        # POST-side counters, kept separate from collection so a transient
-        # endpoint outage does not look like a collection failure.
-        self.total_post_success = 0
-        self.total_post_failed = 0
-        self.last_post_ts_ms: Optional[int] = None
-        self.last_post_status_code: Optional[int] = None
-        self.last_post_error: Optional[str] = None
-
-    # --- POST --------------------------------------------------------
-
-    def _post_summary(self, body: Dict[str, Any]) -> None:
-        """POST ``body`` to ``RAY_DATABRICKS_TELEMETRY_ENDPOINT``.
-
-        No-op when the env var is empty (write-only mode). Mirrors
-        ``UsageStatsClient.report_usage_data``: ``Content-Type:
-        application/json``, 10s timeout, ``raise_for_status``. The summary
-        is ~2 KB, so it is a single unchunked request. The caller does not
-        raise on failure — the audit file has already been written.
-        """
-        endpoint = _telemetry_endpoint()
-        if not endpoint:
-            return
-        try:
-            resp = requests.post(
-                endpoint,
-                headers={"Content-Type": "application/json"},
-                json=body,
-                timeout=DEFAULT_POST_TIMEOUT_S,
-            )
-            resp.raise_for_status()
-        except Exception as e:
-            response = getattr(e, "response", None)
-            self.last_post_status_code = getattr(response, "status_code", None)
-            self.last_post_error = str(e)
-            self.total_post_failed += 1
-            logger.info(
-                "Databricks telemetry POST failed (seq=%d, endpoint=%s): %s",
-                self.seq_no,
-                endpoint,
-                e,
-            )
-            return
-        self.last_post_status_code = resp.status_code
-        self.last_post_error = None
-        self.last_post_ts_ms = int(time.time() * 1000)
-        self.total_post_success += 1
+        self.last_recorded_count: Optional[int] = None
 
     # --- Prometheus query --------------------------------------------
 
     def _query_prometheus(self, query: str, eval_ts_s: int) -> List[Dict[str, Any]]:
-        """Issue an instant query and return the raw ``data.result`` array.
-
-        Raises on transport or non-success Prometheus response so the
-        caller can account the failure per-query and continue.
-        """
+        """Issue an instant query and return the raw ``data.result`` array."""
         url = f"{_prometheus_host()}/api/v1/query"
         params = {"query": query, "time": eval_ts_s}
         response = requests.get(url, params=params, timeout=30)
@@ -269,11 +201,7 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
 
     @staticmethod
     def _extract_scalar(result: List[Dict[str, Any]]) -> Optional[float]:
-        """Pull the single scalar from an aggregated instant-vector result.
-
-        Returns ``None`` for an empty result (no matching series) or a
-        NaN/Inf value.
-        """
+        """Pull the single scalar from an aggregated instant-vector result."""
         for entry in result:
             value_pair = entry.get("value")
             if not value_pair or len(value_pair) != 2:
@@ -287,8 +215,6 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             return value
         return None
 
-    # --- Summary assembly --------------------------------------------
-
     def _query_scalar(self, query: str, eval_ts_s: int, label: str) -> Optional[float]:
         try:
             result = self._query_prometheus(query, eval_ts_s)
@@ -297,14 +223,14 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             return None
         return self._extract_scalar(result)
 
-    def _build_summary(self) -> Dict[str, Any]:
-        eval_ts_s = int(time.time())
-        eval_ts_ms = eval_ts_s * 1000
-        window_s = _collector_interval_s()
+    # --- Tag assembly + recording ------------------------------------
 
+    def _build_tags(self) -> Dict[str, str]:
+        """Query Prometheus and return the ``<metric>_<agg> -> value`` tags."""
+        eval_ts_s = int(time.time())
+        window_s = _collector_interval_s()
         tags: Dict[str, str] = {}
 
-        # One cluster scalar per (metric, agg).
         for spec in METRIC_ALLOWLIST:
             for agg in spec.aggs:
                 query = _build_promql(
@@ -314,27 +240,36 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
                 if value is not None:
                     tags[f"{spec.name}_{agg}"] = _format_value(value)
 
-        # Cluster node counts (count of node series, not values).
         for key, query in _node_count_queries(window_s, self.session_name).items():
             value = self._query_scalar(query, eval_ts_s, key)
             if value is not None:
                 tags[key] = _format_value(value)
 
-        # Cluster identity goes in extra_usage_tags: the UsageStats
-        # top-level forbids unknown fields (Extra.forbid), so cluster_id /
-        # session_id / ray_version cannot be added there.
-        tags["cluster_id"] = self.gcs_client.cluster_id.hex()
-        tags["session_id"] = self.session_name
-        tags["ray_version"] = ray.__version__
+        return tags
 
-        # UsageStats (schema 0.1) envelope; metrics live in extra_usage_tags.
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "source": TELEMETRY_SOURCE,
-            "collect_timestamp_ms": eval_ts_ms,
-            "seq_number": self.seq_no,
-            "extra_usage_tags": tags,
-        }
+    def _record_tags(self, tags: Dict[str, str]) -> int:
+        """Record each tag via ``record_extra_usage_tag``; return the count.
+
+        The key must map to a ``TagKey`` enum entry (uppercased). A missing
+        entry is a programming error (allowlist/proto drift) — logged loudly
+        and skipped so one bad key can't abort the rest.
+        """
+        recorded = 0
+        for key, value in tags.items():
+            try:
+                tag_key = TagKey.Value(key.upper())
+            except ValueError:
+                logger.warning(
+                    "No TagKey enum entry for %r; add it to usage.proto. Skipping.",
+                    key,
+                )
+                continue
+            try:
+                record_extra_usage_tag(tag_key, value, self.gcs_client)
+                recorded += 1
+            except Exception as e:
+                logger.debug("record_extra_usage_tag failed for %s: %s", key, e)
+        return recorded
 
     # --- Cycle entry points -------------------------------------------
 
@@ -343,18 +278,13 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             "enabled": self.enabled,
             "interval_s": _collector_interval_s(),
             "prometheus_host": _prometheus_host(),
-            "endpoint": _telemetry_endpoint() or None,
             "seq_no": self.seq_no,
             "total_success": self.total_success,
             "total_failed": self.total_failed,
             "last_error": self.last_error,
             "last_success_ts_ms": self.last_success_ts_ms,
             "last_metric_count": self.last_metric_count,
-            "total_post_success": self.total_post_success,
-            "total_post_failed": self.total_post_failed,
-            "last_post_status_code": self.last_post_status_code,
-            "last_post_error": self.last_post_error,
-            "last_post_ts_ms": self.last_post_ts_ms,
+            "last_recorded_count": self.last_recorded_count,
             "allowlist": [spec.name for spec in METRIC_ALLOWLIST],
         }
 
@@ -363,25 +293,24 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             return
 
         try:
-            summary = self._build_summary()
-            metric_count = len(summary["extra_usage_tags"])
+            tags = self._build_tags()
             try:
-                _atomic_write_json(self.session_dir, BATCH_FILE, summary)
+                _atomic_write_json(self.session_dir, BATCH_FILE, tags)
             except Exception as e:
                 raise RuntimeError(f"failed to write {BATCH_FILE}: {e}") from e
+            recorded = self._record_tags(tags)
             self.last_error = None
-            self.last_success_ts_ms = summary["collect_timestamp_ms"]
-            self.last_metric_count = metric_count
+            self.last_success_ts_ms = int(time.time() * 1000)
+            self.last_metric_count = len(tags)
+            self.last_recorded_count = recorded
             self.total_success += 1
             logger.info(
-                "Databricks telemetry collected %d cluster metrics (seq=%d) → %s",
-                metric_count,
+                "Databricks telemetry recorded %d/%d cluster metrics as usage "
+                "tags (seq=%d)",
+                recorded,
+                len(tags),
                 self.seq_no,
-                BATCH_FILE,
             )
-            # POST after the file write succeeds. Tracked independently so a
-            # transient endpoint outage does not flip total_success.
-            self._post_summary(summary)
         except Exception as e:
             self.last_error = str(e)
             self.total_failed += 1
@@ -414,19 +343,16 @@ class PrometheusForwarderHead(dashboard_utils.DashboardHeadModule):
             return
 
         interval_s = _collector_interval_s()
-        endpoint = _telemetry_endpoint()
         logger.info(
-            "Databricks telemetry collector enabled. prometheus=%s "
-            "interval=%ds endpoint=%s",
+            "Databricks telemetry collector enabled. prometheus=%s interval=%ds "
+            "(records extra usage tags; shipped by the usage-stats report)",
             _prometheus_host(),
             interval_s,
-            endpoint or "(write-only)",
         )
 
-        # Same warmup shape as UsageStatsHead: brief sleep so the cluster
-        # has steady-state metrics, an initial collect, a random offset to
-        # de-correlate many clusters running at the same wall-clock minute,
-        # then the periodic loop.
+        # Same warmup shape as UsageStatsHead: brief sleep so the cluster has
+        # steady-state metrics, an initial collect, a random offset to
+        # de-correlate many clusters, then the periodic loop.
         await asyncio.sleep(min(60, interval_s))
         await self._collect_async()
         await asyncio.sleep(random.randint(0, interval_s))

@@ -286,6 +286,32 @@ enum TagKey {
   // processor. Example: "4"
   LLM_BATCH_DATA_PARALLEL_SIZE = 622;
 
+  // --- Databricks telemetry: cluster-level Prometheus aggregates (ray #63349) -
+  // Recorded each cycle by PrometheusForwarderHead and shipped via the
+  // usage-stats report's extra_usage_tags. These are the runtime/utilization
+  // signals NOT already covered by total_num_cpus / total_memory_gb /
+  // total_num_gpus / total_num_nodes. Tag string = enum name lowercased.
+  RAY_NODE_CPU_UTILIZATION_AVG = 700;
+  RAY_NODE_CPU_UTILIZATION_MAX = 701;
+  RAY_NODE_CPU_UTILIZATION_MIN = 702;
+  RAY_NODE_CPU_UTILIZATION_P95 = 703;
+  RAY_NODE_MEM_USED_SUM = 704;
+  RAY_NODE_MEM_AVAILABLE_SUM = 705;
+  RAY_NODE_GPUS_UTILIZATION_AVG = 706;
+  RAY_NODE_GPUS_UTILIZATION_MAX = 707;
+  RAY_NODE_GPUS_UTILIZATION_MIN = 708;
+  RAY_NODE_GPUS_UTILIZATION_P95 = 709;
+  RAY_NODE_GRAM_USED_SUM = 710;
+  RAY_NODE_GRAM_AVAILABLE_SUM = 711;
+  RAY_MEMORY_MANAGER_WORKER_EVICTION_SUM = 712;
+  RAY_NODE_MANAGER_UNEXPECTED_WORKER_FAILURE_SUM = 713;
+  RAY_DATA_CPU_USAGE_CORES_SUM = 714;
+  RAY_DATA_GPU_USAGE_CORES_SUM = 715;
+  RAY_DATA_CURRENT_BYTES_SUM = 716;
+  RAY_CLUSTER_NUM_WORKERS = 717;
+  RAY_CLUSTER_NUM_HEAD = 718;
+  RAY_CLUSTER_NUM_NODES_PEAK = 719;
+
   //
   // (a Haiku about Ray in the ocean; please keep this at the bottom.)
   //

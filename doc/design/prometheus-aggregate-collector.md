@@ -3,19 +3,27 @@
 Tracking PR: https://github.com/ray-project/ray/pull/63349
 Branch: `xgui/databricks-telemetry`
 
-A standalone dashboard-head module that, once an hour, queries the
-cluster's local Prometheus for a small allowlisted set of **cluster-level**
-metric aggregates, writes them to the session directory as an audit file,
-and POSTs them to a telemetry endpoint as a flat key→value summary.
+A dashboard-head module that, once an hour, queries the cluster's local
+Prometheus for a small allowlisted set of **cluster-level** metric
+aggregates and **records each as an extra usage tag**
+(`record_extra_usage_tag`). The existing `UsageStatsHead` then ships them
+in its hourly usage-stats report — so this module performs **no HTTP POST
+of its own**.
 
-**Design choice (this revision):** we ship a **cluster-level summary**,
-not a per-series time series. Each hourly POST is a single point-in-time
-event of ~40 scalar values; the event already carries a timestamp, so the
-time series is reconstructed downstream by stacking hourly events. This
-keeps the payload tiny (~2 KB), fits the existing `UsageStats` schema with
-**no receiver change**, and needs **no chunking**. The trade-off — we
-lose per-node / per-GPU / per-operator detail — is accepted: the summary
-still surfaces hotspots via `max`/`p95`/counts.
+**Design choices (this revision):**
+- **Cluster-level summary, not a per-series time series.** Each metric
+  collapses to one cluster scalar (~15 values/cycle). Per-node /
+  per-operator detail is dropped; hotspots still surface via
+  `max`/`p95`/counts. Time is captured by the usage report's
+  `collect_timestamp_ms`; downstream stacks the hourly reports into a
+  series.
+- **Reuse the usage-stats pipeline instead of a parallel POST.** Each
+  value is recorded via `record_extra_usage_tag` (the key must exist in the
+  `TagKey` enum, `src/ray/protobuf/usage.proto`); `UsageStatsHead` reads
+  the GCS-KV tags and includes them in `extra_usage_tags` of the report it
+  already POSTs to `https://usage-stats.ray.io/`. No endpoint, auth,
+  chunking, or retry of our own — all inherited. Disabling usage stats
+  (`ray disable-usage-stats`) disables this too, automatically.
 
 ## 1. What we query
 
@@ -33,9 +41,6 @@ cluster scalar with an outer PromQL aggregation (see §1.2). The result is
 ~40 numbers per cycle — no per-node rows.
 
 ### 1.1 Metric allowlist
-
-`source` = where Ray reads the value. `meaning` = what one cluster scalar
-represents. `aggs` = which cluster reductions we emit.
 
 We collect only the **runtime/utilization** signals the usage-stats report
 does *not* already carry (see "Deliberately excluded" below).
@@ -120,28 +125,26 @@ avoids depending on the autoscaler. The autoscaler's own
 autoscaler is running.
 
 Each query returns a **single scalar** regardless of cluster size — so the
-payload is constant whether the cluster has 5 nodes or 5,000. Prometheus
-still scans the underlying series internally, so query *latency* scales
-with series count, but the *response* and POST do not.
+recorded tag set is constant whether the cluster has 5 nodes or 5,000.
+Prometheus still scans the underlying series internally, so query *latency*
+scales with series count, but the recorded values do not grow.
 
-## 2. Data format posted
+## 2. Data: recorded as usage tags
 
-The collector reuses the existing **`UsageStats` (schema `0.1`)** envelope
-and packs the metrics into its `extra_usage_tags` free-form
-`Dict[str, str]`. No new schema, no `samples[]` array, no chunking.
+We do **not** build or POST a payload. Each cycle calls
+`record_extra_usage_tag(TagKey.<KEY>, value, gcs_client)` per metric,
+which writes to the GCS internal KV store. `UsageStatsHead` reads those on
+its next report (`get_extra_usage_tags_to_report`) and includes them in the
+`extra_usage_tags` of the `UsageStats` body it already POSTs. So our
+metrics ride inside the existing report, e.g.:
 
-Only the `UsageStats` top-level fields the schema declares are set
-(`schema_version`, `source`, `collect_timestamp_ms`, `seq_number`).
-Everything else — the metrics **and** cluster identity (`cluster_id`,
-`session_id`, `ray_version`) — goes inside `extra_usage_tags`, because the
-top level is `Extra.forbid` and would reject undeclared keys.
-
-```json
+```jsonc
+// the usage-stats report UsageStatsHead sends (our keys interleaved with
+// the existing total_num_cpus / total_num_nodes / ray_version / etc.)
 {
   "schema_version": "0.1",
-  "source": "databricks_telemetry",
-  "collect_timestamp_ms": 1730003600000,
-  "seq_number": 42,
+  "source": "...", "collect_timestamp_ms": 1730003600000,
+  "total_num_cpus": 2864, "total_num_nodes": 359, "ray_version": "2.x.y",
   "extra_usage_tags": {
     "ray_node_cpu_utilization_avg": "41.2",
     "ray_node_cpu_utilization_max": "96.0",
@@ -154,29 +157,30 @@ top level is `Extra.forbid` and would reject undeclared keys.
     "ray_data_cpu_usage_cores_sum": "612",
     "ray_cluster_num_workers": "358",
     "ray_cluster_num_head": "1",
-    "ray_cluster_num_nodes_peak": "359",
-    "cluster_id": "<gcs cluster id hex>",
-    "session_id": "session_2026-...",
-    "ray_version": "2.x.y"
+    "ray_cluster_num_nodes_peak": "359"
   }
 }
 ```
 
-Key naming is `<metric>_<agg>` (counter `_sum` = sum of the 1h `increase`;
-gauge `_sum` = sum of current values). Memory/GPU-memory utilization % is
-**not** emitted directly — downstream derives it from the summed
-`mem_used` / `mem_available`.
+- **Keys must be `TagKey` enum entries.** Each emitted key is the lowercase
+  of a `TagKey` name in `src/ray/protobuf/usage.proto`
+  (e.g. `RAY_NODE_CPU_UTILIZATION_AVG` → `ray_node_cpu_utilization_avg`).
+  Adding a metric = adding a `TagKey` entry — the governance gate for data
+  leaving the cluster. `get_extra_usage_tags_to_report` rejects any key not
+  in the enum.
+- **Values are strings** (`extra_usage_tags` is `Dict[str, str]`); scalars
+  are stringified. `record_extra_usage_tag` memoizes, so an unchanged value
+  skips the KV write.
+- **Key naming** is `<metric>_<agg>` (counter `_sum` = sum of the 1h
+  `increase`; gauge `_sum` = sum of current values). Memory/GPU-memory
+  utilization % is derived downstream from `mem_used` / `mem_available`.
+- **No identity tags needed** — the usage report already carries
+  `session_id`, `ray_version`, and the cluster session id.
+- **No user identifiers.** Collapsing across series means the tags contain
+  *no* node IPs, operator, or dataset names — genuinely anonymous.
 
-- **Values are strings** (`extra_usage_tags` is `Dict[str, str]`); numbers
-  are stringified. Acceptable — they're scalars, not structured records.
-- **Time is event-level:** `collect_timestamp_ms` stamps the cycle; the
-  receiver also adds `server_receive_timestamp_ms`. Downstream stacks the
-  hourly events into a series.
-- **No user identifiers in the payload.** Because we collapse across
-  series, the summary contains *no* node IPs, operator names, dataset
-  names, or per-node labels — so it is genuinely anonymous, strengthening
-  the "anonymous aggregates" posture (a real improvement over the
-  per-series design, where `attrs` carried user code identifiers).
+The collector also mirrors the recorded tag set to
+`<session_dir>/databricks_telemetry_latest_batch.json` for operator audit.
 
 ## 3. Tech design
 
@@ -241,60 +245,42 @@ control-plane process, not the dashboard UI. An actor relocates that
 coupling and adds lifecycle/placement work; its only real advantage
 (isolated failure domain) doesn't matter for an hourly, best-effort pull.
 
-### 3.3 How we post
+### 3.3 How we ship (no POST)
 
-- One small POST per cycle to `RAY_DATABRICKS_TELEMETRY_ENDPOINT`
-  (default `https://usage-stats.ray.io/`), `Content-Type:
-  application/json`, 10s timeout. The body is the v0.1 `UsageStats`
-  envelope above (~2 KB) — **single request, no chunking**.
-- **HTTPS, no auth needed.** Ray's usage-stats client posts to this same
-  sink **unauthenticated** (`usage_lib.py:340,1000`) and succeeds. The
-  benchmark's 403 was an artifact of posting to **`http://`** — the
-  CloudFront distribution is HTTPS-only and 403s plain HTTP. Posting our
-  valid `UsageStats` body over `https://` requires no token. (If we ever
-  target a *Databricks-owned* endpoint instead, auth becomes whatever that
-  endpoint requires — an `Authorization` header from a secret env var.)
-- **Write-only mode:** set the endpoint env var to empty (`""`) to skip the
-  POST; the local audit file is still written.
-- **Independent success tracking:** collection success
-  (`total_success/failed`, audit file written) is tracked separately from
-  POST success (`total_post_success/failed`, `last_post_status_code`,
-  `last_post_error`).
-- **Drop on failure:** no retry, no disk queue. The next cycle re-queries
-  a fresh window; Prometheus's local retention (default 15d) means little
-  is lost unless Prometheus itself is down that long.
+Each cycle:
+1. queries Prometheus (§1.2) → `{<metric>_<agg>: value}` tags;
+2. for each, `record_extra_usage_tag(TagKey.<KEY>, value, self.gcs_client)`
+   → a GCS internal-KV put (memoized: unchanged values skip the write);
+3. mirrors the tag set to the session dir for audit.
 
-Each cycle also writes two files to the session directory for operator
-audit: `databricks_telemetry_latest_batch.json` (the posted summary) and
-`databricks_telemetry_status.json` (counters, last error, allowlist).
+That's the whole "ship" path — **no endpoint, no `requests`, no auth, no
+chunking, no retry.** The actual egress is `UsageStatsHead`'s existing
+hourly report: it calls `get_extra_usage_tags_to_report(gcs_client)`,
+folds our tags into `extra_usage_tags`, and POSTs via
+`UsageReportClient.report_usage_data` to `https://usage-stats.ray.io/`
+(`usage_lib.py:340,1000`) — the same unauthenticated client every Ray
+cluster already uses successfully.
 
-### 3.4 Receiver side: why no schema change is needed
+Consequences:
+- **Receiver: unchanged and already accepting.** Our keys live in the
+  existing `UsageStats` (schema `0.1`) `extra_usage_tags` dict, so no new
+  receiver schema (no `ray-project/telemetry#30`). A standalone test
+  (synthetic v0.1 body over HTTPS) returned **HTTP 200**, confirming the
+  deployed receiver accepts it.
+- **Auth/403 non-issues.** We don't open a new POST surface; the prior
+  benchmark 403 was a plain-`http://` artifact (the sink is HTTPS-only).
+- **Opt-out coupling for free.** `ray disable-usage-stats` stops the report
+  → stops our egress too.
+- **Failure mode:** a failed Prometheus query is skipped (DEBUG); a failed
+  KV put is logged and the tag simply isn't refreshed this cycle (the prior
+  value persists). Collection counters (`total_success/failed`,
+  `last_recorded_count`) are mirrored to
+  `databricks_telemetry_status.json`.
 
-The POST target is the **`ray-project/telemetry`** service (a *separate*
-repo from `ray`; this is what `usage-stats.ray.io` runs). It validates the
-body with pydantic **`Extra.forbid`** — any undeclared *top-level* field
-is a hard error — then forwards to Kinesis Firehose.
-
-We deliberately fit the **existing** `UsageStats` schema
-(`telemetry/schemas/v_0_1.py`, registered `"0.1"`) rather than adding a
-new one:
-
-- `extra_usage_tags` is a **declared** `Dict[str, str]`, so arbitrary keys
-  *inside* it pass `Extra.forbid`. Our `M_agg → value` pairs go there.
-- We supply the required `source` and `collect_timestamp_ms` and add **no**
-  undeclared top-level fields → it validates as `"0.1"` unchanged.
-
-This is the upside of the cluster-summary choice: an earlier per-series
-design (a `samples[]` array) did **not** fit v0.1 — it failed `Extra.forbid`
-with multiple errors and would have required a new `UsageMetricsBatch`
-schema + receiver PR (`ray-project/telemetry#30`) deployed in lockstep,
-plus per-sample Firehose fan-out and size chunking. The cluster summary
-drops all of that.
-
-Cost of reusing `extra_usage_tags`: the metrics land in the **usage-stats
-dataset** (a small semantic overload — they're telemetry sitting in a
-usage-tags field). At ~40 scalar keys this is acceptable; it would not be
-for thousands of per-series rows.
+**Cost:** our metrics land in the **usage-stats dataset** (telemetry in a
+usage-tags field — a small semantic overload, fine at ~15 keys), and every
+metric key must be added to the `TagKey` enum (a proto change + rebuild;
+this is the intended audit gate).
 
 ## 4. Performance
 
@@ -306,10 +292,11 @@ p95 140.5 ms, max 173.5 ms; sequential batch build **1.71 s**. On a
 warm **0.7–0.85 s** — pull scales with query fan-out, not node count, and
 runs off the head event loop in a thread pool.
 
-With the cluster-summary design the **payload is constant** (~40 scalars,
-~2 KB) at any cluster size; the outer PromQL reducer collapses series
-server-side. Query *latency* is similar to the per-series run (Prometheus
-still scans the series internally), but the response and POST are tiny.
+With the cluster-summary design the **recorded tag set is constant**
+(~15 scalars) at any cluster size; the outer PromQL reducer collapses
+series server-side. Query *latency* is similar to the per-series run
+(Prometheus still scans the series internally), but the recorded values do
+not grow, and there's no payload to build or POST.
 
 ### 4.2 Why we moved to the cluster summary
 
@@ -330,19 +317,17 @@ cluster); a GPU + Ray Data re-run is still needed to exercise those keys.
 |---|---|---|
 | `RAY_DATABRICKS_TELEMETRY_ENABLED` | `1` | Master switch. |
 | `RAY_DATABRICKS_TELEMETRY_INTERVAL_S` | `3600` | Cycle interval (== PromQL window). |
-| `RAY_DATABRICKS_TELEMETRY_ENDPOINT` | `https://usage-stats.ray.io/` | POST destination; set to `""` for write-only. |
 | `RAY_PROMETHEUS_HOST` (reused) | `http://localhost:9090` | Prometheus to query. |
+
+There is **no endpoint/auth/timeout env var** — egress is the usage-stats
+report's, not ours.
 
 ## Follow-ups
 
-- Verify a green end-to-end POST over HTTPS (the prior 403 was an
-  HTTP-scheme artifact; §3.3). Add token auth only if a Databricks-owned
-  endpoint is chosen instead of the usage-stats sink.
-- Couple with the usage-stats opt-out so `ray disable-usage-stats` also
-  disables this (the default endpoint now egresses by default).
 - Register `PrometheusForwarderHead` in the `--include-dashboard=False`
   module allowlist (`services.py:1356`) so the dashboard toggle doesn't
   silently disable telemetry.
-- Decide the exact cross-series reducer per metric (§1.1) and freeze the
-  emitted key names.
+- End-to-end confirmation on a healthy-Prometheus cluster (Runs 2–3 were
+  blocked by a Mimir-ring outage): record tags → confirm they appear in the
+  next usage-stats report's `extra_usage_tags`.
 - GPU + Ray Data re-run to populate GPU / `ray_data_gpu_*` keys.
