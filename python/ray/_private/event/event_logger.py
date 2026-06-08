@@ -137,6 +137,9 @@ def get_event_logger(source: Event.SourceType, sink_dir: str):
     Args:
         source: The source of the event.
         sink_dir: The directory to sink event logs.
+
+    Returns:
+        The event logger adapter for the given source.
     """
     with _event_logger_lock:
         global _event_logger
