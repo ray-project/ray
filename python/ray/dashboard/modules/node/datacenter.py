@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import List, Optional
 
@@ -148,6 +149,23 @@ class DataOrganizer:
         }
 
         node_info = node_physical_stats
+
+        tpus = copy.deepcopy(node_info.get("tpus", []))
+        if tpus:
+            tpu_workers = []
+            for worker in DataSource.node_workers.get(node_id, []):
+                core_stats = worker.get("coreWorkerStats", [])
+                if core_stats:
+                    used = core_stats[0].get("usedResources", {})
+                    if "TPU" in used:
+                        tpu_workers.append(worker["pid"])
+            for tpu in tpus:
+                if "processesPids" not in tpu or tpu["processesPids"] is None:
+                    tpu["processesPids"] = []
+                for pid in tpu_workers:
+                    tpu["processesPids"].append({"pid": pid, "tpuMemoryUsage": 0})
+            node_info["tpus"] = tpus
+
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
@@ -210,10 +228,11 @@ class DataOrganizer:
         # TODO(fyrestone): remove this, give a link from actor
         # info to worker info in front-end.
         node_id = actor["address"]["nodeId"]
-        pid = core_worker_stats.get("pid")
+        pid = core_worker_stats.get("pid") or actor.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_tpu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -236,5 +255,20 @@ class DataOrganizer:
             actor["requiredResources"]
         )
         actor["requiredResources"] = required_resources
+
+        # Infer TPU usage from parsed requiredResources or core_worker_stats
+        uses_tpus = required_resources.get(
+            "TPU", 0
+        ) > 0 or "TPU" in core_worker_stats.get("usedResources", {})
+        logger.info(
+            f"ACTOR DEBUG: uses_tpus={uses_tpus}, required_resources={required_resources}, node_tpus={len(node_physical_stats.get('tpus', [])) if node_physical_stats else None}"
+        )
+        if uses_tpus:
+            actor_process_tpu_stats = copy.deepcopy(node_physical_stats.get("tpus", []))
+            for tpu in actor_process_tpu_stats:
+                if "processesPids" not in tpu or tpu["processesPids"] is None:
+                    tpu["processesPids"] = []
+                tpu["processesPids"].append({"pid": pid, "tpuMemoryUsage": 0})
+        actor["tpus"] = actor_process_tpu_stats
 
         return actor
