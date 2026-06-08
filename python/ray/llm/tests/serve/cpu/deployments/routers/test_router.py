@@ -19,6 +19,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.core.ingress.tokenizer import Tokenizer
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
@@ -59,6 +60,7 @@ class _DirectRouterReplica:
 def _new_direct_router(handle=None):
     router = LLMRouter.__new__(LLMRouter)
     router._handle = handle or MagicMock()
+    router._tokenizer = Tokenizer(router._handle)
     return router
 
 
@@ -142,8 +144,12 @@ class TestDirectStreamingLLMRouter:
             "port": 9001,
             "replica_id": "DeploymentName#replica",
         }
+        # Truncated body skips tokenization, so no token IDs are forwarded.
         router._pick_replica.assert_called_once_with(
-            handle=router._handle, request_body=body, body_truncated=True
+            handle=router._handle,
+            request_body=body,
+            body_truncated=True,
+            request_token_ids=None,
         )
 
     @pytest.mark.asyncio
