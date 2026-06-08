@@ -1,5 +1,6 @@
 import abc
 import logging
+import math
 import pickle
 import time
 import uuid
@@ -110,6 +111,66 @@ TaskDoneCallbackType = Callable[
 ]
 
 
+class _LatencyStats:
+    """Process-wide latency accumulator (microseconds) for a single timed
+    call site. Measurement-only.
+
+    Keeps a count + running sum (for the average) + max, plus a log-scale
+    histogram so p50/p90 can be derived without retaining every sample (the
+    timed calls span microseconds for the local lookup to milliseconds+ for
+    ``ray.get``, which a log histogram covers with bounded memory).
+    """
+
+    # Bucket i covers [10^(i/_PER_DECADE + _MIN_LOG_US), ...) microseconds.
+    _PER_DECADE = 20  # ~12% bucket width
+    _MIN_LOG_US = -1.0  # lowest edge 10^-1 = 0.1 µs
+    _NBUCKETS = 9 * _PER_DECADE + 1  # 0.1 µs .. 10^8 µs (~100 s) + overflow
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self._count = 0
+        self._sum_us = 0.0
+        self._max_us = 0.0
+        self._hist: List[int] = [0] * self._NBUCKETS
+
+    def record(self, seconds: float) -> None:
+        us = seconds * 1e6
+        self._count += 1
+        self._sum_us += us
+        if us > self._max_us:
+            self._max_us = us
+        if us <= 0:
+            bucket = 0
+        else:
+            bucket = int((math.log10(us) - self._MIN_LOG_US) * self._PER_DECADE)
+            bucket = max(0, min(bucket, self._NBUCKETS - 1))
+        self._hist[bucket] += 1
+
+    def _percentile_us(self, frac: float) -> float:
+        total = sum(self._hist)
+        if total == 0:
+            return 0.0
+        target = frac * total
+        cumulative = 0
+        for i, count in enumerate(self._hist):
+            cumulative += count
+            if cumulative >= target:
+                # Lower edge of the containing bucket (µs).
+                return 10 ** (self._MIN_LOG_US + i / self._PER_DECADE)
+        return self._max_us
+
+    def summary(self, prefix: str) -> Dict[str, Any]:
+        return {
+            f"{prefix}_count": self._count,
+            f"{prefix}_avg_us": (self._sum_us / self._count) if self._count else 0.0,
+            f"{prefix}_p50_us": self._percentile_us(0.50),
+            f"{prefix}_p90_us": self._percentile_us(0.90),
+            f"{prefix}_max_us": self._max_us,
+        }
+
+
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
 
@@ -137,6 +198,12 @@ class DataOpTask(OpTask):
     _REL_DIFF_BUCKET = 0.001  # 0.1% resolution
     _REL_DIFF_NBUCKETS = 1001  # 0..100% in 0.1% steps + overflow
     _size_probe_rel_diff_hist: List[int] = [0] * _REL_DIFF_NBUCKETS
+    # Per-call-site latency of the two ways to get a block's size: the
+    # `ray.get(meta_ref)` fetch (current path) vs the local
+    # `get_local_object_locations` lookup (candidate replacement). Reported as
+    # count/avg/p50/p90/max microseconds to quantify the per-pair savings.
+    _meta_get_latency = _LatencyStats()
+    _local_loc_latency = _LatencyStats()
     # Emit a cumulative snapshot every this many probed pairs.
     _SIZE_PROBE_LOG_EVERY = 5000
 
@@ -280,9 +347,11 @@ class DataOpTask(OpTask):
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
                 # will timeout and possible cancel the download. To avoid this issue,
                 # we set the timeout to a small non-zero value.
+                _meta_get_t0 = time.perf_counter()
                 meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
+                DataOpTask._meta_get_latency.record(time.perf_counter() - _meta_get_t0)
             except ray.exceptions.GetTimeoutError:
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
@@ -339,9 +408,11 @@ class DataOpTask(OpTask):
         cls = DataOpTask
         cls._size_probe_total += 1
 
+        _local_loc_t0 = time.perf_counter()
         info = get_local_object_locations([self._pending_block_ref]).get(
             self._pending_block_ref
         )
+        cls._local_loc_latency.record(time.perf_counter() - _local_loc_t0)
         local_size = info.get("object_size") if info is not None else None
 
         if local_size is not None:
@@ -364,7 +435,9 @@ class DataOpTask(OpTask):
             logger.info(
                 "[local-size-probe] %d/%d (%.1f%%) pairs had a local object_size; "
                 "object_size/meta.size_bytes ratio=%.4f; rel diff p50=%.2f%% "
-                "p90=%.2f%% max=%.2f%%; within 1%%: %.1f%%.",
+                "p90=%.2f%% max=%.2f%%; within 1%%: %.1f%%. "
+                "latency µs: ray.get(meta) avg=%.1f p50=%.1f p90=%.1f max=%.1f vs "
+                "get_local_object_locations avg=%.1f p50=%.1f p90=%.1f max=%.1f.",
                 stats["local_size_probe_hits"],
                 stats["local_size_probe_total"],
                 stats["local_size_probe_hit_pct"],
@@ -373,6 +446,14 @@ class DataOpTask(OpTask):
                 stats["local_size_probe_rel_diff_p90_pct"],
                 stats["local_size_probe_max_rel_diff_pct"],
                 stats["local_size_probe_within_1pct_pct"],
+                stats["meta_get_latency_avg_us"],
+                stats["meta_get_latency_p50_us"],
+                stats["meta_get_latency_p90_us"],
+                stats["meta_get_latency_max_us"],
+                stats["local_loc_latency_avg_us"],
+                stats["local_loc_latency_p50_us"],
+                stats["local_loc_latency_p90_us"],
+                stats["local_loc_latency_max_us"],
             )
 
     @classmethod
@@ -403,6 +484,8 @@ class DataOpTask(OpTask):
         cls._size_probe_within_1pct = 0
         cls._size_probe_max_rel_diff = 0.0
         cls._size_probe_rel_diff_hist = [0] * cls._REL_DIFF_NBUCKETS
+        cls._meta_get_latency.reset()
+        cls._local_loc_latency.reset()
 
     @classmethod
     def local_size_probe_stats(cls) -> Dict[str, Any]:
@@ -433,6 +516,9 @@ class DataOpTask(OpTask):
             "local_size_probe_rel_diff_p50_pct": cls._rel_diff_percentile(0.50),
             "local_size_probe_rel_diff_p90_pct": cls._rel_diff_percentile(0.90),
             "local_size_probe_max_rel_diff_pct": 100.0 * cls._size_probe_max_rel_diff,
+            # Per-pair latency (µs) of the two size-lookup paths.
+            **cls._meta_get_latency.summary("meta_get_latency"),
+            **cls._local_loc_latency.summary("local_loc_latency"),
         }
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
