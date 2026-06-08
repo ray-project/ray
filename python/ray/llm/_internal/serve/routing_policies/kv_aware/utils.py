@@ -14,6 +14,22 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     derive_kv_event_block_size,
 )
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
+from ray.serve.deployment import Application
+
+
+def is_kv_aware_routing(server: Application) -> bool:
+    """Whether ``server``'s configured request router is a KVAwareRouter.
+
+    KV-aware routing is the only policy that consumes prompt token IDs, so it
+    is what gates the extra pre-routing /tokenize call on the ingress request
+    router.
+    """
+    request_router_config = (
+        server._bound_deployment._deployment_config.request_router_config
+    )
+    if request_router_config is None:
+        return False
+    return issubclass(request_router_config.get_request_router_class(), KVAwareRouter)
 
 
 def _maybe_setup_kv_aware_routing(
