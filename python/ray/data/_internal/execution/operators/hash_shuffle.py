@@ -56,7 +56,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
@@ -494,6 +493,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
     _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
+    _MEMORY_ESTIMATION_SAMPLE_NUM_BUNDLES = 16
 
     def __init__(
         self,
@@ -537,6 +537,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         )
 
         assert partition_size_hint is None or partition_size_hint > 0
+        self._partition_size_hint = partition_size_hint
 
         if shuffle_progress_bar_name is None:
             shuffle_progress_bar_name = "Shuffle"
@@ -564,40 +565,20 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # Cap number of aggregators to not exceed max configured
         num_aggregators = min(target_num_partitions, max_shuffle_aggregators)
 
-        # Target dataset's size estimated as either of
-        #   1. ``partition_size_hint`` multiplied by target number of partitions
-        #   2. Estimation of input ops' outputs bytes
-        if partition_size_hint is not None:
-            # TODO replace with dataset-byte-size hint
-            estimated_dataset_bytes = partition_size_hint * target_num_partitions
-        else:
-            estimated_dataset_bytes = _try_estimate_output_bytes(
-                input_logical_ops,
-            )
-
-        ray_remote_args = self._get_default_aggregator_ray_remote_args(
-            num_partitions=target_num_partitions,
-            num_aggregators=num_aggregators,
-            total_available_cluster_resources=total_available_cluster_resources,
-            estimated_dataset_bytes=estimated_dataset_bytes,
+        self._num_input_seqs = num_input_seqs
+        self._num_aggregators = num_aggregators
+        self._partition_aggregation_factory = partition_aggregation_factory
+        self._aggregator_ray_remote_args_override = aggregator_ray_remote_args_override
+        self._aggregator_target_max_block_size = (
+            None if disallow_block_splitting else data_context.target_max_block_size
         )
-
-        if aggregator_ray_remote_args_override is not None:
-            # Set default values missing for configs missing in the override
-            ray_remote_args.update(aggregator_ray_remote_args_override)
-
-        self._aggregator_pool: AggregatorPool = AggregatorPool(
-            num_input_seqs=num_input_seqs,
-            num_partitions=target_num_partitions,
-            num_aggregators=num_aggregators,
-            aggregation_factory=partition_aggregation_factory,
-            aggregator_ray_remote_args=ray_remote_args,
-            target_max_block_size=(
-                None if disallow_block_splitting else data_context.target_max_block_size
-            ),
-            min_max_shards_compaction_thresholds=(
-                self._get_min_max_partition_shards_compaction_thresholds()
-            ),
+        self._aggregator_pool: Optional[AggregatorPool] = None
+        self._memory_estimation_sample: Deque[Tuple[int, RefBundle]] = deque()
+        self._memory_estimation_sample_size_bytes: int = 0
+        self._memory_estimation_sample_num_blocks: int = 0
+        self._memory_estimation_sample_max_block_size_bytes: int = 0
+        self._memory_estimation_sample_size_limit_bytes = (
+            data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
         )
 
         # We track the running usage total because iterating
@@ -660,8 +641,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
 
-        self._aggregator_pool.start()
-
     @property
     def shuffle_name(self) -> str:
         return self._shuffle_name
@@ -674,9 +653,18 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         # TODO move to base class
         self._shuffle_metrics.on_input_received(input_bundle)
+
+        if self._aggregator_pool is None:
+            self._add_memory_estimation_sample(input_bundle, input_index)
+            if self._should_start_aggregator_pool_from_sample():
+                self._start_aggregator_pool_and_replay_sample()
+            return
+
         self._do_add_input_inner(input_bundle, input_index)
 
     def _do_add_input_inner(self, input_bundle: RefBundle, input_index: int):
+        assert self._aggregator_pool is not None
+
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
         input_blocks_metadata: List[BlockMetadata] = input_bundle.metadata
 
@@ -822,6 +810,83 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._try_finalize()
         return len(self._output_queue) > 0
 
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
+        if self._aggregator_pool is None:
+            self._start_aggregator_pool_and_replay_sample()
+
+    def _start_aggregator_pool_and_replay_sample(self) -> None:
+        estimated_dataset_bytes = self._get_runtime_estimated_dataset_size_bytes()
+        self._aggregator_pool = self._create_aggregator_pool(
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+        self._aggregator_pool.start()
+
+        while self._memory_estimation_sample:
+            input_index, input_bundle = self._memory_estimation_sample.popleft()
+            self._shuffle_metrics.on_input_dequeued(
+                input_bundle, input_index=input_index
+            )
+            self._do_add_input_inner(input_bundle, input_index)
+
+    def _add_memory_estimation_sample(
+        self, input_bundle: RefBundle, input_index: int
+    ) -> None:
+        self._memory_estimation_sample.append((input_index, input_bundle))
+        self._memory_estimation_sample_size_bytes += input_bundle.size_bytes()
+        self._memory_estimation_sample_num_blocks += len(input_bundle.blocks)
+        self._memory_estimation_sample_max_block_size_bytes = max(
+            self._memory_estimation_sample_max_block_size_bytes,
+            max(
+                (entry.metadata.size_bytes for entry in input_bundle.blocks),
+                default=0,
+            ),
+        )
+        self._shuffle_metrics.on_input_queued(input_bundle, input_index=input_index)
+
+    def _should_start_aggregator_pool_from_sample(self) -> bool:
+        if self._partition_size_hint is not None:
+            return True
+
+        return (
+            len(self._memory_estimation_sample)
+            >= self._MEMORY_ESTIMATION_SAMPLE_NUM_BUNDLES
+            or self._memory_estimation_sample_size_bytes
+            >= self._memory_estimation_sample_size_limit_bytes
+        )
+
+    def _get_runtime_estimated_dataset_size_bytes(self) -> Optional[int]:
+        if self._partition_size_hint is not None:
+            return self._partition_size_hint * self._num_partitions
+
+        num_sampled_bundles = len(self._memory_estimation_sample)
+        if num_sampled_bundles == 0:
+            return 0
+
+        if self._inputs_complete:
+            return self._memory_estimation_sample_size_bytes
+
+        num_upstream_outputs = self.upstream_op_num_outputs()
+        if num_upstream_outputs <= 0:
+            return None
+
+        avg_bundle_size_bytes = (
+            self._memory_estimation_sample_size_bytes / num_sampled_bundles
+        )
+        avg_blocks_per_bundle = (
+            self._memory_estimation_sample_num_blocks / num_sampled_bundles
+        )
+        max_block_biased_bundle_size_bytes = (
+            self._memory_estimation_sample_max_block_size_bytes * avg_blocks_per_bundle
+        )
+        estimated_bundle_size_bytes = max(
+            avg_bundle_size_bytes,
+            max_block_biased_bundle_size_bytes,
+        )
+        estimated_num_bundles = max(num_upstream_outputs, num_sampled_bundles)
+
+        return math.ceil(estimated_bundle_size_bytes * estimated_num_bundles)
+
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.popleft()
 
@@ -927,6 +992,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         # NOTE: Unless explicitly set finalization batch size defaults to the #
         #       of shuffle aggregators
+        assert self._aggregator_pool is not None
         max_batch_size = (
             self.data_context.max_hash_shuffle_finalization_batch_size
             or self._aggregator_pool.num_aggregators
@@ -1022,11 +1088,13 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             )
 
     def _do_shutdown(self, force: bool = False) -> None:
-        self._aggregator_pool.shutdown(force=True)
+        if self._aggregator_pool is not None:
+            self._aggregator_pool.shutdown(force=True)
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
         # Release any pending refs
+        self._memory_estimation_sample.clear()
         self._shuffling_tasks.clear()
         self._finalizing_tasks.clear()
 
@@ -1064,6 +1132,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
+        if self._aggregator_pool is None:
+            return ExecutionResources.zero()
+
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
@@ -1075,6 +1146,33 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
             ),
             object_store_memory=0,
+        )
+
+    def _create_aggregator_pool(
+        self, *, estimated_dataset_bytes: Optional[int]
+    ) -> "AggregatorPool":
+        total_available_cluster_resources = _get_total_cluster_resources()
+        ray_remote_args = self._get_default_aggregator_ray_remote_args(
+            num_partitions=self._num_partitions,
+            num_aggregators=self._num_aggregators,
+            total_available_cluster_resources=total_available_cluster_resources,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
+
+        if self._aggregator_ray_remote_args_override is not None:
+            # Set default values missing for configs missing in the override.
+            ray_remote_args.update(self._aggregator_ray_remote_args_override)
+
+        return AggregatorPool(
+            num_input_seqs=self._num_input_seqs,
+            num_partitions=self._num_partitions,
+            num_aggregators=self._num_aggregators,
+            aggregation_factory=self._partition_aggregation_factory,
+            aggregator_ray_remote_args=ray_remote_args,
+            target_max_block_size=self._aggregator_target_max_block_size,
+            min_max_shards_compaction_thresholds=(
+                self._get_min_max_partition_shards_compaction_thresholds()
+            ),
         )
 
     def per_task_resource_allocation(self) -> ExecutionResources:
@@ -1951,19 +2049,3 @@ def _get_max_single_node_memory() -> Optional[int]:
         default=0,
     )
     return int(max_node_memory) if max_node_memory > 0 else None
-
-
-# TODO rebase on generic operator output estimation
-def _try_estimate_output_bytes(
-    input_logical_ops: List[LogicalOperator],
-) -> Optional[int]:
-    inferred_op_output_bytes = [
-        op.infer_metadata().size_bytes for op in input_logical_ops
-    ]
-
-    # Return sum of input ops estimated output byte sizes,
-    # if all are well defined
-    if all(nbs is not None for nbs in inferred_op_output_bytes):
-        return sum(inferred_op_output_bytes)
-
-    return None
