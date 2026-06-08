@@ -27,8 +27,7 @@ export type PlacementGroup = {
   } | null;
   bundles: Bundle[];
   // Topology strategy: map from label key (e.g. "ray.io/gpu-domain") to
-  // placement strategy name. protobuf_message_to_dict serializes the enum as
-  // its name string, e.g. "STRICT_PACK".
+  // corresponding placement strategy.
   topology_strategy?: {
     [key: string]: string;
   } | null;
