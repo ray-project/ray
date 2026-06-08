@@ -899,8 +899,14 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       0,
       TaskID::Nil(),
       "");
-  builder.SetActorTaskSpec(
-      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0, std::nullopt);
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           num_retries,
+                           false,
+                           "",
+                           0,
+                           std::nullopt,
+                           /*is_detached_actor=*/false);
   TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);

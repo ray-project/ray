@@ -202,6 +202,9 @@ void FillTaskInfo(rpc::TaskInfoEntry *task_info, const TaskSpecification &task_s
     type = rpc::TaskType::ACTOR_TASK;
     task_info->set_actor_id(task_spec.ActorId().Binary());
   }
+  if (task_spec.IsDetachedActor()) {
+    task_info->set_is_detached_actor(true);
+  }
   task_info->set_type(type);
   task_info->set_name(task_spec.GetName());
   task_info->set_language(task_spec.GetLanguage());
