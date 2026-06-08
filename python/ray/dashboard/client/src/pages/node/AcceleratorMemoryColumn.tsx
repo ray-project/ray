@@ -2,20 +2,24 @@ import { Box, Tooltip, Typography } from "@mui/material";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
-import { GPUStats, NodeDetail } from "../../type/node";
+import { GPUStats, NodeDetail, TPUStats } from "../../type/node";
+import { normalizeAccelerators } from "../../util/accelerator";
+import { memoryConverter } from "../../util/converter";
 
 const GRAM_COL_WIDTH = 120;
 
-export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
-  const nodeGRAMEntries = (node.gpus ?? []).map((gpu, i) => {
+export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
+  const accelerators = normalizeAccelerators(node.gpus, node.tpus);
+
+  const nodeGRAMEntries = accelerators.map((acc, i) => {
     const props = {
-      key: gpu.uuid,
-      gpuName: gpu.name,
-      utilization: gpu.memoryUsed,
-      total: gpu.memoryTotal,
-      slot: gpu.index,
+      key: acc.uuid || acc.name + acc.index,
+      gpuName: acc.name, // Displaying original name is fine, tooltip will use it. Or we could customize tooltip.
+      utilization: acc.memoryUsed,
+      total: acc.memoryTotal,
+      slot: acc.index,
     };
-    return <GRAMEntry {...props} />;
+    return <AcceleratorMemoryEntry {...props} />;
   });
   return (
     <div style={{ minWidth: 60 }}>
@@ -30,29 +34,33 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
   );
 };
 
-export const WorkerGRAM = ({
+export const WorkerAcceleratorMemory = ({
   workerPID,
   gpus,
+  tpus,
 }: {
   workerPID: number | null;
   gpus?: GPUStats[];
+  tpus?: TPUStats[];
 }) => {
-  const workerGRAMEntries = (gpus ?? [])
-    .map((gpu, i) => {
-      const process = gpu.processesPids?.find(
+  const accelerators = normalizeAccelerators(gpus, tpus);
+
+  const workerGRAMEntries = accelerators
+    .map((acc, i) => {
+      const process = acc.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
       );
       if (!process) {
         return undefined;
       }
       const props = {
-        key: gpu.uuid,
-        gpuName: gpu.name,
-        total: gpu.memoryTotal,
-        utilization: process.gpuMemoryUsage,
-        slot: gpu.index,
+        key: acc.uuid || acc.name + acc.index,
+        gpuName: acc.name,
+        total: acc.memoryTotal,
+        utilization: process.memoryUsage, // This is already unified
+        slot: acc.index,
       };
-      return <GRAMEntry {...props} />;
+      return <AcceleratorMemoryEntry {...props} />;
     })
     .filter((entry) => entry !== undefined);
 
@@ -65,43 +73,48 @@ export const WorkerGRAM = ({
   );
 };
 
-export const getSumGRAMUsage = (
+export const getSumAcceleratorMemoryUsage = (
   workerPID: number | null,
   gpus?: GPUStats[],
+  tpus?: TPUStats[],
 ) => {
-  // Get sum of all GRAM usage values for this worker PID. This is an
-  // aggregate of WorkerGRAM and follows the same logic.
-  const workerGRAMEntries = (gpus ?? [])
-    .map((gpu, i) => {
-      const process = gpu.processesPids?.find(
+  const accelerators = normalizeAccelerators(gpus, tpus);
+
+  const workerGRAMEntries = accelerators
+    .map((acc, i) => {
+      const process = acc.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
       );
       if (!process) {
         return 0;
       }
-      return process.gpuMemoryUsage;
+      return process.memoryUsage;
     })
     .filter((entry) => entry !== undefined);
   return workerGRAMEntries.reduce((a, b) => a + b, 0);
 };
 
-const getMiBRatioNoPercent = (used: number, total: number) =>
-  `${used}MiB/${total}MiB`;
+const getMemDisplayRatioNoPercent = (used: number, total: number) => {
+  // Convert MiB back to bytes for the memoryConverter
+  const usedBytes = used * 1024 * 1024;
+  const totalBytes = total * 1024 * 1024;
+  return `${memoryConverter(usedBytes)}/${memoryConverter(totalBytes)}`;
+};
 
-type GRAMEntryProps = {
+type AcceleratorMemoryEntryProps = {
   gpuName: string;
   slot: number;
   utilization: number;
   total: number;
 };
 
-const GRAMEntry: React.FC<GRAMEntryProps> = ({
+const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   gpuName,
   slot,
   utilization,
   total,
 }) => {
-  const ratioStr = getMiBRatioNoPercent(utilization, total);
+  const ratioStr = getMemDisplayRatioNoPercent(utilization, total);
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
