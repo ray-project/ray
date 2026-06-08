@@ -34,6 +34,7 @@
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -77,7 +78,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      std::function<void(const ActorID &, const std::string &, int64_t)>
                          on_excess_queueing,
                      instrumented_io_context &io_service,
-                     std::shared_ptr<ReferenceCounterInterface> reference_counter)
+                     std::shared_ptr<ReferenceCounterInterface> reference_counter,
+                     ClockInterface &clock)
       : core_worker_client_pool_(core_worker_client_pool),
         raylet_client_pool_(raylet_client_pool),
         gcs_client_(std::move(gcs_client)),
@@ -88,7 +90,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
         next_queueing_warn_threshold_(
             ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
-        reference_counter_(std::move(reference_counter)) {}
+        reference_counter_(std::move(reference_counter)),
+        clock_(clock) {}
 
   void SetPreempted(const ActorID &actor_id) override {
     absl::MutexLock lock(&mu_);
@@ -456,6 +459,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+
+  /// Clock used for task timeout tracking and death-info grace periods.
+  ClockInterface &clock_;
 };
 
 }  // namespace core

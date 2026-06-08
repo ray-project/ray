@@ -231,7 +231,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::move(event_aggregator_client),
       options.session_name,
-      local_node_id);
+      local_node_id,
+      clock_);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -310,7 +311,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*periodical_runner=*/*periodical_runner,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*get_time_ms=*/[this]() { return clock_.NowUnixMillis(); },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       worker_context->GetWorkerID());
@@ -368,12 +369,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
        options.worker_type != WorkerType::RESTORE_WORKER),
       /*store_client=*/std::move(plasma_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
+      /*clock=*/clock_,
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
+      clock_,
       /*reference_counting_enabled=*/reference_counter != nullptr,
       raylet_ipc_client,
       options.check_signals,
@@ -495,14 +498,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
               set_direct_transport_metadata(object_id, direct_transport_metadata);
             },
             "CoreWorker.SetDirectTransportMetadata");
-      });
+      },
+      /*clock=*/clock_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id,
                                    const std::string &actor_name,
                                    int64_t num_queued) {
-    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
+    auto timestamp = clock_.NowUnixMillis() / 1000;
     auto core_worker = GetCoreWorker();
     auto message = absl::StrFormat(
         "Warning: More than %d tasks are pending submission to actor %s with actor_id "
@@ -530,7 +532,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       on_excess_queueing,
       io_service_,
-      reference_counter);
+      reference_counter,
+      /*clock=*/clock_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
@@ -574,7 +577,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_placement_time_percentile_ms_);
+      *scheduler_placement_time_percentile_ms_,
+      /*clock=*/clock_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -705,7 +709,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(task_event_buffer),
                                    pid,
                                    *task_by_state_gauge_,
-                                   *actor_by_state_gauge_);
+                                   *actor_by_state_gauge_,
+                                   clock_);
 
   core_worker->InitializeShutdownExecutor();
 

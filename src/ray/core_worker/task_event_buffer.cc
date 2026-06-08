@@ -486,7 +486,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
       job_id,
       attempt_number,
       status,
-      /* timestamp */ absl::GetCurrentTimeNanos(),
+      /* timestamp */ clock_.NowUnixNanos(),
       /*is_actor_task_event=*/spec.IsActorTask(),
       session_name_,
       node_id_,
@@ -501,13 +501,15 @@ TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
     std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     std::string session_name,
-    const NodeID &node_id)
+    const NodeID &node_id,
+    ClockInterface &clock)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
       session_name_(session_name),
-      node_id_(node_id) {}
+      node_id_(node_id),
+      clock_(clock) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
@@ -588,7 +590,7 @@ void TaskEventBufferImpl::Stop() {
 
     bool WaitUntilIdle(absl::Duration timeout) override {
       absl::MutexLock lock(&buffer_->grpc_completion_mutex_);
-      auto deadline = absl::Now() + timeout;
+      auto deadline = buffer_->clock_.Now() + timeout;
       while (buffer_->gcs_grpc_in_progress_.load() > 0 ||
              buffer_->event_aggregator_grpc_in_progress_.load() > 0) {
         if (buffer_->grpc_completion_cv_.WaitWithDeadline(

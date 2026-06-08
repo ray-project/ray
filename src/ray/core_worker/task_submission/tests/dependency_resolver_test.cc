@@ -28,6 +28,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/fake_actor_creator.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -383,7 +384,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 
 TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
-  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  Clock clock;
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(

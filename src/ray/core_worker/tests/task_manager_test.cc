@@ -34,6 +34,7 @@
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -158,7 +159,8 @@ class TaskManagerTest : public ::testing::Test {
             *std::make_shared<ray::observability::FakeGauge>(),
             lineage_pinning_enabled)),
         io_context_("TaskManagerTest"),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
+        store_(
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_)),
         manager_(
             *store_,
             *reference_counter_,
@@ -188,7 +190,8 @@ class TaskManagerTest : public ::testing::Test {
             fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
             /*set_direct_transport_metadata=*/
-            [](const ObjectID &, const std::string &) {}) {}
+            [](const ObjectID &, const std::string &) {},
+            /*clock=*/clock_) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -228,6 +231,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
+  Clock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
   TaskManager manager_;
@@ -1494,7 +1498,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
   TaskManager failing_mgr(
       *local_store,
@@ -1522,7 +1527,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1557,7 +1563,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
   TaskManager retry_mgr(
       *local_store,
       *local_ref_counter,
@@ -1588,7 +1595,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1621,7 +1629,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
   TaskManager dyn_mgr(
       *local_store,
       *local_ref_counter,
@@ -1652,7 +1661,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -3118,7 +3128,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
   TaskManager test_manager(
       *local_store,
@@ -3143,7 +3154,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   // Create a task with retries enabled
   rpc::Address caller_address;
@@ -3201,7 +3213,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);
-  auto local_store = std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService());
+  auto local_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
   TaskManager test_manager(
       *local_store,
@@ -3226,7 +3239,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
-      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+      /*clock=*/clock_);
 
   // Create a task that will be retried
   rpc::Address caller_address;

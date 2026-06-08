@@ -22,7 +22,6 @@
 
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -511,7 +510,7 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
   // FailPendingTask requires the opposite. So we copy the tasks out from the queue
   // within the lock. This requires putting the data into shared_ptr.
   std::vector<std::shared_ptr<PendingTaskWaitingForDeathInfo>> timeout_tasks;
-  int64_t now = current_time_ms();
+  int64_t now = clock_.NowUnixMillis();
   {
     absl::MutexLock lock(&mu_);
     for (auto &[actor_id, client_queue] : client_queues_) {
@@ -762,7 +761,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
         // optionally wait for a grace period for the death info.
 
         int64_t death_info_grace_period_ms =
-            current_time_ms() +
+            clock_.NowUnixMillis() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();
         absl::MutexLock lock(&mu_);
         auto queue_pair = client_queues_.find(actor_id);
@@ -834,7 +833,8 @@ void ActorTaskSubmitter::HandleTaskCancelledBeforeExecution(
       CancelDependencyResolution(task_id);
 
       int64_t death_info_grace_period_ms =
-          current_time_ms() + RayConfig::instance().timeout_ms_task_wait_for_death_info();
+          clock_.NowUnixMillis() +
+          RayConfig::instance().timeout_ms_task_wait_for_death_info();
 
       error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
       error_info.set_error_message(

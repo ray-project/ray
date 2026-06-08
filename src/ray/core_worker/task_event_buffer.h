@@ -31,6 +31,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/export_task_event.pb.h"
@@ -399,7 +400,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       std::unique_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
       std::string session_name,
-      const NodeID &node_id);
+      const NodeID &node_id,
+      ClockInterface &clock);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -625,6 +627,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// The node id of the worker.
   const NodeID node_id_;
+
+  /// Clock used for timestamping events and for grpc completion deadlines.
+  ClockInterface &clock_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);

@@ -46,7 +46,6 @@
 #include "ray/util/event.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/time.h"
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
@@ -318,7 +317,8 @@ CoreWorker::CoreWorker(
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
-    ray::observability::MetricInterface &actor_by_state_gauge)
+    ray::observability::MetricInterface &actor_by_state_gauge,
+    ClockInterface &clock)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -370,7 +370,8 @@ CoreWorker::CoreWorker(
             io_service_.post([free_actor_object_callback,
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
-          }) {
+          }),
+      clock_(clock) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -433,7 +434,7 @@ CoreWorker::CoreWorker(
           std::move(job_id),
           /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
-          /*timestamp=*/absl::GetCurrentTimeNanos(),
+          /*timestamp=*/clock_.NowUnixNanos(),
           /*is_actor_task_event=*/false,
           options_.session_name,
           GetCurrentNodeId(),
@@ -595,7 +596,7 @@ void CoreWorker::Disconnect(
         worker_context_->GetCurrentJobID(),
         /*attempt_number=*/0,
         rpc::TaskStatus::FINISHED,
-        /*timestamp=*/absl::GetCurrentTimeNanos(),
+        /*timestamp=*/clock_.NowUnixNanos(),
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name,
         GetCurrentNodeId());
@@ -719,9 +720,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_info.emplace("raylet_socket", options_.raylet_socket);
 
   if (options_.worker_type == WorkerType::DRIVER) {
-    auto start_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
+    auto start_time = clock_.NowUnixMillis();
     worker_info.emplace("driver_id", worker_id.Binary());
     worker_info.emplace("start_time", absl::StrFormat("%d", start_time));
     if (!options_.driver_name.empty()) {
@@ -741,7 +740,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 
   worker_data->set_is_alive(true);
   worker_data->set_pid(pid_);
-  worker_data->set_start_time_ms(current_sys_time_ms());
+  worker_data->set_start_time_ms(clock_.NowUnixMillis());
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
@@ -808,7 +807,7 @@ void CoreWorker::InternalHeartbeat() {
   std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
-    const auto current_time = current_time_ms();
+    const auto current_time = clock_.NowUnixMillis();
     while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
       tasks_to_resubmit.emplace_back(to_resubmit_.top());
       to_resubmit_.pop();
@@ -1303,7 +1302,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  auto start_time = current_time_ms();
+  auto start_time = clock_.NowUnixMillis();
 
   StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
 
@@ -1355,7 +1354,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
-                                  timeout_ms - (current_time_ms() - start_time));
+                                  timeout_ms - (clock_.NowUnixMillis() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
@@ -1482,7 +1481,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-  int64_t start_time = current_time_ms();
+  int64_t start_time = clock_.NowUnixMillis();
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
   RAY_RETURN_NOT_OK(memory_store_->Wait(
@@ -1495,7 +1494,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
-        std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+        std::max(0, static_cast<int>(timeout_ms - (clock_.NowUnixMillis() - start_time)));
   }
   if (fetch_local) {
     // With fetch_local we want to start fetching plasma_object_ids from other nodes'
@@ -2622,8 +2621,11 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
-  return std::make_unique<worker::ProfileEvent>(
-      *task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
+  return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
+                                                *worker_context_,
+                                                options_.node_ip_address,
+                                                event_name,
+                                                clock_);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
@@ -4543,7 +4545,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
 void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
   absl::MutexLock lock(&mutex_);
-  TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+  TaskToRetry task_to_retry{clock_.NowUnixMillis() + delay_ms, spec};
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));

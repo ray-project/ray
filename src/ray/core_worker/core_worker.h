@@ -52,6 +52,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
@@ -201,7 +202,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter);
+             ray::observability::MetricInterface &actor_by_state_counter,
+             ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -1950,5 +1952,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Clock used for timestamping events, retries, and timeouts.
+  ClockInterface &clock_;
 };
 }  // namespace ray::core

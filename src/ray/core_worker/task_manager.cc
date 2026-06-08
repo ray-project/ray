@@ -25,7 +25,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -1219,7 +1218,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
             push_error_callback_(task_entry.spec_.JobId(),
                                  rpc::ErrorType_Name(error_info.error_type()),
                                  error_message,
-                                 current_time_ms());
+                                 clock_.NowUnixMillis());
         if (!push_error_status.ok()) {
           RAY_LOG(ERROR) << "Failed to push error to driver for task " << spec.TaskId();
         }
@@ -1317,12 +1316,13 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     auto debug_str = spec.DebugString();
     if (!absl::StrContains(debug_str, "__ray_terminate__") &&
         (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-         (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+         (clock_.NowUnixMillis() - last_log_time_ms_) >
+             kTaskFailureLoggingFrequencyMillis)) {
       if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
         RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
                          << kTaskFailureLoggingFrequencyMillis << " millis.";
       }
-      last_log_time_ms_ = current_time_ms();
+      last_log_time_ms_ = clock_.NowUnixMillis();
       if (status != nullptr) {
         RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
       } else {

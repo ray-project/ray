@@ -35,6 +35,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -208,7 +209,8 @@ class TaskManager : public TaskManagerInterface {
       ray::observability::MetricInterface &task_by_state_counter,
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
       FreeActorObjectCallback free_actor_object_callback,
-      SetDirectTransportMetadata set_direct_transport_metadata)
+      SetDirectTransportMetadata set_direct_transport_metadata,
+      ClockInterface &clock)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -222,7 +224,8 @@ class TaskManager : public TaskManagerInterface {
         task_by_state_counter_(task_by_state_counter),
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
         free_actor_object_callback_(std::move(free_actor_object_callback)),
-        set_direct_transport_metadata_(std::move(set_direct_transport_metadata)) {
+        set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
+        clock_(clock) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -846,6 +849,9 @@ class TaskManager : public TaskManagerInterface {
 
   /// Callback to set the direct transport metadata for a object.
   SetDirectTransportMetadata set_direct_transport_metadata_;
+
+  /// Clock used for timestamping errors and rate-limiting failure logs.
+  ClockInterface &clock_;
 
   friend class TaskManagerTest;
 };

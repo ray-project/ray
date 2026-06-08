@@ -29,6 +29,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -52,6 +53,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] raylet_ipc_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
+      ClockInterface &clock,
       bool reference_counting_enabled = true,
       std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client = nullptr,
       std::function<Status()> check_signals = nullptr,
@@ -201,6 +203,10 @@ class CoreWorkerMemoryStore {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   instrumented_io_context &io_context_;
+
+  /// Clock used for timestamping object creation/access (e.g. for unhandled error grace
+  /// period checks).
+  ClockInterface &clock_;
 
   /// Set to true if reference counting is enabled (i.e. not local mode).
   bool reference_counting_enabled_;

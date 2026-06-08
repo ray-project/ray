@@ -31,6 +31,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray::core {
 
@@ -101,7 +102,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
               return nullptr;
             })),
         worker_client_(std::make_shared<MockWorkerClient>()),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context, clock_)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
         mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
         io_work(io_context.get_executor()),
@@ -129,12 +130,14 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
               last_queue_warning_ = num_queued;
             },
             io_context,
-            reference_counter_) {}
+            reference_counter_,
+            clock_) {}
 
   void TearDown() override { io_context.stop(); }
 
   int64_t last_queue_warning_ = 0;
   FakeActorCreator actor_creator_;
+  Clock clock_;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;

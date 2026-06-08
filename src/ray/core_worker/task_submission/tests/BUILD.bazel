@@ -11,6 +11,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/actor_management:fake_actor_creator",
         "//src/ray/core_worker/task_submission:dependency_resolver",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -35,6 +36,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -54,6 +56,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -73,5 +76,6 @@ ray_cc_test(
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
+        "//src/ray/util:clock",
     ],
 )

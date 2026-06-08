@@ -34,6 +34,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -893,7 +894,8 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService());
+  Clock clock;
+  CoreWorkerMemoryStore store(io_context.GetIoService(), clock);
 
   // Tests putting an object with no references is ignored.
   store.Put(buffer, id2, rc->HasReference(id2));

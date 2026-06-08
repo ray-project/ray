@@ -25,7 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
-#include "ray/util/time.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -69,12 +69,14 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
     int64_t fetch_batch_size,
+    ClockInterface &clock,
     std::function<std::string()> get_current_call_site)
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
       check_signals_(std::move(check_signals)),
       fetch_batch_size_(fetch_batch_size),
-      get_request_counter_(0) {
+      get_request_counter_(0),
+      clock_(clock) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -308,7 +310,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
-  auto fetch_start_time_ms = current_time_ms();
+  auto fetch_start_time_ms = clock_.NowUnixMillis();
   while (!remaining_object_id_to_idx.empty() && !should_break) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
@@ -425,7 +427,7 @@ CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
 void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
     int64_t fetch_start_time_ms,
     const absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx) {
-  int64_t duration_ms = current_time_ms() - fetch_start_time_ms;
+  int64_t duration_ms = clock_.NowUnixMillis() - fetch_start_time_ms;
   if (duration_ms > RayConfig::instance().fetch_warn_timeout_milliseconds()) {
     std::ostringstream oss;
     size_t printed = 0;

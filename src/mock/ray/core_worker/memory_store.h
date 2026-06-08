@@ -14,6 +14,7 @@
 #pragma once
 
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/util/clock.h"
 
 namespace ray::core {
 
@@ -44,9 +45,16 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
   ~DefaultCoreWorkerMemoryStoreWithThread() { io_context_->Stop(); }
 
  private:
+  // Process-wide real clock shared by test helpers. The Clock is stateless and
+  // thread-safe, so it's safe to share a single instance across tests.
+  static Clock &SharedClock() {
+    static Clock clock;
+    return clock;
+  }
+
   explicit DefaultCoreWorkerMemoryStoreWithThread(
       std::unique_ptr<InstrumentedIOContextWithThread> io_context)
-      : CoreWorkerMemoryStore(io_context->GetIoService()),
+      : CoreWorkerMemoryStore(io_context->GetIoService(), SharedClock()),
         io_context_(std::move(io_context)) {}
 
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;

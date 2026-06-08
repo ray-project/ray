@@ -89,6 +89,7 @@ ray_cc_library(
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/pubsub:fake_publisher",
+        "//src/ray/util:clock",
     ],
 )
 
