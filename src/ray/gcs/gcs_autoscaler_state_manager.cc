@@ -260,30 +260,24 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     }
 
     // Populate locality_requirement if this PG uses topology-aware scheduling.
-    // TODO(#61777): Add support for multiple topology levels.
-    if (pg_data.topology_strategy_size() > 0) {
-      const auto &entries = pg_data.topology_strategy(0).entries();
-      if (!entries.empty()) {
-        const auto &[topology_label_key, _strategy] = *entries.begin();
+    const auto &topology_strategy = pg_data.topology_strategy();
+    if (!topology_strategy.empty()) {
+      const auto &[topology_label_key, _strategy] = *topology_strategy.begin();
 
-        auto *locality_req = bundle_selector->mutable_locality_requirement();
-        auto *locality_constraint = locality_req->mutable_locality_constraint();
-        locality_constraint->set_label_name(topology_label_key);
-        locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+      auto *locality_req = bundle_selector->mutable_locality_requirement();
+      auto *locality_constraint = locality_req->mutable_locality_constraint();
+      locality_constraint->set_label_name(topology_label_key);
+      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
 
-        // If the scheduler has already picked a value for this topology label
-        // (rescheduling case), pin the autoscaler request to that value.
-        if (pg_data.topology_assignments_size() > 0) {
-          const auto &assignments = pg_data.topology_assignments(0).assignments();
-          if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
-            auto *label_constraint =
-                locality_req->mutable_label_selector()->add_label_constraints();
-            label_constraint->set_label_key(topology_label_key);
-            label_constraint->set_operator_(
-                rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
-            label_constraint->add_label_values(it->second);
-          }
-        }
+      // If the scheduler has already picked a value for this topology label
+      // (rescheduling case), pin the autoscaler request to that value.
+      const auto &assignments = pg_data.topology_assignments();
+      if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
+        auto *label_constraint =
+            locality_req->mutable_label_selector()->add_label_constraints();
+        label_constraint->set_label_key(topology_label_key);
+        label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+        label_constraint->add_label_values(it->second);
       }
     }
   }

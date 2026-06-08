@@ -92,8 +92,8 @@ class PlacementGroupSpecBuilder {
       bool is_creator_detached_actor,
       const std::vector<std::unordered_map<std::string, std::string>>
           &bundle_label_selector = {},
-      const std::vector<std::unordered_map<std::string, rpc::PlacementStrategy>>
-          &topology_strategy = {}) {
+      const std::unordered_map<std::string, rpc::PlacementStrategy> &topology_strategy =
+          {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -135,11 +135,8 @@ class PlacementGroupSpecBuilder {
       }
     }
 
-    for (const auto &level : topology_strategy) {
-      auto *proto_level = message_->add_topology_strategy();
-      auto *entries = proto_level->mutable_entries();
-      entries->insert(level.begin(), level.end());
-    }
+    message_->mutable_topology_strategy()->insert(topology_strategy.begin(),
+                                                  topology_strategy.end());
     return *this;
   }
 

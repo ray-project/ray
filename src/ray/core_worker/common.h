@@ -233,8 +233,7 @@ struct PlacementGroupCreationOptions {
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {},
-      std::vector<std::unordered_map<std::string, PlacementStrategy>> topology_strategy =
-          {})
+      std::unordered_map<std::string, PlacementStrategy> topology_strategy = {})
       : name_(std::move(name)),
         strategy_(strategy),
         bundles_(std::move(bundles)),
@@ -262,10 +261,9 @@ struct PlacementGroupCreationOptions {
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
   const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
-  /// Per-level topology strategy. Each level is a label -> placement strategy
-  /// map. For v1 exactly one level is supported.
-  const std::vector<std::unordered_map<std::string, PlacementStrategy>>
-      topology_strategy_;
+  /// Topology strategy. Maps each topology label (e.g. "ray.io/node-id",
+  /// "rack_id") to the placement strategy applied at that label.
+  const std::unordered_map<std::string, PlacementStrategy> topology_strategy_;
 };
 
 class ObjectLocation {

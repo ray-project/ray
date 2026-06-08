@@ -62,12 +62,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   // the topology assignments so new values can be selected. If only some bundles
   // are unplaced (partial failure), we attempt to reschedule onto the same
   // assignments.
-  // TODO(#61777): extend once nested topology levels are supported.
   if (placement_group->AllUnplacedBundles() &&
-      placement_group->GetTopologyStrategyKeys(0).has_value()) {
+      placement_group->GetTopologyStrategyKeys().has_value()) {
     placement_group->ClearTopologyAssignments();
     RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
-                  << " are unplaced, rescheduling on a new topology level";
+                  << " are unplaced, rescheduling on a new topology assignment";
   }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
@@ -107,12 +106,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
-  // TODO(#61777): extend once nested topology levels are supported.
   if (scheduling_result.selected_label_domain.has_value()) {
     const auto &[label_domain_key, label_domain_value] =
         *scheduling_result.selected_label_domain;
-    placement_group->SetTopologyAssignment(
-        /*level=*/0, label_domain_key, label_domain_value);
+    placement_group->SetTopologyAssignment(label_domain_key, label_domain_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
                   << " assigned to topology label " << label_domain_key << ": "
                   << label_domain_value;
@@ -496,15 +493,14 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
   std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
-  // Currently, take the first non-node-id key as the label domain the scheduler should
+  // Currently, take the first topology key as the label domain the scheduler should
   // pin to.
-  // TODO(#61777): extend once nested topology levels are supported.
   std::optional<std::vector<std::string>> topology_keys =
-      placement_group.GetTopologyStrategyKeys(/*level=*/0);
+      placement_group.GetTopologyStrategyKeys();
   if (topology_keys.has_value()) {
     const std::string &label_domain_key = topology_keys.value()[0];
     std::optional<std::string> label_value =
-        placement_group.GetTopologyAssignment(/*level=*/0, label_domain_key);
+        placement_group.GetTopologyAssignment(label_domain_key);
     // If a topology value has already been selected for this PG, the bundles
     // are being rescheduled and must land on the same selection.
     target_label_domain = {label_domain_key, label_value};

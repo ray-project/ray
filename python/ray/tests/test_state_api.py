@@ -150,8 +150,8 @@ def generate_pg_data(
         name=name,
         creator_job_dead=True,
         creator_actor_dead=False,
-        topology_strategy=topology_strategy or [],
-        topology_assignments=topology_assignments or [],
+        topology_strategy=topology_strategy or {},
+        topology_assignments=topology_assignments or {},
     )
 
 

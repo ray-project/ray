@@ -3688,16 +3688,12 @@ cdef class CoreWorker:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
             CNodeID c_soft_target_node_id = CNodeID.Nil()
-            c_vector[unordered_map[c_string, CPlacementStrategy]] c_topology_strategy
-            unordered_map[c_string, CPlacementStrategy] c_level
+            unordered_map[c_string, CPlacementStrategy] c_topology_strategy
 
         c_strategy = prepare_c_strategy(strategy)
 
-        for level in topology_strategy:
-            c_level.clear()
-            for label, level_strategy in level.items():
-                c_level[label] = prepare_c_strategy(level_strategy)
-            c_topology_strategy.push_back(c_level)
+        for label, level_strategy in topology_strategy.items():
+            c_topology_strategy[label] = prepare_c_strategy(level_strategy)
 
         if soft_target_node_id is not None:
             c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)

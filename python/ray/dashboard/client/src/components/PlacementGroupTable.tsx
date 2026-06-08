@@ -218,15 +218,12 @@ const PlacementGroupTable = ({
                     {topology_strategy ? (
                       <Box sx={{ textAlign: "left" }}>
                         <div>
-                          <b>strategy:</b>{" "}
-                          {JSON.stringify(topology_strategy[0].entries)}
+                          <b>strategy:</b> {JSON.stringify(topology_strategy)}
                         </div>
                         <div>
                           <b>assignment:</b>{" "}
                           {topology_assignments
-                            ? JSON.stringify(
-                                topology_assignments[0].assignments,
-                              )
+                            ? JSON.stringify(topology_assignments)
                             : "-"}
                         </div>
                       </Box>

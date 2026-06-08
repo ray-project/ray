@@ -564,20 +564,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
-    #: The topology strategy for this placement group. Each level is a
-    #: dict mapping a label key (e.g. "ray.io/gpu-domain") to a placement
-    #: strategy (e.g. "STRICT_PACK"). Empty list if the placement group
-    #: does not use topology-aware scheduling.
+    #: The topology strategy for this placement group: a dict mapping each
+    #: topology label key (e.g. "ray.io/gpu-domain") to a placement strategy
+    #: (e.g. "STRICT_PACK"). Empty dict if the placement group does not use
+    #: topology-aware scheduling.
     #:
     #: NOTE: This field is experimental and may change in the future.
-    topology_strategy: Optional[list] = state_column(filterable=False, detail=True)
-    #: Per-level topology assignments. Each level is a dict mapping a
-    #: topology label key to the value the scheduler has selected for this PG
-    #: (e.g. {"ray.io/gpu-domain": "rack-1"}). Empty list if no topology
-    #: values have been selected yet.
+    topology_strategy: Optional[dict] = state_column(filterable=False, detail=True)
+    #: Topology assignments: a dict mapping each topology label key to the
+    #: value the scheduler has selected for this PG (e.g.
+    #: {"ray.io/gpu-domain": "rack-1"}). Empty dict if no topology values
+    #: have been selected yet.
     #:
     #: NOTE: This field is experimental and may change in the future.
-    topology_assignments: Optional[list] = state_column(filterable=False, detail=True)
+    topology_assignments: Optional[dict] = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)

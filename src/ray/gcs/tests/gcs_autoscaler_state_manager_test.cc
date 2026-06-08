@@ -1327,11 +1327,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
   pg_data->set_placement_group_id(pg_id.Binary());
-  {
-    auto *level = pg_data->add_topology_strategy();
-    (*level->mutable_entries())["ray.io/gpu-domain"] =
-        rpc::PlacementStrategy::STRICT_PACK;
-  }
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_PACK;
 
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["GPU"] = 4;
@@ -1370,15 +1367,9 @@ TEST_F(GcsAutoscalerStateManagerTest,
   pg_data->set_state(rpc::PlacementGroupTableData::RESCHEDULING);
   auto pg_id = PlacementGroupID::Of(JobID::FromInt(2));
   pg_data->set_placement_group_id(pg_id.Binary());
-  {
-    auto *level = pg_data->add_topology_strategy();
-    (*level->mutable_entries())["ray.io/gpu-domain"] =
-        rpc::PlacementStrategy::STRICT_PACK;
-  }
-  {
-    auto *level = pg_data->add_topology_assignments();
-    (*level->mutable_assignments())["ray.io/gpu-domain"] = "rack-1";
-  }
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::STRICT_PACK;
+  (*pg_data->mutable_topology_assignments())["ray.io/gpu-domain"] = "rack-1";
 
   // One placed bundle (has node_id) and one unplaced bundle.
   auto *placed_bundle = pg_data->add_bundles();

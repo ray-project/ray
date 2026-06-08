@@ -17,23 +17,6 @@ export type Bundle = {
   } | null;
 };
 
-export type TopologyStrategyLevel = {
-  // Map from label key (e.g. "ray.io/gpu-domain") to placement strategy name.
-  // protobuf_message_to_dict serializes the enum as its name string,
-  // e.g. "STRICT_PACK".
-  entries?: {
-    [key: string]: string;
-  } | null;
-};
-
-export type TopologyAssignmentLevel = {
-  // Map from topology label key to the value the scheduler selected for this
-  // PG (e.g. {"ray.io/gpu-domain": "rack-1"}).
-  assignments?: {
-    [key: string]: string;
-  } | null;
-};
-
 export type PlacementGroup = {
   placement_group_id: string;
   name: string;
@@ -43,10 +26,15 @@ export type PlacementGroup = {
     [key: string]: number | string;
   } | null;
   bundles: Bundle[];
-  // Per-level topology strategy. Each level is a label->strategy map. For v1,
-  // at most one level is populated.
-  topology_strategy?: TopologyStrategyLevel[] | null;
-  // Per-level topology assignments. Each level is a label->selected-value map.
-  // For v1, at most one level is populated.
-  topology_assignments?: TopologyAssignmentLevel[] | null;
+  // Topology strategy: map from label key (e.g. "ray.io/gpu-domain") to
+  // placement strategy name. protobuf_message_to_dict serializes the enum as
+  // its name string, e.g. "STRICT_PACK".
+  topology_strategy?: {
+    [key: string]: string;
+  } | null;
+  // Topology assignments: map from topology label key to the value the
+  // scheduler selected for this PG (e.g. {"ray.io/gpu-domain": "rack-1"}).
+  topology_assignments?: {
+    [key: string]: string;
+  } | null;
 };

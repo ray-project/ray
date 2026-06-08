@@ -39,7 +39,7 @@ def test_topology_strategy_feasible_after_rack_kill(ray_start_cluster):
 
     pg = placement_group(
         bundles=bundles,
-        topology_strategy=[{RACK_LABEL: "STRICT_PACK"}],
+        topology_strategy={RACK_LABEL: "STRICT_PACK"},
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
@@ -84,7 +84,7 @@ def test_topology_strategy_strict_pack(ray_start_cluster):
 
     pg = placement_group(
         bundles=bundles,
-        topology_strategy=[{NODE_ID_LABEL: "STRICT_PACK", RACK_LABEL: "STRICT_PACK"}],
+        topology_strategy={NODE_ID_LABEL: "STRICT_PACK", RACK_LABEL: "STRICT_PACK"},
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
@@ -115,7 +115,7 @@ def test_topology_strategy_strict_spread(ray_start_cluster):
 
     pg = placement_group(
         bundles=bundles,
-        topology_strategy=[{NODE_ID_LABEL: "STRICT_SPREAD", RACK_LABEL: "STRICT_PACK"}],
+        topology_strategy={NODE_ID_LABEL: "STRICT_SPREAD", RACK_LABEL: "STRICT_PACK"},
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"
@@ -142,7 +142,7 @@ def test_topology_strategy_reschedule_on_node_failure(ray_start_cluster):
     bundles = [{"CPU": 1}] * 4
     pg = placement_group(
         bundles=bundles,
-        topology_strategy=[{NODE_ID_LABEL: "PACK", RACK_LABEL: "STRICT_PACK"}],
+        topology_strategy={NODE_ID_LABEL: "PACK", RACK_LABEL: "STRICT_PACK"},
     )
     ray.get(pg.ready(), timeout=30)
     assert placement_group_table(pg)["state"] == "CREATED"

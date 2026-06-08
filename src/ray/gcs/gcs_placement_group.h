@@ -81,8 +81,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         clock_.NowUnixMillis());
-    placement_group_table_data_.mutable_topology_strategy()->CopyFrom(
-        placement_group_spec.topology_strategy());
+    *placement_group_table_data_.mutable_topology_strategy() =
+        placement_group_spec.topology_strategy();
     SetupStates();
   }
 
@@ -164,24 +164,20 @@ class GcsPlacementGroup {
 
   rpc::PlacementGroupStats *GetMutableStats();
 
-  /// Get the topology label keys at the given level (e.g. {"ray.io/node-id",
-  /// "rack_id"} at level 0), or std::nullopt if this PG doesn't use
-  /// topology-aware scheduling at that level.
-  std::optional<std::vector<std::string>> GetTopologyStrategyKeys(size_t level) const;
+  /// Get the topology label keys (e.g. {"ray.io/node-id", "rack_id"}), or
+  /// std::nullopt if this PG doesn't use topology-aware scheduling.
+  std::optional<std::vector<std::string>> GetTopologyStrategyKeys() const;
 
-  /// Get the topology assignment value selected for `label_key` at the given
-  /// level (e.g. the chosen rack_id for this PG).
-  std::optional<std::string> GetTopologyAssignment(size_t level,
-                                                   const std::string &label_key) const;
+  /// Get the topology assignment value selected for `label_key` (e.g. the
+  /// chosen rack_id for this PG).
+  std::optional<std::string> GetTopologyAssignment(const std::string &label_key) const;
 
-  /// Record that `label_value` has been selected for `label_key` at the given
-  /// level.
-  void SetTopologyAssignment(size_t level,
-                             const std::string &label_key,
+  /// Record that `label_value` has been selected for `label_key`.
+  void SetTopologyAssignment(const std::string &label_key,
                              const std::string &label_value);
 
-  /// Clear all topology assignments across all levels (used when every bundle
-  /// of a topology-aware PG becomes unplaced, so a fresh selection can be made).
+  /// Clear all topology assignments (used when every bundle of a topology-aware
+  /// PG becomes unplaced, so a fresh selection can be made).
   void ClearTopologyAssignments();
 
  private:
