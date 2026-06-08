@@ -169,8 +169,7 @@ class IOContextProvider {
   }
 
  private:
-  // Validating the Policy is valid.
-  static constexpr bool CheckNoEmpty() {
+  static constexpr bool CheckNoEmptyNames() {
     for (const auto &metadata : Policy::kAllDedicatedIOContexts) {
       if (metadata.name.empty()) {
         return false;
@@ -178,6 +177,7 @@ class IOContextProvider {
     }
     return true;
   }
+
   // Warning: O(n^2) complexity. Only used in a constexpr context.
   static constexpr bool NamesAreUnique() {
     const auto &contexts = Policy::kAllDedicatedIOContexts;
@@ -190,7 +190,7 @@ class IOContextProvider {
     }
     return true;
   }
-  static_assert(CheckNoEmpty(),
+  static_assert(CheckNoEmptyNames(),
                 "kAllDedicatedIOContexts names must not contain empty strings.");
   static_assert(NamesAreUnique(),
                 "kAllDedicatedIOContexts names must not contain duplicate elements.");
