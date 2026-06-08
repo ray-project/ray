@@ -333,3 +333,69 @@ class _ListNamespace:
             )
 
         return _list_flatten(self._expr)
+
+    def union(self, other: "Expr") -> "UDFExpr":
+        """Set union of each list with the corresponding list in ``other``.
+
+        Args:
+            other: A list-typed expression to union with.
+
+        Returns:
+            A UDFExpr whose lists hold the deduplicated elements of both lists,
+            in first-seen order.
+        """
+        return self._apply_set_operation(
+            other, lambda a, b: list(dict.fromkeys([*a, *b]))
+        )
+
+    def intersection(self, other: "Expr") -> "UDFExpr":
+        """Set intersection of each list with the corresponding list in ``other``.
+
+        Args:
+            other: A list-typed expression to intersect with.
+
+        Returns:
+            A UDFExpr whose lists hold the elements present in both lists, in the
+            order they appear in the first list.
+        """
+        return self._apply_set_operation(
+            other, lambda a, b: [x for x in dict.fromkeys(a) if x in set(b)]
+        )
+
+    def difference(self, other: "Expr") -> "UDFExpr":
+        """Set difference of each list and the corresponding list in ``other``.
+
+        Args:
+            other: A list-typed expression to subtract.
+
+        Returns:
+            A UDFExpr whose lists hold the elements in the first list but not the
+            second, in the order they appear in the first list.
+        """
+        return self._apply_set_operation(
+            other, lambda a, b: [x for x in dict.fromkeys(a) if x not in set(b)]
+        )
+
+    def _apply_set_operation(self, other: "Expr", op) -> "UDFExpr":
+        # Set operations change list lengths, so a FixedSizeList result type must
+        # widen to a variable-length list.
+        return_dtype = self._expr.data_type
+        if return_dtype.is_arrow_type():
+            arrow_type = return_dtype.to_arrow_dtype()
+            if pyarrow.types.is_fixed_size_list(arrow_type):
+                return_dtype = DataType.from_arrow(pyarrow.list_(arrow_type.value_type))
+
+        @pyarrow_udf(return_dtype=return_dtype)
+        def _list_set_op(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
+            pa_type = arr1.type
+            if pyarrow.types.is_fixed_size_list(pa_type):
+                pa_type = pyarrow.list_(pa_type.value_type)
+
+            # A null input row yields a null output row.
+            result = [
+                None if l1 is None or l2 is None else op(l1, l2)
+                for l1, l2 in zip(arr1.to_pylist(), arr2.to_pylist())
+            ]
+            return pyarrow.array(result, type=pa_type)
+
+        return _list_set_op(self._expr, other)
