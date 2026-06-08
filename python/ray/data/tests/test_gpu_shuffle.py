@@ -928,6 +928,37 @@ class TestGPUHashAggregatePlanning:
             ]
         )
 
+    def test_normalize_output_arrow_preserves_values_when_runtime_schema_upgrades(
+        self,
+    ):
+        null_schema = pa.schema(
+            [
+                ("user_id", pa.int64()),
+                ("value", pa.null()),
+            ]
+        )
+        plan = build_gpu_aggregation_plan(
+            ("user_id",), (Sum("value"),), input_schema=null_schema
+        )
+        assert plan is not None
+
+        runtime_schema = plan.merge_input_schema(
+            null_schema,
+            pa.schema([("user_id", pa.int64()), ("value", pa.int64())]),
+        )
+        output_table = pa.table(
+            {
+                "user_id": pa.array([0, 1], type=pa.int64()),
+                "sum(value)": pa.array([10, 20], type=pa.int64()),
+            }
+        )
+
+        normalized = plan.normalize_output_arrow(
+            output_table, input_schema=runtime_schema
+        )
+        assert normalized.column("sum(value)").to_pylist() == [10, 20]
+        assert normalized.schema.field("sum(value)").type == pa.int64()
+
 
 # ---------------------------------------------------------------------------
 # GPUShuffleActor: deferred import guard

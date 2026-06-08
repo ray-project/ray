@@ -489,11 +489,17 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         input_schema: Optional[Schema] = None,
     ) -> Dict[str, pa.DataType]:
         """Return the CPU Arrow types for the final output column."""
-        source_dtype = self.source_dtype
-        if source_dtype is None:
-            source_dtype = _schema_column_dtype(input_schema, self.target_column)
+        plan_dtype = self.source_dtype
+        runtime_dtype = _schema_column_dtype(input_schema, self.target_column)
 
-        if source_dtype is None or not source_dtype.is_null_type():
+        # Use the plan-time dtype when it is concrete; otherwise fall back to
+        # runtime schema so merge_input_schema can upgrade plan-time null types.
+        if plan_dtype is not None and not plan_dtype.is_null_type():
+            effective_dtype = plan_dtype
+        else:
+            effective_dtype = runtime_dtype
+
+        if effective_dtype is None or not effective_dtype.is_null_type():
             return {}
 
         return {output_name: pa.null()}
