@@ -389,6 +389,12 @@ def status(
 
     Example:
         `ray job status <my_job_id>`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        job_id: The submission ID of the job to query.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     _log_job_status(client, job_id)
@@ -427,6 +433,17 @@ def stop(
 
     Example:
         `ray job stop <my_job_id>`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        no_wait: If True, return immediately instead of waiting for the job to reach a terminal state.
+        job_id: The submission ID of the job to stop.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
+
+    Returns:
+        None. The function returns early when ``no_wait`` is True; otherwise it
+        polls until the job reaches a terminal state.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     cli_logger.print(f"Attempting to stop job '{job_id}'")
@@ -480,6 +497,12 @@ def delete(
 
     Example:
         ray job delete <my_job_id>
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        job_id: The submission ID of the job to delete.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     client.delete_job(job_id)
@@ -520,6 +543,13 @@ def logs(
 
     Example:
         `ray job logs <my_job_id>`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        job_id: The submission ID of the job whose logs to fetch.
+        follow: If True, stream the logs (``tail -f`` style) instead of printing them once.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     sdk_version = client.get_version()
@@ -558,6 +588,11 @@ def list(address: Optional[str], headers: Optional[str], verify: Union[bool, str
 
     Example:
         `ray job list`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     # Set no_format to True because the logs may have unescaped "{" and "}"
