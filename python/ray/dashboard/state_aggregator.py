@@ -78,6 +78,9 @@ class StateAPIManager:
     async def list_actors(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all actor information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             {actor_id -> actor_data_in_dict}
             actor_data_in_dict's schema is in ActorState
@@ -132,6 +135,9 @@ class StateAPIManager:
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all placement group information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
+
         Returns:
             {pg_id -> pg_data_in_dict}
             pg_data_in_dict's schema is in PlacementGroupState
@@ -176,6 +182,9 @@ class StateAPIManager:
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all node information from the cluster.
+
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
 
         Returns:
             {node_id -> node_data_in_dict}
@@ -227,6 +236,9 @@ class StateAPIManager:
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all worker information from the cluster.
+
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
 
         Returns:
             {worker_id -> worker_data_in_dict}
@@ -300,6 +312,10 @@ class StateAPIManager:
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all task information from the cluster.
 
+        Args:
+            option: Query options (filters, limit, timeout, detail flag,
+                exclude_driver).
+
         Returns:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
@@ -359,6 +375,9 @@ class StateAPIManager:
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all object information from the cluster.
+
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
 
         Returns:
             {object_id -> object_data_in_dict}
@@ -471,6 +490,9 @@ class StateAPIManager:
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all runtime env information from the cluster.
+
+        Args:
+            option: Query options (filters, limit, timeout, detail flag).
 
         Returns:
             A list of runtime env information in the cluster.
