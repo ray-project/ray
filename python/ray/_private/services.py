@@ -1061,6 +1061,8 @@ def start_ray_process(
             raise
 
     def _get_stream_name(stream):
+        if stream == subprocess.DEVNULL:
+            return os.devnull
         if stream is not None:
             try:
                 return stream.name
@@ -1182,13 +1184,8 @@ def start_log_monitor(
         )
         command.append(f"--logging-format={logging_format}")
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -1356,13 +1353,8 @@ def start_api_server(
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
 
-        stdout_file = None
-        if stdout_filepath:
-            stdout_file = open(os.devnull, "w")
-
-        stderr_file = None
-        if stderr_filepath:
-            stderr_file = open(os.devnull, "w")
+        stdout_file = subprocess.DEVNULL if stdout_filepath else None
+        stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
         process_info = start_ray_process(
             command,
@@ -1567,13 +1559,8 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -2016,13 +2003,8 @@ def start_raylet(
             f"--node-name={node_name}",
         )
 
-    stdout_file = None
-    if raylet_stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if raylet_stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if raylet_stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if raylet_stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -2384,13 +2366,8 @@ def start_monitor(
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,

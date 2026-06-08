@@ -1544,6 +1544,7 @@ class Node:
         process_infos = self.all_processes[process_type]
         if process_type != ray_constants.PROCESS_TYPE_REDIS_SERVER:
             assert len(process_infos) == 1
+        wait_timeout_seconds = 1
         for process_info in process_infos:
             process = process_info.process
             # Handle the case where the process has already exited.
@@ -1582,19 +1583,21 @@ class Node:
             if allow_graceful:
                 process.terminate()
                 # Allow the process one second to exit gracefully.
-                timeout_seconds = 1
                 try:
-                    process.wait(timeout_seconds)
+                    process.wait(timeout=wait_timeout_seconds)
                 except subprocess.TimeoutExpired:
                     pass
 
             # If the process did not exit, force kill it.
             if process.poll() is None:
                 process.kill()
-                # The reason we usually don't call process.wait() here is that
+                # After kill, wait must be called
+                # The reason we usually don't set timeout=None here is that
                 # there's some chance we'd end up waiting a really long time.
-                if wait:
-                    process.wait()
+                try:
+                    process.wait(timeout=None if wait else wait_timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    pass
 
         del self.all_processes[process_type]
 
