@@ -256,8 +256,21 @@ class _AutoscalingCoordinatorActor:
                 f"label_selectors length ({len(label_selectors)}) must match "
                 f"resources length ({len(resources)})."
             )
+        if subcluster_selector and label_selectors:
+            req_subcluster = subcluster_selector.get(SUBCLUSTER_LABEL_KEY)
+            for i, sel in enumerate(label_selectors):
+                bundle_subcluster = sel.get(SUBCLUSTER_LABEL_KEY)
+                if (
+                    bundle_subcluster is not None
+                    and bundle_subcluster != req_subcluster
+                ):
+                    raise ValueError(
+                        f"Bundle {i} label_selector targets subcluster "
+                        f"{bundle_subcluster!r}, but requester is registered to "
+                        f"{req_subcluster!r}. Per-bundle cross-subcluster "
+                        f"allocation is not supported."
+                    )
         with self._lock:
-            self._subcluster_selectors[requester_id] = subcluster_selector
             now = self._get_current_time()
             request_updated = False
             old_req = self._ongoing_reqs.get(requester_id)
@@ -268,6 +281,15 @@ class _AutoscalingCoordinatorActor:
                     )
                 if priority.value != old_req.priority:
                     raise ValueError("Cannot change priority of an ongoing request.")
+                if (
+                    requester_id in self._subcluster_selectors
+                    and self._subcluster_selectors[requester_id] != subcluster_selector
+                ):
+                    raise ValueError(
+                        "Cannot change subcluster_selector of an ongoing request "
+                        f"from {self._subcluster_selectors[requester_id]!r} to "
+                        f"{subcluster_selector!r}."
+                    )
 
                 request_updated = (
                     resources != old_req.requested_resources
@@ -287,6 +309,9 @@ class _AutoscalingCoordinatorActor:
                     expiration_time=now + expire_after_s,
                     allocated_resources=[],
                 )
+            # Write subcluster after all validations so a rejected call
+            # never leaves the registry on a new subcluster.
+            self._subcluster_selectors[requester_id] = subcluster_selector
             if request_updated:
                 # If the request has updated, immediately send
                 # a new request and reallocate resources.

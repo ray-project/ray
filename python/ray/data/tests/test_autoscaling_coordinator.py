@@ -528,10 +528,8 @@ def test_label_selectors_are_forwarded_to_sdk():
 
 
 def test_sdk_forwarding_merges_subcluster_into_each_bundle():
-    """Each forwarded bundle is ``per_bundle ∪ subcluster_selector``:
-    non-subcluster per-bundle keys are preserved, the registry's
-    subcluster wins on collision, and empty per-bundle entries pick up
-    the subcluster as well."""
+    """Forwarded bundles union the per-bundle selector with the
+    requester's subcluster."""
     mock_send = Mock()
     coord = _AutoscalingCoordinatorActor(
         get_current_time=lambda: 0,
@@ -543,8 +541,8 @@ def test_sdk_forwarding_merges_subcluster_into_each_bundle():
         requester_id="r",
         resources=[{"CPU": 1}, {"CPU": 1}],
         label_selectors=[
-            # Non-subcluster key + colliding subcluster key in the same dict.
-            {"node_id": "n1", "__subcluster__": "wrong"},
+            # Non-subcluster key preserved alongside the subcluster.
+            {"node_id": "n1"},
             # Empty per-bundle entry — should still receive the subcluster.
             {},
         ],
@@ -573,6 +571,52 @@ def test_label_selectors_length_mismatch_raises():
             label_selectors=[{"a": "b"}],
             expire_after_s=10,
         )
+
+
+def test_request_rejects_per_bundle_cross_subcluster():
+    """Per-bundle subcluster values that disagree with the requester's
+    ``subcluster_selector`` raise."""
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: CLUSTER_NODES_WITHOUT_HEAD,
+    )
+    with pytest.raises(ValueError, match="cross-subcluster"):
+        coord.request_resources(
+            requester_id="r",
+            resources=[{"CPU": 1}, {"CPU": 1}],
+            label_selectors=[
+                {"__subcluster__": "training"},
+                {"__subcluster__": "validation"},
+            ],
+            subcluster_selector={"__subcluster__": "training"},
+            expire_after_s=10,
+        )
+
+
+def test_request_rejects_changing_subcluster_selector():
+    """A requester's ``subcluster_selector`` can't change between calls;
+    the rejected call must also leave the registry untouched."""
+    coord = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: 0,
+        send_resources_request=Mock(),
+        get_cluster_nodes=lambda: CLUSTER_NODES_WITHOUT_HEAD,
+    )
+    coord.request_resources(
+        requester_id="r",
+        resources=[{"CPU": 1}],
+        subcluster_selector={"__subcluster__": "training"},
+        expire_after_s=10,
+    )
+    with pytest.raises(ValueError, match="Cannot change subcluster_selector"):
+        coord.request_resources(
+            requester_id="r",
+            resources=[{"CPU": 1}],
+            subcluster_selector={"__subcluster__": "validation"},
+            expire_after_s=10,
+        )
+    # Registry must be unchanged after the rejected call.
+    assert coord._subcluster_selectors["r"] == {"__subcluster__": "training"}
 
 
 def test_label_selector_change_triggers_resend():
