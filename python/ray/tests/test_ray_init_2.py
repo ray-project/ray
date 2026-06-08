@@ -18,6 +18,7 @@ from ray._common.test_utils import (
 from ray._private.ray_constants import DEFAULT_RESOURCES, RAY_OVERRIDE_DASHBOARD_URL
 from ray._private.services import get_node_ip_address
 from ray._private.test_utils import get_current_unused_port
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -353,6 +354,195 @@ def test_get_node_to_connect_for_driver_filters_by_node_name(ray_start_cluster):
     )
     assert node_info.node_manager_port == node2.node_manager_port
     assert node_info.node_name == "node_two"
+
+
+class _FakeGcsClient:
+    def __init__(self, nodes):
+        self.nodes = nodes
+        self.calls = []
+
+    def get_all_node_info(self, **kwargs):
+        self.calls.append(kwargs)
+        return {node.node_id: node for node in self.nodes}
+
+
+def _make_gcs_node_info(
+    node_manager_address: str,
+    *,
+    node_id=None,
+    node_name: str = "",
+    temp_dir: str = "/tmp/ray",
+    is_head_node: bool = False,
+):
+    node_id = node_id or ray.NodeID.from_random()
+    return GcsNodeInfo(
+        node_id=node_id.binary(),
+        state=GcsNodeInfo.GcsNodeState.ALIVE,
+        node_manager_address=node_manager_address,
+        node_name=node_name,
+        temp_dir=temp_dir,
+        is_head_node=is_head_node,
+    )
+
+
+def test_get_node_to_connect_for_driver_uses_process_discovered_node_ids(monkeypatch):
+    node_id = ray.NodeID.from_random()
+    node = _make_gcs_node_info("10.0.0.2", node_id=node_id)
+    gcs_client = _FakeGcsClient([node])
+
+    monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: {node_id.hex()})
+    monkeypatch.setattr(
+        ray._private.services,
+        "get_node_ip_address",
+        unittest.mock.Mock(side_effect=AssertionError("should not use IP fallback")),
+    )
+
+    node_info = ray._private.services.get_node_to_connect_for_driver(gcs_client)
+
+    assert node_info == node
+    assert len(gcs_client.calls) == 1
+    assert len(gcs_client.calls[0]["node_selectors"]) == 1
+
+
+def test_get_node_to_connect_for_driver_falls_back_to_local_ip(monkeypatch):
+    matching_node = _make_gcs_node_info("10.0.0.2")
+    other_node = _make_gcs_node_info("10.0.0.3")
+    gcs_client = _FakeGcsClient([matching_node, other_node])
+
+    monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
+    monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: set())
+    monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.2")
+
+    node_info = ray._private.services.get_node_to_connect_for_driver(gcs_client)
+
+    assert node_info == matching_node
+    assert len(gcs_client.calls) == 1
+    assert "node_selectors" not in gcs_client.calls[0]
+
+
+def test_get_node_to_connect_for_driver_fallback_uses_explicit_node_ip(
+    monkeypatch,
+):
+    matching_node = _make_gcs_node_info("10.0.0.2")
+    other_node = _make_gcs_node_info("10.0.0.3")
+    gcs_client = _FakeGcsClient([matching_node, other_node])
+
+    monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
+    monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: set())
+    get_node_ip_address = unittest.mock.Mock(
+        side_effect=AssertionError("explicit IP should be used")
+    )
+    monkeypatch.setattr(
+        ray._private.services, "get_node_ip_address", get_node_ip_address
+    )
+
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        gcs_client, node_ip_address="10.0.0.2"
+    )
+
+    assert node_info == matching_node
+    get_node_ip_address.assert_not_called()
+
+
+def test_get_node_to_connect_for_driver_fallback_uses_explicit_temp_dir(monkeypatch):
+    matching_node = _make_gcs_node_info("10.0.0.2", temp_dir="/ray-sidecar")
+    other_node = _make_gcs_node_info("10.0.0.2", temp_dir="/tmp/ray")
+    gcs_client = _FakeGcsClient([matching_node, other_node])
+
+    monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
+    monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: set())
+    monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.2")
+
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        gcs_client, temp_dir="/ray-sidecar"
+    )
+
+    assert node_info == matching_node
+
+
+def test_get_node_to_connect_for_driver_fallback_requires_unique_match(monkeypatch):
+    head_node = _make_gcs_node_info("10.0.0.2", is_head_node=True)
+    worker_node = _make_gcs_node_info("10.0.0.2")
+    gcs_client = _FakeGcsClient([head_node, worker_node])
+
+    monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
+    monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: set())
+    get_node_ip_address = unittest.mock.Mock(return_value="10.0.0.2")
+    monkeypatch.setattr(
+        ray._private.services, "get_node_ip_address", get_node_ip_address
+    )
+    monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
+
+    with pytest.raises(
+        RuntimeError,
+        match="No local raylet process was visible.*last matched 2 nodes",
+    ):
+        ray._private.services.get_node_to_connect_for_driver(
+            gcs_client, timeout_seconds=0.001
+        )
+    assert get_node_ip_address.call_count == 1
+
+
+def test_get_node_to_connect_for_driver_waits_before_fallback(monkeypatch):
+    process_node_id = ray.NodeID.from_random()
+    process_node = _make_gcs_node_info("10.0.0.2", node_id=process_node_id)
+    gcs_client = _FakeGcsClient([process_node])
+
+    find_node_ids_results = iter([set(), {process_node_id.hex()}])
+    monkeypatch.setattr(
+        ray._private.services,
+        "find_node_ids",
+        lambda: next(find_node_ids_results),
+    )
+    monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
+    monkeypatch.setattr(
+        ray._private.services,
+        "get_node_ip_address",
+        unittest.mock.Mock(side_effect=AssertionError("fallback should not run")),
+    )
+
+    node_info = ray._private.services.get_node_to_connect_for_driver(gcs_client)
+
+    assert node_info == process_node
+    assert len(gcs_client.calls) == 1
+    assert len(gcs_client.calls[0]["node_selectors"]) == 1
+
+
+def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
+    monkeypatch,
+):
+    process_node_id = ray.NodeID.from_random()
+    process_node = _make_gcs_node_info("10.0.0.3", node_id=process_node_id)
+    gcs_client = _FakeGcsClient([process_node])
+
+    did_return_empty = False
+
+    def find_node_ids():
+        nonlocal did_return_empty
+        if not did_return_empty:
+            did_return_empty = True
+            return set()
+        return {process_node_id.hex()}
+
+    monkeypatch.setattr(ray._private.services, "find_node_ids", find_node_ids)
+    monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
+    monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
+    monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.4")
+
+    with pytest.raises(
+        RuntimeError,
+        match="No node info found matching attributes: '10.0.0.2'",
+    ) as exc_info:
+        ray._private.services.get_node_to_connect_for_driver(
+            gcs_client,
+            node_ip_address="10.0.0.2",
+            timeout_seconds=0.001,
+        )
+
+    assert "No local raylet process was visible" not in str(exc_info.value)
+    assert len(gcs_client.calls) == 2
+    assert "node_selectors" not in gcs_client.calls[0]
+    assert len(gcs_client.calls[1]["node_selectors"]) == 1
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")

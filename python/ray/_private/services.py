@@ -377,6 +377,7 @@ def find_node_ids():
 
 
 _find_gcs_addresses_lock = threading.Lock()
+_NODE_DISCOVERY_FALLBACK_GRACE_S = 5
 
 
 @cache
@@ -539,17 +540,69 @@ def get_node_to_connect_for_driver(
     start_time = time.time()
     possible_node_ids = []
     filtered_node_to_connect_infos = []
+    no_visible_raylet_processes_since = None
+    last_resolution_path = None
+    fallback_candidate_count = None
+    resolved_node_ip_address = None
     while not possible_node_ids or not filtered_node_to_connect_infos:
         time_left = timeout_seconds - (time.time() - start_time)
         if time_left <= 0:
             break
 
         possible_node_ids = find_node_ids()
-        # no need to make gcs call if raylets are not ready yet
         if len(possible_node_ids) == 0:
+            if no_visible_raylet_processes_since is None:
+                no_visible_raylet_processes_since = time.time()
+            if (
+                time.time() - no_visible_raylet_processes_since
+                < _NODE_DISCOVERY_FALLBACK_GRACE_S
+            ):
+                time.sleep(1)
+                continue
+
+            fallback_node_ip_address = node_ip_address
+            if fallback_node_ip_address is None:
+                if resolved_node_ip_address is None:
+                    resolved_node_ip_address = get_node_ip_address()
+                fallback_node_ip_address = resolved_node_ip_address
+
+            time_left = timeout_seconds - (time.time() - start_time)
+            if time_left <= 0:
+                break
+
+            try:
+                last_resolution_path = "fallback"
+                node_to_connect_infos = gcs_client.get_all_node_info(
+                    timeout=time_left,
+                    state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+                ).values()
+            except Exception as e:
+                raise RuntimeError(
+                    "Failed to get node info when no local raylet processes were "
+                    f"visible while trying to resolve node to connect to. Error: {repr(e)}"
+                )
+
+            fallback_candidates = []
+            for node_info in node_to_connect_infos:
+                if (
+                    (
+                        fallback_node_ip_address is None
+                        or node_info.node_manager_address == fallback_node_ip_address
+                    )
+                    and (node_name is None or node_info.node_name == node_name)
+                    and (temp_dir is None or node_info.temp_dir == temp_dir)
+                ):
+                    fallback_candidates.append(node_info)
+
+            fallback_candidate_count = len(fallback_candidates)
+            if fallback_candidate_count == 1:
+                filtered_node_to_connect_infos = fallback_candidates
+                break
+
             time.sleep(1)
             continue
 
+        last_resolution_path = "process"
         node_selectors = []
         for id in possible_node_ids:
             id_node_selector = GetAllNodeInfoRequest.NodeSelector(
@@ -583,6 +636,17 @@ def get_node_to_connect_for_driver(
     if not filtered_node_to_connect_infos:
         attrs = [node_ip_address, node_name, temp_dir]
         attrs_str = ", ".join(f"{attr}" for attr in attrs if attr is not None)
+        if last_resolution_path == "fallback":
+            raise RuntimeError(
+                f"No node info found matching attributes: '{attrs_str}' when trying "
+                "to resolve node to connect to. No local raylet process was visible "
+                "from this process, and the GCS fallback did not find a unique local "
+                f"node match (last matched {fallback_candidate_count or 0} nodes). "
+                "If you are running Ray in a Kubernetes sidecar or another "
+                "environment with separate PID namespaces, make sure the driver "
+                "container can identify the local Ray node by passing _node_ip_address, "
+                "_temp_dir, or by sharing the process namespace."
+            )
         raise RuntimeError(
             f"No node info found matching attributes: '{attrs_str}' when trying to resolve node to connect to."
         )
