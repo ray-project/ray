@@ -15,8 +15,8 @@ A Ray Train run produces :ref:`checkpoints <train-checkpointing>` that can be sa
 
 **Ray Train expects all workers to be able to write files to the same persistent storage location.**
 Therefore, Ray Train requires some form of external persistent storage such as
-cloud storage (e.g., S3, GCS) or a shared filesystem (e.g., AWS EFS, Google Filestore, HDFS)
-for multi-node training.
+cloud object storage (for example, S3, GCS, or Azure Blob Storage) or a shared filesystem
+(for example, AWS EFS, Google Cloud Filestore, Azure Files, or HDFS) for multi-node training.
 
 Here are some capabilities that persistent storage enables:
 
@@ -29,58 +29,140 @@ Here are some capabilities that persistent storage enables:
   and artifacts to share them with others or use them in downstream tasks.
 
 
-Cloud storage (AWS S3, Google Cloud Storage)
---------------------------------------------
+Cloud object storage
+--------------------
 
-.. tip::
+The Ray team recommends using cloud object storage such as S3, GCS, or Azure Blob Storage to persist Ray Train checkpoint files.
 
-    Cloud storage is the recommended persistent storage option.
+Use cloud object storage by specifying a storage container URI as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
-Use cloud storage by specifying a bucket URI as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
+.. tab-set::
 
-.. testcode::
-    :skipif: True
+    .. tab-item:: AWS S3
 
-    from ray import train
-    from ray.train.torch import TorchTrainer
+        Specify a URI with the ``s3://`` scheme. Ray Train uses pyarrow's default
+        :class:`S3FileSystem <pyarrow.fs.S3FileSystem>` for upload and download.
 
-    trainer = TorchTrainer(
-        ...,
-        run_config=train.RunConfig(
-            storage_path="s3://bucket-name/sub-path/",
-            name="experiment_name",
-        )
-    )
+        .. testcode::
+            :skipif: True
+
+            from ray import train
+            from ray.train.torch import TorchTrainer
+
+            trainer = TorchTrainer(
+                ...,
+                run_config=train.RunConfig(
+                    storage_path="s3://bucket-name/sub-path/",
+                    name="experiment_name",
+                )
+            )
+
+    .. tab-item:: Google Cloud Storage
+
+        Specify a URI with the ``gs://`` scheme. Ray Train uses pyarrow's default
+        :class:`GcsFileSystem <pyarrow.fs.GcsFileSystem>` for upload and download.
+
+        .. testcode::
+            :skipif: True
+
+            from ray import train
+            from ray.train.torch import TorchTrainer
+
+            trainer = TorchTrainer(
+                ...,
+                run_config=train.RunConfig(
+                    storage_path="gs://bucket-name/sub-path/",
+                    name="experiment_name",
+                )
+            )
+
+    .. tab-item:: Azure Blob Storage
+
+        Ray Train uses ``pyarrow.fs`` for storage I/O, so wrap
+        ``adlfs.AzureBlobFileSystem`` in a ``pyarrow.fs.PyFileSystem`` and pass
+        it as :class:`RunConfig(storage_filesystem) <ray.train.RunConfig>`.
+        Use the ``abfss://`` scheme (TLS-enforced) for the URI:
+
+        .. testcode::
+            :skipif: True
+
+            import adlfs
+            from pyarrow.fs import FSSpecHandler, PyFileSystem
+            from ray import train
+            from ray.train.torch import TorchTrainer
+
+            azure_fs = PyFileSystem(
+                FSSpecHandler(adlfs.AzureBlobFileSystem(account_name="account-name"))
+            )
+
+            trainer = TorchTrainer(
+                ...,
+                run_config=train.RunConfig(
+                    storage_filesystem=azure_fs,
+                    storage_path="abfss://container@account.dfs.core.windows.net/sub-path/",
+                    name="experiment_name",
+                )
+            )
+
+        See :ref:`custom-storage-filesystem` for more on ``storage_filesystem``.
 
 
-Ensure that all nodes in the Ray cluster have access to cloud storage, so outputs from workers can be uploaded to a shared cloud bucket.
-In this example, all files are uploaded to shared storage at ``s3://bucket-name/sub-path/experiment_name`` for further processing.
+Ensure that all nodes in the Ray cluster have access to the storage container, so outputs from workers can be uploaded to a shared location.
+In the AWS S3 example above, all files are uploaded to shared storage at ``s3://bucket-name/sub-path/experiment_name`` for further processing.
 
 
-Shared filesystem (NFS, HDFS)
------------------------------
+Shared filesystem
+-----------------
 
-Use by specifying the shared storage path as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
+You can use shared filesystems such as AWS EFS, Google Cloud Filestore, Azure Files, HDFS, or NFS.
+Either mount the filesystem so that it appears at a common path on every node in the Ray cluster, or specify a fully qualified URI.
+In either case, ensure that networking rules and security permissions allow access from all nodes.
 
-.. testcode::
-    :skipif: True
+Specify the shared storage location as the :class:`RunConfig(storage_path) <ray.train.RunConfig>`:
 
-    from ray import train
-    from ray.train.torch import TorchTrainer
+.. tab-set::
 
-    trainer = TorchTrainer(
-        ...,
-        run_config=train.RunConfig(
-            storage_path="/mnt/cluster_storage",
-            # HDFS example:
-            # storage_path=f"hdfs://{hostname}:{port}/subpath",
-            name="experiment_name",
-        )
-    )
+    .. tab-item:: Mounted filesystem
 
-Ensure that all nodes in the Ray cluster have access to the shared filesystem, e.g. AWS EFS, Google Cloud Filestore, or HDFS,
-so that outputs can be saved to there.
-In this example, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
+        Mount the filesystem on every node in the cluster, then point
+        ``storage_path`` at the mount. This works for AWS EFS, Google Cloud
+        Filestore, Azure Files, and NFS.
+
+        .. testcode::
+            :skipif: True
+
+            from ray import train
+            from ray.train.torch import TorchTrainer
+
+            trainer = TorchTrainer(
+                ...,
+                run_config=train.RunConfig(
+                    # Example for Azure Files mounted at /mnt/azure-fileshare on every node;
+                    # AWS EFS, Google Cloud Filestore, and NFS work the same way.
+                    storage_path="/mnt/cluster_storage",
+                    name="experiment_name",
+                )
+            )
+
+    .. tab-item:: HDFS
+
+        Specify a fully qualified ``hdfs://`` URI.
+
+        .. testcode::
+            :skipif: True
+
+            from ray import train
+            from ray.train.torch import TorchTrainer
+
+            trainer = TorchTrainer(
+                ...,
+                run_config=train.RunConfig(
+                    storage_path=f"hdfs://{hostname}:{port}/subpath",
+                    name="experiment_name",
+                )
+            )
+
+In the mounted example above, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
 
 
 Local storage
