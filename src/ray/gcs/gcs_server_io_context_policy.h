@@ -79,10 +79,12 @@ struct GcsServerIOContextPolicy {
       {"node_manager_io_context", /*enable_lag_probe=*/true},
   }};
 
-  constexpr static size_t IndexOf(std::string_view name) {
+  // Returns int (not size_t) to match GetDedicatedIOContextIndex's return type and
+  // avoid a narrowing conversion at its call sites.
+  constexpr static int IndexOf(std::string_view name) {
     for (size_t i = 0; i < kAllDedicatedIOContexts.size(); ++i) {
       if (kAllDedicatedIOContexts[i].name == name) {
-        return i;
+        return static_cast<int>(i);
       }
     }
     // Throwing in constexpr context leads to a compile error.
