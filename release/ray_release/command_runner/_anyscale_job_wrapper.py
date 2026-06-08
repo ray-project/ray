@@ -292,7 +292,7 @@ def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
     """
     if key not in metrics:
         logger.error(
-            f"{check_name}: '{key}' is missing from the metrics file, like a collection issue."
+            f"{check_name}: '{key}' is missing from the metrics file, likely a collection issue."
         )
         return True
     if metrics[key] is None:
