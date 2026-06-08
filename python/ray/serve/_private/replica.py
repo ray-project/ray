@@ -1158,23 +1158,19 @@ class Replica:
         # Silence spammy false positive errors from gRPC Python
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
 
-        try:
-            is_tracing_setup_successful = setup_tracing(
-                component_type=ServeComponentType.REPLICA,
-                component_name=self._component_name,
-                component_id=self._component_id,
-            )
-            if is_tracing_setup_successful:
-                logger.info("Successfully set up tracing for replica")
-        except Exception as e:
-            logger.warning(
-                f"Failed to set up tracing: {e}. "
-                "The replica will continue running, but traces will not be exported."
-            )
-
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
+
+        tracing_config = ray.get(self._controller_handle.get_tracing_config.remote())
+        is_tracing_setup_successful = setup_tracing(
+            component_type=ServeComponentType.REPLICA,
+            component_name=self._component_name,
+            component_id=self._component_id,
+            tracing_config=tracing_config,
+        )
+        if is_tracing_setup_successful:
+            logger.info("Successfully set up tracing for replica")
 
         # get node ID
         self._node_id = ray.get_runtime_context().get_node_id()

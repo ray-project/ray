@@ -220,6 +220,50 @@ class LoggingConfig(BaseModel):
         return self._compute_hash() == other._compute_hash()
 
 
+@PublicAPI(stability="alpha")
+class TracingConfig(BaseModel):
+    """Tracing config schema for configuring distributed tracing on Serve components.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import TracingConfig
+
+            # Enable tracing with default exporter
+            serve.start(tracing_config=TracingConfig(enabled=True))
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether tracing is enabled. Defaults to False. "
+            "When enabled, spans will be exported using the configured exporter."
+        ),
+    )
+    exporter_import_path: str = Field(
+        default="",
+        description=(
+            "Import path to a custom tracing exporter function. "
+            "If empty and tracing is enabled, the default file-based exporter is used."
+        ),
+    )
+    sampling_ratio: float = Field(
+        default=0.01,
+        description=("Sampling ratio for traces (0.0 to 1.0). Defaults to 0.01 (1%)."),
+    )
+
+    @field_validator("sampling_ratio")
+    @classmethod
+    def validate_sampling_ratio(cls, v):
+        if v < 0.0 or v > 1.0:
+            raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
+        return v
+
+
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""

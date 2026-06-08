@@ -23,7 +23,7 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -72,6 +72,7 @@ def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ActorHandle:
@@ -112,12 +113,16 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
+    if isinstance(global_tracing_config, dict):
+        global_tracing_config = TracingConfig(**global_tracing_config)
+
     controller_options = _coerce_controller_options(controller_options)
     controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
+        global_tracing_config=global_tracing_config,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
@@ -138,6 +143,7 @@ async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -179,6 +185,7 @@ async def serve_start_async(
             http_options,
             grpc_options,
             global_logging_config,
+            global_tracing_config=global_tracing_config,
             controller_options=controller_options,
             **kwargs,
         )
@@ -196,6 +203,7 @@ def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
@@ -267,6 +275,7 @@ def serve_start(
         http_options,
         grpc_options,
         global_logging_config,
+        global_tracing_config=global_tracing_config,
         controller_options=controller_options,
         **kwargs,
     )
