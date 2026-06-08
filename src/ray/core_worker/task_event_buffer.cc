@@ -566,6 +566,12 @@ void RecordTaskStatusEventToRecorderIfNeeded(
     const NodeID &node_id,
     bool include_task_info,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+  // TODO(karticam): early-out on RayConfig::instance().enable_ray_event() here (and at
+  // the profile-event recording site in ~ProfileEvent) so we don't build the event
+  // objects when ray events are disabled. The recorder already drops them in AddEvents()
+  // when disabled, but only after this path has built the lifecycle proto + wrappers.
+  // Gating here (like the GCS managers do at their call sites) would avoid that per-event
+  // waste in the default (disabled) config.
   if (!spec.EnableTaskEvents()) {
     return;
   }

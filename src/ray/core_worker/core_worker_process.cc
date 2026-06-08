@@ -303,6 +303,26 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
+  // Create the task-event RayEventRecorder. It owns a second EventAggregatorClient (the
+  // TaskEventBuffer keeps its own during the migration; this one becomes the sole sender
+  // once the buffer's aggregator path is removed). The recorder + its deps are owned by
+  // the process (deps) / CoreWorker (recorder); see core_worker_process.h for lifetime.
+  // Created here (before TaskManager / TaskReceiver / queues) so its reference can be
+  // plumbed into those producers.
+  ray_event_recorder_aggregator_client_ =
+      (options.metrics_agent_port > 0)
+          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                             *client_call_manager_)
+          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
+  auto ray_event_recorder = std::make_unique<observability::RayEventRecorder>(
+      *ray_event_recorder_aggregator_client_,
+      PeriodicalRunner::Create(ray_event_recorder_io_context_->GetIoService()),
+      RayConfig::instance().ray_event_recorder_max_queued_events(),
+      observability::kMetricSourceCoreWorker,
+      *ray_event_recorder_dropped_events_counter_,
+      local_node_id);
+  ray_event_recorder->StartExportingEvents();
+
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -497,6 +517,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
+      *ray_event_recorder,
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -705,24 +726,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   RayEventContext::Instance().SetEventContext(
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       {{"worker_id", worker_id.Hex()}});
-
-  // Create the task-event RayEventRecorder. It owns a second EventAggregatorClient (the
-  // TaskEventBuffer keeps its own during the migration; this one becomes the sole sender
-  // once the buffer's aggregator path is removed). The recorder + its deps are owned by
-  // the process (deps) / CoreWorker (recorder); see core_worker_process.h for lifetime.
-  ray_event_recorder_aggregator_client_ =
-      (options.metrics_agent_port > 0)
-          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
-                                                             *client_call_manager_)
-          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
-  auto ray_event_recorder = std::make_unique<observability::RayEventRecorder>(
-      *ray_event_recorder_aggregator_client_,
-      ray_event_recorder_io_context_->GetIoService(),
-      RayConfig::instance().ray_event_recorder_max_queued_events(),
-      observability::kMetricSourceCoreWorker,
-      *ray_event_recorder_dropped_events_counter_,
-      local_node_id);
-  ray_event_recorder->StartExportingEvents();
 
   auto core_worker =
       std::make_shared<CoreWorker>(std::move(options),

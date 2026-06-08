@@ -23,12 +23,16 @@ namespace core {
 
 namespace worker {
 
-ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
-                           WorkerContext &worker_context,
-                           const std::string &node_ip_address,
-                           const std::string &event_name,
-                           ClockInterface &clock)
-    : task_event_buffer_(task_event_buffer), clock_(clock) {
+ProfileEvent::ProfileEvent(
+    TaskEventBuffer &task_event_buffer,
+    ray::observability::RayEventRecorderInterface &ray_event_recorder,
+    WorkerContext &worker_context,
+    const std::string &node_ip_address,
+    const std::string &event_name,
+    ClockInterface &clock)
+    : task_event_buffer_(task_event_buffer),
+      ray_event_recorder_(ray_event_recorder),
+      clock_(clock) {
   const auto &task_spec = worker_context.GetCurrentTask();
   if (task_spec && !task_spec->EnableTaskEvents()) {
     event_ = nullptr;
@@ -57,6 +61,11 @@ ProfileEvent::~ProfileEvent() {
     return;
   }
   event_->SetEndTime(clock_.NowUnixNanos());
+  // Record to the event aggregator before moving the event into the buffer.
+  // TODO(karticam): skip building/recording when RayConfig::instance().enable_ray_event()
+  // is off (see RecordTaskStatusEventToRecorderIfNeeded) — the recorder currently drops
+  // it in AddEvents() only after we build the proto + wrapper.
+  ray_event_recorder_.AddEvents(event_->ToRayEventInterfaces());
   // Add task event to the task event buffer
   task_event_buffer_.AddTaskEvent(std::move(event_));
 }
