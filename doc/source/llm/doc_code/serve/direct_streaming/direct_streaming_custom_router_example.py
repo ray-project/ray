@@ -43,13 +43,20 @@ from ray.serve.llm import LLMConfig
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "qwen-0.5b",
-        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+        "model_id": "qwen3.5-0.8b",
+        "model_source": "Qwen/Qwen3.5-0.8B",
     },
     deployment_config={
         "request_router_config": RequestRouterConfig(
             request_router_class="ray.serve.experimental.consistent_hash_router.ConsistentHashRouter",
         ),
+    },
+    engine_kwargs={
+        "trust_remote_code": True,
+        "tensor_parallel_size": 1,
+        "enable_auto_tool_choice": True,
+        "tool_call_parser": "qwen3_coder",
+        "reasoning_parser": "qwen3",
     },
 )
 # __direct_streaming_custom_router_example_end__

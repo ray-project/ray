@@ -9,51 +9,9 @@ This feature is in alpha and may change before becoming stable. It depends on th
 The ingress request router is an internal component. Its router deployment, the `/internal/route` endpoint, and the replica-selection plumbing are private implementation details that may change without notice. Configure direct streaming only through the environment variables and the public `request_router_config` described in this guide. Don't import or call those internals directly.
 :::
 
-By default, every request to a Ray Serve LLM application flows through a separate ingress deployment (`OpenAiIngress`) before reaching an `LLMServer` replica. The ingress replica proxies both the request and the streamed response, so each token in a streaming response crosses one extra deployment boundary.
+By default, every request to a Ray Serve LLM application flows through a separate ingress deployment (`OpenAiIngress`) before reaching an `LLMServer` replica. The ingress replica proxies both the request and the streamed response, so each token in a streaming response crosses one extra deployment boundary. The ingress replica's event loop also handles both the inbound request path (which affects TTFT) and the outbound streamed-token path (which affects TPOT), so the two contend for the same loop under load.
 
 **Direct streaming** removes that hop. When enabled, the `LLMServer` deployment itself becomes the HTTP ingress, and HAProxy forwards client traffic straight to the replica that serves it. An **ingress request router** decides which replica each request goes to.
-
-## When to use direct streaming
-
-Direct streaming is the low-latency path for Ray Serve LLM. Removing the ingress proxy hop cuts per-token overhead on streaming responses, which matters most for long generations and latency-sensitive, high-throughput deployments. It's alpha and is intended to become the default serving path as it matures.
-
-For now, use it for single-model deployments where streaming latency is a priority, and keep the default ingress for everything else (see {ref}`direct-streaming-limitations`).
-
-## How it works
-
-Without direct streaming, the request and every streamed token pass through the ingress deployment:
-
-```
-Client → HAProxy → OpenAiIngress replica → LLMServer replica → engine
-```
-
-With direct streaming, the `LLMServer` deployment is the ingress. HAProxy first asks the ingress request router which replica to use, then forwards the request directly to that replica's backend HTTP port:
-
-```
-                  ┌─ (1) which replica? ──→ ingress request router (internal)
-                  │                             │ applies request_router_config
-Client → HAProxy ─┤                             ↓
-                  │                          host:port of an LLMServer replica
-                  └─ (2) forward request ──→ LLMServer replica → engine
-```
-
-The `LLMServer` replica builds its ASGI app from the engine's native OpenAI-compatible FastAPI app, such as vLLM's API server, after the engine starts. Streaming responses are then served directly from the engine frontend.
-
-### Ingress request router
-
-Ray Serve adds an internal router deployment that answers HAProxy's routing calls. For each request, HAProxy asks the router which replica to use over an internal endpoint, and the router returns that replica's backend host and port.
-
-Replica selection reuses the `LLMServer` deployment's configured request router, so the same routing policies you would use for any deployment apply here. When you don't configure one, direct streaming defaults to `RoundRobinRouter`. This differs from Serve's general default of Power of Two Choices. You control it through the public `request_router_config`, described in {ref}`direct-streaming-customize`. The router deployment and its endpoint are internal and may change.
-
-The router picks a replica without reserving a capacity slot. The real request travels out-of-band through HAProxy, so Serve's capacity semaphore isn't load-bearing on this path, and skipping the reservation avoids an extra actor RPC per request.
-
-## Supported serving patterns
-
-Direct streaming works with the single-model builders for the OpenAI, data parallel attention, and prefill/decode patterns:
-
-- **OpenAI** (`build_openai_app`): the `LLMServer` deployment serves the engine app directly.
-- **Data parallel attention** (`build_dp_openai_app`): the `DPServer` deployment serves the engine app directly. See {doc}`data-parallel-attention`.
-- **Prefill/decode disaggregation** (`build_pd_openai_app`): the decode server serves the engine app directly, while `/v1/chat/completions` and `/v1/completions` route through prefill/decode orchestration (remote prefill, then local decode). Other routes stay engine-native. See {doc}`prefill-decode`.
 
 ## Enable direct streaming
 
@@ -95,6 +53,44 @@ To confirm direct streaming is active, open the Serve dashboard and check that t
 :::{tip}
 The HAProxy ingress sets `TCP_NODELAY` by default (`RAY_SERVE_HAPROXY_TCP_NODELAY=1`) so the first streamed chunk isn't held back by Nagle's algorithm. Keep it enabled for streaming workloads.
 :::
+
+## When to use direct streaming
+
+Direct streaming is the low-latency path for Ray Serve LLM. Removing the ingress proxy hop cuts per-token overhead on streaming responses, which matters most for long generations and latency-sensitive, high-throughput deployments. It's alpha and is intended to become the default serving path as it matures.
+
+## How it works
+
+Without direct streaming, the request and every streamed token pass through the ingress deployment:
+
+```
+Client → HAProxy → OpenAiIngress replica → LLMServer replica → engine
+```
+
+With direct streaming, the `LLMServer` deployment is the ingress. HAProxy first asks the ingress request router which replica to use, then forwards the request directly to that replica's backend HTTP port:
+
+```
+                  ┌─ (1) which replica? ──→ ingress request router (internal)
+                  │                             │ applies request_router_config
+Client → HAProxy ─┤                             ↓
+                  │                          host:port of an LLMServer replica
+                  └─ (2) forward request ──→ LLMServer replica → engine
+```
+
+The `LLMServer` replica builds its ASGI app from the engine's native OpenAI-compatible FastAPI app, such as vLLM's API server, after the engine starts. Streaming responses are then served directly from the engine frontend.
+
+### Ingress request router
+
+Ray Serve adds an internal router deployment that answers HAProxy's routing calls. For each request, HAProxy asks the router which replica to use over an internal endpoint, and the router returns that replica's backend host and port.
+
+Replica selection reuses the `LLMServer` deployment's configured request router, so the same routing policies you would use for any deployment apply here. When you do not configure one, direct streaming defaults to `RoundRobinRouter`. This differs from Serve's general default of Power of Two Choices. You control it through the public `request_router_config`, described in {ref}`direct-streaming-customize`. The router deployment and its endpoint are internal and may change.
+
+## Supported serving patterns
+
+Direct streaming works with the single-model builders for the OpenAI, data parallel attention, and prefill/decode patterns:
+
+- **OpenAI** (`build_openai_app`): the `LLMServer` deployment serves the engine app directly.
+- **Data parallel attention** (`build_dp_openai_app`): the `DPServer` deployment serves the engine app directly. See {doc}`data-parallel-attention`.
+- **Prefill/decode disaggregation** (`build_pd_openai_app`): the decode server serves the engine app directly, while `/v1/chat/completions` and `/v1/completions` route through prefill/decode orchestration (remote prefill, then local decode). Other routes stay engine-native. See {doc}`prefill-decode`.
 
 (direct-streaming-customize)=
 ## Customize replica selection

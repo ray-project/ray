@@ -22,7 +22,7 @@ HTTP Request → Ingress (model routing) → Request Router (replica selection) 
 ```
 
 :::{note}
-The concepts here also apply when {ref}`direct streaming <direct-streaming-guide>` is enabled. Direct streaming reuses the same public `request_router_config` and routing policies, so nothing below changes. The mechanism that carries replica selection to the HTTP ingress in that mode is an implementation detail. See that guide for details and caveats.
+Direct streaming uses these same routing policies and the same `request_router_config`, so nothing in this document changes. The only difference is where replica selection runs: at the HTTP ingress instead of inside `OpenAiIngress`. See the {ref}`direct streaming guide <direct-streaming-guide>` for details and caveats.
 :::
 
 ## Request routing architecture

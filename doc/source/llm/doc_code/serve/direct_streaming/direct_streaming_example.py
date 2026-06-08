@@ -47,11 +47,18 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "qwen-0.5b",
-        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+        "model_id": "qwen3.5-0.8b",
+        "model_source": "Qwen/Qwen3.5-0.8B",
     },
     deployment_config={
         "autoscaling_config": {"min_replicas": 1, "max_replicas": 4},
+    },
+    engine_kwargs={
+        "trust_remote_code": True,
+        "tensor_parallel_size": 1,
+        "enable_auto_tool_choice": True,
+        "tool_call_parser": "qwen3_coder",
+        "reasoning_parser": "qwen3",
     },
 )
 
