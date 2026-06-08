@@ -104,6 +104,7 @@ py_test_module_list(
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
     },
     files = [
+        "serve/cpu/deployments/data_parallel/test_dp_direct_streaming.py",
         "serve/cpu/deployments/prefill_decode_disagg/test_pd_direct_streaming.py",
         "serve/cpu/deployments/routers/test_router_direct_streaming.py",
     ],

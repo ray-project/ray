@@ -1,11 +1,7 @@
 import sys
 
-import httpx
 import pytest
 
-from ray import serve
-from ray._common.test_utils import wait_for_condition
-from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
@@ -13,20 +9,15 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     build_pd_openai_app,
 )
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_SESSION_ID
-from ray.serve._private.test_utils import check_running, get_application_url
-from ray.serve.config import RequestRouterConfig
-
-CONSISTENT_HASH_ROUTER = (
-    "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
+    consistent_hash_deployment_config,
+    requires_direct_streaming,
+    run_app_through_haproxy,
+    session_chat_response,
 )
 
 
-@pytest.mark.skipif(
-    not (RAY_SERVE_ENABLE_HA_PROXY and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING),
-    reason="Direct streaming requires RAY_SERVE_ENABLE_HA_PROXY=1 and "
-    "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1.",
-)
+@requires_direct_streaming
 class TestPDDirectStreamingConsistentHashRouting:
     """Session affinity over the full PD direct-streaming path.
 
@@ -56,41 +47,18 @@ class TestPDDirectStreamingConsistentHashRouting:
                     "kv_role": "kv_both",
                 }
             }
-            config.deployment_config = {
-                "num_replicas": 4,
-                "request_router_config": RequestRouterConfig(
-                    request_router_class=CONSISTENT_HASH_ROUTER,
-                    request_router_kwargs={
-                        "num_virtual_nodes": 100,
-                        "num_fallback_replicas": 2,
-                    },
-                ),
-            }
+            config.deployment_config = consistent_hash_deployment_config()
             return config
 
-        serve.run(
+        yield run_app_through_haproxy(
             build_pd_openai_app(
                 {"prefill_config": _pd_config(), "decode_config": _pd_config()}
             )
         )
-        wait_for_condition(check_running, timeout=60)
-        yield get_application_url(use_localhost=True)
 
     def _serving_replicas(self, base_url, session_id):
         """Return the (decode, prefill) replicas that served a ``session_id`` request."""
-        resp = httpx.post(
-            f"{base_url}/v1/chat/completions",
-            json={
-                "model": "test-model",
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 1,
-            },
-            headers={SERVE_SESSION_ID: session_id},
-            timeout=30,
-        )
-        assert resp.status_code == 200, resp.text
-        # The session id survived the HAProxy hop to the decode replica.
-        assert resp.headers["x-serve-session-id"] == session_id
+        resp = session_chat_response(base_url, session_id)
         decode_replica = resp.headers["x-replica-id"]
         prefill_replica = resp.json()["kv_transfer_params"]["remote_engine_id"]
         return decode_replica, prefill_replica

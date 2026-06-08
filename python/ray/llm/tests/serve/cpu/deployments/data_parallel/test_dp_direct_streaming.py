@@ -6,9 +6,8 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
 )
-from ray.llm._internal.serve.core.ingress.builder import (
-    LLMServingArgs,
-    build_openai_app,
+from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+    build_dp_openai_app,
 )
 from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
     consistent_hash_deployment_config,
@@ -19,12 +18,13 @@ from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
 
 
 @requires_direct_streaming
-class TestDirectStreamingConsistentHashRouting:
-    """Session affinity over the full direct-streaming path.
+class TestDPDirectStreamingConsistentHashRouting:
+    """Session affinity over the DP direct-streaming path.
 
-    A request flows through HAProxy and the LLMRouter ``/internal/route``
-    decision (ConsistentHashRouter) to a backend replica. The session id
-    reaches the chosen replica, and one session pins to one replica.
+    The DPServer is the ingress LLMRouter pins via ConsistentHashRouter, so a
+    request flows through HAProxy and the ``/internal/route`` decision to one
+    DPServer replica. The session id reaches the chosen replica, and one session
+    pins to one replica.
     """
 
     @pytest.fixture(name="llm_config")
@@ -32,7 +32,7 @@ class TestDirectStreamingConsistentHashRouting:
         return LLMConfig(model_loading_config=ModelLoadingConfig(model_id="test-model"))
 
     @pytest.fixture(name="base_url")
-    def run_direct_streaming_app(
+    def run_dp_app(
         self,
         llm_config_with_mock_engine,
         shutdown_ray_and_serve,
@@ -40,9 +40,7 @@ class TestDirectStreamingConsistentHashRouting:
     ):
         llm_config = llm_config_with_mock_engine
         llm_config.deployment_config = consistent_hash_deployment_config()
-        yield run_app_through_haproxy(
-            build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
-        )
+        yield run_app_through_haproxy(build_dp_openai_app({"llm_config": llm_config}))
 
     def test_session_affinity(self, base_url):
         replicas = {
