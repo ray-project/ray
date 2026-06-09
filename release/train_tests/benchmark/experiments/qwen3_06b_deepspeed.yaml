@@ -1,16 +1,17 @@
 # Qwen3-0.6B + DeepSpeed ZeRO — P0 quick performance-regression workload.
 #
-# Perf-of-record cluster shape: 1x p4d.24xlarge (8x A100-40GB SXM) + m5.4xlarge
-# head, single node. See compute_configs/compute_gpu_8xA100_aws.yaml.
-# 0.6B is tiny on A100-40GB (~2GB static/GPU under ZeRO-2), so batch_size is
-# sized up to keep the GPUs working and the MFU signal meaningful.
+# Cluster shape: 1x g5.48xlarge (8x A10G-24GB) single node — cheapest
+# bf16-capable option. Activations (not params) are the memory constraint on
+# 24GB: at batch x seq, eager attention's B*H*S*S scores OOM, so we use SDPA
+# attention + gradient checkpointing and a modest batch. On A100-40GB you can
+# raise batch_size to 8 and drop gradient_checkpointing.
 #
 # Pair with the torchrun launcher for a parity baseline (same node):
 #   torchrun --nproc_per_node=8 -m core.runner \
 #       --experiment experiments/qwen3_06b_deepspeed.yaml --launcher torchrun
 name: qwen3_06b_deepspeed
 launcher: ray
-num_workers: 8                   # 8x A100 on a single p4d.24xlarge node
+num_workers: 8                   # 8x A10G on a single g5.48xlarge node
 use_gpu: true
 model:
   adapter: deepspeed
@@ -18,12 +19,14 @@ model:
   parallelism:
     zero_stage: 2                # 0.6B fits easily; stage 2 shards optimizer+grads,
                                  # avoids the extra param-gather comms of stage 3
-  precision: bf16                # A100 supports bf16 natively
+  precision: bf16                # A10G supports bf16 natively
+  attn_implementation: sdpa      # avoid eager attention's O(S^2) score matrix
+  gradient_checkpointing: true   # fit activations on 24GB; trades ~30% recompute
 data:
   dataloader: framework_default
   dataset: wikitext             # use `synthetic` to isolate compute from data ingest
   dataset_path: ""
-  batch_size: 8                 # per-GPU micro batch; global = 8 x 8 = 64 seqs/step
+  batch_size: 4                 # per-GPU micro batch; global = 4 x 8 = 32 seqs/step
   seq_len: 2048
   limit_training_rows: 8000
 training:

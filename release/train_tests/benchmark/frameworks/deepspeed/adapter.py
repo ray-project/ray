@@ -84,10 +84,23 @@ class DeepSpeedAdapter(FrameworkAdapter):
 
         model_name = self.cfg.model.name
         self._hf_config = AutoConfig.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, attn_implementation=self.cfg.model.attn_implementation
+        )
+
+        if self.cfg.model.gradient_checkpointing:
+            # use_cache must be off for gradient checkpointing (the KV cache and
+            # recompute are mutually exclusive); HF warns and disables it anyway.
+            model.config.use_cache = False
+            model.gradient_checkpointing_enable()
+
         self._num_params = sum(p.numel() for p in model.parameters())
         if self.ctx.world_rank == 0:
-            logger.info(f"Loaded {model_name}: {self._num_params/1e9:.3f}B params")
+            logger.info(
+                f"Loaded {model_name}: {self._num_params/1e9:.3f}B params "
+                f"(attn={self.cfg.model.attn_implementation}, "
+                f"grad_ckpt={self.cfg.model.gradient_checkpointing})"
+            )
 
         opt = self.cfg.training.optimizer
         optimizer = torch.optim.AdamW(
@@ -193,12 +206,13 @@ class DeepSpeedAdapter(FrameworkAdapter):
                 engine.backward(loss)
                 engine.step()
 
-            collector.record_batch(
-                num_rows=batch_size, num_tokens=batch_size * seq_len
-            )
+            collector.record_batch(num_rows=batch_size, num_tokens=batch_size * seq_len)
             step += 1
 
-            if step % self.cfg.training.log_every_n_steps == 0 and self.ctx.world_rank == 0:
+            if (
+                step % self.cfg.training.log_every_n_steps == 0
+                and self.ctx.world_rank == 0
+            ):
                 logger.info(f"step {step}/{num_steps} loss={loss.item():.4f}")
 
             self._maybe_checkpoint(engine, step)
