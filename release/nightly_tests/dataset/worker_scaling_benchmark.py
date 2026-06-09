@@ -176,8 +176,8 @@ def make_realistic_schema_udf(
     return udf.__call__
 
 
-def _disable_operator_fusion() -> None:
-    """Stop Ray Data from fusing the chained map_batches into one operator.
+def _no_fuse_remote_args() -> dict:
+    """Per-task remote-args hook that keeps the chained map_batches unfused.
 
     Ray Data's optimizer fuses linear chains of compatible map operators
     (same compute + remote args) into a single physical operator. With
@@ -185,18 +185,16 @@ def _disable_operator_fusion() -> None:
     one fused operator, so the scheduling topology has 1 operator no matter
     what --num-operators is set to — defeating the purpose of this variant,
     which exists to measure scheduling-loop cost as a function of the number
-    of operators. There's no public toggle (and batch_size/UDF differences
-    don't block map->map fusion), so remove the rule from the DeveloperAPI
-    physical ruleset.
-    """
-    from ray.data._internal.logical.optimizers import get_physical_ruleset
-    from ray.data._internal.logical.rules import FuseOperators
+    of operators.
 
-    ruleset = get_physical_ruleset()
-    try:
-        ruleset.remove(FuseOperators)
-    except ValueError:
-        pass  # Already removed.
+    Rather than mutating the optimizer ruleset, we rely on the fusion rule's
+    own documented contract: it declines to fuse any operator that specifies a
+    ``ray_remote_args_fn`` (the generated args aren't known at plan time, so
+    they can't be checked for compatibility — see ``OperatorFusionRule``).
+    Passing this no-op hook (returns no extra args) to each map_batches keeps
+    every operator separate using only public API.
+    """
+    return {}
 
 
 def _reset_local_size_probe() -> None:
@@ -233,11 +231,6 @@ def _local_size_probe_stats() -> Dict[str, object]:
 
 
 def main(args: argparse.Namespace):
-    # Keep the chained operators separate so the topology actually has
-    # --num-operators operators (see the function docstring).
-    if args.num_operators > 1:
-        _disable_operator_fusion()
-
     benchmark = Benchmark()
 
     def benchmark_fn():
@@ -259,6 +252,10 @@ def main(args: argparse.Namespace):
         workers_per_operator = args.num_workers // args.num_operators
 
         map_kwargs = {"num_cpus": 0.5}
+        if args.num_operators > 1:
+            # Keep the chained operators separate so the topology actually has
+            # --num-operators operators (see `_no_fuse_remote_args`).
+            map_kwargs["ray_remote_args_fn"] = _no_fuse_remote_args
         if args.worker_type == "actors":
             map_kwargs["compute"] = ray.data.ActorPoolStrategy(
                 size=workers_per_operator
