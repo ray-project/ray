@@ -214,22 +214,20 @@ def _find_candidates(exprs: List[Expr]) -> List[_Candidate]:
 
     buckets: Dict[Hashable, List[List[_Occurrence]]] = defaultdict(list)
     for occurrence in occurrences:
-        _add_to_structural_group(buckets[occurrence.key], occurrence)
+        if not occurrence.is_ignored_root:
+            _add_to_structural_group(buckets[occurrence.key], occurrence)
 
     candidates: List[_Candidate] = []
     for key, structural_groups in buckets.items():
         for group in structural_groups:
-            extractable_occurrences = [
-                occurrence for occurrence in group if not occurrence.is_ignored_root
-            ]
-            if len(extractable_occurrences) <= 1:
+            if len(group) <= 1:
                 continue
 
             candidates.append(
                 _Candidate(
-                    expr=extractable_occurrences[0].expr,
+                    expr=group[0].expr,
                     key=key,
-                    occurrences=extractable_occurrences,
+                    occurrences=group,
                 )
             )
 

@@ -12,7 +12,6 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
@@ -902,16 +901,14 @@ def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> 
     return BlockAccessor.for_block(new_block).drop(["__stub__"])
 
 
-def _drop_cse_temp_columns(block: Block) -> Block:
+def _drop_cse_temp_columns(block: Block, temp_columns: List[str]) -> Block:
     block_accessor = BlockAccessor.for_block(block)
-    temp_columns = [
-        name
-        for name in block_accessor.column_names()
-        if name.startswith(CSE_TEMP_COLUMN_PREFIX)
+    drop_columns = [
+        name for name in temp_columns if name in block_accessor.column_names()
     ]
-    if not temp_columns:
+    if not drop_columns:
         return block
-    return block_accessor.drop(temp_columns)
+    return block_accessor.drop(drop_columns)
 
 
 def eval_projection(
@@ -940,4 +937,5 @@ def eval_projection(
         )
 
     output_block = _eval_projection_without_cse(projection_exprs, working_block)
-    return _drop_cse_temp_columns(output_block)
+    temp_columns = [expr.name for expr in cse_common_exprs]
+    return _drop_cse_temp_columns(output_block, temp_columns)

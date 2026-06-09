@@ -472,11 +472,8 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         if fields is None:
             return None
         if self.get_cse_common_exprs():
-            fields = [
-                field
-                for field in fields
-                if not field.name.startswith(CSE_TEMP_COLUMN_PREFIX)
-            ]
+            temp_names = {expr.name for expr in self.get_cse_common_exprs()}
+            fields = [field for field in fields if field.name not in temp_names]
         return pa.schema(fields)
 
 
