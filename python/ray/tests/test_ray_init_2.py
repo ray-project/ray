@@ -4,6 +4,7 @@ import shutil
 import sys
 import tempfile
 import unittest.mock
+from itertools import chain, repeat
 from unittest.mock import patch
 
 import pytest
@@ -511,8 +512,6 @@ def test_get_node_to_connect_for_driver_waits_before_fallback(monkeypatch):
 def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
     monkeypatch,
 ):
-    from itertools import chain, repeat
-
     process_node_id = ray.NodeID.from_random()
     process_node = _make_gcs_node_info("10.0.0.3", node_id=process_node_id)
     gcs_client = _FakeGcsClient([process_node])
@@ -531,7 +530,9 @@ def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
     time_values = chain([0, 0, 0, 0, 0, 0, 2], repeat(2))
     monkeypatch.setattr(ray._private.services.time, "time", lambda: next(time_values))
     monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
-    monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.4")
+    monkeypatch.setattr(
+        ray._private.services, "get_node_ip_address", lambda: "10.0.0.4"
+    )
 
     with pytest.raises(
         RuntimeError,
