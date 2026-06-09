@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
+    DefaultPDProtocolMixin,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -12,7 +13,14 @@ if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
-class MultiConnectorBackend(BaseConnectorBackend):
+# MRO note: list ``DefaultPDProtocolMixin`` before ``BaseConnectorBackend`` so
+# its concrete ``prepare_*`` methods satisfy the abstract methods.
+#
+# MultiConnector uses the default request-shaping policy on the assumption that
+# its sub-connectors all follow the standard (no-peer, sequential) protocol. If
+# a future sub-connector needs custom shaping, Multi should delegate to that
+# sub-connector's backend's ``prepare_*`` rather than apply the default here.
+class MultiConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
     def __init__(self, llm_config: "LLMConfig"):
         super().__init__(llm_config)
 

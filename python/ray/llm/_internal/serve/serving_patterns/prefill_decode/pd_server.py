@@ -119,7 +119,7 @@ class PDOrchestratorMixin:
 
     # ---- Connector backend resolution ----
 
-    def _get_connector_backend(self):
+    def _get_connector_backend(self) -> BaseConnectorBackend:
         """Resolve the KV-connector backend for this decode server.
 
         The backend is used only for its (stateless w.r.t. the request)
@@ -127,13 +127,13 @@ class PDOrchestratorMixin:
         ``concurrent_handoff``) and the ``prepare_*`` request shapers — so
         resolving a fresh instance via the factory is equivalent to a stored one.
 
-        Resolution order:
+        Always returns a *concrete* backend (never the abstract
+        ``BaseConnectorBackend``). Resolution order:
           1. A backend instance already stored on ``self._llm_config``
              (``setup_engine_backend`` was called on this exact config copy).
           2. Else, if a KV transfer connector is configured, create one via the
-             factory.
-          3. Else a plain ``BaseConnectorBackend`` (default flags == today's
-             NIXL/default behavior).
+             factory (nixl/lmcache/multi/... are all concrete; unregistered
+             connectors fall back to a concrete default backend).
         """
         llm_config = getattr(self, "_llm_config", None)
 
@@ -150,26 +150,31 @@ class PDOrchestratorMixin:
         if kv_connector:
             return KVConnectorBackendFactory.create_backend(kv_connector, llm_config)
 
-        return BaseConnectorBackend(llm_config)
+        # For P/D there is always a kv_transfer_config, so we should never get
+        # here. Fail loudly rather than instantiate the abstract base.
+        raise ValueError(
+            "Cannot resolve a KV-connector backend: no backend was stored on the "
+            "LLMConfig and no kv_transfer_config.kv_connector is configured."
+        )
 
     # ---- Request Preparation ----
     #
-    # Kept as thin static delegates to the default ``BaseConnectorBackend``
-    # protocol so existing callers/tests that reference these names keep working.
-    # The orchestrator itself goes through ``be.prepare_*`` on the resolved
-    # backend (which may override these for connector-specific shaping).
+    # Thin instance delegates to the resolved backend's protocol so existing
+    # callers/tests that reference these names keep working. The orchestrator
+    # itself goes through ``be.prepare_*`` directly.
 
-    @staticmethod
-    def _prepare_prefill_request(request: RequestType) -> RequestType:
-        return BaseConnectorBackend.prepare_prefill_request(None, request, None)
+    def _prepare_prefill_request(self, request: RequestType) -> RequestType:
+        return self._get_connector_backend().prepare_prefill_request(
+            request=request, peer=None
+        )
 
-    @staticmethod
     def _prepare_decode_request(
+        self,
         request: RequestType,
         prefill_chunk: Union[ChatCompletionResponse, CompletionResponse],
     ) -> RequestType:
-        return BaseConnectorBackend.prepare_decode_request(
-            None, request, None, prefill_chunk
+        return self._get_connector_backend().prepare_decode_request(
+            request=request, peer=None, prefill_response=prefill_chunk
         )
 
     # ---- Orchestrated Request Flow ----
@@ -215,28 +220,38 @@ class PDOrchestratorMixin:
                 # ``replica_metadata`` is the public field added in the metadata
                 # PR; this branch may run on a checkout that lacks it, so guard.
                 peer = getattr(selection, "replica_metadata", {})
-                prefill_request = be.prepare_prefill_request(request, peer)
+                prefill_request = be.prepare_prefill_request(request=request, peer=peer)
 
                 if be.concurrent_handoff:
                     # WRITE-style handoff: start remote prefill and run local
                     # decode concurrently, draining prefill before leaving the
                     # choose_replica context (so on_request_completed fires once).
-                    decode_request = be.prepare_decode_request(request, peer, None)
+                    decode_request = be.prepare_decode_request(
+                        request=request, peer=peer, prefill_response=None
+                    )
                     prefill_resp = prefill_handle_method.dispatch(
                         selection, prefill_request, raw_request_info
                     )
                     prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
+                    completed = False
                     try:
                         local_gen = await getattr(super(), method)(
                             decode_request, raw_request_info
                         )
                         async for chunk in local_gen:
                             yield chunk
+                        completed = True
                     finally:
+                        if not completed:
+                            # Local decode failed/cancelled; don't leak the
+                            # background prefill task.
+                            prefill_task.cancel()
                         try:
                             err = await prefill_task
                             if isinstance(err, ErrorResponse):
                                 logger.error("Remote prefill returned error: %s", err)
+                        except asyncio.CancelledError:
+                            pass
                         except Exception as exc:  # pragma: no cover - defensive
                             logger.error("Remote prefill failed: %s", exc)
                     return
@@ -251,7 +266,9 @@ class PDOrchestratorMixin:
                     logger.error(f"Prefill returned error: {prefill_chunk}")
                     yield prefill_chunk
                     return
-                decode_request = be.prepare_decode_request(request, peer, prefill_chunk)
+                decode_request = be.prepare_decode_request(
+                    request=request, peer=peer, prefill_response=prefill_chunk
+                )
                 local_gen = await getattr(super(), method)(
                     decode_request, raw_request_info
                 )
@@ -262,27 +279,37 @@ class PDOrchestratorMixin:
         # Default / NIXL path: no pre-dispatch peer binding. This is byte-for-byte
         # the historical flow, just routed through the backend's request shapers.
         peer = None
-        prefill_request = be.prepare_prefill_request(request, peer)
+        prefill_request = be.prepare_prefill_request(request=request, peer=peer)
 
         if be.concurrent_handoff:
             # Concurrent handoff without peer binding: dispatch via remote() and
             # run local decode concurrently.
-            decode_request = be.prepare_decode_request(request, peer, None)
+            decode_request = be.prepare_decode_request(
+                request=request, peer=peer, prefill_response=None
+            )
             prefill_resp = prefill_handle_method.remote(
                 prefill_request, raw_request_info
             )
             prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
+            completed = False
             try:
                 local_gen = await getattr(super(), method)(
                     decode_request, raw_request_info
                 )
                 async for chunk in local_gen:
                     yield chunk
+                completed = True
             finally:
+                if not completed:
+                    # Local decode failed/cancelled; don't leak the background
+                    # prefill task.
+                    prefill_task.cancel()
                 try:
                     err = await prefill_task
                     if isinstance(err, ErrorResponse):
                         logger.error("Remote prefill returned error: %s", err)
+                except asyncio.CancelledError:
+                    pass
                 except Exception as exc:  # pragma: no cover - defensive
                     logger.error("Remote prefill failed: %s", exc)
             return
@@ -299,7 +326,9 @@ class PDOrchestratorMixin:
         # 2. Local decode via super().chat / super().completions so the
         # standard LLMServer request pipeline (request_id, LoRA multiplex,
         # batch_output_stream) runs on the decode side.
-        decode_request = be.prepare_decode_request(request, peer, prefill_chunk)
+        decode_request = be.prepare_decode_request(
+            request=request, peer=peer, prefill_response=prefill_chunk
+        )
         local_gen = await getattr(super(), method)(decode_request, raw_request_info)
         async for chunk in local_gen:
             yield chunk
@@ -363,7 +392,8 @@ class PDOrchestratorMixin:
 
         model_id = self._llm_config.model_id
         dummy = self._make_dummy_request(model_id)
-        prefill_req = self._prepare_prefill_request(dummy)
+        be = self._get_connector_backend()
+        prefill_req = be.prepare_prefill_request(request=dummy, peer=None)
 
         # Broadcast to every live P replica; retry until they are up.
         kv_params_list: List[Any] = []

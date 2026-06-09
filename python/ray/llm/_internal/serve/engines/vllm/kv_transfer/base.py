@@ -1,12 +1,21 @@
 import abc
 import random
 import string
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray import serve
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
+        ChatCompletionRequest,
+        CompletionRequest,
+    )
+
+    # The two OpenAI request models the P/D orchestrator shapes. Defined under
+    # TYPE_CHECKING (and used as a string annotation) to avoid an import cycle
+    # between this module and the config/openai-models modules.
+    RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
 class BaseConnectorBackend(abc.ABC):
@@ -14,16 +23,27 @@ class BaseConnectorBackend(abc.ABC):
     #
     # These class attributes and methods let the P/D orchestrator
     # (``PDOrchestratorMixin``) delegate request shaping, peer addressing, and
-    # handoff discipline to the connector. The defaults reproduce the existing
-    # NIXL/default flow exactly:
-    #   * ``requires_peer_binding`` is False, so the orchestrator routes prefill
-    #     via the standard ``handle.<method>.remote(...)`` path (no peer is
-    #     resolved before dispatch).
-    #   * ``concurrent_handoff`` is False, so prefill runs to its first chunk
-    #     before local decode starts, and decode forwards the prefill chunk's
-    #     ``kv_transfer_params``.
-    # Connectors that address peers by request id (and push KV, e.g. MORI WRITE
-    # mode) can opt into pre-dispatch peer binding + concurrent handoff.
+    # handoff discipline to the connector. They are connector-agnostic: a
+    # connector picks a quadrant of (``requires_peer_binding``,
+    # ``concurrent_handoff``) and implements ``prepare_prefill_request`` /
+    # ``prepare_decode_request`` accordingly.
+    #
+    # ``requires_peer_binding``:
+    #   * False -> the orchestrator dispatches prefill via the standard handle
+    #     path; the peer (if any) is resolved post-hoc from the prefill response.
+    #   * True  -> the orchestrator selects the prefill replica first
+    #     (``choose_replica``) and passes its ``replica_metadata`` to the backend
+    #     as ``peer`` (pre-dispatch addressing).
+    #
+    # ``concurrent_handoff``:
+    #   * False -> prefill runs to its first chunk before local decode starts
+    #     (sequential handoff).
+    #   * True  -> prefill dispatch and local decode run concurrently.
+    #
+    # The two flags are independent. For example: a standard (pull-on-response)
+    # connector is (False, False); a push-based, request-id-addressed connector
+    # is (True, True); a pull-based request-id-addressed connector is
+    # (True, False).
     requires_peer_binding: bool = False
     concurrent_handoff: bool = False
 
@@ -84,22 +104,75 @@ class BaseConnectorBackend(abc.ABC):
         num_devices = engine_config.num_devices
         return rc.rank.rank * num_devices
 
-    def prepare_prefill_request(self, request: Any, peer: Optional[Dict[str, Any]]):
+    @abc.abstractmethod
+    def prepare_prefill_request(
+        self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
+    ) -> "RequestType":
         """Shape the request sent to the remote prefill engine.
-
-        The default reproduces today's NIXL/default flow: deep-copy the request,
-        stamp the standard ``kv_transfer_params`` that tell the prefill engine to
-        produce KV for a remote decode, and clamp it to a single, non-streaming
-        token (prefill only needs to run, not generate output).
 
         Args:
             request: The incoming chat/completion request.
-            peer: The selected prefill replica's ``replica_metadata`` dict, or
-                None when no pre-dispatch peer binding was performed (the
-                default). The default implementation ignores it.
+            peer: The selected prefill replica's ``replica_metadata`` dict when
+                the connector opted into pre-dispatch peer binding
+                (``requires_peer_binding=True``), else None.
 
         Returns:
             A new request object to dispatch to the prefill engine.
+        """
+        ...
+
+    @abc.abstractmethod
+    def prepare_decode_request(
+        self,
+        *,
+        request: "RequestType",
+        peer: Optional[Dict[str, Any]],
+        prefill_response: Optional[Any],
+    ) -> "RequestType":
+        """Shape the request run on the local decode engine.
+
+        Args:
+            request: The incoming chat/completion request.
+            peer: The selected prefill replica's ``replica_metadata`` dict when
+                the connector opted into pre-dispatch peer binding, else None.
+            prefill_response: The captured prefill response chunk whose
+                ``kv_transfer_params`` may be forwarded, or None when no chunk is
+                captured before decode starts (concurrent-handoff mode).
+
+        Returns:
+            A new request object to run on the local decode engine.
+        """
+        ...
+
+    def setup(self) -> None:
+        """Setup the connector backend.
+
+        This method is called to setup the connector backend.
+        """
+        pass
+
+
+class DefaultPDProtocolMixin:
+    """The default P/D protocol policy: no peer binding, sequential handoff.
+
+    Implements ``prepare_prefill_request`` / ``prepare_decode_request`` for
+    connectors that follow the standard policy: the prefill engine is told to
+    produce KV for a remote decode (clamped to a single non-streaming token),
+    and the decode engine forwards the ``kv_transfer_params`` that the prefill
+    engine returned on its first response chunk.
+
+    Mix this in *before* ``BaseConnectorBackend`` in a backend's bases so its
+    concrete methods satisfy the abstract methods.
+    """
+
+    def prepare_prefill_request(
+        self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
+    ) -> "RequestType":
+        """Shape the prefill request under the default P/D protocol policy.
+
+        Deep-copies the request, stamps the standard ``kv_transfer_params`` that
+        tell the prefill engine to produce KV for a remote decode, and clamps it
+        to a single, non-streaming token. ``peer`` is ignored.
         """
         assert (
             getattr(request, "kv_transfer_params", None) is None
@@ -122,33 +195,33 @@ class BaseConnectorBackend(abc.ABC):
         return prefill_request
 
     def prepare_decode_request(
-        self, request: Any, peer: Optional[Dict[str, Any]], prefill_response: Any
-    ):
-        """Shape the request run on the local decode engine.
+        self,
+        *,
+        request: "RequestType",
+        peer: Optional[Dict[str, Any]],
+        prefill_response: Optional[Any],
+    ) -> "RequestType":
+        """Shape the decode request under the default P/D protocol policy.
 
-        The default reproduces today's NIXL/default flow: deep-copy the request
-        and forward the ``kv_transfer_params`` that the prefill engine returned on
-        its first response chunk (``remote_block_ids``/``remote_engine_id``/...),
-        so the decode engine pulls/receives the KV produced by prefill.
-
-        Args:
-            request: The incoming chat/completion request.
-            peer: The selected prefill replica's ``replica_metadata`` dict, or
-                None (the default). The default implementation ignores it.
-            prefill_response: The captured prefill response chunk whose
-                ``kv_transfer_params`` are forwarded. In concurrent-handoff mode
-                this is None (no chunk is captured before decode starts).
-
-        Returns:
-            A new request object to run on the local decode engine.
+        Deep-copies the request and, only when a prefill response chunk was
+        captured, forwards its ``kv_transfer_params`` so the decode engine
+        pulls/receives the KV produced by prefill. In concurrent-handoff mode
+        ``prefill_response`` is None and the request is left unmodified. ``peer``
+        is ignored.
         """
         decode_request = request.model_copy(deep=True)
-        decode_request.kv_transfer_params = prefill_response.kv_transfer_params
+        if prefill_response is not None:
+            decode_request.kv_transfer_params = prefill_response.kv_transfer_params
         return decode_request
 
-    def setup(self) -> None:
-        """Setup the connector backend.
 
-        This method is called to setup the connector backend.
-        """
-        pass
+class DefaultConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
+    """Concrete connector backend using the default P/D protocol policy.
+
+    Used as the factory fallback for connectors that are not registered with a
+    dedicated backend class: they get a no-op ``setup()`` and the default
+    request-shaping policy. ``BaseConnectorBackend`` is abstract, so the factory
+    must return a concrete class like this one.
+    """
+
+    pass
