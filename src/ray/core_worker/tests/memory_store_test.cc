@@ -23,7 +23,6 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/common/test_utils.h"
@@ -97,7 +96,8 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
-  auto memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("TestMemoryStoreStats");
+  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.

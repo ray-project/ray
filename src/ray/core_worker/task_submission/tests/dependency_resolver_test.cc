@@ -22,12 +22,12 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/fake_actor_creator.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -137,7 +137,8 @@ class MockTaskManager : public MockTaskManagerInterface {
 };
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -153,7 +154,8 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   // Actor dependency resolved first.
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -198,7 +200,8 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   // Object dependency resolved first.
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -242,7 +245,8 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -272,7 +276,8 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -306,7 +311,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -344,7 +350,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -420,7 +427,8 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
 // Test that dependencies already in the store are resolved synchronously
 // via GetIfExists, without posting to the I/O event queue.
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
@@ -452,7 +460,8 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   // object ID as a key to retrieve the tensor from the GPU store. The second argument
   // should be inlined and the `object_ref` field should be cleared. If it is not cleared,
   // there will be performance regression in some edge cases.
-  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+  InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_manager = std::make_shared<MockTaskManager>();
   FakeActorCreator actor_creator;
 
