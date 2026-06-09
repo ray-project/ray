@@ -1,7 +1,6 @@
 import time
 from collections import defaultdict
-from dataclasses import Field, dataclass, field
-from enum import Enum
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 import ray
@@ -17,6 +16,16 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data._internal.stats_metrics_registry import (
+    _OP_RUNTIME_NAMESPACE,
+    GLOBAL_METRICS_REGISTRY,
+    MetricDefinition,
+    MetricsGroup,
+    MetricsType,
+    OpRuntimesMetricsMeta,
+    metric_field,
+    metric_property,
+)
 from ray.data.block import BlockMetadata, TaskExecWorkerStats
 
 if TYPE_CHECKING:
@@ -26,111 +35,7 @@ if TYPE_CHECKING:
     )
 
 
-# A metadata key used to mark a dataclass field as a metric.
-_IS_FIELD_METRIC_KEY = "__is_metric"
-# Metadata keys used to store information about a metric.
-_METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
-_METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
-_METRIC_FIELD_METRICS_TYPE_KEY = "__metric_metrics_type"
-_METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
-_METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
-
-_METRICS: List["MetricDefinition"] = []
-
 NODE_UNKNOWN = "unknown"
-
-
-class MetricsGroup(Enum):
-    INPUTS = "inputs"
-    OUTPUTS = "outputs"
-    TASKS = "tasks"
-    OBJECT_STORE_MEMORY = "object_store_memory"
-    MISC = "misc"
-    ACTORS = "actors"
-
-
-class MetricsType(Enum):
-    Counter = 0
-    Gauge = 1
-    Histogram = 2
-    Unsupported = 3
-
-
-@dataclass(frozen=True)
-class MetricDefinition:
-    """Metadata for a metric.
-
-    Args:
-        name: The name of the metric.
-        description: A human-readable description of the metric, also used as the chart
-            description on the Ray Data dashboard.
-        metrics_group: The group of the metric, used to organize metrics into groups in
-            'StatsActor' and on the Ray Data dashboard.
-        map_only: Whether the metric is only measured for 'MapOperators'.
-    """
-
-    name: str
-    description: str
-    metrics_group: str
-    metrics_type: MetricsType
-    metrics_args: Dict[str, Any]
-    # TODO: Let's refactor this parameter so it isn't tightly coupled with a specific
-    # operator type (MapOperator).
-    map_only: bool = False
-    internal_only: bool = False  # do not expose this metric to the user
-
-
-def metric_field(
-    *,
-    description: str,
-    metrics_group: str,
-    metrics_type: MetricsType = MetricsType.Gauge,
-    metrics_args: Dict[str, Any] = None,
-    map_only: bool = False,
-    internal_only: bool = False,  # do not expose this metric to the user
-    **field_kwargs,
-):
-    """A dataclass field that represents a metric."""
-    metadata = field_kwargs.get("metadata", {})
-
-    metadata[_IS_FIELD_METRIC_KEY] = True
-
-    metadata[_METRIC_FIELD_DESCRIPTION_KEY] = description
-    metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
-    metadata[_METRIC_FIELD_METRICS_TYPE_KEY] = metrics_type
-    metadata[_METRIC_FIELD_METRICS_ARGS_KEY] = metrics_args or {}
-    metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY] = map_only
-
-    return field(metadata=metadata, **field_kwargs)
-
-
-def metric_property(
-    *,
-    description: str,
-    metrics_group: str,
-    metrics_type: MetricsType = MetricsType.Gauge,
-    metrics_args: Dict[str, Any] = None,
-    map_only: bool = False,
-    internal_only: bool = False,  # do not expose this metric to the user
-):
-    """A property that represents a metric."""
-
-    def wrap(func):
-        metric = MetricDefinition(
-            name=func.__name__,
-            description=description,
-            metrics_group=metrics_group,
-            metrics_type=metrics_type,
-            metrics_args=(metrics_args or {}),
-            map_only=map_only,
-            internal_only=internal_only,
-        )
-
-        _METRICS.append(metric)
-
-        return property(func)
-
-    return wrap
 
 
 @dataclass
@@ -161,29 +66,6 @@ class NodeMetrics:
     num_tasks_finished: int = 0
     bytes_outputs_of_finished_tasks: int = 0
     blocks_outputs_of_finished_tasks: int = 0
-
-
-class OpRuntimesMetricsMeta(type):
-    def __init__(cls, name, bases, dict):
-        # NOTE: `Field.name` isn't set until the dataclass is created, so we can't
-        # create the metrics in `metric_field` directly.
-        super().__init__(name, bases, dict)
-
-        # Iterate over the attributes and methods of 'OpRuntimeMetrics'.
-        for name, value in dict.items():
-            # If an attribute is a dataclass field and has _IS_FIELD_METRIC_KEY in its
-            # metadata, then create a metric from the field metadata and add it to the
-            # list of metrics. See also the 'metric_field' function.
-            if isinstance(value, Field) and value.metadata.get(_IS_FIELD_METRIC_KEY):
-                metric = MetricDefinition(
-                    name=name,
-                    description=value.metadata[_METRIC_FIELD_DESCRIPTION_KEY],
-                    metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
-                    metrics_type=value.metadata[_METRIC_FIELD_METRICS_TYPE_KEY],
-                    metrics_args=value.metadata[_METRIC_FIELD_METRICS_ARGS_KEY],
-                    map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
-                )
-                _METRICS.append(metric)
 
 
 def node_id_from_block_metadata(meta: BlockMetadata) -> str:
@@ -584,7 +466,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
     @classmethod
     def get_metrics(self) -> List[MetricDefinition]:
-        return list(_METRICS)
+        return GLOBAL_METRICS_REGISTRY.definitions(_OP_RUNTIME_NAMESPACE)
 
     def as_dict(
         self,
