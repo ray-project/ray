@@ -74,8 +74,6 @@ aiorwlock==1.5.1
     # via -r python/requirements.txt
 aiosignal==1.4.0
     # via aiohttp
-alabaster==0.7.16
-    # via sphinx
 ale-py==0.10.1
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 alembic==1.18.4
@@ -151,7 +149,6 @@ attrs==26.1.0
     #   dm-tree
     #   glom
     #   jsonschema
-    #   jupyter-cache
     #   open-spiel
     #   openlineage-python
     #   referencing
@@ -206,9 +203,7 @@ azure-storage-blob==12.28.0
     #   adlfs
     #   smart-open
 babel==2.18.0
-    # via
-    #   jupyterlab-server
-    #   sphinx
+    # via jupyterlab-server
 backcall==0.2.0
     # via ipython
 backoff==1.10.0
@@ -328,7 +323,6 @@ click==8.3.2
     #   dask
     #   distributed
     #   flask
-    #   jupyter-cache
     #   mlflow-skinny
     #   pyiceberg
     #   ray
@@ -507,10 +501,7 @@ docker==7.1.0
 docstring-parser==0.15
     # via yahp
 docutils==0.19
-    # via
-    #   -r python/requirements/lint-requirements.txt
-    #   myst-parser
-    #   sphinx
+    # via -r python/requirements/lint-requirements.txt
 dulwich==0.24.1
     # via comet-ml
 einops==0.8.2
@@ -852,15 +843,11 @@ imageio-ffmpeg==0.4.5
     # via
     #   -r python/requirements/ml/py313/rllib-requirements.txt
     #   moviepy
-imagesize==2.0.0
-    # via sphinx
 importlib-metadata==6.11.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   dask
-    #   jupyter-cache
     #   mlflow-skinny
-    #   myst-nb
     #   opentelemetry-api
     #   pytest-virtualenv
     #   tensordict
@@ -871,15 +858,12 @@ importlib-resources==7.1.0
 iniconfig==2.3.0
     # via pytest
 ipykernel==7.2.0
-    # via
-    #   jupyterlab
-    #   myst-nb
+    # via jupyterlab
 ipython==8.12.3
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
     #   ipykernel
     #   ipywidgets
-    #   myst-nb
 ipywidgets==8.1.3
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -923,9 +907,7 @@ jinja2==3.1.6
     #   jupyterlab-server
     #   memray
     #   moto
-    #   myst-parser
     #   nbconvert
-    #   sphinx
     #   torch
     #   torch-geometric
 jmespath==1.1.0
@@ -973,8 +955,6 @@ jsonschema-specifications==2025.9.1
     # via
     #   jsonschema
     #   openapi-schema-validator
-jupyter-cache==1.0.1
-    # via myst-nb
 jupyter-client==8.8.0
     # via
     #   ipykernel
@@ -1011,10 +991,6 @@ jupyterlab-server==2.28.0
     # via jupyterlab
 jupyterlab-widgets==3.0.16
     # via ipywidgets
-jupytext==1.19.1
-    # via
-    #   -r python/requirements/ml/py313/train-test-requirements.txt
-    #   -r python/requirements/py313/test-requirements.txt
 jwcrypto==1.5.7
     # via delta-sharing
 keras==3.14.0 ; python_version >= "3.11"
@@ -1084,9 +1060,7 @@ markdown==3.10.2
 markdown-it-py==2.2.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
-    #   jupytext
     #   mdit-py-plugins
-    #   myst-parser
     #   rich
     #   textual
 markupsafe==3.0.3
@@ -1108,10 +1082,7 @@ matplotlib-inline==0.2.1
     #   ipykernel
     #   ipython
 mdit-py-plugins==0.3.5
-    # via
-    #   jupytext
-    #   markdown-it-py
-    #   myst-parser
+    # via markdown-it-py
 mdurl==0.1.2
     # via markdown-it-py
 memray==1.19.3 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
@@ -1213,12 +1184,6 @@ mypy-extensions==1.0.0
     #   black
     #   mypy
     #   typing-inspect
-myst-nb==1.1.0
-    # via -r python/requirements/py313/test-requirements.txt
-myst-parser==1.0.0
-    # via
-    #   -r python/requirements/py313/test-requirements.txt
-    #   myst-nb
 namex==0.1.0
     # via keras
 narwhals==2.20.0
@@ -1226,18 +1191,12 @@ narwhals==2.20.0
     #   plotly
     #   utilsforecast
 nbclient==0.10.4
-    # via
-    #   jupyter-cache
-    #   myst-nb
-    #   nbconvert
+    # via nbconvert
 nbconvert==7.17.1
     # via jupyter-server
 nbformat==5.10.4
     # via
-    #   jupyter-cache
     #   jupyter-server
-    #   jupytext
-    #   myst-nb
     #   nbclient
     #   nbconvert
 nest-asyncio==1.6.0
@@ -1495,7 +1454,6 @@ packaging==26.1
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
-    #   jupytext
     #   keras
     #   knack
     #   kombu
@@ -1519,7 +1477,6 @@ packaging==26.1
     #   semgrep
     #   skops
     #   snowflake-connector-python
-    #   sphinx
     #   statsmodels
     #   taskiq
     #   tensorboard
@@ -1766,7 +1723,6 @@ pygments==2.18.0
     #   knack
     #   nbconvert
     #   rich
-    #   sphinx
 pyiceberg==0.11.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 pyjwt==2.12.1
@@ -1956,9 +1912,7 @@ pyyaml==6.0.3
     #   gradio
     #   huggingface-hub
     #   jsonschema-path
-    #   jupyter-cache
     #   jupyter-events
-    #   jupytext
     #   knack
     #   kubernetes
     #   lightning
@@ -1966,8 +1920,6 @@ pyyaml==6.0.3
     #   mlflow-skinny
     #   mosaicml
     #   moto
-    #   myst-nb
-    #   myst-parser
     #   openlineage-python
     #   optuna
     #   pre-commit
@@ -2046,7 +1998,6 @@ requests==2.33.1
     #   semgrep
     #   smart-open
     #   snowflake-connector-python
-    #   sphinx
     #   tensorflow
     #   tensorflow-datasets
     #   torch-geometric
@@ -2220,8 +2171,6 @@ smart-open==6.2.0
     #   -r python/requirements/py313/test-requirements.txt
 smmap==5.0.3
     # via gitdb
-snowballstemmer==3.0.1
-    # via sphinx
 snowflake-connector-python==4.3.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 sortedcontainers==2.4.0
@@ -2232,23 +2181,6 @@ soundfile==0.13.1
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 soupsieve==2.8.3
     # via beautifulsoup4
-sphinx==6.2.1
-    # via
-    #   -r python/requirements/py313/test-requirements.txt
-    #   myst-nb
-    #   myst-parser
-sphinxcontrib-applehelp==2.0.0
-    # via sphinx
-sphinxcontrib-devhelp==2.0.0
-    # via sphinx
-sphinxcontrib-htmlhelp==2.1.0
-    # via sphinx
-sphinxcontrib-jsmath==1.0.1
-    # via sphinx
-sphinxcontrib-qthelp==2.0.0
-    # via sphinx
-sphinxcontrib-serializinghtml==2.0.0
-    # via sphinx
 spinners==0.0.24
     # via halo
 sqlalchemy==2.0.49
@@ -2256,7 +2188,6 @@ sqlalchemy==2.0.49
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   aim
     #   alembic
-    #   jupyter-cache
     #   mlflow
     #   optuna
     #   pyiceberg
@@ -2292,7 +2223,6 @@ sympy==1.14.0
 tabulate==0.10.0
     # via
     #   -r python/requirements/cloud-requirements.txt
-    #   jupyter-cache
     #   knack
 taskiq==0.12.2
     # via
@@ -2555,7 +2485,6 @@ typing-extensions==4.15.0
     #   mlflow-skinny
     #   modin
     #   mypy
-    #   myst-nb
     #   nevergrad
     #   obstore
     #   opentelemetry-api
