@@ -3,7 +3,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
+from pkg_resources import parse_version
 
 from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX
 from ray.data._internal.planner.plan_expression.expression_evaluator import (

@@ -2,11 +2,7 @@ import os
 import re
 from typing import Any, List
 
-try:
-    import lance
-except ModuleNotFoundError:
-    lance = None
-
+import lance
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -296,12 +292,8 @@ def test_chained_filter_with_expressions(parquet_ds):
 )
 # Same pylance version gate as tests/datasource/test_lance.py
 @pytest.mark.skipif(
-    lance is None or Version(lance.__version__) <= Version("0.3.19"),
-    reason=(
-        "lance is not installed"
-        if lance is None
-        else f"pylance {lance.__version__} <= 0.3.19; API incompatible"
-    ),
+    Version(lance.__version__) <= Version("0.3.19"),
+    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
 )
 def test_pushdown_filter_lance(ray_start_regular_shared, fs, data_path):
     """Test that Lance predicate pushdown absorbs expression filters into Read."""

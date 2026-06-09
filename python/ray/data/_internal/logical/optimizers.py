@@ -65,8 +65,8 @@ class LogicalOptimizer(Optimizer):
 
     def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
         # CommonSubExprElimination is only supposed to run once
-        # isolated from the optimizer rule loop (as it applies)
-        # to single Projection operators not a chain of operators.
+        # isolated from the optimizer rule loop as it applies to
+        # a single Projection operator not a chain of operators.
         return CommonSubExprElimination().apply(plan)
 
 
