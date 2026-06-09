@@ -84,22 +84,6 @@ def create_deployment_scheduler(
     )
 
 
-# NOTE: the replica factories below import lazily because replica.py both
-# defines Replica and calls these factories on itself, so an eager import would
-# be a self-cycle. Unlike the proxy/controller actor-class factories, they
-# cannot be hoisted into their own eager module without splitting replica.py.
-def create_replica_impl(**kwargs):
-    from ray.serve._private.replica import Replica
-
-    return Replica(**kwargs)
-
-
-def create_replica_metrics_manager(**kwargs):
-    from ray.serve._private.replica import ReplicaMetricsManager
-
-    return ReplicaMetricsManager(**kwargs)
-
-
 def create_dynamic_handle_options(**kwargs):
     return DynamicHandleOptions(**kwargs)
 
