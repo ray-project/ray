@@ -346,6 +346,32 @@ py_test_module_list(
     ],
 )
 
+# Run the controller metric high-cardinality opt-out test with the flag disabled.
+py_test_module_list(
+    size = "medium",
+    args = [
+        "-k",
+        "test_disable_high_cardinality_controller_metrics",
+    ],
+    env = {
+        "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS": "0",
+    },
+    files = [
+        "test_metrics.py",
+    ],
+    name_suffix = "_controller_metrics_without_high_cardinality",
+    tags = [
+        "exclusive",
+        "team:serve",
+        "use_all_core_windows",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Deployment actors tests: split into own target with size=large because
 # the test file has 39 tests including heavyweight crash-recovery tests
 # with 120s waits that exceed the medium/long (900s) timeout under CI load.

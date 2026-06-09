@@ -361,28 +361,19 @@ def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeo
 
 @pytest.fixture
 def metrics_start_shutdown(request):
-    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     param = request.param if hasattr(request, "param") else None
-    if isinstance(param, dict):
-        request_timeout_s = param.get("request_timeout_s")
-        env_vars = param.get("env_vars", {})
-    else:
-        request_timeout_s = param if param else None
-        env_vars = {}
-    old_env_vars = {key: os.environ.get(key) for key in env_vars}
-    for key, value in env_vars.items():
-        os.environ[key] = str(value)
+    request_timeout_s = param if param else None
+    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    wait_for_metrics_port_free()
+    ray.init(
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
+        _system_config={
+            "metrics_report_interval_ms": 100,
+            "task_retry_delay_ms": 50,
+        },
+    )
 
     try:
-        wait_for_metrics_port_free()
-        ray.init(
-            _metrics_export_port=TEST_METRICS_EXPORT_PORT,
-            _system_config={
-                "metrics_report_interval_ms": 100,
-                "task_retry_delay_ms": 50,
-            },
-        )
-
         session_name = ray._private.worker._global_node.session_name
         wait_for_metrics_endpoint(session_name)
 
@@ -403,15 +394,9 @@ def metrics_start_shutdown(request):
             ),
         )
     finally:
-        if ray.is_initialized():
-            serve.shutdown()
-            ray.shutdown()
-            reset_ray_address()
-        for key, old_value in old_env_vars.items():
-            if old_value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = old_value
+        serve.shutdown()
+        ray.shutdown()
+        reset_ray_address()
 
 
 # Helper function to return the node ID of a remote worker.
