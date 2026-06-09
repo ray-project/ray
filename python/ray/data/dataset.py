@@ -872,7 +872,7 @@ class Dataset:
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_columns(
         self,
-        exprs: Dict[str, "Expr"],
+        exprs: Mapping[str, "Expr"],
         *,
         compute: Optional[ComputeStrategy] = None,
         **ray_remote_args,
@@ -909,10 +909,8 @@ class Dataset:
         """
         from ray.data.expressions import DownloadExpr
 
-        if not isinstance(exprs, dict) or not exprs:
-            raise ValueError(
-                f"`exprs` must be a non-empty dict of {{str: Expr}}, got {exprs!r}."
-            )
+        if not exprs:
+            return self
         for name, expr in exprs.items():
             if not isinstance(name, str):
                 raise TypeError(
@@ -931,7 +929,7 @@ class Dataset:
         from ray.data._internal.logical.operators import Project
 
         project_op = Project(
-            exprs=[StarExpr(), *[expr.alias(name) for name, expr in exprs.items()]],
+            exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
             input_dependencies=[self._logical_plan.dag],
             compute=compute,
             ray_remote_args=ray_remote_args,

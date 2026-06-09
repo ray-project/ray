@@ -1091,13 +1091,16 @@ def test_with_column_delegates_to_with_columns(
     assert rows_same(result_df, expected_df)
 
 
-def test_with_columns_validation():
-    """Verify `with_columns` rejects invalid input."""
+def test_with_columns_empty_is_noop():
+    """Verify `with_columns` with an empty mapping returns the dataset unchanged."""
     ds = ray.data.range(5)
-    with pytest.raises(ValueError):
-        ds.with_columns({})
-    with pytest.raises(ValueError):
-        ds.with_columns([col("id")])  # not a dict
+    result = ds.with_columns({})
+    assert result.take_all() == ds.take_all()
+
+
+def test_with_columns_validation():
+    """Verify `with_columns` rejects invalid expr values."""
+    ds = ray.data.range(5)
     with pytest.raises(TypeError):
         ds.with_columns({"x": "not_an_expr"})
 
