@@ -264,6 +264,36 @@ inline std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
 }
 
 /**
+ * @brief Creates a MockWorker for a system actor (is_system_actor=true).
+ *
+ * @param owner_id The parent task ID for the lease.
+ * @param max_retries The maximum number of actor restarts allowed.
+ * @param port The port number for the worker.
+ * @param clock The clock the worker uses to timestamp lease grants.
+ * @param worker_process_pid The PID of the fake worker process. Defaults to -1.
+ * @return A shared pointer to the created worker with is_system_actor set.
+ */
+inline std::shared_ptr<WorkerInterface> CreateSystemActorWorker(
+    TaskID owner_id,
+    int32_t max_retries,
+    int32_t port,
+    ClockInterface &clock,
+    pid_t worker_process_pid = -1) {
+  rpc::LeaseSpec message;
+  message.set_lease_id(LeaseID::FromRandom().Binary());
+  message.set_parent_task_id(owner_id.Binary());
+  message.set_type(rpc::TaskType::ACTOR_CREATION_TASK);
+  message.set_max_actor_restarts(max_retries);
+  message.set_is_system_actor(true);
+  LeaseSpecification lease_spec(message);
+  RayLease lease(lease_spec);
+  std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+      ray::WorkerID::FromRandom(), port, clock, 0, worker_process_pid);
+  worker->GrantLease(lease);
+  return worker;
+}
+
+/**
  * @brief Kills a worker's process by replacing it with a dead FakeProcess.
  * @note This function assumes that the worker is mocked and SetProcess can be called
  *       more than once.

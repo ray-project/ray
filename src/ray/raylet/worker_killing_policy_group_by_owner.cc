@@ -78,6 +78,10 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   std::shared_ptr<WorkerInterface> idle_worker_to_kill = nullptr;
   int64_t max_idle_worker_used_memory = 0;
   for (const std::shared_ptr<WorkerInterface> &worker : workers) {
+    if (!worker->GetGrantedLeaseId().IsNil() &&
+        worker->GetGrantedLease().GetLeaseSpecification().IsSystemActor()) {
+      continue;
+    }
     if (worker->GetGrantedLeaseId().IsNil()) {
       StatusSetOr<int64_t, StatusT::NotFound> used_memory_or =
           MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot,
@@ -117,6 +121,9 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   for (std::shared_ptr<WorkerInterface> worker : workers) {
     // Skip workers that don't have any lease granted.
     if (worker->GetGrantedLeaseId().IsNil()) {
+      continue;
+    }
+    if (worker->GetGrantedLease().GetLeaseSpecification().IsSystemActor()) {
       continue;
     }
     bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();

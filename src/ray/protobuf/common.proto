@@ -499,6 +499,9 @@ message LeaseSpec {
   uint64 attempt_number = 21;
   string task_name = 22;
   FallbackStrategy fallback_strategy = 23;
+  // If true, this worker hosts a Ray-internal system actor (e.g. ServeController,
+  // ProxyActor) and must be exempt from OOM-triggered killing.
+  bool is_system_actor = 24;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -622,6 +625,9 @@ message TaskSpec {
   optional string tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
   FallbackStrategy fallback_strategy = 45;
+  // Marks actor creation tasks for system control-plane actors that should be
+  // protected from OOM killing.
+  bool is_system_actor = 46;
 }
 
 message TaskInfoEntry {

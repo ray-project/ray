@@ -214,6 +214,11 @@ class TaskSpecBuilder {
     return *this;
   }
 
+  TaskSpecBuilder &SetIsSystemActor(bool is_system_actor) {
+    message_->set_is_system_actor(is_system_actor);
+    return *this;
+  }
+
   /// Set the driver attributes of the task spec.
   /// See `common.proto` for meaning of the arguments.
   ///

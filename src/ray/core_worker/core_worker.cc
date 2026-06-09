@@ -2100,6 +2100,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    extension_data,
                                    actor_creation_options.allow_out_of_order_execution,
                                    root_detached_actor_id);
+  builder.SetIsSystemActor(actor_creation_options.is_system_actor);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorRefDeletedRequest.

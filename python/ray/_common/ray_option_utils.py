@@ -1,4 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -57,17 +58,21 @@ def _counting_option(name: str, infinite: bool = True, default_value: Any = None
     if infinite:
         return Option(
             (int, type(None)),
-            lambda x: None
-            if (x is None or x >= -1)
-            else f"The keyword '{name}' only accepts None, 0, -1"
-            " or a positive integer, where -1 represents infinity.",
+            lambda x: (
+                None
+                if (x is None or x >= -1)
+                else f"The keyword '{name}' only accepts None, 0, -1"
+                " or a positive integer, where -1 represents infinity."
+            ),
             default_value=default_value,
         )
     return Option(
         (int, type(None)),
-        lambda x: None
-        if (x is None or x >= 0)
-        else f"The keyword '{name}' only accepts None, 0 or a positive integer.",
+        lambda x: (
+            None
+            if (x is None or x >= 0)
+            else f"The keyword '{name}' only accepts None, 0 or a positive integer."
+        ),
         default_value=default_value,
     )
 
@@ -179,46 +184,54 @@ _task_only_options = {
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": Option(
         (int, str, type(None)),
-        lambda x: None
-        if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
-        else "Default None. When None is passed, "
-        "The default value is 1 for a task and actor task, and "
-        "'streaming' for generator tasks and generator actor tasks. "
-        "The keyword 'num_returns' only accepts None, "
-        "a non-negative integer, "
-        "'streaming' (for generators), or 'dynamic'. 'dynamic' flag "
-        "will be deprecated in the future, and it is recommended to use "
-        "'streaming' instead.",
+        lambda x: (
+            None
+            if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
+            else "Default None. When None is passed, "
+            "The default value is 1 for a task and actor task, and "
+            "'streaming' for generator tasks and generator actor tasks. "
+            "The keyword 'num_returns' only accepts None, "
+            "a non-negative integer, "
+            "'streaming' (for generators), or 'dynamic'. 'dynamic' flag "
+            "will be deprecated in the future, and it is recommended to use "
+            "'streaming' instead."
+        ),
         default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
-        lambda x: None
-        if (x is None)
-        else "Setting 'object_store_memory' is not implemented for tasks",
+        lambda x: (
+            None
+            if (x is None)
+            else "Setting 'object_store_memory' is not implemented for tasks"
+        ),
     ),
     "retry_exceptions": Option(
         (bool, list, tuple),
-        lambda x: None
-        if (
-            isinstance(x, bool)
-            or (
-                isinstance(x, (list, tuple))
-                and all(issubclass_safe(x_, Exception) for x_ in x)
+        lambda x: (
+            None
+            if (
+                isinstance(x, bool)
+                or (
+                    isinstance(x, (list, tuple))
+                    and all(issubclass_safe(x_, Exception) for x_ in x)
+                )
             )
-        )
-        else "retry_exceptions must be either a boolean or a list of exceptions",
+            else "retry_exceptions must be either a boolean or a list of exceptions"
+        ),
         default_value=False,
     ),
     "_generator_backpressure_num_objects": Option(
         (int, type(None)),
-        lambda x: None
-        if x != 0
-        else (
-            "_generator_backpressure_num_objects=0 is not allowed. "
-            "Use a value > 0. If the value is equal to 1, the behavior "
-            "is identical to Python generator (generator 1 object "
-            "whenever `next` is called). Use -1 to disable this feature. "
+        lambda x: (
+            None
+            if x != 0
+            else (
+                "_generator_backpressure_num_objects=0 is not allowed. "
+                "Use a value > 0. If the value is equal to 1, the behavior "
+                "is identical to Python generator (generator 1 object "
+                "whenever `next` is called). Use -1 to disable this feature. "
+            )
         ),
     ),
 }
@@ -228,10 +241,12 @@ _actor_only_options = {
     "enable_tensor_transport": Option((bool, type(None)), default_value=None),
     "lifetime": Option(
         (str, type(None)),
-        lambda x: None
-        if x in (None, "detached", "non_detached")
-        else "actor `lifetime` argument must be one of 'detached', "
-        "'non_detached' and 'None'.",
+        lambda x: (
+            None
+            if x in (None, "detached", "non_detached")
+            else "actor `lifetime` argument must be one of 'detached', "
+            "'non_detached' and 'None'."
+        ),
     ),
     "max_concurrency": _counting_option("max_concurrency", False),
     "max_restarts": _counting_option("max_restarts", default_value=0),
@@ -240,6 +255,7 @@ _actor_only_options = {
     "namespace": Option((str, type(None))),
     "get_if_exists": Option(bool, default_value=False),
     "allow_out_of_order_execution": Option((bool, type(None))),
+    "_system_actor": Option((bool, type(None)), default_value=False),
 }
 
 # Priority is important here because during dictionary update, same key with higher

@@ -3585,6 +3585,7 @@ cdef class CoreWorker:
                      c_bool allow_out_of_order_execution,
                      c_bool enable_tensor_transport,
                      fallback_strategy,
+                     c_bool is_system_actor=False,
                      ):
         cdef:
             CRayFunction ray_function
@@ -3645,7 +3646,8 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_fallback_strategy),
+                        c_fallback_strategy,
+                        is_system_actor),
                     extension_data,
                     call_site,
                     &c_actor_id,

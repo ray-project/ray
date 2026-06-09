@@ -50,6 +50,7 @@ LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
   message_->set_root_detached_actor_id(task_spec.root_detached_actor_id());
   message_->set_task_name(task_spec.name());
   message_->set_type(task_spec.type());
+  message_->set_is_system_actor(task_spec.is_system_actor());
   if (IsActorCreationTask()) {
     message_->set_actor_id(task_spec.actor_creation_task_spec().actor_id());
     message_->set_is_detached_actor(task_spec.actor_creation_task_spec().is_detached());
@@ -192,6 +193,8 @@ ActorID LeaseSpecification::RootDetachedActorId() const {
 }
 
 bool LeaseSpecification::IsDetachedActor() const { return message_->is_detached_actor(); }
+
+bool LeaseSpecification::IsSystemActor() const { return message_->is_system_actor(); }
 
 int LeaseSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 

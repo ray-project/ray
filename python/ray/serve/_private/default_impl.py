@@ -117,12 +117,16 @@ def get_request_metadata(init_options, handle_options):
             request_protocol = RequestProtocol.GRPC
 
     return RequestMetadata(
-        request_id=_request_context.request_id
-        if _request_context.request_id
-        else generate_request_id(),
-        internal_request_id=_request_context._internal_request_id
-        if _request_context._internal_request_id
-        else generate_request_id(),
+        request_id=(
+            _request_context.request_id
+            if _request_context.request_id
+            else generate_request_id()
+        ),
+        internal_request_id=(
+            _request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id()
+        ),
         call_method=handle_options.method_name,
         route=_request_context.route,
         app_name=_request_context.app_name,
@@ -263,6 +267,7 @@ def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+        _system_actor=True,
     )
     if controller_options is not None and controller_options.runtime_env:
         # The validator on ControllerOptions guarantees this is a dict

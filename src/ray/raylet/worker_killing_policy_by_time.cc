@@ -101,6 +101,19 @@ TimeBasedWorkerKillingPolicy::Policy(
                  } else {
                    RAY_LOG_EVERY_MS(WARNING, 60000) << used_memory_or.message();
                  }
+
+                 // Shield system actors (e.g. ServeController) from OOM killing.
+                 if (!worker->GetGrantedLeaseId().IsNil() &&
+                     worker->GetGrantedLease().GetLeaseSpecification().IsSystemActor()) {
+                   RAY_LOG_EVERY_MS(INFO, 60000)
+                       << "Skipping system actor from OOM victim selection. "
+                       << "Actor name: "
+                       << worker->GetGrantedLease()
+                              .GetLeaseSpecification()
+                              .GetFunctionOrActorName();
+                   return false;
+                 }
+
                  // Only consider killing:
                  // 1. Workers with a granted lease.
                  // 2. Workers with a granted lease in the past.
@@ -168,6 +181,12 @@ TimeBasedWorkerKillingPolicy::Policy(
 
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
     std::shared_ptr<WorkerInterface> worker_to_kill = *sorted_worker_it;
+    // Double-check: never kill a system actor even if it somehow passed the filter.
+    if (!worker_to_kill->GetGrantedLeaseId().IsNil() &&
+        worker_to_kill->GetGrantedLease().GetLeaseSpecification().IsSystemActor()) {
+      sorted_worker_it++;
+      continue;
+    }
     bool should_retry =
         !worker_to_kill->GetGrantedLeaseId().IsNil() &&
         worker_to_kill->GetGrantedLease().GetLeaseSpecification().IsRetriable();
@@ -243,18 +262,23 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
 
     bool retriable = !worker->GetGrantedLeaseId().IsNil() &&
                      worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
+    bool is_system_actor =
+        !worker->GetGrantedLeaseId().IsNil() &&
+        worker->GetGrantedLease().GetLeaseSpecification().IsSystemActor();
     std::string worker_granted_time = "Cold idle worker";
     if (worker->GetLastGrantedLeaseTime().has_value()) {
       worker_granted_time = absl::FormatTime(worker->GetLastGrantedLeaseTime().value(),
                                              absl::UTCTimeZone());
     }
-    worker_debug_strings.push_back(absl::StrFormat(
-        "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %s "
-        "GiB)",
-        worker->GetGrantedLeaseId().Hex(),
-        worker_granted_time,
-        retriable ? "yes" : "no",
-        used_memory_gb));
+    worker_debug_strings.push_back(
+        absl::StrFormat("(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | "
+                        "System actor: %s | Memory used: %s "
+                        "GiB)",
+                        worker->GetGrantedLeaseId().Hex(),
+                        worker_granted_time,
+                        retriable ? "yes" : "no",
+                        is_system_actor ? "yes" : "no",
+                        used_memory_gb));
   }
 
   result << absl::StrJoin(worker_debug_strings, ", ");

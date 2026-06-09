@@ -518,6 +518,81 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   ASSERT_EQ(workers_to_kill[2].first->WorkerId(), idle_small->WorkerId());
 }
 
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestPolicySkipsSystemActorWhenOtherWorkersAvailable) {
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+
+  // A regular retriable worker and a system actor worker.
+  std::shared_ptr<WorkerInterface> regular_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  std::shared_ptr<WorkerInterface> system_actor =
+      CreateSystemActorWorker(owner_id, has_retry_, port_, clock_, 2);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(regular_worker);
+  workers.push_back(system_actor);
+
+  // Memory pressure: 1200 - 1000 + 100 = 300 bytes to free.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{regular_worker, 400}, {system_actor, 400}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  // Only the regular worker should be selected; the system actor must be spared.
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), regular_worker->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestPolicySelectsNoWorkersWhenOnlySystemActorPresent) {
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+
+  std::shared_ptr<WorkerInterface> system_actor =
+      CreateSystemActorWorker(owner_id, has_retry_, port_, clock_, 1);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(system_actor);
+
+  // Memory pressure present, but only a system actor is available.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot({{system_actor, 800}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  // The policy must return an empty list because the system actor is shielded.
+  ASSERT_TRUE(workers_to_kill.empty());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestPolicySystemActorNotSelectedEvenUnderSevereMemoryPressure) {
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+
+  std::shared_ptr<WorkerInterface> regular_worker =
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1);
+  std::shared_ptr<WorkerInterface> system_actor =
+      CreateSystemActorWorker(owner_id, has_retry_, port_, clock_, 2);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(regular_worker);
+  workers.push_back(system_actor);
+
+  // Severe memory pressure: even killing all regular workers may not be enough,
+  // but the system actor must still be excluded.
+  MemoryUsageSnapshot system_snapshot = CreateSystemSnapshot(2000);
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{regular_worker, 300}, {system_actor, 800}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  for (const auto &entry : workers_to_kill) {
+    ASSERT_NE(entry.first->WorkerId(), system_actor->WorkerId());
+  }
+}
+
 }  // namespace raylet
 
 }  // namespace ray
