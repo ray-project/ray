@@ -1,0 +1,42 @@
+# Qwen3-0.6B + DeepSpeed ZeRO — P0 quick performance-regression workload.
+#
+# Perf-of-record cluster shape: 1x p4d.24xlarge (8x A100-40GB SXM) + m5.4xlarge
+# head, single node. See compute_configs/compute_gpu_8xA100_aws.yaml.
+# 0.6B is tiny on A100-40GB (~2GB static/GPU under ZeRO-2), so batch_size is
+# sized up to keep the GPUs working and the MFU signal meaningful.
+#
+# Pair with the torchrun launcher for a parity baseline (same node):
+#   torchrun --nproc_per_node=8 -m core.runner \
+#       --experiment experiments/qwen3_06b_deepspeed.yaml --launcher torchrun
+name: qwen3_06b_deepspeed
+launcher: ray
+num_workers: 8                   # 8x A100 on a single p4d.24xlarge node
+use_gpu: true
+model:
+  adapter: deepspeed
+  name: Qwen/Qwen3-0.6B          # HF model id; AutoModelForCausalLM.from_pretrained
+  parallelism:
+    zero_stage: 2                # 0.6B fits easily; stage 2 shards optimizer+grads,
+                                 # avoids the extra param-gather comms of stage 3
+  precision: bf16                # A100 supports bf16 natively
+data:
+  dataloader: framework_default
+  dataset: wikitext             # use `synthetic` to isolate compute from data ingest
+  dataset_path: ""
+  batch_size: 8                 # per-GPU micro batch; global = 8 x 8 = 64 seqs/step
+  seq_len: 2048
+  limit_training_rows: 8000
+training:
+  num_steps: 200
+  warmup_steps: 10
+  seed: 42
+  log_every_n_steps: 20
+  gradient_accumulation_steps: 1
+  optimizer:
+    lr: 3.0e-4
+    betas: [0.9, 0.95]
+    weight_decay: 0.1
+checkpoint:
+  interval: 100
+  at_end: false
+perturbation: null
