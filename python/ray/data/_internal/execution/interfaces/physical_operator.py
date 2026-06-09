@@ -898,7 +898,7 @@ class PhysicalOperator(Operator):
             )
             for downstream_op in self.output_dependencies
         )
-        return mem_op_internal, op_outputs_bytes + used_op_outputs_bytes
+        return int(mem_op_internal), int(op_outputs_bytes + used_op_outputs_bytes)
 
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,
