@@ -242,6 +242,9 @@ class OpBufferQueue:
         Args:
             output_split_idx: If specified, only check ref bundles with the
                 given output split. When None, checks the default queue (index 0).
+
+        Returns:
+            ``True`` if a ``RefBundle`` is available for the requested split.
         """
         return self._get_queue_for(output_split_idx).has_next()
 
@@ -480,6 +483,10 @@ class OpState:
         """Get an item from this node's output queue, blocking as needed.
 
         This method must be thread-safe.
+
+        Args:
+            output_split_idx: Optional output split index for streaming-split
+                consumers; ``None`` reads from the default output queue.
 
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.

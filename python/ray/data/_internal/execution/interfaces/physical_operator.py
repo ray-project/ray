@@ -369,7 +369,8 @@ class DataOpTask(OpTask):
             deferred_emits: List to which :class:`DeferredEmit` entries
                 are appended.
 
-        Returns: The number of bytes accounted for (for the budget loop).
+        Returns:
+            The number of bytes accounted for (for the budget loop).
         """
         bytes_read = 0
 
@@ -638,10 +639,13 @@ class MetadataOpTask(OpTask):
         task_done_callback: Callable[[], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Initialize a metadata-only OpTask.
+
         Args:
+            task_index: Index identifying this task within its operator.
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
+            task_resource_bundle: Optional resource bundle reserved for this task.
         """
         super().__init__(task_index, task_resource_bundle)
         self._object_ref = object_ref
