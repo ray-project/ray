@@ -77,12 +77,16 @@ class TorchTensorWorker:
         assert tensor.device.type == "cuda"
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
-    def recv_and_matmul(self, two_d_tensor):
+    def recv_and_matmul(self, two_d_tensor: "torch.Tensor"):
         """
         Receive the tensor and do some expensive computation (matmul).
 
         Args:
             two_d_tensor: a 2D tensor that has the same size for its dimensions
+
+        Returns:
+            A tuple of (first element value, tensor shape, tensor dtype) for
+            verification by the caller.
         """
         # Check that tensor got loaded to the correct device.
         assert two_d_tensor.dim() == 2

@@ -309,12 +309,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             - If ActorPoolStrategy -> ActorPoolMapOperator
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
-            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
+            data_context: The :class:`DataContext` to use for this operator.
+            target_max_block_size_override: Override for target max-block-size.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
-            target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -339,6 +340,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+
+        Returns:
+            A ``MapOperator`` instance whose concrete subclass depends on the
+            requested compute strategy.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -703,14 +708,19 @@ def _map_task(
     """Remote function for a single operator task.
 
     Args:
-        fn: The callable that takes Iterator[Block] as input and returns
-            Iterator[Block] as output.
-        blocks: The concrete block values from the task ref bundle.
+        map_transformer: The :class:`MapTransformer` to apply, taking
+            ``Iterator[Block]`` as input and yielding ``Iterator[Block]``.
+        data_context: The :class:`DataContext` to install for this task.
+        ctx: The :class:`TaskContext` for the task, used to look up
+            per-task settings and propagate context to the UDF.
+        *blocks: The concrete block values from the task ref bundle.
         slices: List of block slices for this task to process.
+        **kwargs: Additional keyword arguments stored on ``ctx.kwargs`` and
+            forwarded to the map transformer.
 
-    Returns:
-        A generator of blocks, followed by the list of BlockMetadata for the blocks
-        as the last generator return.
+    Yields:
+        Union[Block, BlockMetadataWithSchema]: A generator of blocks, followed by the
+        list of BlockMetadata for the blocks as the last generator return.
     """
     task_start_s = time.perf_counter()
 
