@@ -48,6 +48,12 @@ else
   RAY_EXTRAS="all"
 fi
 
+# TODO(cu130): ray[all]'s cgraph extra hard-pins cupy-cuda12x, so this install
+# always pulls the CUDA-12 build even on cu130 images (no PEP 508 marker exists
+# to select cupy by CUDA version). Until the cgraph extra can resolve cupy per
+# CUDA runtime (or cupy ships a unified package), we patch it up with the
+# uninstall/reinstall swap below. Drop that swap once this install can pick the
+# right cupy directly.
 $HOME/anaconda3/bin/pip --no-cache-dir install \
     -c /home/ray/requirements_compiled.txt \
     "${WHEEL_FILE}[${RAY_EXTRAS}]"
