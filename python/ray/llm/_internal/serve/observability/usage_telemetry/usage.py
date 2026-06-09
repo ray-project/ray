@@ -47,6 +47,7 @@ class TelemetryTags(str, Enum):
     LLM_SERVE_DEPLOY_OUTCOME = "LLM_SERVE_DEPLOY_OUTCOME"
     LLM_SERVE_SERVING_PATTERN = "LLM_SERVE_SERVING_PATTERN"
     LLM_SERVE_ENGINE_CONFIG = "LLM_SERVE_ENGINE_CONFIG"
+    LLM_SERVE_DEPLOY_FAILURE = "LLM_SERVE_DEPLOY_FAILURE"
 
 
 class TelemetryModel(BaseModelExtended):
@@ -84,6 +85,13 @@ class TelemetryModel(BaseModelExtended):
     distributed_executor_backend: str = "default"
     load_format: str = "auto"
     multimodal: str = "0"
+    # Names (not values) of the engine_kwargs the user set; auto-tracks new
+    # vLLM knobs without a code change. Key names are vLLM's public API surface.
+    set_engine_kwargs: Sequence[str] = ()
+    # Deploy failure detail (empty on success).
+    exc_type: str = ""
+    root_type: str = ""
+    failure_phase: str = ""
 
 
 @ray.remote(
@@ -199,7 +207,24 @@ class TelemetryAgent:
                     "distributed_executor_backend": model.distributed_executor_backend,
                     "load_format": model.load_format,
                     "multimodal": model.multimodal,
+                    "set_engine_kwargs": list(model.set_engine_kwargs),
                 }
+                for model in self.models.values()
+            ],
+            separators=(",", ":"),
+        )
+
+    def _deploy_failures(self) -> str:
+        """JSON array of per-model failure detail ({} on success), index aligned."""
+        return json.dumps(
+            [
+                {
+                    "exc_type": model.exc_type,
+                    "root_type": model.root_type,
+                    "phase": model.failure_phase,
+                }
+                if model.exc_type or model.failure_phase
+                else {}
                 for model in self.models.values()
             ],
             separators=(",", ":"),
@@ -224,6 +249,7 @@ class TelemetryAgent:
             TelemetryTags.LLM_SERVE_DEPLOY_OUTCOME: self._join("deploy_outcome"),
             TelemetryTags.LLM_SERVE_SERVING_PATTERN: self._join("serving_pattern"),
             TelemetryTags.LLM_SERVE_ENGINE_CONFIG: self._engine_configs(),
+            TelemetryTags.LLM_SERVE_DEPLOY_FAILURE: self._deploy_failures(),
         }
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
@@ -310,6 +336,7 @@ def push_telemetry_report_for_all_models(
     get_hardware_fn: Callable = get_hardware_usages_to_report,
     deploy_outcome: str = "success",
     serving_pattern: str = "default",
+    deploy_failure: Optional[Dict[str, str]] = None,
 ):
     """Push a telemetry report for each model. Never raises."""
     if not all_models:
@@ -324,6 +351,7 @@ def push_telemetry_report_for_all_models(
                 get_hardware_fn,
                 deploy_outcome=deploy_outcome,
                 serving_pattern=serving_pattern,
+                deploy_failure=deploy_failure,
             )
         except Exception:
             logger.exception(
@@ -375,13 +403,33 @@ def classify_start_failure(exc: BaseException) -> str:
     return "other"
 
 
+def exception_type(exc: BaseException) -> str:
+    """Fully qualified exception class name. A code symbol, never user data."""
+    return f"{type(exc).__module__}.{type(exc).__qualname__}"
+
+
+def root_exception_type(exc: BaseException) -> str:
+    """Type of the deepest chained cause. Engine errors often surface wrapped
+    (e.g. a Ray worker exception inside a RayTaskError), so the root is the one
+    that actually explains the failure."""
+    seen = {id(exc)}
+    while True:
+        nxt = exc.__cause__ or exc.__context__
+        if nxt is None or id(nxt) in seen:
+            return exception_type(exc)
+        seen.add(id(nxt))
+        exc = nxt
+
+
 def _push_model_telemetry(
     model: "LLMConfig",
     get_lora_model_func: Callable,
     get_hardware_fn: Callable,
     deploy_outcome: str = "success",
     serving_pattern: str = "default",
+    deploy_failure: Optional[Dict[str, str]] = None,
 ) -> None:
+    deploy_failure = deploy_failure or {}
     use_lora = (
         model.lora_config is not None
         and model.lora_config.dynamic_lora_loading_path is not None
@@ -464,5 +512,9 @@ def _push_model_telemetry(
         ),
         load_format=str(model.engine_kwargs.get("load_format") or "auto"),
         multimodal="1" if model.supports_vision else "0",
+        set_engine_kwargs=sorted(model.engine_kwargs.keys()),
+        exc_type=deploy_failure.get("exc_type", ""),
+        root_type=deploy_failure.get("root_type", ""),
+        failure_phase=deploy_failure.get("phase", ""),
     )
     _push_telemetry_report(telemetry_model)

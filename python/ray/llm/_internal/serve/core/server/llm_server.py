@@ -33,7 +33,9 @@ from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestI
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     classify_start_failure,
+    exception_type,
     push_telemetry_report_for_all_models,
+    root_exception_type,
     serving_pattern,
 )
 from ray.llm._internal.serve.utils.batcher import Batcher
@@ -195,23 +197,32 @@ class LLMServer(LLMServerProtocol):
 
     async def start(self):
         """Start the underlying engine. This handles async initialization."""
-        if self._engine_cls is not None:
+        if self._engine_cls is None:
+            return
+        # Phase is the part we control; everything vLLM does inside engine.start()
+        # (download, load, warmup) collapses into "engine_start", but root_type
+        # usually reveals which.
+        phase = "construct"
+        try:
             self.engine = self._engine_cls(self._llm_config)
-            try:
-                await asyncio.wait_for(
-                    self._start_engine(), timeout=ENGINE_START_TIMEOUT_S
-                )
-            except Exception as e:
-                # Record the failure category so deploy health is visible, then
-                # re-raise (telemetry is best-effort and must not mask the error).
-                # Offload to a thread: the push does blocking ray.get + retry sleeps.
-                await asyncio.to_thread(
-                    push_telemetry_report_for_all_models,
-                    all_models=[self._llm_config],
-                    deploy_outcome=classify_start_failure(e),
-                    serving_pattern=serving_pattern(self),
-                )
-                raise
+            phase = "engine_start"
+            await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+        except Exception as e:
+            # Record the failure so deploy health is visible, then re-raise
+            # (telemetry is best-effort and must not mask the error). Offload to
+            # a thread: the push does blocking ray.get + retry sleeps.
+            await asyncio.to_thread(
+                push_telemetry_report_for_all_models,
+                all_models=[self._llm_config],
+                deploy_outcome=classify_start_failure(e),
+                serving_pattern=serving_pattern(self),
+                deploy_failure={
+                    "exc_type": exception_type(e),
+                    "root_type": root_exception_type(e),
+                    "phase": phase,
+                },
+            )
+            raise
 
     async def __serve_build_asgi_app__(self):
         from fastapi import HTTPException

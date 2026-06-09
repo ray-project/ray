@@ -262,13 +262,10 @@ enum TagKey {
   LLM_SERVE_DEPLOY_OUTCOME = 624;
   // Comma separated list of serving patterns per model: default, dp, pd, dp_pd.
   LLM_SERVE_SERVING_PATTERN = 625;
-  // JSON array of per-model engine config facts, index aligned with
-  // LLM_SERVE_MODELS. Each object holds non-identifying engine knobs:
-  // quantization, dtype, max_model_len, prefix_caching, chunked_prefill,
-  // kv_cache_dtype, speculative_decoding, enforce_eager, pipeline_parallel,
-  // accelerator_kind, log_engine_metrics, distributed_executor_backend,
-  // load_format, multimodal. Booleans are "on"/"off"/"default".
+  // Per-model engine config facts as a JSON array; see TelemetryAgent._engine_configs.
   LLM_SERVE_ENGINE_CONFIG = 626;
+  // Per-model deploy failure detail as a JSON array; see TelemetryAgent._deploy_failures.
+  LLM_SERVE_DEPLOY_FAILURE = 627;
 
   // LLM Batch
   // Comma separated list of names of the config used to build processor.

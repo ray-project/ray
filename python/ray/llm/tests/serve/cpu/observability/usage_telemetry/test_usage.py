@@ -17,7 +17,9 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     _get_or_create_telemetry_agent,
     _retry_get_telemetry_agent,
     classify_start_failure,
+    exception_type,
     push_telemetry_report_for_all_models,
+    root_exception_type,
 )
 
 
@@ -138,6 +140,7 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
                 "distributed_executor_backend": "default",
                 "load_format": "auto",
                 "multimodal": "0",
+                "set_engine_kwargs": [],
             }
         ]
         * 5,
@@ -162,6 +165,8 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
         TagKey.LLM_SERVE_DEPLOY_OUTCOME: "success,success,success,success,success",
         TagKey.LLM_SERVE_SERVING_PATTERN: "default,default,default,default,default",
         TagKey.LLM_SERVE_ENGINE_CONFIG: default_engine_config,
+        # All deploys succeeded, so each failure object is empty.
+        TagKey.LLM_SERVE_DEPLOY_FAILURE: "[{},{},{},{},{}]",
     }
 
 
@@ -384,6 +389,19 @@ def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
         "distributed_executor_backend": "ray",
         "load_format": "runai_streamer",
         "multimodal": "0",
+        "set_engine_kwargs": sorted(
+            [
+                "quantization",
+                "dtype",
+                "max_model_len",
+                "enable_prefix_caching",
+                "enforce_eager",
+                "kv_cache_dtype",
+                "pipeline_parallel_size",
+                "distributed_executor_backend",
+                "load_format",
+            ]
+        ),
     }
 
 
@@ -410,6 +428,89 @@ class OutOfMemoryError(RuntimeError):
 def test_classify_start_failure(exc, expected):
     """Failures map to a fixed enum by exception type; the message is never read."""
     assert classify_start_failure(exc) == expected
+
+
+def test_exception_type_is_qualified_and_non_identifying():
+    assert exception_type(ValueError("x")) == "builtins.ValueError"
+    assert exception_type(OutOfMemoryError("x")).endswith(".OutOfMemoryError")
+
+
+def test_root_exception_type_walks_cause_chain():
+    """The root cause is recorded, since engine errors surface wrapped."""
+    try:
+        try:
+            raise RuntimeError("worker died")
+        except RuntimeError as inner:
+            raise ValueError("wrapper") from inner
+    except ValueError as wrapper:
+        assert exception_type(wrapper) == "builtins.ValueError"
+        assert root_exception_type(wrapper) == "builtins.RuntimeError"
+    # No chain: root is the exception itself.
+    assert root_exception_type(KeyError("k")) == "builtins.KeyError"
+
+
+def test_deploy_failure_detail_is_recorded(disable_placement_bundles):
+    """A failed deploy records exc_type / root_type / phase in the JSON tag."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="failed_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+    )
+    config._set_model_architecture(model_architecture="failed_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+        deploy_outcome="oom",
+        deploy_failure={
+            "exc_type": "ray.exceptions.RayTaskError",
+            "root_type": "torch.cuda.OutOfMemoryError",
+            "phase": "engine_start",
+        },
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "oom"
+    (failure,) = json.loads(telemetry[TagKey.LLM_SERVE_DEPLOY_FAILURE])
+    assert failure == {
+        "exc_type": "ray.exceptions.RayTaskError",
+        "root_type": "torch.cuda.OutOfMemoryError",
+        "phase": "engine_start",
+    }
+
+
+def test_curated_engine_keys_still_exist_in_vllm():
+    """Guard against engine drift: the engine_kwargs we decode must stay real
+    vLLM EngineArgs fields, so a rename breaks CI instead of silently recording
+    nothing. Skips where vLLM isn't importable."""
+    pytest.importorskip("vllm")
+    import dataclasses
+
+    from vllm.engine.arg_utils import AsyncEngineArgs
+
+    fields = {f.name for f in dataclasses.fields(AsyncEngineArgs)}
+    curated = {
+        "quantization",
+        "dtype",
+        "max_model_len",
+        "enable_prefix_caching",
+        "enable_chunked_prefill",
+        "kv_cache_dtype",
+        "enforce_eager",
+        "pipeline_parallel_size",
+        "distributed_executor_backend",
+        "load_format",
+    }
+    assert curated <= fields, f"no longer in vLLM AsyncEngineArgs: {curated - fields}"
 
 
 if __name__ == "__main__":
