@@ -11,6 +11,7 @@ from packaging.version import parse as parse_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
+    _backfill_missing_fields,
     _has_unhashable_pandas_types,
     concat,
     hash_partition,
@@ -1741,6 +1742,50 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
         {"level2": {"level3": {"a": 3, "b": None, "c": True}}},
         {"level2": {"level3": {"a": 4, "b": None, "c": False}}},
     ]
+
+
+def test_backfill_missing_fields_non_struct_input_raises():
+    """Regression test for #61656.
+
+    ``_backfill_missing_fields`` previously crashed with an inscrutable
+    ``TypeError: 'pyarrow.lib.DataType' object is not iterable`` when given a
+    non-struct ``column`` against a struct ``unified_struct_type``. The
+    function must instead raise a clear ``ValueError`` so users can diagnose
+    the schema mismatch.
+    """
+    unified_struct_type = pa.struct([pa.field("a", pa.int64(), nullable=True)])
+    non_struct_column = pa.array([1, 2, 3], type=pa.int64())
+
+    with pytest.raises(ValueError, match="not a struct"):
+        _backfill_missing_fields(
+            column=non_struct_column,
+            unified_struct_type=unified_struct_type,
+            block_length=3,
+        )
+
+
+def test_align_struct_fields_non_struct_nested_field_raises():
+    """Regression test for #61656 via the recursive path.
+
+    When two blocks contain the same struct column but one block's nested
+    field is a primitive (``int64``) and the other's is a struct, the
+    unified schema picks the struct and ``_align_struct_fields`` recursively
+    calls ``_backfill_missing_fields`` on the primitive child. This must
+    raise a clear ``ValueError`` rather than crashing internally.
+    """
+    # Block A: outer struct with nested primitive field 'a: int64'.
+    block_a = pa.table(
+        {"col": pa.array([{"a": 1}, {"a": 2}])},
+    )
+    # Block B: outer struct with nested struct field 'a: struct<x: int64>'.
+    block_b = pa.table(
+        {"col": pa.array([{"a": {"x": 10}}, {"a": {"x": 20}}])},
+    )
+    # Force the unified schema to require ``a`` be a struct.
+    unified_schema = block_b.schema
+
+    with pytest.raises(ValueError, match="not a struct"):
+        _align_struct_fields([block_a, block_b], unified_schema)
 
 
 # Test fixtures for tensor-related tests
