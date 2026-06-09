@@ -3,8 +3,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
 
+from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX
 from ray.data._internal.planner.plan_expression.expression_evaluator import (
     ExpressionEvaluator,
     eval_projection,
@@ -360,6 +361,66 @@ def test_eval_projection_star_rename_missing_source_raises():
 
     with pytest.raises(KeyError):
         eval_projection(projection, block)
+
+
+def test_eval_projection_with_cse_common_exprs_arrow():
+    block = pa.table({"a": [1, 2, 3]})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+    projection = [
+        (
+            col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+            + col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+        ).alias("y")
+    ]
+
+    out = eval_projection(
+        projection,
+        block,
+        cse_common_exprs=[common],
+    )
+
+    assert out.column_names == ["y"]
+    assert out["y"].to_pylist() == [4, 6, 8]
+
+
+def test_eval_projection_cse_temp_columns_do_not_leak_with_star():
+    block = pa.table({"a": [1, 2, 3]})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+
+    out = eval_projection(
+        [star(), col(f"{CSE_TEMP_COLUMN_PREFIX}test_0").alias("y")],
+        block,
+        cse_common_exprs=[common],
+    )
+
+    assert out.column_names == ["a", "y"]
+    assert out["y"].to_pylist() == [2, 3, 4]
+
+
+def test_eval_projection_preserves_reserved_prefix_without_cse():
+    block = pa.table({f"{CSE_TEMP_COLUMN_PREFIX}user": [1, 2]})
+    out = eval_projection([star()], block)
+    assert out.column_names == [f"{CSE_TEMP_COLUMN_PREFIX}user"]
+
+
+def test_eval_projection_with_cse_common_exprs_pandas():
+    block = pd.DataFrame({"a": [1, 2, 3]})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+    projection = [
+        (
+            col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+            + col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+        ).alias("y")
+    ]
+
+    out = eval_projection(
+        projection,
+        block,
+        cse_common_exprs=[common],
+    )
+
+    assert out.columns.tolist() == ["y"]
+    assert out["y"].tolist() == [4, 6, 8]
 
 
 if __name__ == "__main__":

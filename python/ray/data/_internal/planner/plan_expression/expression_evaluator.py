@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, List, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
@@ -821,7 +822,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
     return evaluator.visit(expr)
 
 
-def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
+def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> Block:
     """
     Evaluate a projection (list of expressions) against a block.
 
@@ -899,3 +900,44 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
     return BlockAccessor.for_block(new_block).drop(["__stub__"])
+
+
+def _drop_cse_temp_columns(block: Block) -> Block:
+    block_accessor = BlockAccessor.for_block(block)
+    temp_columns = [
+        name
+        for name in block_accessor.column_names()
+        if name.startswith(CSE_TEMP_COLUMN_PREFIX)
+    ]
+    if not temp_columns:
+        return block
+    return block_accessor.drop(temp_columns)
+
+
+def eval_projection(
+    projection_exprs: List[Expr],
+    block: Block,
+    *,
+    cse_common_exprs: Optional[List[Expr]] = None,
+) -> Block:
+    """
+    Evaluate a projection (list of expressions) against a block.
+
+    If CSE common expressions are provided, they are evaluated first into
+    temporary columns on a working block. Visible projection expressions are
+    then evaluated against that working block.
+    """
+    if not cse_common_exprs:
+        return _eval_projection_without_cse(projection_exprs, block)
+
+    working_block = block
+    for common_expr in cse_common_exprs:
+        assert common_expr.name is not None
+        value = eval_expr(common_expr, working_block)
+        working_block = BlockAccessor.for_block(working_block).fill_column(
+            common_expr.name,
+            value,
+        )
+
+    output_block = _eval_projection_without_cse(projection_exprs, working_block)
+    return _drop_cse_temp_columns(output_block)

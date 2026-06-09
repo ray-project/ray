@@ -42,10 +42,13 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "CSE_TEMP_COLUMN_PREFIX",
 ]
 
 
 logger = logging.getLogger(__name__)
+
+CSE_TEMP_COLUMN_PREFIX = "__ray_data_cse_"
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
@@ -346,6 +349,11 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for all Projection Operations."""
 
     exprs: list["Expr"]
+    _cse_common_exprs: list["Expr"] = field(
+        default_factory=list,
+        repr=False,
+        kw_only=True,
+    )
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     compute: Optional[ComputeStrategy] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
@@ -375,7 +383,11 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             )
         if self.compute is None:
             object.__setattr__(
-                self, "compute", self._detect_and_get_compute_strategy(self.exprs)
+                self,
+                "compute",
+                self._detect_and_get_compute_strategy(
+                    [*self._cse_common_exprs, *self.exprs]
+                ),
             )
         for expr in self.exprs:
             if expr.name is None and not isinstance(expr, StarExpr):
@@ -421,6 +433,9 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         return None
 
+    def get_cse_common_exprs(self) -> list["Expr"]:
+        return self._cse_common_exprs
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
@@ -447,9 +462,21 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         # (``PandasBlockSchema`` chains fall back to ``limit(1)`` execution.)
         if not isinstance(input_schema, pa.Schema):
             return None
-        fields = exprlist_to_fields(self.exprs, input_schema)
+        working_schema = input_schema
+        for common_expr in self.get_cse_common_exprs():
+            field = common_expr.to_field(working_schema)
+            if field is None:
+                return None
+            working_schema = working_schema.append(field)
+        fields = exprlist_to_fields(self.exprs, working_schema)
         if fields is None:
             return None
+        if self.get_cse_common_exprs():
+            fields = [
+                field
+                for field in fields
+                if not field.name.startswith(CSE_TEMP_COLUMN_PREFIX)
+            ]
         return pa.schema(fields)
 
 
