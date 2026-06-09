@@ -41,6 +41,11 @@ class TelemetryTags(str, Enum):
     LLM_SERVE_MODELS = "LLM_SERVE_MODELS"
     LLM_SERVE_GPU_TYPE = "LLM_SERVE_GPU_TYPE"
     LLM_SERVE_NUM_GPUS = "LLM_SERVE_NUM_GPUS"
+    LLM_SERVE_DEPLOY_OUTCOME = "LLM_SERVE_DEPLOY_OUTCOME"
+    LLM_SERVE_SERVING_PATTERN = "LLM_SERVE_SERVING_PATTERN"
+    LLM_SERVE_QUANTIZATION = "LLM_SERVE_QUANTIZATION"
+    LLM_SERVE_DTYPE = "LLM_SERVE_DTYPE"
+    LLM_SERVE_MAX_MODEL_LEN = "LLM_SERVE_MAX_MODEL_LEN"
 
 
 class TelemetryModel(BaseModelExtended):
@@ -62,6 +67,11 @@ class TelemetryModel(BaseModelExtended):
     tensor_parallel_degree: int
     gpu_type: str
     num_gpus: int
+    deploy_outcome: str = "success"
+    serving_pattern: str = "default"
+    quantization: str = "none"
+    dtype: str = "auto"
+    max_model_len: int = 0
 
 
 @ray.remote(
@@ -171,6 +181,21 @@ class TelemetryAgent:
     def _num_gpus(self) -> str:
         return ",".join([str(model.num_gpus) for model in self.models.values()])
 
+    def _deploy_outcomes(self) -> str:
+        return ",".join([model.deploy_outcome for model in self.models.values()])
+
+    def _serving_patterns(self) -> str:
+        return ",".join([model.serving_pattern for model in self.models.values()])
+
+    def _quantizations(self) -> str:
+        return ",".join([model.quantization for model in self.models.values()])
+
+    def _dtypes(self) -> str:
+        return ",".join([model.dtype for model in self.models.values()])
+
+    def _max_model_lens(self) -> str:
+        return ",".join([str(model.max_model_len) for model in self.models.values()])
+
     def generate_report(self) -> Dict[str, str]:
         return {
             TelemetryTags.LLM_SERVE_SERVE_MULTIPLE_MODELS: self._multiple_models(),
@@ -185,6 +210,11 @@ class TelemetryAgent:
             TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._num_replicas(),
             TelemetryTags.LLM_SERVE_GPU_TYPE: self._gpu_type(),
             TelemetryTags.LLM_SERVE_NUM_GPUS: self._num_gpus(),
+            TelemetryTags.LLM_SERVE_DEPLOY_OUTCOME: self._deploy_outcomes(),
+            TelemetryTags.LLM_SERVE_SERVING_PATTERN: self._serving_patterns(),
+            TelemetryTags.LLM_SERVE_QUANTIZATION: self._quantizations(),
+            TelemetryTags.LLM_SERVE_DTYPE: self._dtypes(),
+            TelemetryTags.LLM_SERVE_MAX_MODEL_LEN: self._max_model_lens(),
         }
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
@@ -269,6 +299,8 @@ def push_telemetry_report_for_all_models(
     all_models: Optional[Sequence["LLMConfig"]] = None,
     get_lora_model_func: Callable = get_lora_model_ids,
     get_hardware_fn: Callable = get_hardware_usages_to_report,
+    deploy_outcome: str = "success",
+    serving_pattern: str = "default",
 ):
     """Push a telemetry report for each model. Never raises."""
     if not all_models:
@@ -277,7 +309,13 @@ def push_telemetry_report_for_all_models(
     for model in all_models:
         # Telemetry must never break the caller (e.g. engine start).
         try:
-            _push_model_telemetry(model, get_lora_model_func, get_hardware_fn)
+            _push_model_telemetry(
+                model,
+                get_lora_model_func,
+                get_hardware_fn,
+                deploy_outcome=deploy_outcome,
+                serving_pattern=serving_pattern,
+            )
         except Exception:
             logger.exception(
                 "Failed to push telemetry for model %s",
@@ -289,6 +327,8 @@ def _push_model_telemetry(
     model: "LLMConfig",
     get_lora_model_func: Callable,
     get_hardware_fn: Callable,
+    deploy_outcome: str = "success",
+    serving_pattern: str = "default",
 ) -> None:
     use_lora = (
         model.lora_config is not None
@@ -349,5 +389,11 @@ def _push_model_telemetry(
         tensor_parallel_degree=engine_config.tensor_parallel_degree,
         gpu_type=model.accelerator_type or hardware_usage.infer_gpu_from_hardware(),
         num_gpus=engine_config.num_devices,
+        deploy_outcome=deploy_outcome,
+        serving_pattern=serving_pattern,
+        # Non-identifying engine facts.
+        quantization=model.engine_kwargs.get("quantization") or "none",
+        dtype=str(model.engine_kwargs.get("dtype") or "auto"),
+        max_model_len=int(model.engine_kwargs.get("max_model_len") or 0),
     )
     _push_telemetry_report(telemetry_model)

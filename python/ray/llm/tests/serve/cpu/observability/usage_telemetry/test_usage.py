@@ -1,3 +1,4 @@
+import asyncio
 import sys
 
 import pytest
@@ -132,6 +133,11 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
         TagKey.LLM_SERVE_MODELS: "llm_model_arch,llm_config_autoscale_model_arch,llm_config_json_model_arch,llm_config_lora_model_arch,llm_config_no_accelerator_type_arch",
         TagKey.LLM_SERVE_GPU_TYPE: "L4,A10G,A10G,A10G,L40S",
         TagKey.LLM_SERVE_NUM_GPUS: "1,1,1,1,1",
+        TagKey.LLM_SERVE_DEPLOY_OUTCOME: "success,success,success,success,success",
+        TagKey.LLM_SERVE_SERVING_PATTERN: "default,default,default,default,default",
+        TagKey.LLM_SERVE_QUANTIZATION: "none,none,none,none,none",
+        TagKey.LLM_SERVE_DTYPE: "auto,auto,auto,auto,auto",
+        TagKey.LLM_SERVE_MAX_MODEL_LEN: "0,0,0,0,0",
     }
 
 
@@ -295,6 +301,70 @@ def test_telemetry_reports_auto_num_replicas(disable_placement_bundles):
     # Recorded as autoscaling with an integer replica count (not the string "auto").
     assert telemetry[TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS] == "auto_arch"
     assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS].isdigit()
+
+
+def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
+    """Non-default deploy_outcome / serving_pattern / engine facts are recorded."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="facts_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+        engine_kwargs=dict(
+            quantization="fp8",
+            dtype="bfloat16",
+            max_model_len=8192,
+        ),
+    )
+    config._set_model_architecture(model_architecture="facts_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+        deploy_outcome="oom",
+        serving_pattern="pd",
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "oom"
+    assert telemetry[TagKey.LLM_SERVE_SERVING_PATTERN] == "pd"
+    assert telemetry[TagKey.LLM_SERVE_QUANTIZATION] == "fp8"
+    assert telemetry[TagKey.LLM_SERVE_DTYPE] == "bfloat16"
+    assert telemetry[TagKey.LLM_SERVE_MAX_MODEL_LEN] == "8192"
+
+
+@pytest.mark.parametrize(
+    "exc,expected",
+    [
+        (asyncio.TimeoutError(), "engine_start_timeout"),
+        (RuntimeError("CUDA out of memory"), "oom"),
+        (ImportError("no module named flash_attn"), "import_error"),
+        (
+            RuntimeError("no available accelerator for request"),
+            "accelerator_unavailable",
+        ),
+        (
+            RuntimeError("failed to download from huggingface hub"),
+            "model_download_failed",
+        ),
+        (ValueError("unsupported field"), "invalid_config"),
+        (RuntimeError("something else entirely"), "other"),
+    ],
+)
+def test_classify_start_failure(exc, expected):
+    """Failures map to a fixed enum; the raw message is never the recorded value."""
+    from ray.llm._internal.serve.core.server.llm_server import _classify_start_failure
+
+    assert _classify_start_failure(exc) == expected
+    assert expected != str(exc)
 
 
 if __name__ == "__main__":

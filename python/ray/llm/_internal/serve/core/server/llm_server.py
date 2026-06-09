@@ -101,6 +101,53 @@ def _merge_replica_actor_and_child_actor_bundles(
     ]
 
 
+def _serving_pattern(server: "LLMServerProtocol") -> str:
+    """Classify the serving pattern from the server class hierarchy.
+
+    Uses MRO class names to avoid importing the DP/PD subclasses (which import
+    LLMServer, so importing them here would create a cycle).
+    """
+    names = {cls.__name__ for cls in type(server).__mro__}
+    is_dp = "DPServer" in names
+    is_pd = bool(names & {"PDPrefillServer", "PDDecodeServer"})
+    if is_dp and is_pd:
+        return "dp_pd"
+    if is_pd:
+        return "pd"
+    if is_dp:
+        return "dp"
+    return "default"
+
+
+def _classify_start_failure(exc: BaseException) -> str:
+    """Map an engine-start failure to a fixed, non-identifying category.
+
+    Only the category is ever recorded as telemetry. The exception message (which
+    may contain user data such as model paths) is used solely for classification
+    here and is never emitted.
+    """
+    if isinstance(exc, asyncio.TimeoutError):
+        return "engine_start_timeout"
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+    if "outofmemory" in name or "out of memory" in msg or "oom" in msg:
+        return "oom"
+    if isinstance(exc, (ImportError, ModuleNotFoundError)):
+        return "import_error"
+    if any(
+        s in msg
+        for s in ("no available", "accelerator", "resources", "placement group")
+    ):
+        return "accelerator_unavailable"
+    if any(
+        s in msg for s in ("download", "huggingface", "hf_hub", "repository not found")
+    ):
+        return "model_download_failed"
+    if isinstance(exc, ValueError):
+        return "invalid_config"
+    return "other"
+
+
 class LLMServer(LLMServerProtocol):
     """This is a shim layer to decouple the LLM engine from the ingress
     deployment.
@@ -195,7 +242,19 @@ class LLMServer(LLMServerProtocol):
         """Start the underlying engine. This handles async initialization."""
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
-            await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+            try:
+                await asyncio.wait_for(
+                    self._start_engine(), timeout=ENGINE_START_TIMEOUT_S
+                )
+            except Exception as e:
+                # Record the failure category so deploy health is visible, then
+                # re-raise (telemetry is best-effort and must not mask the error).
+                push_telemetry_report_for_all_models(
+                    all_models=[self._llm_config],
+                    deploy_outcome=_classify_start_failure(e),
+                    serving_pattern=_serving_pattern(self),
+                )
+                raise
 
     async def __serve_build_asgi_app__(self):
         from fastapi import HTTPException
@@ -273,7 +332,11 @@ class LLMServer(LLMServerProtocol):
         await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
-        push_telemetry_report_for_all_models(all_models=[self._llm_config])
+        push_telemetry_report_for_all_models(
+            all_models=[self._llm_config],
+            deploy_outcome="success",
+            serving_pattern=_serving_pattern(self),
+        )
         if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
             # Cluster-wide adoption signal: written from each replica on engine
             # start, but last-write-wins so it reports one value per cluster.

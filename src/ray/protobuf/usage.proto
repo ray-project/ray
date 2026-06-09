@@ -256,6 +256,19 @@ enum TagKey {
   // Whether LLM direct streaming (engine-native ASGI ingress) is enabled via
   // RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING. "1" when enabled.
   LLM_SERVE_DIRECT_STREAMING_ENABLED = 623;
+  // Comma separated list of deploy outcomes per model (fixed enum, never raw
+  // error text): success, engine_start_timeout, oom, accelerator_unavailable,
+  // model_download_failed, import_error, invalid_config, other.
+  LLM_SERVE_DEPLOY_OUTCOME = 624;
+  // Comma separated list of serving patterns per model: default, dp, pd, dp_pd.
+  LLM_SERVE_SERVING_PATTERN = 625;
+  // Comma separated list of engine quantization methods per model (e.g. fp8,
+  // awq, gptq) or "none".
+  LLM_SERVE_QUANTIZATION = 626;
+  // Comma separated list of engine dtypes per model (e.g. auto, bfloat16).
+  LLM_SERVE_DTYPE = 627;
+  // Comma separated list of configured max_model_len per model (0 if unset).
+  LLM_SERVE_MAX_MODEL_LEN = 628;
 
   // LLM Batch
   // Comma separated list of names of the config used to build processor.
