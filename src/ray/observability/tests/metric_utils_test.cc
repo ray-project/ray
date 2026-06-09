@@ -24,21 +24,21 @@ namespace {
 // A fixed base time to anchor sample timestamps. Values are arbitrary.
 const absl::Time kT0 = absl::FromUnixSeconds(1000);
 
-TEST(LatencySlidingWindowTest, EmptyWindowHasNoMax) {
-  LatencySlidingWindow window(absl::Seconds(30));
+TEST(MetricSlidingWindowTest, EmptyWindowHasNoMax) {
+  MetricSlidingWindow window(absl::Seconds(30));
   EXPECT_FALSE(window.WindowedMax().has_value());
 }
 
-TEST(LatencySlidingWindowTest, FirstSampleAlwaysReported) {
-  LatencySlidingWindow window(absl::Seconds(30));
+TEST(MetricSlidingWindowTest, FirstSampleAlwaysReported) {
+  MetricSlidingWindow window(absl::Seconds(30));
   auto reported = window.Add(kT0, 5.0);
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 5.0);
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 5.0);
 }
 
-TEST(LatencySlidingWindowTest, ReportsOnlyWhenMaxChanges) {
-  LatencySlidingWindow window(absl::Seconds(30));
+TEST(MetricSlidingWindowTest, ReportsOnlyWhenMaxChanges) {
+  MetricSlidingWindow window(absl::Seconds(30));
 
   // First sample: reported.
   EXPECT_TRUE(window.Add(kT0, 10.0).has_value());
@@ -55,8 +55,8 @@ TEST(LatencySlidingWindowTest, ReportsOnlyWhenMaxChanges) {
   EXPECT_DOUBLE_EQ(*reported, 12.0);
 }
 
-TEST(LatencySlidingWindowTest, EvictsSamplesOutsideWindow) {
-  LatencySlidingWindow window(absl::Seconds(30));
+TEST(MetricSlidingWindowTest, EvictsSamplesOutsideWindow) {
+  MetricSlidingWindow window(absl::Seconds(30));
 
   // A high sample at t=0.
   EXPECT_TRUE(window.Add(kT0, 100.0).has_value());
@@ -74,8 +74,8 @@ TEST(LatencySlidingWindowTest, EvictsSamplesOutsideWindow) {
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 20.0);
 }
 
-TEST(LatencySlidingWindowTest, SampleAtWindowEdgeIsRetained) {
-  LatencySlidingWindow window(absl::Seconds(30));
+TEST(MetricSlidingWindowTest, SampleAtWindowEdgeIsRetained) {
+  MetricSlidingWindow window(absl::Seconds(30));
 
   EXPECT_TRUE(window.Add(kT0, 50.0).has_value());
 
@@ -90,8 +90,8 @@ TEST(LatencySlidingWindowTest, SampleAtWindowEdgeIsRetained) {
   EXPECT_DOUBLE_EQ(*reported, 10.0);
 }
 
-TEST(LatencySlidingWindowTest, AllSamplesEvictedKeepsLatest) {
-  LatencySlidingWindow window(absl::Seconds(30));
+TEST(MetricSlidingWindowTest, AllSamplesEvictedKeepsLatest) {
+  MetricSlidingWindow window(absl::Seconds(30));
 
   EXPECT_TRUE(window.Add(kT0, 80.0).has_value());
 

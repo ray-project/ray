@@ -89,7 +89,7 @@ class IOContextMonitor {
     bool healthy = true;
     bool deadline_warning_logged = false;
     // Sliding window of recent probe latencies; only accessed from the monitor.
-    observability::LatencySlidingWindow latency_window;
+    observability::MetricSlidingWindow latency_window;
   };
 
   bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);

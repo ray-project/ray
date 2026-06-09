@@ -19,8 +19,8 @@
 namespace ray {
 namespace observability {
 
-std::optional<double> LatencySlidingWindow::Add(absl::Time now, double latency_ms) {
-  samples_.push_back({now, latency_ms});
+std::optional<double> MetricSlidingWindow::Add(absl::Time now, double value) {
+  samples_.push_back({now, value});
 
   // Evict samples that have fallen out of the window. The sample we just appended is
   // at `now`, so it is always retained.
@@ -31,9 +31,9 @@ std::optional<double> LatencySlidingWindow::Add(absl::Time now, double latency_m
 
   // Recompute the max over the remaining window. samples_ is guaranteed non-empty
   // because we just appended a sample that cannot be evicted.
-  double max = samples_.front().latency_ms;
+  double max = samples_.front().value;
   for (const auto &sample : samples_) {
-    max = std::max(max, sample.latency_ms);
+    max = std::max(max, sample.value);
   }
 
   if (!last_reported_max_.has_value() || *last_reported_max_ != max) {
@@ -43,16 +43,16 @@ std::optional<double> LatencySlidingWindow::Add(absl::Time now, double latency_m
   return std::nullopt;
 }
 
-std::optional<double> LatencySlidingWindow::WindowedMax() const {
+std::optional<double> MetricSlidingWindow::WindowedMax() const {
   if (samples_.empty()) {
     return std::nullopt;
   }
   // last_reported_max_ always reflects the current window max after the most recent
   // Add(); but WindowedMax() may be called before any Add(), handled by the empty
   // check.
-  double max = samples_.front().latency_ms;
+  double max = samples_.front().value;
   for (const auto &sample : samples_) {
-    max = std::max(max, sample.latency_ms);
+    max = std::max(max, sample.value);
   }
   return max;
 }

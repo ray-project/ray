@@ -22,39 +22,38 @@
 namespace ray {
 namespace observability {
 
-/// Tracks the maximum latency observed over a sliding time window.
+/// Tracks the maximum value observed over a sliding time window.
 ///
 /// Samples are kept in a linked list ordered oldest-to-newest. Each call to Add()
 /// appends the new sample, evicts samples that have fallen outside the window (older
-/// than `now - window_duration`), and recomputes the maximum latency over the
+/// than `now - window_duration`), and recomputes the maximum value over the
 /// remaining samples.
 ///
-/// This is meant to smooth a point-in-time latency metric: rather than exporting
-/// every sample, callers feed samples in and only re-export when the windowed max
-/// changes (Add() returns the new max only when it differs from the last reported
-/// value).
+/// This is meant to smooth a point-in-time metric: rather than exporting every
+/// sample, callers feed samples in and only re-export when the windowed max changes
+/// (Add() returns the new max only when it differs from the last reported value).
 ///
 /// Not thread-safe; callers must synchronize externally if shared across threads.
-class LatencySlidingWindow {
+class MetricSlidingWindow {
  public:
-  explicit LatencySlidingWindow(absl::Duration window_duration)
+  explicit MetricSlidingWindow(absl::Duration window_duration)
       : window_duration_(window_duration) {}
 
-  /// Record a new latency sample observed at `now`.
+  /// Record a new sample with value `value` observed at `now`.
   ///
   /// Appends the sample, evicts samples older than the window, and recomputes the
   /// max over the window. Returns the current max iff it differs from the value
   /// previously returned by Add() (i.e. the metric should be re-exported); returns
   /// std::nullopt when the max is unchanged.
-  std::optional<double> Add(absl::Time now, double latency_ms);
+  std::optional<double> Add(absl::Time now, double value);
 
-  /// The current max latency over the window, or std::nullopt if the window is empty.
+  /// The current max value over the window, or std::nullopt if the window is empty.
   std::optional<double> WindowedMax() const;
 
  private:
   struct Sample {
     absl::Time time;
-    double latency_ms;
+    double value;
   };
 
   const absl::Duration window_duration_;
