@@ -1,13 +1,7 @@
-"""The KVRouterActor is attached iff the request router is a KVAwareRouter.
-
-Covered two ways: ``build_openai_app`` with a Python ``LLMConfig``, and a
-declarative YAML config deployed via ``serve deploy`` (the dotted-string router
-class only YAML can express).
-"""
-
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,8 +16,15 @@ from ray.llm._internal.serve.core.ingress.builder import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
+    get_worker_id,
 )
-from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+from ray.serve._private.common import (
+    REPLICA_ID_FULL_ID_STR_PREFIX,
+    DeploymentID,
+    ReplicaID,
+)
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
+from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm.request_router import KVAwareRouter
 from ray.util.state import list_actors
 
@@ -49,6 +50,48 @@ def build_test_llm_config() -> LLMConfig:
         },
     )
 
+
+def get_kv_actor_names(app_name: str) -> list:
+    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::"
+    suffix = f"::{KV_ROUTER_ACTOR_NAME}"
+    return [
+        a["name"]
+        for a in list_actors(filters=[("state", "=", "ALIVE")])
+        if a["name"] and a["name"].startswith(prefix) and a["name"].endswith(suffix)
+    ]
+
+
+def discover_deployment_actor(app_name, deployment_name, actor_name):
+    """Handle to a deployment-scoped actor by app/deployment/logical name."""
+    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::{deployment_name}::"
+    suffix = f"::{actor_name}"
+    for entry in ray.util.list_named_actors(all_namespaces=True):
+        name = entry.get("name") or ""
+        if (
+            entry.get("namespace") == SERVE_NAMESPACE
+            and name.startswith(prefix)
+            and (name.endswith(suffix))
+        ):
+            return ray.get_actor(name, namespace=SERVE_NAMESPACE)
+    return None
+
+
+def get_candidate_ids(app_name):
+    handle = discover_deployment_actor(app_name, "Driver", KV_ROUTER_ACTOR_NAME)
+    assert handle is not None
+    return ray.get(handle.get_candidate_worker_ids.remote())
+
+
+def get_live_replica_worker_ids(app_name, deployment_name="Driver"):
+    """Worker ids derived directly from the deployment's alive replica actors."""
+    prefix = f"{REPLICA_ID_FULL_ID_STR_PREFIX}{app_name}#{deployment_name}#"
+    return {
+        get_worker_id(a["name"][len(prefix) :])
+        for a in list_actors(filters=[("state", "=", "ALIVE")])
+        if a["name"] and a["name"].startswith(prefix)
+    }
+
+
 @pytest.fixture(autouse=True)
 def enable_direct_streaming(monkeypatch):
     monkeypatch.setattr(
@@ -56,6 +99,14 @@ def enable_direct_streaming(monkeypatch):
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
         True,
     )
+
+
+@pytest.fixture(scope="module")
+def serve_instance():
+    if not ray.is_initialized():
+        ray.init(address="auto")
+    yield
+    serve.shutdown()
 
 
 def test_build_openai_app_attaches_kv_actor():
@@ -72,24 +123,6 @@ def test_build_openai_app_attaches_kv_actor():
     assert actor_cfg.actor_options["num_cpus"] == 0
 
 
-@pytest.fixture(scope="module")
-def serve_instance():
-    if not ray.is_initialized():
-        ray.init(address="auto")
-    yield
-    serve.shutdown()
-
-
-def get_kv_actor_names(app_name: str) -> list:
-    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::"
-    suffix = f"::{KV_ROUTER_ACTOR_NAME}"
-    return [
-        a["name"]
-        for a in list_actors(filters=[("state", "=", "ALIVE")])
-        if a["name"] and a["name"].startswith(prefix) and a["name"].endswith(suffix)
-    ]
-
-
 def test_yaml_config_attaches_kv_actor(serve_instance):
     """Deploying a YAML config that selects KVAwareRouter creates the KVRouterActor."""
     config_file = os.path.join(
@@ -99,11 +132,87 @@ def test_yaml_config_attaches_kv_actor(serve_instance):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     try:
-        wait_for_condition(
-            lambda: len(get_kv_actor_names(app_name)) == 1, timeout=60
-        )
+        wait_for_condition(lambda: len(get_kv_actor_names(app_name)) == 1, timeout=60)
     finally:
         serve.delete(app_name, _blocking=True)
+
+
+@serve.deployment(
+    num_replicas=4,
+    deployment_actors=[
+        DeploymentActorConfig(
+            name=KV_ROUTER_ACTOR_NAME,
+            actor_class=KVRouterActor,
+            actor_options={"num_cpus": 0},
+        ),
+    ],
+)
+class Driver:
+    """Dummy deployment with KVRouterActor deployment actor."""
+
+    async def __call__(self) -> str:
+        return "ok"
+
+
+class TestReplicaTrackingIntegration:
+    def test_tracks_running_replicas(self, serve_instance):
+        """KVRouterActor's LongPollClient receives the running replicas."""
+        app_name = "kv-replica-tracking"
+        serve.run(Driver.bind(), name=app_name, route_prefix="/kv_track")
+        try:
+            wait_for_condition(
+                lambda: len(get_candidate_ids(app_name)) == 4, timeout=10
+            )
+            handle = discover_deployment_actor(app_name, "Driver", KV_ROUTER_ACTOR_NAME)
+            for worker_id in ray.get(handle.get_candidate_worker_ids.remote()):
+                full_id = ray.get(handle.get_replica_id.remote(worker_id))
+                assert ReplicaID.is_full_id_str(full_id)
+                assert (
+                    ray.get(handle.get_tracked_worker_id.remote(full_id)) == worker_id
+                )
+        finally:
+            serve.delete(app_name, _blocking=True)
+
+    @pytest.mark.parametrize("num_start_replicas,num_end_replicas", [(2, 4), (4, 2)])
+    def test_membership_broadcast_on_scale(
+        self, serve_instance, num_start_replicas, num_end_replicas
+    ):
+        """An up- or down-scale is broadcast over LongPoll to the KVRouterActor."""
+        app_name = "kv-replica-scale"
+
+        # The actor's tracked workers must match the live replicas by their
+        # actual ids (a stale handle is possible while an actor is torn down).
+        def tracks_live_replicas(expected):
+            try:
+                tracked = set(get_candidate_ids(app_name))
+            except ray.exceptions.RayActorError:
+                return False
+            return len(tracked) == expected and tracked == get_live_replica_worker_ids(
+                app_name
+            )
+
+        serve.run(
+            Driver.options(num_replicas=num_start_replicas).bind(),
+            name=app_name,
+            route_prefix="/kv_scale",
+        )
+        try:
+            wait_for_condition(
+                lambda: tracks_live_replicas(num_start_replicas), timeout=10
+            )
+
+            serve.run(
+                Driver.options(num_replicas=num_end_replicas).bind(),
+                name=app_name,
+                route_prefix="/kv_scale",
+            )
+
+            # The broadcast re-syncs the actor to exactly the live replicas.
+            wait_for_condition(
+                lambda: tracks_live_replicas(num_end_replicas), timeout=10
+            )
+        finally:
+            serve.delete(app_name, _blocking=True)
 
 
 if __name__ == "__main__":
