@@ -48,7 +48,38 @@ serve run config.yaml
 
 The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`. Ray Serve LLM also adds `GET /v1/models/{id}`, so clients can call `client.models.retrieve(...)` as they would against the standalone ingress.
 
-To confirm direct streaming is active, open the Serve dashboard and check that the ingress request router deployment (listed as `LLMRouter`) is running alongside your model deployment.
+To confirm direct streaming is active, check that the application runs two deployments: your model deployment (`LLMServer:<model_id>`) and an `LLMRouter` deployment. `LLMRouter` is the ingress request router; it replaces the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app, so its presence is the signal that direct streaming is on.
+
+Run `serve status`:
+
+```bash
+serve status
+```
+
+```yaml
+applications:
+  default:
+    status: RUNNING
+    deployments:
+      LLMServer:qwen3_5-0_8b:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+      LLMRouter:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+```
+
+The Serve dashboard shows the same two deployments:
+
+```{figure} ../images/direct_streaming_dashboard.png
+---
+width: 800px
+name: direct-streaming-dashboard
+---
+The Serve dashboard listing the `LLMServer` model deployment and the `LLMRouter` ingress request router, both healthy.
+```
 
 :::{tip}
 The HAProxy ingress sets `TCP_NODELAY` by default (`RAY_SERVE_HAPROXY_TCP_NODELAY=1`) so the first streamed chunk isn't held back by Nagle's algorithm. Keep it enabled for streaming workloads.
