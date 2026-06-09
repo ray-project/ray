@@ -18,7 +18,7 @@ Also view :ref:`Debugging Out of Memory <troubleshooting-out-of-memory>` to lear
 What is the memory monitor?
 ---------------------------
 
-The memory monitor is a component that runs within the :ref:`raylet <whitepaper>` process on each node. It periodically checks the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill a task or actor process to free up memory and prevent Ray from failing.
+The memory monitor is a component that runs within the :ref:`raylet <whitepaper>` process on each node. It monitors the memory usage, which includes the worker heap, the object store, and the raylet as described in :ref:`memory management <memory>`. If the combined usage exceeds a configurable threshold the raylet will kill a task or actor process to free up memory and prevent Ray from failing.
 
 It's available on Linux and is tested with Ray running inside a container that is using cgroup v1/v2. If you encounter issues when running the memory monitor outside of a container, :ref:`file an issue or post a question <oom-questions>`.
 
@@ -31,7 +31,7 @@ based on the time since the task started executing. However, the default memory 
 
 Starting in Ray 2.56, with resource isolation enabled, the memory monitoring system provides the following:
 
-- Zero kernel OOM kills (work-preserving) when resource isolation is enabled and system-reserved memory is configured to cover the memory footprint of critical Ray system processes and other system overhead.
+- Zero kernel OOM kills (work-preserving) when resource isolation is enabled and system-reserved memory is configured to cover the memory footprint of critical Ray system processes (raylet, gcs, agents) and other system overhead.
 - Zero Ray OOM kills under the above configuration when tasks and actors specify accurate logical memory requests.
 - Zero node deaths due to memory contention when resource isolation is enabled and system-reserved memory is configured correctly.
 
@@ -71,7 +71,9 @@ Using the Memory Monitor
 Retry policy
 ~~~~~~~~~~~~
 
-When a task or actor is killed by the memory monitor it will be retried with exponential backoff. There is a cap on the retry delay, which is 60 seconds. If tasks are killed by the memory monitor, it retries infinitely (not respecting :ref:`max_retries <task-fault-tolerance>`) unless :ref:`max_retries <task-fault-tolerance>` is set to 0. 
+When a task or actor is killed by the memory monitor it will be retried with exponential backoff. There is a cap on the retry delay, which is 60 seconds. 
+If tasks are killed by the memory monitor, it retries infinitely (not respecting :ref:`max_retries <task-fault-tolerance>`) unless :ref:`max_retries <task-fault-tolerance>` is set to 0. 
+When :ref:`max_retries <task-fault-tolerance>` is set to 0, the task will not be retried. 
 If actors are killed by the memory monitor, it doesn't recreate the actor infinitely (It respects :ref:`max_restarts <actor-fault-tolerance>`, which is 0 by default).
 
 .. _ray-oom-worker-killing-policy:
@@ -101,6 +103,11 @@ As shown in the diagram above, the worker killing policy prioritizes idle worker
 2. Among the active workers with the same retriability, the policy selects the most recent workers next (newest granted lease time).
 
 The policy continues to select workers until ``current_memory_usage - total_selected_workers_memory_footprint + kill_buffer <= available_memory_for_workload_processes``.
+Where ``current_memory_usage`` is the current memory usage on the node, 
+``total_selected_workers_memory_footprint`` is the sum of the memory footprint of all selected workers to kill, 
+``kill_buffer`` is the amount of memory to leave as breathing room between the memory usage and the memory allocated to the workload processes. 
+``available_memory_for_workload_processes`` is the amount of memory available for the workload processes to use. 
+This is computed as ``total_system_memory - system_reserved_memory`` as mentioned above. 
 The ``kill_buffer`` defaults to 5% of the total system memory and caps at 3GiB (configurable via ``RAY_max_kill_memory_buffer_bytes``).
 
 To revert to the legacy worker killing policy, set the environment variable ``RAY_worker_killing_policy_by_group`` to ``true`` before starting Ray.
