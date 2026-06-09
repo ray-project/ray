@@ -37,6 +37,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -867,6 +868,37 @@ class PhysicalOperator(Operator):
         between different operators.
         """
         return ExecutionResources.zero()
+
+    def estimate_object_store_usage(self, state: "OpState") -> Tuple[int, int]:
+        """Returns ``(mem_op_internal, mem_op_outputs)`` — bytes this operator
+        contributes to the global object store budget.
+        """
+        # Operator's internal Object Store usage
+        mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
+
+        # Operator's outputs' Object Store usage
+        op_outputs_bytes = (
+            # Internal output queue
+            self.metrics.obj_store_mem_internal_outqueue
+            +
+            # External output queue
+            state.output_queue_bytes()
+        )
+
+        # TODO fix ineligible ops: this needs to include usage of all of OS
+        #      for ineligible ops
+        #
+        # Outputs of this operator used downstream
+        used_op_outputs_bytes = sum(
+            (
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
+                    downstream_op.input_dependencies.index(self)
+                )
+                + downstream_op.metrics.obj_store_mem_pending_task_inputs
+            )
+            for downstream_op in self.output_dependencies
+        )
+        return mem_op_internal, op_outputs_bytes + used_op_outputs_bytes
 
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,

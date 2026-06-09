@@ -173,34 +173,9 @@ class ResourceManager:
                 return self._external_consumer_bytes
             return 0
 
-        # Operator's internal Object Store usage
-        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
-
-        # Operator's outputs' Object Store usage
-        op_outputs_bytes = (
-            # Internal output queue
-            op.metrics.obj_store_mem_internal_outqueue
-            +
-            # External output queue
-            state.output_queue_bytes()
-        )
-
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
-        #
-        # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(op)
-                )
-                + downstream_op.metrics.obj_store_mem_pending_task_inputs
-            )
-            for downstream_op in op.output_dependencies
-        )
-
+        mem_op_internal, mem_op_outputs = op.estimate_object_store_usage(state)
         self._mem_op_internal[op] = mem_op_internal
-        self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
+        self._mem_op_outputs[op] = mem_op_outputs
 
         # Attribute iterator / streaming_split prefetch to the executor sink only.
         if op is self._output_operator:
