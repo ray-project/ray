@@ -407,10 +407,10 @@ class DashboardHead:
         # (https://github.com/giampaolo/psutil/issues/883)
         if proc_attrs.get("memory_full_info") is not None:
             self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
-                float(proc_attrs.get("memory_full_info").uss) / 1.0e6
+                float(proc_attrs.get("memory_full_info").uss)
             )
             self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
-                float(proc_attrs.get("memory_full_info").rss) / 1.0e6
+                float(proc_attrs.get("memory_full_info").rss)
             )
 
     async def run(self):

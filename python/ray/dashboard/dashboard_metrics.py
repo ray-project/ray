@@ -103,7 +103,7 @@ try:
                 "component_uss",
                 "USS usage of all components on the node.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="mb",
+                unit="bytes",
                 namespace="ray",
                 registry=self.registry,
             )
@@ -111,7 +111,7 @@ try:
                 "component_rss",
                 "RSS usage of all components on the node.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),
-                unit="mb",
+                unit="bytes",
                 namespace="ray",
                 registry=self.registry,
             )
