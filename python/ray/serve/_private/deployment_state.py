@@ -4583,15 +4583,15 @@ class DeploymentState:
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS and (
             healthy_replicas or unhealthy_replicas
         ):
-            # With the replica tag disabled, all replica writes collapse to a
-            # single deployment/application series. Overwrite it once with
-            # deployment-level health so iteration order cannot report healthy
-            # while a replica is failing.
+            # _set_health_gauge() is still called once per replica above. When
+            # the replica tag is disabled, those writes all target the same
+            # time series, so the last replica processed would otherwise decide
+            # the value. Write the aggregate value last.
             deployment_is_healthy = (
-                len(unhealthy_replicas) == 0
+                not unhealthy_replicas
                 and self._curr_status_info.status == DeploymentStatus.HEALTHY
             )
-            self.health_check_gauge.set(int(deployment_is_healthy))
+            self.health_check_gauge.set(1 if deployment_is_healthy else 0)
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
         # This ensures ranks are continuous after lifecycle events
