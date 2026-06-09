@@ -503,13 +503,19 @@ class KubeRayProvider(ICloudInstanceProvider):
         Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
 
+        Args:
+            ray_cluster_spec: The RayCluster CR spec dict.
+            node_set: The set of currently known cloud instance IDs.
+
         Returns:
-            worker_groups_with_pending_deletes: The worker groups that have pending
-                deletes.
-            worker_groups_with_finished_deletes: The worker groups that have finished
-                deletes.
-            worker_to_delete_set: A set of Pods that are included in the workersToDelete
-                field of any worker group.
+            A tuple of:
+
+            - worker_groups_with_pending_deletes: The worker groups that have pending
+              deletes.
+            - worker_groups_with_finished_deletes: The worker groups that have finished
+              deletes.
+            - worker_to_delete_set: A set of Pods that are included in the
+              workersToDelete field of any worker group.
         """
 
         worker_groups_with_pending_deletes = set()
@@ -603,6 +609,10 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         Args:
             pod: The pod resource dict.
+
+        Returns:
+            The CloudInstance representing the pod, or None if the pod is not a
+            tracked Ray node (e.g. a redis-cleanup pod).
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:

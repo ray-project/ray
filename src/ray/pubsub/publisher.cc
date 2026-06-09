@@ -425,8 +425,8 @@ void Publisher::Publish(rpc::PubMessage pub_message) {
   pub_message.set_sequence_id(++next_sequence_id_);
 
   const size_t msg_size = pub_message.ByteSizeLong();
-  cum_pub_message_cnt_[channel_type]++;
-  cum_pub_message_bytes_cnt_[channel_type] += msg_size;
+  cum_pub_message_count_[channel_type]++;
+  cum_pub_message_bytes_count_[channel_type] += msg_size;
 
   subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)),
                              msg_size);
@@ -517,15 +517,15 @@ std::string Publisher::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
   result << "Publisher:";
-  for (const auto &it : cum_pub_message_cnt_) {
+  for (const auto &it : cum_pub_message_count_) {
     auto channel_type = it.first;
     const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
     const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
     result << "\n" << channel_name;
     result << "\n- cumulative published messages: " << it.second;
 
-    auto bytes_count_it = cum_pub_message_bytes_cnt_.find(channel_type);
-    if (bytes_count_it != cum_pub_message_bytes_cnt_.end()) {
+    auto bytes_count_it = cum_pub_message_bytes_count_.find(channel_type);
+    if (bytes_count_it != cum_pub_message_bytes_count_.end()) {
       result << "\n- cumulative published bytes: " << bytes_count_it->second;
     }
 
