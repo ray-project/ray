@@ -255,6 +255,7 @@ class LLMConfig(BaseModelExtended):
     _model_architecture: str = PrivateAttr("UNSPECIFIED")
     _engine_config: EngineConfigType = PrivateAttr(None)
     _callback_instance: Optional[CallbackBase] = PrivateAttr(None)
+    _kv_connector_backend: Optional[Any] = PrivateAttr(None)
 
     def _load_hf_config(self, model_id_or_path: str, trust_remote_code: bool = False):
         """Load the HuggingFace config for a model.
@@ -626,6 +627,20 @@ class LLMConfig(BaseModelExtended):
             kv_connector, self
         )
         kv_connector_backend.setup()
+        # 3. Stash the instance so the P/D orchestrator can reach the connector's
+        # coordination protocol (request shaping, peer binding, handoff
+        # discipline) without re-creating it. May be None on configs that never
+        # call setup_engine_backend(); the orchestrator falls back to the factory.
+        self._kv_connector_backend = kv_connector_backend
+
+    @property
+    def kv_connector_backend(self) -> Optional[Any]:
+        """The KV-connector backend instance created by ``setup_engine_backend``.
+
+        Returns None if no KV transfer connector is configured, or if the
+        backend has not been set up yet on this config copy.
+        """
+        return self._kv_connector_backend
 
 
 class DiskMultiplexConfig(BaseModelExtended):

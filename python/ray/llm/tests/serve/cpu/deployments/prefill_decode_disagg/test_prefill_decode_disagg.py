@@ -11,6 +11,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
+    CompletionRequest,
 )
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
@@ -359,6 +360,204 @@ class TestPDOrchestratorMixin:
         assert server._prefill_handle.calls[0]["method"] == method
         assert server._prefill_handle.calls[0]["session_id"] == "session-a"
         assert decode_calls[0].kv_transfer_params == {"remote_engine_id": "prefill-1"}
+
+
+class _ChooseReplicaPrefillHandle:
+    """Fake prefill DeploymentHandle exercising the choose_replica/dispatch path.
+
+    Mirrors the connector-protocol opt-in flow: the orchestrator opens a
+    ``choose_replica`` async context manager, reads ``selection.replica_metadata``,
+    then calls ``dispatch(selection, request, raw_info)``.
+    """
+
+    def __init__(self, calls=None, replica_metadata=None):
+        self.calls = calls if calls is not None else []
+        self._replica_metadata = (
+            replica_metadata if replica_metadata is not None else {"peer": "prefill-7"}
+        )
+
+    def options(self, **kwargs):
+        return self
+
+    def _method(self, name):
+        handle = self
+
+        class _Selection:
+            replica_metadata = handle._replica_metadata
+
+        class _Ctx:
+            async def __aenter__(self_inner):
+                return _Selection()
+
+            async def __aexit__(self_inner, *exc):
+                return False
+
+        def choose_replica(request):
+            handle.calls.append({"phase": "choose_replica", "method": name})
+            return _Ctx()
+
+        def dispatch(selection, request, raw_request_info):
+            handle.calls.append(
+                {"phase": "dispatch", "method": name, "request": request}
+            )
+            return _aiter(
+                [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-7"})]
+            )
+
+        return SimpleNamespace(choose_replica=choose_replica, dispatch=dispatch)
+
+    @property
+    def chat(self):
+        return self._method("chat")
+
+    @property
+    def completions(self):
+        return self._method("completions")
+
+
+class TestConnectorProtocolHook:
+    """The orchestrator delegates request shaping + handoff to the backend."""
+
+    def test_default_backend_reproduces_legacy_prepare(self):
+        """The default ``BaseConnectorBackend.prepare_*`` must produce the exact
+        same requests as the legacy ``_prepare_prefill_request`` /
+        ``_prepare_decode_request`` static methods (behavior-preserving)."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "hello"}],
+            max_completion_tokens=16,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        be = BaseConnectorBackend.__new__(BaseConnectorBackend)
+        be.llm_config = None
+
+        legacy_prefill = PDOrchestratorMixin._prepare_prefill_request(
+            request.model_copy(deep=True)
+        )
+        backend_prefill = be.prepare_prefill_request(
+            request.model_copy(deep=True), None
+        )
+        assert backend_prefill.model_dump() == legacy_prefill.model_dump()
+
+        chunk = SimpleNamespace(kv_transfer_params={"remote_engine_id": "p1"})
+        legacy_decode = PDOrchestratorMixin._prepare_decode_request(
+            request.model_copy(deep=True), chunk
+        )
+        backend_decode = be.prepare_decode_request(
+            request.model_copy(deep=True), None, chunk
+        )
+        assert backend_decode.model_dump() == legacy_decode.model_dump()
+        assert backend_decode.kv_transfer_params == {"remote_engine_id": "p1"}
+
+    def test_get_connector_backend_resolution_order(self):
+        """``_get_connector_backend`` prefers a stored instance, else resolves via
+        the factory when a kv_connector is configured, else a plain base backend."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+
+        # No kv_transfer_config -> plain BaseConnectorBackend.
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        be = server._get_connector_backend()
+        assert isinstance(be, BaseConnectorBackend)
+        assert be.requires_peer_binding is False
+        assert be.concurrent_handoff is False
+
+        # kv_connector configured -> factory-created backend (NixlConnectorBackend),
+        # which inherits the default flags (so still behavior-preserving).
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                }
+            },
+        )
+        be2 = server._get_connector_backend()
+        assert isinstance(be2, BaseConnectorBackend)
+        assert be2.requires_peer_binding is False
+        assert be2.concurrent_handoff is False
+
+        # A stored instance wins over factory resolution.
+        sentinel = BaseConnectorBackend.__new__(BaseConnectorBackend)
+        sentinel.llm_config = server._llm_config
+        server._llm_config._kv_connector_backend = sentinel
+        assert server._get_connector_backend() is sentinel
+
+    @pytest.mark.asyncio
+    async def test_peer_binding_concurrent_handoff_takes_choose_replica_path(self):
+        """A backend opting into requires_peer_binding + concurrent_handoff must
+        drive the orchestrator down the choose_replica/dispatch + concurrent
+        local-decode path, calling the backend's prepare_* with the peer."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        seen = {}
+
+        class _DummyBackend(BaseConnectorBackend):
+            requires_peer_binding = True
+            concurrent_handoff = True
+
+            def prepare_prefill_request(self, request, peer):
+                seen["prefill_peer"] = peer
+                out = request.model_copy(deep=True)
+                out.kv_transfer_params = {"role": "prefill", "peer": peer}
+                return out
+
+            def prepare_decode_request(self, request, peer, prefill_response):
+                seen["decode_peer"] = peer
+                seen["prefill_response"] = prefill_response
+                out = request.model_copy(deep=True)
+                out.kv_transfer_params = {"role": "decode", "peer": peer}
+                return out
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        dummy_backend = _DummyBackend(server._llm_config)
+        server._llm_config._kv_connector_backend = dummy_backend
+        prefill = _ChooseReplicaPrefillHandle(replica_metadata={"peer": "prefill-7"})
+        server._prefill_handle = prefill
+
+        decode_calls = []
+
+        async def _fake_super_completions(self, req, raw_info):
+            decode_calls.append(req)
+            return _aiter(["decode-chunk"])
+
+        request = CompletionRequest(model="test-model", prompt="hi")
+
+        # Patch the super() local-decode target (LLMServer.completions in the MRO).
+        with patch.object(LLMServer, "completions", _fake_super_completions):
+            chunks = [c async for c in server._pd_handle_request(request, None)]
+
+        # choose_replica + dispatch were used (not .remote()).
+        phases = [c["phase"] for c in prefill.calls]
+        assert phases == ["choose_replica", "dispatch"], phases
+        # Backend saw the peer metadata from the selection on both prepares.
+        assert seen["prefill_peer"] == {"peer": "prefill-7"}
+        assert seen["decode_peer"] == {"peer": "prefill-7"}
+        # Concurrent handoff -> no prefill chunk captured before decode.
+        assert seen["prefill_response"] is None
+        # Local decode ran with the backend-shaped decode request.
+        assert decode_calls[0].kv_transfer_params == {
+            "role": "decode",
+            "peer": {"peer": "prefill-7"},
+        }
+        assert chunks == ["decode-chunk"]
 
 
 class TestBuildPDOpenaiApp:
