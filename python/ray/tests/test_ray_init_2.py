@@ -412,7 +412,9 @@ def test_get_node_to_connect_for_driver_falls_back_to_local_ip(monkeypatch):
 
     monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
     monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: set())
-    monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.2")
+    monkeypatch.setattr(
+        ray._private.services, "get_node_ip_address", lambda: "10.0.0.2"
+    )
 
     node_info = ray._private.services.get_node_to_connect_for_driver(gcs_client)
 
@@ -452,7 +454,9 @@ def test_get_node_to_connect_for_driver_fallback_uses_explicit_temp_dir(monkeypa
 
     monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
     monkeypatch.setattr(ray._private.services, "find_node_ids", lambda: set())
-    monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.2")
+    monkeypatch.setattr(
+        ray._private.services, "get_node_ip_address", lambda: "10.0.0.2"
+    )
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
         gcs_client, temp_dir="/ray-sidecar"
