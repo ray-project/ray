@@ -316,6 +316,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self.update_metrics(0)
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
+            self._cross_node_copy_tracker.snapshot()
             logger.debug(self._cross_node_copy_tracker.summary())
             # Close the progress manager with a finishing message.
             if exception is None:
@@ -488,6 +489,8 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
+
+        self._cross_node_copy_tracker.snapshot()
 
         self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
