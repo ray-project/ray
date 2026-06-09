@@ -419,6 +419,136 @@ def get_system_memory(
     return psutil_memory_in_bytes
 
 
+# cgroup v2 swap-only counters (same paths the C++ memory monitor reads).
+_CGROUP_V2_SWAP_MAX = "/sys/fs/cgroup/memory.swap.max"
+_CGROUP_V2_SWAP_CURRENT = "/sys/fs/cgroup/memory.swap.current"
+# cgroup v1 RAM+swap combined counters.
+_CGROUP_V1_MEMSW_LIMIT = "/sys/fs/cgroup/memory/memory.memsw.limit_in_bytes"
+_CGROUP_V1_MEMSW_USAGE = "/sys/fs/cgroup/memory/memory.memsw.usage_in_bytes"
+_CGROUP_V1_MEM_LIMIT = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+_CGROUP_V1_MEM_USAGE = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+
+# C++ uses int64 for swap.max. All-digit values that overflow this are the
+# kernel's "unlimited" sentinel; the C++ monitor adds no swap for them.
+_INT64_MAX = 2**63 - 1
+
+
+def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
+    """Return (swap_total_bytes, swap_used_bytes) using cgroup-scoped limits.
+
+    Mirrors what the C++ memory monitor in src/ray/common/memory_monitor_utils.cc
+    counts as swap. When a cgroup branch is taken, *every* returned field is
+    cgroup-scoped — host-level psutil values are never mixed into a cgroup
+    result, which would otherwise let "used" exceed "total".
+
+    Note: this reads from the **root** cgroup (/sys/fs/cgroup/memory.swap.*).
+    Under --enable-resource-isolation the raylet's user-slice OOM monitor
+    reads memory.swap.* on the **user leaf** cgroup; in default deployments
+    the leaf inherits from the root so the two views agree. If an operator
+    explicitly writes memory.swap.max on the user/system leaves to a value
+    different from the root, this helper's advertised swap budget will
+    diverge from what the user-slice OOM monitor enforces.
+
+      - cgroup v2 with numeric memory.swap.max
+            -> (swap.max, swap.current if present else 0); matches C++ which
+               does not clamp by host swap
+      - cgroup v2 with non-numeric memory.swap.max (e.g. "max")
+            -> (0, 0); C++ adds no swap in this case
+      - cgroup v2 with numeric memory.swap.max that overflows int64
+            -> (0, 0); matches C++'s std::stoll out_of_range path
+      - cgroup v2 with memory.swap.max == 0 (swap disabled)
+            -> (0, 0); C++ guards swap.current read on swap_max_bytes > 0
+      - cgroup v1 memsw with RAM limit and usage readable
+            -> (memsw_limit - mem_limit, max(0, memsw_usage - mem_usage))
+      - cgroup v1 memsw without a readable RAM limit
+            -> (0, 0); swap-only cannot be derived from memsw alone
+      - Cgroup file present but read/parse fails
+            -> (0, 0); never leak host swap into a cgroup-scoped result
+      - No cgroup swap files
+            -> psutil host swap (total, used)
+    """
+    if os.path.exists(_CGROUP_V2_SWAP_MAX):
+        try:
+            with open(_CGROUP_V2_SWAP_MAX) as f:
+                val = f.read().strip()
+            # Mirror C++'s std::isdigit (ASCII 0-9) — str.isnumeric() would
+            # accept Unicode numeric characters (e.g. Arabic-Indic digits) that
+            # the C++ parser rejects, causing the two layers to disagree.
+            if not (val and val.isascii() and val.isdigit()):
+                # "max" (unlimited) or unparseable: cgroup v2 is in effect, so
+                # mirror the C++ monitor which adds no swap rather than falling
+                # back to host-level values.
+                return 0, 0
+            cgroup_swap_max = int(val)
+            if cgroup_swap_max > _INT64_MAX:
+                # Overflows int64; C++ treats this as unlimited and adds no swap.
+                return 0, 0
+            if cgroup_swap_max == 0:
+                # Swap disabled. Mirror C++, which guards the swap.current
+                # read on swap_max_bytes > 0 — don't leak a stale or
+                # transitioning swap.current value into used bytes.
+                return 0, 0
+        except (OSError, ValueError):
+            # Committed to cgroup v2; do not leak host swap on read/parse error.
+            return 0, 0
+        # Match C++: trust the cgroup limit as-is. Clamping by host swap
+        # would silently under-report when cgroup_swap_max > host.total.
+        # The swap.current read is in its own try/except so a transient
+        # failure here doesn't discard the already-known swap_max — C++
+        # leaves swap_used_bytes at 0 in the same case.
+        swap_used = 0
+        if os.path.exists(_CGROUP_V2_SWAP_CURRENT):
+            try:
+                with open(_CGROUP_V2_SWAP_CURRENT) as f:
+                    swap_used = int(f.read().strip())
+            except (OSError, ValueError):
+                swap_used = 0
+        return cgroup_swap_max, swap_used
+
+    if os.path.exists(_CGROUP_V1_MEMSW_LIMIT) and os.path.exists(
+        _CGROUP_V1_MEMSW_USAGE
+    ):
+        try:
+            with open(_CGROUP_V1_MEMSW_LIMIT) as f:
+                memsw_limit = int(f.read().strip())
+            with open(_CGROUP_V1_MEMSW_USAGE) as f:
+                memsw_usage = int(f.read().strip())
+            ram_limit = None
+            ram_usage = None
+            if os.path.exists(_CGROUP_V1_MEM_LIMIT):
+                with open(_CGROUP_V1_MEM_LIMIT) as f:
+                    ram_limit = int(f.read().strip())
+            if os.path.exists(_CGROUP_V1_MEM_USAGE):
+                with open(_CGROUP_V1_MEM_USAGE) as f:
+                    ram_usage = int(f.read().strip())
+            # We need ram_limit to derive swap-only from memsw (memsw is
+            # RAM+swap combined); without it we'd double-count RAM. ram_usage
+            # is only needed to derive swap_used — if it's missing we keep the
+            # correct swap_total and default swap_used to 0, which matches
+            # what C++ leaves in the per-tick used_bytes when memsw_usage is
+            # unreadable.
+            if ram_limit is None:
+                return 0, 0
+            # Match C++: no host clamp; the cgroup-derived value is the limit
+            # the OOM monitor enforces.
+            swap_total = max(0, memsw_limit - ram_limit)
+            swap_used = 0 if ram_usage is None else max(0, memsw_usage - ram_usage)
+            return swap_total, swap_used
+        except (OSError, ValueError):
+            # Committed to cgroup v1; do not leak host swap on read/parse error.
+            return 0, 0
+
+    # No cgroup swap files. Fall back to host-level psutil swap, but guard
+    # against psutil itself raising on stripped containers / unsupported
+    # kernels — callers shouldn't have to know which exception types psutil
+    # may throw (RuntimeError, NotImplementedError, OSError, …).
+    try:
+        host = psutil.swap_memory()
+        return host.total, host.used
+    except Exception:
+        return 0, 0
+
+
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
     hex_identifier = hex_identifier.decode()

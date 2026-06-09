@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from unittest.mock import patch
 
@@ -169,9 +170,25 @@ def test_to_resource_dict_with_invalid_types():
         spec.to_resource_dict()
 
 
+def _patch_swap_total(monkeypatch, swap_bytes: int) -> None:
+    """Pin the cgroup-aware swap total so tests don't depend on host swap."""
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory",
+        lambda: (swap_bytes, 0),
+    )
+
+
+def _enable_count_swap_flag(monkeypatch, enabled: bool) -> None:
+    """Override the module-level flag (read once at import time)."""
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec._COUNT_SWAP_IN_MEMORY_MONITOR", enabled
+    )
+
+
 def test_resolve_memory_resources(monkeypatch):
     """Validate that resolve correctly sets system object_store memory and
     raises ValueError when configured memory is too low."""
+    _patch_swap_total(monkeypatch, 0)
     # object_store_memory capped at 95% of shm size to avoid low performance.
     monkeypatch.setattr(
         "ray._common.utils.get_system_memory", lambda: 2 * 1024**3
@@ -204,6 +221,110 @@ def test_resolve_memory_resources(monkeypatch):
     spec2 = ResourceAndLabelSpec()
     with pytest.raises(ValueError, match="available for tasks and actors"):
         spec2.resolve(is_head=False)
+
+
+@pytest.mark.parametrize(
+    "swap_bytes",
+    [0, 512 * 1024**2, 4 * 1024**3],
+)
+def test_resolve_memory_includes_swap_when_flag_enabled(
+    monkeypatch, swap_bytes: int
+) -> None:
+    """With RAY_count_swap_in_memory_monitor=1, the auto-computed `memory`
+    resource includes host swap so `ray status` matches the OOM killer's view."""
+    _enable_count_swap_flag(monkeypatch, True)
+    _patch_swap_total(monkeypatch, swap_bytes)
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    available = 4 * 1024**3
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: available
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    spec.resolve(is_head=False)
+
+    assert spec.memory == available + swap_bytes - spec.object_store_memory
+
+
+def test_resolve_memory_ignores_swap_when_flag_disabled(monkeypatch) -> None:
+    """Default behavior: swap must NOT inflate the `memory` resource. This is
+    the pre-existing contract; flipping it silently would change scheduling
+    behavior on every existing deployment."""
+    _enable_count_swap_flag(monkeypatch, False)
+    _patch_swap_total(monkeypatch, 4 * 1024**3)
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    available = 4 * 1024**3
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: available
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    spec.resolve(is_head=False)
+
+    assert spec.memory == available - spec.object_store_memory
+
+
+def test_resolve_memory_skips_swap_when_memory_explicitly_set(monkeypatch) -> None:
+    """If the user passes --memory explicitly, swap must NOT be added on top
+    regardless of the flag."""
+    _enable_count_swap_flag(monkeypatch, True)
+    _patch_swap_total(monkeypatch, 4 * 1024**3)
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: 4 * 1024**3
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    user_memory = 2 * 1024**3
+    spec = ResourceAndLabelSpec(memory=user_memory)
+    spec.resolve(is_head=False)
+
+    assert spec.memory == user_memory
+
+
+def test_resolve_memory_handles_swap_lookup_failure(
+    monkeypatch, caplog, propagate_logs
+) -> None:
+    """If the cgroup-aware swap lookup raises (e.g. restricted env), the swap
+    addition is skipped and a warning is logged — memory falls back to the
+    no-swap value rather than raising."""
+    _enable_count_swap_flag(monkeypatch, True)
+
+    def _raise(*_args, **_kwargs):
+        raise OSError("swap unavailable")
+
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory", _raise
+    )
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    available = 4 * 1024**3
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: available
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    with caplog.at_level(
+        logging.WARNING, logger="ray._private.resource_and_label_spec"
+    ):
+        spec.resolve(is_head=False)
+
+    assert spec.memory == available - spec.object_store_memory
+    assert any(
+        "Failed to retrieve swap memory info" in record.message
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    )
 
 
 def test_resolve_raises_on_reserved_head_resource():

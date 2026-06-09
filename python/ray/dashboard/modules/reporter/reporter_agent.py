@@ -27,6 +27,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import get_localhost_ip, is_localhost
 from ray._common.utils import (
+    get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
 )
 from ray._private import utils
@@ -34,6 +35,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY,
+    env_bool,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -947,11 +949,31 @@ class ReporterAgent(
         return sent, recv
 
     @staticmethod
-    def _get_mem_usage():
+    def _get_mem_usage() -> Tuple[int, int, float, int]:
+        # When RAY_count_swap_in_memory_monitor=1, mirror the C++ memory
+        # monitor's swap accounting so the dashboard "Node Memory" graph
+        # matches what the OOM killer sees. Off by default.
         total = get_system_memory()
         used = utils.get_used_memory()
+        if env_bool("RAY_count_swap_in_memory_monitor", False):
+            try:
+                swap_total, swap_used = get_cgroup_aware_swap_memory()
+                total += swap_total
+                used += swap_used
+            except (OSError, NotImplementedError):
+                logger.warning(
+                    "Failed to retrieve swap memory info for dashboard.",
+                    exc_info=True,
+                )
+        # Mirror C++ MemoryMonitorUtils::GetCGroupMemoryBytes clamping so the
+        # dashboard never reports impossible states (negative available,
+        # percent > 100%) and stays consistent with what the OOM killer sees.
+        used = max(0, min(used, total))
         available = total - used
-        percent = round(used / total, 3) * 100
+        # Guard against a degenerate cgroup that reports total == 0 — the C++
+        # side maps such a total to kNull, and the dashboard would otherwise
+        # raise ZeroDivisionError and kill the metrics path.
+        percent = round(used / total, 3) * 100 if total > 0 else 0.0
         return total, available, percent, used
 
     @staticmethod

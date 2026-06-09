@@ -16,6 +16,7 @@ import pytest
 from ray._common.utils import (
     _BACKGROUND_TASKS,
     env_bool,
+    get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
     get_system_memory,
     load_class,
@@ -285,6 +286,221 @@ class TestGetSystemMemory:
             memory_limit_filename_v2="__also_does_not_exist__",
         )
         assert memory == psutil_memory, "Should use psutil when no cgroup files exist"
+
+
+@pytest.mark.skipif(not PSUTIL_AVAILABLE, reason="psutil not available")
+class TestGetCgroupAwareSwapMemory:
+    """Tests for the get_cgroup_aware_swap_memory helper.
+
+    The contract: when any cgroup branch is taken, *all* fields returned are
+    cgroup-scoped (host psutil values are never mixed into a cgroup result).
+    """
+
+    @staticmethod
+    def _patch_paths(monkeypatch, tmp_path, **paths):
+        """Override module-level cgroup paths to point into tmp_path.
+
+        Any key passed in is set; anything omitted is redirected to a
+        guaranteed-nonexistent path under tmp_path so the helper's
+        os.path.exists() guards behave as in a system without that file.
+        """
+        names = (
+            "_CGROUP_V2_SWAP_MAX",
+            "_CGROUP_V2_SWAP_CURRENT",
+            "_CGROUP_V1_MEMSW_LIMIT",
+            "_CGROUP_V1_MEMSW_USAGE",
+            "_CGROUP_V1_MEM_LIMIT",
+            "_CGROUP_V1_MEM_USAGE",
+        )
+        for name in names:
+            target = paths.get(name, str(tmp_path / f"__missing_{name}__"))
+            monkeypatch.setattr(f"ray._common.utils.{name}", target)
+
+    @staticmethod
+    def _write(tmp_path, name, content):
+        path = tmp_path / name
+        path.write_text(content)
+        return str(path)
+
+    @staticmethod
+    def _patch_host_swap(monkeypatch, total, used):
+        class _FakeSwap:
+            def __init__(self, total, used):
+                self.total = total
+                self.used = used
+
+        monkeypatch.setattr(
+            "ray._common.utils.psutil.swap_memory",
+            lambda: _FakeSwap(total, used),
+        )
+
+    def test_no_cgroup_files_uses_host_psutil(self, monkeypatch, tmp_path):
+        """With no cgroup swap files, the helper returns host psutil values."""
+        self._patch_paths(monkeypatch, tmp_path)
+        self._patch_host_swap(monkeypatch, total=8 * 1024**3, used=1 * 1024**3)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 8 * 1024**3
+        assert used == 1 * 1024**3
+
+    def test_cgroup_v2_numeric_swap_max_with_current(self, monkeypatch, tmp_path):
+        """Numeric swap.max + swap.current → both fields cgroup-scoped.
+
+        Host swap is intentionally smaller than the cgroup limit so this test
+        also regression-protects against re-introducing a min(cgroup, host)
+        clamp; C++ adds the full cgroup_swap_max regardless of host capacity.
+        """
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V2_SWAP_MAX=self._write(tmp_path, "swap.max", "2147483648"),
+            _CGROUP_V2_SWAP_CURRENT=self._write(tmp_path, "swap.current", "536870912"),
+        )
+        self._patch_host_swap(monkeypatch, total=1 * 1024**3, used=99)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 2 * 1024**3
+        assert used == 512 * 1024**2
+
+    def test_cgroup_v2_numeric_swap_max_without_current(self, monkeypatch, tmp_path):
+        """Regression: numeric swap.max but missing swap.current must NOT
+        return host.used — used is cgroup-scoped and unknown, so it's 0."""
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V2_SWAP_MAX=self._write(tmp_path, "swap.max", "2147483648"),
+        )
+        self._patch_host_swap(monkeypatch, total=8 * 1024**3, used=7 * 1024**3)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 2 * 1024**3
+        assert used == 0
+
+    @pytest.mark.parametrize(
+        "swap_max_value",
+        [
+            "max",
+            "garbage",
+            "",
+            # Numeric but overflows int64 — kernel's "unlimited" sentinel.
+            # C++ catches std::out_of_range from std::stoll and adds no swap;
+            # Python's int() has arbitrary precision so we must guard explicitly.
+            "18446744073709551615",
+            # Swap disabled. C++ guards the swap.current read on
+            # swap_max_bytes > 0 — Python must match so we don't report
+            # used > total during kernel state transitions.
+            "0",
+        ],
+    )
+    def test_cgroup_v2_swap_max_returns_zero_when_unusable(
+        self, monkeypatch, tmp_path, swap_max_value
+    ):
+        """Regression: when cgroup v2 swap.max is non-numeric (e.g. 'max'),
+        unparseable, numeric-but-overflows-int64, or 0 (swap disabled), the
+        helper must NOT fall back to host swap and must NOT leak swap.current
+        into the used bytes. C++ adds no swap in all these cases."""
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V2_SWAP_MAX=self._write(tmp_path, "swap.max", swap_max_value),
+            # Sentinel: if the helper ever reads swap.current in any of these
+            # cases, the assertion below will catch it.
+            _CGROUP_V2_SWAP_CURRENT=self._write(tmp_path, "swap.current", "12345"),
+        )
+        self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 0
+        assert used == 0
+
+    def test_cgroup_v1_memsw_with_ram_limit(self, monkeypatch, tmp_path):
+        """memsw - mem_limit gives swap-only; same for usage.
+
+        Host swap is intentionally smaller than the derived cgroup swap so
+        this test also regression-protects against re-introducing a clamp
+        by host swap; C++ never clamps by host capacity.
+        """
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V1_MEMSW_LIMIT=self._write(
+                tmp_path, "memsw.limit", str(3 * 1024**3)
+            ),
+            _CGROUP_V1_MEMSW_USAGE=self._write(
+                tmp_path, "memsw.usage", str(2 * 1024**3)
+            ),
+            _CGROUP_V1_MEM_LIMIT=self._write(tmp_path, "mem.limit", str(2 * 1024**3)),
+            _CGROUP_V1_MEM_USAGE=self._write(
+                tmp_path, "mem.usage", str(int(1.5 * 1024**3))
+            ),
+        )
+        self._patch_host_swap(monkeypatch, total=512 * 1024**2, used=0)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 1 * 1024**3
+        assert used == int(0.5 * 1024**3)
+
+    def test_cgroup_v1_memsw_without_ram_limit(self, monkeypatch, tmp_path):
+        """Regression: memsw without mem_limit must NOT treat memsw as
+        swap-only (that would double-count RAM inside memsw)."""
+        self._patch_paths(
+            monkeypatch,
+            tmp_path,
+            _CGROUP_V1_MEMSW_LIMIT=self._write(
+                tmp_path, "memsw.limit", str(3 * 1024**3)
+            ),
+            _CGROUP_V1_MEMSW_USAGE=self._write(
+                tmp_path, "memsw.usage", str(2 * 1024**3)
+            ),
+            # mem.limit / mem.usage intentionally missing
+        )
+        self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 0
+        assert used == 0
+
+    @pytest.mark.parametrize("variant", ["v2", "v1"])
+    def test_cgroup_branch_returns_zero_on_read_error(
+        self, monkeypatch, tmp_path, variant
+    ):
+        """Regression: once a cgroup branch is committed (file exists), a
+        read/parse error must return (0, 0) rather than fall through to host
+        swap. Earlier `except: pass` silently leaked host values into a
+        cgroup-scoped result."""
+        if variant == "v2":
+            target = self._write(tmp_path, "swap.max", "1024")
+            self._patch_paths(monkeypatch, tmp_path, _CGROUP_V2_SWAP_MAX=target)
+        else:
+            target = self._write(tmp_path, "memsw.limit", "1024")
+            usage = self._write(tmp_path, "memsw.usage", "512")
+            self._patch_paths(
+                monkeypatch,
+                tmp_path,
+                _CGROUP_V1_MEMSW_LIMIT=target,
+                _CGROUP_V1_MEMSW_USAGE=usage,
+            )
+        self._patch_host_swap(monkeypatch, total=100 * 1024**3, used=50 * 1024**3)
+
+        real_open = open
+
+        def _raising_open(path, *args, **kwargs):
+            if str(path) == target:
+                raise OSError("simulated read failure")
+            return real_open(path, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", _raising_open)
+
+        total, used = get_cgroup_aware_swap_memory()
+
+        assert total == 0
+        assert used == 0
 
 
 if __name__ == "__main__":
