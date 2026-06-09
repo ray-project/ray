@@ -4580,6 +4580,19 @@ class DeploymentState:
         if self._in_transition:
             self._check_and_update_transitioning_replicas()
 
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS and (
+            healthy_replicas or unhealthy_replicas
+        ):
+            # With the replica tag disabled, all replica writes collapse to a
+            # single deployment/application series. Overwrite it once with
+            # deployment-level health so iteration order cannot report healthy
+            # while a replica is failing.
+            deployment_is_healthy = (
+                len(unhealthy_replicas) == 0
+                and self._curr_status_info.status == DeploymentStatus.HEALTHY
+            )
+            self.health_check_gauge.set(int(deployment_is_healthy))
+
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
         # This ensures ranks are continuous after lifecycle events
         # Only do consistency check when deployment is stable (not during active updates)

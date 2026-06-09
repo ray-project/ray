@@ -1276,7 +1276,20 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
 
 def _check_controller_high_cardinality_metric_tags(include_high_cardinality: bool):
     """Test controller metrics respect high-cardinality tag config."""
+
+    @ray.remote
+    class ReplicaHealthState:
+        def __init__(self):
+            self.failing_replica_ids = set()
+
+        def add_failing_replica(self, replica_id: str):
+            self.failing_replica_ids.add(replica_id)
+
+        def should_fail_health_check(self, replica_id: str) -> bool:
+            return replica_id in self.failing_replica_ids
+
     signal = SignalActor.remote()
+    replica_health_state = ReplicaHealthState.remote()
 
     @serve.deployment(
         name="autoscaling_metrics_model",
@@ -1302,22 +1315,21 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
 
     @serve.deployment(
         name="lifecycle_metrics_model",
+        num_replicas=2,
         health_check_period_s=0.1,
         health_check_timeout_s=1,
         graceful_shutdown_timeout_s=0.1,
     )
     class LifecycleModel:
-        def __init__(self):
-            self.should_fail_health_check = False
-
-        async def __call__(self, request: Request):
-            body = await request.body()
-            if body == b"fail_health_check":
-                self.should_fail_health_check = True
-            return "hello"
+        async def __call__(self):
+            return serve.get_replica_context().replica_tag
 
         async def check_health(self):
-            if self.should_fail_health_check:
+            replica_id = serve.get_replica_context().replica_tag
+            should_fail_health_check = (
+                await replica_health_state.should_fail_health_check.remote(replica_id)
+            )
+            if should_fail_health_check:
                 raise RuntimeError("Intentional health check failure.")
 
     autoscaling_app_name = "autoscaling_metrics_app"
@@ -1336,7 +1348,18 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
     )
 
     url = get_application_url("HTTP", lifecycle_app_name)
-    assert httpx.request("GET", url, content=b"fail_health_check").text == "hello"
+    lifecycle_replica_ids = set()
+
+    def check_lifecycle_replicas_running():
+        lifecycle_replica_ids.add(httpx.get(url).text)
+        return len(lifecycle_replica_ids) == 2
+
+    wait_for_condition(check_lifecycle_replicas_running, timeout=60)
+    ray.get(
+        replica_health_state.add_failing_replica.remote(
+            sorted(lifecycle_replica_ids)[0]
+        )
+    )
     handle = serve.get_deployment_handle(
         autoscaling_deployment_name, autoscaling_app_name
     )
@@ -1363,6 +1386,11 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             lifecycle_deployment_name,
             lifecycle_app_name,
         )
+        health_status_metrics = get_matching_metrics(
+            "ray_serve_deployment_replica_healthy",
+            lifecycle_deployment_name,
+            lifecycle_app_name,
+        )
         handle_metrics = get_matching_metrics(
             "ray_serve_autoscaling_handle_metrics_delay_ms",
             autoscaling_deployment_name,
@@ -1373,15 +1401,35 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             autoscaling_deployment_name,
             autoscaling_app_name,
         )
-        if not health_failure_metrics or not handle_metrics or not replica_metrics:
+        if (
+            not health_failure_metrics
+            or not health_status_metrics
+            or not handle_metrics
+            or not replica_metrics
+        ):
             return False
 
         for metric in health_failure_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+        for metric in health_status_metrics:
             assert_high_cardinality_tag(metric, "replica")
         for metric in handle_metrics:
             assert_high_cardinality_tag(metric, "handle")
         for metric in replica_metrics:
             assert_high_cardinality_tag(metric, "replica")
+
+        if not include_high_cardinality:
+            health_status_value = get_metric_float(
+                "ray_serve_deployment_replica_healthy",
+                {
+                    "deployment": lifecycle_deployment_name,
+                    "application": lifecycle_app_name,
+                },
+                timeseries=timeseries,
+                timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+            )
+            if health_status_value != 0:
+                return False
 
         return True
 
