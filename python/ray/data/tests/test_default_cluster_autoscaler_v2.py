@@ -812,6 +812,7 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
         def __init__(self, *args, **kwargs):
             captured.update(kwargs)
 
+    monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V2")
     monkeypatch.setattr(ca_pkg, "DefaultClusterAutoscalerV2", _StubV2)
 
     data_context = Mock()
