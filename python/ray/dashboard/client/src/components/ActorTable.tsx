@@ -30,8 +30,14 @@ import {
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
-import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
-import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
+import {
+  getSumAcceleratorUtilization,
+  WorkerAcceleratorRow,
+} from "../pages/node/AcceleratorColumn";
+import {
+  getSumAcceleratorMemoryUsage,
+  WorkerAcceleratorMemory,
+} from "../pages/node/AcceleratorMemoryColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -131,13 +137,18 @@ const ActorTable = ({
             // so multiply by -1
             return uptime * -1 * descMultiplier;
           case gpuUtilizationSorterKey:
-            const sumGpuUtilization = getSumGpuUtilization(
+            const sumGpuUtilization = getSumAcceleratorUtilization(
               actor.pid,
               actor.gpus,
+              actor.tpus,
             );
             return sumGpuUtilization * descMultiplier;
           case gramUsageSorterKey:
-            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
+            const sumGRAMUsage = getSumAcceleratorMemoryUsage(
+              actor.pid,
+              actor.gpus,
+              actor.tpus,
+            );
             return sumGRAMUsage * descMultiplier;
           default:
             return 0;
@@ -599,6 +610,7 @@ const ActorTable = ({
                 exitDetail,
                 requiredResources,
                 gpus,
+                tpus,
                 processStats,
                 mem,
                 labelSelector,
@@ -748,10 +760,18 @@ const ActorTable = ({
                     )}
                   </TableCell>
                   <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                    <WorkerAcceleratorRow
+                      workerPID={pid}
+                      gpus={gpus}
+                      tpus={tpus}
+                    />
                   </TableCell>
                   <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
+                    <WorkerAcceleratorMemory
+                      workerPID={pid}
+                      gpus={gpus}
+                      tpus={tpus}
+                    />
                   </TableCell>
                   <TableCell
                     align="center"

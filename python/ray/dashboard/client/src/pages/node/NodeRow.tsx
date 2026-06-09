@@ -25,8 +25,11 @@ import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
-import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
+import { NodeAcceleratorView, WorkerAcceleratorRow } from "./AcceleratorColumn";
+import {
+  NodeAcceleratorMemory,
+  WorkerAcceleratorMemory,
+} from "./AcceleratorMemoryColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -158,10 +161,10 @@ export const NodeRow = ({
         )}
       </TableCell>
       <TableCell>
-        <NodeGPUView node={node} />
+        <NodeAcceleratorView node={node} />
       </TableCell>
       <TableCell>
-        <NodeGRAM node={node} />
+        <NodeAcceleratorMemory node={node} />
       </TableCell>
       <TableCell>
         {raylet && objectStoreTotalMemory && (
@@ -298,10 +301,18 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         )}
       </TableCell>
       <TableCell>
-        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
+        <WorkerAcceleratorRow
+          workerPID={pid}
+          gpus={node.gpus}
+          tpus={node.tpus}
+        />
       </TableCell>
       <TableCell>
-        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
+        <WorkerAcceleratorMemory
+          workerPID={pid}
+          gpus={node.gpus}
+          tpus={node.tpus}
+        />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
