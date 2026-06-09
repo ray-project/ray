@@ -857,7 +857,7 @@ in the :func:`ray.remote <ray.remote>` decorator.
 
     # By default, ray does not reuse workers for GPU tasks to prevent
     # GPU resource leakage.
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_gpus=1, max_calls=0)
     def leak_gpus():
         import tensorflow as tf
 

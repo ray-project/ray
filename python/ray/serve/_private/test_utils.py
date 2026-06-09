@@ -881,6 +881,9 @@ def check_replica_counts(
         by_state: A list of tuples of the form
             (replica state, number of replicas, filter function).
             Used for more fine grained checks.
+
+    Returns:
+        True when all assertions pass (raises ``AssertionError`` otherwise).
     """
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_id)
@@ -1605,13 +1608,16 @@ def get_metric_dictionaries(
         timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
-        assert name in fetch_prometheus_metric_timeseries(
+        prom_timeseries = fetch_prometheus_metric_timeseries(
             [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
             timeseries,
             # pass timeout to fetch_prometheus_metric_timeseries
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:
