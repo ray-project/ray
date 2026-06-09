@@ -481,7 +481,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name: str,
         deployment_name: str,
         replica_state: ReplicaState = ReplicaState.RUNNING,
-        controller_handle=None,
+        controller_handle: Optional[ray.actor.ActorHandle] = None,
     ) -> bool:
         """Checks that the number of replicas are as expected.
 
@@ -493,6 +493,9 @@ class TestTargetCapacityUpdateAndServeStatus:
             controller_handle: this is an optional argument. If provided, the
                 controller handle is used to get the current autoscaling
                 metrics and print them if the assertion fails.
+
+        Returns:
+            True when the replica count matches (raises ``AssertionError`` otherwise).
         """
         deployment = serve.status().applications[app_name].deployments[deployment_name]
         num_running_replicas = deployment.replica_states.get(replica_state, 0)

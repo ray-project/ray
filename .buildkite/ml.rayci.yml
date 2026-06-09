@@ -96,9 +96,14 @@ steps:
     tags: train
     instance_type: small
     commands:
+      # TEMP: --run-flaky-tests forces the flaky-classified torchft target to
+      # run (intersection with the flaky set) so we get a real pass/fail signal
+      # for the gloo-timeout fix. REVERT before merge -- once the test is
+      # un-flaked this flips to "No tests to run".
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --python-version 3.10 --build-name mltorchft-py3.10
         --only-tags torchft
+        --run-flaky-tests
         --except-tags needs_credentials,data_integration
     depends_on: [ "mltorchft", "forge" ]
 
@@ -337,7 +342,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --python-version 3.10 --build-name mlbuild-py3.10
         --parallelism-per-worker 2
-        --except-tags gpu,needs_credentials,train_v2_gpu,data_integration
+        --except-tags gpu,needs_credentials,train_v2_gpu,data_integration,torchft
     depends_on: [ "mlbuild-multipy(python=3.10)", "forge" ]
     soft_fail: true
 
@@ -356,6 +361,21 @@ steps:
         --only-tags needs_credentials
         --test-env=WANDB_API_KEY --test-env=COMET_API_KEY
     depends_on: [ "mlbuild-multipy(python=3.10)", "forge" ]
+    soft_fail: true
+
+  - label: ":bullettrain_front: ml: train v2 torch trainer flaky tests (torchft image)"
+    key: ml_torch_trainer_flaky_tests
+    tags:
+      - train
+      - flaky
+      - skip-on-premerge
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml --run-flaky-tests
+        --python-version 3.10 --build-name mltorchft-py3.10
+        --only-tags torchft
+        --except-tags needs_credentials,data_integration
+    depends_on: [ "mltorchft", "forge" ]
     soft_fail: true
 
   - label: ":train: ml: train gpu flaky tests"

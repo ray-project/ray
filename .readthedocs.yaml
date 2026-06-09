@@ -10,6 +10,37 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.10"
+  jobs:
+    # On PR builds, skip the Sphinx build when the PR doesn't touch any
+    # files that affect documentation output. Reduces queue pressure on
+    # the shared RTD build slots when several PRs are open at once.
+    # Tag/branch builds (master, stable, etc.) always run.
+    # See https://docs.readthedocs.com/platform/stable/guides/build/skip-build.html
+    #
+    # Some constructs are avoided deliberately because RTD's job runner
+    # silently drops scripts that contain them: use echo (not printf
+    # with a backslash-escape format string), avoid backslash escapes
+    # in general, and keep shell comments out of this block so that
+    # backticks/$() inside comments don't confuse the preprocessor.
+    post_checkout:
+      - |
+        if [ "${READTHEDOCS_VERSION_TYPE:-}" != "external" ]; then
+          echo "Not a PR build (version type: '${READTHEDOCS_VERSION_TYPE:-unset}'); building docs."
+          exit 0
+        fi
+        git fetch --depth=500 origin master 2>/dev/null || true
+        if ! git merge-base origin/master HEAD >/dev/null 2>&1; then
+          echo "Could not determine merge-base with origin/master; building docs to be safe."
+          exit 0
+        fi
+        if git diff --quiet origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml; then
+          echo "No doc-affecting files changed in this PR; skipping Sphinx build."
+          echo "Files changed in PR:"
+          git diff --name-only origin/master...HEAD
+          exit 183
+        fi
+        echo "Doc-affecting files changed; building docs. Changed doc-relevant paths:"
+        git diff --name-only origin/master...HEAD -- doc/ python/ray/ rllib/ .readthedocs.yaml
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

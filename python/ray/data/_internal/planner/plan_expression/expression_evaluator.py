@@ -338,12 +338,16 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> ds.Expression:
         """Handle case where comparator is UnaryOP (e.g., a == -1).
+
         AST for this expression will be Compare(left=Name(id='a'), ops=[Eq()],
         comparators=[UnaryOp(op=USub(), operand=Constant(value=1))])
 
         Args:
-            node: The constant value."""
+            node: The constant value.
 
+        Returns:
+            A PyArrow scalar expression representing the unary operation result.
+        """
         op = node.op
         if isinstance(op, ast.USub):
             return pc.scalar(-node.operand.value)
@@ -848,7 +852,10 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     # Collect input column rename map from the projection list
     input_column_rename_map = _extract_input_columns_renaming_mapping(projection_exprs)
 
-    # Expand star expr (if any)
+    # Expand star expr (if any). ``Project.__post_init__`` eagerly expands
+    # ``StarExpr`` to explicit ``col()`` refs whenever the
+    # input schema is known, so this runtime branch is hit only on the
+    # UDF-fallback path (Project on top of an opaque-schema input).
     if isinstance(projection_exprs[0], StarExpr):
         # Bucket the trailing exprs: rename ``AliasExpr``s of an input
         # column get placed into the original column's position (so the
