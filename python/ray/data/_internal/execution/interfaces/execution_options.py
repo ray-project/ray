@@ -1,7 +1,7 @@
 import math
 import os
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -14,6 +14,16 @@ class ExecutionResources:
     By default this class represents resource usage. Use `for_limits` or
     set `default_to_inf` to True to create an object that represents resource limits.
     """
+
+    # ``__slots__`` keeps instances small and makes attribute access go through
+    # slot descriptors instead of a per-instance ``__dict__`` -- the scheduler
+    # constructs millions of these per run (every ``add``/``subtract``/``max``/
+    # ``copy`` returns a new object), so this is a hot-path win. It also removes
+    # the need for a custom ``__setattr__`` immutability guard: the fields are
+    # set once in ``__init__`` and never reassigned (only ``_quantized``
+    # transitions None -> tuple as a lazy cache), so immutability is upheld by
+    # convention rather than a per-set runtime check.
+    __slots__ = ("_cpu", "_gpu", "_object_store_memory", "_memory", "_quantized")
 
     # Cached singletons for the two most common constants. `zero()` and `inf()`
     # are called all over the scheduler hot path (e.g. `.max(zero())`), and the
@@ -52,17 +62,6 @@ class ExecutionResources:
         self._object_store_memory: Optional[float] = object_store_memory
         self._memory: Optional[float] = memory
         self._quantized: Optional[Tuple[float, float, float, float]] = None
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        # ExecutionResources is immutable: the resource fields are set once in
-        # `__init__` and never mutated. That is what makes the lazy
-        # `_quantized` cache and the shared `zero()`/`inf()` singletons safe.
-        # Only the `_quantized` cache slot may transition (None -> tuple).
-        if name != "_quantized" and name in self.__dict__:
-            raise AttributeError(
-                f"ExecutionResources is immutable; cannot reassign {name!r}"
-            )
-        super().__setattr__(name, value)
 
     def _quantized_key(self) -> Tuple[float, float, float, float]:
         """Return the (cpu, gpu, object_store_memory, memory) tuple quantized
@@ -204,6 +203,26 @@ class ExecutionResources:
         if cls._INF_SINGLETON is None:
             cls._INF_SINGLETON = ExecutionResources.for_limits()
         return cls._INF_SINGLETON
+
+    @classmethod
+    def combine_sum(
+        cls, resources: Iterable["ExecutionResources"]
+    ) -> "ExecutionResources":
+        """Sum an iterable of ``ExecutionResources`` in a single pass.
+
+        Equivalent to ``reduce(lambda a, b: a.add(b), resources, zero())`` but
+        accumulates raw floats and allocates a single result object instead of
+        one intermediate per element. The per-iteration usage/budget rollups
+        sum across every operator, so collapsing the fold removes O(num_ops)
+        allocations from the scheduling hot path.
+        """
+        cpu = gpu = object_store_memory = memory = 0.0
+        for r in resources:
+            cpu += r.cpu
+            gpu += r.gpu
+            object_store_memory += r.object_store_memory
+            memory += r.memory
+        return ExecutionResources(cpu, gpu, object_store_memory, memory)
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""

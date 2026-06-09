@@ -3,7 +3,6 @@ import math
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from functools import reduce
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._common.utils import env_bool, env_float
@@ -213,9 +212,6 @@ class ResourceManager:
         # TODO(hchen): This method will be called frequently during the execution loop.
         # And some computations are redundant. We should either remove redundant
         # computations or remove this method entirely and compute usages on demand.
-        self._global_usage = ExecutionResources(0, 0, 0)
-        self._global_running_usage = ExecutionResources(0, 0, 0)
-        self._global_pending_usage = ExecutionResources(0, 0, 0)
         self._op_usages.clear()
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
@@ -246,19 +242,19 @@ class ResourceManager:
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage
 
-            # Update `self._global_usage`, `self._global_running_usage`,
-            # and `self._global_pending_usage`.
-            self._global_usage = self._global_usage.add(op_usage)
-            self._global_running_usage = self._global_running_usage.add(
-                op_running_usage
-            )
-            self._global_pending_usage = self._global_pending_usage.add(
-                op_pending_usage
-            )
-
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
             op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
+        # Roll the per-op usages up into the global totals in a single pass
+        # each (one allocation per total instead of one per operator).
+        self._global_usage = ExecutionResources.combine_sum(self._op_usages.values())
+        self._global_running_usage = ExecutionResources.combine_sum(
+            self._op_running_usages.values()
+        )
+        self._global_pending_usage = ExecutionResources.combine_sum(
+            self._op_pending_usages.values()
+        )
 
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
@@ -335,10 +331,8 @@ class ResourceManager:
     def _get_downstream_ineligible_ops_usage(
         self, op: PhysicalOperator
     ) -> ExecutionResources:
-        return reduce(
-            lambda x, y: x.add(y),
-            [self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)],
-            ExecutionResources.zero(),
+        return ExecutionResources.combine_sum(
+            self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)
         )
 
     def get_mem_op_internal(self, op: PhysicalOperator) -> int:
@@ -523,10 +517,9 @@ class ResourceManager:
             ops_to_exclude.append(op)
 
         completed_ops = list(set(ops_to_exclude))
-        completed_ops_usage = ExecutionResources.zero()
-
-        for op in completed_ops:
-            completed_ops_usage = completed_ops_usage.add(self.get_op_usage(op))
+        completed_ops_usage = ExecutionResources.combine_sum(
+            self.get_op_usage(op) for op in completed_ops
+        )
 
         return completed_ops_usage
 
