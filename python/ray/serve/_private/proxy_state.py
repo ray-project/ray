@@ -22,6 +22,7 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
     RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
@@ -30,6 +31,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
+from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.utils import (
     format_actor_name,
@@ -45,6 +47,14 @@ from ray.serve.schema import (
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def get_proxy_actor_class():
+    # Extension point (Developer API): selects the proxy actor class.
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return HAProxyManager
+
+    return ProxyActor
 
 
 class ProxyWrapper(ABC):

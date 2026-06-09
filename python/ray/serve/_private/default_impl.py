@@ -47,8 +47,9 @@ from ray.util.placement_group import PlacementGroup
 #
 # This module holds only leaf factories: ones the runtime objects (proxy,
 # handle, ...) import. The actor-class factories that import those heavy
-# modules live in their own modules to keep this a leaf and avoid circular
-# imports: see proxy_actor_class.py and controller_actor_class.py.
+# modules live next to the actors they build to keep this a leaf and avoid
+# circular imports: get_proxy_actor_class in proxy_state.py, get_controller_impl
+# in controller.py.
 
 
 def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCache:

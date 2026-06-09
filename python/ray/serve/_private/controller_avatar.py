@@ -1,6 +1,6 @@
 import ray
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
-from ray.serve._private.controller_actor_class import get_controller_impl
+from ray.serve._private.controller import get_controller_impl
 from ray.serve.config import HTTPOptions
 from ray.serve.schema import LoggingConfig
 

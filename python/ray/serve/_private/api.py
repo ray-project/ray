@@ -14,7 +14,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.controller_actor_class import get_controller_impl
+from ray.serve._private.controller import get_controller_impl
 from ray.serve.config import ControllerOptions, HTTPOptions, gRPCOptions
 from ray.serve.context import (
     _check_cached_client_alive,

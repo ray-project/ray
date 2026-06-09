@@ -15,6 +15,7 @@ from typing import (
 )
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
@@ -35,9 +36,11 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_LOG_TO_STDERR,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -71,8 +74,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
-from ray.serve._private.proxy_actor_class import get_proxy_actor_class
-from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.proxy_state import ProxyStateManager, get_proxy_actor_class
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -82,7 +84,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     is_grpc_enabled,
 )
-from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import ControllerOptions, HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -1893,3 +1895,29 @@ def log_target_capacity_change(
             )
         else:
             logger.info("Target capacity entering 100% at steady state.")
+
+
+def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
+    """Build the Ray actor class for the Serve controller.
+
+    Extension point (Developer API). ``controller_options`` is the validated
+    model from ``serve.start`` / ``serve.run`` / the YAML schema; today only its
+    ``runtime_env`` field is consumed.
+    """
+    actor_options = dict(
+        name=SERVE_CONTROLLER_NAME,
+        namespace=SERVE_NAMESPACE,
+        num_cpus=0,
+        lifetime="detached",
+        max_restarts=-1,
+        max_task_retries=-1,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+    )
+    if controller_options is not None and controller_options.runtime_env:
+        # The validator on ControllerOptions guarantees this is a dict
+        # containing only the ``env_vars`` key with str->str entries.
+        actor_options["runtime_env"] = controller_options.runtime_env
+
+    return ray.remote(**actor_options)(ServeController)
