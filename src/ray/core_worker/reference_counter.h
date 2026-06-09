@@ -49,6 +49,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
+      const std::function<void(const ObjectID &object_id)>
+          on_any_object_out_of_scope_or_freed,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
@@ -57,6 +59,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
+        on_any_object_out_of_scope_or_freed_(
+            std::move(on_any_object_out_of_scope_or_freed)),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -776,6 +780,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// the primary or spilled location of an object. If the node died, then
   /// the object will be added to the buffer objects to recover.
   const std::function<bool(const NodeID &node_id)> is_node_dead_;
+
+  /// Called when any object goes out of scope or is freed.
+  const std::function<void(const ObjectID &object_id)>
+      on_any_object_out_of_scope_or_freed_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

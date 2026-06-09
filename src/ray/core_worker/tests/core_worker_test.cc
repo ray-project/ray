@@ -152,6 +152,7 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
+        /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
@@ -650,12 +651,14 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
   auto is_node_dead = [](const NodeID &) { return false; };
-  ReferenceCounter ref_counter(addr,
-                               /*object_info_publisher=*/nullptr,
-                               /*object_info_subscriber=*/nullptr,
-                               is_node_dead,
-                               *std::make_shared<ray::observability::FakeGauge>(),
-                               *std::make_shared<ray::observability::FakeGauge>());
+  ReferenceCounter ref_counter(
+      addr,
+      /*object_info_publisher=*/nullptr,
+      /*object_info_subscriber=*/nullptr,
+      is_node_dead,
+      /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>());
 
   // Fake plasma client that records Get calls.
   std::vector<std::vector<ObjectID>> observed_batches;
@@ -708,6 +711,108 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   EXPECT_EQ(observed_batches[0].size(), 2U);
   EXPECT_EQ(observed_batches[1].size(), 2U);
   EXPECT_EQ(observed_batches[2].size(), 1U);
+}
+
+// A live tracked buffer (the backing for a zero-copy deserialized object) should hold a
+// local reference on the object, keeping it in scope until the buffer is destroyed --
+// even after the ObjectRef that produced it has gone out of scope.
+TEST(TrackedBufferReferenceCounting, PinsObjectWhileBufferAlive) {
+  rpc::Address addr;
+  addr.set_ip_address("127.0.0.1");
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  // A real publisher is required so the reference counter can erase references when they
+  // reach zero (EraseReference publishes a failure).
+  FakePeriodicalRunner periodical_runner;
+  auto object_info_publisher = std::make_unique<pubsub::Publisher>(
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+      periodical_runner,
+      /*get_time_ms=*/[]() { return 0.0; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      WorkerID::FromRandom());
+  auto object_info_subscriber = std::make_unique<pubsub::FakeSubscriber>();
+
+  // Records objects as they go out of scope. In production this callback deletes the
+  // object's sentinel from the in-memory store; here we just record the ids so we can
+  // assert on the buffer-driven lifecycle below.
+  std::vector<ObjectID> deleted_via_callback;
+  auto ref_counter = std::make_shared<ReferenceCounter>(
+      addr,
+      object_info_publisher.get(),
+      object_info_subscriber.get(),
+      /*is_node_dead=*/[](const NodeID &) { return false; },
+      /*on_any_object_out_of_scope_or_freed=*/
+      [&deleted_via_callback](const ObjectID &object_id) {
+        deleted_via_callback.push_back(object_id);
+      },
+      *std::make_shared<ray::observability::FakeGauge>(),
+      *std::make_shared<ray::observability::FakeGauge>());
+
+  // Fake plasma client that always returns a non-empty data buffer, so the provider
+  // wraps it in a TrackedBuffer.
+  class DataReturningPlasmaClient : public plasma::FakePlasmaClient {
+   public:
+    Status Get(const std::vector<ObjectID> &object_ids,
+               int64_t timeout_ms,
+               std::vector<plasma::ObjectBuffer> *object_buffers) override {
+      object_buffers->resize(object_ids.size());
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        uint8_t byte = 0;
+        auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+        (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
+      }
+      return Status::OK();
+    }
+  };
+  auto fake_plasma = std::make_shared<DataReturningPlasmaClient>();
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/fake_plasma,
+      /*fetch_batch_size=*/10,
+      /*get_current_call_site=*/nullptr,
+      /*reference_counter=*/ref_counter);
+
+  // Simulate the owned object and its language-frontend ObjectRef (local_ref_count=1).
+  ObjectID id = ObjectID::FromRandom();
+  ref_counter->AddOwnedObject(id,
+                              /*contained_ids=*/{},
+                              addr,
+                              "call_site",
+                              /*object_size=*/1,
+                              LineageReconstructionEligibility::INELIGIBLE_PUT,
+                              /*add_local_ref=*/true);
+
+  std::vector<rpc::Address> owner_addresses = ref_counter->GetOwnerAddresses({id});
+  auto results =
+      std::make_unique<absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>>();
+  ASSERT_TRUE(provider.Get({id}, owner_addresses, /*timeout_ms=*/0, results.get()).ok());
+  ASSERT_EQ(results->size(), 1U);
+
+  // The tracked buffer added a second local reference on top of the ObjectRef's.
+  auto counts = ref_counter->GetAllReferenceCounts();
+  ASSERT_EQ(counts.count(id), 1U);
+  EXPECT_EQ(counts[id].first, 2U);  // local_ref_count: ObjectRef + buffer
+
+  // The ObjectRef goes out of scope, but the buffer keeps the object pinned.
+  ref_counter->RemoveLocalReference(id, nullptr);
+  EXPECT_TRUE(ref_counter->HasReference(id));
+  EXPECT_EQ(ref_counter->GetAllReferenceCounts()[id].first, 1U);
+  EXPECT_TRUE(deleted_via_callback.empty());
+
+  // Dropping the RayObject destroys the TrackedBuffer, which removes the last local
+  // reference and takes the object out of scope.
+  results.reset();
+  EXPECT_FALSE(ref_counter->HasReference(id));
+  EXPECT_EQ(deleted_via_callback, std::vector<ObjectID>{id});
 }
 
 // Given 5 ids with 3 already local in plasma, Get() should send only the 2

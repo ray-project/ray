@@ -114,6 +114,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
+            /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
             /*lineage_pinning_enabled=*/false)),

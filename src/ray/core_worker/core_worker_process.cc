@@ -328,17 +328,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
-  auto reference_counter = std::make_shared<ReferenceCounter>(
-      rpc_address,
-      /*object_info_publisher=*/object_info_publisher.get(),
-      /*object_info_subscriber=*/object_info_subscriber.get(),
-      /*is_node_dead=*/
-      [this](const NodeID &node_id) {
-        return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
-      },
-      *owned_objects_counter_,
-      *owned_objects_size_counter_,
-      RayConfig::instance().lineage_pinning_enabled());
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(
@@ -359,22 +348,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // death.
   auto plasma_client =
       std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true);
-  auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
-      options.store_socket,
-      raylet_ipc_client,
-      options.check_signals,
-      /*warmup=*/
-      (options.worker_type != WorkerType::SPILL_WORKER &&
-       options.worker_type != WorkerType::RESTORE_WORKER),
-      /*store_client=*/std::move(plasma_client),
-      /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
-      /*get_current_call_site=*/[this]() {
-        auto core_worker = GetCoreWorker();
-        return core_worker->CurrentCallSite();
-      });
+  // NOTE: memory_store is created before plasma_store_provider so that the provider can
+  // capture it for buffer-driven reference cleanup (see below). The two have no
+  // interdependency, so the ordering is otherwise immaterial.
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      /*reference_counting_enabled=*/reference_counter != nullptr,
+      /*reference_counting_enabled=*/true,
       raylet_ipc_client,
       options.check_signals,
       [this](const RayObject &obj) {
@@ -397,6 +376,34 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             },
             "CoreWorker.HandleException");
       });
+  auto reference_counter = std::make_shared<ReferenceCounter>(
+      rpc_address,
+      /*object_info_publisher=*/object_info_publisher.get(),
+      /*object_info_subscriber=*/object_info_subscriber.get(),
+      /*is_node_dead=*/
+      [this](const NodeID &node_id) {
+        return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
+      },
+      [memory_store](const ObjectID &object_id) { memory_store->Delete({object_id}); },
+      *owned_objects_counter_,
+      *owned_objects_size_counter_,
+      RayConfig::instance().lineage_pinning_enabled());
+
+  auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
+      options.store_socket,
+      raylet_ipc_client,
+      options.check_signals,
+      /*warmup=*/
+      (options.worker_type != WorkerType::SPILL_WORKER &&
+       options.worker_type != WorkerType::RESTORE_WORKER),
+      /*store_client=*/std::move(plasma_client),
+      /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
+      /*get_current_call_site=*/
+      [this]() {
+        auto core_worker = GetCoreWorker();
+        return core_worker->CurrentCallSite();
+      },
+      reference_counter);
 
   std::shared_ptr<experimental::MutableObjectProvider>
       experimental_mutable_object_provider;

@@ -358,6 +358,7 @@ ray_cc_library(
     deps = [
         ":common",
         ":core_worker_context",
+        ":reference_counter_interface",
         "//src/ray/common:buffer",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",

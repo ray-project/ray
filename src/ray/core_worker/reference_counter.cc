@@ -839,6 +839,7 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }
+  on_any_object_out_of_scope_or_freed_(it->first);
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);

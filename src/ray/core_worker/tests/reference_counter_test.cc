@@ -58,6 +58,7 @@ class ReferenceCountTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_);
   }
@@ -92,6 +93,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_,
         /*lineage_pinning_enabled=*/true);
@@ -325,6 +327,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
             *owned_object_count_metric_,
             *owned_object_size_metric_,
             /*lineage_pinning_enabled=*/false) {}
@@ -890,6 +893,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       publisher.get(),
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; },
+      /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");

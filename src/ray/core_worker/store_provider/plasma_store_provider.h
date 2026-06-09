@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -37,18 +38,37 @@ class TrackedBuffer;
 
 // Active buffers tracker. This must be allocated as a separate structure since its
 // lifetime can exceed that of the store provider due to TrackedBuffer.
+//
+// In addition to tracking live buffers for `ray memory`, the tracker holds a local
+// reference in the reference counter for each live tracked buffer. This ties the
+// object's lifecycle to the buffer (not just the ObjectRef), so that zero-copy
+// deserialized objects backed by plasma shared memory keep the object in scope until
+// the buffer itself is destroyed. See Record()/Release().
 class BufferTracker {
  public:
-  // Track an object.
+  // `reference_counter` may be null (e.g. in unit tests that construct the store provider
+  // directly), in which case buffer-driven reference counting is skipped. It must outlive
+  // every TrackedBuffer; passing a shared_ptr copy guarantees this since the tracker
+  // outlives the store provider.
+  explicit BufferTracker(
+      std::shared_ptr<ReferenceCounterInterface> reference_counter = nullptr)
+      : reference_counter_(std::move(reference_counter)) {}
+
+  // Track an object. Also adds a local reference for the object so that it stays in
+  // scope for as long as this buffer is alive.
   void Record(const ObjectID &object_id,
               TrackedBuffer *buffer,
               const std::string &call_site);
-  // Release an object from tracking.
+  // Release an object from tracking. Also removes the local reference added in Record(),
+  // and cleans up any objects that are now out of scope.
   void Release(const ObjectID &object_id, TrackedBuffer *buffer);
   // List tracked objects.
   absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> UsedObjects() const;
 
  private:
+  // Reference counter used to pin the object while a tracked buffer for it is alive. May
+  // be null, in which case buffer-driven reference counting is disabled.
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   // Guards the active buffers map. This mutex may be acquired during TrackedBuffer
   // destruction.
   mutable absl::Mutex active_buffers_mutex_;
@@ -99,7 +119,8 @@ class CoreWorkerPlasmaStoreProvider {
       bool warmup,
       std::shared_ptr<plasma::PlasmaClientInterface> store_client,
       int64_t fetch_batch_size,
-      std::function<std::string()> get_current_call_site = nullptr);
+      std::function<std::string()> get_current_call_site = nullptr,
+      std::shared_ptr<ReferenceCounterInterface> reference_counter = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
 

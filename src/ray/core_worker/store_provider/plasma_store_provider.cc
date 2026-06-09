@@ -34,15 +34,30 @@ namespace core {
 void BufferTracker::Record(const ObjectID &object_id,
                            TrackedBuffer *buffer,
                            const std::string &call_site) {
-  absl::MutexLock lock(&active_buffers_mutex_);
-  active_buffers_[std::make_pair(object_id, buffer)] = call_site;
+  {
+    absl::MutexLock lock(&active_buffers_mutex_);
+    active_buffers_[std::make_pair(object_id, buffer)] = call_site;
+  }
+  // Pin the object for as long as this buffer is alive. This is done outside the
+  // active_buffers_mutex_ to avoid holding two locks at once. The matching decrement
+  // happens in Release(), called from ~TrackedBuffer.
+  if (reference_counter_ != nullptr) {
+    reference_counter_->AddLocalReference(object_id, call_site);
+  }
 }
 
 void BufferTracker::Release(const ObjectID &object_id, TrackedBuffer *buffer) {
-  absl::MutexLock lock(&active_buffers_mutex_);
-  auto key = std::make_pair(object_id, buffer);
-  RAY_CHECK(active_buffers_.contains(key));
-  active_buffers_.erase(key);
+  {
+    absl::MutexLock lock(&active_buffers_mutex_);
+    auto key = std::make_pair(object_id, buffer);
+    RAY_CHECK(active_buffers_.contains(key));
+    active_buffers_.erase(key);
+  }
+  // Remove the local reference added in Record(). Done outside the active_buffers_mutex_
+  // so we never hold the buffer tracker lock and the reference counter lock at once.
+  if (reference_counter_ != nullptr) {
+    reference_counter_->RemoveLocalReference(object_id, nullptr);
+  }
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
@@ -69,7 +84,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
     int64_t fetch_batch_size,
-    std::function<std::string()> get_current_call_site)
+    std::function<std::string()> get_current_call_site,
+    std::shared_ptr<ReferenceCounterInterface> reference_counter)
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
       check_signals_(std::move(check_signals)),
@@ -81,7 +97,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
-  buffer_tracker_ = std::make_shared<BufferTracker>();
+  buffer_tracker_ = std::make_shared<BufferTracker>(std::move(reference_counter));
   if (!store_socket.empty()) {
     RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
     RAY_CHECK_OK(store_client_->Connect(store_socket));

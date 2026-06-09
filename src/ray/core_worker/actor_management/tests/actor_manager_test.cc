@@ -92,6 +92,7 @@ class ActorManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
             /*lineage_pinning_enabled=*/true)) {

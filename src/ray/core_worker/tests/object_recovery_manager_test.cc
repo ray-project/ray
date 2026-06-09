@@ -144,6 +144,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
+            /*on_any_object_out_of_scope_or_freed=*/[](const ObjectID &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             /*lineage_pinning_enabled=*/lineage_enabled)),
