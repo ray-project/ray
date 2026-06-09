@@ -103,6 +103,7 @@ ray_cc_library(
         ":memory_monitor_utils",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:logging",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -458,6 +459,7 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
+        "//src/ray/common/monitors:cpu_monitor_utils",
         "//src/ray/util:logging",
         "@boost//:algorithm",
         "@com_google_absl//absl/strings",

@@ -709,6 +709,41 @@ def test_execution_resources_to_resource_dict():
     }
 
 
+def test_execution_resources_init_preserves_fractional_cpu():
+    # ExecutionResources no longer quantizes inputs in __init__; the boundary
+    # (to_resource_dict) does that.
+    raw_cpu = 0.5 / 3  # 0.16666666666666666...
+    r = ExecutionResources(cpu=raw_cpu)
+    assert r._cpu == raw_cpu
+    assert r.cpu == raw_cpu
+    # to_resource_dict() quantizes for Ray Core: cpu/gpu to 5 digits.
+    assert r.to_resource_dict()["CPU"] == round(raw_cpu, 5)
+
+
+def test_execution_resources_to_resource_dict_rounds_memory_to_int():
+    # Internal arithmetic can leave fractional bytes; to_resource_dict()
+    # rounds them to integer bytes for Ray Core.
+    r = ExecutionResources(memory=112.5, object_store_memory=257.5)
+    d = r.to_resource_dict()
+    # Python round() uses banker's rounding (round-half-to-even).
+    assert d["memory"] == round(112.5, 0)
+    assert d["object_store_memory"] == round(257.5, 0)
+
+
+def test_execution_resources_is_zero_under_drift():
+    # 1M add/subtract pairs of mixed magnitudes should leave is_zero() True
+    # despite any accumulated float drift.
+    acc = ExecutionResources.zero()
+    delta = ExecutionResources(
+        cpu=1.0 / 7, gpu=1.0 / 9, memory=12345.6789, object_store_memory=98765.4321
+    )
+    for _ in range(1_000_000):
+        acc = acc.add(delta).subtract(delta)
+    assert acc.is_zero()
+    assert acc == ExecutionResources.zero()
+    assert acc.is_non_negative()
+
+
 if __name__ == "__main__":
     import sys
 
