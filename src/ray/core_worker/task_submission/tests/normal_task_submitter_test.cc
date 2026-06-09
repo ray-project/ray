@@ -497,7 +497,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client_pool,
         mock_gcs_client_,
         std::move(lease_policy),
-        // Use the caller-provided store if given, otherwise fall back to the fixture's store.
+        // Use the caller-provided store if given, otherwise fall back to the fixture's
+        // store.
         custom_memory_store != nullptr ? custom_memory_store : store,
         *task_manager,
         local_node_id,
