@@ -87,9 +87,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     callback methods.
     """
 
-    # TODO(hchen): Fields tagged with "map_only" currently only work for MapOperator.
-    # We should make them work for all operators by unifying the task execution code.
-
     # === Inputs-related metrics ===
     num_inputs_received: int = metric_field(
         default=0,
@@ -429,10 +426,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     # Use "metrics_group: "misc" in the metadata for new metrics in this section.
 
     def __init__(self, op: "PhysicalOperator"):
-        from ray.data._internal.execution.operators.map_operator import MapOperator
-
         self._op = op
-        self._is_map = isinstance(op, MapOperator)
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
@@ -484,8 +478,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         result = []
         for metric in self.get_metrics():
-            if not self._is_map and metric.map_only:
-                continue
             if skip_internal_metrics and metric.internal_only:
                 continue
             value = getattr(self, metric.name)

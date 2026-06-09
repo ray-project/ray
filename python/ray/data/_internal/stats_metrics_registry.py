@@ -1,7 +1,7 @@
 """Shared registry for Ray Data dashboard (Prometheus) metrics.
 
 This module owns the boilerplate that lets a metric be declared here
-and published generically by ``_StatsActor``. 
+and published generically by ``_StatsActor``.
 
 A metric is described by a :class:`MetricDefinition`. Definitions are grouped by
 namespace (e.g. ``"op_runtime"``, ``"iteration"``, ``"dataset_metadata"``) in
@@ -29,7 +29,6 @@ _METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
 _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
 _METRIC_FIELD_METRICS_TYPE_KEY = "__metric_metrics_type"
 _METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
-_METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 _METRIC_FIELD_SOURCE_KEY_KEY = "__metric_source_key"
 _METRIC_FIELD_PROMETHEUS_NAME_KEY = "__metric_prometheus_name"
 _METRIC_FIELD_TAG_KEYS_KEY = "__metric_tag_keys"
@@ -83,7 +82,6 @@ class MetricDefinition:
         metrics_type: The Prometheus primitive type (Gauge/Counter/Histogram).
         metrics_args: Extra args forwarded to the Prometheus primitive
             constructor (e.g. histogram buckets).
-        map_only: Whether the metric is only measured for 'MapOperators'.
         internal_only: If True, the metric is hidden from the user (excluded
             from ``as_dict`` when internal metrics are skipped).
         source_key: Key to read the value from under in the producer's record
@@ -102,9 +100,6 @@ class MetricDefinition:
     metrics_group: str
     metrics_type: MetricsType
     metrics_args: Dict[str, Any]
-    # TODO: Let's refactor this parameter so it isn't tightly coupled with a specific
-    # operator type (MapOperator).
-    map_only: bool = False
     internal_only: bool = False  # do not expose this metric to the user
     source_key: Optional[str] = None
     prometheus_name: Optional[str] = None
@@ -135,9 +130,7 @@ class MetricsRegistry:
         """Register ``definition`` under ``namespace``."""
         self._by_namespace.setdefault(namespace, []).append(definition)
 
-    def definitions(
-        self, namespace: Optional[str] = None
-    ) -> List[MetricDefinition]:
+    def definitions(self, namespace: Optional[str] = None) -> List[MetricDefinition]:
         """Return registered definitions.
 
         Args:
@@ -163,7 +156,6 @@ def metric_field(
     metrics_group: str,
     metrics_type: MetricsType = MetricsType.Gauge,
     metrics_args: Dict[str, Any] = None,
-    map_only: bool = False,
     internal_only: bool = False,  # do not expose this metric to the user
     source_key: Optional[str] = None,
     prometheus_name: Optional[str] = None,
@@ -183,7 +175,6 @@ def metric_field(
     metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
     metadata[_METRIC_FIELD_METRICS_TYPE_KEY] = metrics_type
     metadata[_METRIC_FIELD_METRICS_ARGS_KEY] = metrics_args or {}
-    metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY] = map_only
     metadata[_METRIC_FIELD_SOURCE_KEY_KEY] = source_key
     metadata[_METRIC_FIELD_PROMETHEUS_NAME_KEY] = prometheus_name
     metadata[_METRIC_FIELD_TAG_KEYS_KEY] = tag_keys
@@ -197,7 +188,6 @@ def metric_property(
     metrics_group: str,
     metrics_type: MetricsType = MetricsType.Gauge,
     metrics_args: Dict[str, Any] = None,
-    map_only: bool = False,
     internal_only: bool = False,  # do not expose this metric to the user
     source_key: Optional[str] = None,
     prometheus_name: Optional[str] = None,
@@ -213,7 +203,6 @@ def metric_property(
             metrics_group=metrics_group,
             metrics_type=metrics_type,
             metrics_args=(metrics_args or {}),
-            map_only=map_only,
             internal_only=internal_only,
             source_key=source_key,
             prometheus_name=prometheus_name,
@@ -253,7 +242,6 @@ class OpRuntimesMetricsMeta(type):
                     metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
                     metrics_type=value.metadata[_METRIC_FIELD_METRICS_TYPE_KEY],
                     metrics_args=value.metadata[_METRIC_FIELD_METRICS_ARGS_KEY],
-                    map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                     source_key=value.metadata[_METRIC_FIELD_SOURCE_KEY_KEY],
                     prometheus_name=value.metadata[_METRIC_FIELD_PROMETHEUS_NAME_KEY],
                     tag_keys=value.metadata[_METRIC_FIELD_TAG_KEYS_KEY],
