@@ -20,6 +20,7 @@
 #include "object_store.h"
 #include "ray/asio/asio_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace internal {
@@ -49,6 +50,8 @@ class LocalModeObjectStore : public ObjectStore {
                                                         int timeout_ms);
 
   InstrumentedIOContextWithThread io_context_;
+  // Declared before memory_store_ so it outlives the store, which holds a reference.
+  Clock clock_;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store_;
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
