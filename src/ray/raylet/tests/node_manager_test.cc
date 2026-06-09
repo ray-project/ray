@@ -103,6 +103,17 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   bool HasLocallySpilledObjects() const override { return false; }
 
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override {}
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override {
+    return {};
+  }
+
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override {
+    return {};
+  }
+
   std::string DebugString() const override { return ""; }
 
  private:
