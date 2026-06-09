@@ -104,6 +104,7 @@ python/ray/data/_internal/logical/rules/limit_pushdown.py
 python/ray/data/_internal/logical/rules/operator_fusion.py
 python/ray/data/_internal/logical/rules/predicate_pushdown.py
 python/ray/data/_internal/logical/rules/projection_pushdown.py
+python/ray/data/_internal/logical/rules/common_subexpr_elimination.py
 python/ray/data/_internal/logical/rules/set_read_parallelism.py
 python/ray/data/_internal/logical/ruleset.py
 python/ray/data/_internal/logical/util.py
