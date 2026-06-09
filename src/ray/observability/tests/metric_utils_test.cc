@@ -24,21 +24,21 @@ namespace {
 // A fixed base time to anchor sample timestamps. Values are arbitrary.
 const absl::Time kT0 = absl::FromUnixSeconds(1000);
 
-TEST(MetricSlidingWindowTest, EmptyWindowHasNoMax) {
-  MetricSlidingWindow window(absl::Seconds(30));
+TEST(WindowedMetricTest, EmptyWindowHasNoMax) {
+  WindowedMetric window(absl::Seconds(30));
   EXPECT_FALSE(window.WindowedMax().has_value());
 }
 
-TEST(MetricSlidingWindowTest, FirstSampleAlwaysReported) {
-  MetricSlidingWindow window(absl::Seconds(30));
+TEST(WindowedMetricTest, FirstSampleAlwaysReported) {
+  WindowedMetric window(absl::Seconds(30));
   auto reported = window.Add(kT0, 5.0);
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 5.0);
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 5.0);
 }
 
-TEST(MetricSlidingWindowTest, ReportsOnlyWhenMaxChanges) {
-  MetricSlidingWindow window(absl::Seconds(30));
+TEST(WindowedMetricTest, ReportsOnlyWhenMaxChanges) {
+  WindowedMetric window(absl::Seconds(30));
 
   // First sample: reported.
   EXPECT_TRUE(window.Add(kT0, 10.0).has_value());
@@ -55,8 +55,8 @@ TEST(MetricSlidingWindowTest, ReportsOnlyWhenMaxChanges) {
   EXPECT_DOUBLE_EQ(*reported, 12.0);
 }
 
-TEST(MetricSlidingWindowTest, EvictsSamplesOutsideWindow) {
-  MetricSlidingWindow window(absl::Seconds(30));
+TEST(WindowedMetricTest, EvictsSamplesOutsideWindow) {
+  WindowedMetric window(absl::Seconds(30));
 
   // A high sample at t=0.
   EXPECT_TRUE(window.Add(kT0, 100.0).has_value());
@@ -74,8 +74,8 @@ TEST(MetricSlidingWindowTest, EvictsSamplesOutsideWindow) {
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 20.0);
 }
 
-TEST(MetricSlidingWindowTest, SampleAtWindowEdgeIsRetained) {
-  MetricSlidingWindow window(absl::Seconds(30));
+TEST(WindowedMetricTest, SampleAtWindowEdgeIsRetained) {
+  WindowedMetric window(absl::Seconds(30));
 
   EXPECT_TRUE(window.Add(kT0, 50.0).has_value());
 
@@ -90,8 +90,8 @@ TEST(MetricSlidingWindowTest, SampleAtWindowEdgeIsRetained) {
   EXPECT_DOUBLE_EQ(*reported, 10.0);
 }
 
-TEST(MetricSlidingWindowTest, AllSamplesEvictedKeepsLatest) {
-  MetricSlidingWindow window(absl::Seconds(30));
+TEST(WindowedMetricTest, AllSamplesEvictedKeepsLatest) {
+  WindowedMetric window(absl::Seconds(30));
 
   EXPECT_TRUE(window.Add(kT0, 80.0).has_value());
 
@@ -100,6 +100,21 @@ TEST(MetricSlidingWindowTest, AllSamplesEvictedKeepsLatest) {
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 3.0);
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 3.0);
+}
+
+TEST(WindowedMetricTest, NonPositiveWindowKeepsLatestSample) {
+  // A zero (or negative) window must not evict the just-added sample, which would
+  // leave the container empty and crash the max computation.
+  WindowedMetric zero_window(absl::ZeroDuration());
+  EXPECT_DOUBLE_EQ(*zero_window.Add(kT0, 7.0), 7.0);
+  // The next sample evicts the prior one but is itself retained, so the max tracks
+  // the latest value rather than crashing.
+  EXPECT_DOUBLE_EQ(*zero_window.Add(kT0 + absl::Seconds(1), 2.0), 2.0);
+  EXPECT_DOUBLE_EQ(*zero_window.WindowedMax(), 2.0);
+
+  WindowedMetric negative_window(-absl::Seconds(5));
+  EXPECT_DOUBLE_EQ(*negative_window.Add(kT0, 1.0), 1.0);
+  EXPECT_DOUBLE_EQ(*negative_window.WindowedMax(), 1.0);
 }
 
 }  // namespace

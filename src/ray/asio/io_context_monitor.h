@@ -67,11 +67,11 @@ class IOContextMonitor {
     ProbeState(std::string name_val,
                instrumented_io_context &io_context_val,
                std::shared_ptr<ClockInterface> clock_val,
-               absl::Duration latency_window)
+               absl::Duration latency_window_duration)
         : name(std::move(name_val)),
           io_context(io_context_val),
           clock(std::move(clock_val)),
-          latency_window(latency_window) {}
+          latency_window(latency_window_duration) {}
 
     const std::string name;
     instrumented_io_context &io_context;
@@ -89,7 +89,7 @@ class IOContextMonitor {
     bool healthy = true;
     bool deadline_warning_logged = false;
     // Sliding window of recent probe latencies; only accessed from the monitor.
-    observability::MetricSlidingWindow latency_window;
+    observability::WindowedMetric latency_window;
   };
 
   bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);

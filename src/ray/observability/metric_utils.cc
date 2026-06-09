@@ -19,42 +19,35 @@
 namespace ray {
 namespace observability {
 
-std::optional<double> MetricSlidingWindow::Add(absl::Time now, double value) {
+std::optional<double> WindowedMetric::Add(absl::Time now, double value) {
   samples_.push_back({now, value});
 
-  // Evict samples that have fallen out of the window. The sample we just appended is
-  // at `now`, so it is always retained.
+  // Evict samples that have fallen out of the window. Never evict the last remaining
+  // sample: a non-positive window_duration_ would otherwise empty the deque and make
+  // the max computation below read from an empty container.
   const absl::Time cutoff = now - window_duration_;
-  while (!samples_.empty() && samples_.front().time < cutoff) {
+  while (samples_.size() > 1 && samples_.front().time < cutoff) {
     samples_.pop_front();
   }
 
   // Recompute the max over the remaining window. samples_ is guaranteed non-empty
-  // because we just appended a sample that cannot be evicted.
+  // because we just appended a sample and never evict the last one.
   double max = samples_.front().value;
   for (const auto &sample : samples_) {
     max = std::max(max, sample.value);
   }
 
-  if (!last_reported_max_.has_value() || *last_reported_max_ != max) {
-    last_reported_max_ = max;
+  if (!current_max_.has_value() || *current_max_ != max) {
+    current_max_ = max;
     return max;
   }
   return std::nullopt;
 }
 
-std::optional<double> MetricSlidingWindow::WindowedMax() const {
-  if (samples_.empty()) {
-    return std::nullopt;
-  }
-  // last_reported_max_ always reflects the current window max after the most recent
-  // Add(); but WindowedMax() may be called before any Add(), handled by the empty
-  // check.
-  double max = samples_.front().value;
-  for (const auto &sample : samples_) {
-    max = std::max(max, sample.value);
-  }
-  return max;
+std::optional<double> WindowedMetric::WindowedMax() const {
+  // current_max_ is kept up to date by Add() (the window only changes there), so no
+  // recomputation is needed. Unset until the first Add().
+  return current_max_;
 }
 
 }  // namespace observability

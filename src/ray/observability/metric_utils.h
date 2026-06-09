@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <list>
+#include <deque>
 #include <optional>
 
 #include "absl/time/time.h"
@@ -34,9 +34,9 @@ namespace observability {
 /// (Add() returns the new max only when it differs from the last reported value).
 ///
 /// Not thread-safe; callers must synchronize externally if shared across threads.
-class MetricSlidingWindow {
+class WindowedMetric {
  public:
-  explicit MetricSlidingWindow(absl::Duration window_duration)
+  explicit WindowedMetric(absl::Duration window_duration)
       : window_duration_(window_duration) {}
 
   /// Record a new sample with value `value` observed at `now`.
@@ -58,10 +58,10 @@ class MetricSlidingWindow {
 
   const absl::Duration window_duration_;
   // Samples ordered oldest (front) to newest (back).
-  std::list<Sample> samples_;
-  // The last max value returned by Add(), used to detect changes. Unset until the
-  // first Add().
-  std::optional<double> last_reported_max_;
+  std::deque<Sample> samples_;
+  // The current max over the window. Maintained by Add() and also used to detect
+  // changes between calls. Unset until the first Add().
+  std::optional<double> current_max_;
 };
 
 }  // namespace observability
