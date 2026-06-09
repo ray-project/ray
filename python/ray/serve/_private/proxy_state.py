@@ -50,7 +50,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def get_proxy_actor_class():
-    # Extension point (Developer API): selects the proxy actor class.
     if RAY_SERVE_ENABLE_HA_PROXY:
         return HAProxyManager
 

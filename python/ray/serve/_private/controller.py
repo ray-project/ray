@@ -1900,9 +1900,9 @@ def log_target_capacity_change(
 def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
     """Build the Ray actor class for the Serve controller.
 
-    Extension point (Developer API). ``controller_options`` is the validated
-    model from ``serve.start`` / ``serve.run`` / the YAML schema; today only its
-    ``runtime_env`` field is consumed.
+    ``controller_options`` is the validated model from ``serve.start``,
+    ``serve.run``, or the YAML schema. Today only its ``runtime_env`` field is
+    consumed.
     """
     actor_options = dict(
         name=SERVE_CONTROLLER_NAME,

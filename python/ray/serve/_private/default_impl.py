@@ -44,12 +44,6 @@ from ray.util.placement_group import PlacementGroup
 # These methods are common extension points, therefore these should be
 # changed as a Developer API, ie methods should not be renamed, have their
 # API modified w/o substantial enough justification
-#
-# This module holds only leaf factories: ones the runtime objects (proxy,
-# handle, ...) import. The actor-class factories that import those heavy
-# modules live next to the actors they build to keep this a leaf and avoid
-# circular imports: get_proxy_actor_class in proxy_state.py, get_controller_impl
-# in controller.py.
 
 
 def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCache:
