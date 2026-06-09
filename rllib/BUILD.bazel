@@ -1898,6 +1898,16 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_ppo_value_bootstrapping",
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_value_bootstrapping.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
 # SAC
 py_test(
     name = "test_sac",
@@ -1938,6 +1948,17 @@ py_test(
     name = "algorithms/tests/test_get_main_process_bundle",
     size = "small",
     srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "algorithms/tests/test_custom_resources_per_learner",
+    size = "small",
+    srcs = ["algorithms/tests/test_custom_resources_per_learner.py"],
     tags = [
         "algorithms",
         "team:rllib",

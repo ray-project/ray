@@ -1,7 +1,6 @@
 import copy
 import functools
 import logging
-import math
 import threading
 import time
 from dataclasses import dataclass
@@ -20,6 +19,13 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+# Label key the cluster autoscaler uses to bucket nodes by subcluster.
+# Hardcoded so all components agree without per-Dataset configuration.
+SUBCLUSTER_LABEL_KEY = "__subcluster__"
+# Sentinel for "no subcluster" — used as both a node-label fallback and
+# the bucket key for unlabeled nodes in ``_cluster_node_resources``.
+DEFAULT_SUBCLUSTER: Optional[str] = None
+
 
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
     "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
@@ -43,6 +49,10 @@ class OngoingRequest:
     priority: int
     # Resources that are already allocated to the requester.
     allocated_resources: List[ResourceDict]
+    # Per-bundle label selectors, parallel to ``requested_resources``.
+    # Empty dicts mean no label constraint on that bundle. Required to have
+    # the same length as ``requested_resources``.
+    requested_label_selectors: List[Dict[str, str]]
 
     def __lt__(self, other):
         """Used to sort requests when allocating resources.
@@ -68,8 +78,12 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         requester_id: str,
         autoscaling_coordinator_actor=None,  # For testing only: injects an actor instead of using the shared named singleton.
+        subcluster_selector: Optional[Dict[str, str]] = None,
     ):
         self._requester_id = requester_id
+        # Label selector keyed by ``SUBCLUSTER_LABEL_KEY`` pinning this
+        # requester to a single subcluster.
+        self._subcluster_selector = subcluster_selector
         self._cached_allocated_resources: List[ResourceDict] = []
         # In-flight get_allocated_resources ref, or None if no request is pending.
         self._pending_allocated_resources: Optional[ray.ObjectRef] = None
@@ -80,7 +94,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
-        # Create the coordinator actor lazily rather than eagerly in the constructor.
+        # Lazy: avoids creating the actor in __init__.
         return get_or_create_autoscaling_coordinator()
 
     def request_resources(
@@ -89,6 +103,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
+        label_selectors: Optional[List[Dict[str, str]]] = None,
     ) -> None:
         """Fire-and-forget: submit a resource request to the coordinator actor.
 
@@ -100,6 +115,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             expire_after_s=expire_after_s,
             request_remaining=request_remaining,
             priority=priority,
+            label_selectors=label_selectors,
+            subcluster_selector=self._subcluster_selector,
         )
 
     def cancel_request(self) -> None:
@@ -152,6 +169,16 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         return self._cached_allocated_resources
 
 
+def _default_send_resources_request(
+    bundles: List[ResourceDict],
+    label_selectors: Optional[List[Dict[str, str]]] = None,
+) -> None:
+    """Default ``send_resources_request`` implementation for the actor."""
+    ray.autoscaler.sdk.request_resources(
+        bundles=bundles, bundle_label_selectors=label_selectors
+    )
+
+
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -165,9 +192,9 @@ class _AutoscalingCoordinatorActor:
     def __init__(
         self,
         get_current_time: Callable[[], float] = time.time,
-        send_resources_request: Callable[[List[ResourceDict]], None] = lambda bundles: (
-            ray.autoscaler.sdk.request_resources(bundles=bundles)
-        ),
+        send_resources_request: Callable[
+            [List[ResourceDict], Optional[List[Dict[str, str]]]], None
+        ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
     ):
         self._get_current_time = get_current_time
@@ -175,7 +202,11 @@ class _AutoscalingCoordinatorActor:
         self._get_cluster_nodes = get_cluster_nodes
 
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
-        self._cluster_node_resources: List[ResourceDict] = []
+        # Map from requester id to its subcluster selector.
+        self._subcluster_selectors: Dict[str, Optional[Dict[str, str]]] = {}
+        # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
+        # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
+        self._cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = {}
         # Lock for thread-safe access to shared state from the background
         self._lock = threading.Lock()
         self._update_cluster_node_resources()
@@ -207,14 +238,39 @@ class _AutoscalingCoordinatorActor:
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
+        label_selectors: Optional[List[Dict[str, str]]] = None,
+        subcluster_selector: Optional[Dict[str, str]] = None,
     ) -> None:
-        logger.debug("Received request from %s: %s.", requester_id, resources)
+        logger.debug(
+            "Received request from %s: %s "
+            "(label_selectors=%s, subcluster_selector=%s).",
+            requester_id,
+            resources,
+            label_selectors,
+            subcluster_selector,
+        )
+        if label_selectors is None:
+            label_selectors = [{} for _ in resources]
+        elif len(label_selectors) != len(resources):
+            raise ValueError(
+                f"label_selectors length ({len(label_selectors)}) must match "
+                f"resources length ({len(resources)})."
+            )
+        if subcluster_selector and label_selectors:
+            req_subcluster = subcluster_selector.get(SUBCLUSTER_LABEL_KEY)
+            for i, sel in enumerate(label_selectors):
+                bundle_subcluster = sel.get(SUBCLUSTER_LABEL_KEY)
+                if (
+                    bundle_subcluster is not None
+                    and bundle_subcluster != req_subcluster
+                ):
+                    raise ValueError(
+                        f"Bundle {i} label_selector targets subcluster "
+                        f"{bundle_subcluster!r}, but requester is registered to "
+                        f"{req_subcluster!r}. Per-bundle cross-subcluster "
+                        f"allocation is not supported."
+                    )
         with self._lock:
-            # Round up the resource values to integers,
-            # because the Autoscaler SDK only accepts integer values.
-            for r in resources:
-                for k in r:
-                    r[k] = math.ceil(r[k])
             now = self._get_current_time()
             request_updated = False
             old_req = self._ongoing_reqs.get(requester_id)
@@ -225,20 +281,37 @@ class _AutoscalingCoordinatorActor:
                     )
                 if priority.value != old_req.priority:
                     raise ValueError("Cannot change priority of an ongoing request.")
+                if (
+                    requester_id in self._subcluster_selectors
+                    and self._subcluster_selectors[requester_id] != subcluster_selector
+                ):
+                    raise ValueError(
+                        "Cannot change subcluster_selector of an ongoing request "
+                        f"from {self._subcluster_selectors[requester_id]!r} to "
+                        f"{subcluster_selector!r}."
+                    )
 
-                request_updated = resources != old_req.requested_resources
+                request_updated = (
+                    resources != old_req.requested_resources
+                    or label_selectors != old_req.requested_label_selectors
+                )
                 old_req.requested_resources = resources
+                old_req.requested_label_selectors = label_selectors
                 old_req.expiration_time = now + expire_after_s
             else:
                 request_updated = True
                 self._ongoing_reqs[requester_id] = OngoingRequest(
                     first_request_time=now,
                     requested_resources=resources,
+                    requested_label_selectors=label_selectors,
                     request_remaining=request_remaining,
                     priority=priority.value,
                     expiration_time=now + expire_after_s,
                     allocated_resources=[],
                 )
+            # Write subcluster after all validations so a rejected call
+            # never leaves the registry on a new subcluster.
+            self._subcluster_selectors[requester_id] = subcluster_selector
             if request_updated:
                 # If the request has updated, immediately send
                 # a new request and reallocate resources.
@@ -254,24 +327,42 @@ class _AutoscalingCoordinatorActor:
             if requester_id not in self._ongoing_reqs:
                 return
             del self._ongoing_reqs[requester_id]
+            self._subcluster_selectors.pop(requester_id, None)
             self._merge_and_send_requests()
             self._reallocate_resources()
 
     def _purge_expired_requests(self):
         now = self._get_current_time()
-        self._ongoing_reqs = {
+        live = {
             requester_id: req
             for requester_id, req in self._ongoing_reqs.items()
             if req.expiration_time > now
         }
+        for expired_id in self._ongoing_reqs.keys() - live.keys():
+            self._subcluster_selectors.pop(expired_id, None)
+        self._ongoing_reqs = live
 
     def _merge_and_send_requests(self):
-        """Merge requests and send them to Ray Autoscaler."""
+        """Merge requests and send them to Ray Autoscaler.
+
+        Each bundle's forwarded selector is the union of its per-bundle
+        ``requested_label_selectors`` entry and the requester's
+        ``subcluster_selector``. The subcluster pin wins on key conflict,
+        so the autoscaler always sees the correct subcluster regardless
+        of what the per-bundle selectors contain.
+        """
         self._purge_expired_requests()
-        merged_req = []
-        for req in self._ongoing_reqs.values():
+        merged_req: List[ResourceDict] = []
+        merged_selectors: List[Dict[str, str]] = []
+        for requester_id, req in self._ongoing_reqs.items():
             merged_req.extend(req.requested_resources)
-        self._send_resources_request(merged_req)
+            subcluster_selector = self._subcluster_selectors.get(requester_id) or {}
+            for per_bundle in req.requested_label_selectors:
+                merged_selectors.append({**per_bundle, **subcluster_selector})
+        if any(merged_selectors):
+            self._send_resources_request(merged_req, label_selectors=merged_selectors)
+        else:
+            self._send_resources_request(merged_req)
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester."""
@@ -291,7 +382,7 @@ class _AutoscalingCoordinatorActor:
         return True
 
     def _update_cluster_node_resources(self) -> bool:
-        """Update cluster's total resources. Return True if changed."""
+        """Update cluster resources bucketed by subcluster. Return True if changed."""
 
         def _is_node_eligible(node):
             # Exclude dead nodes.
@@ -308,47 +399,69 @@ class _AutoscalingCoordinatorActor:
 
         nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
         nodes = sorted(nodes, key=lambda node: node.get("NodeID", ""))
-        cluster_node_resources = [node["Resources"] for node in nodes]
+        cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = {}
+        for node in nodes:
+            # Safeguard against case where the value of Labels is None.
+            labels = node.get("Labels") or {}
+            subcluster = labels.get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
+            cluster_node_resources.setdefault(subcluster, []).append(node["Resources"])
         if cluster_node_resources == self._cluster_node_resources:
             return False
-        else:
-            logger.debug("Cluster resources updated: %s.", cluster_node_resources)
-            self._cluster_node_resources = cluster_node_resources
-            return True
+        logger.debug("Cluster resources updated: %s.", cluster_node_resources)
+        self._cluster_node_resources = cluster_node_resources
+        return True
 
     def _reallocate_resources(self):
-        """Reallocate cluster resources."""
+        """Reallocate cluster resources.
+
+        Each requester's subcluster comes from its ``subcluster_selector``.
+        A requester without one is eligible only for the ``None`` bucket.
+        """
         now = self._get_current_time()
-        cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
-        ongoing_reqs = sorted(
-            [req for req in self._ongoing_reqs.values() if req.expiration_time >= now]
+        cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = copy.deepcopy(
+            self._cluster_node_resources
         )
-        # Allocate resources to ongoing requests.
-        # TODO(hchen): Optimize the following triple loop.
-        for ongoing_req in ongoing_reqs:
-            ongoing_req.allocated_resources = []
-            for req in ongoing_req.requested_resources:
-                for node_resource in cluster_node_resources:
-                    if self._maybe_subtract_resources(node_resource, req):
-                        ongoing_req.allocated_resources.append(req)
-                        break
-        # Allocate remaining resources.
-        # NOTE: to handle the case where multiple datasets are running concurrently,
-        # we divide remaining resources equally to all requesters with `request_remaining=True`.
-        remaining_resource_requesters = [
-            req for req in ongoing_reqs if req.request_remaining
+        live_items = [
+            (req_id, req)
+            for req_id, req in self._ongoing_reqs.items()
+            if req.expiration_time >= now
         ]
-        num_remaining_requesters = len(remaining_resource_requesters)
-        if num_remaining_requesters > 0:
-            for node_resource in cluster_node_resources:
-                # Divide remaining resources equally among requesters.
-                # NOTE: Integer division may leave some resources unallocated.
-                divided_resource = {
-                    k: v // num_remaining_requesters for k, v in node_resource.items()
-                }
-                for ongoing_req in remaining_resource_requesters:
-                    if any(v > 0 for v in divided_resource.values()):
-                        ongoing_req.allocated_resources.append(divided_resource)
+        live_items.sort(key=lambda item: item[1])
+
+        def _subcluster_of(requester_id: str) -> Optional[str]:
+            selector = self._subcluster_selectors.get(requester_id)
+            return (selector or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
+
+        # TODO(hchen): Optimize the following triple loop.
+        for requester_id, ongoing_req in live_items:
+            ongoing_req.allocated_resources = []
+            subcluster = _subcluster_of(requester_id)
+            for bundle in ongoing_req.requested_resources:
+                for node_resource in cluster_node_resources.get(subcluster, []):
+                    if self._maybe_subtract_resources(node_resource, bundle):
+                        ongoing_req.allocated_resources.append(bundle)
+                        break
+
+        # Allocate remaining resources. Multiple concurrent requesters in
+        # the same subcluster split that subcluster's leftovers equally.
+        remaining_items = [
+            (req_id, req) for req_id, req in live_items if req.request_remaining
+        ]
+        for subcluster, node_resources in cluster_node_resources.items():
+            eligible = [
+                req
+                for req_id, req in remaining_items
+                if _subcluster_of(req_id) == subcluster
+            ]
+            if not eligible:
+                continue
+            for node_resource in node_resources:
+                # Integer division may leave some resources unallocated.
+                divided = {k: v // len(eligible) for k, v in node_resource.items()}
+                if not any(v > 0 for v in divided.values()):
+                    continue
+                for r in eligible:
+                    r.allocated_resources.append(divided)
 
         if logger.isEnabledFor(logging.DEBUG):
             msg = "Allocated resources:\n"

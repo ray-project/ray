@@ -287,7 +287,7 @@ class ImageProcessor:
     async def process(self, images: List[_ImageType]) -> List["Image.Image"]:
         """Load and resize an image for the model.
         Args:
-            image: A list of images.
+            images: A list of images.
 
         Returns:
             A list of processed images.

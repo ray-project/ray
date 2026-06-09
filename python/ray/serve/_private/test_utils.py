@@ -501,6 +501,7 @@ class MockReplicaActorWrapper:
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
+        self._log_file_path = None
         self._actor_id = None
         self._internal_grpc_port = None
         self._http_port = None
@@ -580,7 +581,7 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
-        return None
+        return self._log_file_path
 
     @property
     def grpc_port(self) -> Optional[int]:
@@ -618,6 +619,8 @@ class MockReplicaActorWrapper:
 
     def set_ready(self, version: DeploymentVersion = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        # Mirror the real actor: a started replica has allocated a log file.
+        self._log_file_path = "serve/replica.log"
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
@@ -878,6 +881,9 @@ def check_replica_counts(
         by_state: A list of tuples of the form
             (replica state, number of replicas, filter function).
             Used for more fine grained checks.
+
+    Returns:
+        True when all assertions pass (raises ``AssertionError`` otherwise).
     """
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_id)
@@ -1263,19 +1269,77 @@ class Accumulator:
 
 @ray.remote(num_cpus=0)
 class FailedReplicaStore:
-    """Stores the first replica ID that failed, for constructor failure tests."""
+    """Controls replica constructor failure behavior for constructor failure tests.
+
+    Behavior is determined by ``fail_first``:
+      - ``fail_first=True``  (transient): first caller fails, rest succeed.
+      - ``fail_first=False`` (partial):   first caller succeeds, rest fail.
+
+    All decisions are made in a single atomic actor call to avoid races
+    between concurrent replicas.
+    """
+
+    def __init__(self, fail_first: bool = False):
+        self._fail_first = fail_first
+        self._first_caller = False
+        self._fail_count = 0
+
+    def get_fail_count(self) -> int:
+        """Returns the number replica startup failures"""
+        return self._fail_count
+
+    def should_fail(self) -> bool:
+        """Returns whether this replica should raise in its constructor."""
+        if not self._first_caller:
+            self._first_caller = True
+            result = self._fail_first
+        else:
+            result = not self._fail_first
+        if result:
+            self._fail_count += 1
+        return result
+
+
+@ray.remote(num_cpus=0)
+class FailedGangReplicaStore:
+    """
+    Controls replica constructor failure behavior for gang scheduling tests.
+        - The first gang seen is allowed to run.
+        - The next gang has first replica flagged to fail.
+        - Retry gangs after the first failed gang have first replica flagged.
+    """
 
     def __init__(self):
-        self.failed_replica_id = None
+        self._good_gang_chosen = False
+        self._successful_gang_id = None
+        self._failed_gang_ids = set()
 
-    def set_if_first(self, replica_id: str) -> bool:
-        if self.failed_replica_id is None:
-            self.failed_replica_id = replica_id
+    def mark_first_failing_gang(self, gang_id: str) -> bool:
+        """Picks the good gang on the first call and flags the first replica of the next gang to fail."""
+        if not self._good_gang_chosen:
+            self._good_gang_chosen = True
+            self._successful_gang_id = gang_id
+            return False
+        if gang_id == self._successful_gang_id:
+            return False
+        if len(self._failed_gang_ids) == 0:
+            self._failed_gang_ids.add(gang_id)
             return True
         return False
 
-    def get(self):
-        return self.failed_replica_id
+    def mark_retry_failing_gang(self, gang_id: str) -> bool:
+        """Flags the first replica of each new retry gang.
+        This is called after ``mark_first_failing_gang``."""
+        if gang_id == self._successful_gang_id:
+            return False
+        if gang_id not in self._failed_gang_ids:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
+
+    def get_failed_gang_count(self) -> int:
+        """Returns the number of distinct gangs that failed."""
+        return len(self._failed_gang_ids)
 
 
 @ray.remote(num_cpus=0)
@@ -1544,13 +1608,16 @@ def get_metric_dictionaries(
         timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
-        assert name in fetch_prometheus_metric_timeseries(
+        prom_timeseries = fetch_prometheus_metric_timeseries(
             [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
             timeseries,
             # pass timeout to fetch_prometheus_metric_timeseries
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:

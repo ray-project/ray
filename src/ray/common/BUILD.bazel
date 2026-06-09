@@ -247,6 +247,7 @@ ray_cc_library(
         "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
+            ":event_memory_monitor",
             ":memory_monitor_utils",
             ":noop_memory_monitor",
             ":ray_config",
@@ -403,11 +404,13 @@ ray_cc_library(
         "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -456,6 +459,7 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
+        "//src/ray/common/monitors:cpu_monitor_utils",
         "//src/ray/util:logging",
         "@boost//:algorithm",
         "@com_google_absl//absl/strings",

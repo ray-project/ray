@@ -41,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
     HTTPOptions,
@@ -77,6 +78,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -97,17 +99,26 @@ def start(
         http_options: HTTP config options for the proxies. These can be passed as an
           unstructured dictionary or the structured `HTTPOptions` class. See
           `HTTPOptions` for supported options.
-        grpc_options: [EXPERIMENTAL] gRPC config options for the proxies. These can
+        grpc_options: gRPC config options for the proxies. These can
           be passed as an unstructured dictionary or the structured `gRPCOptions`
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
+          Currently scoped to a strictly-validated ``runtime_env.env_vars``
+          (other ``runtime_env`` keys are rejected). See
+          ``ray.serve.config.ControllerOptions``. Only applied on first
+          controller creation -- ignored if a Serve controller is already
+          running in this Ray cluster.
+        **kwargs: Reserved for forward-compatibility; passed through to the
+            internal Serve start helper.
     """
     http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        controller_options=controller_options,
         **kwargs,
     )
 
@@ -178,6 +189,9 @@ def get_replica_context() -> ReplicaContext:
 
     A replica tag uniquely identifies a single replica for a Ray Serve
     deployment.
+
+    Returns:
+        The ``ReplicaContext`` for the currently executing replica.
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
@@ -376,7 +390,8 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
             return app
 
         deployment = serve.deployment(serve.ingress(build_asgi_app)())
-        app = deployment.bind(SubDeployment.bind(), name="my_app", route_prefix="/")
+        app = deployment.bind(SubDeployment.bind())
+        serve.run(app, name="my_app", route_prefix="/")
 
     Args:
         app: the FastAPI app to wrap this class with.
@@ -385,6 +400,9 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
             Pass nothing to defer the app to replica init time; in that mode
             the class must define ``__serve_build_asgi_app__``, which is
             invoked after the user constructor and must return an ASGI app.
+
+    Returns:
+        A class decorator that wraps the deployment class with the ASGI app.
     """
 
     def decorator(cls: Optional[Type[Any]] = None) -> Callable:
@@ -464,7 +482,6 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -511,10 +528,9 @@ def deployment(
         _func_or_class: The class or function to be decorated.
         name: Name uniquely identifying this deployment within the application.
             If not provided, the name of the class or function is used.
-        version: Version of the deployment. Deprecated.
+        version: Removed. Specifying this argument raises a ValueError.
         num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.
-        route_prefix: Route prefix for HTTP requests. Defaults to '/'. Deprecated.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `resources`, `runtime_env`, and `label_selector`.
@@ -540,7 +556,7 @@ def deployment(
             deployment. The user_config must be fully JSON-serializable.
         max_ongoing_requests: Maximum number of requests that are sent to a
             replica of this deployment without receiving a response. Defaults to 5.
-        max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
+        max_queued_requests: Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
@@ -577,10 +593,10 @@ def deployment(
     Returns:
         `Deployment`
     """
-    if route_prefix is not DEFAULT.VALUE:
+    if version is not DEFAULT.VALUE:
         raise ValueError(
-            "`route_prefix` can no longer be specified at the deployment level. "
-            "Pass it to `serve.run` or in the application config instead."
+            "`version` in `@serve.deployment` has been removed. "
+            "Serve manages deployment versions internally."
         )
 
     if max_ongoing_requests is None:
@@ -634,12 +650,6 @@ def deployment(
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
-        )
-
-    if version is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
-            "Explicitly specifying version will raise an error in the future!"
         )
 
     if isinstance(logging_config, LoggingConfig):
@@ -700,7 +710,7 @@ def deployment(
             name if name is not DEFAULT.VALUE else _func_or_class.__name__,
             deployment_config,
             replica_config,
-            version=(version if version is not DEFAULT.VALUE else None),
+            version=None,
             _internal=True,
         )
 
@@ -727,6 +737,7 @@ def _run_many(
     wait_for_ingress_deployment_creation: bool = True,
     wait_for_applications_running: bool = True,
     _local_testing_mode: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> List[DeploymentHandle]:
     """Run many applications and return the handles to their ingress deployments.
 
@@ -787,6 +798,7 @@ def _run_many(
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
             global_logging_config=None,
+            controller_options=controller_options,
         )
 
         # Record after Ray has been started.
@@ -814,6 +826,7 @@ def _run(
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
     external_scaler_enabled: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -832,6 +845,7 @@ def _run(
         ],
         wait_for_applications_running=_blocking,
         _local_testing_mode=_local_testing_mode,
+        controller_options=controller_options,
     )[0]
 
 
@@ -842,6 +856,7 @@ def run_many(
     wait_for_ingress_deployment_creation: bool = True,
     wait_for_applications_running: bool = True,
     _local_testing_mode: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> List[DeploymentHandle]:
     """Run many applications and return the handles to their ingress deployments.
 
@@ -858,6 +873,13 @@ def run_many(
             `wait_for_ingress_deployment_creation=True`,
             because the ingress deployments must be created
             before the applications can be running.
+        _local_testing_mode: Internal flag enabling in-process local testing
+            mode. Not part of the public API.
+        controller_options: [EXPERIMENTAL] Options for the Serve controller
+            actor (e.g. ``runtime_env.env_vars`` for HAProxy / controller-side
+            tunables). See ``ray.serve.config.ControllerOptions``. Only applied
+            on first controller creation -- ignored if a Serve controller is
+            already running in this Ray cluster.
 
     Returns:
         List[DeploymentHandle]: A list of handles that can be used
@@ -868,6 +890,7 @@ def run_many(
         wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
         wait_for_applications_running=wait_for_applications_running,
         _local_testing_mode=_local_testing_mode,
+        controller_options=controller_options,
     )
 
     if blocking:
@@ -885,6 +908,7 @@ def run(
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
     external_scaler_enabled: bool = False,
+    controller_options: Union[None, dict, ControllerOptions] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -908,8 +932,15 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        _local_testing_mode: Internal flag for running the application in
+            local-testing mode. Not part of the public contract.
         external_scaler_enabled: Whether external autoscaling is enabled for
             this application.
+        controller_options: [EXPERIMENTAL] Options for the Serve controller
+            actor (e.g. ``runtime_env.env_vars`` for HAProxy / controller-side
+            tunables). See ``ray.serve.config.ControllerOptions``. Only applied
+            on first controller creation -- ignored if a Serve controller is
+            already running in this Ray cluster.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -921,6 +952,7 @@ def run(
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
         external_scaler_enabled=external_scaler_enabled,
+        controller_options=controller_options,
     )
 
     if blocking:
@@ -995,12 +1027,19 @@ def multiplexed(
 
 
     Args:
+        func: When ``@serve.multiplexed`` is applied without arguments, this is
+            the wrapped async loader function. When applied with arguments,
+            ``func`` is ``None`` and a decorator is returned instead.
         max_num_models_per_replica: the maximum number of models
             to be loaded on each replica. By default, it is 3, which
             means that each replica can cache up to 3 models. You can
             set it to a larger number if you have enough memory on
             the node resource, in opposite, you can set it to a smaller
             number if you want to save memory on the node resource.
+
+    Returns:
+        The decorated async function (when ``func`` is supplied) or a decorator
+        that produces one.
     """
 
     if func is not None:
@@ -1157,6 +1196,9 @@ def get_app_handle(name: str) -> DeploymentHandle:
     Args:
         name: Name of application to get a handle to.
 
+    Returns:
+        A ``DeploymentHandle`` pointing at the application's ingress deployment.
+
     Raises:
         RayServeException: If no Serve controller is running, or if the
             application does not exist.
@@ -1203,6 +1245,13 @@ def get_deployment_handle(
             from inside a Serve application and `app_name` is not
             specified, this will default to the application from which
             this API is called.
+        _check_exists: Internal flag controlling whether the controller is
+            queried to confirm the deployment exists before returning a handle.
+        _record_telemetry: Internal flag controlling whether handle creation
+            is recorded for usage telemetry.
+
+    Returns:
+        A ``DeploymentHandle`` pointing at the requested deployment.
 
     Raises:
         RayServeException: If no Serve controller is running, or if
