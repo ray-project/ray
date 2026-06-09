@@ -461,6 +461,10 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._initial_stats
             else Timer()
         )
+        stats.cross_node_copy_cumulative_bytes = (
+            self._cross_node_copy_tracker.cumulative_bytes
+        )
+        stats.cross_node_copy_active_bytes = self._cross_node_copy_tracker.total_bytes
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
