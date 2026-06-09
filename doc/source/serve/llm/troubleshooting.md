@@ -91,6 +91,20 @@ and vLLM build in your environment.
 
 :::
 
+## vLLM compatibility
+
+Each Ray release is fully tested with a compatible vLLM version.
+
+| Ray release | vLLM version |
+| ----------- | ------------ |
+| 2.56.0      | 0.22.0       |
+| 2.55.0      | 0.18.0       |
+| 2.54.0      | 0.15.0       |
+| 2.53.0      | 0.12.0       |
+| 2.52.0      | 0.11.0       |
+| 2.51.0      | 0.11.0       |
+| 2.50.0      | 0.10.2       |
+
 ## Get help
 
 If you encounter issues not covered in this guide:
@@ -98,7 +112,7 @@ If you encounter issues not covered in this guide:
 - [Ray GitHub Issues](https://github.com/ray-project/ray/issues) - Report bugs or request features
 - [Ray Slack](https://ray-distributed.slack.com) - Get help from the community
 - [Ray Discourse Forum](https://discuss.ray.io) - Ask questions and share knowledge
-- [Ray LLM Office Hours](https://docs.google.com/document/d/1n3-Jw_4su8yilo9zdi5OciAduoz6H_VmdL8i9sL4f-E/edit?tab=t.e700ayqsx3v3) - Learn about new features, ask questions, and get guidance from the team
+- [Ray LLM Office Hours](https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month) - Learn about new features, ask questions, and get guidance from the team
   - [Past Office Hours Recordings](https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN) - View recordings from previous sessions
 
 ## See also
