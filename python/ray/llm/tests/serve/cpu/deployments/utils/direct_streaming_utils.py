@@ -26,7 +26,8 @@ requires_direct_streaming = pytest.mark.skipif(
 
 def consistent_hash_deployment_config() -> dict:
     return {
-        "num_replicas": 10,
+        "num_replicas": 4,
+        "ray_actor_options": {"num_cpus": 0},
         "request_router_config": RequestRouterConfig(
             request_router_class=CONSISTENT_HASH_ROUTER,
             request_router_kwargs={

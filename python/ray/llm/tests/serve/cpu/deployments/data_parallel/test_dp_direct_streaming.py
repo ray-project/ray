@@ -29,7 +29,10 @@ class TestDPDirectStreamingConsistentHashRouting:
 
     @pytest.fixture(name="llm_config")
     def _llm_config(self):
-        return LLMConfig(model_loading_config=ModelLoadingConfig(model_id="test-model"))
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={"data_parallel_size": 2},
+        )
 
     @pytest.fixture(name="base_url")
     def run_dp_app(
