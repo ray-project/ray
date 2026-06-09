@@ -156,10 +156,10 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
-    from ray.data.block_budget import BlockBudget
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
+from ray.data.block_budget import BlockBudget
 from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
@@ -1720,7 +1720,7 @@ class Dataset:
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
-        block_budget: Optional["BlockBudget"] = None,
+        block_budget: Optional[BlockBudget] = None,
         strict: bool = False,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
@@ -1781,7 +1781,7 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
-            block_budget: A :class:`~ray.data.block_budget.BlockBudget`
+            block_budget: [Experimental] A :class:`~ray.data.block_budget.BlockBudget`
                 (:class:`~ray.data.block_budget.RowCount` or
                 :class:`~ray.data.block_budget.ByteSize`) describing how to size output
                 blocks for a streaming, order-preserving repartition (no shuffle).
@@ -1818,8 +1818,6 @@ class Dataset:
 
         # Streaming, order-preserving repartition shaped by a polymorphic budget.
         if block_budget is not None:
-            from ray.data.block_budget import BlockBudget
-
             if not isinstance(block_budget, BlockBudget):
                 raise TypeError(
                     "`block_budget` must be a ray.data.block_budget.BlockBudget "

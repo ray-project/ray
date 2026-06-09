@@ -189,26 +189,18 @@ def plan_streaming_repartition_op(
     input_physical_dag = physical_children[0]
     compute = get_compute(op.compute)
 
-    if op.block_budget is not None:
-        # Polymorphic budget path (RowCount / ByteSize). The output
-        # buffer shapes blocks via the budget; only a strict RowCount needs the
-        # exact-multiple combine-side rebundler.
-        output_block_size_option = OutputBlockSizeOption.of(
-            block_budget=op.block_budget,
-        )
-        if isinstance(op.block_budget, RowCount) and op.block_budget.strict:
-            ref_bundler = RebundleQueue(ExactMultipleSize(op.block_budget.limit))
-        else:
-            ref_bundler = None
-    else:
-        # Legacy target_num_rows_per_block path (deprecated alias for RowCount).
-        output_block_size_option = OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block,
-        )
-        if op.strict:
-            ref_bundler = RebundleQueue(ExactMultipleSize(op.target_num_rows_per_block))
-        else:
-            ref_bundler = None
+    # The deprecated target_num_rows_per_block/strict kwargs are just a RowCount
+    # budget; normalize to one budget so there's a single shaping path below.
+    budget = op.block_budget or RowCount(op.target_num_rows_per_block, strict=op.strict)
+
+    output_block_size_option = OutputBlockSizeOption.of(block_budget=budget)
+    # Only a strict RowCount needs the exact-multiple combine-side rebundler;
+    # ByteSize (and best-effort RowCount) shape blocks on the split side alone.
+    ref_bundler = (
+        RebundleQueue(ExactMultipleSize(budget.limit))
+        if isinstance(budget, RowCount) and budget.strict
+        else None
+    )
 
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,

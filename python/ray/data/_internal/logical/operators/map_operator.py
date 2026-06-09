@@ -483,10 +483,7 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        num_set = (self.target_num_rows_per_block is not None) + (
-            self.block_budget is not None
-        )
-        if num_set != 1:
+        if (self.target_num_rows_per_block is None) == (self.block_budget is None):
             raise ValueError(
                 "Exactly one of `target_num_rows_per_block` or `block_budget` "
                 "must be set for streaming repartition"
@@ -501,13 +498,12 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
             )
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
-        if self.block_budget is not None:
-            name = f"StreamingRepartition[budget={self.block_budget!r}]"
-        else:
-            name = (
-                "StreamingRepartition[num_rows_per_block="
-                f"{self.target_num_rows_per_block},strict={self.strict}]"
-            )
+        name = (
+            f"StreamingRepartition[budget={self.block_budget!r}]"
+            if self.block_budget is not None
+            else f"StreamingRepartition[num_rows_per_block="
+            f"{self.target_num_rows_per_block},strict={self.strict}]"
+        )
         object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_num_outputs", None)
 
