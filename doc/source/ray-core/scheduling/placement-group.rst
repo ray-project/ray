@@ -763,10 +763,10 @@ fault tolerance. If all nodes in ``rack-1`` go down, the placement group can't a
 to a different rack. Furthermore, you have to manually specify a domain when you really just want
 any domain and this becomes cumbersome if you have many GPU domains.
 
-Topology aware scheduling solves this by letting you express the cluster topology as a list of
-levels and choose a placement strategy at each level. Ray picks a value for the topology label
-that can satisfy all bundles (for example, a specific rack) and then applies your node-level
-strategy within that value.
+Topology aware scheduling currently solves this by letting you express a topology strategy for the placement 
+group, which allows specifying a topology label within the cluster. Ray picks a value for this topology label
+that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy 
+within that value.
 
 How it works
 ~~~~~~~~~~~~
