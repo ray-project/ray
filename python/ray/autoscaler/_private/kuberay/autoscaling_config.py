@@ -195,6 +195,8 @@ def _node_type_from_group_spec(
     group_spec: Dict[str, Any], is_head: bool
 ) -> Dict[str, Any]:
     """Converts CR group spec to autoscaler node type."""
+    group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
+
     if is_head:
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
@@ -205,7 +207,7 @@ def _node_type_from_group_spec(
         max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
-    labels = _get_labels_from_group_spec(group_spec)
+    labels = _get_labels_from_group_spec(group_spec, group_name)
 
     node_type = {
         "min_workers": min_workers,
@@ -309,23 +311,45 @@ def _get_ray_resources_from_group_spec(
     return resources
 
 
-def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
+def _get_labels_from_group_spec(
+    group_spec: Dict[str, Any], group_name: str = ""
+) -> Dict[str, str]:
     """
     Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
     2. `labels` field in `rayStartParams`.
+
+    Args:
+        group_spec: The group specification dictionary.
+        group_name: The name of the group (used in warning messages).
+
+    Returns:
+        A dictionary of labels for the node type.
     """
     labels_dict = {}
 
     ray_start_params = group_spec.get("rayStartParams", {})
     labels_str = ray_start_params.get("labels")
-    if labels_str and log_once("raystartparams_labels_warning"):
-        logger.warning(
-            f"Ignoring labels: {labels_str} set in rayStartParams. "
-            "Group labels are supported in the top-level Labels field "
-            "starting in KubeRay v1.5"
-        )
+    # Use a unique log_once key per group to ensure each group's warning is shown.
+    log_once_key = (
+        f"raystartparams_labels_warning_{group_name}"
+        if group_name
+        else "raystartparams_labels_warning"
+    )
+    if labels_str and log_once(log_once_key):
+        if group_name:
+            logger.warning(
+                f"Ignoring labels: {labels_str} set in rayStartParams for group "
+                f"'{group_name}'. Group labels are supported in the top-level "
+                "Labels field starting in KubeRay v1.5"
+            )
+        else:
+            logger.warning(
+                f"Ignoring labels: {labels_str} set in rayStartParams. "
+                "Group labels are supported in the top-level Labels field "
+                "starting in KubeRay v1.5"
+            )
 
     # Check for top-level structured Labels field.
     if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):

@@ -106,6 +106,29 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         ).run()
 
 
+def _get_int_from_env(key: str, default: int) -> int:
+    """Safely get an integer from an environment variable.
+
+    Args:
+        key: The environment variable name.
+        default: The default value to use if the variable is not set or invalid.
+
+    Returns:
+        The integer value, or the default if parsing fails.
+    """
+    val = os.getenv(key)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        logger.warning(
+            f"Invalid value for {key}: {val!r}. "
+            f"Expected an integer. Falling back to default: {default}."
+        )
+        return default
+
+
 def _setup_logging(log_dir: str) -> None:
     """Log to autoscaler log file
     (typically, /tmp/ray/session_latest/logs/monitor.*)
@@ -119,8 +142,10 @@ def _setup_logging(log_dir: str) -> None:
     try_to_create_directory(log_dir)
 
     # Write logs at info level to monitor.log.
-    max_bytes = int(os.getenv("RAY_ROTATION_MAX_BYTES", LOGGING_ROTATE_BYTES))
-    backup_count = int(os.getenv("RAY_ROTATION_BACKUP_COUNT", LOGGING_ROTATE_BACKUP_COUNT))
+    max_bytes = _get_int_from_env("RAY_ROTATION_MAX_BYTES", LOGGING_ROTATE_BYTES)
+    backup_count = _get_int_from_env(
+        "RAY_ROTATION_BACKUP_COUNT", LOGGING_ROTATE_BACKUP_COUNT
+    )
     setup_component_logger(
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
