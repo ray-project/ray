@@ -32,7 +32,8 @@ from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    # Imported lazily in `_connect` to avoid a circular import:
+    # Annotation-only here; the runtime import is lazy in `_connect`, because
+    # importing it at module load is circular:
     # client -> handle -> default_impl -> context.
     from ray.serve._private.client import ServeControllerClient
 
@@ -246,8 +247,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> "ServeControllerCli
             and raise_if_no_controller_running is set to True.
     """
 
-    # Lazy import to avoid a circular import at module load:
-    # client -> handle -> default_impl -> context.
+    # Lazy to avoid the circular import described in the TYPE_CHECKING block.
     from ray.serve._private.client import ServeControllerClient
 
     # Initialize ray if needed.

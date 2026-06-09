@@ -11,16 +11,11 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve.config import ControllerOptions
 
-# NOTE: Please read carefully before changing!
-#
-# This is a common extension point, therefore it should be changed as a
-# Developer API, ie the method should not be renamed, have its API modified
-# w/o substantial enough justification.
-#
-# It lives here rather than in default_impl so the controller actor class can
-# be imported eagerly: default_impl is imported by the runtime objects (proxy,
-# handle, ...), so importing the controller from default_impl would be a
-# circular import.
+# NOTE: common extension point (Developer API); do not rename or change the
+# signature without substantial justification. It lives here rather than in
+# default_impl so ServeController can be imported eagerly: default_impl is
+# imported by the runtime objects (proxy, handle), so importing it from
+# default_impl is circular.
 
 
 def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
