@@ -511,6 +511,8 @@ def test_get_node_to_connect_for_driver_waits_before_fallback(monkeypatch):
 def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
     monkeypatch,
 ):
+    from itertools import chain, repeat
+
     process_node_id = ray.NodeID.from_random()
     process_node = _make_gcs_node_info("10.0.0.3", node_id=process_node_id)
     gcs_client = _FakeGcsClient([process_node])
@@ -526,6 +528,8 @@ def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
 
     monkeypatch.setattr(ray._private.services, "find_node_ids", find_node_ids)
     monkeypatch.setattr(ray._private.services, "_NODE_DISCOVERY_FALLBACK_GRACE_S", 0)
+    time_values = chain([0, 0, 0, 0, 0, 0, 2], repeat(2))
+    monkeypatch.setattr(ray._private.services.time, "time", lambda: next(time_values))
     monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
     monkeypatch.setattr(ray._private.services, "get_node_ip_address", lambda: "10.0.0.4")
 
@@ -536,7 +540,7 @@ def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
         ray._private.services.get_node_to_connect_for_driver(
             gcs_client,
             node_ip_address="10.0.0.2",
-            timeout_seconds=0.001,
+            timeout_seconds=1,
         )
 
     assert "No local raylet process was visible" not in str(exc_info.value)
