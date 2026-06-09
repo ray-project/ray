@@ -2,7 +2,16 @@ import functools
 import inspect
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, Literal, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Literal,
+    Optional,
+    Union,
+)
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
@@ -14,6 +23,9 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    from ray.data.block_budget import BlockBudget
 
 __all__ = [
     "AbstractMap",
@@ -445,15 +457,20 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
     Args:
         input_op: The operator preceding this operator in the plan DAG.
         target_num_rows_per_block: The target number of rows per block granularity for
-            streaming repartition.
+            streaming repartition. Exactly one of ``target_num_rows_per_block`` or
+            ``block_budget`` must be set.
+        block_budget: A :class:`~ray.data.block_budget.BlockBudget` describing how to
+            size output blocks (e.g. ``RowCount``, ``ByteSize``). Exactly
+            one of ``target_num_rows_per_block`` or ``block_budget`` must be set.
         strict: If True, guarantees that all output blocks, except for the last one,
             will have exactly target_num_rows_per_block rows. If False, uses best-effort
             bundling and may produce at most one block smaller than target_num_rows_per_block
             per input block without forcing exact sizes through block splitting.
-            Defaults to False.
+            Defaults to False. Only applies to ``target_num_rows_per_block``.
     """
 
-    target_num_rows_per_block: int
+    target_num_rows_per_block: Optional[int] = None
+    block_budget: Optional["BlockBudget"] = None
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     strict: bool = False
     can_modify_num_rows: bool = field(init=False, default=False)
@@ -466,18 +483,32 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-        if self.target_num_rows_per_block <= 0:
+        num_set = (self.target_num_rows_per_block is not None) + (
+            self.block_budget is not None
+        )
+        if num_set != 1:
+            raise ValueError(
+                "Exactly one of `target_num_rows_per_block` or `block_budget` "
+                "must be set for streaming repartition"
+            )
+        if (
+            self.target_num_rows_per_block is not None
+            and self.target_num_rows_per_block <= 0
+        ):
             raise ValueError(
                 "target_num_rows_per_block must be positive for streaming repartition, "
                 f"got {self.target_num_rows_per_block}"
             )
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
-        object.__setattr__(
-            self,
-            "_name",
-            f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
-        )
+        if self.block_budget is not None:
+            name = f"StreamingRepartition[budget={self.block_budget!r}]"
+        else:
+            name = (
+                "StreamingRepartition[num_rows_per_block="
+                f"{self.target_num_rows_per_block},strict={self.strict}]"
+            )
+        object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_num_outputs", None)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:

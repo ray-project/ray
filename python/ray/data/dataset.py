@@ -156,6 +156,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+    from ray.data.block_budget import BlockBudget
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -1719,6 +1720,7 @@ class Dataset:
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
+        block_budget: Optional["BlockBudget"] = None,
         strict: bool = False,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
@@ -1736,11 +1738,12 @@ class Dataset:
 
         .. note::
 
-            Repartition has three modes:
+            Repartition has these modes:
 
              * When ``num_blocks`` and ``shuffle=True`` are specified Ray Data performs a full distributed shuffle producing exactly ``num_blocks`` blocks.
              * When ``num_blocks`` and ``shuffle=False`` are specified, Ray Data does NOT perform full shuffle, instead opting in for splitting and combining of the blocks attempting to minimize the necessary data movement (relative to full-blown shuffle). Exactly ``num_blocks`` will be produced.
-             * If ``target_num_rows_per_block`` is set (exclusive with ``num_blocks`` and ``shuffle``), streaming repartitioning will be executed, where blocks will be made to carry no more than ``target_num_rows_per_block`` rows. Smaller blocks will be combined into bigger ones up to ``target_num_rows_per_block`` as well.
+             * When ``block_budget`` is set (exclusive with ``num_blocks``), Ray Data performs a streaming, order-preserving repartition (no shuffle) that shapes blocks to the given :class:`~ray.data.block_budget.BlockBudget`: :class:`~ray.data.block_budget.RowCount` (rows per block) or :class:`~ray.data.block_budget.ByteSize` (bytes per block).
+             * ``target_num_rows_per_block`` is a deprecated alias for ``block_budget=RowCount(...)``.
 
             .. image:: /data/images/dataset-shuffle.svg
                 :align: center
@@ -1754,11 +1757,20 @@ class Dataset:
             >>> ds.num_blocks()
             10
 
+            Shape output blocks with a :class:`~ray.data.block_budget.BlockBudget`
+            for a streaming, order-preserving repartition (no shuffle):
+
+            >>> from ray.data.block_budget import ByteSize, RowCount  # doctest: +SKIP
+            >>> ds.repartition(block_budget=RowCount(1000))  # doctest: +SKIP
+            >>> ds.repartition(block_budget=ByteSize("128MiB"))  # doctest: +SKIP
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
             num_blocks: Number of blocks after repartitioning.
-            target_num_rows_per_block: [Experimental] The target number of rows per block to
+            target_num_rows_per_block: [Deprecated] Use
+                ``block_budget=RowCount(target_num_rows_per_block, strict=strict)`` from
+                ``ray.data.block_budget``. The target number of rows per block to
                 repartition. Performs streaming repartitioning of the dataset (no shuffling).
                 Note that either `num_blocks` or
                 `target_num_rows_per_block` must be set, but not both. When
@@ -1769,6 +1781,11 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            block_budget: A :class:`~ray.data.block_budget.BlockBudget`
+                (:class:`~ray.data.block_budget.RowCount` or
+                :class:`~ray.data.block_budget.ByteSize`) describing how to size output
+                blocks for a streaming, order-preserving repartition (no shuffle).
+                Exclusive with ``num_blocks`` and ``target_num_rows_per_block``.
             strict: If ``True``, ``repartition`` guarantees that all output blocks,
                 except for the last one, will have exactly ``target_num_rows_per_block`` rows.
                 If ``False``, ``repartition`` uses best-effort bundling and may produce at most
@@ -1799,7 +1816,40 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
+        # Streaming, order-preserving repartition shaped by a polymorphic budget.
+        if block_budget is not None:
+            from ray.data.block_budget import BlockBudget
+
+            if not isinstance(block_budget, BlockBudget):
+                raise TypeError(
+                    "`block_budget` must be a ray.data.block_budget.BlockBudget "
+                    "(e.g. RowCount, ByteSize), got "
+                    f"{type(block_budget).__name__}"
+                )
+            if num_blocks is not None or target_num_rows_per_block is not None:
+                raise ValueError(
+                    "Only one of `num_blocks`, `target_num_rows_per_block`, or "
+                    "`block_budget` may be set."
+                )
+            if shuffle or keys is not None or sort:
+                warnings.warn(
+                    "`shuffle`, `keys`, and `sort` are ignored when `block_budget` "
+                    "is set."
+                )
+            op = StreamingRepartition(
+                block_budget=block_budget,
+                input_dependencies=[self._logical_plan.dag],
+            )
+            return Dataset._from_parent(self, LogicalPlan(op, self.context))
+
         if target_num_rows_per_block is not None:
+            warnings.warn(
+                "`target_num_rows_per_block` and `strict` are deprecated; use "
+                "`block_budget=RowCount(target_num_rows_per_block, strict=strict)` "
+                "from ray.data.block_budget instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             if keys is not None:
                 warnings.warn(
                     "`keys` is ignored when `target_num_rows_per_block` is set."
@@ -1822,7 +1872,8 @@ class Dataset:
 
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
-                "Either `num_blocks` or `target_num_rows_per_block` must be set"
+                "Either `num_blocks`, `target_num_rows_per_block`, or `block_budget` "
+                "must be set"
             )
 
         if (num_blocks is not None) and (target_num_rows_per_block is not None):

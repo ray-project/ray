@@ -59,6 +59,7 @@ class CombineShuffles(Rule):
             strict = input_op.strict or op.strict
             return StreamingRepartition(
                 target_num_rows_per_block=op.target_num_rows_per_block,
+                block_budget=op.block_budget,
                 input_dependencies=[input_op.input_dependencies[0]],
                 strict=strict,
             )

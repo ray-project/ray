@@ -5,6 +5,7 @@ import ray
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.planner import create_planner
 from ray.data.block import BlockAccessor
+from ray.data.block_budget import ByteSize, RowCount
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -191,7 +192,8 @@ def test_repartition_target_num_rows_per_block(
             None,
             None,
             False,
-            "Either `num_blocks` or `target_num_rows_per_block` must be set",
+            "Either `num_blocks`, `target_num_rows_per_block`, or `block_budget` "
+            "must be set",
         ),
         (
             None,
@@ -215,6 +217,66 @@ def test_repartition_invalid_inputs(
             target_num_rows_per_block=target_num_rows_per_block,
             shuffle=shuffle,
         )
+
+
+def _all_blocks(ds):
+    """Return [(BlockAccessor, BlockMetadata), ...] across all output bundles."""
+    out = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for block_ref, meta in ref_bundle.blocks:
+            out.append((BlockAccessor.for_block(ray.get(block_ref)), meta))
+    return out
+
+
+def test_repartition_byte_size(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    ds = ray.data.range(10_000, override_num_blocks=1).repartition(
+        block_budget=ByteSize("4KiB")
+    )
+    blocks = _all_blocks(ds)
+    assert len(blocks) > 1  # large input split into multiple byte-bounded blocks
+    assert sum(meta.num_rows for _, meta in blocks) == 10_000
+
+
+@pytest.mark.parametrize("target", [1, 4, 32, 128])
+def test_repartition_row_count_budget(
+    ray_start_regular_shared_2_cpus, target, disable_fallback_to_object_extension
+):
+    total_rows = 128
+    ds = ray.data.range(total_rows, override_num_blocks=16).repartition(
+        block_budget=RowCount(target, strict=True)
+    )
+    blocks = _all_blocks(ds)
+    rows = [meta.num_rows for _, meta in blocks]
+    # All blocks except the last hold exactly `target` rows.
+    assert all(r == target for r in rows[:-1])
+    assert sum(rows) == total_rows
+
+
+def test_repartition_deprecated_kwargs_still_work(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    with pytest.warns(DeprecationWarning, match="target_num_rows_per_block"):
+        ds = ray.data.range(10, override_num_blocks=2).repartition(
+            target_num_rows_per_block=3, strict=True
+        )
+    assert ds.count() == 10
+    # Equivalent to the RowCount budget.
+    rows = [meta.num_rows for _, meta in _all_blocks(ds)]
+    assert all(r == 3 for r in rows[:-1]) and sum(rows) == 10
+
+
+def test_repartition_block_budget_invalid_inputs(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    ds = ray.data.range(10)
+    with pytest.raises(ValueError, match="Only one of"):
+        ds.repartition(num_blocks=2, block_budget=RowCount(3))
+    with pytest.raises(ValueError, match="Only one of"):
+        ds.repartition(target_num_rows_per_block=3, block_budget=RowCount(3))
+    with pytest.raises(TypeError, match="block_budget"):
+        ds.repartition(block_budget=object())
 
 
 @pytest.mark.parametrize("shuffle", [True, False])

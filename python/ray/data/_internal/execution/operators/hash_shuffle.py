@@ -1870,7 +1870,7 @@ def _shape_blocks(
     blocks: Iterator[Block], target_max_block_size: int
 ) -> Iterator[Block]:
     output_buffer = BlockOutputBuffer(
-        output_block_size_option=OutputBlockSizeOption(
+        output_block_size_option=OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size
         )
     )

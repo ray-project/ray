@@ -62,6 +62,7 @@ from ray.data.block import (
     UserDefinedFunction,
     _is_cudf_dataframe,
 )
+from ray.data.block_budget import RowCount
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
@@ -187,18 +188,33 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op.compute)
+
+    if op.block_budget is not None:
+        # Polymorphic budget path (RowCount / ByteSize). The output
+        # buffer shapes blocks via the budget; only a strict RowCount needs the
+        # exact-multiple combine-side rebundler.
+        output_block_size_option = OutputBlockSizeOption.of(
+            block_budget=op.block_budget,
+        )
+        if isinstance(op.block_budget, RowCount) and op.block_budget.strict:
+            ref_bundler = RebundleQueue(ExactMultipleSize(op.block_budget.limit))
+        else:
+            ref_bundler = None
+    else:
+        # Legacy target_num_rows_per_block path (deprecated alias for RowCount).
+        output_block_size_option = OutputBlockSizeOption.of(
+            target_num_rows_per_block=op.target_num_rows_per_block,
+        )
+        if op.strict:
+            ref_bundler = RebundleQueue(ExactMultipleSize(op.target_num_rows_per_block))
+        else:
+            ref_bundler = None
+
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
-        output_block_size_option=OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block,  # To split n*target_max_block_size row into n blocks
-        ),
+        output_block_size_option=output_block_size_option,
     )
     map_transformer = MapTransformer([transform_fn])
-
-    if op.strict:
-        ref_bundler = RebundleQueue(ExactMultipleSize(op.target_num_rows_per_block))
-    else:
-        ref_bundler = None
 
     operator = MapOperator.create(
         map_transformer,

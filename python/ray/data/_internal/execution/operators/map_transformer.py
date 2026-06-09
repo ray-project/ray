@@ -97,16 +97,22 @@ class MapTransformFn(ABC):
         return self._output_block_size_option
 
     def override_target_max_block_size(self, target_max_block_size: Optional[int]):
-        if self._output_block_size_option is not None and (
-            self._output_block_size_option.disable_block_shaping
-            or self._output_block_size_option.target_num_rows_per_block is not None
-        ):
+        # The byte ceiling and block budgets are orthogonal -- the output buffer
+        # cuts at the tightest of both -- so an inherited/fused byte ceiling
+        # composes with any existing budgets instead of replacing them.
+        option = self._output_block_size_option
+        if option is not None and option.disable_block_shaping:
             raise ValueError(
-                "Cannot override target_max_block_size if block shaping is disabled or target_num_rows_per_block is set"
+                "Cannot override target_max_block_size when block shaping is disabled"
             )
-        self._output_block_size_option = OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size
-        )
+        budgets = option.budgets if option is not None else ()
+        if target_max_block_size is None and not budgets:
+            self._output_block_size_option = None
+        else:
+            self._output_block_size_option = OutputBlockSizeOption(
+                target_max_block_size=target_max_block_size,
+                budgets=budgets,
+            )
 
     @property
     def target_max_block_size(self):

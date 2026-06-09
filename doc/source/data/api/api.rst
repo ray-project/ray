@@ -14,6 +14,7 @@ Ray Data API
     checkpoint.rst
     aggregate.rst
     grouped_data.rst
+    block_budget.md
     expressions.rst
     datatype.rst
     data_context.rst
