@@ -32,7 +32,6 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
-    MetricsGroup,
     MetricsType,
     NodeMetrics,
     OpRuntimeMetrics,
@@ -42,6 +41,10 @@ from ray.data._internal.metadata_exporter import (
     DatasetMetadata,
     Topology,
     get_dataset_metadata_exporter,
+)
+from ray.data._internal.stats_metrics_registry import (
+    _OP_RUNTIME_NAMESPACE,
+    GLOBAL_METRICS_REGISTRY,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
@@ -397,53 +400,13 @@ class _StatsActor:
         )
 
         # === Metrics from OpRuntimeMetrics ===
-        # Inputs-related metrics
-        self.execution_metrics_inputs = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.INPUTS,
-                tag_keys=op_tags_keys,
+        # All operator-scoped metrics declared via the registry are created in
+        # one pass, keyed by namespace -> {metric_name: Metric}
+        self._prom_metrics: Dict[str, Dict[str, Metric]] = {
+            _OP_RUNTIME_NAMESPACE: self._create_prometheus_metrics(
+                _OP_RUNTIME_NAMESPACE, default_tag_keys=op_tags_keys
             )
-        )
-
-        # Outputs-related metrics
-        self.execution_metrics_outputs = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.OUTPUTS,
-                tag_keys=op_tags_keys,
-            )
-        )
-
-        # Task-related metrics
-        self.execution_metrics_tasks = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.TASKS,
-                tag_keys=op_tags_keys,
-            )
-        )
-
-        # Object store memory-related metrics
-        self.execution_metrics_obj_store_memory = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
-                tag_keys=op_tags_keys,
-            )
-        )
-
-        # Actor related metrics
-        self.execution_metrics_actors = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.ACTORS,
-                tag_keys=op_tags_keys,
-            )
-        )
-
-        # Miscellaneous metrics
-        self.execution_metrics_misc = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.MISC,
-                tag_keys=op_tags_keys,
-            )
-        )
+        }
 
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
@@ -589,34 +552,43 @@ class _StatsActor:
             tag_keys=operator_tags,
         )
 
-    def _create_prometheus_metrics_for_execution_metrics(
-        self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
+    def _create_prometheus_metrics(
+        self, namespace: str, default_tag_keys: Tuple[str, ...]
     ) -> Dict[str, Metric]:
+        """Build the Prometheus primitives for one registry namespace.
+
+        Returns a ``{metric_name: Metric}`` dict with one Gauge/Counter/Histogram
+        per registered metric definition (``Unsupported`` types are skipped). The dict
+        key is the metric's ``name``, and the value is the Prometheus primitive.
+
+        Args:
+            namespace: Registry namespace to build primitives for (e.g.
+                ``"op_runtime"``).
+            default_tag_keys: Prometheus label keys applied to any definition
+                that does not declare its own ``tag_keys``.
+        """
         metrics = {}
-        for metric in OpRuntimeMetrics.get_metrics():
-            if not metric.metrics_group == metrics_group:
-                continue
+        for metric in GLOBAL_METRICS_REGISTRY.definitions(namespace):
             if metric.metrics_type == MetricsType.Unsupported:
                 continue
-            metric_name = f"data_{metric.name}"
-            metric_description = metric.description
+            tag_keys = metric.tag_keys or default_tag_keys
             if metric.metrics_type == MetricsType.Gauge:
                 metrics[metric.name] = Gauge(
-                    metric_name,
-                    description=metric_description,
+                    metric.prometheus_name,
+                    description=metric.description,
                     tag_keys=tag_keys,
                 )
             elif metric.metrics_type == MetricsType.Histogram:
                 metrics[metric.name] = Histogram(
-                    metric_name,
-                    description=metric_description,
+                    metric.prometheus_name,
+                    description=metric.description,
                     tag_keys=tag_keys,
                     **metric.metrics_args,
                 )
             elif metric.metrics_type == MetricsType.Counter:
                 metrics[metric.name] = Counter(
-                    metric_name,
-                    description=metric_description,
+                    metric.prometheus_name,
+                    description=metric.description,
                     tag_keys=tag_keys,
                 )
         return metrics
@@ -669,24 +641,9 @@ class _StatsActor:
             self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
-            for field_name, prom_metric in self.execution_metrics_inputs.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-            for field_name, prom_metric in self.execution_metrics_outputs.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for field_name, prom_metric in self.execution_metrics_tasks.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for (
-                field_name,
-                prom_metric,
-            ) in self.execution_metrics_obj_store_memory.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for field_name, prom_metric in self.execution_metrics_actors.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for field_name, prom_metric in self.execution_metrics_misc.items():
+            for field_name, prom_metric in self._prom_metrics[
+                _OP_RUNTIME_NAMESPACE
+            ].items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
