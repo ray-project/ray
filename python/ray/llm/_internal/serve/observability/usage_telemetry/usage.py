@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import random
@@ -20,6 +21,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+    from ray.llm._internal.serve.core.protocol import LLMServerProtocol
 
 LLM_SERVE_TELEMETRY_NAMESPACE = "llm_serve_telemetry"
 LLM_SERVE_TELEMETRY_ACTOR_NAME = "llm_serve_telemetry"
@@ -335,6 +337,42 @@ def _flag(value: Optional[bool]) -> str:
     if value is None:
         return "default"
     return "on" if value else "off"
+
+
+def serving_pattern(server: "LLMServerProtocol") -> str:
+    """Classify the serving pattern from the server class hierarchy.
+
+    Uses MRO class names to avoid importing the DP/PD subclasses (which import
+    LLMServer, so importing them here would create a cycle).
+    """
+    names = {cls.__name__ for cls in type(server).__mro__}
+    is_dp = "DPServer" in names
+    is_pd = bool(names & {"PDPrefillServer", "PDDecodeServer"})
+    if is_dp and is_pd:
+        return "dp_pd"
+    if is_pd:
+        return "pd"
+    if is_dp:
+        return "dp"
+    return "default"
+
+
+def classify_start_failure(exc: BaseException) -> str:
+    """Map an engine-start failure to a coarse, non-identifying category.
+
+    Classify by exception type, which is stable across engine versions. The
+    message is never inspected or recorded, so a failure we can't type-identify
+    becomes "other" rather than risk a wrong label from brittle string matching.
+    """
+    if isinstance(exc, asyncio.TimeoutError):
+        return "engine_start_timeout"
+    if isinstance(exc, ImportError):  # ModuleNotFoundError is a subclass.
+        return "import_error"
+    if isinstance(exc, MemoryError) or "outofmemory" in type(exc).__name__.lower():
+        return "oom"  # torch.cuda.OutOfMemoryError, MemoryError, etc.
+    if isinstance(exc, ValueError):
+        return "invalid_config"
+    return "other"
 
 
 def _push_model_telemetry(

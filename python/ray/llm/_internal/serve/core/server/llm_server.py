@@ -32,7 +32,9 @@ from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    classify_start_failure,
     push_telemetry_report_for_all_models,
+    serving_pattern,
 )
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import (
@@ -99,68 +101,6 @@ def _merge_replica_actor_and_child_actor_bundles(
     return [merged_first_bundle] + [
         copy.copy(bundle) for bundle in child_actor_bundles[1:]
     ]
-
-
-def _serving_pattern(server: "LLMServerProtocol") -> str:
-    """Classify the serving pattern from the server class hierarchy.
-
-    Uses MRO class names to avoid importing the DP/PD subclasses (which import
-    LLMServer, so importing them here would create a cycle).
-    """
-    names = {cls.__name__ for cls in type(server).__mro__}
-    is_dp = "DPServer" in names
-    is_pd = bool(names & {"PDPrefillServer", "PDDecodeServer"})
-    if is_dp and is_pd:
-        return "dp_pd"
-    if is_pd:
-        return "pd"
-    if is_dp:
-        return "dp"
-    return "default"
-
-
-def _classify_start_failure(exc: BaseException) -> str:
-    """Map an engine-start failure to a fixed, non-identifying category.
-
-    Only the category is ever recorded as telemetry. The exception message (which
-    may contain user data such as model paths) is used solely for classification
-    here and is never emitted.
-    """
-    if isinstance(exc, asyncio.TimeoutError):
-        return "engine_start_timeout"
-    if isinstance(exc, ImportError):  # ModuleNotFoundError is a subclass.
-        return "import_error"
-    # Match specific phrases rather than bare tokens; exception messages often
-    # embed file paths ("/Downloads/", "/oom_test/") that would false-positive.
-    name = type(exc).__name__.lower()
-    msg = str(exc).lower()
-    if "outofmemory" in name or "out of memory" in msg:
-        return "oom"
-    if any(
-        s in msg
-        for s in (
-            "no available accelerator",
-            "no available gpu",
-            "insufficient resources",
-            "out of resource",
-            "placement group",
-        )
-    ):
-        return "accelerator_unavailable"
-    if any(
-        s in msg
-        for s in (
-            "failed to download",
-            "download failed",
-            "huggingface",
-            "hf_hub",
-            "repository not found",
-        )
-    ):
-        return "model_download_failed"
-    if isinstance(exc, ValueError):
-        return "invalid_config"
-    return "other"
 
 
 class LLMServer(LLMServerProtocol):
@@ -268,8 +208,8 @@ class LLMServer(LLMServerProtocol):
                 await asyncio.to_thread(
                     push_telemetry_report_for_all_models,
                     all_models=[self._llm_config],
-                    deploy_outcome=_classify_start_failure(e),
-                    serving_pattern=_serving_pattern(self),
+                    deploy_outcome=classify_start_failure(e),
+                    serving_pattern=serving_pattern(self),
                 )
                 raise
 
@@ -354,7 +294,7 @@ class LLMServer(LLMServerProtocol):
             push_telemetry_report_for_all_models,
             all_models=[self._llm_config],
             deploy_outcome="success",
-            serving_pattern=_serving_pattern(self),
+            serving_pattern=serving_pattern(self),
         )
         if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
             # Cluster-wide adoption signal: written from each replica on engine

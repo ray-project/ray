@@ -16,6 +16,7 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     HardwareUsage,
     _get_or_create_telemetry_agent,
     _retry_get_telemetry_agent,
+    classify_start_failure,
     push_telemetry_report_for_all_models,
 )
 
@@ -386,33 +387,29 @@ def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
     }
 
 
+class OutOfMemoryError(RuntimeError):
+    """Stands in for torch.cuda.OutOfMemoryError (matched by type name)."""
+
+
 @pytest.mark.parametrize(
     "exc,expected",
     [
         (asyncio.TimeoutError(), "engine_start_timeout"),
-        (RuntimeError("CUDA out of memory"), "oom"),
         (ImportError("no module named flash_attn"), "import_error"),
-        (
-            RuntimeError("no available accelerator for request"),
-            "accelerator_unavailable",
-        ),
-        (
-            RuntimeError("failed to download from huggingface hub"),
-            "model_download_failed",
-        ),
-        (ValueError("unsupported field"), "invalid_config"),
-        (RuntimeError("something else entirely"), "other"),
-        # Paths embedding bare tokens must not false-positive into a category.
-        (RuntimeError("failed loading /home/user/oom_test/model"), "other"),
-        (RuntimeError("cannot read /data/Downloads/model.bin"), "other"),
+        (ModuleNotFoundError("flash_attn"), "import_error"),
+        (MemoryError(), "oom"),
+        (OutOfMemoryError("cuda oom"), "oom"),
+        (ValueError("bad config value"), "invalid_config"),
+        (RuntimeError("worker crashed"), "other"),
+        # The message is never inspected, so embedded tokens can't be
+        # misclassified: a plain RuntimeError stays "other" regardless of text.
+        (RuntimeError("CUDA out of memory while loading the model"), "other"),
+        (RuntimeError("failed to download from /home/user/oom_test/"), "other"),
     ],
 )
 def test_classify_start_failure(exc, expected):
-    """Failures map to a fixed enum; the raw message is never the recorded value."""
-    from ray.llm._internal.serve.core.server.llm_server import _classify_start_failure
-
-    assert _classify_start_failure(exc) == expected
-    assert expected != str(exc)
+    """Failures map to a fixed enum by exception type; the message is never read."""
+    assert classify_start_failure(exc) == expected
 
 
 if __name__ == "__main__":
