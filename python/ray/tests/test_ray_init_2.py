@@ -526,7 +526,7 @@ def test_get_node_to_connect_for_driver_resets_fallback_grace_timer(monkeypatch)
         "find_node_ids",
         lambda: next(find_node_ids_results),
     )
-    time_values = chain([0, 0, 0, 6, 6, 6, 6, 10], repeat(10))
+    time_values = chain([0, 0, 0, 0, 6, 6, 6, 6, 10], repeat(10))
     monkeypatch.setattr(ray._private.services.time, "time", lambda: next(time_values))
     monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
 
