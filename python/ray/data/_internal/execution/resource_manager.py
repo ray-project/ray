@@ -788,7 +788,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = remaining
 
     def _warn_if_op_starved_too_long(self, op: PhysicalOperator) -> None:
-        # The operator isn't starved. Break early.
+        # The operator isn't starved. Return early.
         if self._op_starved_since.get(op) is None:
             return
 
