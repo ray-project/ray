@@ -118,8 +118,12 @@ class ExportEventLoggerAdapter:
         event_as_str = self._export_event_to_string(event)
 
         self.logger.info(event_as_str)
-        # Force flush so that we won't lose events
-        self.logger.handlers[0].flush()
+        # Force flush all handlers so that we won't lose events.
+        for handler in self.logger.handlers[:]:
+            try:
+                handler.flush()
+            except Exception:
+                global_logger.exception("Failed to flush export event logger handler.")
 
     def _create_export_event(self, event_data: ExportEventDataType) -> ExportEvent:
         event = ExportEvent()
