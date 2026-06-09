@@ -29,6 +29,13 @@ class ModelConfig:
     parallelism: Dict[str, Any] = field(default_factory=dict)
     # "bf16" | "fp16" | "fp32". Adapters may downgrade (e.g. bf16 -> fp16 on T4).
     precision: str = "bf16"
+    # Trade recompute for activation memory. Essential to fit large
+    # batch x seq on memory-constrained GPUs (e.g. 24GB A10G) and for big models.
+    gradient_checkpointing: bool = False
+    # HF attention kernel: "sdpa" (memory-efficient, default) | "eager"
+    # (materializes the full B x H x S x S score matrix — OOMs at long seq) |
+    # "flash_attention_2" (needs the flash-attn package).
+    attn_implementation: str = "sdpa"
     # Escape hatch for framework-native config (path to ds_config.json,
     # torchtitan .toml, or inline kwargs). Merged on top of what the adapter
     # derives from this config.
@@ -62,7 +69,11 @@ class TrainingConfig:
     warmup_steps: int = 5
     log_every_n_steps: int = 10
     optimizer: Dict[str, Any] = field(
-        default_factory=lambda: {"lr": 3.0e-4, "betas": [0.9, 0.95], "weight_decay": 0.1}
+        default_factory=lambda: {
+            "lr": 3.0e-4,
+            "betas": [0.9, 0.95],
+            "weight_decay": 0.1,
+        }
     )
     # Gradient accumulation steps (micro-batches per optimizer step).
     gradient_accumulation_steps: int = 1
@@ -157,7 +168,9 @@ def experiment_from_dict(raw: Dict[str, Any]) -> ExperimentConfig:
     return cfg
 
 
-def load_experiment(path: str, overrides: Optional[List[str]] = None) -> ExperimentConfig:
+def load_experiment(
+    path: str, overrides: Optional[List[str]] = None
+) -> ExperimentConfig:
     with open(path, "r") as f:
         raw = yaml.safe_load(f)
     if overrides:

@@ -23,15 +23,19 @@ logger = logging.getLogger(__name__)
 
 
 # Registered HF dataset ids + the split/config needed to stream them.
+# NOTE: use fully namespaced, parquet-backed repos (namespace/name). Bare ids
+# like "wikitext"/"ag_news" are legacy *script* datasets — newer
+# datasets/huggingface_hub reject them with HfUriError ("Repository id must be
+# 'namespace/name'") because the loading-script path isn't a valid repo id.
 _HF_DATASETS: Dict[str, Dict[str, Any]] = {
     "c4": {"path": "allenai/c4", "name": "en", "split": "train", "streaming": True},
     "wikitext": {
-        "path": "wikitext",
+        "path": "Salesforce/wikitext",
         "name": "wikitext-103-raw-v1",
         "split": "train",
         "streaming": True,
     },
-    "ag_news": {"path": "ag_news", "split": "train", "streaming": False},
+    "ag_news": {"path": "fancyzhx/ag_news", "split": "train", "streaming": False},
 }
 
 
@@ -120,7 +124,10 @@ def _build_hf_loader(
         truncation=True,
         return_tensors="pt",
     )
-    encodings = {"input_ids": encodings["input_ids"], "attention_mask": encodings["attention_mask"]}
+    encodings = {
+        "input_ids": encodings["input_ids"],
+        "attention_mask": encodings["attention_mask"],
+    }
     return DataLoader(
         TokenizedTextDataset(encodings), batch_size=batch_size, shuffle=shuffle
     )
