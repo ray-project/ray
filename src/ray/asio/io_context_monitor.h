@@ -23,6 +23,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/metric_utils.h"
 #include "ray/util/clock.h"
@@ -46,7 +47,7 @@ class IOContextMonitor {
   /// @param healthy_deadline If a probe has been outstanding longer than this, the
   ///   io_context is considered unhealthy.
   /// @param latency_window Sliding window over which the max probe latency is
-  ///   tracked and exported. Defaults to 30s.
+  ///   tracked and exported.
   /// @param clock Clock to use for time. Defaults to a real clock. Inject a
   ///   FakeClock in tests for deterministic behavior.
   IOContextMonitor(
@@ -55,7 +56,8 @@ class IOContextMonitor {
       observability::MetricInterface &latency_gauge,
       observability::MetricInterface &unhealthy_counter,
       absl::Duration healthy_deadline,
-      absl::Duration latency_window = absl::Seconds(30),
+      absl::Duration latency_window = absl::Milliseconds(
+          RayConfig::instance().io_context_monitor_latency_window_ms()),
       std::shared_ptr<ClockInterface> clock = std::make_shared<Clock>());
 
   /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.

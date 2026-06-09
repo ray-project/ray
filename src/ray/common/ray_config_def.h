@@ -633,6 +633,11 @@ RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
 /// unhealthy.
 RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
 
+/// Sliding window over which the max probe latency is tracked and exported. The
+/// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
+/// windowed max is not missed between scrapes.
+RAY_CONFIG(int64_t, io_context_monitor_latency_window_ms, 20000)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
