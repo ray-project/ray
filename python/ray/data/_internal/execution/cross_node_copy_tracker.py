@@ -36,7 +36,7 @@ class CrossNodeCopyTracker:
         self._active_tasks: Dict[Tuple[int, int], _TaskCopyInfo] = {}
         self._bytes_per_node: Dict[NodeIdStr, int] = defaultdict(int)
         self._total_bytes: int = 0
-        self._cumulative_bytes: int = 0
+        self._peak_bytes: int = 0
         self._cumulative_tasks_with_copies: int = 0
         self._cumulative_tasks_total: int = 0
 
@@ -85,7 +85,7 @@ class CrossNodeCopyTracker:
         if cross_node_bytes > 0:
             self._bytes_per_node[task_node] += cross_node_bytes
             self._total_bytes += cross_node_bytes
-            self._cumulative_bytes += cross_node_bytes
+            self._peak_bytes = max(self._peak_bytes, self._total_bytes)
             self._cumulative_tasks_with_copies += 1
 
     def on_task_finished(
@@ -112,16 +112,16 @@ class CrossNodeCopyTracker:
         return dict(self._bytes_per_node)
 
     @property
-    def cumulative_bytes(self) -> int:
-        return self._cumulative_bytes
+    def peak_bytes(self) -> int:
+        return self._peak_bytes
 
     def summary(self) -> str:
         from ray.data._internal.execution.util import memory_string
 
-        if self._total_bytes == 0 and self._cumulative_bytes == 0:
+        if self._total_bytes == 0 and self._peak_bytes == 0:
             return "Cross-node copies: 0 B"
         parts = [f"Cross-node copies: {memory_string(self._total_bytes)} active"]
-        parts.append(f"{memory_string(self._cumulative_bytes)} cumulative")
+        parts.append(f"{memory_string(self._peak_bytes)} peak")
         parts.append(
             f"{self._cumulative_tasks_with_copies}/{self._cumulative_tasks_total}"
             " tasks incurred copies"
