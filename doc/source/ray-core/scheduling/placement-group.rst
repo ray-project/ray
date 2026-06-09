@@ -792,7 +792,7 @@ to two keys:
 
   pg = placement_group(
       bundles=bundles,
-      topology_strategy=[{"ray.io/gpu-domain": "STRICT_PACK"}],
+      topology_strategy={"ray.io/gpu-domain": "STRICT_PACK"},
   )
 
   ray.get(pg.ready())
@@ -811,10 +811,10 @@ STRICT_PACKing them onto a single rack (``ray.io/gpu-domain`` is each rack's **t
 
   pg = placement_group(
       bundles=[{"CPU": 1}] * 4,
-      topology_strategy=[{
+      topology_strategy={
           "ray.io/node-id": "STRICT_SPREAD",
           "ray.io/gpu-domain": "STRICT_PACK",
-      }],
+      },
   )
 
 ``topology_strategy`` is mutually exclusive with the ``strategy=`` parameter, and passing both
