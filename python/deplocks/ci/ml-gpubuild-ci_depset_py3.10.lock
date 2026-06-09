@@ -2086,12 +2086,6 @@ jupyterlab-widgets==3.0.16 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipywidgets
-jupytext==1.19.1 \
-    --hash=sha256:82587c07e299173c70ed5e8ec7e75183edf1be289ed518bab49ad0d4e3d5f433 \
-    --hash=sha256:d8975035155d034bdfde5c0c37891425314b7ea8d3a6c4b5d18c294348714cd9
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/train-test-requirements.txt
 keras==3.12.1 \
     --hash=sha256:3cb760b3fec105db4d893dd717daafdd0e35457a8201502c1ba8bedfaf334a71 \
     --hash=sha256:c340f8a25362398b20500c64e290f6ee280c6aeec51e1044eb8d759b32dc272a
@@ -2541,7 +2535,6 @@ markdown-it-py==2.2.0 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -2622,12 +2615,11 @@ matplotlib-inline==0.2.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipykernel
     #   ipython
-mdit-py-plugins==0.3.5 \
+mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   jupytext
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
@@ -3211,7 +3203,6 @@ nbformat==5.10.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jupyter-server
-    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.6.0 \
@@ -3923,7 +3914,6 @@ packaging==26.1 \
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
-    #   jupytext
     #   keras
     #   kombu
     #   lightning
@@ -5003,7 +4993,6 @@ pyyaml==6.0.3 \
     #   datasets
     #   huggingface-hub
     #   jupyter-events
-    #   jupytext
     #   lightning
     #   ml-collections
     #   mosaicml
@@ -6150,7 +6139,6 @@ tomli==2.0.2 ; python_full_version < '3.11' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   alembic
     #   jupyterlab
-    #   jupytext
     #   pytest
 torch==2.9.0+cu128 \
     --hash=sha256:26effd07b9ee31c2db8988860317ba74361967bb4f9228af5a56907215cc27b5 \

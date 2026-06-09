@@ -169,10 +169,6 @@ aiosignal==1.4.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   aiohttp
-alabaster==0.7.16 \
-    --hash=sha256:75a8b99c28a5dad50dd7f8ccdd447a121ddb3892da9e53d1ca5cca3106d58d65 \
-    --hash=sha256:b46733c07dce03ae4e150330b975c75737fa60f0a7c591b6c8bf4928a28e2c92
-    # via sphinx
 amqp==5.3.1 \
     --hash=sha256:43b3319e1b4e7d1251833a93d672b4af1e40f3d632d479b98661a95f117880a2 \
     --hash=sha256:cddc00c725449522023bad949f70fff7b48f0b1ade74d170a6f10ab044739432
@@ -391,7 +387,6 @@ babel==2.18.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   jupyterlab-server
-    #   sphinx
 backcall==0.2.0 \
     --hash=sha256:5cbdbf27be5e7cfadb448baf0aa95508f91f2bbc6c6437cd9cd06e2a4c215e1e \
     --hash=sha256:fbbce6a29f263178a1f7915c1940bde0ec2b2a967566fe1c65c1dfb7422bd255
@@ -1116,10 +1111,6 @@ docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
     --hash=sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
     # via anthropic
-docutils==0.19 \
-    --hash=sha256:33995a6753c30b7f577febfc2c50411fec6aac7f7ffeb7c4cfe5991072dcf9e6 \
-    --hash=sha256:5e1de4d849fee02c63b040a4a3fd567f4ab104defd8a5511fbbc24a8a017efbc
-    # via sphinx
 einops==0.8.2 \
     --hash=sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193 \
     --hash=sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827
@@ -2064,10 +2055,6 @@ ijson==3.5.0 \
     --hash=sha256:f969ffb2b89c5cdf686652d7fb66252bc72126fa54d416317411497276056a18 \
     --hash=sha256:fdeee6957f92e0c114f65c55cf8fe7eabb80cfacab64eea6864060913173f66d
     # via vllm
-imagesize==2.0.0 \
-    --hash=sha256:5667c5bbb57ab3f1fa4bc366f4fbc971db3d5ed011fd2715fd8001f782718d96 \
-    --hash=sha256:8e8358c4a05c304f1fccf7ff96f036e7243a189e9e42e90851993c558cfe9ee3
-    # via sphinx
 importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
@@ -2132,7 +2119,6 @@ jinja2==3.1.6 \
     #   jupyterlab-server
     #   memray
     #   nbconvert
-    #   sphinx
     #   torch
 jiter==0.14.0 \
     --hash=sha256:004df5fdb8ecbd6d99f3227df18ba1a259254c4359736a2e6f036c944e02d7c5 \
@@ -2367,10 +2353,6 @@ jupyterlab-widgets==3.0.16 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   ipywidgets
-jupytext==1.19.1 \
-    --hash=sha256:82587c07e299173c70ed5e8ec7e75183edf1be289ed518bab49ad0d4e3d5f433 \
-    --hash=sha256:d8975035155d034bdfde5c0c37891425314b7ea8d3a6c4b5d18c294348714cd9
-    # via -r python/requirements/llm/llm-test-requirements.txt
 kombu==5.6.2 \
     --hash=sha256:8060497058066c6f5aed7c26d7cd0d3b574990b09de842a8c5aaed0b92cc5a55 \
     --hash=sha256:efcfc559da324d41d61ca311b0c64965ea35b4c55cc04ee36e55386145dace93
@@ -2512,7 +2494,6 @@ markdown-it-py==2.2.0 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
-    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -2533,12 +2514,11 @@ mcp==1.1.3 \
     --hash=sha256:71462d6cd7c06c14689dfcf110ff22286ba1b608cfc3515c0a5cbe33d131731a \
     --hash=sha256:af11018b8e9153cdd25f3722ec639fe7a462c00213a330fd6f593968341a9883
     # via vllm
-mdit-py-plugins==0.3.5 \
+mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
-    #   jupytext
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
@@ -3090,7 +3070,6 @@ nbformat==5.10.4 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   jupyter-server
-    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.6.0 \
@@ -3673,13 +3652,11 @@ packaging==26.1 \
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
-    #   jupytext
     #   kombu
     #   lm-format-enforcer
     #   nbconvert
     #   openlineage-python
     #   pytest
-    #   sphinx
     #   taskiq
     #   tensorboardx
     #   transformers
@@ -4640,7 +4617,6 @@ pygments==2.18.0 \
     #   ipython
     #   nbconvert
     #   rich
-    #   sphinx
 pyjwt==2.12.1 \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
     --hash=sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b
@@ -4809,7 +4785,6 @@ pyyaml==6.0.3 \
     #   gguf
     #   huggingface-hub
     #   jupyter-events
-    #   jupytext
     #   lm-format-enforcer
     #   openlineage-python
     #   transformers
@@ -5066,7 +5041,6 @@ requests==2.33.1 \
     #   openlineage-python
     #   opentelemetry-exporter-otlp-proto-http
     #   smart-open
-    #   sphinx
     #   tiktoken
     #   vllm
 rfc3339-validator==0.1.4 \
@@ -5696,10 +5670,6 @@ sniffio==1.3.1 \
     # via
     #   anthropic
     #   openai
-snowballstemmer==3.0.1 \
-    --hash=sha256:6cd7b3897da8d6c9ffb968a6781fa6532dce9c3618a4b127d920dab764a19064 \
-    --hash=sha256:6d5eeeec8e9f84d4d56b847692bacf79bc2c8e90c7f80ca4444ff8b6f2e52895
-    # via sphinx
 soundfile==0.13.1 \
     --hash=sha256:03267c4e493315294834a0870f31dbb3b28a95561b80b134f0bd3cf2d5f0e618 \
     --hash=sha256:1e70a05a0626524a69e9f0f4dd2ec174b4e9567f4d8b6c11d38b5c289be36ee9 \
@@ -5746,34 +5716,6 @@ soxr==1.1.0 \
     --hash=sha256:f4977323ef9c3aa3c2a26ff5fe0191c84b8fd759daf7afb1f25a91a55ad8b730 \
     --hash=sha256:feebcba99ac99adb8009d46c8f4c1956b8c167576b0ae8a6fb47502e9a6f78e7
     # via mistral-common
-sphinx==6.2.1 \
-    --hash=sha256:6d56a34697bb749ffa0152feafc4b19836c755d90a7c59b72bc7dfd371b9cc6b \
-    --hash=sha256:97787ff1fa3256a3eef9eda523a63dbf299f7b47e053cfcf684a1c2a8380c912
-    # via -r python/requirements/llm/llm-test-requirements.txt
-sphinxcontrib-applehelp==2.0.0 \
-    --hash=sha256:2f29ef331735ce958efa4734873f084941970894c6090408b079c61b2e1c06d1 \
-    --hash=sha256:4cd3f0ec4ac5dd9c17ec65e9ab272c9b867ea77425228e68ecf08d6b28ddbdb5
-    # via sphinx
-sphinxcontrib-devhelp==2.0.0 \
-    --hash=sha256:411f5d96d445d1d73bb5d52133377b4248ec79db5c793ce7dbe59e074b4dd1ad \
-    --hash=sha256:aefb8b83854e4b0998877524d1029fd3e6879210422ee3780459e28a1f03a8a2
-    # via sphinx
-sphinxcontrib-htmlhelp==2.1.0 \
-    --hash=sha256:166759820b47002d22914d64a075ce08f4c46818e17cfc9470a9786b759b19f8 \
-    --hash=sha256:c9e2916ace8aad64cc13a0d233ee22317f2b9025b9cf3295249fa985cc7082e9
-    # via sphinx
-sphinxcontrib-jsmath==1.0.1 \
-    --hash=sha256:2ec2eaebfb78f3f2078e73666b1415417a116cc848b72e5172e596c871103178 \
-    --hash=sha256:a9925e4a4587247ed2191a22df5f6970656cb8ca2bd6284309578f2153e0c4b8
-    # via sphinx
-sphinxcontrib-qthelp==2.0.0 \
-    --hash=sha256:4fe7d0ac8fc171045be623aba3e2a8f613f8682731f9153bb2e40ece16b9bbab \
-    --hash=sha256:b18a828cdba941ccd6ee8445dbe72ffa3ef8cbe7505d8cd1fa0d42d3f2d5f3eb
-    # via sphinx
-sphinxcontrib-serializinghtml==2.0.0 \
-    --hash=sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331 \
-    --hash=sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d
-    # via sphinx
 spinners==0.0.24 \
     --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
     --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
