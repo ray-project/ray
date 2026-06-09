@@ -76,8 +76,11 @@ ipywidgets==8.1.3
 pyzmq>=27.1.0
 colorama
 
-# Sphinx/MyST doc-build tooling intentionally lives in doc/requirements-doc.txt, not here.
-# Doctests run via the `doctest` bazel macro (pytest + pytest-sphinx, above); no sphinx/myst needed.
+# jupytext: required by doc/test_myst_doc.py, which converts notebook examples in CI test runs.
+jupytext>1.13.6
+# sphinx / myst-parser / myst-nb are intentionally NOT listed here: they belong to the docs build
+# (doc/requirements-doc.txt) and nothing in the test/CI image imports them; doctests use the
+# `doctest` bazel macro (pytest + pytest-sphinx, above).
 jinja2>=3.1.6
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
