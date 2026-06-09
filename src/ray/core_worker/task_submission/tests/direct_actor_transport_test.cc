@@ -50,8 +50,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
           return nullptr;
         });
-    memory_store = std::make_unique<CoreWorkerMemoryStore>(
-        store_io_context.GetIoService(), clock);
+    memory_store =
+        std::make_unique<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock);
     publisher = std::make_unique<pubsub::FakePublisher>();
     subscriber = std::make_unique<pubsub::FakeSubscriber>();
     reference_counter = std::make_shared<ReferenceCounter>(
