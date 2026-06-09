@@ -90,7 +90,15 @@ def _get_node_resource_spec_and_count(
     dataset will emit pending-bundle scale-up demand for foo nodes
     stamped with the validation label, which the autoscaler can never
     satisfy.
-
+    Quirk: the returned dict also contains a ``node_type: 0`` (ex: `"m5.xlarge": 0` entry for every
+    node type registered in ``cluster_config.node_group_configs`` that
+    isn't included in this subcluster. ``get_cluster_config()``
+    reports node types but not labels, so the only way to know a
+    shape's subcluster is to inspect live nodes. Harmless: for example,
+    if m5.xlarge nodes only exist in the training subcluster, the validation
+    dataset will emit pending-bundle scale-up demand for foo nodes
+    stamped with the validation label, which the autoscaler can never
+    satisfy.
     TODO: get labels from cluster config so the catalog can be filtered.
     """
     nodes_resource_spec_count = defaultdict(int)
