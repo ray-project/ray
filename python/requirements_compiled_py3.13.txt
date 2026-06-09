@@ -991,6 +991,10 @@ jupyterlab-server==2.28.0
     # via jupyterlab
 jupyterlab-widgets==3.0.16
     # via ipywidgets
+jupytext==1.19.3
+    # via
+    #   -r python/requirements/ml/py313/train-test-requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
 jwcrypto==1.5.7
     # via delta-sharing
 keras==3.14.0 ; python_version >= "3.11"
@@ -1060,6 +1064,7 @@ markdown==3.10.2
 markdown-it-py==2.2.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
+    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -1082,7 +1087,9 @@ matplotlib-inline==0.2.1
     #   ipykernel
     #   ipython
 mdit-py-plugins==0.3.5
-    # via markdown-it-py
+    # via
+    #   jupytext
+    #   markdown-it-py
 mdurl==0.1.2
     # via markdown-it-py
 memray==1.19.3 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
@@ -1197,6 +1204,7 @@ nbconvert==7.17.1
 nbformat==5.10.4
     # via
     #   jupyter-server
+    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.6.0
@@ -1454,6 +1462,7 @@ packaging==26.1
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   keras
     #   knack
     #   kombu
@@ -1913,6 +1922,7 @@ pyyaml==6.0.3
     #   huggingface-hub
     #   jsonschema-path
     #   jupyter-events
+    #   jupytext
     #   knack
     #   kubernetes
     #   lightning

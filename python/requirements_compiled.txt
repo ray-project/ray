@@ -983,6 +983,8 @@ jupyterlab-server==2.28.0
     # via jupyterlab
 jupyterlab-widgets==3.0.11
     # via ipywidgets
+jupytext==1.19.3
+    # via -r python/requirements/test-requirements.txt
 keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.7
@@ -1048,6 +1050,7 @@ markdown==3.5.1
 markdown-it-py==2.2.0
     # via
     #   -r python/requirements/test-requirements.txt
+    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -1070,7 +1073,9 @@ matplotlib-inline==0.1.6
     #   ipykernel
     #   ipython
 mdit-py-plugins==0.3.5
-    # via markdown-it-py
+    # via
+    #   jupytext
+    #   markdown-it-py
 mdurl==0.1.2
     # via markdown-it-py
 memray==1.19.1 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
@@ -1176,6 +1181,7 @@ nbconvert==6.5.4
 nbformat==5.9.2
     # via
     #   jupyter-server
+    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.5.8
@@ -1412,6 +1418,7 @@ packaging==24.2
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   knack
     #   kombu
     #   lightning
@@ -1858,6 +1865,7 @@ pyyaml==6.0.3
     #   huggingface-hub
     #   jsonschema-path
     #   jupyter-events
+    #   jupytext
     #   knack
     #   kubernetes
     #   lightning
