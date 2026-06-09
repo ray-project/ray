@@ -377,7 +377,9 @@ class IcebergDatasource(Datasource):
         # which would cause operators like Count to return 0 after an empty
         # projection is pushed down.
         data_columns = self._get_data_columns()
-        selected_fields = ("*",) if not data_columns else tuple(data_columns)
+        selected_fields = tuple(data_columns) if data_columns else ()
+        if not selected_fields:
+            selected_fields = ("*",)
 
         data_scan = self.table.scan(
             row_filter=combined_filter,
