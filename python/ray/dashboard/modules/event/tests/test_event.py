@@ -724,9 +724,7 @@ def test_export_event_logger_flushes_all_handlers():
     handlers = [MagicMock() for _ in range(3)]
     mock_logger.handlers = handlers
 
-    adapter = ExportEventLoggerAdapter(
-        EventLogType.SUBMISSION_JOB, mock_logger
-    )
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
     event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
         submission_job_id="submission_job_id0",
         status=(
@@ -745,9 +743,7 @@ def test_export_event_logger_allows_empty_handlers():
     mock_logger = MagicMock()
     mock_logger.handlers = []
 
-    adapter = ExportEventLoggerAdapter(
-        EventLogType.SUBMISSION_JOB, mock_logger
-    )
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
     event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
         submission_job_id="submission_job_id0",
         status=(
@@ -766,9 +762,7 @@ def test_export_event_logger_continues_flushing_after_handler_error():
     handler2 = MagicMock()
     mock_logger.handlers = [handler1, handler2]
 
-    adapter = ExportEventLoggerAdapter(
-        EventLogType.SUBMISSION_JOB, mock_logger
-    )
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
     event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
         submission_job_id="submission_job_id0",
         status=(
