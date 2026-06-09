@@ -154,8 +154,9 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     episode_lens,
                     convert_to_numpy(batch[module_id][Columns.LOSS_MASK]),
                 ).astype(bool)
-                mean = module_advantages.mean(where=loss_mask)
-                std = module_advantages.std(where=loss_mask)
+                masked_advantages = module_advantages[loss_mask]
+                mean = masked_advantages.mean()
+                std = masked_advantages.std()
             else:
                 mean = module_advantages.mean()
                 std = module_advantages.std()
