@@ -976,6 +976,17 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // can remove it from any cached locations.
   object_directory_.HandleNodeRemoved(node_id);
   object_manager_.HandleNodeRemoved(node_id);
+
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
+    ids.insert(id);
+  }
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
@@ -999,6 +1010,17 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
         << "Killing leased worker because its owner died.";
     worker->KillAsync(io_service_);
   }
+
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
@@ -2590,6 +2612,19 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
+
+  // Skip pinning if the owner is already known dead
+  const auto owner_worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
+  const auto owner_node_id = NodeID::FromBinary(request.owner_address().node_id());
+  if (failed_workers_cache_.contains(owner_worker_id) ||
+      failed_nodes_cache_.contains(owner_node_id)) {
+    for (size_t i = 0; i < object_ids.size(); ++i) {
+      reply->add_successes(false);
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -3666,6 +3701,24 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
           timer->cancel();
         }
       });
+}
+
+void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                                         rpc::FreeLocalObjectsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_str : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_str));
+  }
+  FreeLocalObjects(object_ids);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::FreeLocalObjects(const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
+    local_object_manager_.ReleaseFreedLocalObject(object_id);
+  }
 }
 
 }  // namespace ray::raylet
