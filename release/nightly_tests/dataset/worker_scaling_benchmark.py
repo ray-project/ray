@@ -240,7 +240,13 @@ def main(args: argparse.Namespace):
             # cluster and the next operator in the chain starves — but the goal
             # here is N_operators sharing the pool, so each gets
             # ``workers_per_operator`` task slots.
-            map_kwargs["concurrency"] = workers_per_operator
+            #
+            # Only apply the cap when actually chaining operators. With a single
+            # operator there's nothing to share with, and capping would diverge
+            # from the original 1-op baseline, which left ``concurrency`` unset
+            # and used Ray Data's default unbounded ``TaskPoolStrategy``.
+            if args.num_operators > 1:
+                map_kwargs["concurrency"] = workers_per_operator
             udf = make_realistic_schema_udf(
                 args.seed,
                 args.num_scalar_cols,
