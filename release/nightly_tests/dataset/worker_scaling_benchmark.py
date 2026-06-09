@@ -10,10 +10,16 @@ map output block carrying a wide mixed-type schema:
 Stresses the per-block schema propagation path (``ray.get(meta_ref)`` +
 schema deserialization in ``on_data_ready``), which dominates large-schema
 production workloads.
+
+Profiling is gated by env vars consumed by ``profiling.coordinator.Profiling``
+(``PYSPY_ENABLED=1``, ``PERF_PROFILING_ENABLED=1`` etc.). When none are set,
+the coordinator is a no-op aside from printing its configuration.
 """
 
 import argparse
+import os
 import pickle
+import uuid
 from typing import Dict, List
 
 import numpy as np
@@ -24,6 +30,10 @@ from benchmark import (
     benchmark_py_modules,
     collect_dataset_stats,
 )
+from profiling.coordinator import Profiling
+
+JOB_ID = os.environ.get("ANYSCALE_JOB_ID", f"local-{uuid.uuid4().hex[:8]}")
+SHARED_OUTDIR = f"/mnt/shared_storage/worker_scaling/{JOB_ID}"
 
 BLOCKS_PER_WORKER: int = 10
 # Cap output block size to avoid OOM under wide schemas.
@@ -181,6 +191,29 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    # ``Profiling.start()`` spawns ``_UDFPySpyProfiler`` actors on worker
+    # nodes. To deserialize that actor class, the worker has to import
+    # ``profiling.pyspy`` — which lives at this script's ``profiling/``
+    # sibling and isn't on the worker's Python path by default. Ship the
+    # directory alongside ``benchmark.py`` so workers can resolve the
+    # import.
+    import profiling as _profiling_pkg
+
+    _profiling_dir = os.path.dirname(os.path.abspath(_profiling_pkg.__file__))
+    ray.init(runtime_env={"py_modules": benchmark_py_modules() + [_profiling_dir]})
     args = parse_args()
-    main(args)
+
+    profiling = Profiling(outdir=SHARED_OUTDIR, num_gpu_nodes=0)
+    profiling.start(
+        extra_config={
+            "RAY_COMMIT": ray.__commit__,
+            "NUM_WORKERS": args.num_workers,
+            "WORKER_TYPE": args.worker_type,
+            "NUM_SCALAR_COLS": args.num_scalar_cols,
+            "NUM_ARRAY_COLS": args.num_array_cols,
+        }
+    )
+    try:
+        main(args)
+    finally:
+        profiling.stop(s3_prefix=f"worker-scaling/{JOB_ID}")

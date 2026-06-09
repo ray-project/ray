@@ -55,6 +55,7 @@ from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
+    BlockEntry,
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.util import memory_string
@@ -1132,7 +1133,10 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception is raised. Column names must be unique.
+                an exception is raised. Column names must be unique. When the
+                input schema is known statically, missing columns are reported
+                at the ``drop_columns`` call; otherwise the error surfaces
+                during materialization.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -1142,10 +1146,45 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the specified columns removed.
         """  # noqa: E501
+        import pyarrow as pa
 
-        if len(cols) != len(set(cols)):
+        # Dropping no columns is a no-op; return early to avoid schema
+        # inference, the uniqueness check, and a redundant ``Project`` that
+        # would just select every column.
+        if not cols:
+            return self
+
+        cols_set = set(cols)
+        if len(cols) != len(cols_set):
             raise ValueError(f"drop_columns expects unique column names, got: {cols}")
 
+        # When the input schema is known, reshape into a ``Project`` over the
+        # surviving columns so the typed schema chain stays intact and
+        # ``Dataset.schema()`` resolves without a ``limit(1)`` execution.
+        # When ``keep`` is empty (all columns dropped), fall through to the
+        # ``MapBatches`` path — ``select_columns([])`` would yield an
+        # internal ``__bsp_stub`` placeholder column, but the empty-table
+        # semantics of ``pyarrow.Table.drop(all_columns)`` are what users
+        # expect from ``drop_columns``.
+        input_schema = self._logical_plan.dag.infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            input_schema_names_set = set(input_schema.names)
+            missing = [c for c in cols if c not in input_schema_names_set]
+            if missing:
+                raise KeyError(
+                    f"drop_columns: column(s) not found in dataset schema: "
+                    f"{missing}. Available columns: {input_schema.names}"
+                )
+            keep = [c for c in input_schema.names if c not in cols_set]
+            if keep:
+                return self.select_columns(
+                    keep,
+                    compute=compute,
+                    concurrency=concurrency,
+                    **ray_remote_args,
+                )
+
+        # Fallback: input schema unknown (UDF chain) or all columns dropped.
         def drop_columns(batch):
             return batch.drop(cols)
 
@@ -1668,7 +1707,11 @@ class Dataset:
                 # expr is an Expr object (predicate expression)
                 predicate_expr = expr
 
-            filter_compute = TaskPoolStrategy(size=concurrency)
+            filter_compute = get_compute_strategy(
+                fn=None,
+                compute=compute,
+                concurrency=concurrency,
+            )
         else:
             warnings.warn(
                 "Use 'expr' instead of 'fn' when possible for performant filters."
@@ -2252,7 +2295,8 @@ class Dataset:
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
         stats = self._raw_stats()
-        block_refs, metadata = zip(*bundle.blocks)
+        block_refs = bundle.block_refs
+        metadata = bundle.metadata
 
         if locality_hints is None:
             block_refs_splits = np.array_split(block_refs, n)
@@ -2264,7 +2308,9 @@ class Dataset:
             ):
                 ref_bundles = [
                     RefBundle(
-                        [(b, m)], owns_blocks=owned_by_consumer, schema=bundle.schema
+                        [BlockEntry(b, m)],
+                        owns_blocks=owned_by_consumer,
+                        schema=bundle.schema,
                     )
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
@@ -2380,7 +2426,7 @@ class Dataset:
             blocks = allocation_per_actor[actor]
             metadata = [metadata_mapping[b] for b in blocks]
             bundle = RefBundle(
-                tuple(zip(blocks, metadata)),
+                tuple(BlockEntry(b, m) for b, m in zip(blocks, metadata)),
                 owns_blocks=owned_by_consumer,
                 schema=bundle.schema,
             )
@@ -2453,7 +2499,7 @@ class Dataset:
         start_time = time.perf_counter()
         bundle: RefBundle = self._execute()
         blocks, metadata = _split_at_indices(
-            bundle.blocks,
+            [(entry.ref, entry.metadata) for entry in bundle.blocks],
             indices,
             False,
         )
@@ -2465,7 +2511,7 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             ref_bundles = [
-                RefBundle([(b, m)], owns_blocks=False, schema=bundle.schema)
+                RefBundle([BlockEntry(b, m)], owns_blocks=False, schema=bundle.schema)
                 for b, m in zip(bs, ms)
             ]
             logical_plan = LogicalPlan(
@@ -6779,6 +6825,9 @@ class Dataset:
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_df = block_to_df.options(label_selector=label_selector)
         pandas_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6815,6 +6864,9 @@ class Dataset:
             A list of remote NumPy ndarrays created from this dataset.
         """
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_ndarray = block_to_ndarray.options(label_selector=label_selector)
         numpy_refs = []
         for bundle in self.iter_internal_ref_bundles():
             for block_ref in bundle.block_refs:
@@ -6861,6 +6913,9 @@ class Dataset:
             return block_refs
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
@@ -7089,8 +7144,8 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(1)
             >>> for ref_bundle in ds.iter_internal_ref_bundles():
-            ...     for block_ref, block_md in ref_bundle.blocks:
-            ...         block = ray.get(block_ref)
+            ...     for entry in ref_bundle.blocks:
+            ...         block = ray.get(entry.ref)
 
         Returns:
             An iterator over this Dataset's ``RefBundles``.
@@ -7438,6 +7493,9 @@ class Dataset:
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
+        label_selector = self.context.execution_options.label_selector
+        if label_selector:
+            get_num_rows = get_num_rows.options(label_selector=label_selector)
         num_rows = []
         for ref_bundle in self.iter_internal_ref_bundles():
             for block_ref in ref_bundle.block_refs:

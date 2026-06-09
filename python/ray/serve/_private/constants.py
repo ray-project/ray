@@ -1,6 +1,8 @@
+import logging
 import os
 from typing import List
 
+from ray._common.network_utils import get_all_interfaces_ip
 from ray.serve._private.constants_utils import (
     get_env_bool,
     get_env_float,
@@ -16,6 +18,7 @@ from ray.serve._private.constants_utils import (
 
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
@@ -672,6 +675,11 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
+# Stopped replicas to retain per deployment for dashboard log access. 0 disables.
+RAY_SERVE_RETAINED_DEAD_REPLICAS = get_env_int_non_negative(
+    "RAY_SERVE_RETAINED_DEAD_REPLICAS", 10
+)
+
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
 NO_ROUTES_MESSAGE = "Route table is not populated yet."
@@ -741,6 +749,17 @@ RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
 RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
+
+# Minimum spacing between HAProxy reloads. Broadcasts arriving inside
+# the window are batched into one apply; without it, autoscaling churn
+# can fire reloads tens of ms apart.
+RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0.1
+)
+
+# Histogram boundaries (seconds) for serve_haproxy_update_latency_s: the time
+# from the first coalesced controller broadcast to the HAProxy reload finishing.
+RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30]
 
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
@@ -829,11 +848,20 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
 # `retry-on` token reference:
 # https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+# Retry policy for the HAProxy `defaults` block, inherited by every backend.
+# Defaults to `conn-failure` only: nothing was sent to the replica, so the
+# request is safe to replay for any method (we deliberately avoid empty-response
+# / 503, which can double-execute non-idempotent requests or retry deliberate
+# backpressure). Set RAY_SERVE_HAPROXY_RETRY_ON to override globally.
+RAY_SERVE_HAPROXY_RETRY_ON = get_env_str("RAY_SERVE_HAPROXY_RETRY_ON", "conn-failure")
+RAY_SERVE_HAPROXY_RETRIES = get_env_int_non_negative("RAY_SERVE_HAPROXY_RETRIES", None)
+# Same retry policy as above; defaults to the global value so the ingress
+# request router shares one policy unless explicitly overridden.
 RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
+    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", RAY_SERVE_HAPROXY_RETRY_ON
 )
 RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
+    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", RAY_SERVE_HAPROXY_RETRIES
 )
 RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
@@ -902,6 +930,12 @@ RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
+
+# Hold released replica ports out of the pool this long so proxies can
+# drop their stale slot before a new replica grabs the same port. 0 disables.
+RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
+    "RAY_SERVE_PORT_QUARANTINE_S", 10.0
+)
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
 # then the minimum draining period is 0.
@@ -946,9 +980,20 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
 
-# Direct ingress must be enabled if HAProxy is enabled
 if RAY_SERVE_ENABLE_HA_PROXY:
+    # Direct ingress must be enabled if HAProxy is enabled.
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
+
+    # Replica HTTP ports must be reachable from HAProxy on remote nodes, so
+    # the effective default binds to all interfaces regardless of
+    # RAY_SERVE_DEFAULT_HTTP_HOST.
+    if DEFAULT_HTTP_HOST not in (None, get_all_interfaces_ip()):
+        logger.warning(
+            f"RAY_SERVE_DEFAULT_HTTP_HOST={DEFAULT_HTTP_HOST!r} is ignored "
+            "because RAY_SERVE_ENABLE_HA_PROXY=1 forces host to all interfaces "
+            "so HAProxy on other nodes can reach Serve HTTP ports."
+        )
+    DEFAULT_HTTP_HOST = get_all_interfaces_ip()
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(

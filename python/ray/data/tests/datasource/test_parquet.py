@@ -1,3 +1,4 @@
+import contextlib
 import os
 import pathlib
 import pickle
@@ -92,6 +93,38 @@ def test_read_parquet_rejects_pickle_object_columns(
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
+def test_write_parquet_handles_per_block_column_reorder(
+    ray_start_regular_shared, tmp_path
+):
+    # When the Write task receives multiple blocks whose schemas share the same
+    # field names in a different order, `pa.unify_schemas` fixes the column
+    # order from the first block. Previously the per-block `Table.cast` was
+    # positional and rejected the second block; ParquetDatasink now reorders
+    # columns by name before casting.
+    from ray.data._internal.datasource.parquet_datasink import (
+        WRITE_UUID_KWARG_NAME,
+        ParquetDatasink,
+    )
+    from ray.data._internal.execution.interfaces import TaskContext
+
+    t1 = pa.table({"x": [1], "y": [2]})
+    t2 = pa.table({"y": [3], "x": [4]})
+    sink = ParquetDatasink(path=str(tmp_path))
+    ctx = TaskContext(task_idx=0, op_name="Write")
+    ctx.kwargs = {WRITE_UUID_KWARG_NAME: "wuid"}
+
+    sink.write([t1, t2], ctx)
+
+    out = pq.read_table(str(tmp_path))
+    assert sorted(out.column_names) == ["x", "y"]
+    assert out.num_rows == 2
+    # Pair each row's (x, y) regardless of the unified output order.
+    assert sorted(zip(out.column("x").to_pylist(), out.column("y").to_pylist())) == [
+        (1, 2),
+        (4, 3),
+    ]
+
+
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     ray.data.range(1).write_parquet(tmp_path, compression="gzip")
 
@@ -169,7 +202,10 @@ def test_include_paths(
 
 
 def test_include_paths_with_column_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
@@ -177,8 +213,15 @@ def test_include_paths_with_column_projection(
 
     # Exercises the deprecated ``columns=`` arg: V1 retained ``"path"``
     # implicitly under ``include_paths=True``, and read_api preserves that
-    # by appending it to the projection on the caller's behalf.
-    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+    # by appending it to the projection on the caller's behalf. The
+    # deprecation warning is emitted only on the V2 path.
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
         ds = ray.data.read_parquet(path, columns=["id"], include_paths=True)
 
     schema_names = ds.schema().names
@@ -263,7 +306,10 @@ def test_include_row_hash_same_data_different_files(
 
 
 def test_include_row_hash_with_column_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
@@ -271,8 +317,15 @@ def test_include_row_hash_with_column_projection(
 
     # Exercises the deprecated ``columns=`` arg: V1 retained ``"row_hash"``
     # implicitly under ``include_row_hash=True``, and read_api preserves
-    # that by appending it to the projection on the caller's behalf.
-    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+    # that by appending it to the projection on the caller's behalf. The
+    # deprecation warning is emitted only on the V2 path.
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
         ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
     schema_names = ds.schema().names
     assert "a" in schema_names
@@ -1242,8 +1295,11 @@ def test_parquet_roundtrip(
     assert read_data == written_data
 
     # Test metadata ops.
-    for block, meta in ds2._execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
+    for entry in ds2._execute().blocks:
+        # pyrefly: ignore[no-matching-overload]
+        BlockAccessor.for_block(
+            ray.get(entry.ref)
+        ).size_bytes() == entry.metadata.size_bytes
 
     if fs is None:
         shutil.rmtree(path)
@@ -1749,9 +1805,10 @@ def test_read_null_data_in_first_file(
 
 
 def test_read_parquet_does_not_call_infer_schema(
-    tmp_path, monkeypatch, ray_start_regular_shared
+    tmp_path, monkeypatch, ray_start_regular_shared, use_datasource_v2
 ):
-    """read_parquet should not call _infer_schema, which can cause O(N) metadata reads."""
+    """The V2 read path should not call _infer_schema, which can cause O(N)
+    metadata reads. V1 still calls it to reconcile per-file schemas."""
 
     num_files = 10
     for i in range(num_files):
@@ -1769,7 +1826,10 @@ def test_read_parquet_does_not_call_infer_schema(
     )
     mock.return_value = pa.schema({"data": pa.int64()})
     ray.data.read_parquet(str(tmp_path))
-    mock.assert_not_called()
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        mock.assert_not_called()
+    else:
+        mock.assert_called()
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):

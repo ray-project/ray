@@ -541,6 +541,165 @@ class TestPlanObstoreRouting:
             )
 
 
+# TestThreadedDownloadPreResolve
+def _spy_resolve(fake_fn=None):
+    """Patch _resolve_paths_and_filesystem, returning (patch_cm, probe_calls,
+    normalize_calls). Probe calls pass filesystem=None; normalize calls supply
+    one. ``fake_fn`` replaces the real function when given."""
+    from ray.data._internal.planner import plan_download_op as pdo
+
+    probe_calls: list = []
+    normalize_calls: list = []
+    original = pdo._resolve_paths_and_filesystem
+
+    def _tracking(uri, filesystem=None, **kw):
+        (probe_calls if filesystem is None else normalize_calls).append(uri)
+        if fake_fn is not None:
+            return fake_fn(uri, filesystem=filesystem, **kw)
+        return original(uri, filesystem=filesystem, **kw)
+
+    return (
+        patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_tracking),
+        probe_calls,
+        normalize_calls,
+    )
+
+
+class TestThreadedDownloadPreResolve:
+    """``download_bytes_threaded`` probes the filesystem once and shares it
+    across workers, instead of each worker inferring it (the IMDS herd)."""
+
+    def test_probe_once_across_workers(self, tmp_path):
+        for i in range(10):
+            (tmp_path / f"f{i}.bin").write_bytes(f"data-{i}".encode())
+        uris = [f"file://{tmp_path}/f{i}.bin" for i in range(10)]
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+
+        spy, probes, normalizes = _spy_resolve()
+        with spy:
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        # One probe regardless of worker count; one normalize per URI.
+        assert len(probes) == 1
+        assert len(normalizes) == 10
+        assert [b.as_py() for b in results[0].column("bytes")] == [
+            f"data-{i}".encode() for i in range(10)
+        ]
+
+    @pytest.mark.parametrize(
+        "fs_factory",
+        [
+            pytest.param(lambda: pafs.LocalFileSystem(), id="pyarrow-local"),
+            # fsspec FS lacks open_input_stream and must be normalized before
+            # wrapping, else reads raise AttributeError mid-flight.
+            pytest.param(
+                lambda: pytest.importorskip("fsspec").filesystem("file"),
+                id="fsspec-local",
+            ),
+        ],
+    )
+    def test_supplied_fs_skips_probe(self, tmp_path, fs_factory):
+        (tmp_path / "f.bin").write_bytes(b"supplied")
+        table = pa.Table.from_arrays(
+            [pa.array([f"file://{tmp_path}/f.bin"])], names=["uri"]
+        )
+
+        spy, probes, _ = _spy_resolve()
+        with spy:
+            results = list(
+                download_bytes_threaded(
+                    table,
+                    ["uri"],
+                    ["bytes"],
+                    DataContext.get_current(),
+                    filesystem=fs_factory(),
+                )
+            )
+
+        assert probes == []
+        assert results[0].column("bytes")[0].as_py() == b"supplied"
+
+    @pytest.mark.parametrize(
+        "first_uri,probe_returns_for_first",
+        [
+            pytest.param(None, None, id="none-in-list"),
+            pytest.param("file:///first-dropped", ([], None), id="empty-paths-result"),
+        ],
+    )
+    def test_probe_loop_skips_unusable(
+        self, tmp_path, first_uri, probe_returns_for_first
+    ):
+        # Probe must skip None URIs and ([], fs)/(paths, None) returns rather
+        # than break early with no usable filesystem.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        (tmp_path / "good.bin").write_bytes(b"good")
+        real_fs = pafs.LocalFileSystem()
+
+        def _fake(uri, filesystem=None, **_kw):
+            if filesystem is not None:
+                # Normalize-only: pass paths through when FS is supplied.
+                return ([str(tmp_path / "good.bin")], filesystem)
+            if uri == first_uri:
+                return probe_returns_for_first
+            return ([str(tmp_path / "good.bin")], real_fs)
+
+        good = f"file://{tmp_path}/good.bin"
+        table = pa.Table.from_arrays([pa.array([first_uri, good])], names=["uri"])
+
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fake):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert results[0].column("bytes")[-1].as_py() == b"good"
+
+    def test_all_probes_fail_yields_none(self):
+        # No URI resolves; we short-circuit to None for every row instead of
+        # letting workers repeat the failed inference.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        resolve_calls: list = []
+
+        def _fail_all(uri, filesystem=None, **_kw):
+            resolve_calls.append((uri, filesystem))
+            raise RuntimeError("nothing resolves")
+
+        uris = ["bad-1", "bad-2", "bad-3"]
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fail_all):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        # Probe tried each URI exactly once. No worker calls.
+        assert len(resolve_calls) == len(uris)
+        assert all(fs is None for _, fs in resolve_calls)
+        # Every URI yields None.
+        assert [b.as_py() for b in results[0].column("bytes")] == [None] * len(uris)
+
+    def test_empty_block_no_workers(self):
+        # Zero URIs → the column loop skips; no probe, no workers spawned.
+        table = pa.Table.from_arrays([pa.array([], type=pa.string())], names=["uri"])
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        with patch.object(
+            pdo, "_resolve_paths_and_filesystem", side_effect=AssertionError
+        ):
+            list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+
 # TestObstoreDownloadPath
 class TestObstoreDownloadPath:
     """Integration tests for the obstore async download path.
@@ -1067,24 +1226,19 @@ class TestObstoreRangeSplitDownload:
             import obstore as obs
 
             call_count = 0
+            original_get_range = obs.get_range_async
 
             async def _failing_range(*args, **kwargs):
                 nonlocal call_count
                 call_count += 1
                 if call_count == 2:
                     raise OSError("simulated network failure")
-                return await obs.__wrapped_get_range(*args, **kwargs)
+                return await original_get_range(*args, **kwargs)
 
-            obs.__wrapped_get_range = obs.get_range_async
-            try:
-                with patch.object(obs, "get_range_async", side_effect=_failing_range):
-                    results = asyncio.run(
-                        _download_uris_with_obstore(
-                            [uri], "uri", file_sizes=[len(content)]
-                        )
-                    )
-            finally:
-                del obs.__wrapped_get_range
+            with patch.object(obs, "get_range_async", side_effect=_failing_range):
+                results = asyncio.run(
+                    _download_uris_with_obstore([uri], "uri", file_sizes=[len(content)])
+                )
 
         # Ranged failed, but simple GET fallback should succeed.
         assert results == [content]

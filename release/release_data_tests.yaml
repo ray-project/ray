@@ -14,6 +14,8 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # Fail the test if a worker spills
+        - RAYTEST_FAIL_ON_SPILLING=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: torch-cu128
@@ -44,11 +46,6 @@
   python: "3.14"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -57,10 +54,15 @@
 
   run:
     timeout: 3600
+    # Ray Data can't guarantee memory safety if you haven't hinted how much heap memory
+    # high-memory operations require. Since reading large Parquet files requires lots of
+    # heap memory, we need to manually specify the memory to prevent OOMs.
+    #
+    # 3650722201 is ~3.4 GiB, the maximum heap memory observed in our tests.
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
-      --iter-bundles
+      --iter-bundles --memory 3650722201
 
 - name: "read_images_{{scaling}}"
   python: "3.14"
@@ -196,6 +198,12 @@
         - "column02 column14"  # 7M groups
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -217,6 +225,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -252,6 +266,12 @@
   python: "3.14"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
   matrix:
@@ -284,6 +304,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
         - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
     cluster_compute: fixed_size_cpu_compute.yaml
@@ -337,6 +358,12 @@
   python: "3.14"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
     timeout: 600
@@ -382,6 +409,11 @@
     anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -397,8 +429,9 @@
         byod:
           runtime_env:
             - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-            - RAYTEST_FAIL_ON_DEAD_NODES=0
             - RAYTEST_FAIL_ON_WORKER_OOM=1
+            - RAYTEST_FAIL_ON_DEAD_NODES=0
+            - RAYTEST_FAIL_ON_SPILLING=0
       run:
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
@@ -469,6 +502,63 @@
           --data-loader s3_read_images --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
 
+# See release/nightly_tests/dataset/training_ingest_regression_test/main.py
+# for the variation matrix and what each one measures.
+- name: training_ingest_regression_test
+  python: "3.10"
+  group: data-iter-batches
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
+        # Preserve DEFAULTS' runtime_env (setting runtime_env here replaces,
+        # doesn't merge).
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
+    cluster_compute: training_ingest_regression_test/compute.yaml
+
+  variations:
+    - __suffix__: peak_object_store_memory
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --num-runs=3
+
+    - __suffix__: peak_object_store_memory.pin_memory
+      frequency: manual
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --pin-memory --num-runs=3
+
+    - __suffix__: throughput
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --num-runs=3
+
+    - __suffix__: throughput.pin_memory
+      frequency: manual
+      run:
+        timeout: 1800
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --pin-memory --num-runs=3
+
 #################
 # Iteration tests
 #################
@@ -506,6 +596,12 @@
   python: "3.14"
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0 # Allow temporarily to unblock release
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -571,6 +667,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -588,6 +685,12 @@
   frequency: weekly
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "fixed_size_{{num_workers}}_workers_compute.yaml"
 
   matrix:
@@ -597,12 +700,51 @@
 
   run:
     timeout: 2700
+    # PYSPY_ENABLED=1 → driver-side py-spy speedscope is recorded by the
+    # profiling coordinator and uploaded to PROFILING_S3_BUCKET.
     script: >
+      PYSPY_ENABLED=1
       python worker_scaling_benchmark.py
       --num-workers {{num_workers}}
       --worker-type {{worker_type}}
       --num-scalar-cols 200
       --num-array-cols 400
+
+
+######################
+# Backpressure tests
+######################
+
+- name: backpressure_fast_producer_slow_consumer
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python backpressure_benchmark.py --case fast-producer-slow-consumer
+
+- name: backpressure_training_prefetch
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_8_cpu_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: multi_node
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch
+
+    - __suffix__: single_node
+      cluster:
+        cluster_compute: fixed_size_1_cpu_compute.yaml
+      run:
+        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
 
 
 ########################
@@ -619,6 +761,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -638,6 +786,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
   run:
@@ -660,6 +809,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -681,6 +836,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
   run:
@@ -711,6 +867,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0
         - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
@@ -756,6 +913,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_SPILLING=0
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
@@ -808,22 +966,26 @@
       cluster_type: []
       args: []
       fail_on_dead_nodes: []
+      fail_on_spilling: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
           fail_on_dead_nodes: 1
+          fail_on_spilling: 0 # Allow temporarily to unblock release
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 100
           fail_on_dead_nodes: 1
+          fail_on_spilling: 0 # Allow temporarily to unblock release
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 100 100 --chaos
           fail_on_dead_nodes: 0
+          fail_on_spilling: 0
 
   cluster:
     anyscale_sdk_2026: true
@@ -833,6 +995,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING={{fail_on_spilling}}
   run:
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
@@ -850,6 +1013,7 @@
       args: []
       frequency: []
       fail_on_dead_nodes: []
+      fail_on_spilling: []
     adjustments:
       - with:
           case: fixed_size
@@ -857,12 +1021,14 @@
           args: --inference-concurrency 40 40
           frequency: weekly
           fail_on_dead_nodes: 0 # Allow node death during test
+          fail_on_spilling: 1
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 40
           frequency: weekly
           fail_on_dead_nodes: 1
+          fail_on_spilling: 1
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
@@ -871,6 +1037,7 @@
           # fail.
           frequency: manual
           fail_on_dead_nodes: 0
+          fail_on_spilling: 0
 
   cluster:
     anyscale_sdk_2026: true
@@ -880,6 +1047,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING={{fail_on_spilling}}
       post_build_script: byod_install_pybase64.sh
 
   run:
@@ -922,6 +1090,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+        - RAYTEST_FAIL_ON_SPILLING=1
       type: torch-cu128
       post_build_script: byod_install_text_embedding.sh
 
@@ -995,6 +1164,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1065,6 +1240,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1088,6 +1269,12 @@
 
   cluster:
     anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
