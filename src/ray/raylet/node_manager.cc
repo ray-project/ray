@@ -857,12 +857,8 @@ void NodeManager::WarnResourceDeadlock() {
   // To avoid spurious triggers, only take action starting with the second time.
   // case resource_deadlock_warned_:  0 => first time, don't do anything yet
   // case resource_deadlock_warned_:  1 => second time, print a warning
-  // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
+  // case resource_deadlock_warned_: >1 => don't print any warnings
   if (resource_deadlock_warned_++ > 0) {
-    // Actor references may be caught in cycles, preventing them from being deleted.
-    // Set should global gc to hopefully free up resource slots.
-    SetShouldGlobalGC();
-
     // Suppress duplicates warning messages.
     if (resource_deadlock_warned_ > 2) {
       return;
