@@ -956,7 +956,6 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
       rpc::LeaseSpec rpc_lease_spec;
       rpc_lease_spec.set_language(Language::PYTHON);
       rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
-      (*rpc_lease_spec.mutable_required_resources())["CPU"] = 1.0;
 
       LeaseSpecification lease_spec{std::move(rpc_lease_spec)};
       PrestartWorkersInternal(lease_spec, num_prestart_python_workers);

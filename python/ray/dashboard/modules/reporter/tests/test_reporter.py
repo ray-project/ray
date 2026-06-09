@@ -1396,7 +1396,7 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     dashboard_agent.node_id = ray._private.worker.global_worker.node.unique_id
     agent = ReporterAgent(dashboard_agent)
     pids = await agent._async_get_worker_pids_from_raylet()
-    assert len(pids) == 3
+    assert len(pids) == 2
     # check if worker is reported
     assert worker_pid in pids
     # check if driver is reported

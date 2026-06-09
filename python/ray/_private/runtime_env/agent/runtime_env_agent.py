@@ -320,6 +320,10 @@ class RuntimeEnvAgent:
 
         cpu_req = request.resource_requirements.get("CPU", 0)
         omp_num_threads = max(math.floor(cpu_req), 1)
+        # respect user configured env var if set.
+        if "OMP_NUM_THREADS" in os.environ:
+            omp_num_threads = max(int(os.environ["OMP_NUM_THREADS"]), 1)
+
         if "OMP_NUM_THREADS" not in context.env_vars:
             context.env_vars["OMP_NUM_THREADS"] = str(omp_num_threads)
 

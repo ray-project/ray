@@ -340,23 +340,16 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     assert omp_num_threads == "1"
     # Set to 2
     pid2, omp_num_threads = ray.get(g.options(num_cpus=2).remote())
-    # Since https://github.com/ray-project/ray/issues/63138, Ray creates
-    # new worker processes for actors with disparate resourec requirements.
     assert pid1 != pid2
     assert omp_num_threads == "2"
 
     ###########################
     # Test not setting the value with environ already set to 1 in env
     ###########################
-    cluster.add_node(num_cpus=4)
-    assert (
-        ray.get(
-            f.options(
-                num_cpus=4, runtime_env=RuntimeEnv(env_vars={"OMP_NUM_THREADS": "1"})
-            ).remote()
-        )
-        == "1"
-    )
+    with monkeypatch.context() as m:
+        m.setenv("OMP_NUM_THREADS", "1")
+        cluster.add_node(num_cpus=4)
+    assert ray.get(f.options(num_cpus=4).remote()) == "1"
 
 
 def test_submit_api(shutdown_only):

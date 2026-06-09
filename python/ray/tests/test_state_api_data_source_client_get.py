@@ -1030,7 +1030,7 @@ def test_list_runtime_envs(shutdown_only):
 
     def verify():
         result = list_runtime_envs(detail=True)
-        assert len(result) == 2
+        assert len(result) == 3
 
         failed_runtime_env = result[0]
         assert (
