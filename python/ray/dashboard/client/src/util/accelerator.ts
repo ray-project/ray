@@ -42,14 +42,13 @@ export const getAcceleratorType = (
   hasGpus: boolean,
   hasTpus: boolean,
 ): keyof typeof acceleratorColumnLabels => {
-  const accelerators: (keyof typeof acceleratorColumnLabels)[] = [];
-  if (hasGpus) {
-    accelerators.push("gpu");
+  if (hasGpus && !hasTpus) {
+    return "gpu";
   }
-  if (hasTpus) {
-    accelerators.push("tpu");
+  if (!hasGpus && hasTpus) {
+    return "tpu";
   }
-  return accelerators.length !== 1 ? "generic" : accelerators[0];
+  return "generic";
 };
 
 export const normalizeAccelerators = (
