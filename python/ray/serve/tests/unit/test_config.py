@@ -1530,7 +1530,7 @@ class TestGetControllerImpl:
     """
 
     def _default_options(self, controller_options=None):
-        from ray.serve._private.default_impl import get_controller_impl
+        from ray.serve._private.controller_actor_class import get_controller_impl
 
         return get_controller_impl(
             controller_options=controller_options

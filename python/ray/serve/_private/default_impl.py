@@ -2,7 +2,6 @@ import asyncio
 from typing import Callable, Optional, Tuple
 
 import ray
-from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -17,13 +16,9 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
-    RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     RAY_SERVE_PROXY_USE_GRPC,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
-    SERVE_CONTROLLER_NAME,
-    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -41,7 +36,6 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
-from ray.serve.config import ControllerOptions
 from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
@@ -49,6 +43,11 @@ from ray.util.placement_group import PlacementGroup
 # These methods are common extension points, therefore these should be
 # changed as a Developer API, ie methods should not be renamed, have their
 # API modified w/o substantial enough justification
+#
+# This module holds only leaf factories: ones the runtime objects (proxy,
+# handle, ...) import. The actor-class factories that import those heavy
+# modules live in their own modules to keep this a leaf and avoid circular
+# imports: see proxy_actor_class.py and controller_actor_class.py.
 
 
 def create_cluster_node_info_cache(gcs_client: GcsClient) -> ClusterNodeInfoCache:
@@ -85,6 +84,10 @@ def create_deployment_scheduler(
     )
 
 
+# NOTE: the replica factories below import lazily because replica.py both
+# defines Replica and calls these factories on itself, so an eager import would
+# be a self-cycle. Unlike the proxy/controller actor-class factories, they
+# cannot be hoisted into their own eager module without splitting replica.py.
 def create_replica_impl(**kwargs):
     from ray.serve._private.replica import Replica
 
@@ -240,32 +243,3 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         stream=not info.app_is_cross_language,
         _by_reference=not RAY_SERVE_PROXY_USE_GRPC,
     )
-
-
-def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
-    """Build the Ray actor class for the Serve controller.
-
-    ``controller_options`` is the validated ``ControllerOptions`` model from
-    ``serve.start`` / ``serve.run`` / the YAML schema. Today only its
-    ``runtime_env`` field is consumed; future fields (num_cpus, resources,
-    max_concurrency overrides) slot in here.
-    """
-    from ray.serve._private.controller import ServeController
-
-    actor_options = dict(
-        name=SERVE_CONTROLLER_NAME,
-        namespace=SERVE_NAMESPACE,
-        num_cpus=0,
-        lifetime="detached",
-        max_restarts=-1,
-        max_task_retries=-1,
-        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    )
-    if controller_options is not None and controller_options.runtime_env:
-        # The validator on ControllerOptions guarantees this is a dict
-        # containing only the ``env_vars`` key with str->str entries.
-        actor_options["runtime_env"] = controller_options.runtime_env
-
-    return ray.remote(**actor_options)(ServeController)
