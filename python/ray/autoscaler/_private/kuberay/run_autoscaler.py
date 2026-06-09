@@ -119,13 +119,15 @@ def _setup_logging(log_dir: str) -> None:
     try_to_create_directory(log_dir)
 
     # Write logs at info level to monitor.log.
+    max_bytes = int(os.getenv("RAY_ROTATION_MAX_BYTES", LOGGING_ROTATE_BYTES))
+    backup_count = int(os.getenv("RAY_ROTATION_BACKUP_COUNT", LOGGING_ROTATE_BACKUP_COUNT))
     setup_component_logger(
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=log_dir,
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
-        max_bytes=LOGGING_ROTATE_BYTES,
-        backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        max_bytes=max_bytes,
+        backup_count=backup_count,
     )
 
     # For the autoscaler, the root logger _also_ needs to write to stderr, not just

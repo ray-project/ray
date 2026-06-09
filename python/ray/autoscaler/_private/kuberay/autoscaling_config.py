@@ -18,6 +18,7 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -319,9 +320,11 @@ def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
 
     ray_start_params = group_spec.get("rayStartParams", {})
     labels_str = ray_start_params.get("labels")
-    if labels_str:
+    if labels_str and log_once("raystartparams_labels_warning"):
         logger.warning(
-            f"Ignoring labels: {labels_str} set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5"
+            f"Ignoring labels: {labels_str} set in rayStartParams. "
+            "Group labels are supported in the top-level Labels field "
+            "starting in KubeRay v1.5"
         )
 
     # Check for top-level structured Labels field.
