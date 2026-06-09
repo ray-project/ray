@@ -35,8 +35,7 @@ using ::testing::_;
 class DirectTaskTransportTest : public ::testing::Test {
  public:
   DirectTaskTransportTest()
-      : io_work(io_context.get_executor()),
-        store_io_context("DirectTaskTransportTest") {}
+      : io_work(io_context.get_executor()), store_io_context("DirectTaskTransportTest") {}
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
