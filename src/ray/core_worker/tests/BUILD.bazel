@@ -27,7 +27,6 @@ ray_cc_test(
     srcs = ["memory_store_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common:test_utils",

@@ -16,12 +16,12 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_publisher.h"
@@ -34,7 +34,9 @@ using ::testing::_;
 
 class DirectTaskTransportTest : public ::testing::Test {
  public:
-  DirectTaskTransportTest() : io_work(io_context.get_executor()) {}
+  DirectTaskTransportTest()
+      : io_work(io_context.get_executor()),
+        store_io_context("DirectTaskTransportTest") {}
 
   void SetUp() override {
     gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
@@ -47,7 +49,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
           return nullptr;
         });
-    memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+    memory_store =
+        std::make_unique<CoreWorkerMemoryStore>(store_io_context.GetIoService());
     publisher = std::make_unique<pubsub::FakePublisher>();
     subscriber = std::make_unique<pubsub::FakeSubscriber>();
     reference_counter = std::make_shared<ReferenceCounter>(
@@ -99,6 +102,7 @@ class DirectTaskTransportTest : public ::testing::Test {
  protected:
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
+  InstrumentedIOContextWithThread store_io_context;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
