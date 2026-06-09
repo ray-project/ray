@@ -174,23 +174,6 @@ class TelemetryAgent:
             ]
         )
 
-    def _model_architectures(self) -> str:
-        return ",".join([model.model_architecture for model in self.models.values()])
-
-    def _tensor_parallel_degree(self) -> str:
-        return ",".join(
-            [str(model.tensor_parallel_degree) for model in self.models.values()]
-        )
-
-    def _num_replicas(self) -> str:
-        return ",".join([str(model.num_replicas) for model in self.models.values()])
-
-    def _gpu_type(self) -> str:
-        return ",".join([model.gpu_type for model in self.models.values()])
-
-    def _num_gpus(self) -> str:
-        return ",".join([str(model.num_gpus) for model in self.models.values()])
-
     def _join(self, attr: str) -> str:
         """Comma joined attribute across models, index aligned with LLM_SERVE_MODELS."""
         return ",".join(str(getattr(model, attr)) for model in self.models.values())
@@ -229,11 +212,13 @@ class TelemetryAgent:
             TelemetryTags.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: self._autoscaling_enabled_models(),
             TelemetryTags.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: self._autoscaling_min_replicas(),
             TelemetryTags.LLM_SERVE_AUTOSCALING_MAX_REPLICAS: self._autoscaling_max_replicas(),
-            TelemetryTags.LLM_SERVE_MODELS: self._model_architectures(),
-            TelemetryTags.LLM_SERVE_TENSOR_PARALLEL_DEGREE: self._tensor_parallel_degree(),
-            TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._num_replicas(),
-            TelemetryTags.LLM_SERVE_GPU_TYPE: self._gpu_type(),
-            TelemetryTags.LLM_SERVE_NUM_GPUS: self._num_gpus(),
+            TelemetryTags.LLM_SERVE_MODELS: self._join("model_architecture"),
+            TelemetryTags.LLM_SERVE_TENSOR_PARALLEL_DEGREE: self._join(
+                "tensor_parallel_degree"
+            ),
+            TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._join("num_replicas"),
+            TelemetryTags.LLM_SERVE_GPU_TYPE: self._join("gpu_type"),
+            TelemetryTags.LLM_SERVE_NUM_GPUS: self._join("num_gpus"),
             TelemetryTags.LLM_SERVE_DEPLOY_OUTCOME: self._join("deploy_outcome"),
             TelemetryTags.LLM_SERVE_SERVING_PATTERN: self._join("serving_pattern"),
             TelemetryTags.LLM_SERVE_ENGINE_CONFIG: self._engine_configs(),

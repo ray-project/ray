@@ -402,6 +402,9 @@ def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
         ),
         (ValueError("unsupported field"), "invalid_config"),
         (RuntimeError("something else entirely"), "other"),
+        # Paths embedding bare tokens must not false-positive into a category.
+        (RuntimeError("failed loading /home/user/oom_test/model"), "other"),
+        (RuntimeError("cannot read /data/Downloads/model.bin"), "other"),
     ],
 )
 def test_classify_start_failure(exc, expected):

@@ -128,19 +128,34 @@ def _classify_start_failure(exc: BaseException) -> str:
     """
     if isinstance(exc, asyncio.TimeoutError):
         return "engine_start_timeout"
+    if isinstance(exc, ImportError):  # ModuleNotFoundError is a subclass.
+        return "import_error"
+    # Match specific phrases rather than bare tokens; exception messages often
+    # embed file paths ("/Downloads/", "/oom_test/") that would false-positive.
     name = type(exc).__name__.lower()
     msg = str(exc).lower()
-    if "outofmemory" in name or "out of memory" in msg or "oom" in msg:
+    if "outofmemory" in name or "out of memory" in msg:
         return "oom"
-    if isinstance(exc, (ImportError, ModuleNotFoundError)):
-        return "import_error"
     if any(
         s in msg
-        for s in ("no available", "accelerator", "resources", "placement group")
+        for s in (
+            "no available accelerator",
+            "no available gpu",
+            "insufficient resources",
+            "out of resource",
+            "placement group",
+        )
     ):
         return "accelerator_unavailable"
     if any(
-        s in msg for s in ("download", "huggingface", "hf_hub", "repository not found")
+        s in msg
+        for s in (
+            "failed to download",
+            "download failed",
+            "huggingface",
+            "hf_hub",
+            "repository not found",
+        )
     ):
         return "model_download_failed"
     if isinstance(exc, ValueError):
@@ -249,7 +264,9 @@ class LLMServer(LLMServerProtocol):
             except Exception as e:
                 # Record the failure category so deploy health is visible, then
                 # re-raise (telemetry is best-effort and must not mask the error).
-                push_telemetry_report_for_all_models(
+                # Offload to a thread: the push does blocking ray.get + retry sleeps.
+                await asyncio.to_thread(
+                    push_telemetry_report_for_all_models,
                     all_models=[self._llm_config],
                     deploy_outcome=_classify_start_failure(e),
                     serving_pattern=_serving_pattern(self),
@@ -332,7 +349,9 @@ class LLMServer(LLMServerProtocol):
         await self.engine.start()
 
         # Push telemetry reports for the model in the current deployment.
-        push_telemetry_report_for_all_models(
+        # Offload to a thread: the push does blocking ray.get + retry sleeps.
+        await asyncio.to_thread(
+            push_telemetry_report_for_all_models,
             all_models=[self._llm_config],
             deploy_outcome="success",
             serving_pattern=_serving_pattern(self),
