@@ -766,15 +766,9 @@ class LLMServer(LLMServerProtocol):
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
 
-        # The vLLM engine runs in a subprocess of the replica actor and inherits
-        # its environment. Engine-derived env vars -- e.g. VLLM_RAY_PER_WORKER_GPUS,
-        # which sizes each worker's GPU request and, for a fractional GPU bundle,
-        # is derived from the placement group -- are produced by
-        # get_runtime_env_with_local_env_vars(). Build the replica's env_vars from
-        # that same function so every derived var reaches the engine instead of
-        # only short-lived helper tasks; otherwise the engine falls back to a full
-        # GPU per worker and fractional GPU serving fails to start. Explicit
-        # user-set values still win. See #63875.
+        # Seed replica env_vars from engine-derived vars (e.g. fractional-GPU
+        # VLLM_RAY_PER_WORKER_GPUS) so the engine subprocess inherits them; user
+        # values win. See #63875.
         runtime_env = ray_actor_options["runtime_env"]
         engine_env_vars = engine_config.get_runtime_env_with_local_env_vars().get(
             "env_vars", {}
