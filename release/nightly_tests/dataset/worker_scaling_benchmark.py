@@ -176,8 +176,8 @@ def make_realistic_schema_udf(
     return udf.__call__
 
 
-def _no_fuse_remote_args() -> dict:
-    """Per-task remote-args hook that keeps the chained map_batches unfused.
+def _disable_operator_fusion() -> None:
+    """Stop Ray Data from fusing the chained map_batches into one operator.
 
     Ray Data's optimizer fuses linear chains of compatible map operators
     (same compute + remote args) into a single physical operator. With
@@ -185,48 +185,29 @@ def _no_fuse_remote_args() -> dict:
     one fused operator, so the scheduling topology has 1 operator no matter
     what --num-operators is set to — defeating the purpose of this variant,
     which exists to measure scheduling-loop cost as a function of the number
-    of operators.
-
-    Rather than mutating the optimizer ruleset, we rely on the fusion rule's
-    own documented contract: it declines to fuse any operator that specifies a
-    ``ray_remote_args_fn`` (the generated args aren't known at plan time, so
-    they can't be checked for compatibility — see ``OperatorFusionRule``).
-    Passing this no-op hook (returns no extra args) to each map_batches keeps
-    every operator separate using only public API.
+    of operators. There's no public toggle (and batch_size/UDF differences
+    don't block map->map fusion), so remove the rule from the DeveloperAPI
+    physical ruleset.
     """
-    return {}
+    from ray.data._internal.logical.optimizers import get_physical_ruleset
+    from ray.data._internal.logical.rules import FuseOperators
 
-
-def _reset_local_size_probe() -> None:
-    """Reset the local-size probe counters if present (no-op otherwise)."""
+    ruleset = get_physical_ruleset()
     try:
-        from ray.data._internal.execution.interfaces.physical_operator import (
-            reset_local_size_probe,
-        )
-
-        reset_local_size_probe()
-    except Exception:
-        pass
-
-
-def _local_size_probe_stats() -> Dict[str, object]:
-    """Return local_size_probe_stats() if the probe is present, else {}."""
-    try:
-        from ray.data._internal.execution.interfaces.physical_operator import (
-            local_size_probe_stats,
-        )
-
-        return local_size_probe_stats()
-    except Exception:
-        return {}
+        ruleset.remove(FuseOperators)
+    except ValueError:
+        pass  # Already removed.
 
 
 def main(args: argparse.Namespace):
+    # Keep the chained operators separate so the topology actually has
+    # --num-operators operators (see the function docstring).
+    if args.num_operators > 1:
+        _disable_operator_fusion()
+
     benchmark = Benchmark()
 
     def benchmark_fn():
-        # Start this run's local-size probe counters clean (no-op without probe).
-        _reset_local_size_probe()
         num_blocks = args.blocks_per_worker * args.num_workers
         rows_per_block = _rows_per_block(
             args.num_scalar_cols,
@@ -243,10 +224,6 @@ def main(args: argparse.Namespace):
         workers_per_operator = args.num_workers // args.num_operators
 
         map_kwargs = {"num_cpus": 0.5}
-        if args.num_operators > 1:
-            # Keep the chained operators separate so the topology actually has
-            # --num-operators operators (see `_no_fuse_remote_args`).
-            map_kwargs["ray_remote_args_fn"] = _no_fuse_remote_args
         if args.worker_type == "actors":
             map_kwargs["compute"] = ray.data.ActorPoolStrategy(
                 size=workers_per_operator
@@ -288,9 +265,6 @@ def main(args: argparse.Namespace):
         metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
         metrics["num_operators"] = args.num_operators
         metrics["workers_per_operator"] = workers_per_operator
-        # Local block-size probe: hit rate + object_size vs meta.size_bytes
-        # closeness (empty on Ray builds without the probe).
-        metrics.update(_local_size_probe_stats())
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
