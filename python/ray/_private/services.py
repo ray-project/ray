@@ -602,6 +602,7 @@ def get_node_to_connect_for_driver(
             time.sleep(1)
             continue
 
+        no_visible_raylet_processes_since = None
         last_resolution_path = "process"
         node_selectors = []
         for id in possible_node_ids:

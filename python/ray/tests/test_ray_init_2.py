@@ -509,6 +509,37 @@ def test_get_node_to_connect_for_driver_waits_before_fallback(monkeypatch):
     assert len(gcs_client.calls[0]["node_selectors"]) == 1
 
 
+def test_get_node_to_connect_for_driver_resets_fallback_grace_timer(monkeypatch):
+    process_node_id = ray.NodeID.from_random()
+    process_node = _make_gcs_node_info("10.0.0.3", node_id=process_node_id)
+    gcs_client = _FakeGcsClient([process_node])
+
+    find_node_ids_results = iter(
+        [set(), {process_node_id.hex()}, set(), {process_node_id.hex()}]
+    )
+    monkeypatch.setattr(
+        ray._private.services,
+        "find_node_ids",
+        lambda: next(find_node_ids_results),
+    )
+    time_values = chain([0, 0, 0, 6, 6, 6, 6, 10], repeat(10))
+    monkeypatch.setattr(ray._private.services.time, "time", lambda: next(time_values))
+    monkeypatch.setattr(ray._private.services.time, "sleep", lambda _: None)
+
+    with pytest.raises(
+        RuntimeError,
+        match="No node info found matching attributes: '10.0.0.2'",
+    ) as exc_info:
+        ray._private.services.get_node_to_connect_for_driver(
+            gcs_client,
+            node_ip_address="10.0.0.2",
+            timeout_seconds=10,
+        )
+
+    assert "No local raylet process was visible" not in str(exc_info.value)
+    assert all("node_selectors" in call for call in gcs_client.calls)
+
+
 def test_get_node_to_connect_for_driver_does_not_use_sticky_fallback_error(
     monkeypatch,
 ):
