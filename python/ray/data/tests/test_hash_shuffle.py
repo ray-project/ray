@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, call, patch
 
@@ -13,7 +14,10 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
-from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShuffleOperator,
+    _PartitionStats,
+)
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import JoinType
@@ -754,9 +758,12 @@ def test_hash_shuffle_uses_bounded_sample_to_start_aggregators(
     second_bundle = _make_ref_bundle(200)
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner") as replay,
+    ):
         op._add_input_inner(first_bundle, input_index=0)
 
         assert op._aggregator_pool is None
@@ -800,9 +807,12 @@ def test_hash_shuffle_starts_from_partial_sample_when_inputs_done(
     second_bundle = _make_ref_bundle(200)
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner") as replay,
+    ):
         op._add_input_inner(first_bundle, input_index=0)
         op._add_input_inner(second_bundle, input_index=0)
 
@@ -866,6 +876,238 @@ def test_partial_aggregate_preserves_sort_after_builder_compaction(
     )
 
     assert partial.column("A").to_pylist() == [1, 2, 3, 4]
+
+
+def _make_hash_shuffle_op(num_partitions=8):
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.estimated_num_outputs.return_value = num_partitions
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+    op_mock.num_outputs_total.return_value = num_partitions
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+            num_partitions=num_partitions,
+        )
+    return op
+
+
+def _set_partition_bytes(op, sizes: Dict[int, int], seq_id: int = 0):
+    """Populate observed per-partition stats and mark them pending finalization."""
+    for pid, byte_size in sizes.items():
+        op._partitions_stats[seq_id][pid] = _PartitionStats(
+            num_rows=1, byte_size=byte_size
+        )
+    op._pending_finalization_partition_ids = set(sizes.keys())
+
+
+def test_estimate_finalization_memory_req_sums_sequences_with_overhead(
+    ray_start_regular,
+):
+    op = _make_hash_shuffle_op(num_partitions=4)
+    # Same partition present in two input sequences (e.g. a join).
+    op._partitions_stats[0][2] = _PartitionStats(num_rows=1, byte_size=100)
+    op._partitions_stats[1][2] = _PartitionStats(num_rows=1, byte_size=300)
+
+    # (100 + 300) * overhead(2.0)
+    assert op._estimate_finalization_memory_req(2) == 800
+
+
+@dataclass
+class FinalizeSelectionCase:
+    name: str
+    # Pending partition_id -> observed byte size (cost = bytes * overhead(2.0)).
+    sizes: Dict[int, int]
+    # partition_id -> aggregator id is ``pid % num_aggregators``.
+    num_aggregators: int
+    # aggregator_id -> hosting node id.
+    node_ids: Dict[int, str]
+    # node_id -> per-node finalize budget bytes ({} => unknown; count-based only).
+    node_budgets: Dict[str, int]
+    max_new_tasks: int
+    expected_count: int
+    # Already-running finalizations: partition_id -> observed byte size.
+    in_flight: Dict[int, int] = field(default_factory=dict)
+    # Max concurrent finalize tasks per aggregator (default high to isolate the
+    # per-node budget behaviour unless a case is exercising the cap).
+    per_aggregator_cap: int = 10**9
+    # When set, assert the selected partitions' per-node cost stays in budget.
+    within_budget: bool = False
+
+
+# All aggregators co-located on a single node "n0".
+_ONE_NODE_8 = dict.fromkeys(range(8), "n0")
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        # Single node; budget fits exactly 3 partitions (3 * 100 * 2.0 = 600).
+        FinalizeSelectionCase(
+            name="respects_per_node_budget",
+            sizes=dict.fromkeys(range(8), 100),
+            num_aggregators=8,
+            node_ids=_ONE_NODE_8,
+            node_budgets={"n0": 600},
+            max_new_tasks=8,
+            expected_count=3,
+            within_budget=True,
+        ),
+        # Plenty of budget -> bounded by the concurrent-task count cap.
+        FinalizeSelectionCase(
+            name="caps_at_max_new_tasks",
+            sizes=dict.fromkeys(range(8), 1),
+            num_aggregators=8,
+            node_ids=_ONE_NODE_8,
+            node_budgets={"n0": 10**12},
+            max_new_tasks=2,
+            expected_count=2,
+        ),
+        # Every partition alone exceeds its node's budget; the node is idle, so
+        # exactly one runs alone (per-node forward progress).
+        FinalizeSelectionCase(
+            name="oversized_runs_alone_on_node",
+            sizes=dict.fromkeys(range(4), 1000),
+            num_aggregators=4,
+            node_ids=dict.fromkeys(range(4), "n0"),
+            node_budgets={"n0": 500},
+            max_new_tasks=4,
+            expected_count=1,
+        ),
+        # In-flight finalize memory on the node already exceeds its budget -> defer.
+        FinalizeSelectionCase(
+            name="defers_when_in_flight_consumes_node_budget",
+            sizes={0: 100, 1: 100, 2: 100},
+            num_aggregators=8,
+            node_ids=_ONE_NODE_8,
+            node_budgets={"n0": 300},
+            max_new_tasks=4,
+            expected_count=0,
+            in_flight={9: 1000},
+        ),
+        # Unknown placement / budget -> gate on the task count only.
+        FinalizeSelectionCase(
+            name="unknown_placement_gates_on_count",
+            sizes=dict.fromkeys(range(8), 10**9),
+            num_aggregators=8,
+            node_ids={},
+            node_budgets={},
+            max_new_tasks=5,
+            expected_count=5,
+        ),
+        # Two nodes, independent budgets: each admits 2 (2*100*2.0=400), so the
+        # cluster runs 4 concurrently -- a single cluster-wide budget of 400 would
+        # have allowed only 2.
+        FinalizeSelectionCase(
+            name="per_node_budgets_are_independent",
+            sizes=dict.fromkeys(range(8), 100),
+            num_aggregators=4,
+            node_ids={0: "a", 1: "a", 2: "b", 3: "b"},
+            node_budgets={"a": 400, "b": 400},
+            max_new_tasks=8,
+            expected_count=4,
+            within_budget=True,
+        ),
+        # Per-aggregator cap binds before the (huge) node budget: 2 aggregators x
+        # cap 2 = 4, even though all 8 partitions would otherwise fit.
+        FinalizeSelectionCase(
+            name="per_aggregator_cap_binds",
+            sizes=dict.fromkeys(range(8), 1),
+            num_aggregators=2,
+            node_ids={0: "n0", 1: "n0"},
+            node_budgets={"n0": 10**12},
+            max_new_tasks=8,
+            expected_count=4,
+            per_aggregator_cap=2,
+        ),
+        # Every partition fires in a single round: each node's budget covers all
+        # of its partitions (4 * 100 * 2.0 = 800) and the per-aggregator cap (2)
+        # admits both partitions on each aggregator. All 8 run simultaneously.
+        FinalizeSelectionCase(
+            name="fires_all_when_node_budget_permits",
+            sizes=dict.fromkeys(range(8), 100),
+            num_aggregators=4,
+            node_ids={0: "a", 1: "a", 2: "b", 3: "b"},
+            node_budgets={"a": 800, "b": 800},
+            max_new_tasks=8,
+            expected_count=8,
+            per_aggregator_cap=2,
+            within_budget=True,
+        ),
+    ],
+    ids=lambda c: c.name,
+)
+def test_select_partitions_to_finalize(case, ray_start_regular):
+    op = _make_hash_shuffle_op()
+    _set_partition_bytes(op, case.sizes)
+
+    # Inject placement / budgets directly so the selection logic can be unit
+    # tested without a started aggregator pool.
+    op._num_aggregators = case.num_aggregators
+    op._aggregator_node_ids = case.node_ids
+    op._finalize_node_budgets_bytes = case.node_budgets
+    op._FINALIZE_MAX_CONCURRENT_TASKS_PER_AGGREGATOR = case.per_aggregator_cap
+
+    # Register any already-running finalizations (with their observed sizes).
+    for pid, byte_size in case.in_flight.items():
+        op._partitions_stats[0][pid] = _PartitionStats(num_rows=1, byte_size=byte_size)
+        op._finalizing_tasks[pid] = MagicMock()
+
+    # Selection order is randomized, so assert the invariants across repeated runs.
+    for _ in range(20):
+        selected = op._select_partitions_to_finalize(max_new_tasks=case.max_new_tasks)
+
+        assert len(selected) == case.expected_count
+        # Only pending (not in-flight) partitions are ever selected.
+        assert set(selected) <= op._pending_finalization_partition_ids
+        if case.within_budget:
+            bytes_by_node: Dict[str, int] = {}
+            for pid in selected:
+                node_id = case.node_ids[pid % case.num_aggregators]
+                bytes_by_node[node_id] = bytes_by_node.get(
+                    node_id, 0
+                ) + op._estimate_finalization_memory_req(pid)
+            for node_id, used in bytes_by_node.items():
+                assert used <= case.node_budgets[node_id]
+
+
+def test_finalize_node_budgets_from_real_placement(ray_start_regular):
+    """End-to-end: resolve aggregator placement and derive per-node budgets."""
+    op = _make_hash_shuffle_op(num_partitions=4)
+    pool = _create_aggregator_pool_for_test(op, 2 * GiB)
+    pool.start()
+    try:
+        node_ids = pool.get_aggregator_node_ids()
+        # One entry per aggregator, each on a live node.
+        assert set(node_ids.keys()) == set(range(pool.num_aggregators))
+        alive_node_ids = {n["NodeID"] for n in ray.nodes() if n["Alive"]}
+        assert set(node_ids.values()) <= alive_node_ids
+
+        budgets = op._get_finalize_node_budgets_bytes()
+        assert budgets is not None
+        # Placement was resolved and cached as a side effect.
+        assert op._aggregator_node_ids == node_ids
+
+        node_memory = {
+            n["NodeID"]: n["Resources"].get("memory", 0) for n in ray.nodes()
+        }
+        assert set(budgets.keys()) == set(node_ids.values())
+        for node_id, budget in budgets.items():
+            assert budget == math.floor(
+                node_memory[node_id] * op._FINALIZE_MEMORY_BUDGET_FRACTION
+            )
+    finally:
+        pool.shutdown(force=True)
 
 
 if __name__ == "__main__":
