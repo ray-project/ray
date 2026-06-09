@@ -3,6 +3,7 @@ import copy
 import functools
 import importlib
 import importlib.metadata
+import inspect
 import json
 import logging
 import os
@@ -1477,7 +1478,9 @@ class Algorithm(Checkpointable, Trainable):
                         eval_results,
                         env_steps,
                         agent_steps,
-                    ) = self._evaluate_with_custom_eval_function()
+                    ) = self._evaluate_with_custom_eval_function(
+                        parallel_train_future=parallel_train_future,
+                    )
                 else:
                     eval_results = self.config.custom_evaluation_function()
             # No eval EnvRunnerGroup -> Run on (training) local EnvRunner.
@@ -1598,17 +1601,51 @@ class Algorithm(Checkpointable, Trainable):
         # Also return the results here for convenience.
         return eval_results
 
-    def _evaluate_with_custom_eval_function(self) -> Tuple[ResultDict, int, int]:
+    def _evaluate_with_custom_eval_function(
+        self,
+        parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+    ) -> Tuple[ResultDict, int, int]:
+        """Runs the user-provided ``custom_evaluation_function``.
+
+        Args:
+            parallel_train_future: The currently running training
+                ``ThreadPoolExecutor``, when training and evaluation run in
+                parallel (``evaluation_duration="auto"``). Passed through to
+                the user function as a keyword argument only if its signature
+                accepts ``parallel_train_future`` (by name or via
+                ``**kwargs``); existing custom eval functions that do not
+                declare the parameter are unaffected.
+        """
         logger.info(
             f"Evaluating current state of {self} using the custom eval function "
             f"{self.config.custom_evaluation_function}"
         )
         if self.config.enable_env_runner_and_connector_v2:
+            extra_kwargs = {}
+            try:
+                sig = inspect.signature(self.config.custom_evaluation_function)
+                params = sig.parameters
+                accepts_parallel_train_future = (
+                    "parallel_train_future" in params
+                    or any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+                    )
+                )
+            except (TypeError, ValueError):
+                # Builtin / C-implemented callable without an introspectable
+                # signature; fall back to the legacy positional call.
+                accepts_parallel_train_future = False
+            if accepts_parallel_train_future:
+                extra_kwargs["parallel_train_future"] = parallel_train_future
             (
                 eval_results,
                 env_steps,
                 agent_steps,
-            ) = self.config.custom_evaluation_function(self, self.eval_env_runner_group)
+            ) = self.config.custom_evaluation_function(
+                self,
+                self.eval_env_runner_group,
+                **extra_kwargs,
+            )
             if not isinstance(env_steps, int) or not isinstance(agent_steps, int):
                 raise ValueError(
                     "Custom eval function must return "
