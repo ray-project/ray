@@ -1,5 +1,6 @@
 import abc
 import logging
+import math
 import pickle
 import time
 import uuid
@@ -34,6 +35,7 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
+from ray.experimental.locations import get_local_object_locations
 
 if TYPE_CHECKING:
 
@@ -109,8 +111,101 @@ TaskDoneCallbackType = Callable[
 ]
 
 
+class _LatencyStats:
+    """Process-wide latency accumulator (microseconds) for a single timed
+    call site. Measurement-only.
+
+    Keeps a count + running sum (for the average) + max, plus a log-scale
+    histogram so p50/p90 can be derived without retaining every sample (the
+    timed calls span microseconds for the local lookup to milliseconds+ for
+    ``ray.get``, which a log histogram covers with bounded memory).
+    """
+
+    # Bucket i covers [10^(i/_PER_DECADE + _MIN_LOG_US), ...) microseconds.
+    _PER_DECADE = 20  # ~12% bucket width
+    _MIN_LOG_US = -1.0  # lowest edge 10^-1 = 0.1 µs
+    _NBUCKETS = 9 * _PER_DECADE + 1  # 0.1 µs .. 10^8 µs (~100 s) + overflow
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self._count = 0
+        self._sum_us = 0.0
+        self._max_us = 0.0
+        self._hist: List[int] = [0] * self._NBUCKETS
+
+    def record(self, seconds: float) -> None:
+        us = seconds * 1e6
+        self._count += 1
+        self._sum_us += us
+        if us > self._max_us:
+            self._max_us = us
+        if us <= 0:
+            bucket = 0
+        else:
+            bucket = int((math.log10(us) - self._MIN_LOG_US) * self._PER_DECADE)
+            bucket = max(0, min(bucket, self._NBUCKETS - 1))
+        self._hist[bucket] += 1
+
+    def _percentile_us(self, frac: float) -> float:
+        total = sum(self._hist)
+        if total == 0:
+            return 0.0
+        target = frac * total
+        cumulative = 0
+        for i, count in enumerate(self._hist):
+            cumulative += count
+            if cumulative >= target:
+                # Lower edge of the containing bucket (µs).
+                return 10 ** (self._MIN_LOG_US + i / self._PER_DECADE)
+        return self._max_us
+
+    def summary(self, prefix: str) -> Dict[str, Any]:
+        return {
+            f"{prefix}_count": self._count,
+            f"{prefix}_avg_us": (self._sum_us / self._count) if self._count else 0.0,
+            f"{prefix}_p50_us": self._percentile_us(0.50),
+            f"{prefix}_p90_us": self._percentile_us(0.90),
+            f"{prefix}_max_us": self._max_us,
+        }
+
+
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
+
+    # Measurement-only telemetry (process-wide, across all DataOpTasks): how
+    # often a block's size is known locally via `get_local_object_locations`
+    # (no RPC), and *how close* that local `object_size` is to `meta.size_bytes`
+    # obtained from `ray.get(meta_ref)`. They are related but not identical
+    # quantities (`object_size` is the object-store size = serialized data +
+    # object metadata, with Arrow IPC framing/padding; `meta.size_bytes` is the
+    # logical block nbytes), so we report the aggregate ratio, the within-1%
+    # rate, and the worst-case relative difference rather than exact equality.
+    # This informs whether the per-pair `ray.get(meta_ref)` in `on_data_ready`
+    # can be replaced by the local size lookup. The lookup is local but still
+    # adds per-pair overhead, so this is intended for measurement runs, not
+    # production.
+    _size_probe_total = 0
+    _size_probe_local_hits = 0
+    _size_probe_sum_object = 0  # sum of object_size over local hits
+    _size_probe_sum_meta = 0  # sum of meta.size_bytes over local hits
+    _size_probe_within_1pct = 0  # hits where |object-meta|/meta <= 1%
+    _size_probe_max_rel_diff = 0.0  # worst-case |object-meta|/meta
+    # Histogram of per-hit relative difference |object-meta|/meta, used to
+    # derive p50/p90. Bucket i covers [i*_REL_DIFF_BUCKET, (i+1)*_REL_DIFF_BUCKET);
+    # the last bucket is an overflow for rel diffs >= 100%.
+    _REL_DIFF_BUCKET = 0.001  # 0.1% resolution
+    _REL_DIFF_NBUCKETS = 1001  # 0..100% in 0.1% steps + overflow
+    _size_probe_rel_diff_hist: List[int] = [0] * _REL_DIFF_NBUCKETS
+    # Per-call-site latency of the two ways to get a block's size: the
+    # `ray.get(meta_ref)` fetch (current path) vs the local
+    # `get_local_object_locations` lookup (candidate replacement). Reported as
+    # count/avg/p50/p90/max microseconds to quantify the per-pair savings.
+    _meta_get_latency = _LatencyStats()
+    _local_loc_latency = _LatencyStats()
+    # Emit a cumulative snapshot every this many probed pairs.
+    _SIZE_PROBE_LOG_EVERY = 5000
 
     def __init__(
         self,
@@ -254,9 +349,11 @@ class DataOpTask(OpTask):
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
                 # will timeout and possible cancel the download. To avoid this issue,
                 # we set the timeout to a small non-zero value.
+                _meta_get_t0 = time.perf_counter()
                 meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
+                DataOpTask._meta_get_latency.record(time.perf_counter() - _meta_get_t0)
             except ray.exceptions.GetTimeoutError:
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
@@ -274,6 +371,10 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
+            # Measurement-only: compare the block's locally-known object size
+            # (no RPC) against `meta.size_bytes` from the ray.get above. Probe
+            # before `_pending_block_ref` is reset below.
+            self._record_local_size_probe(meta.size_bytes)
             self._output_ready_callback(
                 RefBundle(
                     [BlockEntry(self._pending_block_ref, meta)],
@@ -289,6 +390,138 @@ class DataOpTask(OpTask):
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    def _record_local_size_probe(self, meta_size_bytes: int) -> None:
+        """Measurement-only: how often is the block's size known locally, and
+        how close is it to the metadata size?
+
+        Looks up ``self._pending_block_ref``'s ``object_size`` via
+        ``get_local_object_locations`` (local, no RPC) and compares it to
+        ``meta_size_bytes`` (``meta.size_bytes`` from ``ray.get(meta_ref)``,
+        the source of truth). ``object_size`` (serialized data + object
+        metadata) is consistently a bit larger than the logical
+        ``meta.size_bytes``, so we track the aggregate ratio, the within-1%
+        rate, and the worst-case relative difference instead of exact equality.
+        Logs a cumulative snapshot every ``_SIZE_PROBE_LOG_EVERY`` probed pairs.
+
+        Note: this is pure instrumentation — it does NOT change behavior. The
+        existing ``ray.get(meta_ref)`` path still drives emits and budgets.
+        """
+        cls = DataOpTask
+        cls._size_probe_total += 1
+
+        _local_loc_t0 = time.perf_counter()
+        info = get_local_object_locations([self._pending_block_ref]).get(
+            self._pending_block_ref
+        )
+        cls._local_loc_latency.record(time.perf_counter() - _local_loc_t0)
+        local_size = info.get("object_size") if info is not None else None
+
+        if local_size is not None:
+            cls._size_probe_local_hits += 1
+            cls._size_probe_sum_object += local_size
+            cls._size_probe_sum_meta += meta_size_bytes
+            if meta_size_bytes > 0:
+                rel_diff = abs(local_size - meta_size_bytes) / meta_size_bytes
+                if rel_diff <= 0.01:
+                    cls._size_probe_within_1pct += 1
+                if rel_diff > cls._size_probe_max_rel_diff:
+                    cls._size_probe_max_rel_diff = rel_diff
+                bucket = int(rel_diff / cls._REL_DIFF_BUCKET)
+                if bucket >= cls._REL_DIFF_NBUCKETS:
+                    bucket = cls._REL_DIFF_NBUCKETS - 1
+                cls._size_probe_rel_diff_hist[bucket] += 1
+
+        if cls._size_probe_total % cls._SIZE_PROBE_LOG_EVERY == 0:
+            stats = cls.local_size_probe_stats()
+            logger.info(
+                "[local-size-probe] %d/%d (%.1f%%) pairs had a local object_size; "
+                "object_size/meta.size_bytes ratio=%.4f; rel diff p50=%.2f%% "
+                "p90=%.2f%% max=%.2f%%; within 1%%: %.1f%%. "
+                "latency µs: ray.get(meta) avg=%.1f p50=%.1f p90=%.1f max=%.1f vs "
+                "get_local_object_locations avg=%.1f p50=%.1f p90=%.1f max=%.1f.",
+                stats["local_size_probe_hits"],
+                stats["local_size_probe_total"],
+                stats["local_size_probe_hit_pct"],
+                stats["local_size_probe_size_ratio"],
+                stats["local_size_probe_rel_diff_p50_pct"],
+                stats["local_size_probe_rel_diff_p90_pct"],
+                stats["local_size_probe_max_rel_diff_pct"],
+                stats["local_size_probe_within_1pct_pct"],
+                stats["meta_get_latency_avg_us"],
+                stats["meta_get_latency_p50_us"],
+                stats["meta_get_latency_p90_us"],
+                stats["meta_get_latency_max_us"],
+                stats["local_loc_latency_avg_us"],
+                stats["local_loc_latency_p50_us"],
+                stats["local_loc_latency_p90_us"],
+                stats["local_loc_latency_max_us"],
+            )
+
+    @classmethod
+    def _rel_diff_percentile(cls, frac: float) -> float:
+        """Approximate percentile (as a percent) of the per-hit relative
+        difference |object_size - meta.size_bytes| / meta.size_bytes, from the
+        histogram. Returns the lower edge of the bucket containing the
+        percentile (0.1% resolution)."""
+        hist = cls._size_probe_rel_diff_hist
+        total = sum(hist)
+        if total == 0:
+            return 0.0
+        target = frac * total
+        cumulative = 0
+        for i, count in enumerate(hist):
+            cumulative += count
+            if cumulative >= target:
+                return 100.0 * i * cls._REL_DIFF_BUCKET
+        return 100.0 * (cls._REL_DIFF_NBUCKETS - 1) * cls._REL_DIFF_BUCKET
+
+    @classmethod
+    def reset_local_size_probe(cls) -> None:
+        """Reset the process-wide local-size probe counters (call before a run)."""
+        cls._size_probe_total = 0
+        cls._size_probe_local_hits = 0
+        cls._size_probe_sum_object = 0
+        cls._size_probe_sum_meta = 0
+        cls._size_probe_within_1pct = 0
+        cls._size_probe_max_rel_diff = 0.0
+        cls._size_probe_rel_diff_hist = [0] * cls._REL_DIFF_NBUCKETS
+        cls._meta_get_latency.reset()
+        cls._local_loc_latency.reset()
+
+    @classmethod
+    def local_size_probe_stats(cls) -> Dict[str, Any]:
+        """Return the cumulative local-size probe stats (see
+        `_record_local_size_probe`) as a flat dict suitable for benchmark
+        metrics: total probed pairs, local-size hit rate, and how *close* the
+        local object_size is to meta.size_bytes (aggregate ratio, within-1%
+        rate, worst-case relative difference)."""
+        total = cls._size_probe_total
+        hits = cls._size_probe_local_hits
+        return {
+            "local_size_probe_total": total,
+            "local_size_probe_hits": hits,
+            "local_size_probe_hit_pct": (100.0 * hits / total) if total else 0.0,
+            # object_size / meta.size_bytes over local hits (~1.0 means the
+            # local size is a faithful proxy for the budget's size_bytes).
+            "local_size_probe_size_ratio": (
+                cls._size_probe_sum_object / cls._size_probe_sum_meta
+                if cls._size_probe_sum_meta
+                else 0.0
+            ),
+            "local_size_probe_within_1pct": cls._size_probe_within_1pct,
+            "local_size_probe_within_1pct_pct": (
+                100.0 * cls._size_probe_within_1pct / hits if hits else 0.0
+            ),
+            # Per-hit relative-difference distribution (object_size vs
+            # meta.size_bytes), as percentages.
+            "local_size_probe_rel_diff_p50_pct": cls._rel_diff_percentile(0.50),
+            "local_size_probe_rel_diff_p90_pct": cls._rel_diff_percentile(0.90),
+            "local_size_probe_max_rel_diff_pct": 100.0 * cls._size_probe_max_rel_diff,
+            # Per-pair latency (µs) of the two size-lookup paths.
+            **cls._meta_get_latency.summary("meta_get_latency"),
+            **cls._local_loc_latency.summary("local_loc_latency"),
+        }
 
     def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
         if max_bytes_to_read == 0:
