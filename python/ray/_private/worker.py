@@ -1150,7 +1150,11 @@ class Worker:
         if manager is not None:
             visible_ids = manager.get_current_process_visible_accelerator_ids()
             if visible_ids is not None:
-                return [int(i) for i in visible_ids]
+                try:
+                    return [int(i) for i in visible_ids]
+                except ValueError:
+                    # user defined accelerator IDs can be UUIDs.
+                    return visible_ids
 
         return assigned_ids
 
