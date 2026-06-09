@@ -59,9 +59,13 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
   int64_t system_memory_bytes_min = RayConfig::instance().system_memory_bytes_min();
   int64_t system_memory_bytes_low = system_reserved_memory_bytes;
 
-  // Compute user memory limits from proportions
-  MemoryUsageSnapshot memory_snapshot =
-      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(cgroup_path);
+  // Compute user memory limits from proportions. `memory.high` is a RAM-only
+  // kernel constraint, so when count_swap_in_memory_monitor is on we must NOT
+  // inflate this total by swap — that would silently disable the throttle.
+  MemoryUsageSnapshot memory_snapshot = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+      cgroup_path,
+      MemoryMonitorUtils::kProcDirectory,
+      /*include_swap=*/false);
   int64_t total_memory_bytes = memory_snapshot.total_bytes;
   float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
   float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();

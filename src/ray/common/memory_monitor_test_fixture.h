@@ -103,6 +103,43 @@ class MemoryMonitorTestFixture : public ::testing::Test {
                                       int64_t inactive_file_bytes,
                                       int64_t active_file_bytes);
 
+  /**
+   * @brief Writes a synthetic /proc/meminfo file into a temp directory. All
+   * sizes are in kB to match the kernel's format. SwapTotal/SwapFree are
+   * optional — pass std::nullopt to omit the lines (simulates a no-swap host).
+   *
+   * @return The temp directory path (suitable to pass as `proc_dir`).
+   */
+  std::string MockProcMeminfo(int64_t mem_total_kb,
+                              int64_t mem_available_kb,
+                              std::optional<int64_t> swap_total_kb,
+                              std::optional<int64_t> swap_free_kb);
+
+  /**
+   * @brief Adds cgroup v2 memory.swap.{max,current} files inside an existing
+   * cgroup mock directory created by MockCgroupv2MemoryUsage.
+   *
+   * @param cgroup_path The cgroup directory returned by MockCgroupv2MemoryUsage.
+   * @param swap_max_bytes Value to write to memory.swap.max. Pass std::nullopt
+   *        to write the literal "max" (unlimited).
+   * @param swap_current_bytes Value to write to memory.swap.current.
+   */
+  void MockCgroupv2Swap(const std::string &cgroup_path,
+                        std::optional<int64_t> swap_max_bytes,
+                        int64_t swap_current_bytes);
+
+  /**
+   * @brief Adds cgroup v1 memsw files inside an existing cgroup mock directory
+   * created by MockCgroupv1MemoryUsage. Mirrors MockCgroupv2Swap for cgroup v1.
+   *
+   * @param cgroup_path The cgroup directory returned by MockCgroupv1MemoryUsage.
+   * @param memsw_limit_bytes Value to write to memory/memory.memsw.limit_in_bytes.
+   * @param memsw_usage_bytes Value to write to memory/memory.memsw.usage_in_bytes.
+   */
+  void MockCgroupv1Memsw(const std::string &cgroup_path,
+                         int64_t memsw_limit_bytes,
+                         int64_t memsw_usage_bytes);
+
  private:
   std::vector<std::unique_ptr<TempDirectory>> mock_proc_dirs_;
   std::vector<std::unique_ptr<TempFile>> mock_proc_files_;

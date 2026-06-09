@@ -86,6 +86,64 @@ std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
   return cgroup_path;
 }
 
+std::string MemoryMonitorTestFixture::MockProcMeminfo(
+    int64_t mem_total_kb,
+    int64_t mem_available_kb,
+    std::optional<int64_t> swap_total_kb,
+    std::optional<int64_t> swap_free_kb) {
+  auto temp_dir_or = TempDirectory::Create();
+  RAY_CHECK(temp_dir_or.ok()) << "Failed to create temp directory: "
+                              << temp_dir_or.status().message();
+  mock_proc_dirs_.push_back(std::move(temp_dir_or.value()));
+
+  const std::string &proc_dir = mock_proc_dirs_.back()->GetPath();
+
+  std::string meminfo_path = proc_dir + "/meminfo";
+  mock_proc_files_.push_back(std::make_unique<TempFile>(meminfo_path));
+  mock_proc_files_.back()->AppendLine("MemTotal:       " + std::to_string(mem_total_kb) +
+                                      " kB");
+  mock_proc_files_.back()->AppendLine(
+      "MemAvailable:   " + std::to_string(mem_available_kb) + " kB");
+  if (swap_total_kb.has_value()) {
+    mock_proc_files_.back()->AppendLine(
+        "SwapTotal:      " + std::to_string(*swap_total_kb) + " kB");
+  }
+  if (swap_free_kb.has_value()) {
+    mock_proc_files_.back()->AppendLine(
+        "SwapFree:       " + std::to_string(*swap_free_kb) + " kB");
+  }
+
+  return proc_dir;
+}
+
+void MemoryMonitorTestFixture::MockCgroupv2Swap(const std::string &cgroup_path,
+                                                std::optional<int64_t> swap_max_bytes,
+                                                int64_t swap_current_bytes) {
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemorySwapMaxPath));
+  if (swap_max_bytes.has_value()) {
+    mock_cgroup_files_.back()->AppendLine(std::to_string(*swap_max_bytes));
+  } else {
+    mock_cgroup_files_.back()->AppendLine("max");
+  }
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemorySwapCurrentPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(swap_current_bytes));
+}
+
+void MemoryMonitorTestFixture::MockCgroupv1Memsw(const std::string &cgroup_path,
+                                                 int64_t memsw_limit_bytes,
+                                                 int64_t memsw_usage_bytes) {
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemswMaxPath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(memsw_limit_bytes));
+
+  mock_cgroup_files_.push_back(std::make_unique<TempFile>(
+      cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemswUsagePath));
+  mock_cgroup_files_.back()->AppendLine(std::to_string(memsw_usage_bytes));
+}
+
 std::string MemoryMonitorTestFixture::MockCgroupv1MemoryUsage(int64_t total_bytes,
                                                               int64_t current_bytes,
                                                               int64_t inactive_file_bytes,
