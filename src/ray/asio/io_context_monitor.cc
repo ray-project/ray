@@ -38,8 +38,8 @@ IOContextMonitor::IOContextMonitor(
       latency_gauge_(latency_gauge),
       unhealthy_counter_(unhealthy_counter) {
   for (auto &[name, io_context] : io_contexts) {
-    probe_states_.push_back(
-        std::make_shared<ProbeState>(std::move(name), *io_context, clock_, latency_window));
+    probe_states_.push_back(std::make_shared<ProbeState>(
+        std::move(name), *io_context, clock_, latency_window));
   }
 }
 
