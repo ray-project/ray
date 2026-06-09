@@ -3,7 +3,11 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Any, Dict, Hashable, Iterable, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalPlan,
+    Rule,
+)
 from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX, Project
 from ray.data.expressions import (
     AliasExpr,
@@ -402,7 +406,8 @@ class CommonSubExprElimination(Rule):
         if not isinstance(op, Project):
             return op
 
-        assert len(op.get_cse_common_exprs()) == 0, "CSE already applied."
+        if op.get_cse_common_exprs():
+            return op
 
         candidates = _find_candidates(op.exprs)
         if not candidates:
