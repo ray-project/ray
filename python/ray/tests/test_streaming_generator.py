@@ -538,6 +538,66 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     asyncio.run(verify_async_task_async_generator())
 
 
+def test_streaming_generator_num_objects_per_yield(shutdown_only):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        for i in range(3):
+            stats = yield i, f"metadata-{i}"
+            assert stats is None or stats.object_creation_dur_s >= 0
+
+    gen = generator.remote()
+    for i in range(3):
+        assert ray.get(next(gen)) == i
+        assert ray.get(next(gen)) == f"metadata-{i}"
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_actor_streaming_generator_num_objects_per_yield(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        @ray.method(_num_objects_per_yield=2)
+        def decorated(self):
+            yield "block", "metadata"
+
+        def per_call(self):
+            yield 1, 2
+
+    actor = Actor.remote()
+
+    gen = actor.decorated.remote()
+    assert ray.get(next(gen)) == "block"
+    assert ray.get(next(gen)) == "metadata"
+    with pytest.raises(StopIteration):
+        next(gen)
+
+    gen = actor.per_call.options(_num_objects_per_yield=2).remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_streaming_generator_num_objects_per_yield_invalid_yield(shutdown_only):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        yield (1,)
+
+    gen = generator.remote()
+    with pytest.raises(ValueError, match="_num_objects_per_yield=2"):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
 def test_streaming_generator_exception(shutdown_only):
     # Verify the exceptions are correctly raised.
     # Also verify the followup next will raise StopIteration.

@@ -416,6 +416,9 @@ class RemoteFunction:
         ]
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
+        num_objects_per_yield = task_options["_num_objects_per_yield"]
+        if num_objects_per_yield is None:
+            num_objects_per_yield = 1
 
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
@@ -498,6 +501,7 @@ class RemoteFunction:
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
+                num_objects_per_yield,
                 enable_task_events,
                 labels,
                 label_selector,

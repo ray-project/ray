@@ -622,6 +622,9 @@ message TaskSpec {
   optional string tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
   FallbackStrategy fallback_strategy = 45;
+  // Private streaming generator option. The number of ObjectRefs produced by
+  // each generator yield. Defaults to 1.
+  uint64 num_objects_per_yield = 46;
 }
 
 message TaskInfoEntry {
