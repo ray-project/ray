@@ -779,6 +779,9 @@ class ActorReplicaWrapper:
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
+        # Static per-replica metadata captured once when the replica became
+        # ready (via the user's `record_replica_metadata` hook).
+        self._replica_metadata: Dict[str, Any] = {}
         self._ingress: bool = False
 
         # Outbound deployments polling state
@@ -833,6 +836,10 @@ class ActorReplicaWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        return self._replica_metadata
 
     @property
     def unrecoverable(self) -> bool:
@@ -1451,6 +1458,7 @@ class ActorReplicaWrapper:
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
                         self._gang_context,
+                        self._replica_metadata,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1784,6 +1792,7 @@ class DeploymentReplica:
         )
         self._multiplexed_model_ids: List[str] = []
         self._routing_stats: Dict[str, Any] = {}
+        self._replica_metadata: Dict[str, Any] = {}
 
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
@@ -1798,6 +1807,7 @@ class DeploymentReplica:
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
+            replica_metadata=self.replica_metadata,
             port=self._actor._internal_grpc_port,
             backend_http_port=self._actor._http_port or None,
         )
@@ -1815,6 +1825,15 @@ class DeploymentReplica:
         if routing_stats is not None:
             self._routing_stats = routing_stats
 
+    def record_replica_metadata(self, replica_metadata: Optional[Dict[str, Any]]):
+        """Record the static per-replica metadata for this replica.
+
+        Used to restore metadata on the recovery path. Skips the update if
+        ``replica_metadata`` is None.
+        """
+        if replica_metadata is not None:
+            self._replica_metadata = replica_metadata
+
     @property
     def multiplexed_model_ids(self) -> List[str]:
         return self._multiplexed_model_ids
@@ -1822,6 +1841,13 @@ class DeploymentReplica:
     @property
     def routing_stats(self) -> Dict[str, Any]:
         return self._routing_stats
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        # Prefer an explicitly recorded value (e.g. restored on recovery),
+        # otherwise fall back to the value captured by the actor wrapper when
+        # the replica became ready.
+        return self._replica_metadata or getattr(self._actor, "replica_metadata", {})
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -5047,6 +5073,8 @@ class DeploymentState:
                 replica.record_multiplexed_model_ids(info.multiplexed_model_ids)
             if info.routing_stats is not None:
                 replica.record_routing_stats(info.routing_stats)
+            if info.replica_metadata is not None:
+                replica.record_replica_metadata(info.replica_metadata)
             self._request_routing_info_updated = True
         else:
             logger.warning(f"{info.replica_id} not found.")
