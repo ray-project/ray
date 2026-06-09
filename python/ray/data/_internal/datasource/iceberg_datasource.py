@@ -371,9 +371,13 @@ class IcebergDatasource(Datasource):
         # Get the combined filter
         combined_filter = self._get_combined_filter()
 
-        # Convert back to tuple for PyIceberg API (None -> ("*",))
+        # Convert back to tuple for PyIceberg API (None -> ("*",)).
+        # Also treat an empty list the same as None: pyiceberg interprets
+        # selected_fields=() as "no rows" rather than "N rows x 0 columns",
+        # which would cause operators like Count to return 0 after an empty
+        # projection is pushed down.
         data_columns = self._get_data_columns()
-        selected_fields = ("*",) if data_columns is None else tuple(data_columns)
+        selected_fields = ("*",) if not data_columns else tuple(data_columns)
 
         data_scan = self.table.scan(
             row_filter=combined_filter,

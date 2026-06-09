@@ -418,6 +418,31 @@ def test_predicate_pushdown_with_initial_filter():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+def test_count_after_select_columns():
+    """Regression test for issue #63913: select_columns().count() returned 0."""
+    _EXPECTED_COUNT = 101
+
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    assert ds.count() == _EXPECTED_COUNT, "Baseline count should be correct"
+    assert (
+        ds.select_columns(["col_a"]).count() == _EXPECTED_COUNT
+    ), "count() after select_columns() on one column should be correct"
+    assert (
+        ds.select_columns(["col_b", "col_c"]).count() == _EXPECTED_COUNT
+    ), "count() after select_columns() on two columns should be correct"
+    assert (
+        ds.select_columns(["col_a"]).materialize().count() == _EXPECTED_COUNT
+    ), "count() after materialize() should be correct"
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 def test_projection_pushdown():
     """Test that projection pushdown works correctly with Iceberg datasource."""
     # Read the table and apply projection using select
