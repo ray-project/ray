@@ -1,8 +1,6 @@
-from unittest.mock import patch
 
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 
 @pytest.fixture(scope="module")
