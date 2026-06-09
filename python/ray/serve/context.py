@@ -9,10 +9,9 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 import ray
-from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -32,11 +31,16 @@ from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    # Imported lazily in `_connect` to avoid a circular import:
+    # client -> handle -> default_impl -> context.
+    from ray.serve._private.client import ServeControllerClient
+
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT: "DeploymentActorContext" = None
-_global_client: ServeControllerClient = None
+_global_client: "ServeControllerClient" = None
 
 
 @DeveloperAPI
@@ -97,7 +101,7 @@ class DeploymentActorContext:
 
 def _get_global_client(
     raise_if_no_controller_running: bool = True,
-) -> Optional[ServeControllerClient]:
+) -> Optional["ServeControllerClient"]:
     """Gets the global client, which stores the controller's handle.
 
     Args:
@@ -225,7 +229,7 @@ def _set_internal_replica_context(
     )
 
 
-def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
+def _connect(raise_if_no_controller_running: bool = True) -> "ServeControllerClient":
     """Connect to an existing Serve application on this Ray cluster.
 
     If called from within a replica, this will connect to the same Serve
@@ -241,6 +245,10 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
         RayServeException: If there is no running Serve controller actor
             and raise_if_no_controller_running is set to True.
     """
+
+    # Lazy import to avoid a circular import at module load:
+    # client -> handle -> default_impl -> context.
+    from ray.serve._private.client import ServeControllerClient
 
     # Initialize ray if needed.
     ray._private.worker.global_worker._filter_logs_by_job = False

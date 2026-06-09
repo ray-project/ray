@@ -36,6 +36,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
+from ray.serve.context import _get_global_client
 from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
@@ -149,9 +150,6 @@ def create_router(
     handle_options: InitHandleOptions,
     request_router_class: Optional[Callable] = None,
 ) -> Router:
-    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
-    from ray.serve.context import _get_global_client
-
     actor_id = get_current_actor_id()
     node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
@@ -203,10 +201,6 @@ def add_grpc_address(grpc_server: gRPCGenericServer, server_address: str):
 
 
 def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
-    # NOTE(zcin): needs to be lazy import due to a circular dependency.
-    # We should not be importing from application_state in context.
-    from ray.serve.context import _get_global_client
-
     client = _get_global_client()
     handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
 
