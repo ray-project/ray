@@ -362,7 +362,7 @@ void NodeManager::RegisterGcs() {
     // collector on all Raylets when the cluster is under memory pressure.
     //
     // Periodic collection is disabled, so this command is only broadcasted via
-    // `OnDemandBroadcasting` (which will call NodeManager::CreateSyncMessage).
+    // `BroadcastMessageIfNewVersion` (which will call NodeManager::CreateSyncMessage).
     //
     // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
     // Raylets.
@@ -2874,7 +2874,7 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
     // Always increment the sync message version number so it's always triggered once per
     // call.
     gc_command_sync_version_++;
-    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+    ray_syncer_.BroadcastMessageIfNewVersion(syncer::MessageType::COMMANDS);
     should_global_gc_ = false;
   }
 

@@ -31,7 +31,7 @@ class ResolvedFuture(DAGOperationFuture):
     immediately return the result without blocking.
     """
 
-    def __init__(self, result):
+    def __init__(self, result: Any):
         """
         Initialize a resolved future.
 
