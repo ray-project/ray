@@ -1003,7 +1003,7 @@ def test_report_per_component_stats(tmp_path):
         cpu_records,
         num_fds_records,
         "ray::IDLE",
-        float(idle_stats["memory_full_info"].uss) / 1.0e6,
+        float(idle_stats["memory_full_info"].uss),
         idle_stats["cpu_percent"],
         idle_stats["num_fds"],
     )
