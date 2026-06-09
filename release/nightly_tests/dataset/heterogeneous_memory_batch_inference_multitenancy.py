@@ -103,7 +103,7 @@ def verify_placement() -> dict:
     raise after metrics have been written.
     """
     nodes = list_nodes(detail=True, limit=1000)
-    node_subcluster = {n.node_id: (n.labels or {}).get("subcluster") for n in nodes}
+    node_subcluster = {n.node_id: (n.labels or {}).get("__subcluster__") for n in nodes}
 
     # For actor methods (e.g. ``MapWorker(...).submit``), TaskState.label_selector
     # is None — the placement constraint lives on the actor's creation, not on
@@ -131,7 +131,7 @@ def verify_placement() -> dict:
         node_sc = node_subcluster.get(t.node_id)
         if node_sc in SUBCLUSTERS:
             tasks_on_labeled += 1
-            want = _selector_for(t).get("subcluster")
+            want = _selector_for(t).get("__subcluster__")
             if want != node_sc:
                 bad_on_labeled.append(
                     (t.task_id, t.name, t.func_or_class_name, want, node_sc)

@@ -18,7 +18,7 @@ worker_nodes:
       max_nodes: 10
       market_type: ON_DEMAND
       labels:
-        subcluster: tenant_a
+        __subcluster__: tenant_a
 
     # tenant_b CPU pool — mirrors the original CPU pool.
     - name: cpu-tenant-b
@@ -27,7 +27,7 @@ worker_nodes:
       max_nodes: 10
       market_type: ON_DEMAND
       labels:
-        subcluster: tenant_b
+        __subcluster__: tenant_b
 
     # tenant_a "GPU" pool (logical GPUs, no CPUs).
     - name: gpu-tenant-a
@@ -39,7 +39,7 @@ worker_nodes:
         CPU: 0
         GPU: 4
       labels:
-        subcluster: tenant_a
+        __subcluster__: tenant_a
 
     # tenant_b "GPU" pool (logical GPUs, no CPUs).
     - name: gpu-tenant-b
@@ -51,4 +51,4 @@ worker_nodes:
         CPU: 0
         GPU: 4
       labels:
-        subcluster: tenant_b
+        __subcluster__: tenant_b
