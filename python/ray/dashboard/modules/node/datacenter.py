@@ -1,4 +1,3 @@
-import copy
 from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
@@ -158,11 +157,6 @@ class DataOrganizer:
             death_info.get("reason", None), death_info.get("reasonMessage", None)
         )
 
-        # TODO(spencer-p): TPU process linking is currently prone to over-counting
-        # as it attaches all TPU workers to every chip. This will be addressed
-        # with a more robust mapping in a future update.
-        node_info["tpus"] = copy.deepcopy(node_info.get("tpus", []))
-
         if not get_summary:
             actor_table_entries = DataSource.node_actors.get(node_id, {})
 
@@ -218,6 +212,7 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_tpu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -232,7 +227,14 @@ class DataOrganizer:
                         actor_process_gpu_stats.append(gpu_stats)
                         break
 
+            for tpu_stats in node_physical_stats.get("tpus", []):
+                for process in tpu_stats.get("processesPids") or []:
+                    if process["pid"] == pid:
+                        actor_process_tpu_stats.append(tpu_stats)
+                        break
+
         actor["gpus"] = actor_process_gpu_stats
+        actor["tpus"] = actor_process_tpu_stats
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
 
@@ -240,9 +242,5 @@ class DataOrganizer:
             actor["requiredResources"]
         )
         actor["requiredResources"] = required_resources
-
-        # TODO(spencer-p): TPU process linking is currently prone to over-counting.
-        # This will be addressed with a more robust mapping in a future update.
-        actor["tpus"] = []
 
         return actor

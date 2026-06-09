@@ -2,6 +2,7 @@ import logging
 import sys
 import time
 import traceback
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -9,6 +10,7 @@ import requests
 import ray
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.node import actor_consts
+from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -372,6 +374,69 @@ def test_actor_cleanup(
                 )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+@pytest.mark.asyncio
+async def test_get_actor_info_tpu_linking():
+    # Setup DataSource
+    node_id = "node-1"
+    pid = 1234
+    worker_id = "worker-1"
+
+    DataSource.core_worker_stats = {worker_id: {"pid": pid, "workerId": worker_id}}
+    DataSource.node_physical_stats = {
+        node_id: {
+            "tpus": [
+                {
+                    "index": 0,
+                    "name": "chip-0",
+                    "processesPids": [{"pid": pid, "tpuMemoryUsage": 1000}],
+                },
+                {
+                    "index": 1,
+                    "name": "chip-1",
+                    "processesPids": [{"pid": 5678, "tpuMemoryUsage": 2000}],
+                },
+            ],
+            "workers": [{"pid": pid}],
+            "mem": [100, 50, 0.5],
+        }
+    }
+
+    actor = {
+        "address": {"nodeId": node_id, "workerId": worker_id},
+        "requiredResources": {},
+    }
+
+    with patch(
+        "ray.dashboard.modules.node.datacenter.parse_pg_formatted_resources_to_original",
+        return_value={},
+    ):
+        updated_actor = await DataOrganizer._get_actor_info(actor)
+
+    assert "tpus" in updated_actor
+    assert len(updated_actor["tpus"]) == 1
+    assert updated_actor["tpus"][0]["index"] == 0
+    assert updated_actor["tpus"][0]["name"] == "chip-0"
+
+    # Verify GPU still works (no regressions)
+    DataSource.node_physical_stats[node_id]["gpus"] = [
+        {
+            "index": 0,
+            "name": "gpu-0",
+            "processesPids": [{"pid": pid, "gpuMemoryUsage": 500}],
+        }
+    ]
+
+    with patch(
+        "ray.dashboard.modules.node.datacenter.parse_pg_formatted_resources_to_original",
+        return_value={},
+    ):
+        updated_actor_with_gpu = await DataOrganizer._get_actor_info(actor)
+
+    assert len(updated_actor_with_gpu["gpus"]) == 1
+    assert updated_actor_with_gpu["gpus"][0]["name"] == "gpu-0"
+    assert len(updated_actor_with_gpu["tpus"]) == 1
 
 
 if __name__ == "__main__":

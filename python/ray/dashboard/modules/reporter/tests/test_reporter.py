@@ -714,6 +714,7 @@ def test_get_tpu_usage(tmp_path):
                     duty_cycle=20.0,
                     memory_used=1000,
                     memory_total=4000,
+                    processes_pids={},
                 ),
                 TpuUtilizationInfo(
                     index="1",
@@ -725,6 +726,66 @@ def test_get_tpu_usage(tmp_path):
                     duty_cycle=40.0,
                     memory_used=2000,
                     memory_total=4000,
+                    processes_pids={},
+                ),
+            ]
+            assert tpu_utilizations == expected_utilizations
+
+
+def test_get_tpu_usage_with_pids(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    fake_metrics_content = """
+    memory_used{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 1000
+    memory_total{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 4000
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-head",make="cloud-tpu",model="tpu-v6e-slice",namespace="default",pod="test",tpu_topology="2x2"} 22
+    """
+    # Mocking glob.glob to return some fake /proc entries
+    fake_links = [
+        "/proc/1234/fd/10",
+    ]
+
+    # Mocking os.readlink to return device paths
+    def mock_readlink(link):
+        if link == "/proc/1234/fd/10":
+            return "/dev/accel0"
+        raise FileNotFoundError()
+
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get, patch(
+            "glob.glob", return_value=fake_links
+        ), patch("os.readlink", side_effect=mock_readlink):
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            expected_utilizations = [
+                TpuUtilizationInfo(
+                    index="0",
+                    name="1234-0",
+                    tpu_type="tpu-v6e-slice",
+                    tpu_topology="2x2",
+                    tensorcore_utilization=22.0,
+                    hbm_utilization=0.0,
+                    duty_cycle=0.0,
+                    memory_used=1000,
+                    memory_total=4000,
+                    processes_pids={
+                        1234: {
+                            "pid": 1234,
+                            "tpu_memory_usage": 1000,
+                        }
+                    },
                 ),
             ]
             assert tpu_utilizations == expected_utilizations
