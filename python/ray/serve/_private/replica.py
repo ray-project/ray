@@ -96,10 +96,6 @@ from ray.serve._private.constants import (
     USER_HEALTH_CHECK_PROBE_MAX_FAIL,
     USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
 )
-from ray.serve._private.default_impl import (
-    create_replica_impl,
-    create_replica_metrics_manager,
-)
 from ray.serve._private.direct_ingress_http_util import ASGIDIReceiveProxy
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import (
@@ -1119,7 +1115,7 @@ class Replica:
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None, rank=None)
 
-        self._metrics_manager = create_replica_metrics_manager(
+        self._metrics_manager = ReplicaMetricsManager(
             replica_id=replica_id,
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
@@ -2785,7 +2781,7 @@ class ReplicaActor:
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
-        self._replica_impl: Replica = create_replica_impl(
+        self._replica_impl: Replica = Replica(
             replica_id=replica_id,
             deployment_def=deployment_def,
             init_args=cloudpickle.loads(serialized_init_args),
