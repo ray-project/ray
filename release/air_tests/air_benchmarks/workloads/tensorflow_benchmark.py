@@ -9,6 +9,7 @@ import tensorflow as tf
 from typing import List, Tuple
 
 from ray._common.network_utils import build_address
+from ray.train import RunConfig
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
@@ -121,6 +122,10 @@ def train_tf_ray_air(
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,
+        ),
+        run_config=RunConfig(
+            name="tensorflow-benchmark",
+            storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/tensorflow_benchmark/",
         ),
     )
     result = trainer.fit()
