@@ -258,6 +258,7 @@ python/ray/data/tests/test_batcher.py
 python/ray/data/tests/test_block_ref_bundler.py
 python/ray/data/tests/test_bundle_queue.py
 python/ray/data/tests/test_checkpoint.py
+python/ray/data/tests/test_common_subexpr_elimination.py
 python/ray/data/tests/test_consumption.py
 python/ray/data/tests/test_context_propagation.py
 python/ray/data/tests/test_cudf_batch_format.py

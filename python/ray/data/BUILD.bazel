@@ -1000,6 +1000,20 @@ py_test(
 )
 
 py_test(
+    name = "test_common_subexpr_elimination",
+    size = "small",
+    srcs = ["tests/test_common_subexpr_elimination.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_infer_schema",
     size = "small",
     srcs = ["tests/test_infer_schema.py"],
