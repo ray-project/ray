@@ -459,7 +459,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self._extra_metrics
 
     @classmethod
-    def get_metrics(self) -> List[MetricDefinition]:
+    def get_metrics(cls) -> List[MetricDefinition]:
         return GLOBAL_METRICS_REGISTRY.definitions(_OP_RUNTIME_NAMESPACE)
 
     def as_dict(
