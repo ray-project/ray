@@ -148,7 +148,7 @@ def plan_project_op(
         _create_callable_class_udf_init_fn,
     )
 
-    init_fn = _create_callable_class_udf_init_fn([*cse_common_exprs, *projection_exprs])
+    init_fn = _create_callable_class_udf_init_fn(op.get_all_exprs())
 
     def _project_block(block: Block) -> Block:
         try:

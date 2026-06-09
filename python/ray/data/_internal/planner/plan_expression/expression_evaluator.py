@@ -930,10 +930,9 @@ def eval_projection(
     working_block = block
     for common_expr in cse_common_exprs:
         assert common_expr.name is not None
-        value = eval_expr(common_expr, working_block)
         working_block = BlockAccessor.for_block(working_block).fill_column(
             common_expr.name,
-            value,
+            eval_expr(common_expr, working_block),
         )
 
     output_block = _eval_projection_without_cse(projection_exprs, working_block)

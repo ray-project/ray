@@ -385,9 +385,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             object.__setattr__(
                 self,
                 "compute",
-                self._detect_and_get_compute_strategy(
-                    [*self._cse_common_exprs, *self.exprs]
-                ),
+                self._detect_and_get_compute_strategy(self.get_all_exprs()),
             )
         for expr in self.exprs:
             if expr.name is None and not isinstance(expr, StarExpr):
@@ -435,6 +433,10 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
     def get_cse_common_exprs(self) -> list["Expr"]:
         return self._cse_common_exprs
+
+    def get_all_exprs(self) -> list["Expr"]:
+        """Both projection expressions and common expressions"""
+        return [*self._cse_common_exprs, *self.exprs]
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
