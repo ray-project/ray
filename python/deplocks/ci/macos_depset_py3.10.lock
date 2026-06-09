@@ -1112,6 +1112,12 @@ fastapi==0.133.0 \
     #   gradio
     #   mlflow-skinny
     #   ray
+fastjsonschema==2.21.2 \
+    --hash=sha256:1c797122d0a86c5cace2e54bf4e819c36223b552017172f32c5c024a6b77e463 \
+    --hash=sha256:b1eb43748041c880796cd077f1a07c3d94e93ae84bba5ed36800a33554ae05de
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   nbformat
 feather-format==0.4.1 \
     --hash=sha256:45f67e3745d394d4f160ca6d636bbfd4f8b68d01199dc1649b6e487d3e878903
     # via
@@ -1902,6 +1908,7 @@ jsonschema==4.24.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   aws-sam-translator
+    #   nbformat
     #   openapi-schema-validator
     #   openapi-spec-validator
     #   ray
@@ -1918,12 +1925,24 @@ jsonschema-specifications==2025.9.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jsonschema
     #   openapi-schema-validator
+jupyter-core==5.9.1 \
+    --hash=sha256:4d09aaff303b9566c3ce657f580bd089ff5c91f5f89cf7d8846c3cdf465b5508 \
+    --hash=sha256:ebf87fdc6073d142e114c72c9e29a9d7ca03fad818c5d300ce2adc1fb0743407
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   nbformat
 jupyterlab-widgets==3.0.16 \
     --hash=sha256:423da05071d55cf27a9e602216d35a3a65a3e41cdf9c5d3b643b814ce38c19e0 \
     --hash=sha256:45fa36d9c6422cf2559198e4db481aa243c7a32d9926b500781c830c80f7ecf8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipywidgets
+jupytext==1.19.3 \
+    --hash=sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766 \
+    --hash=sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/py313/test-requirements.txt
 kiwisolver==1.5.0 \
     --hash=sha256:012b1eb16e28718fa782b5e61dc6f2da1f0792ca73bd05d54de6cb9561665fc9 \
     --hash=sha256:01808c6d15f4c3e8559595d6d1fe6411c68e4a3822b4b9972b44473b24f4e679 \
@@ -2361,6 +2380,7 @@ markdown-it-py==2.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -2525,11 +2545,12 @@ matplotlib-inline==0.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
-mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
+mdit-py-plugins==0.3.5 \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jupytext
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
@@ -3018,6 +3039,12 @@ mypy-extensions==1.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mypy
+nbformat==5.10.4 \
+    --hash=sha256:322168b14f937a5d11362988ecac2a4952d3d8e3a2cbeb2319584631226d5b3a \
+    --hash=sha256:3b48d6c8fbca4b299bf3982ea7db1af21580e4fec269ad087b9e81588891200b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jupytext
 networkx==3.4.2 \
     --hash=sha256:307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1 \
     --hash=sha256:df5d4365b724cf81b8c6a7312509d0c22386097011ad1abe274afd5e9d3bbc5f
@@ -3461,6 +3488,7 @@ packaging==26.1 \
     #   gradio-client
     #   gunicorn
     #   huggingface-hub
+    #   jupytext
     #   knack
     #   kombu
     #   matplotlib
@@ -3692,6 +3720,7 @@ platformdirs==4.9.6 \
     --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jupyter-core
     #   python-discovery
     #   textual
     #   virtualenv
@@ -4646,6 +4675,7 @@ pyyaml==6.0.3 \
     #   gradio
     #   huggingface-hub
     #   jsonschema-path
+    #   jupytext
     #   knack
     #   kubernetes
     #   mlflow-skinny
@@ -5389,6 +5419,7 @@ tomli==2.0.2 ; python_full_version < '3.11' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   alembic
+    #   jupytext
     #   mypy
     #   pytest
 tomlkit==0.13.3 \
@@ -5458,7 +5489,9 @@ traitlets==5.14.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
     #   ipywidgets
+    #   jupyter-core
     #   matplotlib-inline
+    #   nbformat
 trustme==0.9.0 \
     --hash=sha256:5e07b23d70ceed64f3bb36ae4b9abc52354c16c98d45ab037bee2b5fbffe586c \
     --hash=sha256:a6e53039cc43e70548ebd9a42ec1af5cba803a16d14321cd96352d2b4e010e04

@@ -3063,6 +3063,13 @@ jupyterlab-widgets==3.0.16 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipywidgets
+jupytext==1.19.3 \
+    --hash=sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766 \
+    --hash=sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/train-test-requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
 keras==3.12.0 \
     --hash=sha256:02b69e007d5df8042286c3bcc2a888539e3e487590ffb08f6be1b4354df50aa8 \
     --hash=sha256:536e3f8385a05ae04e82e08715a1a59988578087e187b04cb0a6fad11743f07f
@@ -3604,6 +3611,7 @@ markdown-it-py==2.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -3686,11 +3694,12 @@ matplotlib-inline==0.2.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipykernel
     #   ipython
-mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
+mdit-py-plugins==0.3.5 \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jupytext
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
@@ -4374,6 +4383,7 @@ nbformat==5.10.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jupyter-server
+    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.6.0 \
@@ -5195,6 +5205,7 @@ packaging==26.1 \
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   keras
     #   knack
     #   kombu
@@ -6731,6 +6742,7 @@ pyyaml==6.0.3 \
     #   huggingface-hub
     #   jsonschema-path
     #   jupyter-events
+    #   jupytext
     #   knack
     #   kubernetes
     #   lightning
@@ -8218,6 +8230,7 @@ tomli==2.0.2 ; python_full_version < '3.11' \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   alembic
     #   jupyterlab
+    #   jupytext
     #   mypy
     #   pytest
 tomlkit==0.13.3 \

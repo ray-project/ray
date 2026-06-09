@@ -2349,6 +2349,10 @@ jupyterlab-widgets==3.0.16 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   ipywidgets
+jupytext==1.19.3 \
+    --hash=sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766 \
+    --hash=sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0
+    # via -r python/requirements/llm/llm-test-requirements.txt
 kombu==5.6.2 \
     --hash=sha256:8060497058066c6f5aed7c26d7cd0d3b574990b09de842a8c5aaed0b92cc5a55 \
     --hash=sha256:efcfc559da324d41d61ca311b0c64965ea35b4c55cc04ee36e55386145dace93
@@ -2490,6 +2494,7 @@ markdown-it-py==2.2.0 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
+    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -2510,11 +2515,12 @@ mcp==1.1.3 \
     --hash=sha256:71462d6cd7c06c14689dfcf110ff22286ba1b608cfc3515c0a5cbe33d131731a \
     --hash=sha256:af11018b8e9153cdd25f3722ec639fe7a462c00213a330fd6f593968341a9883
     # via vllm
-mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
+mdit-py-plugins==0.3.5 \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
+    #   jupytext
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
@@ -3066,6 +3072,7 @@ nbformat==5.10.4 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   jupyter-server
+    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.6.0 \
@@ -3574,6 +3581,7 @@ packaging==26.1 \
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   kombu
     #   lm-format-enforcer
     #   nbconvert
@@ -4707,6 +4715,7 @@ pyyaml==6.0.3 \
     #   gguf
     #   huggingface-hub
     #   jupyter-events
+    #   jupytext
     #   lm-format-enforcer
     #   openlineage-python
     #   transformers
