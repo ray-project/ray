@@ -262,13 +262,13 @@ enum TagKey {
   LLM_SERVE_DEPLOY_OUTCOME = 624;
   // Comma separated list of serving patterns per model: default, dp, pd, dp_pd.
   LLM_SERVE_SERVING_PATTERN = 625;
-  // Comma separated list of engine quantization methods per model (e.g. fp8,
-  // awq, gptq) or "none".
-  LLM_SERVE_QUANTIZATION = 626;
-  // Comma separated list of engine dtypes per model (e.g. auto, bfloat16).
-  LLM_SERVE_DTYPE = 627;
-  // Comma separated list of configured max_model_len per model (0 if unset).
-  LLM_SERVE_MAX_MODEL_LEN = 628;
+  // JSON array of per-model engine config facts, index aligned with
+  // LLM_SERVE_MODELS. Each object holds non-identifying engine knobs:
+  // quantization, dtype, max_model_len, prefix_caching, chunked_prefill,
+  // kv_cache_dtype, speculative_decoding, enforce_eager, pipeline_parallel,
+  // accelerator_kind, log_engine_metrics, distributed_executor_backend,
+  // load_format, multimodal. Booleans are "on"/"off"/"default".
+  LLM_SERVE_ENGINE_CONFIG = 626;
 
   // LLM Batch
   // Comma separated list of names of the config used to build processor.

@@ -1,4 +1,5 @@
 import hashlib
+import json
 import random
 import time
 from enum import Enum
@@ -43,9 +44,7 @@ class TelemetryTags(str, Enum):
     LLM_SERVE_NUM_GPUS = "LLM_SERVE_NUM_GPUS"
     LLM_SERVE_DEPLOY_OUTCOME = "LLM_SERVE_DEPLOY_OUTCOME"
     LLM_SERVE_SERVING_PATTERN = "LLM_SERVE_SERVING_PATTERN"
-    LLM_SERVE_QUANTIZATION = "LLM_SERVE_QUANTIZATION"
-    LLM_SERVE_DTYPE = "LLM_SERVE_DTYPE"
-    LLM_SERVE_MAX_MODEL_LEN = "LLM_SERVE_MAX_MODEL_LEN"
+    LLM_SERVE_ENGINE_CONFIG = "LLM_SERVE_ENGINE_CONFIG"
 
 
 class TelemetryModel(BaseModelExtended):
@@ -72,6 +71,17 @@ class TelemetryModel(BaseModelExtended):
     quantization: str = "none"
     dtype: str = "auto"
     max_model_len: int = 0
+    prefix_caching: str = "default"
+    chunked_prefill: str = "default"
+    kv_cache_dtype: str = "auto"
+    speculative_decoding: str = "off"
+    enforce_eager: str = "default"
+    pipeline_parallel_degree: int = 1
+    accelerator_kind: str = "unspecified"
+    log_engine_metrics: str = "default"
+    distributed_executor_backend: str = "default"
+    load_format: str = "auto"
+    multimodal: str = "0"
 
 
 @ray.remote(
@@ -181,20 +191,34 @@ class TelemetryAgent:
     def _num_gpus(self) -> str:
         return ",".join([str(model.num_gpus) for model in self.models.values()])
 
-    def _deploy_outcomes(self) -> str:
-        return ",".join([model.deploy_outcome for model in self.models.values()])
+    def _join(self, attr: str) -> str:
+        """Comma joined attribute across models, index aligned with LLM_SERVE_MODELS."""
+        return ",".join(str(getattr(model, attr)) for model in self.models.values())
 
-    def _serving_patterns(self) -> str:
-        return ",".join([model.serving_pattern for model in self.models.values()])
-
-    def _quantizations(self) -> str:
-        return ",".join([model.quantization for model in self.models.values()])
-
-    def _dtypes(self) -> str:
-        return ",".join([model.dtype for model in self.models.values()])
-
-    def _max_model_lens(self) -> str:
-        return ",".join([str(model.max_model_len) for model in self.models.values()])
+    def _engine_configs(self) -> str:
+        """JSON array of per-model engine facts, index aligned with LLM_SERVE_MODELS."""
+        return json.dumps(
+            [
+                {
+                    "quantization": model.quantization,
+                    "dtype": model.dtype,
+                    "max_model_len": model.max_model_len,
+                    "prefix_caching": model.prefix_caching,
+                    "chunked_prefill": model.chunked_prefill,
+                    "kv_cache_dtype": model.kv_cache_dtype,
+                    "speculative_decoding": model.speculative_decoding,
+                    "enforce_eager": model.enforce_eager,
+                    "pipeline_parallel": model.pipeline_parallel_degree,
+                    "accelerator_kind": model.accelerator_kind,
+                    "log_engine_metrics": model.log_engine_metrics,
+                    "distributed_executor_backend": model.distributed_executor_backend,
+                    "load_format": model.load_format,
+                    "multimodal": model.multimodal,
+                }
+                for model in self.models.values()
+            ],
+            separators=(",", ":"),
+        )
 
     def generate_report(self) -> Dict[str, str]:
         return {
@@ -210,11 +234,9 @@ class TelemetryAgent:
             TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._num_replicas(),
             TelemetryTags.LLM_SERVE_GPU_TYPE: self._gpu_type(),
             TelemetryTags.LLM_SERVE_NUM_GPUS: self._num_gpus(),
-            TelemetryTags.LLM_SERVE_DEPLOY_OUTCOME: self._deploy_outcomes(),
-            TelemetryTags.LLM_SERVE_SERVING_PATTERN: self._serving_patterns(),
-            TelemetryTags.LLM_SERVE_QUANTIZATION: self._quantizations(),
-            TelemetryTags.LLM_SERVE_DTYPE: self._dtypes(),
-            TelemetryTags.LLM_SERVE_MAX_MODEL_LEN: self._max_model_lens(),
+            TelemetryTags.LLM_SERVE_DEPLOY_OUTCOME: self._join("deploy_outcome"),
+            TelemetryTags.LLM_SERVE_SERVING_PATTERN: self._join("serving_pattern"),
+            TelemetryTags.LLM_SERVE_ENGINE_CONFIG: self._engine_configs(),
         }
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
@@ -323,6 +345,13 @@ def push_telemetry_report_for_all_models(
             )
 
 
+def _flag(value: Optional[bool]) -> str:
+    """Tri-state for an optional engine flag: on/off, or default when unset."""
+    if value is None:
+        return "default"
+    return "on" if value else "off"
+
+
 def _push_model_telemetry(
     model: "LLMConfig",
     get_lora_model_func: Callable,
@@ -395,5 +424,22 @@ def _push_model_telemetry(
         quantization=model.engine_kwargs.get("quantization") or "none",
         dtype=str(model.engine_kwargs.get("dtype") or "auto"),
         max_model_len=int(model.engine_kwargs.get("max_model_len") or 0),
+        prefix_caching=_flag(model.engine_kwargs.get("enable_prefix_caching")),
+        chunked_prefill=_flag(model.engine_kwargs.get("enable_chunked_prefill")),
+        kv_cache_dtype=str(model.engine_kwargs.get("kv_cache_dtype") or "auto"),
+        speculative_decoding="on"
+        if model.engine_kwargs.get("speculative_config")
+        or model.engine_kwargs.get("speculative_model")
+        else "off",
+        enforce_eager=_flag(model.engine_kwargs.get("enforce_eager")),
+        pipeline_parallel_degree=engine_config.pipeline_parallel_degree,
+        accelerator_kind=getattr(model.accelerator_config, "kind", None)
+        or "unspecified",
+        log_engine_metrics=_flag(model.log_engine_metrics),
+        distributed_executor_backend=str(
+            model.engine_kwargs.get("distributed_executor_backend") or "default"
+        ),
+        load_format=str(model.engine_kwargs.get("load_format") or "auto"),
+        multimodal="1" if model.supports_vision else "0",
     )
     _push_telemetry_report(telemetry_model)

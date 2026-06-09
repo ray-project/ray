@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sys
 
 import pytest
@@ -118,6 +119,30 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
         get_hardware_fn=fake_get_gpu_type,
     )
 
+    # All five models use engine defaults, so each gets the same config object.
+    default_engine_config = json.dumps(
+        [
+            {
+                "quantization": "none",
+                "dtype": "auto",
+                "max_model_len": 0,
+                "prefix_caching": "default",
+                "chunked_prefill": "default",
+                "kv_cache_dtype": "auto",
+                "speculative_decoding": "off",
+                "enforce_eager": "default",
+                "pipeline_parallel": 1,
+                "accelerator_kind": "gpu",
+                "log_engine_metrics": "on",
+                "distributed_executor_backend": "default",
+                "load_format": "auto",
+                "multimodal": "0",
+            }
+        ]
+        * 5,
+        separators=(",", ":"),
+    )
+
     # Ensure that the telemetry is correct after pushing the reports.
     telemetry = ray.get(recorder.telemetry.remote())
     assert telemetry == {
@@ -135,9 +160,7 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
         TagKey.LLM_SERVE_NUM_GPUS: "1,1,1,1,1",
         TagKey.LLM_SERVE_DEPLOY_OUTCOME: "success,success,success,success,success",
         TagKey.LLM_SERVE_SERVING_PATTERN: "default,default,default,default,default",
-        TagKey.LLM_SERVE_QUANTIZATION: "none,none,none,none,none",
-        TagKey.LLM_SERVE_DTYPE: "auto,auto,auto,auto,auto",
-        TagKey.LLM_SERVE_MAX_MODEL_LEN: "0,0,0,0,0",
+        TagKey.LLM_SERVE_ENGINE_CONFIG: default_engine_config,
     }
 
 
@@ -304,7 +327,8 @@ def test_telemetry_reports_auto_num_replicas(disable_placement_bundles):
 
 
 def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
-    """Non-default deploy_outcome / serving_pattern / engine facts are recorded."""
+    """Non-default deploy_outcome / serving_pattern (flat) and the bundled
+    engine-config JSON are recorded."""
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):
@@ -322,6 +346,12 @@ def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
             quantization="fp8",
             dtype="bfloat16",
             max_model_len=8192,
+            enable_prefix_caching=True,
+            enforce_eager=False,
+            kv_cache_dtype="fp8",
+            pipeline_parallel_size=2,
+            distributed_executor_backend="ray",
+            load_format="runai_streamer",
         ),
     )
     config._set_model_architecture(model_architecture="facts_arch")
@@ -336,9 +366,24 @@ def test_deploy_outcome_and_engine_facts(disable_placement_bundles):
     telemetry = ray.get(recorder.telemetry.remote())
     assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "oom"
     assert telemetry[TagKey.LLM_SERVE_SERVING_PATTERN] == "pd"
-    assert telemetry[TagKey.LLM_SERVE_QUANTIZATION] == "fp8"
-    assert telemetry[TagKey.LLM_SERVE_DTYPE] == "bfloat16"
-    assert telemetry[TagKey.LLM_SERVE_MAX_MODEL_LEN] == "8192"
+
+    (engine_config,) = json.loads(telemetry[TagKey.LLM_SERVE_ENGINE_CONFIG])
+    assert engine_config == {
+        "quantization": "fp8",
+        "dtype": "bfloat16",
+        "max_model_len": 8192,
+        "prefix_caching": "on",
+        "chunked_prefill": "default",
+        "kv_cache_dtype": "fp8",
+        "speculative_decoding": "off",
+        "enforce_eager": "off",
+        "pipeline_parallel": 2,
+        "accelerator_kind": "gpu",
+        "log_engine_metrics": "on",
+        "distributed_executor_backend": "ray",
+        "load_format": "runai_streamer",
+        "multimodal": "0",
+    }
 
 
 @pytest.mark.parametrize(
