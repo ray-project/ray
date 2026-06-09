@@ -14,9 +14,13 @@ build_arg_sets:
 
 depsets:
   # Shared torch layer for cu130 GPU release tests. Expands the gpu-cu130 base
-  # image deps (which already carry cupy-cuda13x) with a CUDA 13.x torch build.
-  # Consumed via `python_depset` by compiled_graphs_GPU_cu130 and
-  # jobs_check_cuda_available (cu130 variants).
+  # image deps (which carry cupy-cuda13x==13.6.0 via the relax in
+  # rayimg.depsets.yaml) with a CUDA 13.x torch build (torch is not in ray[all],
+  # so the core ray image lacks it). Consumed via `python_depset` by
+  # compiled_graphs_GPU_cu130 and jobs_check_cuda_available (cu130 variants).
+  # Because the base lock already pins cupy-cuda13x==13.6.0, this full-closure
+  # install is idempotent with the published image's Docker-build cupy swap — no
+  # post_build_script needed.
   - name: gpu_cu130_py${PYTHON_SHORT}
     operation: expand
     depsets:

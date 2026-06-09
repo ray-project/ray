@@ -1,4 +1,6 @@
 # Extra cu130-only requirements layered onto the gpu-cu130 base image.
 # cupy-cuda12x is relaxed out of the cu130 ray_img chain (see rayimg.depsets.yaml)
-# and replaced with the CUDA 13.x build here.
-cupy-cuda13x
+# and replaced with the matching CUDA 13.x build. Pinned to 13.6.0 to match the
+# CuPy 13.x line the published cu130 image swaps to (same API), and because
+# 13.6.0 is the floor with CUDA-13 wheels for py3.10-3.13.
+cupy-cuda13x==13.6.0

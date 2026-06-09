@@ -68,20 +68,22 @@ depsets:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   # cu130 variant of the core ray image deps: ray[all] pins cupy-cuda12x (a
-  # CUDA 12.x build) unconditionally, which is wrong for cu130 images. Relax it
-  # out here so the cu130 base layers can install cupy-cuda13x instead.
+  # CUDA 12.x build) unconditionally, which is broken on the cu130 CUDA-13
+  # runtime. Relax it out here so the cu130 gpu base layer can pin the matching
+  # cupy-cuda13x build instead.
   - name: ray_img_cu130_${PYTHON_SHORT}
     operation: relax
     source_depset: ray_img_depset_${PYTHON_SHORT}
     packages:
       - cupy-cuda12x
     output: python/deplocks/ray_img/ray_img_cu130_py${PYTHON_SHORT}.lock
+    # py3.10-3.13 only: cupy-cuda13x==13.6.0 has no cp314 wheel, and no cu130
+    # gpu release test / published image targets py3.14.
     build_arg_sets:
       - py310_cu130
       - py311_cu130
       - py312_cu130
       - py313_cu130
-      - py314_cu130
 
   - name: ray_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
@@ -145,9 +147,12 @@ depsets:
   - name: ray_base_extra_testdeps_gpu_${CUDA_CODE}_${PYTHON_SHORT}
     operation: expand
     requirements:
-      # cu130 gpu base only needs cupy-cuda13x on top of the core image + base
-      # layers; torch is layered per-test via python_depset. The legacy
-      # per-version requirements_byod_gpu_*.in set is intentionally not used here.
+      # cu130 gpu base: the cupy-cuda12x-relaxed core image + the matching
+      # cupy-cuda13x==13.6.0 build (requirements_byod_gpu_cu130.in) + base
+      # layers. torch is layered per-test via python_depset (which expands this
+      # base, so it inherits cupy-cuda13x). The published rayproject/ray cu130
+      # image performs the same 12x->13x swap at Docker build time, so all
+      # layers agree on cupy-cuda13x==13.6.0.
       - release/ray_release/byod/requirements_byod_gpu_cu130.in
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
@@ -161,12 +166,13 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    # py3.10-3.13 only: cupy-cuda13x==13.6.0 has no cp314 wheel, and no cu130
+    # gpu release test / published image targets py3.14.
     build_arg_sets:
       - py310_cu130
       - py311_cu130
       - py312_cu130
       - py313_cu130
-      - py314_cu130
 
   # ray-ml only ships a CUDA 12.x (cu128) image and is Python 3.10 only
   # (requirements_ml_byod_<ver>.in exists only for 3.10). The single lock below

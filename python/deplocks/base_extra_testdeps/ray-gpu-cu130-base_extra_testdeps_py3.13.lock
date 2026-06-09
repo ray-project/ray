@@ -681,27 +681,22 @@ cryptography==44.0.3 \
     #   msal
     #   pyjwt
     #   pyopenssl
-cuda-pathfinder==1.5.5 \
-    --hash=sha256:0228c023f95d1480f143ef5c8922d27a2ab052087a942e81dc289c9eb8f91689
-    # via cupy-cuda13x
-cupy-cuda13x==14.1.1 \
-    --hash=sha256:0b9e6f6110cbf039dd75159f8adc99c4fb84cbcabf3025c6607e3864b09ba469 \
-    --hash=sha256:223a9e1e6db911002ca5b94c348a3ed5c1d7869ba4dd6524ab3d0263123b2248 \
-    --hash=sha256:2a656fbcdc1ca1c09b039f9ec6540e8d18e77ed66e92ae275a82b4d849bcc185 \
-    --hash=sha256:39f8aeeb5bad16603956f8ec00094e058a9dd5db92ab514975686750363c3692 \
-    --hash=sha256:3d12e1020066a699f5e27f4c5597167dca042704c0ed1db74066c32c0c2dbfb1 \
-    --hash=sha256:424caa906c16f31328558151dd5e0596891eda7644f40ca9348c3eb14af084d1 \
-    --hash=sha256:509f378c865c0b6bc9ed1dfe9e94b08b4511e9865363fdac55f9d66fe341e91d \
-    --hash=sha256:54949b4e4f90e3588eeef25b55037f156578364e4835eb9ae1b93e236f2e58d5 \
-    --hash=sha256:6c0d19789e9f9515988d51dffaff70af8b3dcdddcdf2fbafa9eff08df7be0a51 \
-    --hash=sha256:8b068f6958811bc50d81bd0a83267ec4cffc3d7e842120b9646ec547f5a69298 \
-    --hash=sha256:9226f3279c64aa6f07a79ba0081f3275a99a36c2db3f836f4b687dd8d77fa8bc \
-    --hash=sha256:a57c3eda202ffd70e34b9031a88f17c810a75e816398b4028360027cb3a4cd4d \
-    --hash=sha256:ae3a75a7e9510fb03251420d85b4efa48187ee5fd48b08c88b7a0f0620bd779a \
-    --hash=sha256:c0ce59e54da561eeaebef0460242cfd159518d63b388d9d566d198d1d7614634 \
-    --hash=sha256:cc671cb766f1c42cb6eed3bf27e9da6092721bcb3d77e09aef28e2f5b089ea38 \
-    --hash=sha256:dae6f77edfe96ab8e014d3e589dca33906d212fdf8f72e66850d4612bc031783 \
-    --hash=sha256:ff4526725c1398ea19d578044737aa24859b08e1f469aba0ca45dfd6f9aa505d
+cupy-cuda13x==13.6.0 \
+    --hash=sha256:015a052ec46bad154a74ff04c9c5aea2a8ab441f2d6ae3824bdfe3db0eeb4d2e \
+    --hash=sha256:0c6586c28a3209b3022c4482d3020e77fca9c82095839ba95ef86e61c5be3dc8 \
+    --hash=sha256:3e60748647b5bda97ece87ea75c71d1375ec6437fd1fe48a15a24b08e007b5ad \
+    --hash=sha256:4ea757682ebf4b45b38cc4e14c73da5e6499f7eabcd0fe15d88eb04e60f66e9c \
+    --hash=sha256:53a9780f746e53958087ed44f5a8a7f1faf2268f6fefc2a48070d25261299db4 \
+    --hash=sha256:58da388fb3b3b15aec66634a73f03681579baa1d22cb32f7543a29086c0a1ec5 \
+    --hash=sha256:81948cb0d21da5f0a56aef75bb6b0801486f5898276de2e53d171949422b7c4e \
+    --hash=sha256:82a71002b1bf3305efac27c0f4fd6771c8581569232ca3f8a19daf8664559339 \
+    --hash=sha256:93896a5d36788eadb8d983cb0076c1203df6f1d5ef148464680e8f1b13da2235 \
+    --hash=sha256:a3bb49fb023757bfaf0b82c5a1740739a2108ea46d944d699bcff92963c7b87f \
+    --hash=sha256:a6682bdad8e40fff560e29588fef20d08a1c036e9634dac6fe9c85ea094e448c \
+    --hash=sha256:bc4e776c94329e92f0ba336aa0873b83ef0217c9f72cf9dd9ff0afa9b65c818c \
+    --hash=sha256:ccde134a3fdfffbf6ba6fb933173a11efce4108730aeb86a672dc09507acdb98 \
+    --hash=sha256:d6d83733691d3114f1a5b792c9e1288e2fb4c432023ce86853a37a16193e1760 \
+    --hash=sha256:f06b2585b68639fdf3975be06a91e3106b1306a43d77848b6c28df7f8ea98299
     # via -r release/ray_release/byod/requirements_byod_gpu_cu130.in
 cython==0.29.37 \
     --hash=sha256:0301d4739c6894e012f1d410052082fdda9e63888c815d9e23e0f7f82fff7d79 \
@@ -898,7 +893,7 @@ fastjsonschema==2.21.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   nbformat
-fastrlock==0.8.3 ; sys_platform != 'darwin' \
+fastrlock==0.8.3 \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -971,6 +966,7 @@ fastrlock==0.8.3 ; sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/deplocks/ray_img/ray_img_cu130_py313.lock
+    #   cupy-cuda13x
 filelock==3.29.0 \
     --hash=sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90 \
     --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258

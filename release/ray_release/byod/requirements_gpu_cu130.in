@@ -1,4 +1,1 @@
-# Shared torch layer for cu130 GPU release tests (compiled_graphs_GPU_cu130,
-# jobs_check_cuda_available). Installed on top of the gpu-cu130 base image via
-# python_depset + byod_install_gpu_cu130_depset.sh.
 torch==2.9.1
