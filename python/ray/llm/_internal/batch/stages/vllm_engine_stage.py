@@ -207,7 +207,7 @@ class vLLMEngineWrapper:
     """Wrapper around the vLLM engine to handle async requests.
 
     Args:
-        *args: The positional arguments for the engine.
+        idx_in_batch_column: The column name for the index of the row in the batch.
         max_pending_requests: The maximum number of pending requests in the queue.
             If None, it will be auto-resolved to
             ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)`` using values
@@ -230,8 +230,6 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        self._guided_decoding_warning_logged = False
-        self._truncate_prompt_tokens_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -421,26 +419,10 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             structured_outputs_config = None
-            # Handle new structured_outputs parameter (preferred)
             if "structured_outputs" in sampling_params:
                 structured_outputs_config = maybe_convert_ndarray_to_list(
                     sampling_params.pop("structured_outputs")
                 )
-                # Remove guided_decoding if present to avoid passing it to SamplingParams
-                sampling_params.pop("guided_decoding", None)
-            # Handle legacy guided_decoding parameter for backward compatibility
-            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
-            elif "guided_decoding" in sampling_params:
-                structured_outputs_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("guided_decoding")
-                )
-                # Log deprecation warning only once to avoid log spam
-                if not self._guided_decoding_warning_logged:
-                    logger.warning(
-                        "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_outputs' in sampling_params instead."
-                    )
-                    self._guided_decoding_warning_logged = True
 
             if structured_outputs_config:
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
@@ -460,27 +442,6 @@ class vLLMEngineWrapper:
             pooling_params = maybe_convert_ndarray_to_list(
                 row.pop("pooling_params", {})
             )
-
-            # vLLM 0.16.0 deprecates truncate_prompt_tokens in PoolingParams.
-            # truncate_prompt_tokens must be passed via tokenization_kwargs instead.
-            # TODO (jeffreywang): Remove this in Ray 2.56.0.
-            if "truncate_prompt_tokens" in pooling_params:
-                truncate_value = pooling_params.pop("truncate_prompt_tokens")
-                if not self._truncate_prompt_tokens_warning_logged:
-                    logger.warning(
-                        "Setting truncate_prompt_tokens in pooling_params is "
-                        "deprecated. Please pass "
-                        "tokenization_kwargs={'truncation': True, "
-                        "'max_length': N} via the tokenization_kwargs column instead."
-                    )
-                    self._truncate_prompt_tokens_warning_logged = True
-                if truncate_value == -1:
-                    truncate_value = self._vllm_config.model_config.max_model_len
-
-                if tokenization_kwargs is None:
-                    tokenization_kwargs = {}
-                tokenization_kwargs.setdefault("truncation", True)
-                tokenization_kwargs.setdefault("max_length", truncate_value)
 
             params = vllm.PoolingParams(
                 **pooling_params,
@@ -511,7 +472,7 @@ class vLLMEngineWrapper:
         """Process a single request.
 
         Args:
-            request: The request.
+            row: The input row.
 
         Returns:
             A tuple of index in batch, request output and bypassed custom fields, and time taken.
@@ -634,6 +595,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
+            batch_size: The batch size for the stage.
+            max_concurrent_batches: The maximum number of concurrent batches.
             model: The model to use for the vLLM engine.
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
@@ -814,8 +777,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Args:
             batch: A list of rows to run the vLLM engine on.
 
-        Returns:
-            The response of the vLLM engine.
+        Yields:
+            Dict[str, Any]: The response of the vLLM engine.
         """
         batch_uuid = uuid.uuid4()
         batch_start_time = time.perf_counter()
@@ -905,7 +868,7 @@ class vLLMEngineStage(StatefulStage):
     fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
     @root_validator(pre=True)
-    def post_init(cls, values):
+    def post_init(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Post-initialize the stage. Specifically,
         this function determines the num_gpus and Ray remote args
         for the .map_batches() call in this stage.

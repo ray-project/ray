@@ -101,6 +101,13 @@ def _shared_serve_instance():
         # that condition on specific ports assignments.
         os.environ[env_var_name] = "6"
 
+    # These tests assert specific, immediately-reused port assignments. Disable
+    # the freed-port quarantine so reuse is deterministic; the quarantine itself
+    # is covered by test_node_port_manager.py.
+    quarantine_env_var = "RAY_SERVE_PORT_QUARANTINE_S"
+    quarantine_original = os.environ.get(quarantine_env_var)
+    os.environ[quarantine_env_var] = "0"
+
     ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
@@ -125,6 +132,12 @@ def _shared_serve_instance():
         os.environ[env_var_name] = original_value
     elif env_var_name in os.environ:
         del os.environ[env_var_name]
+
+    # Restore the quarantine env var.
+    if quarantine_original is not None:
+        os.environ[quarantine_env_var] = quarantine_original
+    elif quarantine_env_var in os.environ:
+        del os.environ[quarantine_env_var]
 
 
 @pytest.fixture
@@ -2476,6 +2489,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "start_time_s": replica.start_time_s,
                                 }
                             ],
+                            "recent_dead_replicas": [],
                         }
                     },
                     "external_scaler_enabled": False,
@@ -2530,7 +2544,16 @@ def test_get_serve_instance_details_json_serializable(
             ],
         }
     )
-    assert details_json == expected_json
+
+    # Health metrics contain timestamps that change between calls, so verify
+    # the keys match what get_health_metrics returns rather than exact values.
+    details_dict = json.loads(details_json)
+    actual_health_metrics = details_dict.pop("controller_health_metrics")
+    expected_dict = json.loads(expected_json)
+    assert details_dict == expected_dict
+
+    controller_health_metrics = ray.get(controller.get_health_metrics.remote())
+    assert set(actual_health_metrics.keys()) == set(controller_health_metrics.keys())
 
     # ensure internal field, serialized_policy_def, is not exposed
     application = details["applications"]["default"]

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import ray
 from .base_autoscaling_coordinator import AutoscalingCoordinator, ResourceDict
 from .default_autoscaling_coordinator import (
+    DEFAULT_SUBCLUSTER,
+    SUBCLUSTER_LABEL_KEY,
     DefaultAutoscalingCoordinator,
 )
 from .resource_utilization_gauge import (
@@ -69,8 +71,27 @@ class _NodeResourceSpec:
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
 
-def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
-    """Get the unique node resource specs and their count in the cluster."""
+def _get_node_resource_spec_and_count(
+    subcluster: Optional[str] = DEFAULT_SUBCLUSTER,
+) -> Dict[_NodeResourceSpec, int]:
+    """Get the unique node resource specs and their count in the cluster,
+    scoped to a single subcluster.
+
+    ``subcluster`` is the value at ``SUBCLUSTER_LABEL_KEY`` to match
+    against. The default ``DEFAULT_SUBCLUSTER`` (None) selects nodes with
+    no subcluster label.
+
+    Quirk: the returned dict also contains a ``node_type: 0`` (ex: `"m5.xlarge": 0`) entry for every
+    node type registered in ``cluster_config.node_group_configs`` that
+    isn't included in this subcluster. ``get_cluster_config()``
+    reports node types but not labels, so the only way to know a
+    shape's subcluster is to inspect live nodes. Harmless: for example,
+    if m5.xlarge nodes only exist in the training subcluster, the validation
+    dataset will emit pending-bundle scale-up demand for foo nodes
+    stamped with the validation label, which the autoscaler can never
+    satisfy.
+    TODO: get labels from cluster config so the catalog can be filtered.
+    """
     nodes_resource_spec_count = defaultdict(int)
 
     cluster_config = ray._private.state.state.get_cluster_config()
@@ -84,11 +105,16 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
             )
             nodes_resource_spec_count[node_resource_spec] = 0
 
-    # Filter out the head node.
+    # Filter out the head node and nodes outside the requester's subcluster.
     node_resources = [
         node["Resources"]
         for node in ray.nodes()
-        if node["Alive"] and "node:__internal_head__" not in node["Resources"]
+        if (
+            node["Alive"]
+            and "node:__internal_head__" not in node["Resources"]
+            and (node.get("Labels") or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
+            == subcluster
+        )
     ]
 
     for r in node_resources:
@@ -162,10 +188,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
         low_util_request_release_delay_s: float = DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S,  # noqa: E501
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
-        get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
-            _get_node_resource_spec_and_count
-        ),
+        get_node_counts: Optional[Callable[[], Dict[_NodeResourceSpec, int]]] = None,
         get_time: Callable[[], float] = time.time,
+        label_selector: Optional[Dict[str, str]] = None,
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
@@ -180,6 +205,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             )
 
         self._resource_limits = resource_limits
+        self._label_selector = label_selector or {}
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
@@ -200,9 +226,20 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._requester_id = f"data-{execution_id}"
         if autoscaling_coordinator is None:
             autoscaling_coordinator = DefaultAutoscalingCoordinator(
-                requester_id=self._requester_id
+                requester_id=self._requester_id,
+                subcluster_selector=label_selector,
             )
         self._autoscaling_coordinator = autoscaling_coordinator
+        if get_node_counts is None:
+            # Scope node-shape/count discovery to this requester's subcluster
+            # so try_trigger_scaling doesn't pull node shapes / counts from
+            # other subclusters into ``active_bundles`` / ``pending_bundles``.
+            subcluster = self._label_selector.get(
+                SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER
+            )
+            get_node_counts = lambda: _get_node_resource_spec_and_count(  # noqa: E731
+                subcluster=subcluster
+            )
         self._get_node_counts = get_node_counts
         self._get_time = get_time
         self._autoscaling_enabled = is_autoscaling_enabled()

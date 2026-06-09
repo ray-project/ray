@@ -36,8 +36,8 @@ std::string MemoryMonitorTestFixture::MockProcMemoryUsage(pid_t pid,
   // Create smaps_rollup file.
   std::string usage_filename = proc_dir + "/" + std::to_string(pid) + "/smaps_rollup";
   mock_proc_files_.push_back(std::make_unique<TempFile>(usage_filename));
-  mock_proc_files_.back()->AppendLine("SomeHeader\n");
-  mock_proc_files_.back()->AppendLine("Private_Clean: " + usage_kb + " kB\n");
+  mock_proc_files_.back()->AppendLine("SomeHeader");
+  mock_proc_files_.back()->AppendLine("Private_Clean: " + usage_kb + " kB");
 
   return proc_dir;
 }
@@ -58,30 +58,30 @@ std::string MemoryMonitorTestFixture::MockCgroupv2MemoryUsage(
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryMaxPath));
-  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes) + "\n");
+  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes));
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryUsagePath));
-  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes) + "\n");
+  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes));
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV2MemoryStatPath));
   if (anon_memory_bytes.has_value()) {
     mock_cgroup_files_.back()->AppendLine(
         std::string(MemoryMonitorUtils::kCgroupsV2MemoryAnonKey) + " " +
-        std::to_string(*anon_memory_bytes) + "\n");
+        std::to_string(*anon_memory_bytes));
   }
   if (shmem_memory_bytes.has_value()) {
     mock_cgroup_files_.back()->AppendLine(
         std::string(MemoryMonitorUtils::kCgroupsV2MemoryShmemKey) + " " +
-        std::to_string(*shmem_memory_bytes) + "\n");
+        std::to_string(*shmem_memory_bytes));
   }
   mock_cgroup_files_.back()->AppendLine(
       std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatInactiveFileKey) + " " +
-      std::to_string(inactive_file_bytes) + "\n");
+      std::to_string(inactive_file_bytes));
   mock_cgroup_files_.back()->AppendLine(
       std::string(MemoryMonitorUtils::kCgroupsV2MemoryStatActiveFileKey) + " " +
-      std::to_string(active_file_bytes) + "\n");
+      std::to_string(active_file_bytes));
 
   return cgroup_path;
 }
@@ -104,20 +104,20 @@ std::string MemoryMonitorTestFixture::MockCgroupv1MemoryUsage(int64_t total_byte
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryMaxPath));
-  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes) + "\n");
+  mock_cgroup_files_.back()->AppendLine(std::to_string(total_bytes));
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryUsagePath));
-  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes) + "\n");
+  mock_cgroup_files_.back()->AppendLine(std::to_string(current_bytes));
 
   mock_cgroup_files_.push_back(std::make_unique<TempFile>(
       cgroup_path + "/" + MemoryMonitorUtils::kCgroupsV1MemoryStatPath));
   mock_cgroup_files_.back()->AppendLine(
       std::string(MemoryMonitorUtils::kCgroupsV1MemoryStatInactiveFileKey) + " " +
-      std::to_string(inactive_file_bytes) + "\n");
+      std::to_string(inactive_file_bytes));
   mock_cgroup_files_.back()->AppendLine(
       std::string(MemoryMonitorUtils::kCgroupsV1MemoryStatActiveFileKey) + " " +
-      std::to_string(active_file_bytes) + "\n");
+      std::to_string(active_file_bytes));
 
   return cgroup_path;
 }

@@ -15,7 +15,7 @@ from typing import (
 )
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -84,7 +84,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     is_grpc_enabled,
 )
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -202,13 +202,21 @@ class ServeController:
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
                 "with HAProxy."
             )
+            all_interfaces = get_all_interfaces_ip()
+            if http_options.host != all_interfaces:
+                logger.warning(
+                    f"HTTPOptions.host={http_options.host!r} won't accept "
+                    "connections from HAProxy on other nodes; cross-node "
+                    "routing will fail with connection refused. Set host to "
+                    f"{all_interfaces!r} or omit it to use the HAProxy-mode "
+                    "default."
+                )
         elif self._direct_ingress_enabled:
             logger.info(
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
             )
-
-            http_options.location = DeploymentMode.HeadOnly
+            http_options.location = ProxyLocation.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
@@ -432,9 +440,13 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids (Dict[str, int]): Snapshot IDs are used to
-              determine whether or not the host should immediately return the
-              data or wait for the value to be changed.
+            keys_to_snapshot_ids: Snapshot IDs are used to determine whether or
+                not the host should immediately return the data or wait for the
+                value to be changed.
+
+        Returns:
+            The result of the underlying long-poll host's listen call (an
+            ``UpdatedObject`` map for changed keys, returned to the client).
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
@@ -445,8 +457,12 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
-              keys_to_snapshot_ids (Dict[str, int]).
+            keys_to_snapshot_ids_bytes: the protobuf-serialized bytes of the
+                ``keys_to_snapshot_ids`` (``Dict[str, int]``) mapping.
+
+        Returns:
+            The protobuf-serialized response of the underlying long-poll host's
+            Java listen call, suitable for return to a Java client.
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
@@ -537,6 +553,7 @@ class ServeController:
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
             self._health_metrics_tracker.num_control_loops = num_loops
+            self._health_metrics_tracker.last_control_loop_time = time.time()
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
@@ -1043,11 +1060,11 @@ class ServeController:
         If same app name deployed, old application will be overwritten.
 
         Args:
-            name: Application name.
-            deployment_args_list: List of serialized deployment information,
-                where each item in the list is bytes representing the serialized
-                protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
-                information for the single deployment.
+            name_to_deployment_args_list: Dictionary mapping application names
+                to a list of serialized deployment information. Each item in
+                the list is bytes representing the serialized protobuf
+                ``DeploymentArgs`` object, which contains all the information
+                for a single deployment.
             name_to_application_args: Dictionary mapping application names to serialized
                 application arguments, where each item is bytes representing the serialized
                 protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
@@ -1186,6 +1203,9 @@ class ServeController:
 
         Args:
             name: the name of the deployment.
+            app_name: the name of the application that owns the deployment. The
+                empty string targets deployments that are not scoped to an
+                application (1.x-style deployments).
 
         Returns:
             DeploymentRoute's protobuf serialized bytes
@@ -1338,7 +1358,7 @@ class ServeController:
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
+            proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=(
@@ -1348,6 +1368,7 @@ class ServeController:
             ),
             applications=applications,
             target_groups=self.get_target_groups(),
+            controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1659,10 +1680,15 @@ class ServeController:
         return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
-        """Return application status
+        """Return application status.
+
         Args:
             name: application name. If application name doesn't exist, app_status
                   is NOT_STARTED.
+
+        Returns:
+            Protobuf-serialized bytes of the ``StatusOverview`` for the named
+            application (including app status and per-deployment statuses).
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)
@@ -1727,6 +1753,10 @@ class ServeController:
             name: Deployment name.
             app_name: Application name. Default is "" because 1.x
                 deployments go through this API.
+
+        Returns:
+            Protobuf-serialized bytes of the deployment's status, or ``None``
+            if no deployment exists for ``(name, app_name)``.
         """
 
         id = DeploymentID(name=name, app_name=app_name)
@@ -1743,6 +1773,9 @@ class ServeController:
 
     def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
         """Name of the ingress deployment in an application.
+
+        Args:
+            app_name: the application to look up.
 
         Returns:
             Ingress deployment name (str): if the application exists.
@@ -1780,13 +1813,18 @@ class ServeController:
         """
         return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 
-    async def graceful_shutdown(self, wait: bool = True):
+    async def graceful_shutdown(self, wait: bool = True) -> None:
         """Set the shutting down flag on controller to signal shutdown in
         run_control_loop().
 
         This is used to signal to the controller that it should proceed with shutdown
         process, so it can shut down gracefully. It also waits until the shutdown
         event is triggered if wait is true.
+
+        Args:
+            wait: if True, block until the controller's shutdown event fires
+                (the caller is expected to handle the resulting
+                ``RayActorError`` raised when the controller actor exits).
 
         Raises:
             RayActorError: if wait is True, the caller waits until the controller

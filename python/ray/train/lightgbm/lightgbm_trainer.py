@@ -7,7 +7,10 @@ import lightgbm
 import ray
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightgbm._lightgbm_utils import RayTrainReportCallback
+from ray.train.lightgbm._lightgbm_utils import (
+    RayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
+)
 from ray.train.lightgbm.config import LightGBMConfig
 from ray.train.lightgbm.v2 import LightGBMTrainer as SimpleLightGBMTrainer
 from ray.train.trainer import GenDataset
@@ -49,14 +52,17 @@ def _lightgbm_train_fn_per_worker(
         )
 
     train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-    train_df = train_ds_iter.materialize().to_pandas()
+    train_df = normalize_pandas_for_lightgbm(train_ds_iter.materialize().to_pandas())
 
     eval_ds_iters = {
         k: ray.train.get_dataset_shard(k)
         for k in dataset_keys
         if k != TRAIN_DATASET_KEY
     }
-    eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+    eval_dfs = {
+        k: normalize_pandas_for_lightgbm(d.materialize().to_pandas())
+        for k, d in eval_ds_iters.items()
+    }
 
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lightgbm.Dataset(train_X, label=train_y)
@@ -101,7 +107,11 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
+        from ray.train.lightgbm import (
+            LightGBMTrainer,
+            RayTrainReportCallback,
+            normalize_pandas_for_lightgbm,
+        )
 
         def train_fn_per_worker(config: dict):
             # (Optional) Add logic to resume training state from a checkpoint.
@@ -113,7 +123,8 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 ray.train.get_dataset_shard("validation"),
             )
             train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
+            train_df = normalize_pandas_for_lightgbm(train_ds.to_pandas())
+            eval_df = normalize_pandas_for_lightgbm(eval_ds.to_pandas())
             train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
             eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
             dtrain = lightgbm.Dataset(train_X, label=train_y)

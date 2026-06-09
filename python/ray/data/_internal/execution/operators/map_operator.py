@@ -63,7 +63,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.util import memory_string, merge_label_selector
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -97,7 +97,10 @@ def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     return sample_accessor.to_arrow().schema
 
 
-def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
+def _get_schema_from_bundle(
+    bundle: RefBundle,
+    label_selector: Optional[Dict[str, str]] = None,
+) -> Optional["pa.Schema"]:
     """Extract PyArrow schema from a RefBundle.
 
     For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
@@ -128,8 +131,11 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     if isinstance(schema, PandasBlockSchema):
         if not bundle.blocks:
             return None
-        block_ref, _ = bundle.blocks[0]
-        schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+        block_ref = bundle.blocks[0].ref
+        task = _get_arrow_schema_from_block
+        if label_selector:
+            task = task.options(label_selector=label_selector)
+        schema_ref = task.remote(block_ref)
         return ray.get(schema_ref)
 
     return None
@@ -239,7 +245,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         (e.g., schema evolution for Iceberg writes via on_write_start).
         """
         if not self._on_start_called and self._on_start is not None:
-            schema = _get_schema_from_bundle(bundled_input)
+            schema = _get_schema_from_bundle(
+                bundled_input,
+                label_selector=self.data_context.execution_options.label_selector,
+            )
             self._on_start(schema)
             self._on_start_called = True
             # Note: _map_transformer_ref is lazily initialized, so no need to
@@ -290,6 +299,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -299,12 +309,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             - If ActorPoolStrategy -> ActorPoolMapOperator
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
-            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
+            data_context: The :class:`DataContext` to use for this operator.
+            target_max_block_size_override: Override for target max-block-size.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
-            target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -325,6 +336,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 bundle before any tasks are submitted. Used for deferred initialization
                 that requires schema from actual data (e.g., schema evolution for
                 Iceberg writes).
+            isolate_workers: If ``True``, ensure that other operators' tasks don't get
+                scheduled on the same worker processes as this operator's. This flag
+                is useful to prevent side-effects from affecting other operators, like
+                large PyArrow memory allocations.
+
+        Returns:
+            A ``MapOperator`` instance whose concrete subclass depends on the
+            requested compute strategy.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -361,11 +380,18 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
+                isolate_workers=isolate_workers,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
             )
+
+            if isolate_workers:
+                logger.debug(
+                    "`isolate_workers` is set but has no effect with "
+                    "`ActorPoolStrategy` because actors are already isolated."
+                )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
             return ActorPoolMapOperator(
@@ -481,6 +507,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        ray_remote_args = merge_label_selector(
+            ray_remote_args, self.data_context.execution_options.label_selector
+        )
         return ray_remote_args
 
     @abstractmethod
@@ -679,14 +708,19 @@ def _map_task(
     """Remote function for a single operator task.
 
     Args:
-        fn: The callable that takes Iterator[Block] as input and returns
-            Iterator[Block] as output.
-        blocks: The concrete block values from the task ref bundle.
+        map_transformer: The :class:`MapTransformer` to apply, taking
+            ``Iterator[Block]`` as input and yielding ``Iterator[Block]``.
+        data_context: The :class:`DataContext` to install for this task.
+        ctx: The :class:`TaskContext` for the task, used to look up
+            per-task settings and propagate context to the UDF.
+        *blocks: The concrete block values from the task ref bundle.
         slices: List of block slices for this task to process.
+        **kwargs: Additional keyword arguments stored on ``ctx.kwargs`` and
+            forwarded to the map transformer.
 
-    Returns:
-        A generator of blocks, followed by the list of BlockMetadata for the blocks
-        as the last generator return.
+    Yields:
+        Union[Block, BlockMetadataWithSchema]: A generator of blocks, followed by the
+        list of BlockMetadata for the blocks as the last generator return.
     """
     task_start_s = time.perf_counter()
 
@@ -748,7 +782,6 @@ def _map_task(
                     ),
                     udf_time_s=map_transformer.udf_time_s(reset=True),
                     task_idx=ctx.task_idx,
-                    max_uss_bytes=profiler.estimate_max_uss(),
                 )
 
                 # NOTE: This tracks task duration up to this point, though we're primarily
@@ -761,7 +794,8 @@ def _map_task(
                         block_meta,
                         exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
-                            task_wall_time_s=task_dur_s
+                            task_wall_time_s=task_dur_s,
+                            max_uss_bytes=profiler.estimate_max_uss(),
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,
@@ -771,7 +805,6 @@ def _map_task(
                 # Reset trackers
                 yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
-                profiler.reset()
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

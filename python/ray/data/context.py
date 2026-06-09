@@ -77,7 +77,11 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
-DEFAULT_USE_DATASOURCE_V2 = True
+DEFAULT_USE_DATASOURCE_V2 = False
+
+# Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
+# uses its built-in default (currently 1 GiB).
+DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
@@ -277,6 +281,8 @@ DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
+
+DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
 
 DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
     "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
@@ -515,6 +521,10 @@ class DataContext:
             driver-side first-file sampling for schema inference,
             ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
             remains the production path while V2 bakes.
+        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
+            ``ParquetFileChunker`` when splitting large Parquet files into
+            multiple read tasks. When ``None``, the chunker's built-in default
+            (currently 1 GiB) is used.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -657,6 +667,12 @@ class DataContext:
         gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
             communicator setup (actor creation + root/worker init) before raising
             a ``TimeoutError``. Defaults to 120 seconds.
+        isolate_read_workers: If ``True``, other operators' tasks don't get scheduled on
+            the same worker processes as the read operators'. This prevents large
+            PyArrow memory allocation during reads from inflating the resident memory of
+            workers that are later reused by downstream operators. Enabling this flag
+            can reduce OOMs but also cause performance regressions. Defaults to
+            ``False``.
     """
 
     # `None` means the block size is infinite.
@@ -747,6 +763,11 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
+    # chunker uses its built-in default (currently 1 GiB).
+    parquet_chunker_target_chunk_size: Optional[
+        int
+    ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
@@ -810,6 +831,8 @@ class DataContext:
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
     )
+
+    isolate_read_workers: bool = DEFAULT_ISOLATE_READ_WORKERS
 
     downstream_capacity_backpressure_ratio: Optional[
         float
@@ -943,6 +966,9 @@ class DataContext:
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the
         Dataset and pass it around as arguments.
+
+        Returns:
+            The current :class:`DataContext` instance.
         """
 
         global _default_context
@@ -1008,9 +1034,10 @@ class DataContext:
         2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
         3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
 
-        Note: `LoadCheckpointCallback` is NOT included here because it requires
-        a `CheckpointConfig` argument to be instantiated. It is conditionally added
-        later directly by the execution planner.
+        Note: `LoadCheckpointCallback` and `UsageCallback` are NOT included here
+        because they require constructor arguments (a `CheckpointConfig` and a
+        `LogicalPlan`, respectively). They are added directly by the execution
+        planner.
 
         Returns:
             A list of ExecutionCallback class types (not instances).
@@ -1071,7 +1098,9 @@ class DataContext:
         Args:
             key: The key of the config.
             default: The default value to return if the key is not found.
-        Returns: The value for the key, or the default value if the key is not found.
+
+        Returns:
+            The value for the key, or the default value if the key is not found.
         """
         return self._kv_configs.get(key, default)
 

@@ -26,10 +26,25 @@ ray_cc_library(
         "//src/ray/common:metrics",
         "//src/ray/common:ray_config",
         "//src/ray/stats:stats_metric",
-        "//src/ray/util:array",
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",
         "@boost//:asio",
+    ],
+)
+
+ray_cc_library(
+    name = "io_context_monitor",
+    srcs = ["io_context_monitor.cc"],
+    hdrs = ["io_context_monitor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":instrumented_io_context",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
