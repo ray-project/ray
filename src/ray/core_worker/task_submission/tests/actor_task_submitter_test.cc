@@ -95,7 +95,8 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
 class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
  public:
   ActorTaskSubmitterTest()
-      : client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
+      : io_work(io_context.get_executor()),
+        client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &addr) { return worker_client_; })),
         raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
             [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
@@ -105,7 +106,6 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context, clock_)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
         mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
-        io_work(io_context.get_executor()),
         publisher_(std::make_unique<pubsub::FakePublisher>()),
         subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
         fake_owned_object_count_gauge_(),
@@ -138,14 +138,14 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   int64_t last_queue_warning_ = 0;
   FakeActorCreator actor_creator_;
   Clock clock_;
+  instrumented_io_context io_context;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskManagerInterface> task_manager_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
-  instrumented_io_context io_context;
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::unique_ptr<pubsub::FakePublisher> publisher_;
   std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;

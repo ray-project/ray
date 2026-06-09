@@ -33,6 +33,7 @@
 #include <google/protobuf/util/json_util.h>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
@@ -722,7 +723,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   if (options_.worker_type == WorkerType::DRIVER) {
     auto start_time = clock_.NowUnixMillis();
     worker_info.emplace("driver_id", worker_id.Binary());
-    worker_info.emplace("start_time", absl::StrFormat("%d", start_time));
+    worker_info.emplace("start_time", absl::StrCat(start_time));
     if (!options_.driver_name.empty()) {
       worker_info.emplace("name", options_.driver_name);
     }
