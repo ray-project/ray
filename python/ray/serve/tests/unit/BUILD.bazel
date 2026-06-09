@@ -11,7 +11,6 @@ py_test_run_all_subdirectory(
     include = glob(["test_*.py"]),
     exclude = [
         "test_haproxy_binary.py",
-        "test_locust_stats.py",
         "test_round_robin_router.py",
     ],
     extra_srcs = [],
@@ -26,20 +25,6 @@ py_test_run_all_subdirectory(
 py_test_module_list(
     size = "small",
     files = ["test_round_robin_router.py"],
-    tags = ["team:serve"],
-    deps = [
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-        "//python/ray/serve/tests:common",
-    ],
-)
-
-# Isolated because it imports locust (a serve-test-requirements dep, not in the
-# base unit-test env). LOCUST_SKIP_MONKEY_PATCH avoids gevent patching the stdlib.
-py_test_module_list(
-    size = "small",
-    env = {"LOCUST_SKIP_MONKEY_PATCH": "1"},
-    files = ["test_locust_stats.py"],
     tags = ["team:serve"],
     deps = [
         ":conftest",

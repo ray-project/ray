@@ -1,8 +1,6 @@
 anyio
 gradio
 httpx
-# Used by the locust benchmark harness; also imported by test_locust_stats.py.
-locust
 pymysql
 pytest
 pytest_asyncio
