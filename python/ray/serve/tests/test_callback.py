@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import sys
+from typing import Any, Dict, Generator
 
 import httpx
 import pytest
@@ -67,12 +68,17 @@ NOT_CALLABLE_OBJECT = 1
 
 
 @pytest.fixture()
-def ray_instance(request):
+def ray_instance(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
     """Starts and stops a Ray instance for this test.
 
     Args:
         request: request.param should contain a dictionary of env vars and
             their values. The Ray instance will be started with these env vars.
+
+    Yields:
+        Dict[str, Any]: The dict returned by ``ray.init`` for the started cluster.
     """
 
     original_env_vars = os.environ.copy()

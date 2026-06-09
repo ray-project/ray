@@ -1,3 +1,6 @@
+.. meta::
+    :description: Profiling guide for Ray contributors, including how to capture stack traces of C++ processes with gdb and analyze Ray's performance. Read this to diagnose high CPU usage, hangs, or bottlenecks in Ray internals.
+
 .. _ray-core-internal-profiling:
 
 Profiling for Ray Developers

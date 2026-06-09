@@ -2158,6 +2158,9 @@ class ReplicaStateContainer:
         Args:
             states: states to consider. If not specified, all replicas
                 are considered.
+
+        Returns:
+            The matching replicas, in the same order as ``states``.
         """
         if states is None:
             return list(self._replica_id_index.values())
@@ -2197,6 +2200,9 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
+
+        Returns:
+            The removed replicas, in the same order as ``states``.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -2240,6 +2246,9 @@ class ReplicaStateContainer:
                 all versions are considered.
             states: states to consider. If not specified, all replicas
                 are considered.
+
+        Returns:
+            The number of replicas matching the criteria.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -3398,7 +3407,6 @@ class DeploymentState:
             target_info: The info with which to set the target state.
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
-            status_trigger: The driver that triggered this change of state.
             updated_via_api: Whether the target state update was triggered via API.
         """
         new_target_state = DeploymentTargetState.create(
@@ -3433,6 +3441,9 @@ class DeploymentState:
         If the deployment already exists with the same version, config,
         target_capacity, and target_capacity_direction,
         this method returns False.
+
+        Args:
+            deployment_info: The target deployment info to apply.
 
         Returns:
             bool: Whether the target state has changed.
@@ -3609,7 +3620,9 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
-    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
+    def _stop_or_update_outdated_version_replicas(
+        self, max_to_stop: float = math.inf
+    ) -> bool:
         """Stop or update replicas with outdated versions.
 
         Stop replicas with versions that require the actor to be restarted, and
@@ -3622,6 +3635,9 @@ class DeploymentState:
         Args:
             max_to_stop: max number of replicas to stop, by default,
                          it stops all replicas with an outdated version.
+
+        Returns:
+            Whether any replicas were stopped or reconfigured.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -4129,15 +4145,19 @@ class DeploymentState:
         return False, any_replicas_recovering
 
     def _check_startup_replicas(
-        self, original_state: ReplicaState, stop_on_slow=False
+        self, original_state: ReplicaState, stop_on_slow: bool = False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
         """
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
 
         Args:
+            original_state: The state replicas are transitioning out of.
             stop_on_slow: If we consider a replica failed upon observing it's
                 slow to reach running state.
+
+        Returns:
+            The list of replicas considered slow, along with their startup status.
         """
         slow_replicas = []
         failed_gang_ids: Set[str] = set()
@@ -4821,6 +4841,9 @@ class DeploymentState:
             replicas: The current list of replicas pending migration.
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
+
+        Returns:
+            A tuple ``(replicas_to_stop, replicas_to_keep)``.
         """
         # Treat each replica as a group of one.
         groups = [[r] for r in replicas]
@@ -5376,6 +5399,13 @@ class DeploymentStateManager:
                     A: [A#zxc123, A#qwe234]
                     B: [B#xcv234]
                 }
+
+        Args:
+            all_current_actor_names: Actor names currently registered with Ray.
+
+        Returns:
+            A mapping from deployment ID to the list of replica actor names
+            associated with that deployment.
         """
         all_replica_names = [
             actor_name
@@ -5582,6 +5612,9 @@ class DeploymentStateManager:
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
+        Args:
+            id: The ID of the deployment to look up.
+
         Returns:
             DeploymentDetails: if the deployment is live.
             None: if the deployment is deleted.
@@ -5667,6 +5700,10 @@ class DeploymentStateManager:
 
         If the deployment already exists with the same version and config,
         this is a no-op and returns False.
+
+        Args:
+            deployment_id: The ID of the deployment to apply.
+            deployment_info: The target deployment info to apply.
 
         Returns:
             bool: Whether the target state has changed.
