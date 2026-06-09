@@ -1376,15 +1376,15 @@ class Algorithm(Checkpointable, Trainable):
     @PublicAPI
     def evaluate(
         self,
-        parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+        parallel_train_future: Optional[concurrent.futures.Future] = None,
     ) -> ResultDict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Args:
             parallel_train_future: In case, we are training and avaluating in parallel,
-                this arg carries the currently running ThreadPoolExecutor object that
-                runs the training iteration. Use `parallel_train_future.done()` to
-                check, whether the parallel training job has completed and
+                this arg carries the currently running ``concurrent.futures.Future``
+                that runs the training iteration. Use `parallel_train_future.done()`
+                to check, whether the parallel training job has completed and
                 `parallel_train_future.result()` to get its return values.
 
         Returns:
@@ -1603,18 +1603,18 @@ class Algorithm(Checkpointable, Trainable):
 
     def _evaluate_with_custom_eval_function(
         self,
-        parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+        parallel_train_future: Optional[concurrent.futures.Future] = None,
     ) -> Tuple[ResultDict, int, int]:
         """Runs the user-provided ``custom_evaluation_function``.
 
         Args:
             parallel_train_future: The currently running training
-                ``ThreadPoolExecutor``, when training and evaluation run in
-                parallel (``evaluation_duration="auto"``). Passed through to
-                the user function as a keyword argument only if its signature
-                accepts ``parallel_train_future`` (by name or via
-                ``**kwargs``); existing custom eval functions that do not
-                declare the parameter are unaffected.
+                ``concurrent.futures.Future``, when training and evaluation
+                run in parallel (``evaluation_duration="auto"``). Passed
+                through to the user function as a keyword argument only if
+                its signature accepts ``parallel_train_future`` (by name or
+                via ``**kwargs``); existing custom eval functions that do
+                not declare the parameter are unaffected.
         """
         logger.info(
             f"Evaluating current state of {self} using the custom eval function "
@@ -3923,15 +3923,15 @@ class Algorithm(Checkpointable, Trainable):
 
     def _run_one_evaluation(
         self,
-        parallel_train_future: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+        parallel_train_future: Optional[concurrent.futures.Future] = None,
     ) -> ResultDict:
         """Runs evaluation step via `self.evaluate()` and handling worker failures.
 
         Args:
             parallel_train_future: In case, we are training and avaluating in parallel,
-                this arg carries the currently running ThreadPoolExecutor object that
-                runs the training iteration. Use `parallel_train_future.done()` to
-                check, whether the parallel training job has completed and
+                this arg carries the currently running ``concurrent.futures.Future``
+                that runs the training iteration. Use `parallel_train_future.done()`
+                to check, whether the parallel training job has completed and
                 `parallel_train_future.result()` to get its return values.
 
         Returns:
