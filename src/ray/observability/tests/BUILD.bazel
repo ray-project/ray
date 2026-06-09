@@ -11,6 +11,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "metric_utils_test",
+    size = "small",
+    srcs = ["metric_utils_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:metric_utils",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_test(
     name = "ray_event_recorder_test",
     size = "small",
     srcs = ["ray_event_recorder_test.cc"],
