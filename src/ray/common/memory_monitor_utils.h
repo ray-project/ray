@@ -200,9 +200,14 @@ class MemoryMonitorUtils {
    * @brief Gets memory information for Linux OS.
    *
    * @param proc_dir The proc directory path to read the memory usage from.
+   * @param include_swap When true (default), fold /proc/meminfo Swap{Total,Free}
+   *        into the returned totals iff count_swap_in_memory_monitor is on.
+   *        The user-slice path passes false so that per-slice cgroup swap is
+   *        not double-counted against the host-level swap reported here.
    * @return The used and total memory in bytes for Linux OS.
    */
-  static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir);
+  static std::tuple<int64_t, int64_t> GetLinuxMemoryBytes(const std::string proc_dir,
+                                                          bool include_swap = true);
 
   /**
    * @brief Gets the used memory from the smap file.
@@ -281,6 +286,11 @@ class MemoryMonitorUtils {
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswAddedToTotalAndUsed);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswIgnoredWhenFlagDisabled);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupV1MemswFallsBackWhenUsageMissing);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceSwapAddedToTotalAndUsed);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceSwapIgnoredWhenFlagDisabled);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceUnlimitedSwapNotAddedToTotal);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceZeroSwapMaxIgnoresCurrent);
+  FRIEND_TEST(MemoryMonitorUtilsTest, TestUserSliceMissingSwapFiles);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
   FRIEND_TEST(MemoryMonitorUtilsTest, TestCgroupFilesValidNegativeWorkingSet);
