@@ -26,6 +26,10 @@ import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { HelpInfo } from "../../components/Tooltip";
 import { NodeDetail } from "../../type/node";
+import {
+  acceleratorColumnLabels,
+  getAcceleratorType,
+} from "../../util/accelerator";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
@@ -34,20 +38,7 @@ import { NodeRows } from "./NodeRow";
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
 };
-const acceleratorColumnLabels = {
-  gpu: {
-    utilization: "GPUs",
-    memory: "GRAM",
-  },
-  tpu: {
-    utilization: "TPUs",
-    memory: "HBM",
-  },
-  generic: {
-    utilization: "Accelerators",
-    memory: "Accelerator Memory",
-  },
-};
+
 const getColumns = (acceleratorType: keyof typeof acceleratorColumnLabels) => [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
@@ -263,14 +254,9 @@ const Nodes = () => {
     maxPage,
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
-  const accelerators: (keyof typeof acceleratorColumnLabels)[] = [];
-  if (nodeList.some((node) => node.gpus && node.gpus.length > 0)) {
-    accelerators.push("gpu");
-  }
-  if (nodeList.some((node) => node.tpus && node.tpus.length > 0)) {
-    accelerators.push("tpu");
-  }
-  const accelerator = accelerators.length !== 1 ? "generic" : accelerators[0];
+  const hasGpus = nodeList.some((node) => node.gpus && node.gpus.length > 0);
+  const hasTpus = nodeList.some((node) => node.tpus && node.tpus.length > 0);
+  const accelerator = getAcceleratorType(hasGpus, hasTpus);
 
   const columns = getColumns(accelerator);
 

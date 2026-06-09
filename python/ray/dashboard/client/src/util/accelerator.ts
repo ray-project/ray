@@ -23,6 +23,35 @@ export type UnifiedAcceleratorStat = {
   rawTpu?: TPUStats;
 };
 
+export const acceleratorColumnLabels = {
+  gpu: {
+    utilization: "GPUs",
+    memory: "GRAM",
+  },
+  tpu: {
+    utilization: "TPUs",
+    memory: "HBM",
+  },
+  generic: {
+    utilization: "Accelerators",
+    memory: "Accelerator Memory",
+  },
+};
+
+export const getAcceleratorType = (
+  hasGpus: boolean,
+  hasTpus: boolean,
+): keyof typeof acceleratorColumnLabels => {
+  const accelerators: (keyof typeof acceleratorColumnLabels)[] = [];
+  if (hasGpus) {
+    accelerators.push("gpu");
+  }
+  if (hasTpus) {
+    accelerators.push("tpu");
+  }
+  return accelerators.length !== 1 ? "generic" : accelerators[0];
+};
+
 export const normalizeAccelerators = (
   gpus?: GPUStats[],
   tpus?: TPUStats[],
