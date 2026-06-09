@@ -1,12 +1,10 @@
 import logging
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ray
 from ray.core.generated import autoscaler_pb2
-from ray.data._internal import cluster_autoscaler as ca_pkg
-from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
@@ -127,48 +125,6 @@ class TestClusterAutoscaling:
             ),
         ):
             assert _get_node_resource_spec_and_count() == expected
-
-    def test_get_node_resource_spec_and_count_filters_by_subcluster(self):
-        """Only nodes whose ``__subcluster__`` label matches contribute to
-        the counts. Prevents ``try_trigger_scaling`` from pulling shapes
-        and counts from foreign subclusters into a labeled requester's
-        active / pending bundles."""
-        node_table = [
-            {
-                "Resources": self._node_type1,
-                "Labels": {"__subcluster__": "training"},
-                "Alive": True,
-            },
-            {
-                "Resources": self._node_type1,
-                "Labels": {"__subcluster__": "training"},
-                "Alive": True,
-            },
-            {
-                "Resources": self._node_type2,
-                "Labels": {"__subcluster__": "validation"},
-                "Alive": True,
-            },
-            {
-                "Resources": self._node_type3,
-                "Labels": {},
-                "Alive": True,
-            },
-        ]
-        with (
-            patch("ray.nodes", return_value=node_table),
-            patch(
-                "ray._private.state.state.get_cluster_config",
-                return_value=None,
-            ),
-        ):
-            assert _get_node_resource_spec_and_count(subcluster="training") == {
-                _NodeResourceSpec.of(
-                    cpu=self._node_type1["CPU"],
-                    gpu=self._node_type1.get("GPU", 0),
-                    mem=self._node_type1["memory"],
-                ): 2,
-            }
 
     @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
     @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
@@ -774,57 +730,6 @@ class TestClusterAutoscaling:
         scaling_records = [r for r in caplog.records if "Requesting" in r.message]
         assert len(scaling_records) == 1
         assert scaling_records[0].levelno == logging.DEBUG
-
-
-def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
-    """``DefaultClusterAutoscalerV2`` forwards the DataContext's
-    ``label_selector`` to the ``DefaultAutoscalingCoordinator`` it
-    constructs."""
-    from ray.data._internal.cluster_autoscaler import default_cluster_autoscaler_v2
-
-    captured = {}
-
-    class _StubProxy:
-        def __init__(self, *args, **kwargs):
-            captured.update(kwargs)
-
-        def request_resources(self, *args, **kwargs):
-            pass
-
-    monkeypatch.setattr(
-        default_cluster_autoscaler_v2, "DefaultAutoscalingCoordinator", _StubProxy
-    )
-    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
-        DefaultClusterAutoscalerV2(
-            resource_manager=Mock(),
-            execution_id="exec-1",
-            label_selector={"__subcluster__": "training"},
-        )
-    assert captured["subcluster_selector"] == {"__subcluster__": "training"}
-
-
-def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
-    """The factory reads ``label_selector`` from ``execution_options`` and
-    forwards it to ``DefaultClusterAutoscalerV2``."""
-    captured = {}
-
-    class _StubV2:
-        def __init__(self, *args, **kwargs):
-            captured.update(kwargs)
-
-    monkeypatch.setattr(ca_pkg, "DefaultClusterAutoscalerV2", _StubV2)
-
-    data_context = Mock()
-    data_context.execution_options.resource_limits = Mock()
-    data_context.execution_options.label_selector = {"__subcluster__": "training"}
-
-    create_cluster_autoscaler(
-        topology=Mock(),
-        resource_manager=Mock(),
-        data_context=data_context,
-        execution_id="exec-1",
-    )
-    assert captured["label_selector"] == {"__subcluster__": "training"}
 
 
 if __name__ == "__main__":

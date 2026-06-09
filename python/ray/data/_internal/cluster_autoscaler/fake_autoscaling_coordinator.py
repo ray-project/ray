@@ -51,7 +51,6 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
         label_selectors: Optional[List[Dict[str, str]]] = None,
-        subcluster_selector: Optional[Dict[str, str]] = None,
     ) -> None:
         if priority != ResourceRequestPriority.MEDIUM:
             raise NotImplementedError(
