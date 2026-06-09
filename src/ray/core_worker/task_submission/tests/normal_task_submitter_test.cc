@@ -475,9 +475,6 @@ class NormalTaskSubmitterTest : public testing::Test {
           raylet_client_factory = nullptr,
       std::shared_ptr<CoreWorkerMemoryStore> custom_memory_store = nullptr,
       int64_t lease_timeout_ms = kLongTimeout) {
-    if (custom_memory_store != nullptr) {
-      store = custom_memory_store;
-    }
     if (raylet_client_factory == nullptr) {
       raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
           [this](const rpc::Address &) { return this->raylet_client; });
@@ -500,7 +497,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client_pool,
         mock_gcs_client_,
         std::move(lease_policy),
-        store,
+        // Use the caller-provided store if given, otherwise fall back to the fixture's store.
+        custom_memory_store != nullptr ? custom_memory_store : store,
         *task_manager,
         local_node_id,
         worker_type,
