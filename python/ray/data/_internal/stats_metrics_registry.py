@@ -29,6 +29,7 @@ _METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
 _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
 _METRIC_FIELD_METRICS_TYPE_KEY = "__metric_metrics_type"
 _METRIC_FIELD_METRICS_ARGS_KEY = "__metric_metrics_args"
+_METRIC_FIELD_INTERNAL_ONLY_KEY = "__metric_internal_only"
 _METRIC_FIELD_SOURCE_KEY_KEY = "__metric_source_key"
 _METRIC_FIELD_PROMETHEUS_NAME_KEY = "__metric_prometheus_name"
 _METRIC_FIELD_TAG_KEYS_KEY = "__metric_tag_keys"
@@ -175,6 +176,7 @@ def metric_field(
     metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
     metadata[_METRIC_FIELD_METRICS_TYPE_KEY] = metrics_type
     metadata[_METRIC_FIELD_METRICS_ARGS_KEY] = metrics_args or {}
+    metadata[_METRIC_FIELD_INTERNAL_ONLY_KEY] = internal_only
     metadata[_METRIC_FIELD_SOURCE_KEY_KEY] = source_key
     metadata[_METRIC_FIELD_PROMETHEUS_NAME_KEY] = prometheus_name
     metadata[_METRIC_FIELD_TAG_KEYS_KEY] = tag_keys
@@ -242,6 +244,7 @@ class OpRuntimesMetricsMeta(type):
                     metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
                     metrics_type=value.metadata[_METRIC_FIELD_METRICS_TYPE_KEY],
                     metrics_args=value.metadata[_METRIC_FIELD_METRICS_ARGS_KEY],
+                    internal_only=value.metadata[_METRIC_FIELD_INTERNAL_ONLY_KEY],
                     source_key=value.metadata[_METRIC_FIELD_SOURCE_KEY_KEY],
                     prometheus_name=value.metadata[_METRIC_FIELD_PROMETHEUS_NAME_KEY],
                     tag_keys=value.metadata[_METRIC_FIELD_TAG_KEYS_KEY],
