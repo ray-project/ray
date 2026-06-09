@@ -1764,6 +1764,35 @@ def test_backfill_missing_fields_non_struct_input_raises():
         )
 
 
+def test_backfill_missing_fields_null_input_returns_null_struct():
+    """A pa.null()-typed column must be backfilled as a null struct, not rejected.
+
+    Real-world Ray Data blocks can have a nested field whose values are all
+    null in a given block; PyArrow then infers that field's type as
+    ``pa.null()``. When aligning such a block to a unified schema where the
+    field is a struct, ``_backfill_missing_fields`` is recursively invoked on
+    the null child. The right behavior is to materialize a null struct of
+    the target type, not raise.
+    """
+    unified_struct_type = pa.struct(
+        [
+            pa.field("a", pa.int64(), nullable=True),
+            pa.field("b", pa.string(), nullable=True),
+        ]
+    )
+    null_column = pa.nulls(3, type=pa.null())
+
+    result = _backfill_missing_fields(
+        column=null_column,
+        unified_struct_type=unified_struct_type,
+        block_length=3,
+    )
+
+    assert result.type == unified_struct_type
+    assert len(result) == 3
+    assert result.to_pylist() == [None, None, None]
+
+
 def test_align_struct_fields_non_struct_nested_field_raises():
     """Regression test for #61656 via the recursive path.
 
