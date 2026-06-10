@@ -733,12 +733,16 @@ class MultiRLModuleSpec:
     def from_dict(cls, d) -> "MultiRLModuleSpec":
         """Creates a MultiRLModuleSpec from a dictionary."""
         raw_specs = d.get("rl_module_specs", d.get("module_specs"))
-        # ``RLModuleSpec.to_dict()`` always includes a ``module_class`` key
-        # (see ``RLModuleSpec.to_dict``). A dict-of-specs form maps ModuleID
-        # -> spec dict and therefore does not have ``module_class`` at the
-        # top level. Use the presence of that key to round-trip the single
-        # shared-spec form (#63616).
-        if isinstance(raw_specs, dict) and "module_class" in raw_specs:
+        # Discriminate single shared-spec vs per-module dict by VALUE type,
+        # not just key presence: ``RLModuleSpec.to_dict()`` writes
+        # ``"module_class": <serialized string>``, while a per-module dict
+        # ``{module_id: spec_dict}`` containing a module_id literally named
+        # ``"module_class"`` would also have that key but with a dict value
+        # (the nested spec). Checking ``isinstance(..., str)`` avoids that
+        # collision (#63616).
+        if isinstance(raw_specs, dict) and isinstance(
+            raw_specs.get("module_class"), str
+        ):
             rl_module_specs = RLModuleSpec.from_dict(raw_specs)
         else:
             rl_module_specs = {
@@ -774,8 +778,16 @@ class MultiRLModuleSpec:
             # `inference_only=False`.
             if not other.inference_only:
                 self.inference_only = False
-            for mid, spec in self.rl_module_specs.items():
-                self.rl_module_specs[mid].update(other, override=False)
+            if isinstance(self.rl_module_specs, RLModuleSpec):
+                # Shared single spec: update the shared spec in place so the
+                # update applies to every module_id. This is the path
+                # ``AlgorithmConfig._compute_rl_module_spec`` takes when
+                # merging the user-provided shared spec with the algorithm's
+                # default RLModuleSpec (#63616).
+                self.rl_module_specs.update(other, override=False)
+            else:
+                for mid, spec in self.rl_module_specs.items():
+                    self.rl_module_specs[mid].update(other, override=False)
         elif isinstance(other.module_specs, dict):
             self.add_modules(other.rl_module_specs, override=override)
         else:

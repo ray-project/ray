@@ -327,6 +327,65 @@ class TestMultiRLModuleSpecSingleSpec(unittest.TestCase):
         self.assertIs(multi_spec["player1"], shared_spec)
         self.assertIs(multi_spec["player2"], shared_spec)
 
+    def test_single_shared_spec_survives_update_with_rl_module_spec(self):
+        """``MultiRLModuleSpec.update(other_RLModuleSpec)`` must not crash on
+        a single-spec form.
+
+        ``AlgorithmConfig._compute_rl_module_spec`` merges the user-provided
+        spec with the algorithm's default ``RLModuleSpec`` via this exact
+        path, so a single-spec ``MultiRLModuleSpec`` from the docs example
+        would otherwise crash at config-merge time even after the
+        construction fix.
+        """
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            inference_only=True,
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+
+        other = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            inference_only=False,
+        )
+        # Must not raise (was crashing with
+        # ``AttributeError: 'RLModuleSpec' object has no attribute 'items'``).
+        multi_spec.update(other)
+
+        # And the shared-spec ``inference_only`` flag must follow the
+        # ``other`` spec's ``inference_only=False``.
+        self.assertFalse(multi_spec.inference_only)
+
+    def test_from_dict_does_not_misread_module_class_module_id(self):
+        """A per-module dict with a ModuleID literally named "module_class"
+        must NOT be misclassified as the single-spec form.
+
+        The discriminator is the *value type* at the "module_class" key:
+        ``RLModuleSpec.to_dict()`` writes a serialized type *string*,
+        whereas a per-module dict ``{"module_class": <spec_dict>, ...}``
+        carries a *dict* at that key.
+        """
+        per_module_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+        )
+        multi_spec = MultiRLModuleSpec(
+            rl_module_specs={"module_class": per_module_spec},
+        )
+        serialized = multi_spec.to_dict()
+        # The per-module form puts a dict at the "module_class" key.
+        self.assertIsInstance(serialized["rl_module_specs"]["module_class"], dict)
+
+        restored = MultiRLModuleSpec.from_dict(serialized)
+        # Must round-trip as a dict-of-specs, NOT as a single shared spec.
+        self.assertIsInstance(restored.rl_module_specs, dict)
+        self.assertIn("module_class", restored.rl_module_specs)
+        self.assertIsInstance(restored.rl_module_specs["module_class"], RLModuleSpec)
+
     def test_single_shared_spec_round_trips_through_to_dict_from_dict(self):
         """``to_dict``/``from_dict`` must round-trip the single shared-spec form.
 
