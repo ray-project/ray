@@ -156,7 +156,7 @@ def metric_field(
     description: str,
     metrics_group: str,
     metrics_type: MetricsType = MetricsType.Gauge,
-    metrics_args: Dict[str, Any] = None,
+    metrics_args: Optional[Dict[str, Any]] = None,
     internal_only: bool = False,  # do not expose this metric to the user
     source_key: Optional[str] = None,
     prometheus_name: Optional[str] = None,
@@ -189,7 +189,7 @@ def metric_property(
     description: str,
     metrics_group: str,
     metrics_type: MetricsType = MetricsType.Gauge,
-    metrics_args: Dict[str, Any] = None,
+    metrics_args: Optional[Dict[str, Any]] = None,
     internal_only: bool = False,  # do not expose this metric to the user
     source_key: Optional[str] = None,
     prometheus_name: Optional[str] = None,
