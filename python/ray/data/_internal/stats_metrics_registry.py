@@ -21,6 +21,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Default namespace for metrics declared on ``OpRuntimeMetrics``.
 _OP_RUNTIME_NAMESPACE = "op_runtime"
+# Overview gauges that re-publish existing op-runtime values under friendlier
+# names (e.g. ``data_spilled_bytes`` <- ``obj_store_mem_spilled``).
+_OVERVIEW_NAMESPACE = "overview"
+# Per-iteration timing/locality gauges, tagged by dataset only.
+_ITERATION_NAMESPACE = "iteration"
+# Dataset- and operator-level metadata gauges (heterogeneous tag keys).
+_DATASET_METADATA_NAMESPACE = "dataset_metadata"
 
 # A metadata key used to mark a dataclass field as a metric.
 _IS_FIELD_METRIC_KEY = "__is_metric"
@@ -138,6 +145,9 @@ class MetricsRegistry:
             namespace: If given, return only that namespace's definitions (in
                 registration order). Otherwise return all definitions across
                 namespaces.
+
+        Returns:
+            The registered :class:`MetricDefinition` objects.
         """
         if namespace is not None:
             return list(self._by_namespace.get(namespace, []))

@@ -43,8 +43,13 @@ from ray.data._internal.metadata_exporter import (
     get_dataset_metadata_exporter,
 )
 from ray.data._internal.stats_metrics_registry import (
+    _DATASET_METADATA_NAMESPACE,
+    _ITERATION_NAMESPACE,
     _OP_RUNTIME_NAMESPACE,
+    _OVERVIEW_NAMESPACE,
     GLOBAL_METRICS_REGISTRY,
+    MetricDefinition,
+    MetricsGroup,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockStats
@@ -319,6 +324,238 @@ class _DatasetStatsBuilder:
         return stats
 
 
+# === Dashboard metric declarations ===========================================
+# Each block below is a single source of truth: the same table drives both
+# registration (one Prometheus primitive per row, created in _StatsActor) and
+# value extraction (the _*_values helpers), so a metric's name cannot drift
+# between the two. Prometheus names/tag keys are a public contract; keep them
+# byte-identical. These are gauges because a dataset's metrics reset to 0 when
+# it finishes. Registration runs at import, before _StatsActor.__init__.
+
+# Prometheus label keys shared by the namespaces below.
+_OP_TAG_KEYS = ("dataset", "operator")
+_ITER_TAG_KEYS = ("dataset",)
+_DATASET_META_TAG_KEYS = ("dataset", "job_id", "start_time")
+
+
+def _gauge(
+    name: str,
+    description: str,
+    *,
+    prometheus_name: Optional[str] = None,
+    tag_keys: Tuple[str, ...] = (),
+) -> MetricDefinition:
+    """Build a Gauge ``MetricDefinition`` (the only primitive these blocks use)."""
+    return MetricDefinition(
+        name=name,
+        description=description,
+        metrics_group=MetricsGroup.MISC,
+        metrics_type=MetricsType.Gauge,
+        metrics_args={},
+        prometheus_name=prometheus_name,
+        tag_keys=tag_keys,
+    )
+
+
+# Overview: 1->1 renames of existing OpRuntimeMetrics values, tagged by
+# operator. Default prometheus_name (data_{name}) matches the published series;
+# the value is read from the op record dict under ``source_key``.
+# (registry name, op-record source key, description)
+_OVERVIEW_METRICS = [
+    (
+        "spilled_bytes",
+        "obj_store_mem_spilled",
+        """Bytes spilled by dataset operators.
+                DataContext.enable_get_object_locations_for_metrics
+                must be set to True to report this metric""",
+    ),
+    ("freed_bytes", "obj_store_mem_freed", "Bytes freed by dataset operators"),
+    (
+        "current_bytes",
+        "obj_store_mem_used",
+        "Bytes currently in memory store used by dataset operators",
+    ),
+    ("cpu_usage_cores", "cpu_usage", "CPUs allocated to dataset operators"),
+    ("gpu_usage_cores", "gpu_usage", "GPUs allocated to dataset operators"),
+    (
+        "output_bytes",
+        "bytes_task_outputs_generated",
+        "Bytes outputted by dataset operators",
+    ),
+    ("output_rows", "row_outputs_taken", "Rows outputted by dataset operators"),
+]
+
+
+def _overview_values(op_record: Dict[str, Any]) -> Dict[str, Union[int, float]]:
+    """Remap an operator's ``OpRuntimeMetrics.as_dict()`` record to overview names."""
+    return {name: op_record.get(src, 0) for name, src, _desc in _OVERVIEW_METRICS}
+
+
+# Iteration: tagged by dataset. The registry name equals the ``DatasetStats``
+# attribute; prometheus_name is explicit because the published series use a
+# ``_seconds`` suffix (and ``iter_`` prefix) the attribute name lacks.
+# (DatasetStats attr == registry name, prometheus_name, description)
+_ITERATION_METRICS = [
+    (
+        "iter_time_to_first_batch_s",
+        "data_iter_time_to_first_batch_seconds",
+        "Total time spent waiting for the first batch after starting iteration. "
+        "This includes the dataset pipeline warmup time. This metric is "
+        "accumulated across different epochs.",
+    ),
+    (
+        "iter_total_blocked_s",
+        "data_iter_total_blocked_seconds",
+        "Seconds user thread is blocked by iter_batches()",
+    ),
+    ("iter_user_s", "data_iter_user_seconds", "Seconds spent in user code"),
+    (
+        "iter_initialize_s",
+        "data_iter_initialize_seconds",
+        "Seconds spent in iterator initialization code",
+    ),
+    (
+        "iter_get_ref_bundles_s",
+        "data_iter_get_ref_bundles_seconds",
+        "Seconds spent getting RefBundles from the dataset iterator",
+    ),
+    (
+        "iter_get_s",
+        "data_iter_get_seconds",
+        "Seconds spent in ray.get() while resolving block references",
+    ),
+    (
+        "iter_next_batch_s",
+        "data_iter_next_batch_seconds",
+        "Seconds spent getting the next batch from the block buffer",
+    ),
+    (
+        "iter_format_batch_s",
+        "data_iter_format_batch_seconds",
+        "Seconds spent formatting the batch",
+    ),
+    (
+        "iter_collate_batch_s",
+        "data_iter_collate_batch_seconds",
+        "Seconds spent collating the batch",
+    ),
+    (
+        "iter_finalize_batch_s",
+        "data_iter_finalize_batch_seconds",
+        "Seconds spent finalizing the batch",
+    ),
+    (
+        "iter_blocks_local",
+        "data_iter_blocks_local",
+        "Number of blocks already on the local node",
+    ),
+    (
+        "iter_blocks_remote",
+        "data_iter_blocks_remote",
+        "Number of blocks that require fetching from another node",
+    ),
+    (
+        "iter_unknown_location",
+        "data_iter_unknown_location",
+        "Number of blocks that have unknown locations",
+    ),
+    (
+        "iter_prefetched_bytes",
+        "data_iter_prefetched_bytes",
+        "Current bytes of prefetched blocks in the iterator",
+    ),
+]
+
+
+def _iteration_values_from_stats(
+    stats: "DatasetStats",
+) -> Dict[str, Union[int, float]]:
+    """Read each iteration value once from a ``DatasetStats``, keyed by name.
+
+    Timer fields expose ``.get()``; locality/byte counts are plain scalars.
+    """
+    values = {}
+    for attr, _prom, _desc in _ITERATION_METRICS:
+        value = getattr(stats, attr)
+        values[attr] = value.get() if isinstance(value, Timer) else value
+    return values
+
+
+def _state_value(state_dict: Dict[str, Any]) -> int:
+    """Map a dataset/operator state dict to its ``DatasetState`` enum value."""
+    state_string = state_dict.get("state", DatasetState.UNKNOWN.name)
+    return DatasetState.from_string(state_string).value
+
+
+# Dataset/operator metadata. The two groups carry different tag keys; default
+# prometheus_name matches the published data_dataset_* / data_operator_* series.
+# (registry name, description, value getter over the state dict)
+_DATASET_METADATA_METRICS = [
+    (
+        "dataset_estimated_total_blocks",
+        "Total work units in blocks for dataset",
+        _DATASET_META_TAG_KEYS,
+        lambda st: st.get("total", 0),
+    ),
+    (
+        "dataset_estimated_total_rows",
+        "Total work units in rows for dataset",
+        _DATASET_META_TAG_KEYS,
+        lambda st: st.get("total_rows", 0),
+    ),
+    ("dataset_state", None, _DATASET_META_TAG_KEYS, _state_value),
+    (
+        "operator_estimated_total_blocks",
+        "Total work units in blocks for operator",
+        _OP_TAG_KEYS,
+        lambda st: st.get("total", 0),
+    ),
+    (
+        "operator_estimated_total_rows",
+        "Total work units in rows for operator",
+        _OP_TAG_KEYS,
+        lambda st: st.get("total_rows", 0),
+    ),
+    (
+        "operator_queued_blocks",
+        "Number of queued blocks for operator",
+        _OP_TAG_KEYS,
+        lambda st: st.get("queued_blocks", 0),
+    ),
+    ("operator_state", None, _OP_TAG_KEYS, _state_value),
+]
+
+
+def _register_dashboard_metrics() -> None:
+    """Register the overview/iteration/metadata definitions into the registry."""
+    for name, _src, description in _OVERVIEW_METRICS:
+        GLOBAL_METRICS_REGISTRY.register(
+            _OVERVIEW_NAMESPACE, _gauge(name, description, tag_keys=_OP_TAG_KEYS)
+        )
+    for name, prometheus_name, description in _ITERATION_METRICS:
+        GLOBAL_METRICS_REGISTRY.register(
+            _ITERATION_NAMESPACE,
+            _gauge(
+                name,
+                description,
+                prometheus_name=prometheus_name,
+                tag_keys=_ITER_TAG_KEYS,
+            ),
+        )
+    states = ", ".join(f"{s.value}={s.name}" for s in DatasetState)
+    for name, description, tag_keys, _getter in _DATASET_METADATA_METRICS:
+        if name == "dataset_state":
+            description = f"State of dataset ({states})"
+        elif name == "operator_state":
+            description = f"State of operator ({states})"
+        GLOBAL_METRICS_REGISTRY.register(
+            _DATASET_METADATA_NAMESPACE, _gauge(name, description, tag_keys=tag_keys)
+        )
+
+
+_register_dashboard_metrics()
+
+
 @ray.remote(num_cpus=0)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
@@ -354,218 +591,39 @@ class _StatsActor:
         # efficiently evict the oldest finished datasets when max_stats is reached.
         self.finished_datasets_queue = collections.deque()
 
-        # Ray Data dashboard metrics
-        # Everything is a gauge because we need to reset all of
-        # a dataset's metrics to 0 after each finishes execution.
-        op_tags_keys = ("dataset", "operator")
-
-        # TODO(scottjlee): move these overvie metrics as fields in a
-        # separate dataclass, similar to OpRuntimeMetrics.
-        self.spilled_bytes = Gauge(
-            "data_spilled_bytes",
-            description="""Bytes spilled by dataset operators.
-                DataContext.enable_get_object_locations_for_metrics
-                must be set to True to report this metric""",
-            tag_keys=op_tags_keys,
-        )
-        self.freed_bytes = Gauge(
-            "data_freed_bytes",
-            description="Bytes freed by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.current_bytes = Gauge(
-            "data_current_bytes",
-            description="Bytes currently in memory store used by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.cpu_usage_cores = Gauge(
-            "data_cpu_usage_cores",
-            description="CPUs allocated to dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.gpu_usage_cores = Gauge(
-            "data_gpu_usage_cores",
-            description="GPUs allocated to dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.output_bytes = Gauge(
-            "data_output_bytes",
-            description="Bytes outputted by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-        self.output_rows = Gauge(
-            "data_output_rows",
-            description="Rows outputted by dataset operators",
-            tag_keys=op_tags_keys,
-        )
-
-        # === Metrics from OpRuntimeMetrics ===
-        # All operator-scoped metrics declared via the registry are created in
-        # one pass, keyed by namespace -> {metric_name: Metric}
-        self._prom_metrics: Dict[str, Dict[str, Metric]] = {
-            _OP_RUNTIME_NAMESPACE: self._create_prometheus_metrics(
-                _OP_RUNTIME_NAMESPACE, default_tag_keys=op_tags_keys
+        # Ray Data dashboard metrics. Every metric is declared in the registry
+        # (see the _register_dashboard_metrics module function and
+        # OpRuntimeMetrics); build one Prometheus primitive per definition,
+        # keyed by namespace -> {metric_name: Metric}.
+        self._prom_metrics: Dict[str, Dict[str, Metric]] = {}
+        for namespace, default_tag_keys in (
+            (_OP_RUNTIME_NAMESPACE, _OP_TAG_KEYS),
+            (_OVERVIEW_NAMESPACE, _OP_TAG_KEYS),
+            (_ITERATION_NAMESPACE, _ITER_TAG_KEYS),
+            (_DATASET_METADATA_NAMESPACE, ()),
+        ):
+            self._prom_metrics[namespace] = self._create_prometheus_metrics(
+                namespace, default_tag_keys=default_tag_keys
             )
-        }
 
-        # Per Node metrics
+        # Per Node metrics (not registry-driven; keyed by NodeMetrics fields).
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
-
-        iter_tag_keys = ("dataset",)
-
-        self.time_to_first_batch_s = Gauge(
-            "data_iter_time_to_first_batch_seconds",
-            description="Total time spent waiting for the first batch after starting iteration. "
-            "This includes the dataset pipeline warmup time. This metric is accumulated across different epochs.",
-            tag_keys=iter_tag_keys,
-        )
-
-        self.iter_block_fetching_s = Gauge(
-            "data_iter_block_fetching_seconds",
-            description="Seconds taken to fetch (with ray.get) blocks by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_batch_shaping_s = Gauge(
-            "data_iter_batch_shaping_seconds",
-            description="Seconds taken to shape batch from incoming blocks by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_batch_formatting_s = Gauge(
-            "data_iter_batch_formatting_seconds",
-            description="Seconds taken to format batches by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_batch_collating_s = Gauge(
-            "data_iter_batch_collating_seconds",
-            description="Seconds taken to collate batches by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_batch_finalizing_s = Gauge(
-            "data_iter_batch_finalizing_seconds",
-            description="Seconds taken to collate batches by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
-
-        self.iter_total_blocked_s = Gauge(
-            "data_iter_total_blocked_seconds",
-            description="Seconds user thread is blocked by iter_batches()",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_user_s = Gauge(
-            "data_iter_user_seconds",
-            description="Seconds spent in user code",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_initialize_s = Gauge(
-            "data_iter_initialize_seconds",
-            description="Seconds spent in iterator initialization code",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_get_ref_bundles_s = Gauge(
-            "data_iter_get_ref_bundles_seconds",
-            description="Seconds spent getting RefBundles from the dataset iterator",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_get_s = Gauge(
-            "data_iter_get_seconds",
-            description="Seconds spent in ray.get() while resolving block references",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_next_batch_s = Gauge(
-            "data_iter_next_batch_seconds",
-            description="Seconds spent getting the next batch from the block buffer",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_format_batch_s = Gauge(
-            "data_iter_format_batch_seconds",
-            description="Seconds spent formatting the batch",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_collate_batch_s = Gauge(
-            "data_iter_collate_batch_seconds",
-            description="Seconds spent collating the batch",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_finalize_batch_s = Gauge(
-            "data_iter_finalize_batch_seconds",
-            description="Seconds spent finalizing the batch",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocks_local = Gauge(
-            "data_iter_blocks_local",
-            description="Number of blocks already on the local node",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_blocks_remote = Gauge(
-            "data_iter_blocks_remote",
-            description="Number of blocks that require fetching from another node",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_unknown_location = Gauge(
-            "data_iter_unknown_location",
-            description="Number of blocks that have unknown locations",
-            tag_keys=iter_tag_keys,
-        )
-        self.iter_prefetched_bytes = Gauge(
-            "data_iter_prefetched_bytes",
-            description="Current bytes of prefetched blocks in the iterator",
-            tag_keys=iter_tag_keys,
-        )
-
-        # === Dataset and Operator Metadata Metrics ===
-        dataset_tags = ("dataset", "job_id", "start_time")
-        self.data_dataset_estimated_total_blocks = Gauge(
-            "data_dataset_estimated_total_blocks",
-            description="Total work units in blocks for dataset",
-            tag_keys=dataset_tags,
-        )
-        self.data_dataset_estimated_total_rows = Gauge(
-            "data_dataset_estimated_total_rows",
-            description="Total work units in rows for dataset",
-            tag_keys=dataset_tags,
-        )
-        self.data_dataset_state = Gauge(
-            "data_dataset_state",
-            description=f"State of dataset ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
-            tag_keys=dataset_tags,
-        )
-
-        operator_tags = ("dataset", "operator")
-        self.data_operator_estimated_total_blocks = Gauge(
-            "data_operator_estimated_total_blocks",
-            description="Total work units in blocks for operator",
-            tag_keys=operator_tags,
-        )
-        self.data_operator_estimated_total_rows = Gauge(
-            "data_operator_estimated_total_rows",
-            description="Total work units in rows for operator",
-            tag_keys=operator_tags,
-        )
-        self.data_operator_queued_blocks = Gauge(
-            "data_operator_queued_blocks",
-            description="Number of queued blocks for operator",
-            tag_keys=operator_tags,
-        )
-        self.data_operator_state = Gauge(
-            "data_operator_state",
-            description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
-            tag_keys=operator_tags,
-        )
 
     def _create_prometheus_metrics(
         self, namespace: str, default_tag_keys: Tuple[str, ...]
     ) -> Dict[str, Metric]:
         """Build the Prometheus primitives for one registry namespace.
 
-        Returns a ``{metric_name: Metric}`` dict with one Gauge/Counter/Histogram
-        per registered metric definition (``Unsupported`` types are skipped). The dict
-        key is the metric's ``name``, and the value is the Prometheus primitive.
-
         Args:
             namespace: Registry namespace to build primitives for (e.g.
                 ``"op_runtime"``).
             default_tag_keys: Prometheus label keys applied to any definition
                 that does not declare its own ``tag_keys``.
+
+        Returns:
+            A ``{metric_name: Metric}`` dict with one Gauge/Counter/Histogram per
+            registered metric definition (``Unsupported`` types are skipped). The
+            dict key is the metric's ``name``, the value the Prometheus primitive.
         """
         metrics = {}
         for metric in GLOBAL_METRICS_REGISTRY.definitions(namespace):
@@ -610,6 +668,36 @@ class _StatsActor:
         self.next_dataset_id += 1
         return dataset_id
 
+    def _record_metric(
+        self,
+        prom_metric: Metric,
+        value: Union[int, float, List[int]],
+        tags: Optional[Dict[str, str]] = None,
+    ) -> None:
+        if isinstance(prom_metric, Gauge):
+            prom_metric.set(value, tags)
+        elif isinstance(prom_metric, Counter):
+            prom_metric.inc(value, tags)
+        elif isinstance(prom_metric, Histogram):
+            if isinstance(value, RuntimeMetricsHistogram):
+                value.export_to(prom_metric, tags)
+
+    def _record_values(
+        self,
+        namespace: str,
+        values: Dict[str, Union[int, float]],
+        tags: Dict[str, str],
+    ) -> None:
+        """Record a caller-built ``{metric_name: value}`` group for ``namespace``.
+
+        ``tags`` is built once per group and reused. Only names present in
+        ``values`` are recorded, so a single namespace can hold metrics with
+        different tag sets (e.g. dataset- vs operator-tagged metadata).
+        """
+        prom_metrics = self._prom_metrics[namespace]
+        for name, value in values.items():
+            self._record_metric(prom_metrics[name], value, tags)
+
     def update_execution_metrics(
         self,
         dataset_tag: str,
@@ -618,33 +706,14 @@ class _StatsActor:
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, int | float]]] = None,
     ):
-        def _record(
-            prom_metric: Metric,
-            value: Union[int, float, List[int]],
-            tags: Dict[str, str] = None,
-        ):
-            if isinstance(prom_metric, Gauge):
-                prom_metric.set(value, tags)
-            elif isinstance(prom_metric, Counter):
-                prom_metric.inc(value, tags)
-            elif isinstance(prom_metric, Histogram):
-                if isinstance(value, RuntimeMetricsHistogram):
-                    value.export_to(prom_metric, tags)
-
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
-            self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)
-            self.freed_bytes.set(stats.get("obj_store_mem_freed", 0), tags)
-            self.current_bytes.set(stats.get("obj_store_mem_used", 0), tags)
-            self.output_bytes.set(stats.get("bytes_task_outputs_generated", 0), tags)
-            self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
-            self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
-            self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
+            self._record_values(_OVERVIEW_NAMESPACE, _overview_values(stats), tags)
             for field_name, prom_metric in self._prom_metrics[
                 _OP_RUNTIME_NAMESPACE
             ].items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                self._record_metric(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
         # by the _data_context.enable_per_node_metrics flag in the streaming executor but
@@ -663,7 +732,7 @@ class _StatsActor:
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
-                    _record(prom_metric, metric_value, tags)
+                    self._record_metric(prom_metric, metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -683,29 +752,9 @@ class _StatsActor:
         dataset_tag,
     ):
         tags = self._create_tags(dataset_tag)
-
-        self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
-        self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
-        self.iter_get_s.set(stats.iter_get_s.get(), tags)
-        self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
-        self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
-        self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
-        self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
-        self.iter_blocks_local.set(stats.iter_blocks_local, tags)
-        self.iter_blocks_remote.set(stats.iter_blocks_remote, tags)
-        self.iter_unknown_location.set(stats.iter_unknown_location, tags)
-        self.iter_prefetched_bytes.set(stats.iter_prefetched_bytes, tags)
-
-        self.iter_block_fetching_s.set(stats.iter_get_s.get(), tags)
-        self.iter_batch_shaping_s.set(stats.iter_next_batch_s.get(), tags)
-        self.iter_batch_formatting_s.set(stats.iter_format_batch_s.get(), tags)
-        self.iter_batch_collating_s.set(stats.iter_collate_batch_s.get(), tags)
-        self.iter_batch_finalizing_s.set(stats.iter_finalize_batch_s.get(), tags)
-
-        self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
-
-        self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
-        self.iter_user_s.set(stats.iter_user_s.get(), tags)
+        self._record_values(
+            _ITERATION_NAMESPACE, _iteration_values_from_stats(stats), tags
+        )
 
     def register_dataset(
         self,
@@ -762,15 +811,13 @@ class _StatsActor:
             "job_id": job_id,
             "start_time": start_time,
         }
-        self.data_dataset_estimated_total_blocks.set(
-            state.get("total", 0), dataset_tags
-        )
-        self.data_dataset_estimated_total_rows.set(
-            state.get("total_rows", 0), dataset_tags
-        )
+        dataset_values = {
+            name: getter(state)
+            for name, _desc, tag_keys, getter in _DATASET_METADATA_METRICS
+            if tag_keys == _DATASET_META_TAG_KEYS
+        }
+        self._record_values(_DATASET_METADATA_NAMESPACE, dataset_values, dataset_tags)
         state_string = state.get("state", DatasetState.UNKNOWN.name)
-        state_enum = DatasetState.from_string(state_string)
-        self.data_dataset_state.set(state_enum.value, dataset_tags)
         self.update_dataset_metadata_state(dataset_tag, state_string)
 
         # Update operator-level metrics
@@ -780,21 +827,15 @@ class _StatsActor:
                 "dataset": dataset_tag,
                 "operator": operator,
             }
-            self.data_operator_estimated_total_blocks.set(
-                op_state.get("total", 0), operator_tags
+            operator_values = {
+                name: getter(op_state)
+                for name, _desc, tag_keys, getter in _DATASET_METADATA_METRICS
+                if tag_keys == _OP_TAG_KEYS
+            }
+            self._record_values(
+                _DATASET_METADATA_NAMESPACE, operator_values, operator_tags
             )
-            self.data_operator_estimated_total_rows.set(
-                op_state.get("total_rows", 0), operator_tags
-            )
-            self.data_operator_queued_blocks.set(
-                op_state.get("queued_blocks", 0), operator_tags
-            )
-
-            # Get state code directly from enum
-            state_string = op_state.get("state", DatasetState.UNKNOWN.name)
-            state_enum = DatasetState.from_string(state_string)
-            self.data_operator_state.set(state_enum.value, operator_tags)
-            operator_states[operator] = state_string
+            operator_states[operator] = op_state.get("state", DatasetState.UNKNOWN.name)
 
         self.update_dataset_metadata_operator_states(dataset_tag, operator_states)
 
