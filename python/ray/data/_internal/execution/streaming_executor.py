@@ -14,6 +14,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.cross_node_copy_tracker import CrossNodeCopyTracker
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
@@ -249,6 +250,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
+        self._cross_node_copy_tracker = CrossNodeCopyTracker()
+        self._setup_cross_node_copy_tracker()
+
         self._output_node = dag, self._topology[dag]
 
         op_to_id = {
@@ -312,6 +316,8 @@ class StreamingExecutor(Executor, threading.Thread):
             self.update_metrics(0)
             if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
+            self._cross_node_copy_tracker.snapshot()
+            logger.debug(self._cross_node_copy_tracker.summary())
             # Close the progress manager with a finishing message.
             if exception is None:
                 desc = (
@@ -456,6 +462,7 @@ class StreamingExecutor(Executor, threading.Thread):
             if self._initial_stats
             else Timer()
         )
+        stats.cross_node_copy_peak_bytes = self._cross_node_copy_tracker.peak_bytes
         return stats
 
     def _scheduling_loop_step(self, topology: Topology) -> bool:
@@ -485,6 +492,8 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
+
+        self._cross_node_copy_tracker.snapshot()
 
         self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
@@ -524,6 +533,7 @@ class StreamingExecutor(Executor, threading.Thread):
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
+            logger.debug(self._cross_node_copy_tracker.summary())
             self._last_debug_log_time = time.time()
 
         for op, state in topology.items():
@@ -561,6 +571,13 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _setup_cross_node_copy_tracker(self) -> None:
+        from ray.data._internal.execution.operators.map_operator import MapOperator
+
+        for op in self._topology:
+            if isinstance(op, MapOperator):
+                op._cross_node_copy_tracker = self._cross_node_copy_tracker
 
     def _export_operator_schema(self, op: PhysicalOperator) -> None:
         schema = self._op_schema.get(op)

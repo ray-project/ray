@@ -264,6 +264,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
+        self._cross_node_copy_tracker = None
 
     def _set_default_logical_memory(self, ray_remote_args: Dict[str, Any]) -> None:
         num_cpus = ray_remote_args.get("num_cpus")
@@ -605,6 +606,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
 
+        tracker = self._cross_node_copy_tracker
+        if tracker is not None:
+            tracker.on_task_submitted(self, task_index, inputs)
+
         def _output_ready_callback(
             task_index,
             output: RefBundle,
@@ -612,6 +617,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            if tracker is not None:
+                tracker.on_task_output(self, task_index, output)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
@@ -633,6 +641,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._metrics.on_task_finished(
                 task_index, exception, task_exec_stats, task_exec_driver_stats
             )
+
+            if tracker is not None:
+                tracker.on_task_finished(self, task_index)
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far

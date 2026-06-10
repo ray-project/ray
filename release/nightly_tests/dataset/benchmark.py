@@ -98,7 +98,8 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     This is a subset from `get_stats_summary`, because we are only adding the ones
     we care about for the release tests."""
     summary = ds.get_stats_summary(detail=True)
-    return {
+    raw_stats = ds._raw_stats()
+    result = {
         "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_avg_s,
         "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
         "p50_scheduling_loop_duration_s": summary.streaming_exec_schedule_p50_s,
@@ -117,6 +118,10 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
             for op in summary.operators_stats
         ],
     }
+    cross_node_peak = getattr(raw_stats, "cross_node_copy_peak_bytes", None)
+    if cross_node_peak is not None:
+        result["cross_node_copy_peak_gb"] = _bytes_to_gb(cross_node_peak)
+    return result
 
 
 class RuntimeEnvSetupTracker:
