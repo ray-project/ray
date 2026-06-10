@@ -7698,7 +7698,9 @@ class Schema:
         ]
 
     @property
-    def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
+    def types(
+        self,
+    ) -> List[Union[type[object], "pyarrow.lib.DataType", "pandas.CategoricalDtype"]]:
         """Lists the types of this Dataset in Arrow format
 
         For non-Arrow compatible types, we return "object".
@@ -7714,8 +7716,10 @@ class Schema:
         from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, pd.CategoricalDtype, BaseMaskedDtype],
-        ) -> Union["pa.DataType", pd.CategoricalDtype]:
+            dtype: Union[
+                np.dtype, "pd.ArrowDtype", "pd.CategoricalDtype", BaseMaskedDtype
+            ],
+        ) -> Union["pa.DataType", "pd.CategoricalDtype"]:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype
             elif isinstance(dtype, pd.StringDtype):
