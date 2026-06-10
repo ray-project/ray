@@ -718,6 +718,7 @@ def test_map_operator_specifies_default_memory(
     ray_start_regular_shared, ray_remote_args, compute_strategy
 ):
     data_context = ray.data.DataContext.get_current()
+    data_context.default_map_logical_memory_enabled = True
     op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
@@ -732,6 +733,27 @@ def test_map_operator_specifies_default_memory(
     # This assertion just checks that map operators default to *something*, without
     # making assumptions about the actual heuristic.
     assert op.min_scheduling_resources().memory > 0
+
+
+@pytest.mark.parametrize(
+    "compute_strategy",
+    [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],
+)
+def test_map_operator_no_default_memory_when_disabled(
+    ray_start_regular_shared, compute_strategy
+):
+    data_context = ray.data.DataContext.get_current()
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+        ray_remote_args={},
+    )
+
+    # When the flag is disabled (the default), map operators shouldn't assign a default
+    # logical memory unless the user explicitly requested it.
+    assert not op.min_scheduling_resources().memory
 
 
 if __name__ == "__main__":

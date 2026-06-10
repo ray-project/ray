@@ -204,6 +204,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        default_logical_memory_enabled: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -215,9 +216,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ray_remote_args = {}
 
         ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args)
+
         # Configure a default logical memory to improve memory safety when the user has
         # specified memory for some UDFs but not others.
-        self._set_default_logical_memory(ray_remote_args)
+        if default_logical_memory_enabled:
+            self._set_default_logical_memory(ray_remote_args)
+            logger.debug(
+                f"Operator {name!r} set default logical memory to "
+                f"{ray_remote_args.get('memory')}"
+            )
 
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
@@ -434,6 +441,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 isolate_workers=isolate_workers,
+                default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
@@ -461,6 +469,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
+                default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
