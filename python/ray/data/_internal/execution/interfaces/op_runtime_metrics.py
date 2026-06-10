@@ -17,8 +17,8 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats_metrics_registry import (
-    OP_RUNTIME_NAMESPACE,
     GLOBAL_METRICS_REGISTRY,
+    OP_RUNTIME_NAMESPACE,
     MetricDefinition,
     MetricsGroup,
     MetricsType,
