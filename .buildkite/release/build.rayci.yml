@@ -26,10 +26,7 @@ steps:
         - "3.13"
       cuda:
         - "12.3.2-cudnn9"
-      adjustments:
-        - with:
-            python: "3.12"
-            cuda: "13.0.0-cudnn"
+        - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -95,6 +92,7 @@ steps:
     array:
       gpu:
         - "cu12.3.2-cudnn9"
+        - "cu13.0.0-cudnn"
       python:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
@@ -102,10 +100,6 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
-      adjustments:
-        - with:
-            python: "3.12"
-            gpu: "cu13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -156,15 +150,12 @@ steps:
     array:
       gpu:
         - cu12.3.2-cudnn9
+        - cu13.0.0-cudnn
       python:
         - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
-      adjustments:
-        - with:
-            python: "3.12"
-            gpu: cu13.0.0-cudnn
 
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{array.python}} {{array.gpu}}"
