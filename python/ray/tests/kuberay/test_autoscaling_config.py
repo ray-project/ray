@@ -566,6 +566,10 @@ def test_autoscaling_config(
     expected_log_warning: Optional[str],
 ):
     ray_cr_in["metadata"]["namespace"] = "default"
+    # Reset log_once state to ensure each test case is independent.
+    from ray.util.debug import _logged
+
+    _logged.clear()
     with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):
