@@ -54,8 +54,11 @@ class HighMemoryIssueDetector(IssueDetector):
         self._initial_memory_requests: Dict[MapOperator, int] = {}
         for op in operators:
             if isinstance(op, MapOperator):
+                # Static args only: _get_dynamic_ray_remote_args() would invoke
+                # ray_remote_args_fn, which can have side effects (the vLLM stage's
+                # fn creates a placement group), leaking a PG per detector call.
                 self._initial_memory_requests[op] = (
-                    op._get_dynamic_ray_remote_args().get("memory") or 0
+                    op._get_static_ray_remote_args().get("memory") or 0
                 )
 
     @classmethod
@@ -85,7 +88,8 @@ class HighMemoryIssueDetector(IssueDetector):
             if op.metrics.average_max_uss_per_task is None:
                 continue
 
-            remote_args = op._get_dynamic_ray_remote_args()
+            # Static args only (no ray_remote_args_fn side effects); see __init__.
+            remote_args = op._get_static_ray_remote_args()
             num_cpus_per_task = remote_args.get("num_cpus", 1)
             max_memory_per_task = self._MEMORY_PER_CORE_ESTIMATE * num_cpus_per_task
 

@@ -544,6 +544,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             #       at least 1 task
             self._try_schedule_task(bundled_input, strict=True)
 
+    def _get_static_ray_remote_args(self) -> Dict[str, Any]:
+        """Remote args without invoking ``ray_remote_args_fn``.
+
+        Unlike :meth:`_get_dynamic_ray_remote_args`, never calls
+        ``ray_remote_args_fn``, which may have side effects (e.g. the vLLM engine
+        stage's fn creates a placement group). Use for inspection-only callers.
+        """
+        return copy.deepcopy(self._ray_remote_args)
+
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
