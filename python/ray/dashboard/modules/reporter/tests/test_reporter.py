@@ -730,6 +730,57 @@ def test_get_tpu_usage(tmp_path):
             assert tpu_utilizations == expected_utilizations
 
 
+def test_get_tpu_usage_idle_and_duplicates(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    # 4 TPUs, all idle (0.0 utilization)
+    # Utilization metrics use indices 0-3
+    # Other metrics use indices 10, 11, 14, 15
+    # Also includes duplicate samples for index 0 and 10 to test robustness.
+    fake_metrics_content = """
+    # Duplicate samples for duty_cycle index 10
+    duty_cycle{accelerator_id="1234-10",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Duplicate samples for tensorcore_utilization index 0
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-0",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-1",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-2",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-3",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Memory metrics
+    memory_total{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    """
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            # Should have 4 unique TPUs
+            assert len(tpu_utilizations) == 4
+            # Verify mapping (10 mapped to 0, 11 to 1, etc.)
+            assert tpu_utilizations[0]["index"] == "0"
+            assert tpu_utilizations[0]["memory_total"] == 4000
+            assert tpu_utilizations[3]["index"] == "3"
+            assert tpu_utilizations[3]["memory_total"] == 4000
+
+
 def test_report_stats_tpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
