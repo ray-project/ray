@@ -23,6 +23,14 @@ class EnvRunnerStateServer:
     ``push`` only rebinds the stored reference, so no lock is needed.
     """
 
+    # TODO(Artur): Target state (future PR): make this server the single source of truth
+    #  for the *full* EnvRunner state (connectors + weights + counters), with the
+    #  Algorithm holding a backup copy for server recreation. That collapses the two
+    #  state-assembly paths (`get_merged_env_runner_state` + `sync_env_runner_states`)
+    #  into one "build state" step plus a transport choice (sync algos push to workers,
+    #  async pull from here), and lets us drop `_dont_auto_sync_env_runner_states` and
+    #  the merge/broadcast config knobs. Keep merge on the driver; keep this server dumb.
+
     def __init__(self):
         self._state: Optional[StateDict] = None
 
