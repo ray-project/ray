@@ -113,11 +113,6 @@ class WorkerInterface {
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
   /**
-   * @return True if the worker is available for scheduling a task or actor.
-   */
-  virtual bool IsAvailableForScheduling() const = 0;
-
-  /**
    * @return The time when the last task was assigned to this worker, or std::nullopt if
    * the worker has never been granted a lease.
    */
