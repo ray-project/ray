@@ -32,7 +32,12 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockMetadataWithSchema,
+    TaskExecWorkerStats,
+)
 from ray.data.context import DataContext
 from ray.experimental.locations import get_local_object_locations
 
@@ -381,9 +386,6 @@ def _emit_deferred_entry(d: DeferredEmit, meta_bytes: bytes) -> None:
     """Emit one deferred pair's ``RefBundle`` from its fetched ``meta_bytes``
     and update ``_last_block_meta``. Called by the background
     ``MetadataPrefetcher``'s drain phase on the executor thread."""
-    # Lazy import to avoid a physical_operator <-> block.py cycle at load.
-    from ray.data.block import BlockMetadataWithSchema
-
     meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
     meta = meta_with_schema.metadata
     d.task._output_ready_callback(

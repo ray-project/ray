@@ -8,8 +8,9 @@
 Flow (executor thread): each scheduling iteration calls :meth:`submit` (enqueue
 the new pairs' meta_refs for fetching and append them to per-operator FIFOs)
 then :meth:`drain` (emit the pairs whose metadata is now available, in per-op
-append order). The background thread blocks on ``ray.get`` and publishes the
-fetched bytes.
+append order). The background thread gates on ``ray.wait(fetch_local=True)``
+with a short timeout and only ``ray.get``s the refs reported ready, so a ref
+stuck on a bad node can't wedge the thread; it publishes the fetched bytes.
 
 Ordering: per-operator FIFOs are emitted front-first and stop at the first pair
 whose metadata isn't back yet — so each operator's ``RefBundle`` emission order
@@ -42,6 +43,11 @@ _NOT_READY = object()  # ref not yet fetched
 
 # How long ``stop`` waits for the fetch thread to exit.
 _FETCH_THREAD_JOIN_TIMEOUT_S = 5.0
+
+# Poll interval for ``ray.wait`` on in-flight meta_refs in the fetch thread.
+# The wait is the only blocking call in the loop, so a ref stuck on a bad
+# node merely stays in the pending set instead of wedging the whole thread.
+_FETCH_WAIT_TIMEOUT_S = 0.1
 
 
 class MetadataPrefetcher:
@@ -168,29 +174,58 @@ class MetadataPrefetcher:
             return self._results.pop(ref, _NOT_READY)
 
     def _run(self) -> None:
-        """Fetch-thread loop: drain the request queue (coalescing queued
-        batches into one ``ray.get``) and publish results until stopped."""
+        """Fetch-thread loop: accumulate requested meta_refs into a pending
+        set, ``ray.wait`` (with a short timeout) for the ones that are
+        locally available, and ``ray.get`` + publish only those.
+
+        ``ray.get`` is never issued on a ref that hasn't been reported ready
+        by ``ray.wait(fetch_local=True)``: a ref stuck on a bad/dead node
+        would otherwise block the whole thread forever and starve every
+        other operator's metadata. A stuck ref just stays in ``pending``
+        until Ray resolves or fails it.
+        """
+        pending: List["ray.ObjectRef"] = []
         while True:
-            item = self._request_q.get()
+            # Block on the request queue only when there's nothing in
+            # flight; otherwise poll it so pending refs keep making progress.
+            if pending:
+                try:
+                    item = self._request_q.get_nowait()
+                except queue_module.Empty:
+                    item = ()
+            else:
+                item = self._request_q.get()
             if item is None:
                 return
-            batch = list(item)
-            stop_after = False
-            # Coalesce any other already-queued batches into a single ray.get.
+            pending.extend(item)
+            # Coalesce any other already-queued batches.
             while True:
                 try:
                     nxt = self._request_q.get_nowait()
                 except queue_module.Empty:
                     break
                 if nxt is None:
-                    stop_after = True
-                    break
-                batch.extend(nxt)
-            self._fetch(batch)
-            if stop_after:
-                return
+                    return
+                pending.extend(nxt)
+
+            if not pending:
+                continue
+            ready, pending = ray.wait(
+                pending,
+                num_returns=len(pending),
+                timeout=_FETCH_WAIT_TIMEOUT_S,
+                fetch_local=True,
+            )
+            if ready:
+                self._fetch(ready)
 
     def _fetch(self, batch: List["ray.ObjectRef"]) -> None:
+        """Fetch refs that ``ray.wait`` reported ready and publish them.
+
+        The refs are locally available, so ``ray.get`` returns without
+        blocking on data transfer; it can still raise for refs that resolved
+        to a task error.
+        """
         try:
             values = ray.get(batch)
             results: Dict["ray.ObjectRef", Any] = dict(zip(batch, values))

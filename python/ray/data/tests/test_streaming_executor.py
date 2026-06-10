@@ -31,7 +31,9 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
+    DeferredEmit,
     MetadataOpTask,
+    _emit_deferred_entry,
 )
 from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -1476,11 +1478,6 @@ class TestDataOpTask:
         """on_data_ready appends to the deferred list without emitting
         RefBundles or updating ``_last_block_meta``. Emission happens
         later, when the prefetcher delivers the fetched metadata."""
-        from ray.data._internal.execution.interfaces.physical_operator import (
-            DeferredEmit,
-            _emit_deferred_entry,
-        )
-
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
         outputs = []
         task = DataOpTask(0, streaming_gen, output_ready_callback=outputs.append)
@@ -1507,11 +1504,6 @@ class TestDataOpTask:
         (task_a's first, task_b's first, then task_a's second, etc.),
         the deferred emission preserves the original append order — same
         as today's per-op, per-task, per-pair sequence."""
-        from ray.data._internal.execution.interfaces.physical_operator import (
-            DeferredEmit,
-            _emit_deferred_entry,
-        )
-
         gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
         gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
 
@@ -1544,17 +1536,19 @@ class TestDataOpTask:
             _emit_deferred_entry(d, meta_bytes)
 
         # Expect: task_a's two bundles in size order, then task_b's two.
-        assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
+        # Sizes carry a small block-format overhead over the raw payload.
+        assert outputs == [
+            (0, pytest.approx(100, abs=64)),
+            (0, pytest.approx(200, abs=64)),
+            (1, pytest.approx(300, abs=64)),
+            (1, pytest.approx(400, abs=64)),
+        ]
 
     def test_metadata_prefetcher_emits_in_per_op_order(self, ray_start_regular_shared):
         """The async ``MetadataPrefetcher`` fetches ``meta_ref``s on a
         background thread and emits each op's RefBundles in append order
         (same sequence the synchronous replay would produce), and fires the
         postponed done callback only after all of a task's pairs are emitted."""
-        from ray.data._internal.execution.metadata_prefetcher import (
-            MetadataPrefetcher,
-        )
-
         gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
         gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
 
@@ -1602,7 +1596,13 @@ class TestDataOpTask:
             prefetcher.stop()
 
         # Per-op append order preserved; ops emitted in submit (FIFO) order.
-        assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
+        # Sizes carry a small block-format overhead over the raw payload.
+        assert outputs == [
+            (0, pytest.approx(100, abs=64)),
+            (0, pytest.approx(200, abs=64)),
+            (1, pytest.approx(300, abs=64)),
+            (1, pytest.approx(400, abs=64)),
+        ]
         # Done callbacks fire only after each task's pairs are fully emitted.
         assert sorted(done) == [0, 1]
 
