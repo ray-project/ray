@@ -1792,7 +1792,6 @@ class DeploymentReplica:
         )
         self._multiplexed_model_ids: List[str] = []
         self._routing_stats: Dict[str, Any] = {}
-        self._replica_metadata: Dict[str, Any] = {}
 
     def get_running_replica_info(
         self, cluster_node_info_cache: ClusterNodeInfoCache
@@ -1825,15 +1824,6 @@ class DeploymentReplica:
         if routing_stats is not None:
             self._routing_stats = routing_stats
 
-    def record_replica_metadata(self, replica_metadata: Optional[Dict[str, Any]]):
-        """Record the static per-replica metadata for this replica.
-
-        Used to restore metadata on the recovery path. Skips the update if
-        ``replica_metadata`` is None.
-        """
-        if replica_metadata is not None:
-            self._replica_metadata = replica_metadata
-
     @property
     def multiplexed_model_ids(self) -> List[str]:
         return self._multiplexed_model_ids
@@ -1844,10 +1834,9 @@ class DeploymentReplica:
 
     @property
     def replica_metadata(self) -> Dict[str, Any]:
-        # Prefer an explicitly recorded value (e.g. restored on recovery),
-        # otherwise fall back to the value captured by the actor wrapper when
-        # the replica became ready.
-        return self._replica_metadata or getattr(self._actor, "replica_metadata", {})
+        # Captured by the actor wrapper from the ready handshake (and re-captured
+        # on a new replica incarnation), so no separate restore path is needed.
+        return getattr(self._actor, "replica_metadata", {})
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -5073,8 +5062,6 @@ class DeploymentState:
                 replica.record_multiplexed_model_ids(info.multiplexed_model_ids)
             if info.routing_stats is not None:
                 replica.record_routing_stats(info.routing_stats)
-            if info.replica_metadata is not None:
-                replica.record_replica_metadata(info.replica_metadata)
             self._request_routing_info_updated = True
         else:
             logger.warning(f"{info.replica_id} not found.")

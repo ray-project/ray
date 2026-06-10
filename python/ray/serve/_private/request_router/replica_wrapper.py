@@ -257,7 +257,8 @@ class RunningReplica:
     @property
     def replica_metadata(self) -> Dict[str, Any]:
         """Static per-replica metadata captured once when the replica became ready."""
-        return self._replica_info.replica_metadata
+        # Return a copy so callers can't mutate the RunningReplicaInfo's dict.
+        return self._replica_info.replica_metadata.copy()
 
     @property
     def max_ongoing_requests(self) -> int:

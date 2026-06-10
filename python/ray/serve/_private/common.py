@@ -734,7 +734,6 @@ class RequestRoutingInfo:
     replica_id: ReplicaID
     multiplexed_model_ids: Optional[List[str]] = None
     routing_stats: Optional[Dict[str, Any]] = None
-    replica_metadata: Optional[Dict[str, Any]] = None
 
 
 @dataclass

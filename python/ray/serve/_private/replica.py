@@ -194,6 +194,23 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
 
+def _validate_replica_metadata(metadata: Any) -> Dict[str, Any]:
+    """Validate the return value of a user ``record_replica_metadata`` hook.
+
+    Returns an empty dict for ``None``; raises ``TypeError`` if the hook returned
+    something other than a dict (it must be a JSON-serializable mapping that the
+    controller can propagate to routers).
+    """
+    if metadata is None:
+        return {}
+    if not isinstance(metadata, dict):
+        raise TypeError(
+            f"{RECORD_REPLICA_METADATA_METHOD} must return a dict, got "
+            f"{type(metadata).__name__}."
+        )
+    return metadata
+
+
 def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
 
@@ -1789,9 +1806,8 @@ class Replica:
                     # the user callable is initialized. Unlike routing stats,
                     # this is never polled and is treated as immutable.
                     if self._user_callable_wrapper.has_user_replica_metadata_method:
-                        self._replica_metadata = (
+                        self._replica_metadata = _validate_replica_metadata(
                             await self._user_callable_wrapper.call_user_record_replica_metadata()
-                            or {}
                         )
                     if self._user_callable_asgi_app:
                         self._docs_path = (

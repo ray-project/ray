@@ -6,7 +6,8 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import ReplicaID
+from ray.serve._private.common import ReplicaID, RequestMetadata
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 
@@ -51,6 +52,27 @@ def check_replica_metadata_recorded(
     assert (
         target_running_replica.replica_metadata == expected_metadata
     ), f"{target_running_replica.replica_metadata=} != {expected_metadata=}"
+
+    # The public ``ReplicaSelection.replica_metadata`` (what a custom router /
+    # orchestrator reads) is built from the chosen replica's metadata — mirror
+    # the router's construction and assert the field is surfaced.
+    selection = ReplicaSelection(
+        replica_id=target_running_replica.replica_id.unique_id,
+        node_ip=target_running_replica._replica_info.node_ip,
+        port=target_running_replica._replica_info.port,
+        node_id=target_running_replica.node_id,
+        availability_zone=target_running_replica.availability_zone,
+        replica_metadata=target_running_replica.replica_metadata,
+        _replica=target_running_replica,
+        _deployment_id=None,
+        _request_metadata=RequestMetadata(
+            request_id="probe",
+            internal_request_id="probe",
+            call_method="__call__",
+        ),
+        _method_name="__call__",
+    )
+    assert selection.replica_metadata == expected_metadata
     return True
 
 
