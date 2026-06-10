@@ -19,8 +19,8 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
-from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.node.datacenter import DataSource
+from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 

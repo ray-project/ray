@@ -48,8 +48,8 @@ from ray._private.test_utils import (
     wait_until_succeeded_without_exception,
 )
 from ray.core.generated import common_pb2
-from ray.dashboard.agent import DashboardAgent
 from ray.dashboard import dashboard
+from ray.dashboard.agent import DashboardAgent
 from ray.dashboard.head import DashboardHead
 from ray.dashboard.utils import DashboardHeadModule
 from ray.experimental.internal_kv import _initialize_internal_kv
@@ -991,7 +991,7 @@ async def test_dashboard_agent_survives_module_exception(tmp_path, monkeypatch):
                 if mock_logger_exc.called:
                     break
                 await asyncio.sleep(0.1)
-            
+
             assert run_task.done() is False
             assert mock_logger_exc.called
             assert "Dashboard module task '%s' exited unexpectedly." in mock_logger_exc.call_args[0]

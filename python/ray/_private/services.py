@@ -75,6 +75,38 @@ DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
+
+def _resolve_windows_executable(path: str) -> str:
+    """Return the first executable path that exists on Windows.
+
+    Some Windows build layouts in this repo produce extensionless binaries,
+    while others use the conventional ``.exe`` suffix. Prefer the configured
+    path, then fall back to the same path without the suffix.
+    """
+
+    if sys.platform != "win32":
+        return path
+
+    if os.path.exists(path):
+        return path
+
+    if path.endswith(".exe"):
+        fallback_path = path[:-4]
+        if os.path.exists(fallback_path):
+            return fallback_path
+
+    # Some Windows build layouts use the bare binary name without the
+    # "_server" suffix, e.g. "gcs" instead of "gcs_server".
+    base_name = os.path.basename(path)
+    if base_name.endswith("_server.exe"):
+        alt_path = os.path.join(
+            os.path.dirname(path), base_name[: -len("_server.exe")]
+        )
+        if os.path.exists(alt_path):
+            return alt_path
+
+    return path
+
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
     "found. To use the dashboard please "
@@ -1564,7 +1596,7 @@ def start_gcs_server(
     assert gcs_server_port >= 0
 
     command = [
-        GCS_SERVER_EXECUTABLE,
+        _resolve_windows_executable(GCS_SERVER_EXECUTABLE),
         f"--log_dir={log_dir}",
         f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
@@ -1958,7 +1990,7 @@ def start_raylet(
         runtime_env_agent_command.append(f"--logging-format={logging_format}")
 
     command = [
-        RAYLET_EXECUTABLE,
+        _resolve_windows_executable(RAYLET_EXECUTABLE),
         f"--raylet_socket_name={raylet_name}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
