@@ -61,7 +61,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     return {};
   }
 
-  bool IsWorkerAvailableForScheduling() const override {
+  bool AllAliveWorkersAreActors() const override {
     RAY_CHECK(false) << "Not used.";
     return false;
   }
