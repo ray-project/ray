@@ -8,6 +8,7 @@ import pytest
 import ray
 import ray._common.test_utils
 import ray._private.test_utils as test_utils
+from ray._common.test_utils import Semaphore
 from ray._private.state import available_resources
 
 
@@ -289,6 +290,73 @@ def test_threaded_actor_integration_test_stress(
         assert (
             "You can ignore this message if" not in error["error_message"]
         ), "Resource deadlock warning shouldn't be printed, but it did."
+
+
+def test_exit_actor_delivers_inflight_task_results(shutdown_only):
+    """Tasks that are already executing when exit_actor() is called from a
+    concurrent thread must run to completion and deliver their results,
+    instead of failing with ActorDiedError.
+    """
+    ray.init(num_cpus=2)
+    running = Semaphore.remote(value=0)
+
+    @ray.remote(max_concurrency=4)
+    class ThreadedActor:
+        def wait_for_exit_then_return(self, value):
+            ray.get(running.release.remote())
+            # Block until exit_actor() has been called from another thread.
+            core_worker = ray._private.worker.global_worker.core_worker
+            while not core_worker.get_current_actor_should_exit():
+                time.sleep(0.01)
+            return value
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    a = ThreadedActor.remote()
+    refs = [a.wait_for_exit_then_return.remote(i) for i in range(3)]
+    # Wait until all three tasks are executing before requesting the exit.
+    ray.get([running.acquire.remote() for _ in range(3)])
+    exit_ref = a.exit.remote()
+
+    assert ray.get(refs, timeout=30) == [0, 1, 2]
+    # The exit task itself completes by exiting the actor, so its ref
+    # resolves to the actor death.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(exit_ref, timeout=30)
+    # Tasks submitted after the exit fail with ActorDiedError.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.wait_for_exit_then_return.remote(99), timeout=30)
+
+
+def test_exit_actor_delivers_inflight_task_errors(shutdown_only):
+    """An in-flight task that raises an application exception while the actor
+    is gracefully exiting must deliver that exception, not ActorDiedError."""
+    ray.init(num_cpus=2)
+    running = Semaphore.remote(value=0)
+
+    @ray.remote(max_concurrency=2)
+    class ThreadedActor:
+        def wait_for_exit_then_raise(self):
+            ray.get(running.release.remote())
+            # Block until exit_actor() has been called from another thread.
+            core_worker = ray._private.worker.global_worker.core_worker
+            while not core_worker.get_current_actor_should_exit():
+                time.sleep(0.01)
+            raise ValueError("application error")
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    a = ThreadedActor.remote()
+    ref = a.wait_for_exit_then_raise.remote()
+    ray.get(running.acquire.remote())
+    exit_ref = a.exit.remote()
+
+    with pytest.raises(ValueError, match="application error"):
+        ray.get(ref, timeout=30)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(exit_ref, timeout=30)
 
 
 if __name__ == "__main__":

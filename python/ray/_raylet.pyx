@@ -271,6 +271,13 @@ warnings.filterwarnings("once", category=NumReturnsWarning)
 current_task_id = None
 current_task_id_lock = threading.Lock()
 
+# Ray task ids of the tasks that called exit_actor(). Used to preserve the
+# exit semantics for the task that called exit_actor() — its return value is
+# discarded (the caller sees the actor death) even if user code swallows the
+# resulting exception — while other tasks that complete during the graceful
+# exit still deliver their results. Mutations are protected by the GIL.
+exit_actor_task_ids = set()
+
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
@@ -1945,8 +1952,14 @@ cdef void execute_task(
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
                         raise task_exception_instance
-                    if core_worker.get_current_actor_should_exit():
-                        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
+                    if task_id in exit_actor_task_ids:
+                        # This task called exit_actor(). Exit before storing
+                        # its outputs even if user code swallowed the
+                        # resulting exception, so the caller sees the actor
+                        # death instead of a return value.
+                        exit_actor_task_ids.discard(task_id)
+                        raise_sys_exit_with_custom_error_message(
+                            "exit_actor() is called.")
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -2042,6 +2055,21 @@ cdef void execute_task(
                         f"{returns[0].size()} return values already created. "
                         "This should only occur when using generator tasks.\n"
                         "See https://github.com/ray-project/ray/issues/28689.")
+        finally:
+            # exit_actor() sets a worker-wide flag that every task must check, so
+            # that the worker exits even when exit_actor() is called from a
+            # concurrently running task (threaded/async actors) or a background
+            # thread rather than this task itself. The check must run only after
+            # the task's outputs (or errors) have been stored above; otherwise the
+            # results of in-flight tasks that complete during a graceful exit
+            # would be discarded and callers would see an ActorDiedError instead.
+            # Skip the check if an exception is propagating: it is either an exit
+            # or cancellation path (SystemExit/KeyboardInterrupt) or an internal
+            # error that must surface as such, and it must not be masked by
+            # raising from a finally block.
+            if (sys.exc_info()[0] is None
+                    and core_worker.get_current_actor_should_exit()):
+                raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
 
 cdef execute_task_with_cancellation_handler(
@@ -4529,6 +4557,7 @@ cdef class CoreWorker:
                 .CurrentActorIsAsync())
 
     def set_current_actor_should_exit(self):
+        exit_actor_task_ids.add(self.get_current_task_id())
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
 
