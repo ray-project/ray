@@ -8,7 +8,7 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     HEAD_NODE_RESOURCE_LABEL,
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,
-    _format_allocated_resources_for_log,
+    _format_resources_for_log,
     get_or_create_autoscaling_coordinator,
 )
 from ray.data._internal.util import GiB
@@ -214,65 +214,41 @@ def test_double_allocation_with_multiple_request_remaining():
     assert res2 == req2 + [expected_remaining_per_requester]
 
 
-def test_allocated_resources_log_formatter_filters_and_aggregates():
-    cluster_nodes = [
+def test_format_resources_for_log():
+    # Two bundles that are identical except for sub-precision differences in
+    # object_store_memory (8.96 vs 9.04 GiB), plus custom labels and a GPU: 0
+    # entry. They should aggregate into a single entry, with custom/zero
+    # resources dropped.
+    resources = [
         {
-            "Resources": {
-                "CPU": 8,
-                "GPU": 0,
-                "memory": 32 * GiB,
-                "object_store_memory": int(8.96 * GiB),
-                "anyscale/cpu_only:true": 1.0,
-                "anyscale/region:us-west-2": 1.0,
-                "node:10.0.193.159": 1.0,
-            },
-            "Alive": True,
-            "NodeID": "n1",
+            "CPU": 8,
+            "GPU": 0,
+            "memory": 32 * GiB,
+            "object_store_memory": int(8.96 * GiB),
+            "anyscale/cpu_only:true": 1.0,
+            "anyscale/region:us-west-2": 1.0,
+            "node:10.0.193.159": 1.0,
         },
         {
-            "Resources": {
-                "CPU": 8,
-                "GPU": 0,
-                "memory": 32 * GiB,
-                "object_store_memory": int(9.04 * GiB),
-                "anyscale/cpu_only:true": 1.0,
-                "anyscale/region:us-west-2": 1.0,
-                "node:10.0.241.173": 1.0,
-            },
-            "Alive": True,
-            "NodeID": "n2",
+            "CPU": 8,
+            "GPU": 0,
+            "memory": 32 * GiB,
+            "object_store_memory": int(9.04 * GiB),
+            "anyscale/cpu_only:true": 1.0,
+            "anyscale/region:us-west-2": 1.0,
+            "node:10.0.241.173": 1.0,
         },
         {
-            "Resources": {
-                "CPU": 0,
-                "GPU": 0,
-                "memory": 0,
-                "object_store_memory": 0,
-                "anyscale/cpu_only:true": 1.0,
-                "node:10.0.252.14": 1.0,
-            },
-            "Alive": True,
-            "NodeID": "n3",
+            "CPU": 0,
+            "GPU": 0,
+            "memory": 0,
+            "object_store_memory": 0,
+            "anyscale/cpu_only:true": 1.0,
+            "node:10.0.252.14": 1.0,
         },
     ]
 
-    coordinator = _AutoscalingCoordinatorActor(
-        get_current_time=lambda: 0,
-        send_resources_request=Mock(),
-        get_cluster_nodes=lambda: cluster_nodes,
-    )
-    coordinator.request_resources(
-        requester_id="requester1",
-        resources=[],
-        expire_after_s=100,
-        request_remaining=True,
-    )
-
-    allocated = coordinator.get_allocated_resources("requester1")
-    assert any("anyscale/cpu_only:true" in bundle for bundle in allocated)
-    assert any("node:10.0.193.159" in bundle for bundle in allocated)
-
-    log_message = _format_allocated_resources_for_log(allocated)
+    log_message = _format_resources_for_log(resources)
     assert log_message == (
         "[2 x {CPU: 8, memory: 32.0GiB, object_store_memory: 9.0GiB}]"
     )
