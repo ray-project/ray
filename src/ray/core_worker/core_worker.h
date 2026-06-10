@@ -329,6 +329,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /// Advance multiple indexes of an ObjectRefStream.
+  ///
+  /// This is intended for bulk consumers that have already waited on
+  /// deterministic ObjectRefs and only need to mark them as consumed.
+  Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
+
   /// Return True if there's no more object to read. False otherwise.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 

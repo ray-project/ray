@@ -96,6 +96,14 @@ class ObjectRefStream {
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
+  /// Advance the stream by num_items without checking whether each item has
+  /// already been written to the stream.
+  ///
+  /// This is intended for callers that have already waited on deterministic
+  /// generated ObjectIDs and need to mark those indexes as consumed.
+  /// \return KeyError if it reaches to EoF before consuming any item. Ok otherwise.
+  Status TryReadNextItems(int64_t num_items);
+
   /// Return True if there's no more object to read. False otherwise.
   bool IsFinished() const;
 
@@ -418,6 +426,14 @@ class TaskManager : public TaskManagerInterface {
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Advance the ObjectRefStream cursor by num_items.
+  ///
+  /// Unlike TryReadObjectRefStream, this does not require each index to be
+  /// present in refs_written_to_stream_. This is intended for bulk consumers
+  /// that have already waited for the deterministic refs to become ready.
+  Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Returns true if there are no more objects to read from the streaming

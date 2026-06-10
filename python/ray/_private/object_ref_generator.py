@@ -206,12 +206,10 @@ class ObjectRefGenerator:
             raise ValueError("num_refs must be positive")
         self.worker.check_connected()
         core_worker = self.worker.core_worker
-        for i in range(num_refs):
-            try:
-                ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
-            except ObjectRefStreamEndOfStreamError:
-                return
-            assert not ref.is_nil()
+        try:
+            core_worker.try_read_next_object_ref_stream_n(self._generator_ref, num_refs)
+        except ObjectRefStreamEndOfStreamError:
+            return
 
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.

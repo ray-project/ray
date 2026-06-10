@@ -2251,6 +2251,54 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamBulkReadAdvancesUnwrittenRefs) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto peeked = manager_.PeekObjectRefStreamN(generator_id, 1);
+  ASSERT_EQ(peeked.size(), 1UL);
+  ASSERT_EQ(peeked[0].first, dynamic_return_id);
+  ASSERT_FALSE(peeked[0].second);
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id));
+
+  auto status = manager_.TryReadObjectRefStreamN(generator_id, 1);
+  ASSERT_TRUE(status.ok());
+
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  bool signal_called = false;
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
+      req,
+      /*execution_signal_callback*/ [&signal_called](Status callback_status,
+                                                     int64_t num_objects_consumed) {
+        signal_called = true;
+        ASSERT_TRUE(callback_status.ok());
+        ASSERT_EQ(num_objects_consumed, 1);
+      }));
+  ASSERT_TRUE(signal_called);
+
+  reference_counter_->RemoveLocalReference(dynamic_return_id, nullptr);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id));
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id, generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id));
+
+  ObjectID obj_id;
+  status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(obj_id, ObjectID::Nil());
+  CompletePendingStreamingTask(spec, caller_address, 1);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
   /**
    * Test e2e

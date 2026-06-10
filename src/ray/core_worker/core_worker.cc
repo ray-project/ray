@@ -3147,6 +3147,11 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
+Status CoreWorker::TryReadObjectRefStreamN(const ObjectID &generator_id,
+                                           int64_t num_items) {
+  return task_manager_->TryReadObjectRefStreamN(generator_id, num_items);
+}
+
 bool CoreWorker::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
   return task_manager_->StreamingGeneratorIsFinished(generator_id);
 }

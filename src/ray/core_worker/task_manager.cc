@@ -153,6 +153,32 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
+Status ObjectRefStream::TryReadNextItems(int64_t num_items) {
+  RAY_CHECK_GT(num_items, 0);
+  if (IsFinished()) {
+    // next_index_ cannot be bigger than end_of_stream_index_.
+    RAY_CHECK(next_index_ == end_of_stream_index_);
+    RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
+                   << " has no more objects.";
+    return Status::ObjectRefEndOfStream("");
+  }
+
+  auto num_items_to_consume = num_items;
+  if (end_of_stream_index_ != -1) {
+    num_items_to_consume = std::min(num_items, end_of_stream_index_ - next_index_);
+  }
+
+  for (int64_t i = 0; i < num_items_to_consume; i++) {
+    const auto &object_id = GetObjectRefAtIndex(next_index_ + i);
+    temporarily_owned_refs_.erase(object_id);
+  }
+  total_num_object_consumed_ += num_items_to_consume;
+  next_index_ += num_items_to_consume;
+  RAY_LOG_EVERY_MS(DEBUG, 10000) << "Advanced ObjectRefStream by " << num_items_to_consume
+                                 << " items. generator id: " << generator_id_;
+  return Status::OK();
+}
+
 bool ObjectRefStream::IsFinished() const {
   bool is_eof_set = end_of_stream_index_ != -1;
   return is_eof_set && next_index_ >= end_of_stream_index_;
@@ -191,6 +217,13 @@ std::vector<std::pair<ObjectID, bool>> ObjectRefStream::PeekNextItems(int64_t nu
 }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
+  if (object_id.TaskId() == generator_task_id_) {
+    const auto object_index = object_id.ObjectIndex();
+    if (object_index >= 2 && static_cast<int64_t>(object_index - 2) < next_index_) {
+      return false;
+    }
+  }
+
   // Write to a stream if the object ID is not consumed yet.
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     temporarily_owned_refs_.insert(object_id);
@@ -690,6 +723,50 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   auto status = stream_it->second.TryReadNextItem(object_id_out);
 
   /// If you could read the next item, signal the executor to resume
+  /// if necessary.
+  if (status.ok()) {
+    auto total_generated = stream_it->second.TotalNumObjectWritten();
+    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+    auto total_unconsumed = total_generated - total_consumed;
+    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
+      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
+      if (it != ref_stream_execution_signal_callbacks_.end()) {
+        for (const auto &execution_signal : it->second) {
+          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
+                         << " should resume. total_generated: " << total_generated
+                         << ". total_consumed: " << total_consumed
+                         << ". threshold: " << backpressure_threshold;
+          execution_signal(Status::OK(), total_consumed);
+        }
+        it->second.clear();
+      }
+    }
+  }
+
+  return status;
+}
+
+Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
+                                            int64_t num_items) {
+  RAY_CHECK_GT(num_items, 0);
+  auto backpressure_threshold = 0;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(generator_id.TaskId());
+    if (it != submissible_tasks_.end()) {
+      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
+    }
+  }
+
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "TryReadObjectRefStreamN API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  auto status = stream_it->second.TryReadNextItems(num_items);
+
+  /// If you could read the next items, signal the executor to resume
   /// if necessary.
   if (status.ok()) {
     auto total_generated = stream_it->second.TotalNumObjectWritten();
