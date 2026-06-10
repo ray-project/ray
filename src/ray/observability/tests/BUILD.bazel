@@ -11,12 +11,12 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "metric_utils_test",
+    name = "windowed_metric_test",
     size = "small",
-    srcs = ["metric_utils_test.cc"],
+    srcs = ["windowed_metric_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/observability:metric_utils",
+        "//src/ray/observability:windowed_metric",
         "@com_google_absl//absl/time",
     ],
 )

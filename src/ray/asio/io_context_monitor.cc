@@ -80,10 +80,11 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   if (probe->last_probe_completed) {
     // Record latency and health status from the completed probe, then post a new one.
     if (has_active_probe) {
-      // Feed the completed probe's latency into the sliding window. Only export the
-      // metric when the windowed max changes to avoid redundant updates.
-      if (auto windowed_max_ms =
-              probe->latency_window.Add(now, absl::ToDoubleMilliseconds(elapsed))) {
+      // Feed the completed probe's latency into the sliding window. WindowedMax()
+      // only returns a value when the windowed max changes, so we avoid redundant
+      // metric updates.
+      probe->latency_window.Add(now, absl::ToDoubleMilliseconds(elapsed));
+      if (auto windowed_max_ms = probe->latency_window.WindowedMax()) {
         latency_gauge_.Record(*windowed_max_ms, {{"Name", probe->name}});
       }
 

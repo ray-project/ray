@@ -35,9 +35,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "metric_utils",
-    srcs = ["metric_utils.cc"],
-    hdrs = ["metric_utils.h"],
+    name = "windowed_metric",
+    srcs = ["windowed_metric.cc"],
+    hdrs = ["windowed_metric.h"],
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/time",

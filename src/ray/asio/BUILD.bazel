@@ -41,7 +41,7 @@ ray_cc_library(
         ":instrumented_io_context",
         "//src/ray/common:ray_config",
         "//src/ray/observability:metric_interface",
-        "//src/ray/observability:metric_utils",
+        "//src/ray/observability:windowed_metric",
         "//src/ray/util:clock",
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",

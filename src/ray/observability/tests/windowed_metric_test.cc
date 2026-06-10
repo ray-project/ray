@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/observability/metric_utils.h"
+#include "ray/observability/windowed_metric.h"
 
 #include "absl/time/time.h"
 #include "gtest/gtest.h"
@@ -29,63 +29,84 @@ TEST(WindowedMetricTest, EmptyWindowHasNoMax) {
   EXPECT_FALSE(window.WindowedMax().has_value());
 }
 
-TEST(WindowedMetricTest, FirstSampleAlwaysReported) {
+TEST(WindowedMetricTest, FirstSampleReported) {
   WindowedMetric window(absl::Seconds(30));
-  auto reported = window.Add(kT0, 5.0);
+  window.Add(kT0, 5.0);
+  auto reported = window.WindowedMax();
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 5.0);
-  EXPECT_DOUBLE_EQ(*window.WindowedMax(), 5.0);
 }
 
 TEST(WindowedMetricTest, ReportsOnlyWhenMaxChanges) {
   WindowedMetric window(absl::Seconds(30));
 
-  // First sample: reported.
-  EXPECT_TRUE(window.Add(kT0, 10.0).has_value());
+  // First sample: max changes, reported.
+  window.Add(kT0, 10.0);
+  EXPECT_TRUE(window.WindowedMax().has_value());
+
+  // A second read with no intervening change returns nothing.
+  EXPECT_FALSE(window.WindowedMax().has_value());
 
   // Lower value within the window: max unchanged, not reported.
-  EXPECT_FALSE(window.Add(kT0 + absl::Seconds(1), 4.0).has_value());
+  window.Add(kT0 + absl::Seconds(1), 4.0);
+  EXPECT_FALSE(window.WindowedMax().has_value());
 
   // Equal to the current max: still unchanged, not reported.
-  EXPECT_FALSE(window.Add(kT0 + absl::Seconds(2), 10.0).has_value());
+  window.Add(kT0 + absl::Seconds(2), 10.0);
+  EXPECT_FALSE(window.WindowedMax().has_value());
 
   // Higher value: max changes, reported.
-  auto reported = window.Add(kT0 + absl::Seconds(3), 12.0);
+  window.Add(kT0 + absl::Seconds(3), 12.0);
+  auto reported = window.WindowedMax();
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 12.0);
+}
+
+TEST(WindowedMetricTest, ChangesCollapseBetweenReads) {
+  WindowedMetric window(absl::Seconds(30));
+
+  // Multiple changes between reads collapse into a single report of the latest max.
+  window.Add(kT0, 10.0);
+  window.Add(kT0 + absl::Seconds(1), 20.0);
+  auto reported = window.WindowedMax();
+  ASSERT_TRUE(reported.has_value());
+  EXPECT_DOUBLE_EQ(*reported, 20.0);
+  EXPECT_FALSE(window.WindowedMax().has_value());
 }
 
 TEST(WindowedMetricTest, EvictsSamplesOutsideWindow) {
   WindowedMetric window(absl::Seconds(30));
 
   // A high sample at t=0.
-  EXPECT_TRUE(window.Add(kT0, 100.0).has_value());
+  window.Add(kT0, 100.0);
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 100.0);
 
-  // A lower sample 10s later stays within the window; max stays 100.
-  EXPECT_FALSE(window.Add(kT0 + absl::Seconds(10), 20.0).has_value());
-  EXPECT_DOUBLE_EQ(*window.WindowedMax(), 100.0);
+  // A lower sample 10s later stays within the window; max stays 100 (unchanged).
+  window.Add(kT0 + absl::Seconds(10), 20.0);
+  EXPECT_FALSE(window.WindowedMax().has_value());
 
   // 31s after the first sample, the high sample falls out of the 30s window. The
   // max now drops to the surviving samples, so it is reported.
-  auto reported = window.Add(kT0 + absl::Seconds(31), 5.0);
+  window.Add(kT0 + absl::Seconds(31), 5.0);
+  auto reported = window.WindowedMax();
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 20.0);
-  EXPECT_DOUBLE_EQ(*window.WindowedMax(), 20.0);
 }
 
 TEST(WindowedMetricTest, SampleAtWindowEdgeIsRetained) {
   WindowedMetric window(absl::Seconds(30));
 
-  EXPECT_TRUE(window.Add(kT0, 50.0).has_value());
-
-  // Exactly 30s later: the first sample is at age == window and is retained
-  // (eviction is strictly older-than), so the max is still 50.
-  EXPECT_FALSE(window.Add(kT0 + absl::Seconds(30), 10.0).has_value());
+  window.Add(kT0, 50.0);
   EXPECT_DOUBLE_EQ(*window.WindowedMax(), 50.0);
 
+  // Exactly 30s later: the first sample is at age == window and is retained
+  // (eviction is strictly older-than), so the max is still 50 (unchanged).
+  window.Add(kT0 + absl::Seconds(30), 10.0);
+  EXPECT_FALSE(window.WindowedMax().has_value());
+
   // Just past the edge: the first sample is evicted, max drops to 10.
-  auto reported = window.Add(kT0 + absl::Seconds(30) + absl::Nanoseconds(1), 10.0);
+  window.Add(kT0 + absl::Seconds(30) + absl::Nanoseconds(1), 10.0);
+  auto reported = window.WindowedMax();
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 10.0);
 }
@@ -93,27 +114,29 @@ TEST(WindowedMetricTest, SampleAtWindowEdgeIsRetained) {
 TEST(WindowedMetricTest, AllSamplesEvictedKeepsLatest) {
   WindowedMetric window(absl::Seconds(30));
 
-  EXPECT_TRUE(window.Add(kT0, 80.0).has_value());
+  window.Add(kT0, 80.0);
+  EXPECT_DOUBLE_EQ(*window.WindowedMax(), 80.0);
 
   // Far in the future: every prior sample is evicted, leaving only the new one.
-  auto reported = window.Add(kT0 + absl::Hours(1), 3.0);
+  window.Add(kT0 + absl::Hours(1), 3.0);
+  auto reported = window.WindowedMax();
   ASSERT_TRUE(reported.has_value());
   EXPECT_DOUBLE_EQ(*reported, 3.0);
-  EXPECT_DOUBLE_EQ(*window.WindowedMax(), 3.0);
 }
 
 TEST(WindowedMetricTest, NonPositiveWindowKeepsLatestSample) {
   // A zero (or negative) window must not evict the just-added sample, which would
   // leave the container empty and crash the max computation.
   WindowedMetric zero_window(absl::ZeroDuration());
-  EXPECT_DOUBLE_EQ(*zero_window.Add(kT0, 7.0), 7.0);
+  zero_window.Add(kT0, 7.0);
+  EXPECT_DOUBLE_EQ(*zero_window.WindowedMax(), 7.0);
   // The next sample evicts the prior one but is itself retained, so the max tracks
   // the latest value rather than crashing.
-  EXPECT_DOUBLE_EQ(*zero_window.Add(kT0 + absl::Seconds(1), 2.0), 2.0);
+  zero_window.Add(kT0 + absl::Seconds(1), 2.0);
   EXPECT_DOUBLE_EQ(*zero_window.WindowedMax(), 2.0);
 
   WindowedMetric negative_window(-absl::Seconds(5));
-  EXPECT_DOUBLE_EQ(*negative_window.Add(kT0, 1.0), 1.0);
+  negative_window.Add(kT0, 1.0);
   EXPECT_DOUBLE_EQ(*negative_window.WindowedMax(), 1.0);
 }
 

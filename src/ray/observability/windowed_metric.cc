@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/observability/metric_utils.h"
+#include "ray/observability/windowed_metric.h"
 
 #include <algorithm>
 
 namespace ray {
 namespace observability {
 
-std::optional<double> WindowedMetric::Add(absl::Time now, double value) {
+void WindowedMetric::Add(absl::Time now, double value) {
   samples_.push_back({now, value});
 
   // Evict samples that have fallen out of the window. Never evict the last remaining
@@ -39,14 +39,16 @@ std::optional<double> WindowedMetric::Add(absl::Time now, double value) {
 
   if (!current_max_.has_value() || *current_max_ != max) {
     current_max_ = max;
-    return max;
+    current_max_changed_ = true;
   }
-  return std::nullopt;
 }
 
-std::optional<double> WindowedMetric::WindowedMax() const {
-  // current_max_ is kept up to date by Add() (the window only changes there), so no
-  // recomputation is needed. Unset until the first Add().
+std::optional<double> WindowedMetric::WindowedMax() {
+  if (!current_max_changed_) {
+    return std::nullopt;
+  }
+  // Consume the change so the caller only re-exports the metric when it moves.
+  current_max_changed_ = false;
   return current_max_;
 }
 

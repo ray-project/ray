@@ -42,13 +42,14 @@ class WindowedMetric {
   /// Record a new sample with value `value` observed at `now`.
   ///
   /// Appends the sample, evicts samples older than the window, and recomputes the
-  /// max over the window. Returns the current max iff it differs from the value
-  /// previously returned by Add() (i.e. the metric should be re-exported); returns
-  /// std::nullopt when the max is unchanged.
-  std::optional<double> Add(absl::Time now, double value);
+  /// max over the window.
+  void Add(absl::Time now, double value);
 
-  /// The current max value over the window, or std::nullopt if the window is empty.
-  std::optional<double> WindowedMax() const;
+  /// The current max value over the window, returned only if it has changed since
+  /// the last call to WindowedMax(); otherwise std::nullopt. This lets callers
+  /// re-export the metric only when it changes. Returns std::nullopt before the
+  /// first Add().
+  std::optional<double> WindowedMax();
 
  private:
   struct Sample {
@@ -56,12 +57,14 @@ class WindowedMetric {
     double value;
   };
 
+  // Sliding window duration.
   const absl::Duration window_duration_;
   // Samples ordered oldest (front) to newest (back).
   std::deque<Sample> samples_;
-  // The current max over the window. Maintained by Add() and also used to detect
-  // changes between calls. Unset until the first Add().
+  // The current max over the window. Maintained by Add(). Unset until the first Add().
   std::optional<double> current_max_;
+  // Whether current_max_ has changed since the last call to WindowedMax().
+  bool current_max_changed_ = false;
 };
 
 }  // namespace observability

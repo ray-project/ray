@@ -25,7 +25,7 @@
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
-#include "ray/observability/metric_utils.h"
+#include "ray/observability/windowed_metric.h"
 #include "ray/util/clock.h"
 
 namespace ray {
