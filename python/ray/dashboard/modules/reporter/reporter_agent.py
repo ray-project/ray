@@ -799,74 +799,34 @@ class ReporterAgent(
                     accelerator_id = labels["accelerator_id"]
                     index = accelerator_id.split("-")[1]
 
-                    if sample.name == "memory_bandwidth_utilization":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=sample.value,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
+                    info = TpuUtilizationInfo(
+                        index=index,
+                        name=accelerator_id,
+                        tpu_type=labels["model"],
+                        tpu_topology=labels["tpu_topology"],
+                        tensorcore_utilization=0.0,
+                        hbm_utilization=0.0,
+                        duty_cycle=0.0,
+                        memory_used=0,
+                        memory_total=0,
+                    )
 
-                    if sample.name == "tensorcore_utilization":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=sample.value,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
+                    known = True
+                    match sample.name:
+                        case "memory_bandwidth_utilization":
+                            info.hbm_utilization = sample.value
+                        case "tensorcore_utilization":
+                            info.tensorcore_utilization = sample.value
+                        case "duty_cycle":
+                            info.duty_cycle = sample.value
+                        case "memory_used":
+                            info.memory_used = sample.value
+                        case "memory_total":
+                            info.memory_total = sample.value
+                        case _:
+                            known = False
 
-                    if sample.name == "duty_cycle":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=sample.value,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
-
-                    if sample.name == "memory_used":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=sample.value,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
-
-                    if sample.name == "memory_total":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=sample.value,
-                        )
+                    if known:
                         tpu_utilizations.append(info)
         except Exception as e:
             logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
