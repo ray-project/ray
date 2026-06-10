@@ -125,7 +125,7 @@ def train_tf_ray_air(
         ),
         run_config=RunConfig(
             name="tensorflow-benchmark",
-            storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/tensorflow_benchmark/",
+            storage_path=f"{os.environ.get('ANYSCALE_ARTIFACT_STORAGE', 'tmp')}/tensorflow_benchmark/",
         ),
     )
     result = trainer.fit()
