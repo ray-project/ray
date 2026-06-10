@@ -456,7 +456,8 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client(std::make_shared<MockRayletClient>()),
         worker_client(std::make_shared<MockWorkerClient>()),
         store_io_context_("NormalTaskSubmitterTest"),
-        store(std::make_shared<CoreWorkerMemoryStore>(store_io_context_.GetIoService())),
+        store(std::make_shared<CoreWorkerMemoryStore>(store_io_context_.GetIoService(),
+                                                      clock_)),
         client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &) { return worker_client; })),
         task_manager(std::make_unique<MockTaskManager>()),
@@ -520,6 +521,9 @@ class NormalTaskSubmitterTest : public testing::Test {
   std::shared_ptr<MockRayletClient> raylet_client;
   std::shared_ptr<MockWorkerClient> worker_client;
   InstrumentedIOContextWithThread store_io_context_;
+  // Declared before `store` so it is constructed first and outlives the store,
+  // which holds a reference to it.
+  FakeClock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<MockTaskManager> task_manager;
@@ -532,7 +536,6 @@ class NormalTaskSubmitterTest : public testing::Test {
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
-  FakeClock clock_;
 };
 
 TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
@@ -1380,7 +1383,7 @@ TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   };
   InstrumentedIOContextWithThread store_io_context("TestSpillbackRoundTrip");
   auto memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,
@@ -1690,7 +1693,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
 TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   InstrumentedIOContextWithThread store_io_context("TestWorkerLeaseTimeout");
   auto memory_store =
-      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService());
+      std::make_shared<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock_);
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
                                 WorkerType::WORKER,

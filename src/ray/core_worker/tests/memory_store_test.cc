@@ -97,7 +97,9 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   InstrumentedIOContextWithThread io_context("TestMemoryStoreStats");
-  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  Clock clock;
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.
