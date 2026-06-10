@@ -1,8 +1,9 @@
 """Tests for the P/D coordination protocol on the KV connector backends.
 
-Proves that the concrete connector backends (NIXL, LMCache, Multi) are migrated
-onto the abstract ``BaseConnectorBackend`` protocol via ``DefaultPDProtocolMixin``,
-and that the abstract base itself cannot be instantiated.
+Proves that NIXL, LMCache, and the default backend are migrated onto the abstract
+``BaseConnectorBackend`` protocol via ``DefaultPDProtocolMixin``, that Multi delegates
+the protocol to its top-most sub-connector, and that the abstract base itself cannot
+be instantiated.
 """
 
 import sys
@@ -56,10 +57,9 @@ def test_base_connector_backend_is_abstract():
     [
         lambda: NixlConnectorBackend(llm_config=_llm_config("NixlConnector")),
         lambda: LMCacheConnectorV1Backend(llm_config=_llm_config("LMCacheConnectorV1")),
-        lambda: MultiConnectorBackend(llm_config=_llm_config("MultiConnector")),
         lambda: DefaultConnectorBackend(llm_config=None),
     ],
-    ids=["nixl", "lmcache", "multi", "default"],
+    ids=["nixl", "lmcache", "default"],
 )
 class TestMigratedBackendsProtocol:
     """All migrated concrete backends expose the default P/D protocol shaping."""
@@ -110,6 +110,46 @@ class TestMigratedBackendsProtocol:
             request=request, peer=None, prefill_response=None
         )
         assert getattr(decode, "kv_transfer_params", None) is None
+
+
+class TestMultiConnectorDelegation:
+    """MultiConnectorBackend delegates the P/D protocol to its top-most
+    sub-connector rather than inheriting the default mixin."""
+
+    def _multi_with_primary(self, primary):
+        multi = MultiConnectorBackend(llm_config=_llm_config("MultiConnector"))
+        multi._connector_backends = [primary]
+        return multi
+
+    def test_no_subconnectors_flags_false(self):
+        multi = MultiConnectorBackend(llm_config=_llm_config("MultiConnector"))
+        assert multi.requires_peer_binding is False
+        assert multi.concurrent_handoff is False
+
+    def test_delegates_prepare_to_primary(self):
+        multi = self._multi_with_primary(DefaultConnectorBackend(llm_config=None))
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "hello"}],
+            max_completion_tokens=8,
+        )
+        prefill = multi.prepare_prefill_request(request=request, peer=None)
+        assert prefill.kv_transfer_params["do_remote_decode"] is True
+        assert prefill.max_tokens == 1
+        chunk = SimpleNamespace(kv_transfer_params={"remote_engine_id": "p1"})
+        decode = multi.prepare_decode_request(
+            request=CompletionRequest(model="test-model", prompt="hi"),
+            peer=None,
+            prefill_response=chunk,
+        )
+        assert decode.kv_transfer_params == {"remote_engine_id": "p1"}
+
+    def test_flags_follow_primary(self):
+        # A primary that opts into peer binding + concurrent handoff governs the group.
+        primary = SimpleNamespace(requires_peer_binding=True, concurrent_handoff=True)
+        multi = self._multi_with_primary(primary)
+        assert multi.requires_peer_binding is True
+        assert multi.concurrent_handoff is True
 
 
 @patch(

@@ -135,27 +135,32 @@ class PDOrchestratorMixin:
              factory (nixl/lmcache/multi/... are all concrete; unregistered
              connectors fall back to a concrete default backend).
         """
+        # Resolved once and cached: the backend is per-server (per LLMConfig) and
+        # its protocol is stateless w.r.t. the request, so we avoid re-resolving on
+        # every request (the request path calls this).
+        cached = getattr(self, "_connector_backend_cache", None)
+        if cached is not None:
+            return cached
+
         llm_config = getattr(self, "_llm_config", None)
+        backend = getattr(llm_config, "kv_connector_backend", None)
+        if backend is None:
+            kv_transfer_config = (getattr(llm_config, "engine_kwargs", None) or {}).get(
+                "kv_transfer_config"
+            )
+            kv_connector = (kv_transfer_config or {}).get("kv_connector")
+            if not kv_connector:
+                # For P/D there is always a kv_transfer_config, so we should never
+                # get here. Fail loudly rather than instantiate the abstract base.
+                raise ValueError(
+                    "Cannot resolve a KV-connector backend: no backend was stored "
+                    "on the LLMConfig and no kv_transfer_config.kv_connector is "
+                    "configured."
+                )
+            backend = KVConnectorBackendFactory.create_backend(kv_connector, llm_config)
 
-        stored = getattr(llm_config, "kv_connector_backend", None)
-        if stored is not None:
-            return stored
-
-        kv_transfer_config = (
-            (getattr(llm_config, "engine_kwargs", None) or {}).get("kv_transfer_config")
-            if llm_config is not None
-            else None
-        )
-        kv_connector = (kv_transfer_config or {}).get("kv_connector")
-        if kv_connector:
-            return KVConnectorBackendFactory.create_backend(kv_connector, llm_config)
-
-        # For P/D there is always a kv_transfer_config, so we should never get
-        # here. Fail loudly rather than instantiate the abstract base.
-        raise ValueError(
-            "Cannot resolve a KV-connector backend: no backend was stored on the "
-            "LLMConfig and no kv_transfer_config.kv_connector is configured."
-        )
+        self._connector_backend_cache = backend
+        return backend
 
     # ---- Request Preparation ----
     #
@@ -217,43 +222,24 @@ class PDOrchestratorMixin:
             # via choose_replica, expose its metadata to the backend, then
             # dispatch onto that exact selection.
             async with prefill_handle_method.choose_replica(request) as selection:
-                # ``replica_metadata`` is the public field added in the metadata
-                # PR; this branch may run on a checkout that lacks it, so guard.
+                # The selected replica's published metadata (empty dict if none).
                 peer = getattr(selection, "replica_metadata", {})
                 prefill_request = be.prepare_prefill_request(request=request, peer=peer)
 
                 if be.concurrent_handoff:
-                    # WRITE-style handoff: start remote prefill and run local
-                    # decode concurrently, draining prefill before leaving the
-                    # choose_replica context (so on_request_completed fires once).
+                    # Concurrent handoff: start remote prefill and run local decode
+                    # together, draining prefill before leaving the choose_replica
+                    # context (so on_request_completed fires once).
                     decode_request = be.prepare_decode_request(
                         request=request, peer=peer, prefill_response=None
                     )
                     prefill_resp = prefill_handle_method.dispatch(
                         selection, prefill_request, raw_request_info
                     )
-                    prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
-                    completed = False
-                    try:
-                        local_gen = await getattr(super(), method)(
-                            decode_request, raw_request_info
-                        )
-                        async for chunk in local_gen:
-                            yield chunk
-                        completed = True
-                    finally:
-                        if not completed:
-                            # Local decode failed/cancelled; don't leak the
-                            # background prefill task.
-                            prefill_task.cancel()
-                        try:
-                            err = await prefill_task
-                            if isinstance(err, ErrorResponse):
-                                logger.error("Remote prefill returned error: %s", err)
-                        except asyncio.CancelledError:
-                            pass
-                        except Exception as exc:  # pragma: no cover - defensive
-                            logger.error("Remote prefill failed: %s", exc)
+                    async for chunk in self._concurrent_decode(
+                        method, decode_request, prefill_resp, raw_request_info
+                    ):
+                        yield chunk
                     return
 
                 # Sequential handoff with peer binding: run prefill to its first
@@ -276,42 +262,23 @@ class PDOrchestratorMixin:
                     yield chunk
                 return
 
-        # Default / NIXL path: no pre-dispatch peer binding. This is byte-for-byte
-        # the historical flow, just routed through the backend's request shapers.
-        peer = None
-        prefill_request = be.prepare_prefill_request(request=request, peer=peer)
+        # Default path: no pre-dispatch peer binding; dispatch prefill via the
+        # standard handle path.
+        prefill_request = be.prepare_prefill_request(request=request, peer=None)
 
         if be.concurrent_handoff:
-            # Concurrent handoff without peer binding: dispatch via remote() and
-            # run local decode concurrently.
+            # Concurrent handoff: dispatch via remote() and run local decode
+            # together.
             decode_request = be.prepare_decode_request(
-                request=request, peer=peer, prefill_response=None
+                request=request, peer=None, prefill_response=None
             )
             prefill_resp = prefill_handle_method.remote(
                 prefill_request, raw_request_info
             )
-            prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
-            completed = False
-            try:
-                local_gen = await getattr(super(), method)(
-                    decode_request, raw_request_info
-                )
-                async for chunk in local_gen:
-                    yield chunk
-                completed = True
-            finally:
-                if not completed:
-                    # Local decode failed/cancelled; don't leak the background
-                    # prefill task.
-                    prefill_task.cancel()
-                try:
-                    err = await prefill_task
-                    if isinstance(err, ErrorResponse):
-                        logger.error("Remote prefill returned error: %s", err)
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:  # pragma: no cover - defensive
-                    logger.error("Remote prefill failed: %s", exc)
+            async for chunk in self._concurrent_decode(
+                method, decode_request, prefill_resp, raw_request_info
+            ):
+                yield chunk
             return
 
         # 1. Remote prefill
@@ -327,11 +294,39 @@ class PDOrchestratorMixin:
         # standard LLMServer request pipeline (request_id, LoRA multiplex,
         # batch_output_stream) runs on the decode side.
         decode_request = be.prepare_decode_request(
-            request=request, peer=peer, prefill_response=prefill_chunk
+            request=request, peer=None, prefill_response=prefill_chunk
         )
         local_gen = await getattr(super(), method)(decode_request, raw_request_info)
         async for chunk in local_gen:
             yield chunk
+
+    async def _concurrent_decode(
+        self, method, decode_request, prefill_resp, raw_request_info
+    ):
+        """Run local decode while a remote prefill drains concurrently.
+
+        Yields the local decode chunks. The background prefill task is always
+        awaited, and is cancelled if local decode does not complete (so it never
+        leaks on the prefill/decode engines).
+        """
+        prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
+        completed = False
+        try:
+            local_gen = await getattr(super(), method)(decode_request, raw_request_info)
+            async for chunk in local_gen:
+                yield chunk
+            completed = True
+        finally:
+            if not completed:
+                prefill_task.cancel()
+            try:
+                err = await prefill_task
+                if isinstance(err, ErrorResponse):
+                    logger.error("Remote prefill returned error: %s", err)
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.error("Remote prefill failed: %s", exc)
 
     # ---- Direct-streaming ASGI app ----
 

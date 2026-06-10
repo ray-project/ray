@@ -1,9 +1,8 @@
 import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
-    DefaultPDProtocolMixin,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -13,16 +12,19 @@ if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
-# MRO note: list ``DefaultPDProtocolMixin`` before ``BaseConnectorBackend`` so
-# its concrete ``prepare_*`` methods satisfy the abstract methods.
-#
-# MultiConnector uses the default request-shaping policy on the assumption that
-# its sub-connectors all follow the standard (no-peer, sequential) protocol. If
-# a future sub-connector needs custom shaping, Multi should delegate to that
-# sub-connector's backend's ``prepare_*`` rather than apply the default here.
-class MultiConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
+class MultiConnectorBackend(BaseConnectorBackend):
+    """Wraps multiple sub-connectors.
+
+    The P/D protocol (``prepare_prefill_request`` / ``prepare_decode_request`` and
+    the ``requires_peer_binding`` / ``concurrent_handoff`` policy) is delegated to
+    the *first* (top-most) sub-connector listed in ``connectors`` — that
+    connector's policy governs request shaping and handoff for the group. Each
+    sub-connector's ``setup()`` still runs.
+    """
+
     def __init__(self, llm_config: "LLMConfig"):
         super().__init__(llm_config)
+        self._connector_backends: List[BaseConnectorBackend] = []
 
     def setup(self) -> None:
         """Setup all connectors listed in the kv_transfer_config."""
@@ -57,3 +59,29 @@ class MultiConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
                 connector_backend_str, sub_llm_config
             )
             connector_backend.setup()
+            self._connector_backends.append(connector_backend)
+
+    @property
+    def _primary(self) -> BaseConnectorBackend:
+        """The top-most sub-connector, whose protocol governs the group."""
+        if not self._connector_backends:
+            raise ValueError(
+                "MultiConnectorBackend has no sub-connectors; was setup() called?"
+            )
+        return self._connector_backends[0]
+
+    @property
+    def requires_peer_binding(self) -> bool:
+        return bool(self._connector_backends) and self._primary.requires_peer_binding
+
+    @property
+    def concurrent_handoff(self) -> bool:
+        return bool(self._connector_backends) and self._primary.concurrent_handoff
+
+    def prepare_prefill_request(self, *, request, peer):
+        return self._primary.prepare_prefill_request(request=request, peer=peer)
+
+    def prepare_decode_request(self, *, request, peer, prefill_response):
+        return self._primary.prepare_decode_request(
+            request=request, peer=peer, prefill_response=prefill_response
+        )
