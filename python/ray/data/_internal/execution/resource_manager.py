@@ -10,6 +10,7 @@ from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
+    safe_round,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
@@ -691,37 +692,69 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
-        remaining = limits.copy()
+        # This method runs on every scheduling iteration, so the per-op
+        # arithmetic below works on raw per-dimension floats: every chained
+        # `ExecutionResources` call (`subtract`/`max`/`min`/...) allocates a
+        # new object, which made this loop a hot spot. Only the values stored
+        # on `self` are materialized as `ExecutionResources`. Quantized
+        # comparisons use `safe_round` with the same digits as
+        # `ExecutionResources._quantized_key` (5 for cpu/gpu, 0 for memory).
+        remaining_cpu = limits.cpu
+        remaining_gpu = limits.gpu
+        remaining_osm = limits.object_store_memory
+        remaining_mem = limits.memory
 
         # Reserve `reservation_ratio * global_limits / num_ops` resources for each
         # operator.
-        default_reserved = limits.scale(self._reservation_ratio / (len(eligible_ops)))
+        reserve_fraction = self._reservation_ratio / len(eligible_ops)
+        if reserve_fraction == 0:
+            # Mirror `ExecutionResources.scale(0)`, which special-cases 0 to
+            # avoid `0 * inf`.
+            default_cpu = default_gpu = default_osm = default_mem = 0.0
+        else:
+            default_cpu = remaining_cpu * reserve_fraction
+            default_gpu = remaining_gpu * reserve_fraction
+            default_osm = remaining_osm * reserve_fraction
+            default_mem = remaining_mem * reserve_fraction
+
         for index, op in enumerate(eligible_ops):
             # Reserve at least half of the default reserved resources for the outputs.
             # This makes sure that we will have enough budget to pull blocks from the
-            # op.
-            reserved_for_outputs = ExecutionResources(
-                0, 0, max(default_reserved.object_store_memory / 2, 1)
-            )
+            # op. The outputs reservation only carries object store memory.
+            reserved_for_outputs_osm = max(default_osm / 2, 1)
 
-            reserved_for_tasks = default_reserved.subtract(reserved_for_outputs)
+            task_cpu = default_cpu
+            task_gpu = default_gpu
+            task_osm = default_osm - reserved_for_outputs_osm
+            task_mem = default_mem
 
             min_resource_usage, max_resource_usage = op.min_max_resource_requirements()
 
             if min_resource_usage is not None:
-                reserved_for_tasks = reserved_for_tasks.max(min_resource_usage)
+                task_cpu = max(task_cpu, min_resource_usage.cpu)
+                task_gpu = max(task_gpu, min_resource_usage.gpu)
+                task_osm = max(task_osm, min_resource_usage.object_store_memory)
+                task_mem = max(task_mem, min_resource_usage.memory)
             if max_resource_usage is not None:
-                reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
+                task_cpu = min(task_cpu, max_resource_usage.cpu)
+                task_gpu = min(task_gpu, max_resource_usage.gpu)
+                task_osm = min(task_osm, max_resource_usage.object_store_memory)
+                task_mem = min(task_mem, max_resource_usage.memory)
 
             # Check if the remaining resources are enough for both reserved_for_tasks
             # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
             # object_store_memory, because object_store_memory can be oversubscribed,
             # but CPU/GPU cannot.
-            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
-                remaining, ignore_object_store_memory=True
+            if (
+                safe_round(task_cpu, 5) <= safe_round(remaining_cpu, 5)
+                and safe_round(task_gpu, 5) <= safe_round(remaining_gpu, 5)
+                and safe_round(task_mem, 0) <= safe_round(remaining_mem, 0)
             ):
                 self._reserved_min_resources[op] = True
                 self._op_starved_since[op] = None
+                reserved_for_tasks = ExecutionResources(
+                    task_cpu, task_gpu, task_osm, task_mem
+                )
             else:
                 self._reserved_min_resources[op] = False
                 if self._op_starved_since.get(op) is None:
@@ -734,9 +767,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # NOTE: we prioritize upstream operators for minimum resource reservation.
                 # ops. It's fine that downstream ops don't get the minimum reservation,
                 # because they can wait for upstream ops to finish and release resources.
-                reserved_for_tasks = ExecutionResources(
-                    0, 0, min_resource_usage.object_store_memory
-                )
+                task_cpu = task_gpu = task_mem = 0.0
+                task_osm = min_resource_usage.object_store_memory
+                reserved_for_tasks = ExecutionResources(0, 0, task_osm)
 
             # Log a warning if even the first operator cannot reserve the minimum
             # resources.
@@ -744,13 +777,19 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._warn_if_op_starved_too_long(op)
 
             self._op_reserved[op] = reserved_for_tasks
-            self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
+            self._reserved_for_op_outputs[op] = reserved_for_outputs_osm
 
-            op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
-            remaining = remaining.subtract(op_total_reserved)
-            remaining = remaining.max(ExecutionResources.zero())
+            # remaining = max(remaining - (reserved_for_tasks + reserved_for_outputs), 0)
+            remaining_cpu = max(remaining_cpu - task_cpu, 0.0)
+            remaining_gpu = max(remaining_gpu - task_gpu, 0.0)
+            remaining_osm = max(
+                remaining_osm - (task_osm + reserved_for_outputs_osm), 0.0
+            )
+            remaining_mem = max(remaining_mem - task_mem, 0.0)
 
-        self._total_shared = remaining
+        self._total_shared = ExecutionResources(
+            remaining_cpu, remaining_gpu, remaining_osm, remaining_mem
+        )
 
     def _warn_if_op_starved_too_long(self, op: PhysicalOperator) -> None:
         # The operator isn't starved. Return early.
@@ -797,14 +836,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return None
         return budget.add(self._resource_manager.get_op_usage(op))
 
-    def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
-        """Get total reserved resources for an operator, including outputs reservation."""
-        op_reserved = self._op_reserved[op]
-        reserved_for_outputs = self._reserved_for_op_outputs[op]
-        return op_reserved.copy(
-            object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
-        )
-
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         if op not in self._op_budgets:
             return None
@@ -830,16 +861,27 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        # Remaining resources to be distributed across operators
-        remaining_shared = self._update_reservation(limits)
+        self._update_reservation(limits)
 
         self._op_budgets.clear()
         eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
-        # Remaining of shared resources.
-        remaining_shared = self._total_shared
+        # Like `_update_reservation`, this method runs on every scheduling
+        # iteration, so the per-op arithmetic below works on raw per-dimension
+        # floats instead of chained `ExecutionResources` calls (each of which
+        # allocates a new object). Budgets are accumulated in
+        # `[cpu, gpu, object_store_memory, memory]` lists and only materialized
+        # as `ExecutionResources` at the end.
+        total_shared = self._total_shared
+        shared_cpu = total_shared.cpu
+        shared_gpu = total_shared.gpu
+        shared_osm = total_shared.object_store_memory
+        shared_mem = total_shared.memory
+
+        budgets: Dict[PhysicalOperator, List[float]] = {}
+
         for op in eligible_ops:
             # Calculate the memory usage of the operator.
             op_mem_usage = 0
@@ -853,74 +895,154 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             op_mem_usage += max(op_outputs_usage - self._reserved_for_op_outputs[op], 0)
 
-            op_usage = self._resource_manager.get_op_usage(op).copy(
-                object_store_memory=op_mem_usage
-            )
+            op_usage = self._resource_manager.get_op_usage(op)
+            usage_cpu = op_usage.cpu
+            usage_gpu = op_usage.gpu
+            usage_osm = op_mem_usage
+            usage_mem = op_usage.memory
 
             op_reserved = self._op_reserved[op]
-            # How much of the reserved resources are remaining.
-            op_reserved_remaining = op_reserved.subtract(op_usage).max(
-                ExecutionResources.zero()
-            )
+            reserved_cpu = op_reserved.cpu
+            reserved_gpu = op_reserved.gpu
+            reserved_osm = op_reserved.object_store_memory
+            reserved_mem = op_reserved.memory
 
-            self._op_budgets[op] = op_reserved_remaining
+            # How much of the reserved resources are remaining.
+            budgets[op] = [
+                max(reserved_cpu - usage_cpu, 0.0),
+                max(reserved_gpu - usage_gpu, 0.0),
+                max(reserved_osm - usage_osm, 0.0),
+                max(reserved_mem - usage_mem, 0.0),
+            ]
             # How much of the reserved resources are exceeded.
             # If exceeded, we need to subtract from the remaining shared resources.
-            op_reserved_exceeded = op_usage.subtract(op_reserved).max(
-                ExecutionResources.zero()
-            )
-            remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
+            shared_cpu -= max(usage_cpu - reserved_cpu, 0.0)
+            shared_gpu -= max(usage_gpu - reserved_gpu, 0.0)
+            shared_osm -= max(usage_osm - reserved_osm, 0.0)
+            shared_mem -= max(usage_mem - reserved_mem, 0.0)
 
-        remaining_shared = remaining_shared.max(ExecutionResources.zero())
+        shared_cpu = max(shared_cpu, 0.0)
+        shared_gpu = max(shared_gpu, 0.0)
+        shared_osm = max(shared_osm, 0.0)
+        shared_mem = max(shared_mem, 0.0)
 
         # Allocate the remaining shared resources to each operator.
+        num_ops = len(eligible_ops)
         for i, op in enumerate(reversed(eligible_ops)):
+            budget = budgets[op]
             # By default, divide the remaining shared resources equally.
-            op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
+            fraction = 1.0 / (num_ops - i)
+            op_shared_cpu = shared_cpu * fraction
+            op_shared_gpu = shared_gpu * fraction
+            op_shared_osm = shared_osm * fraction
+            op_shared_mem = shared_mem * fraction
             # But if the op's budget is less than `min_scheduling_resources`,
             # it will be useless. So we'll let the downstream operator
             # borrow some resources from the upstream operator, if remaining_shared
             # is still enough.
-            to_borrow = (
-                op.min_scheduling_resources()
-                .subtract(self._op_budgets[op].add(op_shared))
-                .max(ExecutionResources.zero())
+            min_scheduling = op.min_scheduling_resources()
+            borrow_cpu = max(min_scheduling.cpu - (budget[0] + op_shared_cpu), 0.0)
+            borrow_gpu = max(min_scheduling.gpu - (budget[1] + op_shared_gpu), 0.0)
+            borrow_osm = max(
+                min_scheduling.object_store_memory - (budget[2] + op_shared_osm), 0.0
             )
-            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(
-                remaining_shared
+            borrow_mem = max(min_scheduling.memory - (budget[3] + op_shared_mem), 0.0)
+            if (
+                # not to_borrow.is_zero(), quantized.
+                (
+                    safe_round(borrow_cpu, 5) != 0.0
+                    or safe_round(borrow_gpu, 5) != 0.0
+                    or safe_round(borrow_osm, 0) != 0.0
+                    or safe_round(borrow_mem, 0) != 0.0
+                )
+                # and (op_shared + to_borrow).satisfies_limit(remaining_shared),
+                # quantized.
+                and safe_round(op_shared_cpu + borrow_cpu, 5)
+                <= safe_round(shared_cpu, 5)
+                and safe_round(op_shared_gpu + borrow_gpu, 5)
+                <= safe_round(shared_gpu, 5)
+                and safe_round(op_shared_osm + borrow_osm, 0)
+                <= safe_round(shared_osm, 0)
+                and safe_round(op_shared_mem + borrow_mem, 0)
+                <= safe_round(shared_mem, 0)
             ):
-                op_shared = op_shared.add(to_borrow)
+                op_shared_cpu += borrow_cpu
+                op_shared_gpu += borrow_gpu
+                op_shared_osm += borrow_osm
+                op_shared_mem += borrow_mem
 
             # Cap op_shared so that total allocation doesn't exceed max_resource_usage.
             # Total allocation = max(total_reserved, op_usage) + op_shared
             # This ensures excess resources stay in remaining_shared for other operators.
             _, max_resource_usage = op.min_max_resource_requirements()
             if max_resource_usage != ExecutionResources.inf():
-                total_reserved = self._get_total_reserved(op)
+                op_reserved = self._op_reserved[op]
                 op_usage = self._resource_manager.get_op_usage(op)
-                current_allocation = total_reserved.max(op_usage)
-                max_shared = max_resource_usage.subtract(current_allocation).max(
-                    ExecutionResources.zero()
+                # current_allocation = max(total_reserved, op_usage), where
+                # total_reserved includes `_reserved_for_op_outputs`.
+                alloc_cpu = max(op_reserved.cpu, op_usage.cpu)
+                alloc_gpu = max(op_reserved.gpu, op_usage.gpu)
+                alloc_osm = max(
+                    op_reserved.object_store_memory + self._reserved_for_op_outputs[op],
+                    op_usage.object_store_memory,
                 )
-                op_shared = op_shared.min(max_shared)
+                alloc_mem = max(op_reserved.memory, op_usage.memory)
+                # op_shared = min(op_shared, max(max_resource_usage - alloc, 0))
+                op_shared_cpu = min(
+                    op_shared_cpu, max(max_resource_usage.cpu - alloc_cpu, 0.0)
+                )
+                op_shared_gpu = min(
+                    op_shared_gpu, max(max_resource_usage.gpu - alloc_gpu, 0.0)
+                )
+                op_shared_osm = min(
+                    op_shared_osm,
+                    max(max_resource_usage.object_store_memory - alloc_osm, 0.0),
+                )
+                op_shared_mem = min(
+                    op_shared_mem, max(max_resource_usage.memory - alloc_mem, 0.0)
+                )
 
-            remaining_shared = remaining_shared.subtract(op_shared)
-            assert remaining_shared.is_non_negative(), (
-                remaining_shared,
+            shared_cpu -= op_shared_cpu
+            shared_gpu -= op_shared_gpu
+            shared_osm -= op_shared_osm
+            shared_mem -= op_shared_mem
+            # remaining_shared.is_non_negative(), quantized.
+            assert (
+                safe_round(shared_cpu, 5) >= 0
+                and safe_round(shared_gpu, 5) >= 0
+                and safe_round(shared_osm, 0) >= 0
+                and safe_round(shared_mem, 0) >= 0
+            ), (
+                ExecutionResources(shared_cpu, shared_gpu, shared_osm, shared_mem),
                 op,
-                op_shared,
-                to_borrow,
+                ExecutionResources(
+                    op_shared_cpu, op_shared_gpu, op_shared_osm, op_shared_mem
+                ),
+                ExecutionResources(borrow_cpu, borrow_gpu, borrow_osm, borrow_mem),
             )
 
-            self._op_budgets[op] = self._op_budgets[op].add(op_shared)
+            budget[0] += op_shared_cpu
+            budget[1] += op_shared_gpu
+            budget[2] += op_shared_osm
+            budget[3] += op_shared_mem
 
         # Give any remaining shared resources to the most downstream uncapped op.
         # This can happen when some ops have their shared allocation capped.
-        if eligible_ops and not remaining_shared.is_zero():
+        # (`remaining_shared.is_zero()`, quantized.)
+        if not (
+            safe_round(shared_cpu, 5) == 0.0
+            and safe_round(shared_gpu, 5) == 0.0
+            and safe_round(shared_osm, 0) == 0.0
+            and safe_round(shared_mem, 0) == 0.0
+        ):
             for op in reversed(eligible_ops):
                 _, max_resource_usage = op.min_max_resource_requirements()
                 if max_resource_usage == ExecutionResources.inf():
-                    self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
+                    budget = budgets[op]
+                    budget[0] += shared_cpu
+                    budget[1] += shared_gpu
+                    budget[2] += shared_osm
+                    budget[3] += shared_mem
                     break
 
         # A materializing operator like `AllToAllOperator` waits for all its input
@@ -929,6 +1051,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # disable object store memory backpressure for the input operator.
         for op in eligible_ops:
             if self._resource_manager._is_blocking_materializing_op(op):
-                self._op_budgets[op] = self._op_budgets[op].copy(
-                    object_store_memory=float("inf")
-                )
+                budgets[op][2] = float("inf")
+
+        for op, (cpu, gpu, object_store_memory, memory) in budgets.items():
+            self._op_budgets[op] = ExecutionResources(
+                cpu, gpu, object_store_memory, memory
+            )
