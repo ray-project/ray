@@ -141,6 +141,11 @@ class _LeRobotRoot(NamedTuple):
     ``meta/stats.json``, serialized to a JSON string.  Emitted verbatim on
     every row as the ``stats`` column; ``"{}"`` when the dataset has none."""
 
+    frame_tolerance_s: Optional[float]
+    """Max seconds a decoded video frame's timestamp may differ from a row's
+    timestamp before it is rejected (passed to lerobot's ``decode_video_frames``).
+    ``None`` means use the default ``0.5 / fps`` (half a frame interval)."""
+
 
 # ---------------------------------------------------------------------------
 # Driver-side derived-state builders.
@@ -295,7 +300,9 @@ def _load_lerobot_metadata(
 
 
 def _build_root(
-    meta: "LeRobotDatasetMetadata", storage_options: Optional[Dict[str, Any]] = None
+    meta: "LeRobotDatasetMetadata",
+    storage_options: Optional[Dict[str, Any]] = None,
+    frame_tolerance_s: Optional[float] = None,
 ) -> _LeRobotRoot:
     """Compute the per-root derived state bundle for a (pristine) lerobot
     ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*.
@@ -341,6 +348,7 @@ def _build_root(
         fps=meta.fps,
         storage_options=storage_options,
         stats_json=stats_json,
+        frame_tolerance_s=frame_tolerance_s,
     )
 
 
@@ -478,9 +486,14 @@ class _LeRobotReadTask(ReadTask):
         n_rows = full.num_rows
         ep_idx_col = full.column("episode_index").to_pylist()
         ts_col = full.column("timestamp").to_pylist()
-        # Match the per-frame tolerance used by our previous PyAV streaming
-        # loop: half a frame's interval.  Default is ~0.05s at 10fps.
-        tolerance_s = 0.5 / float(root.fps)
+        # Tolerance (seconds) for matching a row's timestamp to the nearest
+        # decoded video frame.  ``frame_tolerance_s=None`` falls back to half a
+        # frame interval (``0.5 / fps``, ~0.05s at 10fps).
+        tolerance_s = (
+            root.frame_tolerance_s
+            if root.frame_tolerance_s is not None
+            else 0.5 / float(root.fps)
+        )
 
         # Build an O(1) lookup from episode_index to (chunk, file, from_ts)
         # per camera, by scanning the episodes_table once.
@@ -698,6 +711,7 @@ class LeRobotDatasource(Datasource):
         root: Union[str, Path, List[Union[str, Path]]],
         partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
         storage_options: Optional[Dict[str, Any]] = None,
+        frame_tolerance_s: Optional[float] = None,
         **kwargs: Any,
     ):
         """Initialize LeRobot datasource.
@@ -715,13 +729,19 @@ class LeRobotDatasource(Datasource):
                 ``{"anon": False}`` for S3, or credentials / a custom
                 ``endpoint_url``).  Applied to every root.  When omitted,
                 ``fsspec``'s ambient credential resolution is used.
+            frame_tolerance_s: Max seconds a decoded video frame's timestamp may
+                differ from a row's timestamp before it is rejected. ``None``
+                (the default) uses ``0.5 / fps`` — half a frame interval, e.g.
+                ~0.05s at 10fps. Increase to tolerate timestamp jitter; decrease
+                for stricter alignment.
             **kwargs: Forwarded to the partitioning helper at read time.
                 ``ROW_BLOCK`` requires ``block_size``; other modes take none.
 
         Raises:
             ValueError: If *partitioning* is not recognised, if
-                ``block_size`` is omitted for ``ROW_BLOCK`` mode, or if
-                roots have incompatible schemas.
+                ``block_size`` is omitted for ``ROW_BLOCK`` mode, if
+                ``frame_tolerance_s`` is non-positive, or if roots have
+                incompatible schemas.
         """
         super().__init__()
 
@@ -729,6 +749,13 @@ class LeRobotDatasource(Datasource):
             _check_import(self, module=module, package=package)
 
         self._storage_options: Dict[str, Any] = dict(storage_options or {})
+
+        if frame_tolerance_s is not None and frame_tolerance_s <= 0:
+            raise ValueError(
+                f"frame_tolerance_s must be a positive number of seconds, "
+                f"got {frame_tolerance_s!r}."
+            )
+        self._frame_tolerance_s: Optional[float] = frame_tolerance_s
 
         roots = [root] if isinstance(root, (str, Path)) else list(root)
         # Pristine upstream metadata instances, exposed via self.metas /
@@ -771,7 +798,8 @@ class LeRobotDatasource(Datasource):
         # driver and shipped to workers via ray.put — workers don't need
         # lerobot installed at runtime.
         self._roots: List[_LeRobotRoot] = [
-            _build_root(m, self._storage_options) for m in self.metas
+            _build_root(m, self._storage_options, self._frame_tolerance_s)
+            for m in self.metas
         ]
 
         if isinstance(partitioning, LeRobotPartitioning):

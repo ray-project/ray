@@ -262,6 +262,36 @@ def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_
             )
 
 
+def test_read_lerobot_frame_tolerance_default(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """frame_tolerance_s defaults to None (resolved to 0.5/fps at decode time)."""
+    from ray.data.datasource import LeRobotDatasource
+
+    source = LeRobotDatasource(lerobot_dataset_no_video)
+    assert source._roots[0].frame_tolerance_s is None
+
+
+def test_read_lerobot_frame_tolerance_override(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """An explicit frame_tolerance_s is threaded onto every root."""
+    from ray.data.datasource import LeRobotDatasource
+
+    source = LeRobotDatasource(lerobot_dataset_no_video, frame_tolerance_s=0.25)
+    assert source._roots[0].frame_tolerance_s == 0.25
+
+
+def test_read_lerobot_frame_tolerance_invalid(
+    ray_start_regular_shared, lerobot_dataset_no_video
+):
+    """Non-positive frame_tolerance_s is rejected."""
+    from ray.data.datasource import LeRobotDatasource
+
+    with pytest.raises(ValueError, match="frame_tolerance_s must be"):
+        LeRobotDatasource(lerobot_dataset_no_video, frame_tolerance_s=0)
+
+
 def test_read_lerobot_sequential(ray_start_regular_shared, lerobot_dataset):
     """Test SEQUENTIAL partitioning."""
     from ray.data.datasource import LeRobotPartitioning

@@ -2562,6 +2562,7 @@ def read_lerobot(
     root: Union[str, List[str]],
     *,
     partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+    frame_tolerance_s: Optional[float] = None,
     override_num_blocks: Optional[int] = None,
     **kwargs: Any,
 ) -> Dataset:
@@ -2624,6 +2625,11 @@ def read_lerobot(
             - ``CHAIN``: one task per connected component of shared files.
             - ``SEQUENTIAL``: one task for the whole dataset.
             - ``ROW_BLOCK``: fixed-size blocks (requires ``block_size`` kwarg).
+        frame_tolerance_s: Max seconds a decoded video frame's timestamp may
+            differ from a row's timestamp before it is rejected. ``None`` (the
+            default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
+            10fps. Increase to tolerate timestamp jitter; decrease for stricter
+            alignment.
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default, the number is dynamically decided based on input
             data size and available resources.
@@ -2638,6 +2644,7 @@ def read_lerobot(
     datasource = LeRobotDatasource(
         root=root,
         partitioning=partitioning,
+        frame_tolerance_s=frame_tolerance_s,
         **kwargs,
     )
     return read_datasource(
