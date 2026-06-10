@@ -18,9 +18,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <future>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -1534,6 +1536,39 @@ TEST_F(CoreWorkerTest, WaitAndFetchInPlasmaPlaceholderRespectsInputOrderForNoFet
   std::vector<bool> results;
   ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 1, 1000, &results).ok());
   ASSERT_EQ(results, (std::vector<bool>{true, false}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchCanReturnLaterNoFetchPlasmaPlaceholder) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  const auto id_fetch_local = ObjectID::FromRandom();
+  const auto id_no_fetch = ObjectID::FromRandom();
+  for (const auto &id : {id_fetch_local, id_no_fetch}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+  }
+  memory_store_->Put(
+      in_plasma, id_fetch_local, reference_counter_->HasReference(id_fetch_local));
+
+  auto put_no_fetch = std::async(std::launch::async, [&]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    memory_store_->Put(
+        in_plasma, id_no_fetch, reference_counter_->HasReference(id_no_fetch));
+  });
+
+  const std::vector<ObjectID> ids = {id_fetch_local, id_no_fetch};
+  const std::vector<bool> fetch_local = {true, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 1, 1000, &results).ok());
+  put_no_fetch.wait();
+  ASSERT_EQ(results, (std::vector<bool>{false, true}));
 }
 
 TEST_F(CoreWorkerTest, WaitAndFetchMixedMemoryAndInPlasmaPlaceholderNoFetch) {
