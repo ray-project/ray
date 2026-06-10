@@ -353,10 +353,13 @@ class DataOpTask(OpTask):
                 # advancing past a pair whose metadata couldn't be fetched
                 # (consuming it would also advance the generator stream to
                 # end-of-stream, whose handling blocks on the generator ref).
-                # The zero-timeout fetch_local wait nudges Ray to pull /
-                # reconstruct the block in the background without blocking
-                # the scheduling thread.
-                ray.wait([self._pending_block_ref], timeout=0, fetch_local=True)
+                # Nudge Ray to restore the pair in the background without
+                # blocking the scheduling thread: the zero-timeout wait on
+                # the (tiny) metadata object registers a fetch, and
+                # reconstructing it re-executes the producer task, which
+                # also restores the block. We never pull block data to the
+                # driver.
+                ray.wait([self._pending_meta_ref], timeout=0, fetch_local=True)
                 break
 
             # Defer everything: no ray.get inside the loop, no emit,
