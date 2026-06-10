@@ -217,11 +217,17 @@ class ExecutionResources:
         allocations from the scheduling hot path.
         """
         cpu = gpu = object_store_memory = memory = 0.0
+        empty = True
         for r in resources:
+            empty = False
             cpu += r.cpu
             gpu += r.gpu
             object_store_memory += r.object_store_memory
             memory += r.memory
+        if empty:
+            # Empty folds are common (e.g. completed-ops / downstream-ineligible
+            # usage rollups on most iterations) -- reuse the shared zero.
+            return cls.zero()
         return ExecutionResources(cpu, gpu, object_store_memory, memory)
 
     def is_zero(self) -> bool:
