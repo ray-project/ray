@@ -739,7 +739,14 @@ ray.get([a.remote(buf[0]), b.remote(buf[1])] + [c.remote(x) for x in buf[2:]])
         assert running == 2, stats
         assert 7 <= stats["PENDING_NODE_ASSIGNMENT"] <= 17, stats
         assert 81 <= stats["PENDING_OBJ_STORE_MEM_AVAIL"] <= 91, stats
-        assert set(stats.keys()).issubset({"RUNNING", "SUBMITTED_TO_WORKER", "PENDING_NODE_ASSIGNMENT", "PENDING_OBJ_STORE_MEM_AVAIL"}), stats
+        assert set(stats.keys()).issubset(
+            {
+                "RUNNING",
+                "SUBMITTED_TO_WORKER",
+                "PENDING_NODE_ASSIGNMENT",
+                "PENDING_OBJ_STORE_MEM_AVAIL",
+            }
+        ), stats
         assert sum(stats.values()) == 100, stats
         return True
 
