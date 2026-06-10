@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -35,6 +36,8 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/util/container_util.h"
@@ -47,6 +50,22 @@ namespace ray {
 namespace raylet {
 
 namespace {
+
+ray::ResourceSet StripPgFormattedResources(const ray::ResourceSet &resource_set) {
+  absl::flat_hash_map<ray::scheduling::ResourceID, FixedPoint> new_resources;
+  for (const auto &[resource_id, quantity] : resource_set.Resources()) {
+    auto parsed = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/true,
+                                           /*for_indexed_resource=*/true);
+    if (parsed) {
+      ray::scheduling::ResourceID new_id(parsed->original_resource);
+      new_resources[new_id] += quantity;
+    } else {
+      new_resources[resource_id] += quantity;
+    }
+  }
+  return ray::ResourceSet(new_resources);
+}
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
@@ -1355,9 +1374,11 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
     return WorkerUnfitForLeaseReason::DYNAMIC_OPTIONS_MISMATCH;
   }
   // Skip if resource requirements mismatch.
-  if (worker.GetResourceRequirements() != pop_worker_request.resource_requirements_) {
+  if (StripPgFormattedResources(worker.GetResourceRequirements()) !=
+      StripPgFormattedResources(pop_worker_request.resource_requirements_)) {
     return WorkerUnfitForLeaseReason::RESOURCE_MISMATCH;
   }
+
   // Skip if the startup allocated instances mismatch.
   bool allocated_instances_match = false;
   const auto &worker_allocated_instances = worker.GetStartupAllocatedInstances();
