@@ -138,10 +138,18 @@ class MetricsRegistry:
             namespace: If given, return only that namespace's definitions (in
                 registration order). Otherwise return all definitions across
                 namespaces.
+
+        Returns:
+            The registered :class:`MetricDefinition` objects.
         """
         if namespace is not None:
             return list(self._by_namespace.get(namespace, []))
-        return [d for defs in self._by_namespace.values() for d in defs]
+
+        # Concatenate every namespace's definitions into a single list.
+        all_definitions: List[MetricDefinition] = []
+        for namespace_definitions in self._by_namespace.values():
+            all_definitions.extend(namespace_definitions)
+        return all_definitions
 
     def namespaces(self) -> List[str]:
         return list(self._by_namespace.keys())
