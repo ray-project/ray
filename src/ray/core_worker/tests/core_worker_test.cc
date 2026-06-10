@@ -65,6 +65,8 @@ class CoreWorkerTest : public ::testing::Test {
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()),
+        object_freed_callback_service_work_(
+            object_freed_callback_service_.get_executor()),
         current_time_ms_(0.0) {
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
@@ -258,6 +260,7 @@ class CoreWorkerTest : public ::testing::Test {
     core_worker_ = std::make_shared<CoreWorker>(std::move(options),
                                                 std::move(worker_context),
                                                 io_service_,
+                                                object_freed_callback_service_,
                                                 std::move(core_worker_client_pool),
                                                 std::move(raylet_client_pool),
                                                 std::move(periodical_runner),
@@ -267,6 +270,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(fake_raylet_ipc_client),
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
+                                                object_freed_callback_thread_,
                                                 reference_counter_,
                                                 memory_store_,
                                                 nullptr,  // plasma_store_provider_
@@ -291,11 +295,19 @@ class CoreWorkerTest : public ::testing::Test {
  protected:
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
+  instrumented_io_context object_freed_callback_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       task_execution_service_work_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_freed_callback_service_work_;
 
   boost::thread io_thread_;
+  boost::thread object_freed_callback_thread_;
+
+  /// Flush all pending object-freed callbacks. Call this in tests after an action
+  /// that should trigger a user-registered out-of-scope callback.
+  void FlushObjectFreedCallbacks() { object_freed_callback_service_.poll(); }
 
   rpc::Address rpc_address_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
@@ -1309,6 +1321,139 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
 INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
                          HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                          ::testing::Values(true, false));
+
+// Callback fires after the last local reference is dropped, and
+// FlushObjectFreedCallbacks drains the pending work.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresAfterRefDrop) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  bool fired = false;
+  ObjectID received_id;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fired, &received_id](const ObjectID &id) {
+        fired = true;
+        received_id = id;
+      });
+  ASSERT_TRUE(registered);
+  ASSERT_FALSE(fired);
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  // Callback is posted to the dedicated service; flush it synchronously.
+  FlushObjectFreedCallbacks();
+  ASSERT_TRUE(fired);
+  EXPECT_EQ(received_id, object_id);
+}
+
+// Returns false when the object is already out of scope; callback never fires.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_ReturnsFalseWhenAlreadyOutOfScope) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  // Add and immediately remove the reference so it goes out of scope.
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  bool fired = false;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fired](const ObjectID &) { fired = true; });
+  ASSERT_FALSE(registered);
+  FlushObjectFreedCallbacks();
+  ASSERT_FALSE(fired);
+}
+
+// The callback must run on the dedicated object_freed_callback_service_ thread,
+// not on the IO thread or the test thread.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_RunsOnDedicatedThread) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  std::promise<boost::thread::id> thread_id_promise;
+  bool registered = core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&thread_id_promise](const ObjectID &) {
+        thread_id_promise.set_value(boost::this_thread::get_id());
+      });
+  ASSERT_TRUE(registered);
+
+  // RemoveLocalReference fires OnObjectOutOfScopeOrFreed inline (test thread), which
+  // calls the wrapped lambda that posts the real callback to
+  // object_freed_callback_service_.
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  // Start the dedicated thread so the posted work can run.
+  object_freed_callback_thread_ =
+      boost::thread([this]() { object_freed_callback_service_.run(); });
+
+  auto tid = thread_id_promise.get_future().get();
+
+  object_freed_callback_service_.stop();
+  if (object_freed_callback_thread_.joinable()) {
+    object_freed_callback_thread_.join();
+  }
+
+  EXPECT_EQ(tid, object_freed_callback_thread_.get_id())
+      << "Callback must run on object_freed_callback_thread_";
+  EXPECT_NE(tid, boost::this_thread::get_id())
+      << "Callback must not run on the test thread";
+}
+
+// The C function-pointer overload (used by Cython) routes through the same
+// dedicated thread and delivers the correct object_id + user_data.
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_CFunctionPointerOverload) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  struct Result {
+    ObjectID id;
+    bool fired = false;
+  } result;
+
+  auto c_callback = [](const ObjectID &id, void *data) {
+    auto *r = static_cast<Result *>(data);
+    r->id = id;
+    r->fired = true;
+  };
+
+  bool registered =
+      core_worker_->AddObjectOutOfScopeOrFreedCallback(object_id, c_callback, &result);
+  ASSERT_TRUE(registered);
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  ASSERT_TRUE(result.fired);
+  EXPECT_EQ(result.id, object_id);
+}
 
 }  // namespace core
 }  // namespace ray

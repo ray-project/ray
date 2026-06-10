@@ -173,6 +173,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
+             instrumented_io_context &object_freed_callback_service,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -182,6 +183,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
+             boost::thread &object_freed_callback_thread,
              std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
@@ -1482,6 +1484,21 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
 
+  /// Register a callback to fire when an object goes out of scope or is freed.
+  ///
+  /// The callback is posted to the dedicated object_freed_callback_service_ thread
+  /// so it never blocks the main IO thread.
+  ///
+  /// \return true if the callback was registered; false if the object is already
+  ///         out of scope or was explicitly freed (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
+
+  /// C function-pointer overload for use from Cython.
+  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                          void (*callback)(const ObjectID &, void *),
+                                          void *user_data);
+
   /// Stops the children tasks from the given TaskID
   ///
   /// \param[in] task_id of the parent task
@@ -1751,6 +1768,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
+  /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
+  instrumented_io_context &object_freed_callback_service_;
+
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
@@ -1776,6 +1796,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
+
+  /// Dedicated thread for user-registered object-freed callbacks.
+  boost::thread &object_freed_callback_thread_;
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
