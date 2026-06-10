@@ -1,8 +1,4 @@
-import {
-  GPUStats,
-  ProcessGPUUsage,
-  TPUStats,
-} from "../type/node";
+import { GPUStats, ProcessGPUUsage, TPUStats } from "../type/node";
 
 export type UnifiedProcessAcceleratorUsage = {
   pid: number;

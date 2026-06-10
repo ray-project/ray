@@ -848,8 +848,8 @@ class ReporterAgent(
             logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
             return []
 
-        desired_indices = sorted(list({int(i["index"]) for i in tpu_utilizations_host}))
-        rewrite_indices = sorted(list({int(i["index"]) for i in tpu_utilizations_other}))
+        desired_indices = sorted({int(i["index"]) for i in tpu_utilizations_host})
+        rewrite_indices = sorted({int(i["index"]) for i in tpu_utilizations_other})
 
         # Some TPU types do not have runtime metrics reported from the device
         # plugin and the rewrite_indices list will be empty.
