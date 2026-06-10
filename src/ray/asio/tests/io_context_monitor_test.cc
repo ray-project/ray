@@ -204,6 +204,41 @@ TEST_F(IOContextMonitorTest, CompletionPastDeadlineMarksUnhealthy) {
   EXPECT_GE(GetLatency("ctx"), 200);
 }
 
+TEST_F(IOContextMonitorTest, UnhealthyCountAccumulatesAcrossProbesAndDoesNotDip) {
+  instrumented_io_context ctx;
+  auto monitor = MakeMonitor("test", {{"ctx", &ctx}}, absl::Milliseconds(100));
+
+  // Each cycle: a probe is posted, then completes past the deadline, so the next
+  // Tick counts exactly one deadline miss and posts a fresh probe.
+  auto miss_once = [&] {
+    clock_->AdvanceTime(absl::Milliseconds(200));
+    ctx.restart();
+    ctx.poll();  // Complete the outstanding probe (late).
+    EXPECT_FALSE(monitor.Tick());
+  };
+
+  // Tick 1 posts the first probe; nothing has missed yet.
+  EXPECT_TRUE(monitor.Tick());
+  EXPECT_EQ(GetUnhealthyCount("ctx"), 0);
+
+  // Three consecutive probes each miss the deadline; the counter increments by 1
+  // each time rather than re-counting the same probe.
+  miss_once();
+  EXPECT_EQ(GetUnhealthyCount("ctx"), 1);
+  miss_once();
+  EXPECT_EQ(GetUnhealthyCount("ctx"), 2);
+  miss_once();
+  EXPECT_EQ(GetUnhealthyCount("ctx"), 3);
+
+  // The next probe completes within the deadline, so the io_context recovers. The
+  // unhealthy counter must not dip when health is restored.
+  clock_->AdvanceTime(absl::Milliseconds(50));
+  ctx.restart();
+  ctx.poll();
+  EXPECT_TRUE(monitor.Tick());
+  EXPECT_EQ(GetUnhealthyCount("ctx"), 3);
+}
+
 TEST_F(IOContextMonitorTest, LateCompletionDoesNotRestoreHealth) {
   instrumented_io_context ctx;
   auto monitor = MakeMonitor("test", {{"ctx", &ctx}}, absl::Milliseconds(100));
