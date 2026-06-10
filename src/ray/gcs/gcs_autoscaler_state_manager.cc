@@ -383,7 +383,11 @@ void GcsAutoscalerStateManager::GetNodeStates(
     NodeID max_ratio_node;
   } pressure_stats;
 
-  auto populate_node_state = [this, state, &pressure_stats](
+  // Single wall-clock read shared by every node in this GetNodeStates call, so
+  // the memory-pressure staleness check uses one consistent time basis instead
+  // of re-reading the clock per node.
+  const absl::Time now = absl::Now();
+  auto populate_node_state = [this, state, &pressure_stats, now](
                                  const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
@@ -474,14 +478,13 @@ void GcsAutoscalerStateManager::GetNodeStates(
     // signal was observed" to "how long since GCS last received a report from this node"
     // -- which precisely captures the raylet-silence failure mode.
     // Per-node detail goes to DEBUG; INFO/WARNING are emitted by the aggregate summary at
-    // the end of the call, avoiding RAY_LOG_EVERY_MS call-site-level throttling that would
-    // suppress other simultaneously-pressured nodes.
+    // the end of the call, avoiding RAY_LOG_EVERY_MS call-site-level throttling that
+    // would suppress other simultaneously-pressured nodes.
     if (node_resource_data.has_memory_pressure_ratio()) {
       const double ratio = node_resource_data.memory_pressure_ratio();
       const int64_t signal_stale_ms =
           RayConfig::instance().memory_pressure_signal_stale_ms();
-      const int64_t age =
-          absl::ToInt64Milliseconds(absl::Now() - node_resource_item.first);
+      const int64_t age = absl::ToInt64Milliseconds(now - node_resource_item.first);
       if (age < signal_stale_ms) {
         RAY_LOG(DEBUG) << "GetNodeStates: forwarding memory_pressure_ratio node="
                        << node_id << " ratio=" << ratio << " age_ms=" << age;
@@ -537,8 +540,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
   // WARNING (operators are more sensitive to silent raylets).
   if (pressure_stats.forwarded > 0) {
     RAY_LOG_EVERY_MS(INFO, 5000)
-        << "GetNodeStates memory_pressure_signal: forwarded="
-        << pressure_stats.forwarded << " dropped_stale=" << pressure_stats.dropped_stale
+        << "GetNodeStates memory_pressure_signal: forwarded=" << pressure_stats.forwarded
+        << " dropped_stale=" << pressure_stats.dropped_stale
         << " max_ratio=" << pressure_stats.max_ratio
         << " max_ratio_node=" << pressure_stats.max_ratio_node;
   }

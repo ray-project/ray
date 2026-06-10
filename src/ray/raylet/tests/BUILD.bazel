@@ -25,7 +25,6 @@ ray_cc_test(
     deps = [
         "//src/ray/common/cgroup:mock_memory_pressure_reader",
         "//src/ray/raylet:ratio_hysteresis_pressure_monitor",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -37,7 +36,6 @@ ray_cc_test(
     deps = [
         "//src/ray/common:ray_config",
         "//src/ray/raylet:ratio_hysteresis_pressure_monitor",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

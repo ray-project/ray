@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "ray/raylet/ratio_hysteresis_pressure_monitor.h"
 
+#include <memory>
 #include <utility>
 
 #include "ray/util/logging.h"
@@ -31,10 +32,6 @@ RatioHysteresisPressureMonitor::RatioHysteresisPressureMonitor(
                   /*running_on_single_thread=*/true,
                   "MemoryPressureMonitor.IOContext"),
       work_guard_(boost::asio::make_work_guard(io_service_.get_executor())),
-      thread_([this] {
-        SetThreadName("MemoryPressureMonitor.IOContextThread");
-        io_service_.run();
-      }),
       runner_(PeriodicalRunner::Create(io_service_)) {
   // Clamp release_hysteresis to prevent a misconfiguration (e.g. 0.10 written as 1.0)
   // from driving release_threshold negative, which would make the signal impossible to
@@ -51,9 +48,15 @@ RatioHysteresisPressureMonitor::RatioHysteresisPressureMonitor(
                      << " so the release threshold stays above zero.";
     config_.release_hysteresis = max_hysteresis;
   }
-  runner_->RunFnPeriodically([this] { Poll(); },
-                             config_.poll_interval_ms,
-                             "MemoryPressureMonitor.Poll");
+  runner_->RunFnPeriodically(
+      [this] { Poll(); }, config_.poll_interval_ms, "MemoryPressureMonitor.Poll");
+
+  // Start the io thread last, after runner_ is fully wired up, so the thread
+  // cannot observe a half-constructed runner_ or this.
+  thread_ = std::thread([this] {
+    SetThreadName("MemoryPressureMonitor.IOContextThread");
+    io_service_.run();
+  });
 }
 
 RatioHysteresisPressureMonitor::~RatioHysteresisPressureMonitor() {

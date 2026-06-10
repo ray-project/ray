@@ -40,6 +40,5 @@ ray_cc_test(
         ":memory_pressure_reader",
         ":mock_memory_pressure_reader",
         "//src/ray/common:status",
-        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -51,8 +51,8 @@ class FileMemoryPressureReader : public MemoryPressureReader {
   // probe and treats the tree as v2; if false, treats as v1.
   FileMemoryPressureReader(std::string cgroup_root, bool force_v2);
 
-  // Single-argument constructor: points at a fake sysfs tree but detects v2/v1 on its own,
-  // replicating the detection semantics of the no-argument production constructor
+  // Single-argument constructor: points at a fake sysfs tree but detects v2/v1 on its
+  // own, replicating the detection semantics of the no-argument production constructor
   // (cgroup.controllers present -> v2, otherwise v1). Integration tests inject via the
   // RAY_IPPR_TEST_CGROUP_ROOT environment variable, letting a real raylet read a fake
   // cgroup and produce a stable high ratio without consuming host memory. Unlike the

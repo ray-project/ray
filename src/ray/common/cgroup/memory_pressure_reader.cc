@@ -45,11 +45,10 @@ FileMemoryPressureReader::FileMemoryPressureReader()
           ExistsNoThrow(std::string(kDefaultCgroupRoot) + "/" + kCgroupV2ProbeFile)) {}
 
 FileMemoryPressureReader::FileMemoryPressureReader(std::string cgroup_root)
-    : FileMemoryPressureReader(
-          cgroup_root, ExistsNoThrow(cgroup_root + "/" + kCgroupV2ProbeFile)) {}
+    : FileMemoryPressureReader(cgroup_root,
+                               ExistsNoThrow(cgroup_root + "/" + kCgroupV2ProbeFile)) {}
 
-FileMemoryPressureReader::FileMemoryPressureReader(std::string cgroup_root,
-                                                   bool force_v2)
+FileMemoryPressureReader::FileMemoryPressureReader(std::string cgroup_root, bool force_v2)
     : is_v2_(force_v2) {
   if (is_v2_) {
     current_path_ = cgroup_root + "/" + kCgroupV2CurrentFile;
@@ -85,7 +84,7 @@ Status FileMemoryPressureReader::ReadInt64File(const std::string &path, int64_t 
   }
   // Trim trailing whitespace / newline.
   while (!line.empty() && (line.back() == '\n' || line.back() == '\r' ||
-                            line.back() == ' ' || line.back() == '\t')) {
+                           line.back() == ' ' || line.back() == '\t')) {
     line.pop_back();
   }
   if (line == "max") {
@@ -96,8 +95,10 @@ Status FileMemoryPressureReader::ReadInt64File(const std::string &path, int64_t 
   try {
     size_t consumed = 0;
     long long v = std::stoll(line, &consumed);
-    if (consumed == 0) {
-      return Status::IOError("no digits at " + path + ": '" + line + "'");
+    // line is already trimmed; require the whole token to be digits so trailing
+    // garbage (e.g. "123abc") is rejected rather than silently truncated.
+    if (consumed != line.size()) {
+      return Status::IOError("malformed digits at " + path + ": '" + line + "'");
     }
     if (v < 0) {
       return Status::IOError("negative value at " + path + ": " + line);

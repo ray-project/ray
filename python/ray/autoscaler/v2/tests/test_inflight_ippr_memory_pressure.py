@@ -54,7 +54,6 @@ from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instan
 from ray.core.generated.autoscaler_pb2 import NodeState
 from ray.core.generated.instance_manager_pb2 import Instance
 
-
 GiB = 1024 * 1024 * 1024
 
 

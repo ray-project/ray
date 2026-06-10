@@ -15,6 +15,7 @@
 
 #include <climits>
 #include <memory>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/cgroup/mock_memory_pressure_reader.h"
@@ -223,7 +224,7 @@ TEST(RatioHysteresisPressureMonitorTest, LatchSurvivesSignalDecayAfterCgroupGrow
 TEST(RatioHysteresisPressureMonitorTest, OnResizeReturnsTrueAfterDecayThenClearsLatch) {
   auto mock = std::make_unique<MockMemoryPressureReader>();
   mock->Push(900, kLimit);
-  mock->Push(910, kLimit);  // signal emitted
+  mock->Push(910, kLimit);      // signal emitted
   mock->Push(910, kLimit * 2);  // release 1
   mock->Push(910, kLimit * 2);  // release 2
   mock->Push(910, kLimit * 2);  // release 3 → current_signal_ cleared
@@ -299,16 +300,18 @@ TEST(RatioHysteresisPressureMonitorTest, RatioPathNotGatedByCurrentEqualsLimit) 
 // fails (release_threshold goes negative), every ratio is >= the threshold and
 // the signal hangs forever. Pick a ratio that releases under clamping but not
 // without it to distinguish the two implementations.
-TEST(RatioHysteresisPressureMonitorCtorClampTest, ClampsReleaseHysteresisAboveMaxStillAllowsRelease) {
+TEST(RatioHysteresisPressureMonitorCtorClampTest,
+     ClampsReleaseHysteresisAboveMaxStillAllowsRelease) {
   auto mock = std::make_unique<MockMemoryPressureReader>();
   // pressure_ratio = 0.85, release_hysteresis misconfigured to 1.0
   //   clamping works:  → 0.84, release_threshold = 0.01, only ratio 0.0 releases.
   //   clamping fails:  release_threshold = -0.15; any ratio is >= -0.15, and
   //                    ratio < -0.15 never holds, so the signal never releases.
   // Use ratio = 0 (current=0) to distinguish: clamping works → 0 < 0.01 releases;
-  //                                           clamping fails → 0 < -0.15 false, no release.
+  //                                           clamping fails → 0 < -0.15 false, no
+  //                                           release.
   mock->Push(900, kLimit);
-  mock->Push(900, kLimit);  // emit
+  mock->Push(900, kLimit);                             // emit
   for (int i = 0; i < 10; ++i) mock->Push(0, kLimit);  // ratio 0
   auto cfg = MakeConfig();
   cfg.release_hysteresis = 1.0;  // intentional misconfiguration
@@ -323,12 +326,13 @@ TEST(RatioHysteresisPressureMonitorCtorClampTest, ClampsReleaseHysteresisAboveMa
   EXPECT_FALSE(monitor.GetCurrentSignal().has_value());
 }
 
-TEST(RatioHysteresisPressureMonitorCtorClampTest, ClampsReleaseHysteresisBelowZeroToZero) {
+TEST(RatioHysteresisPressureMonitorCtorClampTest,
+     ClampsReleaseHysteresisBelowZeroToZero) {
   // Negative misconfiguration → clamped to 0.0. release_threshold =
   // pressure_ratio = 0.85. Any ratio < 0.85 starts the release count.
   auto mock = std::make_unique<MockMemoryPressureReader>();
   mock->Push(900, kLimit);
-  mock->Push(900, kLimit);  // emit
+  mock->Push(900, kLimit);                              // emit
   for (int i = 0; i < 5; ++i) mock->Push(800, kLimit);  // ratio 0.8 < 0.85
   auto cfg = MakeConfig();
   cfg.release_hysteresis = -0.5;  // intentional misconfiguration
@@ -469,7 +473,8 @@ TEST(RatioHysteresisPressureMonitorTest, ConsecutiveHitsConfigOverrideEmitsOnFir
 
 // Blind spot 5: likewise override release_consecutive_hits to 1 to verify the
 // release threshold is read from config.
-TEST(RatioHysteresisPressureMonitorTest, ReleaseConsecutiveHitsConfigOverrideClearsOnFirstDrop) {
+TEST(RatioHysteresisPressureMonitorTest,
+     ReleaseConsecutiveHitsConfigOverrideClearsOnFirstDrop) {
   // Arrange: build up pressure, then drop below the release threshold in a
   // single poll.
   auto mock = std::make_unique<MockMemoryPressureReader>();

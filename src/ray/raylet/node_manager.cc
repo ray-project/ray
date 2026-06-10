@@ -1805,8 +1805,8 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
     auto ratio = memory_pressure_monitor_->GetCurrentSignal();
     if (ratio.has_value()) {
       RAY_LOG_EVERY_MS(INFO, 5000)
-          << "HandleGetResourceLoad: filling memory_pressure_ratio node="
-          << self_node_id_ << " ratio=" << *ratio;
+          << "HandleGetResourceLoad: filling memory_pressure_ratio node=" << self_node_id_
+          << " ratio=" << *ratio;
       resources_data->set_memory_pressure_ratio(*ratio);
     }
   }

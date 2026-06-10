@@ -43,10 +43,11 @@ class MemoryPressureSignalMonitor {
   // decision.
   //
   // Why a return value rather than a two-step read + reset: by the time the resize RPC
-  // reaches the raylet, kubelet has already enlarged the cgroup limit, so GetCurrentSignal
-  // has most likely decayed because the ratio fell below the release threshold; hence we
-  // must read a latch that spans the decay. Combining the read and reset into a single
-  // atomic call removes any need for NodeManager to reason about the timing contract.
+  // reaches the raylet, kubelet has already enlarged the cgroup limit, so
+  // GetCurrentSignal has most likely decayed because the ratio fell below the release
+  // threshold; hence we must read a latch that spans the decay. Combining the read and
+  // reset into a single atomic call removes any need for NodeManager to reason about the
+  // timing contract.
   virtual bool OnResize() = 0;
 };
 

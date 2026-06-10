@@ -42,7 +42,7 @@ namespace raylet {
 class RatioHysteresisPressureMonitor : public MemoryPressureSignalMonitor {
  public:
   struct Config {
-    std::string pod_name;        // read from POD_NAME env in CreatePressureMonitor
+    std::string pod_name;  // read from POD_NAME env in CreatePressureMonitor
     double pressure_ratio = 0.85;
     double release_hysteresis = 0.10;  // release threshold = ratio - hysteresis
     int consecutive_hits = 2;
@@ -112,12 +112,14 @@ class RatioHysteresisPressureMonitor : public MemoryPressureSignalMonitor {
   // Distinct from current_signal_ (which the Poll release path clears on its own).
   bool had_active_signal_since_reset_ ABSL_GUARDED_BY(mu_) = false;
 
-  // Self-driving facilities (declaration order is initialization order:
-  // io_service -> work_guard -> thread -> runner).
+  // Self-driving facilities. thread_ is declared last and started as the very
+  // last step of the constructor body (after runner_ is wired up), so the io
+  // thread cannot touch a half-constructed runner_ or this. It is also the
+  // first member torn down, before io_service_/runner_ are destroyed.
   instrumented_io_context io_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
-  std::thread thread_;
   std::shared_ptr<PeriodicalRunner> runner_;
+  std::thread thread_;
 };
 
 }  // namespace raylet

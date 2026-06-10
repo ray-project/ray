@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "ray/common/cgroup/memory_pressure_reader.h"
 #include "ray/common/ray_config.h"
@@ -53,8 +54,7 @@ std::unique_ptr<MemoryPressureSignalMonitor> CreatePressureMonitor() {
   // avoid keeping a test-only injection channel in the production config table; goes
   // through std::getenv like POD_NAME above.
   const char *cgroup_root_env = std::getenv("RAY_IPPR_TEST_CGROUP_ROOT");
-  const std::string cgroup_root =
-      cgroup_root_env == nullptr ? "" : cgroup_root_env;
+  const std::string cgroup_root = cgroup_root_env == nullptr ? "" : cgroup_root_env;
   auto reader = cgroup_root.empty()
                     ? std::make_unique<FileMemoryPressureReader>()
                     : std::make_unique<FileMemoryPressureReader>(cgroup_root);

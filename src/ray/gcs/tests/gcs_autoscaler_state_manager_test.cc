@@ -1604,8 +1604,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestForwardsMultipleNodesIndependently) {
   for (const auto &ns : state.node_states()) {
     ASSERT_TRUE(ns.has_memory_pressure_ratio())
         << "every fresh signal must be forwarded, not just the first";
-    seen[NodeID::FromBinary(ns.node_id()).Hex()] =
-        ns.memory_pressure_ratio();
+    seen[NodeID::FromBinary(ns.node_id()).Hex()] = ns.memory_pressure_ratio();
   }
   ASSERT_EQ(seen.size(), 2u);
   EXPECT_DOUBLE_EQ(seen[id_a], 0.91);
