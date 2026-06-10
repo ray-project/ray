@@ -71,6 +71,7 @@ def check_replica_metadata_recorded(
             call_method="__call__",
         ),
         _method_name="__call__",
+        _slot_token=None,
     )
     assert selection.replica_metadata == expected_metadata
     return True
@@ -167,6 +168,49 @@ async def test_multiple_replicas(serve_instance):
             expected_metadata=expected_metadata,
             replica_id=replica_id,
         )
+
+
+def test_validate_replica_metadata_rejects_non_dict():
+    """The hook's return is validated: None -> {}, a dict passes through, and a
+    non-dict raises TypeError (the error case)."""
+    from ray.serve._private.replica import _validate_replica_metadata
+
+    assert _validate_replica_metadata(None) == {}
+    assert _validate_replica_metadata({"a": 1}) == {"a": 1}
+    for bad in (["not", "a", "dict"], "str", 5, ("t",)):
+        with pytest.raises(TypeError):
+            _validate_replica_metadata(bad)
+
+
+def test_metadata_survives_controller_restart(serve_instance):
+    """After the controller dies and recovers, it re-reads replica_metadata from
+    the live replica: the value is unchanged and the user hook is NOT re-invoked
+    (its call-counter stays 1)."""
+    h = serve.run(Coordinator.bind())
+    replica_id = h.remote().result()
+    expected_metadata = {
+        "transfer_address": f"tcp://{replica_id.unique_id}:1234",
+        "calls": 1,
+    }
+    wait_for_condition(
+        check_replica_metadata_recorded,
+        handle=h,
+        expected_metadata=expected_metadata,
+        replica_id=replica_id,
+    )
+    assert h.get_metadata_calls.remote().result() == 1
+
+    # Kill the controller (it auto-restarts and recovers state from live actors).
+    ray.kill(serve.context._global_client._controller, no_restart=False)
+
+    # Metadata is recovered unchanged, and the hook was not re-invoked.
+    wait_for_condition(
+        check_replica_metadata_recorded,
+        handle=h,
+        expected_metadata=expected_metadata,
+        replica_id=replica_id,
+    )
+    assert h.get_metadata_calls.remote().result() == 1
 
 
 if __name__ == "__main__":
