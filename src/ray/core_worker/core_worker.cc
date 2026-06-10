@@ -1495,8 +1495,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
       &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
-    timeout_ms =
-        std::max(0, static_cast<int>(timeout_ms - (clock_.SteadyNowMillis() - start_time)));
+    timeout_ms = std::max(
+        0, static_cast<int>(timeout_ms - (clock_.SteadyNowMillis() - start_time)));
   }
   if (fetch_local) {
     // With fetch_local we want to start fetching plasma_object_ids from other nodes'
