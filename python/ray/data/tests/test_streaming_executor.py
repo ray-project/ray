@@ -1418,7 +1418,9 @@ class TestDataOpTask:
             nbytes_read = drain_and_emit(data_op_task, None)
             bytes_read += nbytes_read
 
-        assert bytes_read == pytest.approx(128 * MiB)
+        # ``bytes_read`` is the object store's ``object_size``, which includes
+        # a small per-object serialization overhead over ``meta.size_bytes``.
+        assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
 
     def test_on_data_ready_multiple_outputs(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
@@ -1434,7 +1436,8 @@ class TestDataOpTask:
             nbytes_read = drain_and_emit(data_op_task, None)
             bytes_read += nbytes_read
 
-        assert bytes_read == pytest.approx(256 * MiB)
+        # See note above: object_size includes a small per-object overhead.
+        assert bytes_read == pytest.approx(256 * MiB, rel=1e-3)
 
     def test_on_data_ready_exception(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(
@@ -1638,7 +1641,9 @@ class TestDataOpTask:
 
         # Ensure that we read the expected amount of data. Since the streaming generator
         # yields a single 128 MiB block, we should read 128 MiB.
-        assert bytes_read == pytest.approx(128 * MiB)
+        # ``bytes_read`` is the object store's ``object_size``, which includes
+        # a small per-object serialization overhead over ``meta.size_bytes``.
+        assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
 
     def test_on_data_ready_with_preemption_after_wait(
         self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
@@ -1675,7 +1680,9 @@ class TestDataOpTask:
             bytes_read += drain_and_emit(data_op_task, None)
 
         # We should now be able to read the 128 MiB block.
-        assert bytes_read == pytest.approx(128 * MiB)
+        # ``bytes_read`` is the object store's ``object_size``, which includes
+        # a small per-object serialization overhead over ``meta.size_bytes``.
+        assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
 
     @patch("time.perf_counter")
     def test_on_data_ready_output_backpressure_tracking(
