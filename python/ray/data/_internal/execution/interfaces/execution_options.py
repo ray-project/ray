@@ -1,7 +1,7 @@
 import math
 import os
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -14,6 +14,14 @@ class ExecutionResources:
     By default this class represents resource usage. Use `for_limits` or
     set `default_to_inf` to True to create an object that represents resource limits.
     """
+
+    # Cached singletons for the two most common constants. `zero()` and `inf()`
+    # are called all over the scheduler hot path (e.g. `.max(zero())`), and the
+    # instances are immutable in practice -- every arithmetic op returns a new
+    # object and there are no setters -- so a single shared instance is safe and
+    # avoids the per-call allocation.
+    _ZERO_SINGLETON: Optional["ExecutionResources"] = None
+    _INF_SINGLETON: Optional["ExecutionResources"] = None
 
     def __init__(
         self,
@@ -30,12 +38,45 @@ class ExecutionResources:
             memory: Amount of logical memory in bytes.
         """
 
-        # NOTE: Ray Core allocates fractional resources in up to 5th decimal
-        #       digit, hence we round the values here up to it
-        self._cpu: Optional[float] = safe_round(cpu, 5)
-        self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
-        self._memory: Optional[float] = safe_round(memory, 0)
+        # Store at native precision. None means "unspecified" -- this sentinel
+        # is load-bearing: `ExecutionOptions.resource_limits` reads these raw
+        # fields and feeds them to `for_limits()`, which maps None (not 0) to an
+        # unlimited (inf) limit. So we must NOT coalesce None -> 0 here.
+        #
+        # Quantization to Ray Core's fractional-resource granularity happens at
+        # the `to_resource_dict()` boundary; equality/zero/non-negative checks
+        # quantize lazily via `_quantized_key()` (cached per instance after the
+        # first access). Rounding on every construction was a per-op hotspot.
+        self._cpu: Optional[float] = cpu
+        self._gpu: Optional[float] = gpu
+        self._object_store_memory: Optional[float] = object_store_memory
+        self._memory: Optional[float] = memory
+        self._quantized: Optional[Tuple[float, float, float, float]] = None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # ExecutionResources is immutable: the resource fields are set once in
+        # `__init__` and never mutated. That is what makes the lazy
+        # `_quantized` cache and the shared `zero()`/`inf()` singletons safe.
+        # Only the `_quantized` cache slot may transition (None -> tuple).
+        if name != "_quantized" and name in self.__dict__:
+            raise AttributeError(
+                f"ExecutionResources is immutable; cannot reassign {name!r}"
+            )
+        super().__setattr__(name, value)
+
+    def _quantized_key(self) -> Tuple[float, float, float, float]:
+        """Return the (cpu, gpu, object_store_memory, memory) tuple quantized
+        to Ray Core's fractional-resource granularity. Lazy-cached on the
+        instance after the first call.
+        """
+        if self._quantized is None:
+            self._quantized = (
+                safe_round(self.cpu, 5),
+                safe_round(self.gpu, 5),
+                safe_round(self.object_store_memory, 0),
+                safe_round(self.memory, 0),
+            )
+        return self._quantized
 
     @classmethod
     def from_resource_dict(
@@ -51,12 +92,18 @@ class ExecutionResources:
         )
 
     def to_resource_dict(self) -> Dict[str, float]:
-        """Convert this ExecutionResources object to a resource dict."""
+        """Convert this ExecutionResources object to a resource dict.
+
+        Values are quantized to Ray Core's fractional-resource granularity
+        (5 decimal digits for cpu/gpu, integer bytes for memory) so the
+        output is suitable for passing back to Ray Core via ``.options(...)``.
+        """
+        cpu, gpu, osm, mem = self._quantized_key()
         return {
-            "CPU": self.cpu,
-            "GPU": self.gpu,
-            "object_store_memory": self.object_store_memory,
-            "memory": self.memory,
+            "CPU": cpu,
+            "GPU": gpu,
+            "object_store_memory": osm,
+            "memory": mem,
         }
 
     @classmethod
@@ -68,17 +115,36 @@ class ExecutionResources:
         memory: Optional[float] = None,
     ) -> "ExecutionResources":
         """Create an ExecutionResources object that represents resource limits.
+
         Args:
             cpu: Amount of logical CPU slots.
             gpu: Amount of logical GPU slots.
             object_store_memory: Amount of object store memory.
             memory: Amount of logical memory in bytes.
+
+        Returns:
+            An ``ExecutionResources`` with the given limits (defaulting to
+            infinity for any unspecified field).
         """
         return ExecutionResources(
             cpu=safe_or(cpu, float("inf")),
             gpu=safe_or(gpu, float("inf")),
             object_store_memory=safe_or(object_store_memory, float("inf")),
             memory=safe_or(memory, float("inf")),
+        )
+
+    def to_limits(self) -> "ExecutionResources":
+        """Return a copy of this object interpreted as resource *limits*.
+
+        Fields left unspecified (None) become unlimited (inf) rather than 0,
+        so a partially-specified value like ``ExecutionResources(cpu=4)`` caps
+        only CPU and leaves the other resources unbounded.
+        """
+        return ExecutionResources.for_limits(
+            cpu=self._cpu,
+            gpu=self._gpu,
+            object_store_memory=self._object_store_memory,
+            memory=self._memory,
         )
 
     @property
@@ -104,51 +170,52 @@ class ExecutionResources:
             f"memory={self.memory_str()})"
         )
 
-    def __eq__(self, other: "ExecutionResources") -> bool:
-        return (
-            self.cpu == other.cpu
-            and self.gpu == other.gpu
-            and self.object_store_memory == other.object_store_memory
-            and self.memory == other.memory
-        )
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ExecutionResources):
+            return NotImplemented
+        # Quantize on access to absorb accumulated float drift from chained
+        # arithmetic (cpu/gpu: ~1e-15 per op; memory: up to ~1e-4 over 1M ops
+        # on byte-magnitude floats). Matches the legacy behavior, just paid
+        # lazily at comparison time rather than per construction.
+        return self._quantized_key() == other._quantized_key()
 
     def __hash__(self) -> int:
-        return hash(
-            (
-                self.cpu,
-                self.gpu,
-                self.object_store_memory,
-                self.memory,
-            )
-        )
+        # Quantize so equal-under-`__eq__` instances hash equally.
+        return hash(self._quantized_key())
 
     @classmethod
     def zero(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with zero resources."""
-        return ExecutionResources(0.0, 0.0, 0.0, 0.0)
+        """Returns an ExecutionResources object with zero resources.
+
+        Returns a cached, shared singleton (safe because instances are
+        immutable in practice).
+        """
+        if cls._ZERO_SINGLETON is None:
+            cls._ZERO_SINGLETON = ExecutionResources(0.0, 0.0, 0.0, 0.0)
+        return cls._ZERO_SINGLETON
 
     @classmethod
     def inf(cls) -> "ExecutionResources":
-        """Returns an ExecutionResources object with infinite resources."""
-        return ExecutionResources.for_limits()
+        """Returns an ExecutionResources object with infinite resources.
+
+        Returns a cached, shared singleton (safe because instances are
+        immutable in practice).
+        """
+        if cls._INF_SINGLETON is None:
+            cls._INF_SINGLETON = ExecutionResources.for_limits()
+        return cls._INF_SINGLETON
 
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
-        return (
-            self.cpu == 0.0
-            and self.gpu == 0.0
-            and self.object_store_memory == 0.0
-            and self.memory == 0.0
-        )
+        # Quantize so accumulated float drift doesn't flip the result.
+        cpu, gpu, osm, mem = self._quantized_key()
+        return cpu == 0.0 and gpu == 0.0 and osm == 0.0 and mem == 0.0
 
     def is_non_negative(self) -> bool:
         """Returns True if all resources are non-negative."""
-        return (
-            self.cpu >= 0
-            and self.gpu >= 0
-            and self.object_store_memory >= 0
-            and self.memory >= 0
-        )
+        # Quantize so accumulated float drift doesn't flip the result.
+        cpu, gpu, osm, mem = self._quantized_key()
+        return cpu >= 0 and gpu >= 0 and osm >= 0 and mem >= 0
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
@@ -181,6 +248,9 @@ class ExecutionResources:
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources.
 
+        Args:
+            other: The other ``ExecutionResources`` to add to this one.
+
         Returns:
             A new ExecutionResource object with summed resources.
         """
@@ -193,6 +263,9 @@ class ExecutionResources:
 
     def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
         """Subtracts execution resources.
+
+        Args:
+            other: The other ``ExecutionResources`` to subtract from this one.
 
         Returns:
             A new ExecutionResource object with subtracted resources.
@@ -230,7 +303,7 @@ class ExecutionResources:
         self,
         limit: "ExecutionResources",
         *,
-        ignore_object_store_memory=False,
+        ignore_object_store_memory: bool = False,
     ) -> bool:
         """Return if this resource struct meets the specified limits.
 
@@ -240,15 +313,24 @@ class ExecutionResources:
             limit: The resource limits to check against.
             ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
+
+        Returns:
+            ``True`` if every resource is within the corresponding limit.
         """
+        # Quantize on access so accumulated float drift (e.g. a budget
+        # produced by chained add/subtract) doesn't flip the result. This
+        # keeps `satisfies_limit` consistent with `__eq__`/`is_zero`/
+        # `is_non_negative`, which also compare quantized values; otherwise
+        # two structs equal under `__eq__` could disagree here, causing
+        # `can_submit_new_task` to spuriously reject a task whose usage
+        # drifted ~1e-15 above the budget.
+        cpu, gpu, osm, mem = self._quantized_key()
+        lcpu, lgpu, losm, lmem = limit._quantized_key()
         return (
-            self.cpu <= limit.cpu
-            and self.gpu <= limit.gpu
-            and (
-                ignore_object_store_memory
-                or self.object_store_memory <= limit.object_store_memory
-            )
-            and self.memory <= limit.memory
+            cpu <= lcpu
+            and gpu <= lgpu
+            and (ignore_object_store_memory or osm <= losm)
+            and mem <= lmem
         )
 
     def scale(self, f: float) -> "ExecutionResources":
@@ -316,7 +398,7 @@ class ExecutionOptions:
             aggregator actors) carries this label selector in its remote args,
             constraining placement to nodes whose labels satisfy the selector.
             Used to scope a Dataset to a labeled subset of the cluster (e.g.
-            ``{"subcluster": "training"}``). Operator-level ``label_selector``
+            ``{"__subcluster__": "training"}``). Operator-level ``label_selector``
             entries in ``ray_remote_args`` take precedence on key conflicts so
             existing node-pin selectors are preserved.
     """
@@ -375,12 +457,10 @@ class ExecutionOptions:
 
     @resource_limits.setter
     def resource_limits(self, value: ExecutionResources) -> None:
-        self._resource_limits = ExecutionResources.for_limits(
-            cpu=value._cpu,
-            gpu=value._gpu,
-            object_store_memory=value._object_store_memory,
-            memory=value._memory,
-        )
+        # Normalize to a limits object: unspecified fields become unlimited
+        # (inf) rather than 0. Callers assign a bare ``ExecutionResources``
+        # here (e.g. ``ExecutionResources(cpu=2)``) and rely on this.
+        self._resource_limits = value.to_limits()
 
     def is_resource_limits_default(self):
         """Returns True if resource_limits is the default value."""

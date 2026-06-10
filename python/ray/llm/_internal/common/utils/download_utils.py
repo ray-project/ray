@@ -80,6 +80,9 @@ def get_model_location_on_disk(model_id: str) -> str:
 
     Args:
         model_id: Hugging Face model ID.
+
+    Returns:
+        The path to the model on disk if it exists, otherwise the model id as is.
     """
     model_dir = Path(get_model_entrypoint(model_id))
     model_id_or_path = model_id
@@ -127,7 +130,8 @@ class CloudModelDownloader(CloudModelAccessor):
             tokenizer_only: whether to download only the tokenizer files.
             exclude_safetensors: whether to download safetensors files to disk.
 
-        Returns: file path of model if downloaded, else the model id.
+        Returns:
+            File path of model if downloaded, else the model id.
         """
         bucket_uri = self.mirror_config.bucket_uri
 

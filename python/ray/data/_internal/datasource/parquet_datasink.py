@@ -38,12 +38,18 @@ def choose_row_group_limits(
     min_rows_per_file: Optional[int],
     max_rows_per_file: Optional[int],
 ) -> tuple[Optional[int], Optional[int], Optional[int]]:
-    """
-    Configure `min_rows_per_group`, `max_rows_per_group`, `max_rows_per_file` parameters of Pyarrow's `write_dataset` API based on Ray Data's configuration
+    """Configure row-group limits for Pyarrow's ``write_dataset`` API.
 
-    Returns
-    -------
-    (min_rows_per_group, max_rows_per_group, max_rows_per_file)
+    Configures the ``min_rows_per_group``, ``max_rows_per_group``, and
+    ``max_rows_per_file`` parameters based on Ray Data's configuration.
+
+    Args:
+        row_group_size: The requested row-group size.
+        min_rows_per_file: The minimum number of rows per file.
+        max_rows_per_file: The maximum number of rows per file.
+
+    Returns:
+        A tuple of (min_rows_per_group, max_rows_per_group, max_rows_per_file).
     """
 
     if (

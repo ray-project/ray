@@ -95,17 +95,24 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
-            cloud_resource_monitor: The cloud resource monitor for monitoring resource
-                availability of all node types.
+            scheduler: The resource scheduler to make scaling decisions.
+            cloud_provider: The cloud instance provider used to launch and
+                terminate nodes.
+            cloud_resource_monitor: The cloud resource monitor for monitoring
+                resource availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
-            non_terminated_cloud_instances: The non-terminated cloud instances from
-                the cloud provider.
+            non_terminated_cloud_instances: The non-terminated cloud instances
+                from the cloud provider.
+            autoscaling_config: The autoscaling config.
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
-            metrics_reporter: The metric reporter to report the autoscaler metrics.
+            metrics_reporter: The metric reporter to report the autoscaler
+                metrics.
             _logger: The logger (for testing).
 
+        Returns:
+            The updated autoscaling state after reconciling.
         """
         cloud_provider_errors = cloud_provider_errors or []
         ray_install_errors = ray_install_errors or []
@@ -206,7 +213,7 @@ class Reconciler:
             cloud_provider_errors: The errors from the cloud provider.
             ray_install_errors: The errors from RayInstaller.
             ray_stop_errors: The errors from RayStopper.
-
+            autoscaling_config: The autoscaling config.
         """
 
         # Handle 1 & 2 for cloud instance allocation.
@@ -271,16 +278,18 @@ class Reconciler:
             7. Handle any stuck instances with timeouts.
 
         Args:
+            autoscaling_state: The autoscaling state populated by this reconcile loop.
             instance_manager: The instance manager to reconcile.
             scheduler: The resource scheduler to make scaling decisions.
-            cloud_resource_monitor: The cloud resource monitor for monitoring resource
-                availability of all node types.
+            cloud_provider: The cloud instance provider used to launch and
+                terminate nodes.
+            cloud_resource_monitor: The cloud resource monitor for monitoring
+                resource availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
-            non_terminated_cloud_instances: The non-terminated cloud instances from
-                the cloud provider.
+            non_terminated_cloud_instances: The non-terminated cloud instances
+                from the cloud provider.
             autoscaling_config: The autoscaling config.
             _logger: The logger (for testing).
-
         """
 
         Reconciler._handle_stuck_instances(
@@ -456,7 +465,7 @@ class Reconciler:
         Args:
             instance_manager: The instance manager to reconcile.
             ray_stop_errors: The errors from RayStopper.
-
+            ray_nodes: The ray cluster's states of ray nodes.
         """
         instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
@@ -674,6 +683,7 @@ class Reconciler:
         Args:
             instance_manager: The instance manager to reconcile.
             ray_nodes: The ray cluster's states of ray nodes.
+            autoscaling_config: The autoscaling config.
         """
         instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
@@ -1294,6 +1304,8 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
+            non_terminated_cloud_instances: The non-terminated cloud instances
+                from the cloud provider.
         """
         im_instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
@@ -1488,7 +1500,7 @@ class Reconciler:
             instance: The instance to handle.
             timeout_s: The timeout in seconds.
             new_status: The new status to transition to.
-            update_kwargs: The update kwargs for InstanceUpdateEvent
+            **update_kwargs: Keyword arguments for InstanceUpdateEvent.
 
         Returns:
             Instance update to the new status: if the instance is stuck in the status

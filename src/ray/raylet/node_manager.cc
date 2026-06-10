@@ -362,7 +362,7 @@ void NodeManager::RegisterGcs() {
     // collector on all Raylets when the cluster is under memory pressure.
     //
     // Periodic collection is disabled, so this command is only broadcasted via
-    // `OnDemandBroadcasting` (which will call NodeManager::CreateSyncMessage).
+    // `BroadcastMessageIfNewVersion` (which will call NodeManager::CreateSyncMessage).
     //
     // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
     // Raylets.
@@ -976,6 +976,17 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // can remove it from any cached locations.
   object_directory_.HandleNodeRemoved(node_id);
   object_manager_.HandleNodeRemoved(node_id);
+
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
+    ids.insert(id);
+  }
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
@@ -999,6 +1010,17 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
         << "Killing leased worker because its owner died.";
     worker->KillAsync(io_service_);
   }
+
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
@@ -1962,28 +1984,23 @@ void NodeManager::HandleCommitBundleResources(
   cluster_lease_manager_.ScheduleAndGrantLeases();
 }
 
-void NodeManager::HandleCancelResourceReserve(
-    rpc::CancelResourceReserveRequest request,
-    rpc::CancelResourceReserveReply *reply,
+void NodeManager::HandleRemovePlacementGroupBundles(
+    rpc::RemovePlacementGroupBundlesRequest request,
+    rpc::RemovePlacementGroupBundlesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
-                 << bundle_spec.DebugString();
+  const auto pg_id = PlacementGroupID::FromBinary(request.placement_group_id());
+  RAY_LOG(INFO) << "Got request to remove " << request.bundle_specs_size()
+                << " bundle(s) for placement group " << pg_id;
 
-  // The PG bundle resource must be committed before a lease request asking for it
-  // can be added to local_lease_manager and the only reason why we cancel
-  // a committed bundle is when the placement group is removed.
-  // In the case of placement group removal, we should cancel all the lease requests.
+  // Cancel all lease requests for the placement group removal.
   local_lease_manager_.CancelLeases(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id =
             work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
-        return bundle_id.first == bundle_spec.PlacementGroupId();
+        return bundle_id.first == pg_id;
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      absl::StrCat("Required placement group ",
-                   bundle_spec.PlacementGroupId().Hex(),
-                   " is removed."));
+      absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
 
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
@@ -1992,7 +2009,7 @@ void NodeManager::HandleCancelResourceReserve(
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
+    if (worker->GetBundleId().first == pg_id) {
       workers_associated_with_pg.emplace_back(worker);
     }
   }
@@ -2001,7 +2018,7 @@ void NodeManager::HandleCancelResourceReserve(
     stream << "Destroying worker since its placement group was removed. Placement "
               "group id: "
            << worker->GetBundleId().first
-           << ", bundle index: " << bundle_spec.BundleId().second
+           << ", bundle index: " << worker->GetBundleId().second
            << ", lease id: " << worker->GetGrantedLeaseId()
            << ", actor id: " << worker->GetActorId()
            << ", worker id: " << worker->WorkerId();
@@ -2010,7 +2027,15 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
+  // Return resources for the placement group bundles.
+  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
+    BundleSpecification bundle_spec(rpc_bundle_spec);
+    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
+        << "Bundles in RemovePlacementGroupBundles must be all be in the same placement "
+           "group.";
+    RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
+  }
+
   cluster_lease_manager_.ScheduleAndGrantLeases();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2587,6 +2612,19 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
+
+  // Skip pinning if the owner is already known dead
+  const auto owner_worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
+  const auto owner_node_id = NodeID::FromBinary(request.owner_address().node_id());
+  if (failed_workers_cache_.contains(owner_worker_id) ||
+      failed_nodes_cache_.contains(owner_node_id)) {
+    for (size_t i = 0; i < object_ids.size(); ++i) {
+      reply->add_successes(false);
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -2871,7 +2909,7 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
     // Always increment the sync message version number so it's always triggered once per
     // call.
     gc_command_sync_version_++;
-    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+    ray_syncer_.BroadcastMessageIfNewVersion(syncer::MessageType::COMMANDS);
     should_global_gc_ = false;
   }
 
@@ -3663,6 +3701,24 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
           timer->cancel();
         }
       });
+}
+
+void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                                         rpc::FreeLocalObjectsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_str : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_str));
+  }
+  FreeLocalObjects(object_ids);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::FreeLocalObjects(const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
+    local_object_manager_.ReleaseFreedLocalObject(object_id);
+  }
 }
 
 }  // namespace ray::raylet
