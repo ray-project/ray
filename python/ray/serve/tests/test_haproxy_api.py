@@ -397,6 +397,38 @@ listen stats
                         pass  # File already removed or doesn't exist
 
 
+def test_generate_config_close_spread_time(haproxy_api_cleanup):
+    """`close-spread-time` is rendered in the global section when configured
+    and omitted when unset (the default)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        def generate_config(close_spread_time_s):
+            config_stub = HAProxyConfig(
+                socket_path=socket_path,
+                close_spread_time_s=close_spread_time_s,
+                http_options=HTTPOptions(host="0.0.0.0", port=8000),
+                has_received_routes=True,
+                has_received_servers=True,
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                config_file_path,
+            ):
+                api = HAProxyApi(
+                    cfg=config_stub,
+                    backend_configs={},
+                    config_file_path=config_file_path,
+                )
+                api._generate_config_file_internal()
+            with open(config_file_path, "r") as f:
+                return f.read()
+
+        assert "close-spread-time 60s" in generate_config(60)
+        assert "close-spread-time" not in generate_config(None)
+
+
 def test_generate_backends_in_order(haproxy_api_cleanup):
     """Test that the backends are generated in the correct order."""
     with tempfile.TemporaryDirectory() as temp_dir:
