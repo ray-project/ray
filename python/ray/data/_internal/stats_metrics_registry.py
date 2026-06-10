@@ -28,6 +28,8 @@ _OVERVIEW_NAMESPACE = "overview"
 _ITERATION_NAMESPACE = "iteration"
 # Dataset- and operator-level metadata gauges (heterogeneous tag keys).
 _DATASET_METADATA_NAMESPACE = "dataset_metadata"
+# Per-node gauges, one per NodeMetrics field, tagged by node.
+_PER_NODE_NAMESPACE = "per_node"
 
 # A metadata key used to mark a dataclass field as a metric.
 _IS_FIELD_METRIC_KEY = "__is_metric"

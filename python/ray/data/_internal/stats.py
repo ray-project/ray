@@ -47,6 +47,7 @@ from ray.data._internal.stats_metrics_registry import (
     _ITERATION_NAMESPACE,
     _OP_RUNTIME_NAMESPACE,
     _OVERVIEW_NAMESPACE,
+    _PER_NODE_NAMESPACE,
     GLOBAL_METRICS_REGISTRY,
     MetricDefinition,
     MetricsGroup,
@@ -336,6 +337,7 @@ class _DatasetStatsBuilder:
 _OP_TAG_KEYS = ("dataset", "operator")
 _ITER_TAG_KEYS = ("dataset",)
 _DATASET_META_TAG_KEYS = ("dataset", "job_id", "start_time")
+_PER_NODE_TAG_KEYS = ("dataset", "node_ip")
 
 
 def _gauge(
@@ -527,7 +529,7 @@ _DATASET_METADATA_METRICS = [
 
 
 def _register_dashboard_metrics() -> None:
-    """Register the overview/iteration/metadata definitions into the registry."""
+    """Register the overview/iteration/metadata/per-node definitions."""
     for name, _src, description in _OVERVIEW_METRICS:
         GLOBAL_METRICS_REGISTRY.register(
             _OVERVIEW_NAMESPACE, _gauge(name, description, tag_keys=_OP_TAG_KEYS)
@@ -550,6 +552,17 @@ def _register_dashboard_metrics() -> None:
             description = f"State of operator ({states})"
         GLOBAL_METRICS_REGISTRY.register(
             _DATASET_METADATA_NAMESPACE, _gauge(name, description, tag_keys=tag_keys)
+        )
+    # Per-node metrics: one gauge per NodeMetrics field.
+    for node_field in fields(NodeMetrics):
+        GLOBAL_METRICS_REGISTRY.register(
+            _PER_NODE_NAMESPACE,
+            _gauge(
+                node_field.name,
+                "",
+                prometheus_name=f"data_{node_field.name}_per_node",
+                tag_keys=_PER_NODE_TAG_KEYS,
+            ),
         )
 
 
@@ -601,13 +614,11 @@ class _StatsActor:
             (_OVERVIEW_NAMESPACE, _OP_TAG_KEYS),
             (_ITERATION_NAMESPACE, _ITER_TAG_KEYS),
             (_DATASET_METADATA_NAMESPACE, ()),
+            (_PER_NODE_NAMESPACE, _PER_NODE_TAG_KEYS),
         ):
             self._prom_metrics[namespace] = self._create_prometheus_metrics(
                 namespace, default_tag_keys=default_tag_keys
             )
-
-        # Per Node metrics (not registry-driven; keyed by NodeMetrics fields).
-        self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
     def _create_prometheus_metrics(
         self, namespace: str, default_tag_keys: Tuple[str, ...]
@@ -649,17 +660,6 @@ class _StatsActor:
                     description=metric.description,
                     tag_keys=tag_keys,
                 )
-        return metrics
-
-    def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
-        metrics = {}
-        for field in fields(NodeMetrics):
-            metric_name = f"data_{field.name}_per_node"
-            metrics[field.name] = Gauge(
-                metric_name,
-                description="",
-                tag_keys=("dataset", "node_ip"),
-            )
         return metrics
 
     def gen_dataset_id(self) -> str:
@@ -730,9 +730,7 @@ class _StatsActor:
                 node_ip = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
 
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
-                for metric_name, metric_value in node_metrics.items():
-                    prom_metric = self.per_node_metrics[metric_name]
-                    self._record_metric(prom_metric, metric_value, tags)
+                self._record_values(_PER_NODE_NAMESPACE, node_metrics, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
