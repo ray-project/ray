@@ -19,7 +19,17 @@ import enum
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Union,
+)
 
 import numpy as np
 import pyarrow as pa
@@ -39,6 +49,12 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    import datasets
+    import fsspec
+    import pandas as pd
+    from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +147,7 @@ class _LeRobotRoot(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
-def _build_episodes_table(hf_episodes) -> pa.Table:
+def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
     """Convert lerobot's HF ``Dataset`` of episodes to a pyarrow ``Table``
     with cumulative ``_global_from_index`` / ``_global_to_index`` columns
     derived from per-episode lengths."""
@@ -157,7 +173,7 @@ def _build_episodes_table(hf_episodes) -> pa.Table:
     )
 
 
-def _build_tasks_dict(tasks_df) -> Dict[int, str]:
+def _build_tasks_dict(tasks_df: "pd.DataFrame") -> Dict[int, str]:
     """Convert lerobot's ``tasks`` DataFrame (indexed by task name, with a
     ``task_index`` column) into a ``{task_index: task_name}`` dict."""
     return dict(
@@ -169,7 +185,7 @@ def _build_schema(
     episodes_table: pa.Table,
     data_path: str,
     video_keys: List[str],
-    fs,
+    fs: "fsspec.AbstractFileSystem",
     fs_root: str,
 ) -> pa.Schema:
     """Read the Arrow schema of the first data parquet file and append the
@@ -241,7 +257,7 @@ def _stats_to_json(stats: Optional[dict]) -> str:
 
 def _load_lerobot_metadata(
     root: Union[str, Path], storage_options: Optional[Dict[str, Any]] = None
-):
+) -> "LeRobotDatasetMetadata":
     """Construct a pristine :class:`lerobot.LeRobotDatasetMetadata` for
     *root*, applying the fsspec patch first so cloud URIs work.
 
@@ -279,7 +295,7 @@ def _load_lerobot_metadata(
 
 
 def _build_root(
-    meta, storage_options: Optional[Dict[str, Any]] = None
+    meta: "LeRobotDatasetMetadata", storage_options: Optional[Dict[str, Any]] = None
 ) -> _LeRobotRoot:
     """Compute the per-root derived state bundle for a (pristine) lerobot
     ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*.
@@ -450,7 +466,7 @@ class _LeRobotReadTask(ReadTask):
     def _decode_video_frames(
         root: _LeRobotRoot,
         full: pa.Table,
-        decode_fn,
+        decode_fn: Callable[..., Any],
     ) -> dict:
         """Decode all video frames for ``full``, batched per video file.
 
@@ -782,7 +798,7 @@ class LeRobotDatasource(Datasource):
         )
 
     @property
-    def meta(self):
+    def meta(self) -> "LeRobotDatasetMetadata":
         """First-root upstream :class:`lerobot.LeRobotDatasetMetadata`."""
         return self.metas[0]
 
