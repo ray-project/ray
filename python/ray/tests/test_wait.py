@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from ray._private.test_utils import client_test_enabled
-from ray._private.worker import _wait_and_fetch, _wait_generators_bulk
+from ray._private.worker import _wait_generators_bulk
 from ray.exceptions import ObjectRefStreamEndOfStreamError, RayTaskError
 
 if client_test_enabled():
@@ -163,62 +163,6 @@ def test__wait_generators_bulk_fetch_local(monkeypatch, ray_start_cluster):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_and_fetch_empty(ray_start_regular):
-    ready, unready = _wait_and_fetch([])
-    assert ready == []
-    assert unready == []
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_and_fetch_num_returns_and_partition(ray_start_regular):
-    refs = [ray.put(i) for i in range(5)]
-    index = {r: i for i, r in enumerate(refs)}
-    pairs = [(r, i % 2 == 0) for i, r in enumerate(refs)]
-
-    for num_returns in (1, 3, 5):
-        ready, unready = _wait_and_fetch(pairs, num_returns=num_returns)
-        assert len(ready) == num_returns
-        assert len(unready) == 5 - num_returns
-        unready_keys = {k for k, _ in unready}
-        assert set(ready) | unready_keys == set(refs)
-        assert set(ready) & unready_keys == set()
-        assert [index[k] for k in ready] == sorted(index[k] for k in ready)
-        for k, fl in unready:
-            assert fl is (index[k] % 2 == 0)
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_and_fetch_timeout_returns_partial_ready(ray_start_regular):
-    @ray.remote
-    def slow():
-        time.sleep(5)
-
-    fast_ref = ray.put(0)
-    slow_ref = slow.remote()
-    # List order: fast is ready immediately; we never get both within the timeout.
-    ready, unready = _wait_and_fetch(
-        [(fast_ref, True), (slow_ref, True)],
-        num_returns=2,
-        timeout=0.25,
-    )
-    assert ready == [fast_ref]
-    assert unready == [(slow_ref, True)]
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_and_fetch_validation(ray_start_regular):
-    x = ray.put(1)
-    with pytest.raises(TypeError):
-        _wait_and_fetch({})  # dict is not accepted
-    with pytest.raises(TypeError):
-        _wait_and_fetch([x])
-    with pytest.raises(TypeError):
-        _wait_and_fetch([(x, "x")])
-    with pytest.raises(ValueError):
-        _wait_and_fetch([(x, True)], num_returns=2)
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
 def test__wait_generators_bulk(ray_start_regular):
     @ray.remote
     def gen(base, delays):
@@ -242,55 +186,6 @@ def test__wait_generators_bulk(ray_start_regular):
 
     # The returned refs are consumed from the stream.
     assert ray.get(next(gen1)) == 12
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
-def test__wait_generators_bulk_continues_after_local_fetch_miss(
-    monkeypatch, ray_start_regular
-):
-    @ray.remote
-    def gen():
-        yield 1
-
-    gen1 = gen.remote()
-    gen2 = gen.remote()
-    gen1_first = ray.put("gen1_first")
-    gen1_last = ray.put("gen1_last")
-    gen2_first = ray.put("gen2_first")
-    gen2_last = ray.put("gen2_last")
-    consumed = []
-
-    gen1._get_next_ref_n = lambda num_refs: [gen1_first, gen1_last]
-    gen2._get_next_ref_n = lambda num_refs: [gen2_first, gen2_last]
-    gen1._consume_next_ref_n = lambda num_refs: consumed.append((gen1, num_refs))
-    gen2._consume_next_ref_n = lambda num_refs: consumed.append((gen2, num_refs))
-
-    wait_and_fetch_calls = 0
-
-    def fake_wait_and_fetch(ray_waitables, *, num_returns=1, timeout=None):
-        nonlocal wait_and_fetch_calls
-        wait_and_fetch_calls += 1
-        if wait_and_fetch_calls == 1:
-            return [gen1_last], [(gen2_last, False)]
-        assert ray_waitables == [(gen2_last, False)]
-        return [gen2_last], []
-
-    def fake_wait(ray_waitables, *, num_returns=1, timeout=None, fetch_local=True):
-        assert ray_waitables == [gen1_first]
-        assert fetch_local
-        return [], ray_waitables
-
-    monkeypatch.setattr("ray._private.worker._wait_and_fetch", fake_wait_and_fetch)
-    monkeypatch.setattr("ray._private.worker.wait", fake_wait)
-
-    ready = _wait_generators_bulk(
-        [(gen1, [True, False]), (gen2, [False, False])],
-        num_return=1,
-        timeout=1,
-    )
-
-    assert ready == [(gen2, [gen2_first, gen2_last])]
-    assert consumed == [(gen2, 2)]
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")

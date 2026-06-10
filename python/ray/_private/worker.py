@@ -3207,103 +3207,6 @@ def wait(
         )
         return ready_ids, remaining_ids
 
-
-@client_mode_hook
-def _wait_and_fetch(
-    ray_waitables: List[Tuple[Union[ObjectRef, ObjectRefGenerator], bool]],
-    *,
-    num_returns: int = 1,
-    timeout: Optional[float] = None,
-) -> Tuple[
-    List[Union[ObjectRef, ObjectRefGenerator]],
-    List[Tuple[Union[ObjectRef, ObjectRefGenerator], bool]],
-]:
-    """Private API: like :func:`~ray.wait` with a separate ``fetch_local`` per ref.
-
-    Not supported on Ray Client. Prefer :func:`~ray.wait` unless you need
-    per-ref ``fetch_local``. Input order is list order; the same order is used
-    for ``ready`` and for ``unready`` pairs among not-yet-ready entries.
-    """
-    worker = global_worker
-    worker.check_connected()
-
-    if (
-        hasattr(worker, "core_worker")
-        and worker.core_worker.current_actor_is_asyncio()
-        and timeout != 0
-    ):
-        global blocking_wait_inside_async_warned
-        if not blocking_wait_inside_async_warned:
-            logger.debug(
-                "Using blocking ray._private.worker._wait_and_fetch inside async method. "
-                "This blocks the event loop. Please use `await` "
-                "on object ref with asyncio.wait. "
-            )
-            blocking_wait_inside_async_warned = True
-
-    if not isinstance(ray_waitables, list):
-        raise TypeError(
-            "_wait_and_fetch() expected a list of "
-            "(ray.ObjectRef | ray.ObjectRefGenerator, bool) tuples, "
-            f"got {type(ray_waitables)}"
-        )
-
-    if timeout is not None and timeout < 0:
-        raise ValueError(
-            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
-        )
-
-    for i, pair in enumerate(ray_waitables):
-        if not isinstance(pair, tuple) or len(pair) != 2:
-            raise TypeError(
-                "_wait_and_fetch() expected each element to be a (ref, fetch_local) "
-                f"tuple; got {type(pair)} at index {i}"
-            )
-        ray_waitable, fetch_local = pair
-        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
-            ray_waitable, ObjectRefGenerator
-        ):
-            raise TypeError(
-                "_wait_and_fetch() tuple first element must be ray.ObjectRef or "
-                "ObjectRefGenerator, "
-                f"got {type(ray_waitable)} at index {i}"
-            )
-        if not isinstance(fetch_local, bool):
-            raise TypeError(
-                "_wait_and_fetch() tuple second element must be bool (fetch_local), "
-                f"got {type(fetch_local)} at index {i}"
-            )
-
-    worker.check_connected()
-
-    with profiling.profile("ray._wait_and_fetch"):
-        if len(ray_waitables) == 0:
-            return [], []
-
-        if len(ray_waitables) != len({pair[0] for pair in ray_waitables}):
-            raise ValueError(
-                "_wait_and_fetch requires a list of unique ray_waitables "
-                "(by object ref / generator)."
-            )
-
-        if num_returns <= 0:
-            raise ValueError("Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(ray_waitables):
-            raise ValueError(
-                "num_returns cannot be greater than the number "
-                "of ray_waitables provided to _wait_and_fetch."
-            )
-
-        timeout = timeout if timeout is not None else 10**6
-        timeout_milliseconds = int(timeout * 1000)
-        ready_keys, remaining = worker.core_worker._wait_and_fetch(
-            ray_waitables,
-            num_returns,
-            timeout_milliseconds,
-        )
-        return ready_keys, remaining
-
-
 @client_mode_hook
 def _wait_generators_bulk(
     ray_generators: List[Tuple[ObjectRefGenerator, List[bool]]],
@@ -3314,10 +3217,11 @@ def _wait_generators_bulk(
     """Private API: wait for batches of next refs from streaming generators.
 
     Each input element is ``(generator, fetch_local_per_ref)``. For each
-    generator, this waits for the last requested ref using the last
-    ``fetch_local`` value. Since generator refs are produced in order, once the
-    last ref is ready, previous refs in the requested batch are ready as well.
-    The returned refs are consumed from the generator stream.
+    generator, this waits for the last requested ref without fetching it
+    locally. Since generator refs are produced in order, once the last ref is
+    ready, previous refs in the requested batch are ready as well. It then
+    fetches only the refs whose corresponding ``fetch_local`` flag is true
+    before returning and consuming the refs from the generator stream.
     """
     worker = global_worker
     worker.check_connected()
@@ -3399,11 +3303,11 @@ def _wait_generators_bulk(
             )
 
         generator_refs: List[List[ObjectRef]] = []
-        last_ref_pairs: List[Tuple[ObjectRef, bool]] = []
+        last_refs: List[ObjectRef] = []
         for generator, fetch_locals in ray_generators:
             refs = generator._get_next_ref_n(len(fetch_locals))
             generator_refs.append(refs)
-            last_ref_pairs.append((refs[-1], fetch_locals[-1]))
+            last_refs.append(refs[-1])
 
         deadline = None if timeout is None else time.monotonic() + timeout
 
@@ -3426,7 +3330,7 @@ def _wait_generators_bulk(
             for gen_index in sorted(ready_last_indices - result_indices):
                 refs = generator_refs[gen_index]
                 fetch_locals = ray_generators[gen_index][1]
-                for ref, fetch_local in zip(refs[:-1], fetch_locals[:-1]):
+                for ref, fetch_local in zip(refs, fetch_locals):
                     if (
                         fetch_local
                         and ref not in ready_local_ref_set
@@ -3444,7 +3348,7 @@ def _wait_generators_bulk(
                 fetch_locals = ray_generators[gen_index][1]
                 if all(
                     not fetch_local or ref in ready_local_ref_set
-                    for ref, fetch_local in zip(refs[:-1], fetch_locals[:-1])
+                    for ref, fetch_local in zip(refs, fetch_locals)
                 ):
                     result_indices.add(gen_index)
 
@@ -3477,17 +3381,18 @@ def _wait_generators_bulk(
                 ):
                     last_timeout = poll_timeout_s
                 if first_iteration or last_timeout is None or last_timeout > 0:
-                    pending_last_ref_pairs = [
-                        last_ref_pairs[i] for i in pending_last_indices_in_order
+                    pending_last_refs = [
+                        last_refs[i] for i in pending_last_indices_in_order
                     ]
-                    ready_last_refs, _ = _wait_and_fetch(
-                        pending_last_ref_pairs,
+                    ready_last_refs, _ = wait(
+                        pending_last_refs,
                         num_returns=1,
                         timeout=last_timeout,
+                        fetch_local=False,
                     )
                     ready_last_ref_set = set(ready_last_refs)
                     for gen_index in pending_last_indices_in_order:
-                        if last_ref_pairs[gen_index][0] in ready_last_ref_set:
+                        if last_refs[gen_index] in ready_last_ref_set:
                             ready_last_indices.add(gen_index)
                             pending_last_indices.remove(gen_index)
                     collect_ready_results()

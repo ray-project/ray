@@ -73,12 +73,6 @@ class _ClientAPI:
         """
         return self.worker.wait(*args, **kwargs)
 
-    def _wait_and_fetch(self, *args, **kwargs):
-        raise RuntimeError(
-            "ray._private.worker._wait_and_fetch is not supported on Ray Client. "
-            "Connect with ray.init(address=...) instead, or use ray.wait."
-        )
-
     def _wait_generators_bulk(self, *args, **kwargs):
         raise RuntimeError(
             "ray._private.worker._wait_generators_bulk is not supported on Ray Client. "
