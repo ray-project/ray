@@ -1666,9 +1666,15 @@ class HAProxyManager(ProxyActorInterface):
             try:
                 stats = await self._haproxy.get_all_stats()
                 ready_backends = set()
-                logger.info(f"Desired backend servers: {desired_backend_servers}.", extra={"log_to_stderr": True})
+                logger.info(
+                    f"Desired backend servers: {desired_backend_servers}.",
+                    extra={"log_to_stderr": True},
+                )
                 for backend, servers in stats.items():
-                    logger.info(f"Backend: {backend} with servers: {servers}.", extra={"log_to_stderr": True})
+                    logger.info(
+                        f"Backend: {backend} with servers: {servers}.",
+                        extra={"log_to_stderr": True},
+                    )
                     desired_servers = desired_backend_servers.get(backend, set())
                     for server_name, server in servers.items():
                         if server_name in desired_servers and server.is_up:
