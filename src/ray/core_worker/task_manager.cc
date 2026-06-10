@@ -336,6 +336,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     auto inserted = submissible_tasks_.try_emplace(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
+    total_submissible_task_bytes_ += inserted.first->second.spec_byte_size_;
     num_pending_tasks_++;
   }
 
@@ -1071,7 +1072,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
     } else {
-      submissible_tasks_.erase(it);
+      EraseSubmissibleTask(it);
     }
   }
 
@@ -1310,7 +1311,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                     rpc::TaskStatus::FAILED,
                     worker::TaskStatusEvent::TaskStateUpdate(error_info));
     }
-    submissible_tasks_.erase(it);
+    EraseSubmissibleTask(it);
     num_pending_tasks_--;
 
     // Throttled logging of task failure errors.
@@ -1485,7 +1486,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes_;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
-    submissible_tasks_.erase(it);
+    EraseSubmissibleTask(it);
   }
 
   return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
@@ -1807,7 +1808,15 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   total_lineage_bytes_gauge_.Record(total_lineage_footprint_bytes_);
+  num_submissible_tasks_gauge_.Record(static_cast<int64_t>(submissible_tasks_.size()));
+  submissible_task_spec_bytes_gauge_.Record(total_submissible_task_bytes_);
   task_counter_.FlushOnChangeCallbacks();
+}
+
+void TaskManager::EraseSubmissibleTask(
+    absl::flat_hash_map<TaskID, TaskEntry>::iterator it) {
+  total_submissible_task_bytes_ -= it->second.spec_byte_size_;
+  submissible_tasks_.erase(it);
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

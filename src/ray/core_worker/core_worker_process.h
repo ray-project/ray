@@ -188,6 +188,8 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> task_by_state_gauge_;
   std::unique_ptr<ray::stats::Gauge> actor_by_state_gauge_;
   std::unique_ptr<ray::stats::Gauge> total_lineage_bytes_gauge_;
+  std::unique_ptr<ray::stats::Gauge> num_submissible_tasks_gauge_;
+  std::unique_ptr<ray::stats::Gauge> submissible_task_spec_bytes_gauge_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_counter_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_size_counter_;
   std::unique_ptr<ray::stats::PercentileMetric> scheduler_placement_time_percentile_ms_;

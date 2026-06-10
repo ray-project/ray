@@ -479,6 +479,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       gcs_client,
       *task_by_state_gauge_,
       *total_lineage_bytes_gauge_,
+      *num_submissible_tasks_gauge_,
+      *submissible_task_spec_bytes_gauge_,
       /*free_actor_object_callback=*/
       [this](const ObjectID &object_id) {
         auto core_worker = GetCoreWorker();
@@ -823,6 +825,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetActorByStateGaugeMetric()));
   total_lineage_bytes_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTotalLineageBytesGaugeMetric()));
+  num_submissible_tasks_gauge_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetNumSubmissibleTasksGaugeMetric()));
+  submissible_task_spec_bytes_gauge_ = std::unique_ptr<ray::stats::Gauge>(
+      new ray::stats::Gauge(GetSubmissibleTaskSpecBytesGaugeMetric()));
   owned_objects_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(

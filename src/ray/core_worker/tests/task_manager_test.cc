@@ -186,6 +186,8 @@ class TaskManagerTest : public ::testing::Test {
             mock_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
+            fake_num_submissible_tasks_gauge_,
+            fake_submissible_task_spec_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
             /*set_direct_transport_metadata=*/
             [](const ObjectID &, const std::string &) {}) {}
@@ -236,6 +238,8 @@ class TaskManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> stored_in_plasma;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
+  ray::observability::FakeGauge fake_num_submissible_tasks_gauge_;
+  ray::observability::FakeGauge fake_submissible_task_spec_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -1521,6 +1525,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_num_submissible_tasks_gauge_,
+      fake_submissible_task_spec_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
@@ -1587,6 +1593,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_num_submissible_tasks_gauge_,
+      fake_submissible_task_spec_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
@@ -1651,6 +1659,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_num_submissible_tasks_gauge_,
+      fake_submissible_task_spec_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
@@ -3142,6 +3152,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_num_submissible_tasks_gauge_,
+      fake_submissible_task_spec_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
@@ -3225,6 +3237,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
+      fake_num_submissible_tasks_gauge_,
+      fake_submissible_task_spec_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 

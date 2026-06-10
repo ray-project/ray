@@ -207,6 +207,8 @@ class TaskManager : public TaskManagerInterface {
       std::shared_ptr<gcs::GcsClient> gcs_client,
       ray::observability::MetricInterface &task_by_state_counter,
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
+      ray::observability::MetricInterface &num_submissible_tasks_gauge,
+      ray::observability::MetricInterface &submissible_task_spec_bytes_gauge,
       FreeActorObjectCallback free_actor_object_callback,
       SetDirectTransportMetadata set_direct_transport_metadata)
       : in_memory_store_(in_memory_store),
@@ -221,6 +223,8 @@ class TaskManager : public TaskManagerInterface {
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter),
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
+        num_submissible_tasks_gauge_(num_submissible_tasks_gauge),
+        submissible_task_spec_bytes_gauge_(submissible_task_spec_bytes_gauge),
         free_actor_object_callback_(std::move(free_actor_object_callback)),
         set_direct_transport_metadata_(std::move(set_direct_transport_metadata)) {
     task_counter_.SetOnChangeCallback(
@@ -541,6 +545,7 @@ class TaskManager : public TaskManagerInterface {
               TaskStatusCounter &counter,
               int64_t num_oom_retries_left)
         : spec_(std::move(spec)),
+          spec_byte_size_(spec_.GetMessage().ByteSizeLong()),
           num_retries_left_(num_retries_left),
           counter_(&counter),
           num_oom_retries_left_(num_oom_retries_left),
@@ -597,6 +602,8 @@ class TaskManager : public TaskManagerInterface {
     /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
     /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
     TaskSpecification spec_;
+    // Cached serialized size of spec_ in bytes; set once at construction.
+    int64_t spec_byte_size_ = 0;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
     int32_t num_retries_left_;
@@ -640,6 +647,10 @@ class TaskManager : public TaskManagerInterface {
   // canceled.
   void MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Erase a task from submissible_tasks_ and update total_submissible_task_bytes_.
+  void EraseSubmissibleTask(absl::flat_hash_map<TaskID, TaskEntry>::iterator it)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Update nested ref count info and store the task's return object.
   /// Returns StatusOr<bool> where the bool indicates the object was returned
@@ -814,6 +825,9 @@ class TaskManager : public TaskManagerInterface {
 
   int64_t total_lineage_footprint_bytes_ ABSL_GUARDED_BY(mu_) = 0;
 
+  // Running total of serialized TaskSpec sizes for all entries in submissible_tasks_.
+  int64_t total_submissible_task_bytes_ ABSL_GUARDED_BY(mu_) = 0;
+
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ ABSL_GUARDED_BY(mu_) = nullptr;
 
@@ -840,6 +854,12 @@ class TaskManager : public TaskManagerInterface {
   /// Metric to track the total amount of memory used to store task specs for lineage
   /// reconstruction.
   observability::MetricInterface &total_lineage_bytes_gauge_;
+
+  /// Metric to track the number of entries in submissible_tasks_.
+  observability::MetricInterface &num_submissible_tasks_gauge_;
+
+  /// Metric to track the total serialized size of TaskSpecs in submissible_tasks_.
+  observability::MetricInterface &submissible_task_spec_bytes_gauge_;
 
   /// Callback to free GPU object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback_;
