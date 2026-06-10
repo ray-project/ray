@@ -136,17 +136,17 @@ class TestClusterAutoscaling:
         node_table = [
             {
                 "Resources": self._node_type1,
-                "Labels": {"subcluster": "training"},
+                "Labels": {"ray-subcluster": "training"},
                 "Alive": True,
             },
             {
                 "Resources": self._node_type1,
-                "Labels": {"subcluster": "training"},
+                "Labels": {"ray-subcluster": "training"},
                 "Alive": True,
             },
             {
                 "Resources": self._node_type2,
-                "Labels": {"subcluster": "validation"},
+                "Labels": {"ray-subcluster": "validation"},
                 "Alive": True,
             },
             {
@@ -927,9 +927,9 @@ def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
         DefaultClusterAutoscalerV2(
             resource_manager=Mock(),
             execution_id="exec-1",
-            label_selector={"subcluster": "training"},
+            label_selector={"ray-subcluster": "training"},
         )
-    assert captured["subcluster_selector"] == {"subcluster": "training"}
+    assert captured["subcluster_selector"] == {"ray-subcluster": "training"}
 
 
 def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
@@ -945,7 +945,7 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
 
     data_context = Mock()
     data_context.execution_options.resource_limits = Mock()
-    data_context.execution_options.label_selector = {"subcluster": "training"}
+    data_context.execution_options.label_selector = {"ray-subcluster": "training"}
 
     create_cluster_autoscaler(
         topology=Mock(),
@@ -953,7 +953,7 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
         data_context=data_context,
         execution_id="exec-1",
     )
-    assert captured["label_selector"] == {"subcluster": "training"}
+    assert captured["label_selector"] == {"ray-subcluster": "training"}
 
 
 if __name__ == "__main__":
