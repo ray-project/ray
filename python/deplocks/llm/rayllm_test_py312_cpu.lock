@@ -3123,20 +3123,20 @@ ninja==1.13.0 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   flashinfer-python
     #   vllm
-nixl==1.1.0 \
-    --hash=sha256:f46f65768770fa508eb52921c41b5dc52b754478b0ebb606fff6d80f41375d8b
+nixl==1.2.0 \
+    --hash=sha256:eb666a3691e3d98be35164128175d7763eea3217125b5ead9fc54cd9754e0f16
     # via -r python/requirements/llm/llm-requirements.txt
-nixl-cu13==1.1.0 \
-    --hash=sha256:1991d7899603907099f3e3ac3bf59f950de194bfe8d92c01ef9f06ce1639efa4 \
-    --hash=sha256:1c4e8142eff7cabe6107b3b65bc7a09da27ed585efb7972e45b1faabe74726c7 \
-    --hash=sha256:3f623b77fd59199afd71edadebb79ab394ec5e035873efe8a9bc8b4716b34e73 \
-    --hash=sha256:4e6031798b0a123d1821db698b1f9b3a1534c821af860ee0ef23601638c50d8f \
-    --hash=sha256:52b1e33ed9613df277d957cf1282cda14fbdf7b73006d8f45904cc68619e7af9 \
-    --hash=sha256:60cc00b12871d8c7d78c2385ad9380070424d5b07d3fe01680f222d6c4f1f428 \
-    --hash=sha256:6549dcb4f405f70903534a0770970ab95ed9185a8b16522db1ab4e2d0cc60b37 \
-    --hash=sha256:67149f7d2e3d471ca91499e5437d7b718e4e3e7a27f3b5b917f94b8992a4ed5a \
-    --hash=sha256:90c27cfdae0932f8ecb96ce29474249dd25d7f7712b9f43821cdb57699888fcb \
-    --hash=sha256:e8edf4b0d6a7549d8555fe1a99193aebd522b7737c405c3f8760f432d82e11df
+nixl-cu13==1.2.0 \
+    --hash=sha256:02d99185e5d243b2fedf5fbf75ccec7b2df51addca5377a396d0ea52b8bdd022 \
+    --hash=sha256:071952e71852ea17b4b83425fe086baa0c17a5074dec31106875cc3107f086f8 \
+    --hash=sha256:331535d8873b50fed26d76fc73007bbb51808c545f23d75c027cee4b9905d57f \
+    --hash=sha256:3e1bc99e0e2b6411a4c4bf97af8ee1a79a45e9e37684f3fe4e3359a2b80a49c1 \
+    --hash=sha256:7b2a2300493f74965e1805699a854fc1cb7e4c97b9d9e1ec80be88afa62ade7a \
+    --hash=sha256:893dfb8e0b037db265df119caf3d437f98b71201d666bb828e41a2edf9f2246f \
+    --hash=sha256:abcb82e7ae99b24f9db486d4e792a09db496fa6d76d4184a7d0a390299adc840 \
+    --hash=sha256:acfe519beeb212a4deb893394257ae1c6d49e9267604d6615f37e0f31ef92a42 \
+    --hash=sha256:dae1330fd5eeecd23b252b556fb1a528c22ea02ee2019cae92a5a3fad7e8f401 \
+    --hash=sha256:eef2b116d0d127761b814cb1aef03fdbfc55ea5e44f3c43048f2e046f3dfc641
     # via
     #   -r python/requirements/llm/llm-requirements.txt
     #   nixl
