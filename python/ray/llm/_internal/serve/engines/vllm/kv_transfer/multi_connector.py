@@ -32,6 +32,13 @@ class MultiConnectorBackend(BaseConnectorBackend):
         connectors = kv_transfer_config.get("kv_connector_extra_config", {}).get(
             "connectors", []
         )
+        if not connectors:
+            # Fail fast at setup rather than with a cryptic error when the
+            # orchestrator later delegates to a (missing) top-most sub-connector.
+            raise ValueError(
+                "MultiConnector requires at least one sub-connector in "
+                "kv_connector_extra_config.connectors."
+            )
 
         for connector in connectors:
             connector_backend_str = connector.get("kv_connector")

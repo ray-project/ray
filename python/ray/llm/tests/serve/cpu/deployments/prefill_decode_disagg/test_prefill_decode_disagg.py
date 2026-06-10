@@ -478,9 +478,9 @@ class TestConnectorProtocolHook:
         )
         assert getattr(decode_none, "kv_transfer_params", None) is None
 
-    def test_get_connector_backend_resolution_order(self):
-        """``_get_connector_backend`` prefers a stored instance, else resolves via
-        the factory when a kv_connector is configured, else raises."""
+    def test_get_connector_backend_returns_stored_backend(self):
+        """``_get_connector_backend`` returns the backend that engine init stored
+        on the LLMConfig (and caches it); asserts if none was stored."""
         from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
             BaseConnectorBackend,
         )
@@ -489,17 +489,6 @@ class TestConnectorProtocolHook:
         )
 
         server = PDDecodeServer.__new__(PDDecodeServer)
-
-        # No kv_transfer_config and no stored backend -> raises (PD always has a
-        # kv_transfer_config, so this path is a misconfiguration).
-        server._llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test-model")
-        )
-        with pytest.raises(ValueError):
-            server._get_connector_backend()
-
-        # kv_connector configured -> factory-created concrete backend
-        # (NixlConnectorBackend), which inherits the default flags.
         server._llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model"),
             engine_kwargs={
@@ -509,16 +498,20 @@ class TestConnectorProtocolHook:
                 }
             },
         )
-        be2 = server._get_connector_backend()
-        assert isinstance(be2, NixlConnectorBackend)
-        assert be2.requires_peer_binding is False
-        assert be2.concurrent_handoff is False
 
-        # A stored instance wins over factory resolution.
-        sentinel = NixlConnectorBackend(llm_config=server._llm_config)
-        assert isinstance(sentinel, BaseConnectorBackend)
-        server._llm_config._kv_connector_backend = sentinel
-        assert server._get_connector_backend() is sentinel
+        # No backend stored (engine init / setup_engine_backend didn't run) -> assert.
+        with pytest.raises(AssertionError):
+            server._get_connector_backend()
+
+        # The backend setup_engine_backend would store is returned.
+        stored = NixlConnectorBackend(llm_config=server._llm_config)
+        assert isinstance(stored, BaseConnectorBackend)
+        server._llm_config._kv_connector_backend = stored
+        assert server._get_connector_backend() is stored
+
+        # Cached on first access: a later config change isn't re-read.
+        server._llm_config._kv_connector_backend = None
+        assert server._get_connector_backend() is stored
 
     @pytest.mark.asyncio
     async def test_peer_binding_concurrent_handoff_takes_choose_replica_path(self):

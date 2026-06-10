@@ -33,9 +33,6 @@ from ray.llm._internal.serve.core.ingress.utils import (
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
-from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
-    KVConnectorBackendFactory,
-)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
@@ -120,45 +117,25 @@ class PDOrchestratorMixin:
     # ---- Connector backend resolution ----
 
     def _get_connector_backend(self) -> BaseConnectorBackend:
-        """Resolve the KV-connector backend for this decode server.
+        """Return the connector backend that was set up during engine init.
 
-        The backend is used only for its (stateless w.r.t. the request)
-        coordination protocol — flags (``requires_peer_binding``,
-        ``concurrent_handoff``) and the ``prepare_*`` request shapers — so
-        resolving a fresh instance via the factory is equivalent to a stored one.
-
-        Always returns a *concrete* backend (never the abstract
-        ``BaseConnectorBackend``). Resolution order:
-          1. A backend instance already stored on ``self._llm_config``
-             (``setup_engine_backend`` was called on this exact config copy).
-          2. Else, if a KV transfer connector is configured, create one via the
-             factory (nixl/lmcache/multi/... are all concrete; unregistered
-             connectors fall back to a concrete default backend).
+        ``LLMConfig.setup_engine_backend()`` creates the backend and calls its
+        ``setup()`` during engine initialization, storing it on the config. By the
+        time a request reaches the orchestrator it must already be there — a
+        missing backend means engine init was skipped, which is a bug (and a
+        freshly-created, un-``setup()`` backend would mis-shape traffic, e.g. a
+        MultiConnector whose sub-connectors are populated only in ``setup()``).
+        Cached on first access since the request path calls this.
         """
-        # Resolved once and cached: the backend is per-server (per LLMConfig) and
-        # its protocol is stateless w.r.t. the request, so we avoid re-resolving on
-        # every request (the request path calls this).
         cached = getattr(self, "_connector_backend_cache", None)
         if cached is not None:
             return cached
 
-        llm_config = getattr(self, "_llm_config", None)
-        backend = getattr(llm_config, "kv_connector_backend", None)
-        if backend is None:
-            kv_transfer_config = (getattr(llm_config, "engine_kwargs", None) or {}).get(
-                "kv_transfer_config"
-            )
-            kv_connector = (kv_transfer_config or {}).get("kv_connector")
-            if not kv_connector:
-                # For P/D there is always a kv_transfer_config, so we should never
-                # get here. Fail loudly rather than instantiate the abstract base.
-                raise ValueError(
-                    "Cannot resolve a KV-connector backend: no backend was stored "
-                    "on the LLMConfig and no kv_transfer_config.kv_connector is "
-                    "configured."
-                )
-            backend = KVConnectorBackendFactory.create_backend(kv_connector, llm_config)
-
+        backend = getattr(self._llm_config, "kv_connector_backend", None)
+        assert backend is not None, (
+            "No KV-connector backend on the LLMConfig. setup_engine_backend() must "
+            "run during engine init before the P/D orchestrator handles requests."
+        )
         self._connector_backend_cache = backend
         return backend
 
