@@ -187,6 +187,7 @@ def rest_response(
             The message of the response.
         convert_google_style: bool
             Whether to convert the response to google style.
+        **kwargs: Additional fields included in the response ``data`` payload.
 
     Returns:
         aiohttp.web.Response

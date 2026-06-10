@@ -64,7 +64,9 @@ async def run_throughput_benchmark(
         trial_runtime: How long each trial should run for. During the
             duration of one trial, `fn` will be repeatedly called.
 
-    Returns (mean, stddev, latencies).
+    Returns:
+        A tuple ``(mean, stddev, latencies)`` summarizing per-trial throughput
+        across ``num_trials`` runs.
     """
     # Warmup
     start = time.time()
@@ -264,6 +266,25 @@ class Benchmarker:
         end = time.perf_counter()
         return 1000 * (end - start)
 
+    async def do_single_choose_dispatch(self, payload: Any = None) -> float:
+        """Completes a single unary request via choose_replica + dispatch.
+
+        Returns e2e latency in ms. With SingletonThreadRouter this involves
+        two run_coroutine_threadsafe round-trips (one for __aenter__, one
+        for _dispatch_to_marked_selection) vs. one for ``remote``.
+        """
+        start = time.perf_counter()
+
+        if payload is None:
+            async with self._handle.choose_replica() as sel:
+                await self._handle.dispatch(sel)
+        else:
+            async with self._handle.choose_replica(payload) as sel:
+                await self._handle.dispatch(sel, payload)
+
+        end = time.perf_counter()
+        return 1000 * (end - start)
+
     async def _do_single_stream(self) -> float:
         """Consumes a single streaming request. Returns e2e latency in ms."""
         start = time.perf_counter()
@@ -285,10 +306,24 @@ class Benchmarker:
             )
 
     async def run_latency_benchmark(
-        self, *, num_requests: int, payload: Any = None
+        self,
+        *,
+        num_requests: int,
+        payload: Any = None,
+        mode: str = "remote",
     ) -> pd.Series:
-        async def f():
-            await self.do_single_request(payload)
+        if mode == "remote":
+
+            async def f():
+                await self.do_single_request(payload)
+
+        elif mode == "choose_dispatch":
+
+            async def f():
+                await self.do_single_choose_dispatch(payload)
+
+        else:
+            raise ValueError(f"Unknown mode {mode!r}")
 
         return await run_latency_benchmark(f, num_requests=num_requests)
 

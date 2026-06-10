@@ -1,9 +1,20 @@
 import dataclasses
 import functools
 import logging
+import queue
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -20,8 +31,106 @@ from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+U = TypeVar("U")
 I = TypeVar("I")
 O = TypeVar("O")
+
+_SENTINEL = object()
+
+
+def iter_threaded(
+    base_iterator: Iterator[T],
+    fn: Callable[[Iterator[T]], Iterator[U]],
+    num_workers: int = 1,
+    output_buffer_size: int = 1,
+) -> Generator[U, None, None]:
+    """Apply ``fn`` to ``base_iterator`` across ``num_workers`` background
+    threads, yielding results through a single bounded queue.
+
+    Workers share ``base_iterator`` under a lock (so it may be a stateful,
+    non-thread-safe generator) and run ``fn`` concurrently. With
+    ``num_workers > 1`` the output order is not preserved and must be restored
+    downstream if needed. In-flight items are bounded to roughly
+    ``num_workers + output_buffer_size``, keeping pinned resources small. When
+    the consumer stops early (``break``, ``.close()``, or GC), workers are
+    signaled to stop via an event so they do not leak.
+
+    Args:
+        base_iterator: Iterator consumed (under a lock) by the workers.
+        fn: Transform applied by each worker to its view of ``base_iterator``.
+        num_workers: Number of background worker threads.
+        output_buffer_size: Max number of items buffered in the output queue.
+
+    Yields:
+        U: Items produced by ``fn``.
+    """
+    if num_workers < 1:
+        raise ValueError("num_workers must be at least 1.")
+
+    stopped = threading.Event()
+    result_queue: queue.Queue = queue.Queue(maxsize=output_buffer_size)
+    iter_lock = threading.Lock()
+
+    def _locked_next():
+        # Pull the next item under a lock so workers can safely share a
+        # stateful iterator. Returns _SENTINEL once exhausted or once the
+        # consumer has stopped (so workers don't pay for one more fetch
+        # before the next _put-side stop check).
+        with iter_lock:
+            if stopped.is_set():
+                return _SENTINEL
+            try:
+                return next(base_iterator)
+            except StopIteration:
+                return _SENTINEL
+
+    def _put(item) -> bool:
+        """Put with periodic stop checks. Returns False if interrupted."""
+        while not stopped.is_set():
+            try:
+                result_queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    remaining_workers = num_workers
+    remaining_lock = threading.Lock()
+
+    def _worker():
+        nonlocal remaining_workers
+        try:
+            for item in fn(iter(_locked_next, _SENTINEL)):
+                if not _put(item):
+                    return
+        except Exception as e:
+            if not stopped.is_set():
+                _put(e)
+        finally:
+            with remaining_lock:
+                remaining_workers -= 1
+                is_last = remaining_workers == 0
+            if is_last and not stopped.is_set():
+                _put(_SENTINEL)
+
+    worker_threads = [
+        threading.Thread(target=_worker, name="iter_threaded", daemon=True)
+        for _ in range(num_workers)
+    ]
+    for t in worker_threads:
+        t.start()
+
+    try:
+        while True:
+            item = result_queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        stopped.set()
 
 
 class _MappingIterator(Iterator[O], Generic[I, O]):
@@ -70,6 +179,9 @@ def resolve_block_refs(
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+
+    Yields:
+        Block: The resolved blocks for each block reference.
     """
     hits = 0
     misses = 0
