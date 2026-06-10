@@ -60,6 +60,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 torch, _ = try_import_torch()
@@ -232,8 +233,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                             self._weights_seq_no
                         )
                     )
-            except ray.exceptions.RayError:
+            except ray.exceptions.RayError as e:
                 _server_state = None
+                # Logged once per EnvRunner to avoid spamming this per-`sample()` path.
+                if log_once("env_runner_state_server_pull_failed"):
+                    logger.warning(
+                        "EnvRunner failed to pull state from the "
+                        f"`EnvRunnerStateServer` ({type(e).__name__}). Falling back to "
+                        "the current weights/connector states; sampling continues and "
+                        "this should self-heal once the server is reachable again. This "
+                        "warning is logged only once per EnvRunner."
+                    )
             if _server_state is not None:
                 self.set_state(_server_state)
 
