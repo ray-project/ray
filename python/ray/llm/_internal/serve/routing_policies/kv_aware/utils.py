@@ -14,20 +14,19 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     derive_kv_event_block_size,
 )
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
-from ray.serve.deployment import Application
 
 
-def is_kv_aware_routing(server: Application) -> bool:
-    """Whether ``server``'s configured request router is a KVAwareRouter.
+def is_kv_aware_routing(request_router_config) -> bool:
+    """Whether ``request_router_config`` (a dict, a ``RequestRouterConfig``, or
+    ``None``) selects a ``KVAwareRouter``.
 
     KV-aware routing is the only policy that consumes prompt token IDs, so it
-    is what gates the extra pre-routing /tokenize call on the ingress request
-    router.
+    gates both the pre-routing /tokenize call on the ingress router and the
+    engine's token-lifecycle tracking.
     """
-    request_router_config = (
-        server._bound_deployment._deployment_config.request_router_config
-    )
-    if request_router_config is None:
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    if not isinstance(request_router_config, RequestRouterConfig):
         return False
     return issubclass(request_router_config.get_request_router_class(), KVAwareRouter)
 
@@ -41,12 +40,7 @@ def _maybe_setup_kv_aware_routing(
     Attaches the KVRouterActor, which owns the deployment's global KV radix
     tree, and enables the engine KV events that feed it.
     """
-    request_router_config = deployment_options.get("request_router_config")
-    if isinstance(request_router_config, dict):
-        request_router_config = RequestRouterConfig(**request_router_config)
-    if not isinstance(request_router_config, RequestRouterConfig):
-        return
-    if not issubclass(request_router_config.get_request_router_class(), KVAwareRouter):
+    if not is_kv_aware_routing(deployment_options.get("request_router_config")):
         return
 
     deployment_options["deployment_actors"] = [
