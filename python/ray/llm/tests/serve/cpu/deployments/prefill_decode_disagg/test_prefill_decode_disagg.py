@@ -340,6 +340,14 @@ class TestPDOrchestratorMixin:
         server._llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model")
         )
+        # Engine init stores the backend on the config; the orchestrator reads it.
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            DefaultConnectorBackend,
+        )
+
+        server._llm_config._kv_connector_backend = DefaultConnectorBackend(
+            server._llm_config
+        )
         # The direct-streaming app starts from the engine-native ASGI app, so
         # the decode server needs a (mock) engine. PD only re-points the
         # chat/completions routes at the orchestrator, patched below.
@@ -591,6 +599,15 @@ class TestConnectorProtocolHook:
                     "kv_role": "kv_both",
                 }
             },
+        )
+        # Engine init (setup_engine_backend) stores the backend on the config;
+        # the orchestrator reads it from there.
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl import (
+            NixlConnectorBackend,
+        )
+
+        server._llm_config._kv_connector_backend = NixlConnectorBackend(
+            server._llm_config
         )
         prefill = _FakePrefillHandle()
         server._prefill_handle = prefill
