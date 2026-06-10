@@ -566,6 +566,13 @@ def test_streaming_generator_num_objects_per_yield(shutdown_only):
     with pytest.raises(StopIteration):
         next(gen)
 
+    @ray.remote
+    def per_call():
+        yield 1, 2
+
+    with pytest.raises(ValueError, match="_num_objects_per_yield"):
+        per_call.options(_num_objects_per_yield=2).remote()
+
 
 def test_actor_streaming_generator_num_objects_per_yield(shutdown_only):
     ray.init()
@@ -587,11 +594,8 @@ def test_actor_streaming_generator_num_objects_per_yield(shutdown_only):
     with pytest.raises(StopIteration):
         next(gen)
 
-    gen = actor.per_call.options(_num_objects_per_yield=2).remote()
-    assert ray.get(next(gen)) == 1
-    assert ray.get(next(gen)) == 2
-    with pytest.raises(StopIteration):
-        next(gen)
+    with pytest.raises(ValueError, match="_num_objects_per_yield"):
+        actor.per_call.options(_num_objects_per_yield=2).remote()
 
 
 def test_streaming_generator_num_objects_per_yield_invalid_yield(shutdown_only):

@@ -1275,7 +1275,6 @@ cdef report_streaming_generator_exception(
 
     cdef:
         # Ray Object created from an output.
-        c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] return_objs
 
     create_generator_error_object(
@@ -1294,7 +1293,7 @@ cdef report_streaming_generator_exception(
         generator_index,
         context.is_async,
         context.should_retry_exceptions,
-        &return_obj,
+        &return_objs,
         context.is_retryable_error,
         context.application_error
     )
@@ -1308,11 +1307,10 @@ cdef report_streaming_generator_exception(
     if interrupt_signal_event is not None and interrupt_signal_event.is_set():
         return
 
-    return_objs.push_back(return_obj)
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
-            return_obj.first,
-            is_plasma_object(return_obj.second)))
+            return_objs[0].first,
+            is_plasma_object(return_objs[0].second)))
 
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
@@ -1580,7 +1578,7 @@ cdef create_generator_error_object(
         generator_index,
         is_async,
         c_bool should_retry_exceptions,
-        c_pair[CObjectID, shared_ptr[CRayObject]] *error_object,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *error_objects,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Create a generator error object.
@@ -1612,14 +1610,13 @@ cdef create_generator_error_object(
         generator_index: The ObjectRef stream index for this exception.
         is_async: Whether or not the given object is created within
             an async actor.
-        error_object(out): A Ray Object that contains the given error exception.
+        error_objects(out): Ray Objects that contain the given error exception.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
     is_retryable_error[0] = determine_if_retryable(
@@ -1649,7 +1646,7 @@ cdef create_generator_error_object(
         generator_index,
         is_async,
     )
-    intermediate_result.push_back(
+    error_objects.push_back(
             c_pair[CObjectID, shared_ptr[CRayObject]](
                 error_id, shared_ptr[CRayObject]()))
     store_task_errors(
@@ -1659,10 +1656,8 @@ cdef create_generator_error_object(
                 actor_id,  # actor id
                 function_name, task_type, title,
                 caller_address,
-                &intermediate_result,
+                error_objects,
                 application_error)
-
-    error_object[0] = intermediate_result.back()
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(

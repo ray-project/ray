@@ -963,6 +963,11 @@ class ActorMethod:
             A wrapper exposing ``.remote()`` / ``.bind()`` that applies the
             given options when the method is invoked.
         """
+        if "_num_objects_per_yield" in options:
+            raise ValueError(
+                "_num_objects_per_yield cannot be overridden per actor method "
+                "call. Use @ray.method(_num_objects_per_yield=...) instead."
+            )
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
@@ -1001,12 +1006,12 @@ class ActorMethod:
             "num_returns": num_returns,
             "concurrency_group": concurrency_group,
             "_generator_backpressure_num_objects": _generator_backpressure_num_objects,
-            "_num_objects_per_yield": _num_objects_per_yield,
         }
         if _num_objects_per_yield is not None:
             ray_option_utils.task_options["_num_objects_per_yield"].validate(
                 "_num_objects_per_yield", _num_objects_per_yield
             )
+            options["_num_objects_per_yield"] = _num_objects_per_yield
 
         actor = self._actor
         if actor is None:

@@ -281,6 +281,15 @@ class RemoteFunction:
             # Task g will require 2 gpus instead of 1.
             g = f.options(num_gpus=2)
         """
+        if "_num_objects_per_yield" in task_options:
+            num_objects_per_yield = (
+                self._default_options.get("_num_objects_per_yield") or 1
+            )
+            if task_options["_num_objects_per_yield"] != num_objects_per_yield:
+                raise ValueError(
+                    "_num_objects_per_yield cannot be overridden per task call. "
+                    "Use @ray.remote(_num_objects_per_yield=...) instead."
+                )
 
         func_cls = self
 
@@ -438,6 +447,9 @@ class RemoteFunction:
         num_objects_per_yield = task_options["_num_objects_per_yield"]
         if num_objects_per_yield is None:
             num_objects_per_yield = 1
+        ray_option_utils.task_options["_num_objects_per_yield"].validate(
+            "_num_objects_per_yield", num_objects_per_yield
+        )
 
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
