@@ -9,7 +9,8 @@ depsets:
   # Ray CUDA image without depending on the published ray-ml image. This mirrors
   # the ML base-extra-testdeps depset (docker/base-deps + docker/base-extra +
   # the ML byod requirements expanded over the Ray image deps) and adds the
-  # torchft requirements. Installed via release/ray_release/byod/byod_ml_torchft.sh.
+  # torchft requirements. Consumed by a release test via byod.python_depset,
+  # which the BYOD build installs automatically (uv pip install --no-deps).
   - name: ray_ml_torchft_testdeps_${PYTHON_SHORT}
     operation: expand
     depsets:
