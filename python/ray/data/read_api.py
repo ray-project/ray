@@ -2575,8 +2575,10 @@ def read_lerobot(
 
     Output columns include ``index``, ``episode_index``, ``frame_index``,
     ``timestamp``, state/action vectors, decoded camera frames (as variable-shaped
-    uint8 tensors), ``task`` (string), and ``dataset_index`` (int32, identifies the
-    source root when reading multiple datasets).
+    uint8 tensors), ``task`` (string), ``dataset_index`` (int32, identifies the
+    source root when reading multiple datasets), and ``stats`` (a JSON string of the
+    source dataset's per-feature normalization statistics — mean/std/min/max — for
+    downstream normalization, e.g. of state/action vectors).
 
     Examples:
         Read a local LeRobot dataset:

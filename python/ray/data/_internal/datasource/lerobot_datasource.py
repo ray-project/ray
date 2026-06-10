@@ -16,6 +16,7 @@ shipped to workers via ``ray.put``.
 """
 
 import enum
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Union
@@ -101,7 +102,8 @@ class _LeRobotRoot(NamedTuple):
 
     schema: pa.Schema
     """Arrow schema of one fully-decoded output row (parquet columns +
-    variable-shape-tensor video columns + ``task`` + ``dataset_index``)."""
+    variable-shape-tensor video columns + ``task`` + ``dataset_index`` +
+    ``stats``)."""
 
     row_size_bytes: int
     """Estimated in-memory size of one fully-decoded row, in bytes."""
@@ -117,6 +119,11 @@ class _LeRobotRoot(NamedTuple):
     """Extra options forwarded to ``fsspec`` (``url_to_fs`` / ``fsspec.open``)
     and to the video decode call when reading this root.  Empty dict means
     rely on ambient fsspec credential resolution."""
+
+    stats_json: str
+    """Per-feature normalization statistics (mean/std/min/max/…) from
+    ``meta/stats.json``, serialized to a JSON string.  Emitted verbatim on
+    every row as the ``stats`` column; ``"{}"`` when the dataset has none."""
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +173,8 @@ def _build_schema(
     fs_root: str,
 ) -> pa.Schema:
     """Read the Arrow schema of the first data parquet file and append the
-    variable-shape-tensor video columns plus ``task`` and ``dataset_index``."""
+    variable-shape-tensor video columns plus ``task``, ``dataset_index`` and
+    ``stats``."""
     ep = episodes_table.slice(0, 1).to_pylist()[0]
     path = (
         f"{fs_root}/"
@@ -181,6 +189,7 @@ def _build_schema(
         )
     fields.append(pa.field("task", pa.string()))
     fields.append(pa.field("dataset_index", pa.int32()))
+    fields.append(pa.field("stats", pa.string()))
     return pa.schema(fields)
 
 
@@ -205,6 +214,29 @@ def _estimated_row_size_bytes(features: dict, root_for_logging: str) -> int:
                 )
                 continue
     return total
+
+
+def _stats_to_json(stats: Optional[dict]) -> str:
+    """Serialize lerobot's per-feature stats dict (``{feature: {stat: ndarray}}``)
+    to a JSON string, converting numpy arrays / scalars to plain lists / numbers.
+
+    Returns ``"{}"`` when *stats* is missing or empty.  Emitted verbatim on every
+    row as the ``stats`` column so downstream tasks (e.g. normalizing state/action
+    for policy training) can recover mean/std without a second metadata read.
+    """
+    if not stats:
+        return "{}"
+
+    def _convert(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: _convert(v) for k, v in value.items()}
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, np.generic):
+            return value.item()
+        return value
+
+    return json.dumps(_convert(stats))
 
 
 def _load_lerobot_metadata(
@@ -277,6 +309,7 @@ def _build_root(
         episodes_table, meta.data_path, meta.video_keys, fs, fs_root
     )
     row_size_bytes = _estimated_row_size_bytes(meta.features, root_uri)
+    stats_json = _stats_to_json(getattr(meta, "stats", None))
 
     return _LeRobotRoot(
         root=root_uri,
@@ -291,6 +324,7 @@ def _build_root(
         total_frames=meta.total_frames,
         fps=meta.fps,
         storage_options=storage_options,
+        stats_json=stats_json,
     )
 
 
@@ -409,6 +443,7 @@ class _LeRobotReadTask(ReadTask):
                 frame_buffers,
                 task_list,
                 dataset_index,
+                root.stats_json,
             )
 
     @staticmethod
@@ -583,9 +618,10 @@ class _LeRobotReadTask(ReadTask):
         frame_buffers: dict,
         task_list: List[str],
         dataset_index: int,
+        stats_json: str,
     ) -> pa.Table:
         """Assemble one Arrow batch from buffered parquet rows, decoded frames,
-        and tasks."""
+        tasks, and per-dataset stats."""
         table = pa.concat_tables(pq_buffer)
         columns: dict = {
             table.schema.field(i).name: table.column(i)
@@ -597,6 +633,7 @@ class _LeRobotReadTask(ReadTask):
         columns["dataset_index"] = pa.array(
             [dataset_index] * len(task_list), type=pa.int32()
         )
+        columns["stats"] = pa.array([stats_json] * len(task_list), type=pa.string())
         return pa.table(columns)
 
 @DeveloperAPI

@@ -243,6 +243,25 @@ def test_read_lerobot_no_video(ray_start_regular_shared, lerobot_dataset_no_vide
         assert "observation.image" not in row
 
 
+def test_read_lerobot_stats_column(ray_start_regular_shared, lerobot_dataset_no_video):
+    """The ``stats`` column exposes per-feature normalization stats as JSON."""
+    ds = ray.data.read_lerobot(lerobot_dataset_no_video)
+    rows = ds.take_all()
+    assert rows
+    for row in rows:
+        assert "stats" in row
+        stats = json.loads(row["stats"])
+        # create_lerobot_dataset writes mean/std for action and state.
+        for feat in ("action", "state"):
+            assert feat in stats
+            np.testing.assert_allclose(
+                np.asarray(stats[feat]["mean"]).flatten(), [0.0, 0.0]
+            )
+            np.testing.assert_allclose(
+                np.asarray(stats[feat]["std"]).flatten(), [1.0, 1.0]
+            )
+
+
 def test_read_lerobot_sequential(ray_start_regular_shared, lerobot_dataset):
     """Test SEQUENTIAL partitioning."""
     from ray.data.datasource import LeRobotPartitioning
