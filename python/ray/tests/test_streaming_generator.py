@@ -598,6 +598,23 @@ def test_streaming_generator_num_objects_per_yield_invalid_yield(shutdown_only):
         next(gen)
 
 
+def test_streaming_generator_num_objects_per_yield_serialization_failure(shutdown_only):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        # The first object is serializable, but the second object is not.
+        # The grouped yield should fail before any dynamic return IDs are allocated.
+        yield 1, threading.Lock()
+
+    gen = generator.remote()
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
 def test_streaming_generator_exception(shutdown_only):
     # Verify the exceptions are correctly raised.
     # Also verify the followup next will raise StopIteration.

@@ -1502,6 +1502,12 @@ cdef create_generator_return_objs(
             )
         outputs = output
 
+        # Avoid allocating any dynamic return IDs until the whole grouped
+        # yield can be serialized.
+        context = worker.get_serialization_context()
+        for output in outputs:
+            context.serialize(output)
+
     return_objects.reserve(num_objects_per_yield)
     for i in range(num_objects_per_yield):
         stream_index = generator_index + i
