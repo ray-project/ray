@@ -172,7 +172,6 @@ steps:
       python:
         - "3.10"
         - "3.11"
-        - "3.13"
       cuda:
         - "12.1.1-cudnn8"
     env:
@@ -186,7 +185,6 @@ steps:
       python:
         - "3.10"
         - "3.11"
-        - "3.13"
       cuda:
         - "12.1.1-cudnn8"
     env:

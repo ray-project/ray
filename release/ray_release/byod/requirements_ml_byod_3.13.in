@@ -40,8 +40,6 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-torchft==0.1.1
-torchft-nightly
 triton==3.3.0
 torch==2.7.0
 torchaudio

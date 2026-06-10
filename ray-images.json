@@ -34,7 +34,7 @@
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },
-    "python": ["3.10", "3.11", "3.13"],
+    "python": ["3.10", "3.11"],
     "architectures": ["x86_64"],
     "platforms": ["cpu", "cu12.1.1-cudnn8"]
   },

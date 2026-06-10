@@ -1,0 +1,3 @@
+# Extra dependencies layered on top of the Ray ML test environment to provide
+# torchft for fault-tolerant PyTorch training release tests.
+torchft-nightly

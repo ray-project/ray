@@ -58,7 +58,6 @@ steps:
     array:
       python:
         - "3.10"
-        - "3.13"
       cuda:
         - "12.1.1-cudnn8"
     env:
@@ -218,7 +217,6 @@ steps:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
         - "3.10"
-        - "3.13"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -247,4 +245,3 @@ steps:
     array:
       python:
         - "3.10"
-        - "3.13"

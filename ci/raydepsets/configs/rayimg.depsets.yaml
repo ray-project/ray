@@ -116,7 +116,6 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
-      - py313
 
   - name: ray_base_slim_${PYTHON_SHORT}
     operation: expand

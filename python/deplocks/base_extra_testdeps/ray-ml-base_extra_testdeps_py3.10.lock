@@ -6182,7 +6182,6 @@ torch==2.7.0+cu128 \
     #   peft
     #   pytorch-lightning
     #   torchaudio
-    #   torchft-nightly
     #   torchmetrics
     #   torchtext
 torchaudio==2.7.0+cu128 \
@@ -6198,13 +6197,6 @@ torchaudio==2.7.0+cu128 \
     --hash=sha256:f6c6c2c3a74225225b5d823db7e3910b581b3bb5fac891c0e7bf3549fb5d55b6 \
     --hash=sha256:f96c2be8aff6c827e76fd3a85e69a54ba5b9a37090853ed886f056ddfbca09a4 \
     --hash=sha256:fc2627c5e9a362300692f34f7d587088b2bd19e8e6158640b8266532f53051b9
-    # via -r release/ray_release/byod/requirements_ml_byod_3.10.in
-torchft-nightly==2025.9.29 \
-    --hash=sha256:01880bb7aca6d4905f367dd3eb52f3fed030a9310328956b6df322a4ad63ae0a \
-    --hash=sha256:45a4c044bee55f88b8f373ecc5506dc1c810d6a6acdaaf446bc5034d1b5306ed \
-    --hash=sha256:4fe8872aa7629686a0071cb2bdbdf6a17470f72d33d0055fdbc94d63a8c0d4e8 \
-    --hash=sha256:50fef359eeac81268eb3f6dcc405f818b98dc9066e05eb45ea1929d384ff3bb3 \
-    --hash=sha256:8831147c58ef4f3dd56e7a7d27518d39ac3e4a42cc65e40af59c4cd60782aed5
     # via -r release/ray_release/byod/requirements_ml_byod_3.10.in
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
