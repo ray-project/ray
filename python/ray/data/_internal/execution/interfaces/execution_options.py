@@ -384,7 +384,7 @@ class ExecutionOptions:
             aggregator actors) carries this label selector in its remote args,
             constraining placement to nodes whose labels satisfy the selector.
             Used to scope a Dataset to a labeled subset of the cluster (e.g.
-            ``{"__subcluster__": "training"}``). Operator-level ``label_selector``
+            ``{"ray-subcluster": "training"}``). Operator-level ``label_selector``
             entries in ``ray_remote_args`` take precedence on key conflicts so
             existing node-pin selectors are preserved.
     """
