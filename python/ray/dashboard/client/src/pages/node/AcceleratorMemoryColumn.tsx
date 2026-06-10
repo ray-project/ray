@@ -20,7 +20,7 @@ export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
       slot: acc.index,
       // TPUs report a raw ratio which is present even in cases where the
       // absolute usage is not available.
-      percentUtil: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
+      utilRatio: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
     };
     return <AcceleratorMemoryEntry {...props} />;
   });
@@ -64,7 +64,7 @@ export const WorkerAcceleratorMemory = ({
         slot: acc.index,
         // TPUs report a raw ratio which is present even in cases where the
         // absolute usage is not available.
-        percentUtil: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
+        utilRatio: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
       };
       return <AcceleratorMemoryEntry {...props} />;
     })
@@ -112,7 +112,7 @@ type AcceleratorMemoryEntryProps = {
   slot: number;
   utilization: number;
   total: number;
-  percentUtil?: number;
+  utilRatio?: number;
 };
 
 const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
@@ -120,14 +120,14 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   slot,
   utilization,
   total,
-  percentUtil,
+  utilRatio,
 }) => {
   let ratioStr = getMemDisplayRatioNoPercent(utilization, total);
   // When the utilization percentage is present but absolute usage is missing
   // (as is the case on some TPU generations), spoof the bar with just a percentage.
-  if (percentUtil !== undefined && (total === 0 || isNaN(total))) {
-    ratioStr = `${(percentUtil * 100).toFixed(1)}%`;
-    utilization = percentUtil;
+  if (utilRatio !== undefined && (total === 0 || isNaN(total))) {
+    ratioStr = `${(utilRatio * 100).toFixed(1)}%`;
+    utilization = utilRatio;
     total = 1;
   }
   return (
