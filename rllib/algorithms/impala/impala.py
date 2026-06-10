@@ -1,7 +1,6 @@
 import copy
 import logging
 import queue
-import uuid
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 from typing_extensions import Self
@@ -610,9 +609,10 @@ class IMPALA(Algorithm):
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
-        # For pull-based EnvRunner state sync: create a single, global, NAMED
+        # For pull-based EnvRunner state sync: create a single, global
         # `EnvRunnerStateServer` actor holding the latest merged EnvRunner state.
-        # EnvRunners pull from it at the top of each `sample()` call.
+        # EnvRunners receive the handle by reference (shared below) and pull from it at
+        # the top of each `sample()` call; no one looks the actor up by name.
         self._env_runner_state_server = None
         if (
             self.config.enable_rl_module_and_learner
@@ -625,9 +625,7 @@ class IMPALA(Algorithm):
                 max_restarts=-1,
                 max_concurrency=self.config.env_runner_state_server_max_concurrency,
             )(EnvRunnerStateServer)
-            self._env_runner_state_server = server_cls.options(
-                name=f"EnvRunnerStateServer_{self.trial_id}_{uuid.uuid4().hex[:8]}",
-            ).remote()
+            self._env_runner_state_server = server_cls.remote()
 
             # Share the handle with the (remote, training) EnvRunners only.
             def _share_state_server(env_runner, server=self._env_runner_state_server):
