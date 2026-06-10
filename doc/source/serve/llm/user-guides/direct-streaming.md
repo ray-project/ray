@@ -91,20 +91,16 @@ Direct streaming is the low-latency path for Ray Serve LLM. Removing the ingress
 
 ## How it works
 
-Without direct streaming, the request and every streamed token pass through the ingress deployment:
+Without direct streaming, the request and every streamed token pass through the ingress deployment: `Client → HAProxy → OpenAiIngress replica → LLMServer replica → engine`.
 
-```
-Client → HAProxy → OpenAiIngress replica → LLMServer replica → engine
-```
+With direct streaming, the `LLMServer` deployment is the ingress. HAProxy first asks the ingress request router which replica to use, then sends the request directly to that replica's backend HTTP port:
 
-With direct streaming, the `LLMServer` deployment is the ingress. HAProxy first asks the ingress request router which replica to use, then forwards the request directly to that replica's backend HTTP port:
-
-```
-                  ┌─ (1) which replica? ──→ ingress request router (internal)
-                  │                             │ applies request_router_config
-Client → HAProxy ─┤                             ↓
-                  │                          host:port of an LLMServer replica
-                  └─ (2) forward request ──→ LLMServer replica → engine
+```{figure} ../images/direct_streaming_architecture.png
+---
+width: 700px
+name: direct-streaming-architecture
+---
+With direct streaming, HAProxy calls `/internal/route` on the `LLMRouter` deployment to choose an `LLMServer` replica, then sends the request and the streamed response directly to that replica. The replica serves the engine's own FastAPI app, so no separate ingress deployment sits on the response path.
 ```
 
 The `LLMServer` replica builds its ASGI app from the engine's native OpenAI-compatible FastAPI app, such as vLLM's API server, after the engine starts. Streaming responses are then served directly from the engine frontend.
