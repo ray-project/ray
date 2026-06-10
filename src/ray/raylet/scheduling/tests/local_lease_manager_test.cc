@@ -360,7 +360,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
             /*scheduler_metrics=*/scheduler_metrics_,
-            /*get_time=*/[this]() { return current_time_ms_; })) {}
+            /*clock=*/clock_)) {}
 
   void SetUp() override {
     static rpc::GcsNodeAddressAndLiveness node_info;
@@ -388,7 +388,6 @@ class LocalLeaseManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
-  int64_t current_time_ms_ = 0;
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 

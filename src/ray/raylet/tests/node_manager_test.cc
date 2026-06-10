@@ -416,7 +416,8 @@ class NodeManagerTest : public ::testing::Test {
           return node_manager_->GetObjectsFromPlasma(object_ids, results);
         },
         max_task_args_memory,
-        scheduler_metrics);
+        scheduler_metrics,
+        clock_);
 
     cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,

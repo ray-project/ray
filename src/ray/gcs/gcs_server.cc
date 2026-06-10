@@ -217,7 +217,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                                     rpc::ChannelType::RAY_LOG_CHANNEL,
                                     rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
       /*periodical_runner=*/*observability_pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*get_time_ms=*/[this]() { return clock_.NowUnixNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());

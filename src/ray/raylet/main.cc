@@ -990,7 +990,8 @@ int main(int argc, char *argv[]) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
         max_task_args_memory,
-        scheduler_metrics);
+        scheduler_metrics,
+        clock);
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
