@@ -20,7 +20,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 # Default namespace for metrics declared on ``OpRuntimeMetrics``.
-_OP_RUNTIME_NAMESPACE = "op_runtime"
+OP_RUNTIME_NAMESPACE = "op_runtime"
 
 # A metadata key used to mark a dataclass field as a metric.
 _IS_FIELD_METRIC_KEY = "__is_metric"
@@ -194,7 +194,7 @@ def metric_property(
     source_key: Optional[str] = None,
     prometheus_name: Optional[str] = None,
     tag_keys: Tuple[str, ...] = (),
-    namespace: str = _OP_RUNTIME_NAMESPACE,
+    namespace: str = OP_RUNTIME_NAMESPACE,
 ):
     """A property that represents a metric."""
 
@@ -231,7 +231,7 @@ class OpRuntimesMetricsMeta(type):
         # can't create the metrics in `metric_field` directly.
         super().__init__(name, bases, dict)
 
-        namespace = dict.get("_REGISTRY_NAMESPACE", _OP_RUNTIME_NAMESPACE)
+        namespace = dict.get("_REGISTRY_NAMESPACE", OP_RUNTIME_NAMESPACE)
 
         # Iterate over the attributes and methods of the class. If an attribute
         # is a dataclass field with _IS_FIELD_METRIC_KEY in its metadata, create
