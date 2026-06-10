@@ -304,6 +304,53 @@ class TestMultiRLModuleSpecSingleSpec(unittest.TestCase):
         )
         self.assertFalse(multi_spec.inference_only)
 
+    def test_single_shared_spec_contains_returns_true_for_any_module_id(self):
+        """A single shared spec applies to every module_id, so ``in`` is True."""
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+        self.assertIn("player1", multi_spec)
+        self.assertIn("player2", multi_spec)
+        self.assertIn(DEFAULT_MODULE_ID, multi_spec)
+
+    def test_single_shared_spec_getitem_returns_shared_spec(self):
+        """A single shared spec is returned for any module_id lookup."""
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+        self.assertIs(multi_spec["player1"], shared_spec)
+        self.assertIs(multi_spec["player2"], shared_spec)
+
+    def test_single_shared_spec_round_trips_through_to_dict_from_dict(self):
+        """``to_dict``/``from_dict`` must round-trip the single shared-spec form.
+
+        Required for checkpointing and for sending specs to remote workers.
+        """
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            inference_only=False,
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+
+        serialized = multi_spec.to_dict()
+        # The single-spec form serializes as a single RLModuleSpec dict
+        # (no per-module_id wrapping); the ``module_class`` discriminator
+        # key must be present so ``from_dict`` can detect this shape.
+        self.assertIn("module_class", serialized["rl_module_specs"])
+
+        restored = MultiRLModuleSpec.from_dict(serialized)
+        self.assertIsInstance(restored.rl_module_specs, RLModuleSpec)
+        self.assertEqual(restored.rl_module_specs.module_class, VPGTorchRLModule)
+        self.assertEqual(restored.inference_only, multi_spec.inference_only)
+
 
 if __name__ == "__main__":
     import sys

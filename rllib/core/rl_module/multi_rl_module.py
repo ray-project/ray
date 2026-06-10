@@ -710,33 +710,48 @@ class MultiRLModuleSpec:
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts the MultiRLModuleSpec to a dictionary."""
+        if isinstance(self.rl_module_specs, RLModuleSpec):
+            # Single shared spec form: serialize as the single spec dict.
+            # ``from_dict`` discriminates by checking for the ``module_class``
+            # key (only present in single-spec dicts).
+            rl_module_specs_dict = self.rl_module_specs.to_dict()
+        else:
+            rl_module_specs_dict = {
+                module_id: rl_module_spec.to_dict()
+                for module_id, rl_module_spec in self.rl_module_specs.items()
+            }
         return {
             "multi_rl_module_class": serialize_type(self.multi_rl_module_class),
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
             "inference_only": self.inference_only,
             "model_config": self.model_config,
-            "rl_module_specs": {
-                module_id: rl_module_spec.to_dict()
-                for module_id, rl_module_spec in self.rl_module_specs.items()
-            },
+            "rl_module_specs": rl_module_specs_dict,
         }
 
     @classmethod
     def from_dict(cls, d) -> "MultiRLModuleSpec":
         """Creates a MultiRLModuleSpec from a dictionary."""
+        raw_specs = d.get("rl_module_specs", d.get("module_specs"))
+        # ``RLModuleSpec.to_dict()`` always includes a ``module_class`` key
+        # (see ``RLModuleSpec.to_dict``). A dict-of-specs form maps ModuleID
+        # -> spec dict and therefore does not have ``module_class`` at the
+        # top level. Use the presence of that key to round-trip the single
+        # shared-spec form (#63616).
+        if isinstance(raw_specs, dict) and "module_class" in raw_specs:
+            rl_module_specs = RLModuleSpec.from_dict(raw_specs)
+        else:
+            rl_module_specs = {
+                module_id: RLModuleSpec.from_dict(rl_module_spec)
+                for module_id, rl_module_spec in raw_specs.items()
+            }
         return MultiRLModuleSpec(
             multi_rl_module_class=deserialize_type(d["multi_rl_module_class"]),
             observation_space=gym_space_from_dict(d.get("observation_space")),
             action_space=gym_space_from_dict(d.get("action_space")),
             model_config=d.get("model_config"),
             inference_only=d["inference_only"],
-            rl_module_specs={
-                module_id: RLModuleSpec.from_dict(rl_module_spec)
-                for module_id, rl_module_spec in (
-                    d.get("rl_module_specs", d.get("module_specs")).items()
-                )
-            },
+            rl_module_specs=rl_module_specs,
         )
 
     def update(
@@ -779,10 +794,16 @@ class MultiRLModuleSpec:
 
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
+        # A single shared RLModuleSpec applies to every module_id.
+        if isinstance(self.rl_module_specs, RLModuleSpec):
+            return True
         return item in self.rl_module_specs
 
     def __getitem__(self, item) -> RLModuleSpec:
         """Returns the RLModuleSpec under the ModuleID."""
+        # A single shared RLModuleSpec is returned for any module_id.
+        if isinstance(self.rl_module_specs, RLModuleSpec):
+            return self.rl_module_specs
         return self.rl_module_specs[item]
 
     @Deprecated(
