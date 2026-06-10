@@ -1358,7 +1358,7 @@ class ReporterAgent(
         records.append(
             Record(
                 gauge=METRICS_GAUGES["component_rss_mb"],
-                value=total_shm_bytes / 1.0e6,
+                value=total_rss_bytes / 1.0e6,
                 tags=tags,
             )
         )
