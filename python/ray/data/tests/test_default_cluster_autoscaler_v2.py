@@ -129,24 +129,24 @@ class TestClusterAutoscaling:
             assert _get_node_resource_spec_and_count() == expected
 
     def test_get_node_resource_spec_and_count_filters_by_subcluster(self):
-        """Only nodes whose ``__subcluster__`` label matches contribute to
+        """Only nodes whose ``subcluster`` label matches contribute to
         the counts. Prevents ``try_trigger_scaling`` from pulling shapes
         and counts from foreign subclusters into a labeled requester's
         active / pending bundles."""
         node_table = [
             {
                 "Resources": self._node_type1,
-                "Labels": {"__subcluster__": "training"},
+                "Labels": {"subcluster": "training"},
                 "Alive": True,
             },
             {
                 "Resources": self._node_type1,
-                "Labels": {"__subcluster__": "training"},
+                "Labels": {"subcluster": "training"},
                 "Alive": True,
             },
             {
                 "Resources": self._node_type2,
-                "Labels": {"__subcluster__": "validation"},
+                "Labels": {"subcluster": "validation"},
                 "Alive": True,
             },
             {
@@ -798,9 +798,9 @@ def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
         DefaultClusterAutoscalerV2(
             resource_manager=Mock(),
             execution_id="exec-1",
-            label_selector={"__subcluster__": "training"},
+            label_selector={"subcluster": "training"},
         )
-    assert captured["subcluster_selector"] == {"__subcluster__": "training"}
+    assert captured["subcluster_selector"] == {"subcluster": "training"}
 
 
 def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
@@ -816,7 +816,7 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
 
     data_context = Mock()
     data_context.execution_options.resource_limits = Mock()
-    data_context.execution_options.label_selector = {"__subcluster__": "training"}
+    data_context.execution_options.label_selector = {"subcluster": "training"}
 
     create_cluster_autoscaler(
         topology=Mock(),
@@ -824,7 +824,7 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
         data_context=data_context,
         execution_id="exec-1",
     )
-    assert captured["label_selector"] == {"__subcluster__": "training"}
+    assert captured["label_selector"] == {"subcluster": "training"}
 
 
 if __name__ == "__main__":
