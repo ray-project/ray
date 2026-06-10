@@ -3154,8 +3154,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     memory_store_->Delete(deleted);
   }
 
-  const auto return_id =
-      return_ids.empty() ? ObjectID::Nil() : return_ids.front();
+  const auto return_id = return_ids.empty() ? ObjectID::Nil() : return_ids.front();
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << ", id: " << return_id << ", count: " << return_ids.size();
 

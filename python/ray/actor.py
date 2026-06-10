@@ -625,7 +625,7 @@ def method(
 
 @PublicAPI
 @client_mode_hook
-def method(*args, **kwargs):
+def method(*args: Any, **kwargs: Any):
     """Annotate an actor method.
 
     .. code-block:: python
@@ -641,6 +641,10 @@ def method(*args, **kwargs):
         _, _ = f.bar.remote()
 
     Args:
+        *args: The actor method when this is used as ``@ray.method``.
+        **kwargs: Method options when this is used as ``@ray.method(...)``.
+
+    Supported keyword options:
         num_returns: The number of object refs that should be returned by
             invocations of this actor method. The default value is 1 for a
             normal actor task and "streaming" for an actor generator task (a

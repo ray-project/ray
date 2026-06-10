@@ -850,10 +850,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // Handle backpressure if needed.
   auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-  auto last_item_index =
-      request.returned_objects_size() == 0
-          ? item_index
-          : item_index + request.returned_objects_size() - 1;
+  auto last_item_index = request.returned_objects_size() == 0
+                             ? item_index
+                             : item_index + request.returned_objects_size() - 1;
 
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
@@ -861,9 +860,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   // Otherwise, follow the regular backpressure logic.
-  // NOTE, here we check `last_item_index - last_consumed_index >= backpressure_threshold`,
-  // instead of the number of unconsumed items, because we may receive the
-  // `HandleReportGeneratorItemReturns` requests out of order.
+  // NOTE, here we check `last_item_index - last_consumed_index >=
+  // backpressure_threshold`, instead of the number of unconsumed items, because we may
+  // receive the `HandleReportGeneratorItemReturns` requests out of order.
   if (backpressure_threshold != -1 &&
       (last_item_index - stream_it->second.LastConsumedIndex()) >=
           backpressure_threshold) {

@@ -69,7 +69,8 @@ Status GeneratorBackpressureWaiter::WaitAllObjectsReported() {
   return return_status;
 }
 
-void GeneratorBackpressureWaiter::IncrementObjectGenerated(int64_t num_objects_generated) {
+void GeneratorBackpressureWaiter::IncrementObjectGenerated(
+    int64_t num_objects_generated) {
   RAY_CHECK_GE(num_objects_generated, 0);
   absl::MutexLock lock(&mutex_);
   total_objects_generated_ += num_objects_generated;
