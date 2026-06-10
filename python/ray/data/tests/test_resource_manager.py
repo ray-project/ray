@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
+    ObjectStoreUsage,
     TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -434,14 +435,8 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 1
 
-    def test_estimate_object_store_usage_dispatches_to_op_override(
-        self, restore_data_context
-    ):
+    def test_object_store_accounting_delegates_to_op(self, restore_data_context):
         """``ResourceManager`` must dispatch to ``op.estimate_object_store_usage`` so subclasses can override the accounting."""
-        from ray.data._internal.execution.interfaces.physical_operator import (
-            ObjectStoreUsage,
-        )
-
         # Real upstream so the override op has a valid input dependency.
         input = make_ref_bundles([[x] for x in range(1)])[0]
         upstream = InputDataBuffer(DataContext.get_current(), [input])

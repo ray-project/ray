@@ -61,8 +61,8 @@ class ObjectStoreUsage:
             (outputs not yet yielded to the object store).
         outputs: Bytes this op has produced that are still live in
             the object store — its internal output queue, its
-            ``OpState`` external output queue, and bytes already
-            forwarded to immediately-downstream ops' input queues.
+            ``OpState`` external output queue, and the downstream
+            eligible ops' inputs.
     """
 
     internal: int
@@ -888,8 +888,8 @@ class PhysicalOperator(Operator):
 
     def estimate_object_store_usage(self, state: "OpState") -> ObjectStoreUsage:
         """Returns the bytes this operator contributes to the global object
-        store budget.Subclasses may override this when their object store footprint
-        doesn't match the generic model.
+        store budget. Subclasses may override this when their object store
+        footprint doesn't match the generic model.
         """
         # Operator's internal Object Store usage
         mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
