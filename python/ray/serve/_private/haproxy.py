@@ -1594,18 +1594,27 @@ class HAProxyManager(ProxyActorInterface):
             if self._is_draining():
                 return
 
+            desired_backend_servers = {
+                self._generate_backend_name(tg): {
+                    self._generate_server_name(target)
+                    for target in tg.targets
+                }
+                for tg in self._target_groups
+            }
+
             try:
-                all_backends = set()
-                ready_backends = set()
                 stats = await self._haproxy.get_all_stats()
+                ready_backends = set()
                 for backend, servers in stats.items():
-                    all_backends.add(backend)
-                    for server in servers.values():
-                        if server.is_up:
+                    desired_servers = desired_backend_servers.get(backend, set())
+                    for server_name, server in servers.items():
+                        if server_name in desired_servers and server.is_up:
                             ready_backends.add(backend)
-                ready_to_serve = all_backends == ready_backends
+                            break
+
+                ready_to_serve = set(desired_backend_servers) == ready_backends
                 logger.info(
-                    f"Ready to serve: {ready_to_serve} with all_backends: {all_backends} and ready_backends: {ready_backends}.",
+                    f"Ready to serve: {ready_to_serve} with desired_backend_servers: {desired_backend_servers} and ready_backends: {ready_backends}.",
                     extra={"log_to_stderr": True},
                 )
             except Exception:
@@ -1694,21 +1703,32 @@ class HAProxyManager(ProxyActorInterface):
 
         return log_file_path
 
+    def _generate_server_name(self, target: Target) -> str:
+        # The server name is derived from the replica's actor name, with the
+        # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
+        # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
+        # Special characters in the names are converted to comply with haproxy
+        # config's allowed characters, e.g. `#` -> `-`.
+        return self.get_safe_name(target.name)
+
     def _target_to_server(self, target: Target) -> ServerConfig:
         """Convert a target to a server."""
         # Use localhost if target is on the same node as HAProxy
         host = get_localhost_ip() if target.ip == self._node_ip_address else target.ip
         return ServerConfig(
-            # The server name is derived from the replica's actor name, with the
-            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
-            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
-            # Special characters in the names are converted to comply with haproxy
-            # config's allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(target.name),
+            name=self._generate_server_name(target),
             host=host,
             port=target.port,
             # Unsanitized actor name; matches what /internal/route returns.
             replica_id=target.name,
+        )
+
+    def _generate_backend_name(self, target_group: TargetGroup) -> str:
+        # The name is lowercased and formatted as <protocol>-<app_name>. Special
+        # characters in the name are converted to comply with haproxy config's
+        # allowed characters, e.g. `#` -> `-`.
+        return self.get_safe_name(
+            f"{target_group.protocol.value.lower()}-{target_group.app_name}"
         )
 
     def _create_backend_config(
@@ -1729,12 +1749,7 @@ class HAProxyManager(ProxyActorInterface):
             fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
-            # The name is lowercased and formatted as <protocol>-<app_name>. Special
-            # characters in the name are converted to comply with haproxy config's
-            # allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(
-                f"{target_group.protocol.value.lower()}-{target_group.app_name}"
-            ),
+            name=self._generate_backend_name(target_group),
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
