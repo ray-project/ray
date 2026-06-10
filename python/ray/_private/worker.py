@@ -1589,7 +1589,8 @@ def init(
             If you have a custom server to serve the dashboard requests,
             you can set this option to override the server url.
             Ex: proxy_server_url=http://historyserver:8080
-        **kwargs: Hidden / experimental options. Recognized keys include
+        **kwargs: Hidden / experimental options. These options are unstable and
+            may change without notice. Recognized keys include
             ``object_spilling_directory`` (path to spill objects to; defaults
             to the node's session dir),
             ``_enable_object_reconstruction`` (reconstruct lost objects by
@@ -1603,8 +1604,7 @@ def init(
             ``_metrics_export_port`` (Prometheus metrics port),
             ``_system_config`` (RayConfig override dict; testing only),
             ``_tracing_startup_hook`` (callable to set up tracing), and
-            ``_node_name`` (user-provided node identifier). These options
-            are unstable and may change without notice.
+            ``_node_name`` (user-provided node identifier).
 
     Returns:
         If the provided address includes a protocol, for example by prepending

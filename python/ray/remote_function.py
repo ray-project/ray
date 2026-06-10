@@ -4,7 +4,7 @@ import os
 import uuid
 from functools import wraps
 from threading import Lock
-from typing import Optional
+from typing import Any, Callable, Dict, Optional
 
 import ray._common.signature
 from ray import Language, cross_language
@@ -90,11 +90,21 @@ class RemoteFunction:
 
     def __init__(
         self,
-        language,
-        function,
-        function_descriptor,
-        task_options,
+        language: Language,
+        function: Callable,
+        function_descriptor: PythonFunctionDescriptor,
+        task_options: Dict[str, Any],
     ):
+        """Initialize a RemoteFunction.
+
+        Args:
+            language: The target language.
+            function: The original function to wrap as a remote function.
+            function_descriptor: The function descriptor used to look up the
+                function on the worker.
+            task_options: The default options applied to each invocation of
+                the remote function.
+        """
         if inspect.iscoroutinefunction(function):
             raise ValueError(
                 "'async def' should not be used for remote tasks. You can wrap the "
@@ -187,70 +197,79 @@ class RemoteFunction:
         self.__dict__.update(state)
         self.__dict__["_inject_lock"] = Lock()
 
-    def options(self, **task_options):
+    def options(self, **task_options: Any):
         """Configures and overrides the task invocation parameters.
 
         The arguments are the same as those that can be passed to :obj:`ray.remote`.
-        Overriding `max_calls` is not supported.
+        Overriding ``max_calls`` is not supported.
+
+        Supported keyword arguments include:
+
+        - ``num_returns``: It specifies the number of object refs returned by
+          the remote function invocation.
+        - ``num_cpus``: The quantity of CPU cores to reserve
+          for this task or for the lifetime of the actor.
+        - ``num_gpus``: The quantity of GPUs to reserve
+          for this task or for the lifetime of the actor.
+        - ``resources`` (Dict[str, float]): The quantity of various custom resources
+          to reserve for this task or for the lifetime of the actor.
+          This is a dictionary mapping strings (resource names) to floats.
+        - ``label_selector`` (Dict[str, str]): If specified, the labels required for the node on
+          which this actor can be scheduled on. The label selector consist of key-value pairs,
+          where the keys are label names and the value are expressions consisting of an operator
+          with label values or just a value to indicate equality.
+        - ``fallback_strategy`` (List[Dict[str, Any]]): If specified, expresses soft constraints
+          through a list of decorator options to fall back on when scheduling on a node.
+        - ``accelerator_type``: If specified, requires that the task or actor run
+          on a node with the specified type of accelerator.
+          See :ref:`accelerator types <accelerator_types>`.
+        - ``memory``: The heap memory request in bytes for this task/actor,
+          rounded down to the nearest integer.
+        - ``object_store_memory``: The object store memory request for actors only.
+        - ``max_calls``: This specifies the
+          maximum number of times that a given worker can execute
+          the given remote function before it must exit
+          (this can be used to address memory leaks in third-party
+          libraries or to reclaim resources that cannot easily be
+          released, e.g., GPU memory that was acquired by TensorFlow).
+          By default this is infinite for CPU tasks and 1 for GPU tasks
+          (to force GPU tasks to release resources after finishing).
+        - ``max_retries``: This specifies the maximum number of times that the remote
+          function should be rerun when the worker process executing it
+          crashes unexpectedly. The minimum valid value is 0,
+          the default is 3 (default), and a value of -1 indicates
+          infinite retries.
+        - ``runtime_env`` (Dict[str, Any]): Specifies the runtime environment for
+          this actor or task and its children. See
+          :ref:`runtime-environments` for detailed documentation.
+        - ``retry_exceptions``: This specifies whether application-level errors
+          should be retried up to max_retries times.
+        - ``scheduling_strategy``: Strategy about how to
+          schedule a remote function or actor. Possible values are
+          None: ray will figure out the scheduling strategy to use, it
+          will either be the PlacementGroupSchedulingStrategy using parent's
+          placement group if parent has one and has
+          placement_group_capture_child_tasks set to true,
+          or "DEFAULT";
+          "DEFAULT": default hybrid scheduling;
+          "SPREAD": best effort spread scheduling;
+          ``PlacementGroupSchedulingStrategy``:
+          placement group based scheduling;
+          ``NodeAffinitySchedulingStrategy``:
+          node id based affinity scheduling.
+        - ``enable_task_events``: This specifies whether to enable task events for this
+          task. If set to True, task events such as (task running, finished)
+          are emitted, and available to Ray Dashboard and State API.
+          See :ref:`state-api-overview-ref` for more details.
+        - ``_labels``: The key-value labels of a task.
 
         Args:
-            num_returns: It specifies the number of object refs returned by
-                the remote function invocation.
-            num_cpus: The quantity of CPU cores to reserve
-                for this task or for the lifetime of the actor.
-            num_gpus: The quantity of GPUs to reserve
-                for this task or for the lifetime of the actor.
-            resources (Dict[str, float]): The quantity of various custom resources
-                to reserve for this task or for the lifetime of the actor.
-                This is a dictionary mapping strings (resource names) to floats.
-            label_selector (Dict[str, str]): If specified, the labels required for the node on
-                which this actor can be scheduled on. The label selector consist of key-value pairs,
-                where the keys are label names and the value are expressions consisting of an operator
-                with label values or just a value to indicate equality.
-            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
-                through a list of decorator options to fall back on when scheduling on a node.
-            accelerator_type: If specified, requires that the task or actor run
-                on a node with the specified type of accelerator.
-                See :ref:`accelerator types <accelerator_types>`.
-            memory: The heap memory request in bytes for this task/actor,
-                rounded down to the nearest integer.
-            object_store_memory: The object store memory request for actors only.
-            max_calls: This specifies the
-                maximum number of times that a given worker can execute
-                the given remote function before it must exit
-                (this can be used to address memory leaks in third-party
-                libraries or to reclaim resources that cannot easily be
-                released, e.g., GPU memory that was acquired by TensorFlow).
-                By default this is infinite for CPU tasks and 1 for GPU tasks
-                (to force GPU tasks to release resources after finishing).
-            max_retries: This specifies the maximum number of times that the remote
-                function should be rerun when the worker process executing it
-                crashes unexpectedly. The minimum valid value is 0,
-                the default is 3 (default), and a value of -1 indicates
-                infinite retries.
-            runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation.
-            retry_exceptions: This specifies whether application-level errors
-                should be retried up to max_retries times.
-            scheduling_strategy: Strategy about how to
-                schedule a remote function or actor. Possible values are
-                None: ray will figure out the scheduling strategy to use, it
-                will either be the PlacementGroupSchedulingStrategy using parent's
-                placement group if parent has one and has
-                placement_group_capture_child_tasks set to true,
-                or "DEFAULT";
-                "DEFAULT": default hybrid scheduling;
-                "SPREAD": best effort spread scheduling;
-                `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling;
-                `NodeAffinitySchedulingStrategy`:
-                node id based affinity scheduling.
-            enable_task_events: This specifies whether to enable task events for this
-                task. If set to True, task events such as (task running, finished)
-                are emitted, and available to Ray Dashboard and State API.
-                See :ref:`state-api-overview-ref` for more details.
-            _labels: The key-value labels of a task.
+            **task_options: Keyword arguments to override on the remote
+                invocation. See the supported keyword arguments above.
+
+        Returns:
+            A wrapper exposing ``.remote(...)`` and ``.bind(...)`` that invoke
+            the remote function with the overridden options.
 
         Examples:
 
