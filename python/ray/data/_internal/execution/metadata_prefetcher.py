@@ -22,6 +22,7 @@ on metadata never blocks another.
 import logging
 import queue as queue_module
 import threading
+import time
 from collections import OrderedDict, deque
 from typing import Any, Dict, List
 
@@ -139,6 +140,28 @@ class MetadataPrefetcher:
                 else:
                     still_pending.append(task)
             self._done_pending = still_pending
+
+    def flush(self, timeout_s: float = 30.0) -> None:
+        """Drain repeatedly until every submitted pair has been emitted and
+        all postponed done callbacks have fired.
+
+        Blocks the calling thread, so this is for tests (and other one-shot
+        callers) that need the deferred emits to have landed before
+        asserting; the executor itself just calls :meth:`drain` once per
+        scheduling iteration.
+
+        Must be called on the executor thread.
+        """
+        deadline = time.monotonic() + timeout_s
+        while True:
+            self.drain()
+            if not any(self._fifos.values()) and not self._done_pending:
+                return
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "MetadataPrefetcher.flush timed out after " f"{timeout_s} seconds."
+                )
+            time.sleep(0.001)
 
     def _pop_result(self, ref: "ray.ObjectRef") -> Any:
         with self._results_lock:

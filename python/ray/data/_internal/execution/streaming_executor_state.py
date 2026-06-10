@@ -29,7 +29,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    replay_deferred_emits,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -591,7 +590,7 @@ def process_completed_tasks(
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
     output_backpressure_guard: OutputBackpressureGuard,
-    metadata_prefetcher: Optional["MetadataPrefetcher"] = None,
+    metadata_prefetcher: "MetadataPrefetcher",
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -604,9 +603,9 @@ def process_completed_tasks(
         output_backpressure_guard: Escape hatch for streaming output
             backpressure. Bumps a fully-throttled output limit (0 bytes) to
             1 byte when the guard signals a stall.
-        metadata_prefetcher: If provided, deferred ``meta_ref``s are fetched on
-            its background thread and emitted (in per-op order) as they become
-            ready, instead of a synchronous batched ``ray.get`` on this thread.
+        metadata_prefetcher: Deferred ``meta_ref``s are fetched on its
+            background thread and emitted (in per-op order) as they
+            become ready, so this thread never blocks on ``ray.get``.
     Returns:
         The number of errored blocks.
     """
@@ -679,21 +678,15 @@ def process_completed_tasks(
         # 2. Each ``DataOpTask.on_data_ready`` is invoked with its op's
         #    ``op_deferred`` list. Inside it, every pulled pair is
         #    appended to that list instead of being emitted; budget
-        #    arithmetic uses block_ref's local ``object_size`` when
-        #    known, or the operator's running average block size when not
+        #    arithmetic uses the block_ref's local ``object_size``
         #    (no per-ref ``ray.get``). NO ``RefBundle`` is emitted during
         #    the on_data_ready loop.
         # 3. Hand each op's pairs to the ``MetadataPrefetcher`` (background
-        #    ``ray.get``), or, with no prefetcher, do one synchronous batched
-        #    ``ray.get`` + replay on this thread.
+        #    ``ray.get``).
         # 4. Emit in per-op append order — preserving today's per-op,
         #    per-task, per-pair emission order exactly.
         # 5. Fire ``task_done_callback`` for any task whose
         #    ``_task_done_pending`` flag is set, once all its pairs are emitted.
-        # Sync-fallback accumulators (used only when no prefetcher is given).
-        sync_deferred: List[DeferredEmit] = []
-        sync_tasks_for_done: List[DataOpTask] = []
-
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
@@ -745,21 +738,13 @@ def process_completed_tasks(
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
 
-            if metadata_prefetcher is not None:
-                # Async: queue this op's pairs for background fetch; they emit
-                # in per-op order in `drain()` once their metadata is ready.
-                metadata_prefetcher.submit(state, op_deferred, op_data_tasks)
-            else:
-                sync_deferred.extend(op_deferred)
-                sync_tasks_for_done.extend(op_data_tasks)
+            # Queue this op's pairs for background fetch; they emit in
+            # per-op order in `drain()` once their metadata is ready.
+            metadata_prefetcher.submit(state, op_deferred, op_data_tasks)
 
-        if metadata_prefetcher is not None:
-            # Emit whatever's ready (including pairs deferred in prior
-            # iterations whose metadata has since arrived), in per-op order.
-            metadata_prefetcher.drain()
-        else:
-            # Synchronous: one batched ray.get + replay on this thread.
-            replay_deferred_emits(sync_deferred, sync_tasks_for_done)
+        # Emit whatever's ready (including pairs deferred in prior
+        # iterations whose metadata has since arrived), in per-op order.
+        metadata_prefetcher.drain()
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

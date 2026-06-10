@@ -42,9 +42,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Timeout for getting metadata from Ray object references (in seconds)
-METADATA_GET_TIMEOUT_S = 1.0
-
 # Timeout for waiting for metadata object to become available (in seconds)
 METADATA_WAIT_TIMEOUT_S = 0.1
 
@@ -130,153 +127,20 @@ TaskDoneCallbackType = Callable[
 @dataclass
 class DeferredEmit:
     """A pulled (block_ref, meta_ref) pair whose ``RefBundle`` emit is
-    deferred until after a batched ``ray.get(meta_refs)`` in the caller.
+    deferred until the batched metadata fetch completes.
 
-    Populated by :meth:`DataOpTask.on_data_ready`; consumed by
-    :func:`ray.data._internal.execution.streaming_executor_state.process_completed_tasks`.
+    Populated by :meth:`DataOpTask.on_data_ready`; consumed by the
+    ``MetadataPrefetcher``, which fills ``meta_bytes`` from its batched
+    ``ray.get`` and emits the pair in per-op append order.
 
-    Every pair is deferred (``meta_bytes`` starts ``None``) so all metadata is
-    fetched in ONE batched ``ray.get``. The budget size used inside
-    ``on_data_ready`` comes from the block's local ``object_size`` when known
-    (``local_object_size`` set), or the operator's running average block size
-    on a miss (``local_object_size is None``). ``replay_deferred_emits`` fills
-    ``meta_bytes`` from the batched fetch and uses ``local_object_size`` +
-    the exact ``meta.size_bytes`` for the hit-rate / closeness telemetry.
+    The budget size used inside ``on_data_ready`` comes from the block's
+    local ``object_size`` (always known locally, no RPC).
     """
 
     task: "DataOpTask"
     block_ref: "ray.ObjectRef[Block]"
     meta_ref: "ray.ObjectRef[BlockMetadata]"
     meta_bytes: Optional[bytes] = None
-    # The block's locally-known object_size (no RPC), or None on a miss.
-    local_object_size: Optional[int] = None
-
-
-# Process-wide running average block size per operator (keyed by operator
-# name), [sum_bytes, count]. Updated from exact ``meta.size_bytes`` in
-# ``replay_deferred_emits`` and read in ``on_data_ready`` to estimate the
-# budget size when a block's size isn't known locally (the rare miss),
-# avoiding a per-ref ``ray.get`` so all metadata flows through one batched
-# fetch.
-_op_avg_block_size: Dict[str, List[int]] = {}
-
-
-def _record_block_size(op_name: str, size_bytes: int) -> None:
-    acc = _op_avg_block_size.get(op_name)
-    if acc is None:
-        _op_avg_block_size[op_name] = [size_bytes, 1]
-    else:
-        acc[0] += size_bytes
-        acc[1] += 1
-
-
-def _avg_block_size(op_name: str) -> int:
-    """Average observed block size for ``op_name``; 0 if none seen yet."""
-    acc = _op_avg_block_size.get(op_name)
-    if acc is None or acc[1] == 0:
-        return 0
-    return acc[0] // acc[1]
-
-
-# --- Local-size probe telemetry (see PR #63904) ----------------------------
-# Recorded in ``replay_deferred_emits`` where both the block's locally-known
-# ``object_size`` and the exact ``meta.size_bytes`` are available: how often
-# the size is known locally (hit rate) and how close the local size is to the
-# metadata size (aggregate ratio, within-1%, p50/p90/max relative diff).
-# Surfaces whether the local size lookup fully replaces the metadata fetch.
-_PROBE_REL_DIFF_BUCKET = 0.001  # 0.1% resolution
-_PROBE_REL_DIFF_NBUCKETS = 1001  # 0..100% in 0.1% steps + overflow
-_PROBE_LOG_EVERY = 5000  # log a cumulative snapshot every N probed pairs
-
-
-class _LocalSizeProbe:
-    total = 0
-    hits = 0
-    sum_object = 0
-    sum_meta = 0
-    within_1pct = 0
-    max_rel_diff = 0.0
-    rel_diff_hist: List[int] = [0] * _PROBE_REL_DIFF_NBUCKETS
-
-
-def _record_local_size_probe(
-    local_object_size: Optional[int], meta_size_bytes: int
-) -> None:
-    p = _LocalSizeProbe
-    p.total += 1
-    if local_object_size is not None:
-        p.hits += 1
-        p.sum_object += local_object_size
-        p.sum_meta += meta_size_bytes
-        if meta_size_bytes > 0:
-            rel = abs(local_object_size - meta_size_bytes) / meta_size_bytes
-            if rel <= 0.01:
-                p.within_1pct += 1
-            if rel > p.max_rel_diff:
-                p.max_rel_diff = rel
-            bucket = min(
-                int(rel / _PROBE_REL_DIFF_BUCKET), _PROBE_REL_DIFF_NBUCKETS - 1
-            )
-            p.rel_diff_hist[bucket] += 1
-    if p.total % _PROBE_LOG_EVERY == 0:
-        s = local_size_probe_stats()
-        logger.info(
-            "[local-size-probe] %d/%d (%.1f%%) pairs had a local object_size; "
-            "object_size/meta ratio=%.4f; rel diff p50=%.2f%% p90=%.2f%% max=%.2f%%.",
-            s["local_size_probe_hits"],
-            s["local_size_probe_total"],
-            s["local_size_probe_hit_pct"],
-            s["local_size_probe_size_ratio"],
-            s["local_size_probe_rel_diff_p50_pct"],
-            s["local_size_probe_rel_diff_p90_pct"],
-            s["local_size_probe_max_rel_diff_pct"],
-        )
-
-
-def _probe_rel_diff_pct(frac: float) -> float:
-    """Approx percentile (%) of per-hit |object-meta|/meta from the histogram."""
-    hist = _LocalSizeProbe.rel_diff_hist
-    total = sum(hist)
-    if total == 0:
-        return 0.0
-    target = frac * total
-    cumulative = 0
-    for i, count in enumerate(hist):
-        cumulative += count
-        if cumulative >= target:
-            return 100.0 * i * _PROBE_REL_DIFF_BUCKET
-    return 100.0 * (_PROBE_REL_DIFF_NBUCKETS - 1) * _PROBE_REL_DIFF_BUCKET
-
-
-def local_size_probe_stats() -> Dict[str, Any]:
-    """Cumulative local-size probe stats as a flat dict for benchmark metrics."""
-    p = _LocalSizeProbe
-    return {
-        "local_size_probe_total": p.total,
-        "local_size_probe_hits": p.hits,
-        "local_size_probe_hit_pct": (100.0 * p.hits / p.total) if p.total else 0.0,
-        "local_size_probe_size_ratio": (
-            p.sum_object / p.sum_meta if p.sum_meta else 0.0
-        ),
-        "local_size_probe_within_1pct_pct": (
-            100.0 * p.within_1pct / p.hits if p.hits else 0.0
-        ),
-        "local_size_probe_rel_diff_p50_pct": _probe_rel_diff_pct(0.50),
-        "local_size_probe_rel_diff_p90_pct": _probe_rel_diff_pct(0.90),
-        "local_size_probe_max_rel_diff_pct": 100.0 * p.max_rel_diff,
-    }
-
-
-def reset_local_size_probe() -> None:
-    """Reset the process-wide local-size probe counters (call before a run)."""
-    p = _LocalSizeProbe
-    p.total = 0
-    p.hits = 0
-    p.sum_object = 0
-    p.sum_meta = 0
-    p.within_1pct = 0
-    p.max_rel_diff = 0.0
-    p.rel_diff_hist = [0] * _PROBE_REL_DIFF_NBUCKETS
 
 
 class DataOpTask(OpTask):
@@ -364,26 +228,21 @@ class DataOpTask(OpTask):
         Per pulled ``(block_ref, meta_ref)`` pair, the block's
         ``object_size`` is looked up via
         ``ray.experimental.get_local_object_locations`` — local-only,
-        no RPC.
+        no RPC. The driver owns every block ref the streaming generator
+        yields, so the size is always known locally; the budget loop uses
+        it directly.
 
         Every pair is appended with ``meta_bytes=None`` so all metadata is
         fetched in ONE batched ``ray.get(meta_refs)`` by the caller — a single
         metadata-fetch path, no per-ref ``ray.get`` here.
 
-        - **Known size**: the budget loop uses the local ``object_size``
-          directly (recorded on the entry for telemetry).
-        - **Unknown size** (rare — ``object_size`` is locally known for ~all
-          pairs): the budget loop uses the operator's running average block
-          size (``_avg_block_size``); the exact metadata still arrives via the
-          batched fetch.
-
         No ``RefBundle`` is emitted and ``_last_block_meta`` is not
-        updated inside this call — both happen in
-        :func:`replay_deferred_emits`, which iterates the deferred list
+        updated inside this call — both happen when the
+        ``MetadataPrefetcher`` drains, iterating each op's deferred list
         in append order to preserve gen-yield emission order. The
         terminal ``task_done_callback`` for end-of-stream is postponed
         (``_task_done_pending`` set to True) so it fires after
-        ``_last_block_meta`` reflects the replayed state.
+        ``_last_block_meta`` reflects the emitted state.
 
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all
@@ -456,47 +315,31 @@ class DataOpTask(OpTask):
 
                 self._metadata_ready_callback(self._pending_meta_ref)
 
-            # Local size lookup (no RPC). The block's object_size — when
-            # known — is the value that matches ``meta.size_bytes`` used
-            # by the budget loop. A known size also implies the
+            # Local size lookup (no RPC). The driver owns every block ref
+            # the streaming generator yields, so the object_size is always
+            # known locally — it's the value that matches ``meta.size_bytes``
+            # used by the budget loop. A known size also implies the
             # streaming gen has yielded both the block AND its metadata
             # (yields happen in order), so the batched ``ray.get`` the
             # caller will do later won't block.
-            size_known_locally: Optional[int] = None
             info = get_local_object_locations([self._pending_block_ref]).get(
                 self._pending_block_ref
             )
-            if info is not None:
-                size_known_locally = info.get("object_size")
+            assert info is not None, (
+                "Expected the driver to know the location of block "
+                f"{self._pending_block_ref.hex()} yielded by operator "
+                f"'{self._operator_name}'."
+            )
+            object_size = info.get("object_size")
+            assert object_size is not None, (
+                "Expected the driver to know the local object_size of block "
+                f"{self._pending_block_ref.hex()} yielded by operator "
+                f"'{self._operator_name}'."
+            )
 
-            if size_known_locally is not None:
-                # Defer everything: no ray.get inside the loop, no emit,
-                # no _last_block_meta update. Caller will batch ray.get
-                # and replay emits in deferred-list order.
-                deferred_emits.append(
-                    DeferredEmit(
-                        task=self,
-                        block_ref=self._pending_block_ref,
-                        meta_ref=self._pending_meta_ref,
-                        meta_bytes=None,
-                        local_object_size=size_known_locally,
-                    )
-                )
-                bytes_read += size_known_locally
-                self._pending_block_ref = ray.ObjectRef.nil()
-                self._pending_meta_ref = ray.ObjectRef.nil()
-                continue
-
-            # Size not known locally — estimate it from the operator's
-            # running average block size (recorded in `replay_deferred_emits`
-            # from exact `meta.size_bytes`) and defer the metadata to the
-            # same batched `ray.get`. This keeps a SINGLE metadata-fetch
-            # path: no per-ref `ray.get` inside the loop. The estimate only
-            # feeds the output-budget arithmetic; the exact metadata still
-            # arrives via the batched fetch in replay. Misses are rare
-            # (object_size is locally known for ~all pairs), so the estimate
-            # is a small, transient budget approximation.
-            est_size = _avg_block_size(self._operator_name)
+            # Defer everything: no ray.get inside the loop, no emit,
+            # no _last_block_meta update. The caller batch-fetches the
+            # metadata and replays emits in deferred-list order.
             deferred_emits.append(
                 DeferredEmit(
                     task=self,
@@ -505,7 +348,7 @@ class DataOpTask(OpTask):
                     meta_bytes=None,
                 )
             )
-            bytes_read += est_size
+            bytes_read += object_size
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
@@ -533,98 +376,16 @@ class DataOpTask(OpTask):
     def has_finished(self) -> bool:
         return self._has_finished
 
-    def drain_and_emit(self, max_bytes_to_read: Optional[int]) -> int:
-        """Convenience: run ``on_data_ready`` + synchronous replay in one
-        call. For tests and one-off callers that aren't participating in
-        :func:`process_completed_tasks`'s cross-task batching. Production
-        code calls :meth:`on_data_ready` directly with a shared deferred
-        list, then runs :func:`replay_deferred_emits` once after all
-        tasks have been drained — that's where the batched-fetch win
-        comes from."""
-        deferred: List[DeferredEmit] = []
-        bytes_read = self.on_data_ready(max_bytes_to_read, deferred)
-        replay_deferred_emits(deferred, [self])
-        return bytes_read
-
-
-def replay_deferred_emits(
-    deferred: List[DeferredEmit],
-    tasks_for_done_check: List[DataOpTask],
-) -> None:
-    """Run the batched-fetch + emit + done-callback phase that pairs
-    with :meth:`DataOpTask.on_data_ready` in deferred mode.
-
-    1. Issues ONE batched ``ray.get`` covering the deferred entries
-       whose ``meta_bytes`` is still ``None`` (the known-size pairs
-       that ``on_data_ready`` deliberately didn't fetch). On batched
-       failure: per-ref ``ray.get`` retry fallback, then skip any refs
-       that still fail (logged).
-    2. Replays ``deferred`` in append order — calling each task's
-       ``_output_ready_callback`` and updating ``_last_block_meta``.
-       Append order matches today's per-op, per-task, per-pair
-       traversal because every ``on_data_ready`` invocation appends
-       sequentially.
-    3. Fires postponed ``task_done_callback`` for any task in
-       ``tasks_for_done_check`` whose ``_task_done_pending`` flag is
-       set, using its now-final ``_last_block_meta``.
-    """
-    if deferred:
-        # Batched fetch for entries whose bytes weren't already stashed.
-        to_fetch = [d.meta_ref for d in deferred if d.meta_bytes is None]
-        if to_fetch:
-            try:
-                fetched = ray.get(to_fetch)
-                bytes_by_ref = dict(zip(to_fetch, fetched))
-            except Exception:
-                logger.warning(
-                    "Batched ray.get of %d deferred meta_refs failed; "
-                    "falling back to per-ref ray.get for each.",
-                    len(to_fetch),
-                )
-                bytes_by_ref = {}
-                for ref in to_fetch:
-                    try:
-                        bytes_by_ref[ref] = ray.get(ref)
-                    except Exception:
-                        logger.warning(
-                            "Per-ref ray.get retry also failed for meta_ref %s; "
-                            "this RefBundle will be skipped.",
-                            ref.hex(),
-                        )
-            for d in deferred:
-                if d.meta_bytes is None:
-                    d.meta_bytes = bytes_by_ref.get(d.meta_ref)
-
-        # Replay in append order — preserves per-op, per-task,
-        # per-pair emission order from on_data_ready.
-        for d in deferred:
-            if d.meta_bytes is None:
-                # The fetch failed for this ref; skip emit.
-                continue
-            _emit_deferred_entry(d, d.meta_bytes)
-
-    # Fire any postponed ``task_done_callback`` now that
-    # ``_last_block_meta`` reflects the deferred-replay state.
-    for task in tasks_for_done_check:
-        if task._task_done_pending:
-            _fire_task_done(task)
-
 
 def _emit_deferred_entry(d: DeferredEmit, meta_bytes: bytes) -> None:
-    """Emit one deferred pair's ``RefBundle`` from its fetched ``meta_bytes``,
-    update ``_last_block_meta``, and record the per-op average + probe
-    telemetry. Shared by ``replay_deferred_emits`` (synchronous) and the
-    background ``MetadataPrefetcher`` (async)."""
+    """Emit one deferred pair's ``RefBundle`` from its fetched ``meta_bytes``
+    and update ``_last_block_meta``. Called by the background
+    ``MetadataPrefetcher``'s drain phase on the executor thread."""
     # Lazy import to avoid a physical_operator <-> block.py cycle at load.
     from ray.data.block import BlockMetadataWithSchema
 
     meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
     meta = meta_with_schema.metadata
-    # Feed the per-op running average with the exact size, so future
-    # local-size misses can estimate the budget without a ray.get.
-    _record_block_size(d.task._operator_name, meta.size_bytes)
-    # Telemetry: local object_size hit rate + closeness to exact size.
-    _record_local_size_probe(d.local_object_size, meta.size_bytes)
     d.task._output_ready_callback(
         RefBundle(
             [BlockEntry(d.block_ref, meta)],

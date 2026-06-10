@@ -9,9 +9,12 @@ import pandas as pd
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
+    DeferredEmit,
     MetadataOpTask,
     PhysicalOperator,
     RefBundle,
+    _emit_deferred_entry,
+    _fire_task_done,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -100,6 +103,23 @@ def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
     )
 
 
+def drain_and_emit(task: DataOpTask, max_bytes_to_read: Optional[int]) -> int:
+    """Synchronously drive one ``DataOpTask``: pull its ready pairs, fetch
+    their metadata, emit the ``RefBundle``s, and fire any postponed done
+    callback. Test-only stand-in for the streaming executor's
+    ``MetadataPrefetcher`` pipeline (the production deferred-emit mode).
+    """
+    deferred: List[DeferredEmit] = []
+    bytes_read = task.on_data_ready(max_bytes_to_read, deferred)
+    if deferred:
+        metas = ray.get([d.meta_ref for d in deferred])
+        for d, meta_bytes in zip(deferred, metas):
+            _emit_deferred_entry(d, meta_bytes)
+    if task._task_done_pending:
+        _fire_task_done(task)
+    return bytes_read
+
+
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     """Run tasks of a PhysicalOperator synchronously.
 
@@ -120,7 +140,7 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 # Read all currently available output from the streaming generator
-                task.drain_and_emit(max_bytes_to_read=None)
+                drain_and_emit(task, max_bytes_to_read=None)
                 # Only remove the task when the generator has been fully exhausted
                 if task.has_finished:
                     tasks.remove(task)
@@ -154,7 +174,7 @@ def run_one_op_task(op):
         tasks = [task]
 
         if isinstance(task, DataOpTask):
-            task.drain_and_emit(None)
+            drain_and_emit(task, None)
             if task.has_finished:
                 tasks.remove(task)
         else:

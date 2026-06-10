@@ -33,6 +33,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
 )
+from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -69,6 +70,7 @@ from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import drain_and_emit
 
 
 def mock_resource_manager(
@@ -164,6 +166,29 @@ def _make_disabled_guard() -> MagicMock:
     return guard
 
 
+def _process_completed_tasks_sync(
+    topo, backpressure_policies, max_errored_blocks, output_backpressure_guard
+):
+    """Run ``process_completed_tasks`` with a fresh prefetcher and block until
+    all deferred emits have landed. The executor passes a long-lived
+    prefetcher and lets emits land across iterations; tests want the
+    post-conditions to hold immediately after the call."""
+    prefetcher = MetadataPrefetcher()
+    prefetcher.start()
+    try:
+        result = process_completed_tasks(
+            topo,
+            backpressure_policies,
+            max_errored_blocks,
+            output_backpressure_guard,
+            metadata_prefetcher=prefetcher,
+        )
+        prefetcher.flush()
+        return result
+    finally:
+        prefetcher.stop()
+
+
 @pytest.fixture
 def sleep_task_ref():
     sleep_task_ref = sleep.remote()
@@ -183,7 +208,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -195,7 +220,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
@@ -210,7 +235,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o1.mark_execution_finished = MagicMock()
     o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -232,7 +257,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
 
@@ -256,7 +281,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
     topo = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
     # First, populate the upstream output queues by processing some tasks
-    process_completed_tasks(topo, [], 0, _make_disabled_guard())
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
 
     # Verify that o1 (upstream) has output in its queue
@@ -490,23 +515,15 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
 
     # Call process_completed_tasks which tracks output policies
-    process_completed_tasks(
-        topo,
-        policies,
-        max_errored_blocks=0,
-        output_backpressure_guard=_make_disabled_guard(),
-    )
+    _process_completed_tasks_sync(topo, policies, 0, _make_disabled_guard())
 
     # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
     assert o2._task_output_backpressure_policy == "Limiting"
 
     # Now test with no output backpressure
-    process_completed_tasks(
-        topo,
-        [NonLimitingPolicy()],
-        max_errored_blocks=0,
-        output_backpressure_guard=_make_disabled_guard(),
+    _process_completed_tasks_sync(
+        topo, [NonLimitingPolicy()], 0, _make_disabled_guard()
     )
 
     # Check that o2 is no longer in output backpressure
@@ -548,12 +565,7 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
         def max_task_output_bytes_to_read(self, op):
             return 0 if op is o2 else None
 
-    process_completed_tasks(
-        topo,
-        [ZeroLimitPolicy()],
-        max_errored_blocks=0,
-        output_backpressure_guard=guard,
-    )
+    _process_completed_tasks_sync(topo, [ZeroLimitPolicy()], 0, guard)
 
     # o2 is terminal with no downstream eligible ops and no external
     # consumer — the guard's terminal-op branch should unblock, bumping
@@ -1403,7 +1415,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.drain_and_emit(None)
+            nbytes_read = drain_and_emit(data_op_task, None)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1419,7 +1431,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            nbytes_read = data_op_task.drain_and_emit(None)
+            nbytes_read = drain_and_emit(data_op_task, None)
             bytes_read += nbytes_read
 
         assert bytes_read == pytest.approx(256 * MiB)
@@ -1444,7 +1456,7 @@ class TestDataOpTask:
         with pytest.raises(AssertionError, match="Block generation failed"):
             while not data_op_task.has_finished:
                 ray.wait([streaming_gen], fetch_local=False)
-                data_op_task.drain_and_emit(None)
+                drain_and_emit(data_op_task, None)
 
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
@@ -1460,10 +1472,10 @@ class TestDataOpTask:
     ):
         """on_data_ready appends to the deferred list without emitting
         RefBundles or updating ``_last_block_meta``. Emission happens
-        later in ``replay_deferred_emits``."""
+        later, when the prefetcher delivers the fetched metadata."""
         from ray.data._internal.execution.interfaces.physical_operator import (
             DeferredEmit,
-            replay_deferred_emits,
+            _emit_deferred_entry,
         )
 
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
@@ -1479,9 +1491,9 @@ class TestDataOpTask:
         assert task._last_block_meta is None
         assert len(deferred) >= 1
 
-        # Replay drains the batched fetch (or uses stashed bytes) and
-        # fires the callback in deferred order.
-        replay_deferred_emits(deferred, [task])
+        # Emitting the fetched metadata fires the callback in deferred order.
+        for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
+            _emit_deferred_entry(d, meta_bytes)
         assert len(outputs) == len(deferred)
         assert task._last_block_meta is not None
 
@@ -1490,11 +1502,11 @@ class TestDataOpTask:
     ):
         """If two tasks produce pairs in interleaved order
         (task_a's first, task_b's first, then task_a's second, etc.),
-        the deferred replay emits in the original append order — same
+        the deferred emission preserves the original append order — same
         as today's per-op, per-task, per-pair sequence."""
         from ray.data._internal.execution.interfaces.physical_operator import (
             DeferredEmit,
-            replay_deferred_emits,
+            _emit_deferred_entry,
         )
 
         gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
@@ -1518,7 +1530,8 @@ class TestDataOpTask:
         # Today's order: task_a fully drained, then task_b fully drained.
         task_a.on_data_ready(None, deferred)
         task_b.on_data_ready(None, deferred)
-        replay_deferred_emits(deferred, [task_a, task_b])
+        for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
+            _emit_deferred_entry(d, meta_bytes)
 
         # Expect: task_a's two bundles in size order, then task_b's two.
         assert outputs == [(0, 100), (0, 200), (1, 300), (1, 400)]
@@ -1621,7 +1634,7 @@ class TestDataOpTask:
         bytes_read = 0
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.drain_and_emit(None)
+            bytes_read += drain_and_emit(data_op_task, None)
 
         # Ensure that we read the expected amount of data. Since the streaming generator
         # yields a single 128 MiB block, we should read 128 MiB.
@@ -1651,7 +1664,7 @@ class TestDataOpTask:
         cluster.remove_node(worker_node)
 
         # The block shouldn't be available anymore, so we shouldn't read any data.
-        bytes_read = data_op_task.drain_and_emit(None)
+        bytes_read = drain_and_emit(data_op_task, None)
         assert bytes_read == 0
 
         # Re-add the worker node, and run the task to completion.
@@ -1659,7 +1672,7 @@ class TestDataOpTask:
         cluster.wait_for_nodes()
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += data_op_task.drain_and_emit(None)
+            bytes_read += drain_and_emit(data_op_task, None)
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
@@ -1699,20 +1712,20 @@ class TestDataOpTask:
         # 1st backpressure period: 2.5s
         clock = 1.0
         mock_perf_counter.return_value = clock
-        assert data_op_task.drain_and_emit(0) == 0
+        assert drain_and_emit(data_op_task, 0) == 0
 
         clock = 3.5
         mock_perf_counter.return_value = clock
 
         # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
         # so it reads exactly one block and stops)
-        data_op_task.drain_and_emit(None)
+        drain_and_emit(data_op_task, None)
         assert not data_op_task.has_finished
 
         # 2nd backpressure period: 1.5s
         clock = 5.0
         mock_perf_counter.return_value = clock
-        data_op_task.drain_and_emit(0)
+        drain_and_emit(data_op_task, 0)
 
         clock = 6.5
         mock_perf_counter.return_value = clock
@@ -1720,7 +1733,7 @@ class TestDataOpTask:
         # Drain to completion
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            data_op_task.drain_and_emit(None)
+            drain_and_emit(data_op_task, None)
 
         # Verify stats were captured
         assert captured_stats["exc"] is None
