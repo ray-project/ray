@@ -1198,7 +1198,7 @@ cdef report_streaming_generator_output(
     except Exception as e:
         if (
             context.num_objects_per_yield == 1
-            or return_objs.size() != context.num_objects_per_yield
+            or return_objs.size() != <size_t>context.num_objects_per_yield
             or determine_if_retryable(
                 context.should_retry_exceptions,
                 e,
