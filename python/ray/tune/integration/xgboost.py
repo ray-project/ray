@@ -31,8 +31,7 @@ class TuneReportCheckpointCallback(RayReportCallback):
             and returns a modified dict. For example, this can be used to
             average results across CV fold when using ``xgboost.cv``.
 
-    Examples
-    --------
+    Examples:
 
     Reporting checkpoints and metrics to Ray Tune when running many
     independent xgboost trials (without data parallelism within a trial).

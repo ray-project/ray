@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 class XGBoostTrainer(DataParallelTrainer):
     """A Trainer for distributed data-parallel XGBoost training.
 
-    Example
-    -------
+    Example:
 
     .. testcode::
 

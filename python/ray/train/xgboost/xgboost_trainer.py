@@ -85,8 +85,7 @@ def _xgboost_train_fn_per_worker(
 class XGBoostTrainer(SimpleXGBoostTrainer):
     """A Trainer for distributed data-parallel XGBoost training.
 
-    Example
-    -------
+    Example:
 
     .. testcode::
         :skipif: True

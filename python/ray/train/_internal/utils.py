@@ -91,8 +91,13 @@ def count_required_parameters(fn: Callable) -> int:
 
     NOTE: *args counts as 1 required parameter.
 
-    Examples
-    --------
+    Args:
+        fn: The function whose required parameters should be counted.
+
+    Returns:
+        The number of required parameters of ``fn``.
+
+    Examples:
 
     >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
     ...    pass

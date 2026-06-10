@@ -60,7 +60,7 @@ repos:
           --check-return-types=False,
           --allow-init-docstring=True,
           --check-class-attributes=False,
-          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
+          --check-style-mismatch=True,
         ]
         types: [python]
         files: '^python/ray/'

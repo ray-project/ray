@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 class LightGBMTrainer(DataParallelTrainer):
     """A Trainer for distributed data-parallel LightGBM training.
 
-    Example
-    -------
+    Example:
 
     .. testcode::
         :skipif: True

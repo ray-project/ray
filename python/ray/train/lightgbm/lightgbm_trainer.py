@@ -97,8 +97,7 @@ def _lightgbm_train_fn_per_worker(
 class LightGBMTrainer(SimpleLightGBMTrainer):
     """A Trainer for distributed data-parallel LightGBM training.
 
-    Example
-    -------
+    Example:
 
     .. testcode::
         :skipif: True
