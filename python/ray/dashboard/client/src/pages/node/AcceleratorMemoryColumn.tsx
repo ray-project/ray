@@ -14,10 +14,13 @@ export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
   const nodeGRAMEntries = accelerators.map((acc, i) => {
     const props = {
       key: acc.uuid || acc.name + acc.index,
-      gpuName: acc.name, // Displaying original name is fine, tooltip will use it. Or we could customize tooltip.
+      gpuName: acc.name,
       utilization: acc.memoryUsed,
       total: acc.memoryTotal,
       slot: acc.index,
+      // TPUs report a raw ratio which is present even in cases where the
+      // absolute usage is not available.
+      percentUtil: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
     };
     return <AcceleratorMemoryEntry {...props} />;
   });
@@ -57,8 +60,11 @@ export const WorkerAcceleratorMemory = ({
         key: acc.uuid || acc.name + acc.index,
         gpuName: acc.name,
         total: acc.memoryTotal,
-        utilization: process.memoryUsage, // This is already unified
+        utilization: process.memoryUsage,
         slot: acc.index,
+        // TPUs report a raw ratio which is present even in cases where the
+        // absolute usage is not available.
+        percentUtil: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
       };
       return <AcceleratorMemoryEntry {...props} />;
     })
@@ -106,6 +112,7 @@ type AcceleratorMemoryEntryProps = {
   slot: number;
   utilization: number;
   total: number;
+  percentUtil?: number;
 };
 
 const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
@@ -113,8 +120,16 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   slot,
   utilization,
   total,
+  percentUtil,
 }) => {
-  const ratioStr = getMemDisplayRatioNoPercent(utilization, total);
+  let ratioStr = getMemDisplayRatioNoPercent(utilization, total);
+  // When the utilization percentage is present but absolute usage is missing
+  // (as is the case on some TPU generations), spoof the bar with just a percentage.
+  if (percentUtil !== undefined && (total === 0 || isNaN(total))) {
+    ratioStr = `${(percentUtil*100).toFixed(1)}%`
+    utilization = percentUtil
+    total = 1
+  }
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
