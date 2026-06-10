@@ -287,10 +287,28 @@ class DataOpTask(OpTask):
                     "block, it means there's an error in the implementation."
                 )
 
+                gen = self._streaming_gen
+                if gen.worker.core_worker.is_object_ref_stream_finished(
+                    gen._generator_ref
+                ):
+                    # The stream is exhausted: `_next_sync` would enter its
+                    # end-of-stream handling, which `ray.get`s the generator's
+                    # return object WITHOUT a timeout to distinguish a normal
+                    # end from a task failure. If that object isn't locally
+                    # available (e.g. it was lost with a dead node), the get
+                    # would block the scheduling thread until reconstruction
+                    # completes — potentially forever on a saturated cluster.
+                    # Probe availability non-blockingly and retry on a later
+                    # iteration if it isn't there yet; the wait also nudges
+                    # the background fetch / lineage reconstruction.
+                    # (Master has the same exposure in a much narrower window
+                    # — between the last metadata fetch and the next probe.)
+                    ready, _ = ray.wait([gen.completed()], timeout=0, fetch_local=True)
+                    if not ready:
+                        break
+
                 try:
-                    self._pending_block_ref = self._streaming_gen._next_sync(
-                        timeout_s=0
-                    )
+                    self._pending_block_ref = gen._next_sync(timeout_s=0)
                 except StopIteration:
                     # Defer firing ``task_done_callback`` until after the
                     # caller's deferred-replay updates
