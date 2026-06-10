@@ -1,3 +1,4 @@
+import collections
 import logging
 import os
 import random
@@ -19,6 +20,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.modules.node.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -410,6 +412,65 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
             return False
 
     wait_for_condition(_check_worker_pids, timeout=20)
+
+
+@pytest.mark.asyncio
+async def test_update_node_survives_dead_node_kv_delete_failure(monkeypatch):
+    from ray.dashboard.modules.node import node_head as node_head_module
+    from ray.dashboard.modules.node.node_head import NodeHead
+
+    original_nodes = DataSource.nodes.copy()
+    DataSource.nodes.clear()
+
+    delete_calls = []
+
+    class FakeGcsClient:
+        async def async_internal_kv_del(self, key, **kwargs):
+            delete_calls.append(key)
+            if len(delete_calls) == 1:
+                raise RuntimeError("simulated kv delete failure")
+
+    try:
+        node_head = NodeHead.__new__(NodeHead)
+        node_head._registered_head_node_id = None
+        node_head._head_node_registration_time_s = None
+        node_head._module_start_time = time.time()
+        node_head._dead_node_queue = collections.deque()
+        node_head._stubs = {}
+        node_head._gcs_client = FakeGcsClient()
+
+        monkeypatch.setattr(
+            node_head_module,
+            "init_grpc_channel",
+            lambda *args, **kwargs: object(),
+        )
+        monkeypatch.setattr(
+            node_head_module.node_manager_pb2_grpc,
+            "NodeManagerServiceStub",
+            lambda channel: channel,
+        )
+
+        node = {
+            "nodeId": "node-1",
+            "state": "DEAD",
+            "isHeadNode": False,
+            "nodeManagerAddress": "127.0.0.1",
+            "nodeManagerPort": "12345",
+        }
+
+        await node_head._update_node(node)
+
+        expected_keys = [
+            f"{node_head_module.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}node-1",
+            f"{node_head_module.DASHBOARD_AGENT_ADDR_IP_PREFIX}127.0.0.1",
+        ]
+        assert delete_calls == expected_keys
+        assert DataSource.nodes["node-1"] == node
+        assert list(node_head._dead_node_queue) == ["node-1"]
+        assert node_head._stubs["node-1"] is not None
+    finally:
+        DataSource.nodes.clear()
+        DataSource.nodes.update(original_nodes)
 
 
 if __name__ == "__main__":

@@ -281,7 +281,7 @@ class NodeHead(SubprocessModule):
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for key, result in zip(keys, results):
-                if isinstance(result, BaseException):
+                if isinstance(result, Exception):
                     logger.error(
                         "Failed to delete KV entry for dead node %s (%s): %s",
                         node_id,

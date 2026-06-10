@@ -48,6 +48,7 @@ from ray._private.test_utils import (
     wait_until_succeeded_without_exception,
 )
 from ray.core.generated import common_pb2
+from ray.dashboard.agent import DashboardAgent
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
 from ray.dashboard.utils import DashboardHeadModule
@@ -904,6 +905,100 @@ def test_async_loop_forever():
     with pytest.raises(asyncio.CancelledError):
         loop.run_until_complete(task)
     assert counter2[0] == 3
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_agent_survives_module_exception(tmp_path, monkeypatch):
+    stop_event = asyncio.Event()
+    good_module_started = asyncio.Event()
+
+    class FakeServer:
+        async def start(self):
+            return None
+
+        async def wait_for_termination(self):
+            await stop_event.wait()
+
+    class FakeHttpServer:
+        def __init__(self):
+            self.http_port = 8265
+            self.started_modules = None
+            self.cleaned_up = False
+
+        async def start(self, modules):
+            self.started_modules = modules
+
+        async def cleanup(self):
+            self.cleaned_up = True
+
+    class FakeGcsClient:
+        async def async_internal_kv_put(self, *args, **kwargs):
+            return None
+
+    class GoodModule:
+        async def run(self, server):
+            good_module_started.set()
+            await stop_event.wait()
+
+    class BadModule:
+        async def run(self, server):
+            raise RuntimeError("simulated module failure")
+
+    agent = DashboardAgent.__new__(DashboardAgent)
+    agent.ip = "127.0.0.1"
+    agent.minimal = False
+    agent.gcs_address = "127.0.0.1:6379"
+    agent.cluster_id_hex = "0" * 32
+    agent.temp_dir = str(tmp_path)
+    agent.session_dir = str(tmp_path)
+    agent.log_dir = str(tmp_path)
+    agent.grpc_port = 12345
+    agent.metrics_export_port = None
+    agent.node_manager_port = None
+    agent.events_export_addr = None
+    agent.listen_port = 8265
+    agent.object_store_name = "/tmp/plasma"
+    agent.raylet_name = "raylet"
+    agent.node_id = "node-123"
+    agent.metrics_collection_disabled = False
+    agent.session_name = "session"
+    agent.server = FakeServer()
+    agent.http_server = FakeHttpServer()
+    agent.gcs_client = FakeGcsClient()
+    agent.is_head = False
+
+    monkeypatch.setattr(
+        "ray.dashboard.agent.create_check_raylet_task",
+        lambda *args, **kwargs: asyncio.create_task(stop_event.wait()),
+    )
+    monkeypatch.setattr(
+        "ray.dashboard.agent.persist_port",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(agent, "_load_modules", lambda: [GoodModule(), BadModule()])
+
+    from unittest.mock import patch
+    with patch("ray.dashboard.agent.logger.exception") as mock_logger_exc:
+        run_task = asyncio.create_task(agent.run())
+        try:
+            await asyncio.wait_for(good_module_started.wait(), timeout=5)
+            # Give the event loop time to run BadModule and log the exception
+            for _ in range(10):
+                if mock_logger_exc.called:
+                    break
+                await asyncio.sleep(0.1)
+            
+            assert run_task.done() is False
+            assert mock_logger_exc.called
+            assert "Dashboard module task '%s' exited unexpectedly." in mock_logger_exc.call_args[0]
+        finally:
+            stop_event.set()
+            await run_task
+            assert agent.http_server.cleaned_up is True
 
 
 @pytest.mark.skipif(

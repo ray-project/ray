@@ -261,19 +261,19 @@ class DashboardAgent:
 
             await asyncio.gather(put_by_node_id, put_by_ip)
 
-        async def run_module_supervised(name, coro):
+        async def run_module_supervised(m):
             try:
-                await coro
+                await m.run(self.server)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception(
                     "Dashboard module task '%s' exited unexpectedly.",
-                    name,
+                    m.__class__.__name__,
                 )
 
         tasks = [
-            run_module_supervised(m.__class__.__name__, m.run(self.server))
+            run_module_supervised(m)
             for m in modules
         ]
 
