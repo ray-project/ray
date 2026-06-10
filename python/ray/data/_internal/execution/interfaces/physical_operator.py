@@ -52,6 +52,23 @@ METADATA_WAIT_TIMEOUT_S = 0.1
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
 
 
+@dataclass(frozen=True)
+class ObjectStoreUsage:
+    """Per-op object store accounting.
+
+    Attributes:
+        internal: Bytes held by this op's currently-running tasks
+            (outputs not yet yielded to the object store).
+        outputs: Bytes this op has produced that are still live in
+            the object store — its internal output queue, its
+            ``OpState`` external output queue, and bytes already
+            forwarded to immediately-downstream ops' input queues.
+    """
+
+    internal: int
+    outputs: int
+
+
 class OpTask(ABC):
     """Abstract class that represents a task that is created by an PhysicalOperator.
 
@@ -869,9 +886,10 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
-    def estimate_object_store_usage(self, state: "OpState") -> Tuple[int, int]:
-        """Returns ``(mem_op_internal, mem_op_outputs)`` — bytes this operator
-        contributes to the global object store budget.
+    def estimate_object_store_usage(self, state: "OpState") -> ObjectStoreUsage:
+        """Returns the bytes this operator contributes to the global object
+        store budget.Subclasses may override this when their object store footprint
+        doesn't match the generic model.
         """
         # Operator's internal Object Store usage
         mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
@@ -898,7 +916,10 @@ class PhysicalOperator(Operator):
             )
             for downstream_op in self.output_dependencies
         )
-        return int(mem_op_internal), int(op_outputs_bytes + used_op_outputs_bytes)
+        return ObjectStoreUsage(
+            internal=int(mem_op_internal),
+            outputs=int(op_outputs_bytes + used_op_outputs_bytes),
+        )
 
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,

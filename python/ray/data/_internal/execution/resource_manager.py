@@ -173,9 +173,9 @@ class ResourceManager:
                 return self._external_consumer_bytes
             return 0
 
-        mem_op_internal, mem_op_outputs = op.estimate_object_store_usage(state)
-        self._mem_op_internal[op] = mem_op_internal
-        self._mem_op_outputs[op] = mem_op_outputs
+        usage = op.estimate_object_store_usage(state)
+        self._mem_op_internal[op] = usage.internal
+        self._mem_op_outputs[op] = usage.outputs
 
         # Attribute iterator / streaming_split prefetch to the executor sink only.
         if op is self._output_operator:

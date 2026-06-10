@@ -434,6 +434,41 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 1
 
+    def test_estimate_object_store_usage_dispatches_to_op_override(
+        self, restore_data_context
+    ):
+        """``ResourceManager`` must dispatch to ``op.estimate_object_store_usage`` so subclasses can override the accounting."""
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            ObjectStoreUsage,
+        )
+
+        # Real upstream so the override op has a valid input dependency.
+        input = make_ref_bundles([[x] for x in range(1)])[0]
+        upstream = InputDataBuffer(DataContext.get_current(), [input])
+
+        # Subclass that overrides the accounting to return hard-coded
+        # values — bypasses the generic metrics+state computation.
+        override = mock_map_op(upstream)
+        override.estimate_object_store_usage = lambda state: ObjectStoreUsage(
+            internal=42, outputs=100
+        )
+
+        topo = build_streaming_topology(override, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+        )
+
+        resource_manager.update_usages()
+
+        # The override's hard-coded values flow through unchanged into
+        # both the per-component dicts and the aggregated op usage.
+        assert resource_manager.get_mem_op_internal(override) == 42
+        assert resource_manager.get_mem_op_outputs(override) == 100
+        assert resource_manager.get_op_usage(override).object_store_memory == 42 + 100
+
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
