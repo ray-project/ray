@@ -517,7 +517,7 @@ TEST_DATA = (
             _get_basic_autoscaling_config(),
             None,
             None,
-            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
+            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams for group 'tpu-group'. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
             id="groups-with-raystartparam-labels",
         ),
         pytest.param(
@@ -525,7 +525,7 @@ TEST_DATA = (
             _get_autoscaling_config_with_top_level_labels(),
             None,
             None,
-            "Ignoring labels: instance-type=n2 set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
+            "Ignoring labels: instance-type=n2 set in rayStartParams for group 'small-group'. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
             id="groups-with-top-level-labels",
         ),
         pytest.param(
