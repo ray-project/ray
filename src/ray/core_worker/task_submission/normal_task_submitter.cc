@@ -102,7 +102,7 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
     const SchedulingKey &scheduling_key,
     const LeaseID &lease_id) {
   core_worker_client_pool_->GetOrConnect(worker_address);
-  int64_t expiration = clock_.NowUnixMillis() + lease_timeout_ms_;
+  int64_t expiration = clock_.SteadyNowMillis() + lease_timeout_ms_;
   LeaseEntry new_lease_entry{
       raylet_address, expiration, assigned_resources, scheduling_key, lease_id};
   worker_to_lease_entry_.emplace(worker_address, new_lease_entry);
@@ -156,7 +156,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
   // the lease is expired; Return the worker if there are no more applicable
   // queued tasks.
   if ((was_error || worker_exiting ||
-       clock_.NowUnixMillis() > lease_entry.lease_expiration_time) ||
+       clock_.SteadyNowMillis() > lease_entry.lease_expiration_time) ||
       current_queue.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 

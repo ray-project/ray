@@ -310,7 +310,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
-  auto fetch_start_time_ms = clock_.NowUnixMillis();
+  auto fetch_start_time_ms = clock_.SteadyNowMillis();
   while (!remaining_object_id_to_idx.empty() && !should_break) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
@@ -427,7 +427,7 @@ CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
 void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
     int64_t fetch_start_time_ms,
     const absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx) {
-  int64_t duration_ms = clock_.NowUnixMillis() - fetch_start_time_ms;
+  int64_t duration_ms = clock_.SteadyNowMillis() - fetch_start_time_ms;
   if (duration_ms > RayConfig::instance().fetch_warn_timeout_milliseconds()) {
     std::ostringstream oss;
     size_t printed = 0;
