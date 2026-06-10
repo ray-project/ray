@@ -5,7 +5,7 @@ and published generically by ``_StatsActor``.
 
 A metric is described by a :class:`MetricDefinition`. Definitions are grouped by
 namespace (e.g. ``"op_runtime"``, ``"iteration"``, ``"dataset_metadata"``) in
-the process-global :data:`GLOBAL_METRICS_REGISTRY`. ``_StatsActor`` reads the
+the process-global :data:`METRICS_REGISTRY`. ``_StatsActor`` reads the
 registry to create one Prometheus primitive per definition.
 
 Authors usually declare metrics with the :func:`metric_field` /
@@ -165,7 +165,7 @@ class MetricsRegistry:
 
 
 # Process-global singleton. Populated at import time by metric declarations.
-GLOBAL_METRICS_REGISTRY = MetricsRegistry()
+METRICS_REGISTRY = MetricsRegistry()
 
 
 def metric_field(
@@ -228,7 +228,7 @@ def metric_property(
             tag_keys=tag_keys,
         )
 
-        GLOBAL_METRICS_REGISTRY.register(namespace, metric)
+        METRICS_REGISTRY.register(namespace, metric)
 
         return property(func)
 
@@ -266,4 +266,4 @@ class OpRuntimesMetricsMeta(type):
                     prometheus_name=value.metadata[_METRIC_FIELD_PROMETHEUS_NAME_KEY],
                     tag_keys=value.metadata[_METRIC_FIELD_TAG_KEYS_KEY],
                 )
-                GLOBAL_METRICS_REGISTRY.register(namespace, metric)
+                METRICS_REGISTRY.register(namespace, metric)

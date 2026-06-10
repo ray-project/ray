@@ -16,9 +16,9 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data._internal.stats_metrics_registry import (
+from ray.data._internal.metrics_registry import (
     _OP_RUNTIME_NAMESPACE,
-    GLOBAL_METRICS_REGISTRY,
+    METRICS_REGISTRY,
     MetricDefinition,
     MetricsGroup,
     MetricsType,
@@ -460,7 +460,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
     @classmethod
     def get_metrics(cls) -> List[MetricDefinition]:
-        return GLOBAL_METRICS_REGISTRY.definitions(_OP_RUNTIME_NAMESPACE)
+        return METRICS_REGISTRY.definitions(_OP_RUNTIME_NAMESPACE)
 
     def as_dict(
         self,

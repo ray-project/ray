@@ -42,13 +42,13 @@ from ray.data._internal.metadata_exporter import (
     Topology,
     get_dataset_metadata_exporter,
 )
-from ray.data._internal.stats_metrics_registry import (
+from ray.data._internal.metrics_registry import (
     _DATASET_METADATA_NAMESPACE,
     _ITERATION_NAMESPACE,
     _OP_RUNTIME_NAMESPACE,
     _OVERVIEW_NAMESPACE,
     _PER_NODE_NAMESPACE,
-    GLOBAL_METRICS_REGISTRY,
+    METRICS_REGISTRY,
     MetricDefinition,
     MetricsGroup,
 )
@@ -531,11 +531,11 @@ _DATASET_METADATA_METRICS = [
 def _register_dashboard_metrics() -> None:
     """Register the overview/iteration/metadata/per-node definitions."""
     for name, _src, description in _OVERVIEW_METRICS:
-        GLOBAL_METRICS_REGISTRY.register(
+        METRICS_REGISTRY.register(
             _OVERVIEW_NAMESPACE, _gauge(name, description, tag_keys=_OP_TAG_KEYS)
         )
     for name, prometheus_name, description in _ITERATION_METRICS:
-        GLOBAL_METRICS_REGISTRY.register(
+        METRICS_REGISTRY.register(
             _ITERATION_NAMESPACE,
             _gauge(
                 name,
@@ -550,12 +550,12 @@ def _register_dashboard_metrics() -> None:
             description = f"State of dataset ({states})"
         elif name == "operator_state":
             description = f"State of operator ({states})"
-        GLOBAL_METRICS_REGISTRY.register(
+        METRICS_REGISTRY.register(
             _DATASET_METADATA_NAMESPACE, _gauge(name, description, tag_keys=tag_keys)
         )
     # Per-node metrics: one gauge per NodeMetrics field.
     for node_field in fields(NodeMetrics):
-        GLOBAL_METRICS_REGISTRY.register(
+        METRICS_REGISTRY.register(
             _PER_NODE_NAMESPACE,
             _gauge(
                 node_field.name,
@@ -637,7 +637,7 @@ class _StatsActor:
             dict key is the metric's ``name``, the value the Prometheus primitive.
         """
         metrics = {}
-        for metric in GLOBAL_METRICS_REGISTRY.definitions(namespace):
+        for metric in METRICS_REGISTRY.definitions(namespace):
             if metric.metrics_type == MetricsType.Unsupported:
                 continue
             tag_keys = metric.tag_keys or default_tag_keys
