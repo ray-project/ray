@@ -99,13 +99,12 @@ def _resolve_windows_executable(path: str) -> str:
     # "_server" suffix, e.g. "gcs" instead of "gcs_server".
     base_name = os.path.basename(path)
     if base_name.endswith("_server.exe"):
-        alt_path = os.path.join(
-            os.path.dirname(path), base_name[: -len("_server.exe")]
-        )
+        alt_path = os.path.join(os.path.dirname(path), base_name[: -len("_server.exe")])
         if os.path.exists(alt_path):
             return alt_path
 
     return path
+
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "

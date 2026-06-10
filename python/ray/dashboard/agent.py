@@ -272,10 +272,7 @@ class DashboardAgent:
                     m.__class__.__name__,
                 )
 
-        tasks = [
-            run_module_supervised(m)
-            for m in modules
-        ]
+        tasks = [run_module_supervised(m) for m in modules]
 
         if sys.platform not in ["win32", "cygwin"]:
 

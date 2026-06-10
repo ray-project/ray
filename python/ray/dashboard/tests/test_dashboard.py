@@ -982,6 +982,7 @@ async def test_dashboard_agent_survives_module_exception(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "_load_modules", lambda: [GoodModule(), BadModule()])
 
     from unittest.mock import patch
+
     with patch("ray.dashboard.agent.logger.exception") as mock_logger_exc:
         run_task = asyncio.create_task(agent.run())
         try:
@@ -994,7 +995,10 @@ async def test_dashboard_agent_survives_module_exception(tmp_path, monkeypatch):
 
             assert run_task.done() is False
             assert mock_logger_exc.called
-            assert "Dashboard module task '%s' exited unexpectedly." in mock_logger_exc.call_args[0]
+            assert (
+                "Dashboard module task '%s' exited unexpectedly."
+                in mock_logger_exc.call_args[0]
+            )
         finally:
             stop_event.set()
             await run_task
