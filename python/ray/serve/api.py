@@ -459,6 +459,37 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
 
+            def __init_subclass__(subcls, **subclass_kwargs):
+                # The parent `__init__` is async, so any sync `__init__`
+                # resolved on the subclass (whether defined directly or
+                # inherited from a mixin earlier in the MRO) would, when
+                # calling `super().__init__(...)`, silently discard the
+                # returned coroutine — leaving the replica uninitialized
+                # (e.g. `_serve_asgi_lifespan` never set). Check the resolved
+                # `__init__` on the class (which honors MRO) rather than only
+                # `__dict__`, so cases like
+                # `class Sub(SyncMixin, WrappedIngress)` are also caught.
+                # Fail loudly at class-definition time with a clear migration
+                # message instead of crashing later at runtime.
+                super().__init_subclass__(**subclass_kwargs)
+                if not inspect.iscoroutinefunction(subcls.__init__):
+                    raise TypeError(
+                        f"{subcls.__name__}.__init__ must be `async def` "
+                        "when subclassing a class decorated with "
+                        "@serve.ingress (or returned by "
+                        "`make_fastapi_ingress`). The parent `__init__` is "
+                        "async; a sync `super().__init__(...)` call would "
+                        "silently drop the returned coroutine and leave the "
+                        "replica uninitialized. Change "
+                        "`def __init__(self, ...)` to "
+                        "`async def __init__(self, ...)` and "
+                        "`super().__init__(...)` to "
+                        "`await super().__init__(...)`. If the sync "
+                        "`__init__` comes from a mixin in the MRO, override "
+                        "it on the subclass with an `async def __init__` "
+                        "that awaits both parents."
+                    )
+
             async def __del__(self):
                 await ASGIAppReplicaWrapper.__del__(self)
 
