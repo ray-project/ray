@@ -126,6 +126,21 @@ class TestEnvRunnerGroup(unittest.TestCase):
             2,
         )
 
+    def test_get_merged_env_runner_state_requires_weights_seq_no(self):
+        """`get_merged_env_runner_state` must refuse to build a versionless state.
+
+        A pushed state without `WEIGHTS_SEQ_NO` could never be pulled by EnvRunners
+        (they version-gate via `pull_if_newer`), so the builder fails loudly on the
+        driver. The guard runs before any instance/config access, so an uninitialized
+        group exercises it without spinning up EnvRunners.
+        """
+        group = object.__new__(EnvRunnerGroup)
+        with self.assertRaisesRegex(ValueError, "WEIGHTS_SEQ_NO"):
+            group.get_merged_env_runner_state(
+                config=None,
+                rl_module_state={"rl_module": "WEIGHTS_OBJ_REF"},
+            )
+
 
 if __name__ == "__main__":
     import sys

@@ -38,11 +38,15 @@ def test_push_replaces_and_advances_version():
     assert server.pull()[WEIGHTS_SEQ_NO] == 2
 
 
-def test_get_version_without_seq_no():
-    # A state lacking WEIGHTS_SEQ_NO reports -1 (treated as "no usable version"), so an
-    # EnvRunner comparing `version > self._weights_seq_no` will never apply it.
+def test_push_rejects_state_without_seq_no():
+    # A state without WEIGHTS_SEQ_NO could never be pulled (EnvRunners version-gate via
+    # `pull_if_newer`), so the server rejects it loudly instead of holding state that no
+    # EnvRunner would ever apply.
     server = EnvRunnerStateServer()
-    server.push({"rl_module": "WEIGHTS_OBJ_REF"})
+    with pytest.raises(ValueError, match="WEIGHTS_SEQ_NO"):
+        server.push({"rl_module": "WEIGHTS_OBJ_REF"})
+    # Nothing was stored.
+    assert server.pull() is None
     assert server.get_version() == -1
 
 
@@ -59,15 +63,6 @@ def test_pull_if_newer_only_returns_strictly_newer_state():
     # Older caller version -> the full state, returned verbatim (same object).
     assert server.pull_if_newer(4) is state
     assert server.pull_if_newer(-1) is state
-
-
-def test_pull_if_newer_without_seq_no():
-    # A state lacking WEIGHTS_SEQ_NO is treated as version -1 ("no usable version"), so
-    # it is never newer than a caller (EnvRunners start at `_weights_seq_no=0`).
-    server = EnvRunnerStateServer()
-    server.push({"rl_module": "WEIGHTS_OBJ_REF"})
-    assert server.pull_if_newer(0) is None
-    assert server.pull_if_newer(-1) is None
 
 
 if __name__ == "__main__":

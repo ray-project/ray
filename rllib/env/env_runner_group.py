@@ -472,6 +472,14 @@ class EnvRunnerGroup:
         and the env-steps counter into a single state dict, without touching any remote
         EnvRunner.
         """
+        if WEIGHTS_SEQ_NO not in rl_module_state:
+            raise ValueError(
+                "`get_merged_env_runner_state` needs `rl_module_state` to carry a "
+                f"`WEIGHTS_SEQ_NO` (got keys: {list(rl_module_state.keys())}); without "
+                "it the pushed state could never be pulled by EnvRunners (they "
+                "version-gate via `pull_if_newer`), making the `EnvRunnerStateServer` "
+                "useless."
+            )
         # New API stack only, so just the new-stack half of the `merge` predicate.
         merge = config.merge_env_runner_states is True or (
             config.merge_env_runner_states == "training_only"

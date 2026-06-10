@@ -35,7 +35,20 @@ class EnvRunnerStateServer:
         self._state: Optional[StateDict] = None
 
     def push(self, state: StateDict) -> None:
-        """Stores the latest EnvRunner state (called once per weight sync)."""
+        """Stores the latest EnvRunner state (called once per weight sync).
+
+        Raises:
+            ValueError: If `state` carries no `WEIGHTS_SEQ_NO`. Such a state could never
+                be pulled (EnvRunners version-gate via `pull_if_newer`), so we reject it
+                here instead of silently holding state no EnvRunner would ever apply.
+        """
+        if WEIGHTS_SEQ_NO not in state:
+            raise ValueError(
+                "Cannot push an EnvRunner state without a `WEIGHTS_SEQ_NO` (got keys: "
+                f"{list(state.keys())}). EnvRunners only apply a pulled state if its "
+                "version is newer than theirs, so a versionless state would be ignored "
+                "forever, rendering the server useless."
+            )
         # Atomic rebind -> safe for concurrent `pull`s.
         self._state = state
 
