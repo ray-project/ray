@@ -4367,8 +4367,6 @@ class DeploymentState:
             return
         if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
-        else:
-            self.health_check_gauge.set(value)
         self._health_gauge_cache[replica_unique_id] = (value, now)
 
     def _register_gang_replica(self, replica_id: ReplicaID, gang_id: str) -> None:
@@ -4583,10 +4581,9 @@ class DeploymentState:
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS and (
             healthy_replicas or unhealthy_replicas
         ):
-            # _set_health_gauge() is still called once per replica above. When
-            # the replica tag is disabled, those writes all target the same
-            # time series, so the last replica processed would otherwise decide
-            # the value. Write the aggregate value last.
+            # When the replica tag is disabled, this is a single
+            # deployment/application series. Emit it once with the aggregate
+            # value so per-replica iteration order cannot decide the result.
             deployment_is_healthy = (
                 not unhealthy_replicas
                 and self._curr_status_info.status == DeploymentStatus.HEALTHY

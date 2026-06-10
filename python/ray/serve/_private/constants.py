@@ -1003,11 +1003,8 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
 # Disable this to keep deployment/application tags while dropping source identifiers
 # like replica IDs and handle IDs from controller-emitted metrics.
-RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS_ENV_VAR = (
-    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS"
-)
 RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS = get_env_bool(
-    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS_ENV_VAR, "1"
+    "RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS", "1"
 )
 
 # Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.

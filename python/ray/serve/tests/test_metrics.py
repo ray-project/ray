@@ -27,7 +27,6 @@ from ray._common.test_utils import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
-    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS_ENV_VAR,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.serve._private.test_utils import (
@@ -43,10 +42,6 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-
-CONTROLLER_HIGH_CARDINALITY_TAGS_ENV_VAR = (
-    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS_ENV_VAR
-)
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -1441,7 +1436,7 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
 
 @pytest.mark.skipif(
     not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
-    reason=f"{CONTROLLER_HIGH_CARDINALITY_TAGS_ENV_VAR}=0",
+    reason="controller metric high-cardinality tags are disabled",
 )
 def test_controller_high_cardinality_metric_tags(metrics_start_shutdown):
     _check_controller_high_cardinality_metric_tags(include_high_cardinality=True)
@@ -1449,7 +1444,7 @@ def test_controller_high_cardinality_metric_tags(metrics_start_shutdown):
 
 @pytest.mark.skipif(
     RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
-    reason=f"{CONTROLLER_HIGH_CARDINALITY_TAGS_ENV_VAR}=1",
+    reason="controller metric high-cardinality tags are enabled",
 )
 def test_disable_high_cardinality_controller_metrics(metrics_start_shutdown):
     _check_controller_high_cardinality_metric_tags(include_high_cardinality=False)
