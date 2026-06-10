@@ -3400,50 +3400,129 @@ def _wait_generators_bulk(
 
         generator_refs: List[List[ObjectRef]] = []
         last_ref_pairs: List[Tuple[ObjectRef, bool]] = []
-        for gen_index, (generator, fetch_locals) in enumerate(ray_generators):
+        for generator, fetch_locals in ray_generators:
             refs = generator._get_next_ref_n(len(fetch_locals))
             generator_refs.append(refs)
             last_ref_pairs.append((refs[-1], fetch_locals[-1]))
 
         deadline = None if timeout is None else time.monotonic() + timeout
-        ready_last_refs, _ = _wait_and_fetch(
-            last_ref_pairs, num_returns=num_return, timeout=timeout
-        )
-        ready_last_ref_set = set(ready_last_refs)
 
-        candidates = [
-            (generator, refs, fetch_locals)
-            for (generator, fetch_locals), refs in zip(ray_generators, generator_refs)
-            if refs[-1] in ready_last_ref_set
-        ]
-        refs_to_fetch_local = [
-            refs[i]
-            for _, refs, fetch_locals in candidates
-            for i, fetch_local in enumerate(fetch_locals[:-1])
-            if fetch_local
-        ]
-        if refs_to_fetch_local:
+        def timeout_remaining() -> Optional[float]:
             if deadline is None:
-                timeout_remaining = None
-            else:
-                timeout_remaining = max(0, deadline - time.monotonic())
-            ready_refs, _ = wait(
-                refs_to_fetch_local,
-                num_returns=len(refs_to_fetch_local),
-                timeout=timeout_remaining,
-                fetch_local=True,
-            )
-            ready_local_ref_set = set(ready_refs)
-        else:
-            ready_local_ref_set = set()
+                return None
+            return max(0, deadline - time.monotonic())
+
+        def timed_out() -> bool:
+            return deadline is not None and time.monotonic() >= deadline
+
+        ready_last_indices = set()
+        pending_last_indices = set(range(len(ray_generators)))
+        ready_local_ref_set = set()
+        result_indices = set()
+
+        def collect_missing_local_refs() -> List[ObjectRef]:
+            refs_to_fetch_local = []
+            refs_seen = set()
+            for gen_index in sorted(ready_last_indices - result_indices):
+                refs = generator_refs[gen_index]
+                fetch_locals = ray_generators[gen_index][1]
+                for ref, fetch_local in zip(refs[:-1], fetch_locals[:-1]):
+                    if (
+                        fetch_local
+                        and ref not in ready_local_ref_set
+                        and ref not in refs_seen
+                    ):
+                        refs_to_fetch_local.append(ref)
+                        refs_seen.add(ref)
+            return refs_to_fetch_local
+
+        def collect_ready_results() -> None:
+            for gen_index in sorted(ready_last_indices - result_indices):
+                if len(result_indices) >= num_return:
+                    return
+                refs = generator_refs[gen_index]
+                fetch_locals = ray_generators[gen_index][1]
+                if all(
+                    not fetch_local or ref in ready_local_ref_set
+                    for ref, fetch_local in zip(refs[:-1], fetch_locals[:-1])
+                ):
+                    result_indices.add(gen_index)
+
+        poll_timeout_s = 0.1
+        first_iteration = True
+        while len(result_indices) < num_return:
+            refs_to_fetch_local = collect_missing_local_refs()
+            if refs_to_fetch_local:
+                ready_refs, _ = wait(
+                    refs_to_fetch_local,
+                    num_returns=len(refs_to_fetch_local),
+                    timeout=0,
+                    fetch_local=True,
+                )
+                ready_local_ref_set.update(ready_refs)
+
+            collect_ready_results()
+            if len(result_indices) >= num_return:
+                break
+            if not first_iteration and timed_out():
+                break
+
+            refs_to_fetch_local = collect_missing_local_refs()
+            pending_last_indices_in_order = sorted(pending_last_indices)
+            if not refs_to_fetch_local and not pending_last_indices_in_order:
+                break
+
+            wait_on_both = bool(refs_to_fetch_local and pending_last_indices_in_order)
+            if refs_to_fetch_local:
+                local_timeout = timeout_remaining()
+                if wait_on_both and (
+                    local_timeout is None or local_timeout > poll_timeout_s
+                ):
+                    local_timeout = poll_timeout_s
+                if first_iteration or local_timeout is None or local_timeout > 0:
+                    ready_refs, _ = wait(
+                        refs_to_fetch_local,
+                        num_returns=1,
+                        timeout=local_timeout,
+                        fetch_local=True,
+                    )
+                    ready_local_ref_set.update(ready_refs)
+                    collect_ready_results()
+                    if len(result_indices) >= num_return:
+                        break
+
+            if not first_iteration and timed_out():
+                break
+
+            pending_last_indices_in_order = sorted(pending_last_indices)
+            if pending_last_indices_in_order:
+                last_timeout = timeout_remaining()
+                if collect_missing_local_refs() and (
+                    last_timeout is None or last_timeout > poll_timeout_s
+                ):
+                    last_timeout = poll_timeout_s
+                if first_iteration or last_timeout is None or last_timeout > 0:
+                    pending_last_ref_pairs = [
+                        last_ref_pairs[i] for i in pending_last_indices_in_order
+                    ]
+                    ready_last_refs, _ = _wait_and_fetch(
+                        pending_last_ref_pairs,
+                        num_returns=1,
+                        timeout=last_timeout,
+                    )
+                    ready_last_ref_set = set(ready_last_refs)
+                    for gen_index in pending_last_indices_in_order:
+                        if last_ref_pairs[gen_index][0] in ready_last_ref_set:
+                            ready_last_indices.add(gen_index)
+                            pending_last_indices.remove(gen_index)
+                    collect_ready_results()
+
+            first_iteration = False
 
         result = []
-        for generator, refs, fetch_locals in candidates:
-            if any(
-                fetch_local and refs[i] not in ready_local_ref_set
-                for i, fetch_local in enumerate(fetch_locals[:-1])
-            ):
-                continue
+        for gen_index in sorted(result_indices):
+            generator = ray_generators[gen_index][0]
+            refs = generator_refs[gen_index]
             generator._consume_next_ref_n(len(refs))
             result.append((generator, refs))
         return result
