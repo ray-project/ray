@@ -252,6 +252,20 @@ class MultiAgentEpisode:
         self._hanging_extra_model_outputs_end = defaultdict(dict)
         self._hanging_rewards_end = defaultdict(float)
 
+        # Cross-agent ("__common__") info dicts, indexed by env timestep. The
+        # MultiAgentEnv contract (see ``MultiAgentEnv`` step-validation logic)
+        # allows the ``infos`` dict returned from ``env.step`` / ``env.reset``
+        # to carry an optional ``"__common__"`` key whose value is an info
+        # dict that applies to the env as a whole, not to any single agent.
+        # Per-agent ``SingleAgentEpisode`` buffers cannot capture this, so it
+        # was previously dropped on ingestion and never surfaced from
+        # ``MultiAgentEpisode.get_infos()`` (#58668). We mirror the env-step
+        # timeline by appending one entry per ``add_env_reset`` /
+        # ``add_env_step`` call (``None`` when no ``"__common__"`` was
+        # provided), so ``get_infos`` can surface common infos under the
+        # ``"__common__"`` key.
+        self._common_infos: InfiniteLookbackBuffer = InfiniteLookbackBuffer()
+
         # In case of a `cut()` or `slice()`, we also need to store the hanging actions,
         # rewards, and extra model outputs that were already "hanging" in preceeding
         # episode slice.
@@ -318,6 +332,11 @@ class MultiAgentEpisode:
         # Leave self.env_t (and self.env_t_started) at 0.
         assert self.env_t == self.env_t_started == 0
         infos = infos or {}
+
+        # Capture any cross-agent ("__common__") info dict for the reset step
+        # so it survives ingestion and can be surfaced from ``get_infos``
+        # (#58668). One entry per env_t, ``None`` when not provided.
+        self._common_infos.append(infos.get("__common__"))
 
         # Note, all agents will have an initial observation, some may have an initial
         # info dict as well.
@@ -398,6 +417,11 @@ class MultiAgentEpisode:
 
         # Increase (global) env step by one.
         self.env_t += 1
+
+        # Capture any cross-agent ("__common__") info dict for this env step
+        # so it survives ingestion and can be surfaced from ``get_infos``
+        # (#58668). One entry per env_t, ``None`` when not provided.
+        self._common_infos.append(infos.get("__common__"))
 
         # Find out, whether this episode is terminated/truncated (for all agents).
         # Case 1: all agents are terminated or all are truncated.
@@ -2581,6 +2605,25 @@ class MultiAgentEpisode:
                 )
                 if agent_values is not None:
                     ret[agent_id] = agent_values
+
+        # Surface cross-agent ("__common__") infos alongside the per-agent
+        # entries. The common buffer is keyed by env_t, the same coordinate
+        # system this method already operates in, so we can pass the user's
+        # ``indices`` through unchanged. Only emit a ``"__common__"`` key
+        # when there is at least one non-``None`` common dict in the
+        # requested range, so callers that never set ``"__common__"`` see
+        # no behavior change (#58668).
+        if what == "infos" and len(self._common_infos) > 0:
+            common_values = self._common_infos.get(
+                indices=indices,
+                neg_index_as_lookback=neg_index_as_lookback,
+                fill=fill,
+            )
+            if common_values is not None and not (
+                isinstance(common_values, list)
+                and all(v is None for v in common_values)
+            ):
+                ret["__common__"] = common_values
         return ret
 
     def _get_single_agent_data_by_index(

@@ -4090,6 +4090,100 @@ def test_multi_agent_episode_functionality(num_timesteps=8, num_samples=10):
             assert non_skip_agent_t == info_timesteps
 
 
+class TestMultiAgentEpisodeCommonInfos(unittest.TestCase):
+    """Regression tests for #58668.
+
+    ``MultiAgentEpisode.get_infos()`` previously dropped the ``"__common__"``
+    key, even though the MultiAgentEnv contract explicitly allows it
+    (cross-agent info dict applying to the env as a whole). The fix
+    captures common infos at ``add_env_reset`` / ``add_env_step`` time and
+    surfaces them under ``"__common__"`` in ``get_infos`` results.
+    """
+
+    def test_get_infos_returns_common_key_for_last_step(self):
+        """``get_infos(indices=-1)`` includes ``"__common__"`` when present."""
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+
+        episode = MultiAgentEpisode()
+        # Reset has no common info.
+        episode.add_env_reset(
+            observations={"player1": 0, "player2": 0},
+            infos={"player1": {"p1": "r"}, "player2": {"p2": "r"}},
+        )
+        # First step carries a common info.
+        episode.add_env_step(
+            observations={"player1": 1, "player2": 1},
+            actions={"player1": 0, "player2": 0},
+            rewards={"player1": 0.0, "player2": 0.0},
+            infos={
+                "player1": {"p1": "s1"},
+                "player2": {"p2": "s1"},
+                "__common__": {"round": 1},
+            },
+            terminateds={"__all__": False},
+            truncateds={"__all__": False},
+        )
+
+        last_infos = episode.get_infos(indices=-1)
+        self.assertIn("__common__", last_infos)
+        self.assertEqual(last_infos["__common__"], {"round": 1})
+        self.assertEqual(last_infos["player1"], {"p1": "s1"})
+        self.assertEqual(last_infos["player2"], {"p2": "s1"})
+
+    def test_get_infos_omits_common_key_when_never_set(self):
+        """When no step ever sets ``"__common__"``, the key MUST stay absent.
+
+        This preserves the existing public contract for users who do not
+        opt into cross-agent infos.
+        """
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(
+            observations={"player1": 0, "player2": 0},
+            infos={"player1": {"p1": "r"}, "player2": {"p2": "r"}},
+        )
+        episode.add_env_step(
+            observations={"player1": 1, "player2": 1},
+            actions={"player1": 0, "player2": 0},
+            rewards={"player1": 0.0, "player2": 0.0},
+            infos={"player1": {"p1": "s1"}, "player2": {"p2": "s1"}},
+            terminateds={"__all__": False},
+            truncateds={"__all__": False},
+        )
+        last_infos = episode.get_infos(indices=-1)
+        self.assertNotIn("__common__", last_infos)
+
+    def test_get_infos_returns_common_key_as_list_for_slice(self):
+        """``get_infos`` over a slice includes ``"__common__"`` as a list."""
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(
+            observations={"player1": 0, "player2": 0},
+            infos={
+                "player1": {},
+                "player2": {},
+                "__common__": {"round": 0},
+            },
+        )
+        episode.add_env_step(
+            observations={"player1": 1, "player2": 1},
+            actions={"player1": 0, "player2": 0},
+            rewards={"player1": 0.0, "player2": 0.0},
+            infos={
+                "player1": {},
+                "player2": {},
+                "__common__": {"round": 1},
+            },
+            terminateds={"__all__": False},
+            truncateds={"__all__": False},
+        )
+        all_infos = episode.get_infos()
+        self.assertIn("__common__", all_infos)
+        self.assertEqual(all_infos["__common__"], [{"round": 0}, {"round": 1}])
+
+
 if __name__ == "__main__":
     import sys
 
