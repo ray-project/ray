@@ -76,6 +76,11 @@ dead_replicas_context = set()
 # controller crashed before the actor finished its initial setup.
 uninitialized_replicas_context = set()
 replica_rank_context: Dict[str, ReplicaRank] = {}
+# Replicas registered in this dict expose their gang context to the
+# controller during recovery via the `get_initial_gang_context` probe,
+# so an orphaned (uninitialized) gang member still exposes its gang
+# identity even if it never finished `initialize_and_get_metadata`.
+replica_gang_context: Dict[ReplicaID, GangContext] = {}
 
 
 class MockTimer(TimerBase):
@@ -660,6 +665,12 @@ class MockReplicaActorWrapper:
         self._assign_rank_callback = assign_rank_callback
         self._rank = assign_rank_callback(self._replica_id.unique_id, node_id=-1)
         replica_rank_context[self._replica_id.unique_id] = self._rank
+        # Persist the gang context so a simulated controller restart
+        # (a fresh wrapper for the same replica_id) can read it back in
+        # `recover()` and expose the gang identity of an orphan that
+        # never finished `initialize_and_get_metadata`.
+        if gang_context is not None:
+            replica_gang_context[self._replica_id] = gang_context
 
         def _on_scheduled_stub(*args, **kwargs):
             pass
@@ -706,6 +717,12 @@ class MockReplicaActorWrapper:
         # observed asynchronously in `check_ready()`. Tests register
         # uninitialized replicas via `uninitialized_replicas_context`.
         self._unrecoverable = self.replica_id in uninitialized_replicas_context
+        # Even an orphan (uninitialized) gang member must expose its
+        # gang identity during recovery so the reconciler can escalate to
+        # a whole-gang restart when the orphan is dropped.
+        recovered_gang_ctx = replica_gang_context.get(self._replica_id)
+        if recovered_gang_ctx is not None:
+            self._gang_context = recovered_gang_ctx
         return True
 
     def check_ready(self) -> ReplicaStartupStatus:

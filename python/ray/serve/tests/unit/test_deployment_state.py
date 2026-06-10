@@ -1,6 +1,6 @@
 import sys
 from copy import deepcopy
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -4024,6 +4024,134 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     check_counts(new_ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
 
     uninitialized_replicas_context.remove(replica_id)
+
+
+def test_gang_orphan_recovery_restarts_whole_gang(mock_deployment_state_manager):
+    """Controller crash mid-startup of a gang member must restart the whole gang.
+
+    When the previous controller crashed between actor creation and the
+    first `initialize_and_get_metadata` call for one member of a gang,
+    the orphan and all its surviving siblings must be force-stopped
+    together in the same reconcile pass.
+    """
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    gang_size = 2
+    num_gangs = 2
+    target_replicas = gang_size * num_gangs
+    deployment_id = DeploymentID(name="gang_orphan_recovery", app_name="app")
+
+    dsm: DeploymentStateManager = create_dsm(
+        create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+    )
+    info, version = deployment_info(
+        num_replicas=target_replicas,
+        version="v1",
+        gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+    )
+    dsm.deploy(deployment_id, info)
+    ds = dsm._deployment_states[deployment_id]
+
+    gang_ids = [f"gang_{i}" for i in range(num_gangs)]
+    dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+        return_value={
+            deployment_id: GangReservationResult(
+                success=True,
+                gang_pgs=[Mock(name=f"pg-{i}") for i in range(num_gangs)],
+                gang_ids=gang_ids,
+                gang_pg_names=[f"SERVE_GANG::pg-{i}" for i in range(num_gangs)],
+            )
+        }
+    )
+    dsm.update()
+    starting = ds._replicas.get([ReplicaState.STARTING])
+    assert len(starting) == target_replicas
+    for replica in starting:
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(
+        ds,
+        total=target_replicas,
+        by_state=[(ReplicaState.RUNNING, target_replicas, version)],
+    )
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # Group running replicas by gang and pick one orphan.
+    running_replicas = ds._replicas.get([ReplicaState.RUNNING])
+    gang_to_replicas: Dict[str, List[DeploymentReplica]] = {}
+    for replica in running_replicas:
+        gang_to_replicas.setdefault(replica.gang_context.gang_id, []).append(replica)
+    failed_gang_id, failed_gang_members = next(iter(gang_to_replicas.items()))
+    surviving_gang_id = next(g for g in gang_ids if g != failed_gang_id)
+    orphan = failed_gang_members[0]
+    sibling = failed_gang_members[1]
+    orphan_id = orphan.replica_id
+    sibling_id = sibling.replica_id
+
+    dsm.save_checkpoint()
+
+    # Simulate controller crash: previous controller crashed between
+    # actor creation and the first `initialize_and_get_metadata(gang_context=...)`
+    # for the orphan. The actor is alive but uninitialized. The sibling's
+    # initialize_and_get_metadata had already completed, so its gang_context
+    # still references the orphan's id.
+    uninitialized_replicas_context.add(orphan_id)
+
+    new_dsm: DeploymentStateManager = create_dsm(
+        [r.replica_id.to_full_id_str() for r in running_replicas],
+        create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+    )
+    new_ds = new_dsm._deployment_states[deployment_id]
+
+    # All replicas enter RECOVERING. The probes are fired and observed
+    # in the next reconcile pass.
+    check_counts(
+        new_ds,
+        total=target_replicas,
+        by_state=[(ReplicaState.RECOVERING, target_replicas, version)],
+    )
+    failures_before = new_ds._replica_constructor_retry_counter
+
+    # No gang reservation should be needed in this cycle: the failed
+    # gang is force-stopped and replicas of the surviving gang stay put.
+    new_dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+
+    new_dsm.update()
+
+    # Both members of the failed gang must be force-stopped together.
+    # The orphan's gang_id is recovered from the actor's construction-
+    # time `get_initial_gang_context` probe, which lets failed_gang_ids
+    # match the sibling and force-stop it in the same reconcile pass.
+    stopping = new_ds._replicas.get(states=[ReplicaState.STOPPING])
+    stopping_ids = {r.replica_id for r in stopping}
+    assert (
+        orphan_id in stopping_ids
+    ), "orphan should be force-stopped after was_initialized=False"
+    assert (
+        sibling_id in stopping_ids
+    ), "sibling must be force-stopped so the gang restarts atomically"
+    assert all(
+        r.gang_context is not None and r.gang_context.gang_id == failed_gang_id
+        for r in stopping
+    )
+
+    # The replicas of the OTHER gang must not be affected.
+    surviving_replicas = [
+        r
+        for r in new_ds._replicas.get()
+        if r.gang_context is not None and r.gang_context.gang_id == surviving_gang_id
+    ]
+    assert len(surviving_replicas) == gang_size
+    assert all(
+        r.actor_details.state in (ReplicaState.RECOVERING, ReplicaState.RUNNING)
+        for r in surviving_replicas
+    )
+
+    # The drop must not bump the deploy-failure counter -- the
+    # underlying cause is a previous controller crash, not user code.
+    assert new_ds._replica_constructor_retry_counter == failures_before
+
+    uninitialized_replicas_context.discard(orphan_id)
 
 
 def test_actor_died_before_recover(mock_deployment_state_manager):

@@ -1061,6 +1061,7 @@ class Replica:
         ingress: bool,
         route_prefix: str,
         is_ingress_request_router: bool = False,
+        gang_context: Optional[GangContext] = None,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -1109,7 +1110,7 @@ class Replica:
         # subclass implementations.
         self._shutting_down = False
         # Gang context for this replica.
-        self._gang_context: Optional[GangContext] = None
+        self._gang_context: Optional[GangContext] = gang_context
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -2778,6 +2779,7 @@ class ReplicaActor:
         ingress: bool,
         route_prefix: str,
         is_ingress_request_router: bool = False,
+        gang_context: Optional[GangContext] = None,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2795,6 +2797,7 @@ class ReplicaActor:
             ingress=ingress,
             route_prefix=route_prefix,
             is_ingress_request_router=is_ingress_request_router,
+            gang_context=gang_context,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -2856,6 +2859,19 @@ class ReplicaActor:
         kill the actor when it returns False.
         """
         return self._replica_impl._user_callable_initialized
+
+    async def get_initial_gang_context(self) -> Optional[GangContext]:
+        """Return the gang context this replica was constructed with.
+
+        Set on the actor side at ``__init__`` time, so the controller can
+        recover an orphaned gang member's gang identity even if the actor
+        never finished its initial ``initialize_and_get_metadata`` call.
+        Without this, an orphan dropped during controller-recovery would
+        leave its surviving siblings with stale ``member_replica_ids``
+        references and split the gang. Returns ``None`` for non-gang
+        deployments.
+        """
+        return self._replica_impl._gang_context
 
     def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         return self._replica_impl.list_outbound_deployments()
