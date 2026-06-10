@@ -36,6 +36,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
@@ -65,6 +66,26 @@ ray::ResourceSet StripPgFormattedResources(const ray::ResourceSet &resource_set)
     }
   }
   return ray::ResourceSet(new_resources);
+}
+
+ray::TaskResourceInstances StripPgFormattedResourceInstances(
+    const ray::TaskResourceInstances &task_resources) {
+  absl::flat_hash_map<ray::scheduling::ResourceID, std::vector<FixedPoint>> new_resources;
+  for (const auto &resource_id : task_resources.ResourceIds()) {
+    const auto &instances = task_resources.Get(resource_id);
+    auto parsed = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/true,
+                                           /*for_indexed_resource=*/true);
+    if (parsed) {
+      ray::scheduling::ResourceID new_id(parsed->original_resource);
+      auto &new_instances = new_resources[new_id];
+      new_instances.insert(new_instances.end(), instances.begin(), instances.end());
+    } else {
+      auto &new_instances = new_resources[resource_id];
+      new_instances.insert(new_instances.end(), instances.begin(), instances.end());
+    }
+  }
+  return ray::TaskResourceInstances(std::move(new_resources));
 }
 
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
@@ -1392,7 +1413,8 @@ WorkerUnfitForLeaseReason WorkerPool::WorkerFitForLease(
   if (!worker_has_instances && !request_has_instances) {
     allocated_instances_match = true;
   } else if (worker_has_instances && request_has_instances &&
-             *worker_allocated_instances == *request_allocated_instances) {
+             StripPgFormattedResourceInstances(*worker_allocated_instances) ==
+                 StripPgFormattedResourceInstances(*request_allocated_instances)) {
     allocated_instances_match = true;
   }
 
