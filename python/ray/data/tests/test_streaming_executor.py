@@ -1531,8 +1531,15 @@ class TestDataOpTask:
 
         deferred: list[DeferredEmit] = []
         # Today's order: task_a fully drained, then task_b fully drained.
-        task_a.on_data_ready(None, deferred)
-        task_b.on_data_ready(None, deferred)
+        # Drain each task in a loop: on a small (e.g. 1-CPU) cluster the
+        # second generator may not have started when the first is ready, and
+        # a single on_data_ready call would pull nothing from it.
+        deadline = time.time() + 30
+        for task in (task_a, task_b):
+            while not task._task_done_pending and time.time() < deadline:
+                task.on_data_ready(None, deferred)
+                time.sleep(0.01)
+        assert task_a._task_done_pending and task_b._task_done_pending
         for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
             _emit_deferred_entry(d, meta_bytes)
 
@@ -1571,13 +1578,17 @@ class TestDataOpTask:
         prefetcher = MetadataPrefetcher()
         prefetcher.start()
         try:
-            # A single drain pulls both ready pairs and (on the trailing
-            # StopIteration) sets ``_task_done_pending`` for the postponed
-            # done callback.
+            # Drain each task until end-of-stream (the trailing StopIteration
+            # sets ``_task_done_pending`` for the postponed done callback).
+            # Loop because on a small cluster the second generator may not
+            # have started when the first is ready.
             deferred_a: list = []
             deferred_b: list = []
-            task_a.on_data_ready(None, deferred_a)
-            task_b.on_data_ready(None, deferred_b)
+            deadline = time.time() + 30
+            for task, deferred in ((task_a, deferred_a), (task_b, deferred_b)):
+                while not task._task_done_pending and time.time() < deadline:
+                    task.on_data_ready(None, deferred)
+                    time.sleep(0.01)
             assert task_a._task_done_pending and task_b._task_done_pending
 
             prefetcher.submit("a", deferred_a, [task_a])
