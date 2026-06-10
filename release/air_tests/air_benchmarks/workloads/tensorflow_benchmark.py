@@ -77,7 +77,7 @@ def train_func(use_ray: bool, config: dict):
                 super()._handle(logs, when)
 
         # NOTE: We shouldn't checkpoint to be identical to the vanilla TF run.
-        callbacks = [CustomReportCallback()]
+        callbacks = [CustomReportCallback(checkpoint_on=[])]
     else:
         callbacks = []
 
