@@ -19,6 +19,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KV_ROUTER_ACTOR_NAME,
     KVRouterActor,
+    derive_kv_block_size,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     KVAwareRouter,
@@ -43,7 +44,9 @@ def _get_deployment_name(llm_config: LLMConfig) -> str:
     return llm_config.model_id.replace("/", "--").replace(".", "_")
 
 
-def _maybe_attach_kv_router_actor(deployment_options: dict) -> None:
+def _maybe_attach_kv_router_actor(
+    deployment_options: dict, llm_config: LLMConfig
+) -> None:
     """Attach the KVRouterActor which maintains the global KV radix tree
     when the deployment's request router is a KVAwareRouter.
     """
@@ -55,12 +58,12 @@ def _maybe_attach_kv_router_actor(deployment_options: dict) -> None:
     if not issubclass(request_router_config.get_request_router_class(), KVAwareRouter):
         return
 
-    # TODO (jeffreywang): KVRouterActor requires init_kwargs such as block_size.
     deployment_options["deployment_actors"] = [
         *deployment_options.get("deployment_actors", []),
         DeploymentActorConfig(
             name=KV_ROUTER_ACTOR_NAME,
             actor_class=KVRouterActor,
+            init_kwargs={"block_size": derive_kv_block_size(llm_config.engine_kwargs)},
             actor_options={"num_cpus": 0},
         ),
     ]
@@ -107,7 +110,7 @@ def build_llm_deployment(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
 
-    _maybe_attach_kv_router_actor(deployment_options)
+    _maybe_attach_kv_router_actor(deployment_options, llm_config)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
