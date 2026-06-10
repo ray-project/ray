@@ -99,7 +99,15 @@ try:
                 namespace="ray",
                 registry=self.registry,
             )
-            self.metrics_dashboard_mem_uss = Gauge(
+            self.metrics_dashboard_mem_uss_mb = Gauge(
+                "component_uss",
+                "USS usage of all components on the node.",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="mb",
+                namespace="ray",
+                registry=self.registry,
+            )
+            self.metrics_dashboard_mem_uss_bytes = Gauge(
                 "component_uss",
                 "USS usage of all components on the node.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),
@@ -107,7 +115,15 @@ try:
                 namespace="ray",
                 registry=self.registry,
             )
-            self.metrics_dashboard_mem_rss = Gauge(
+            self.metrics_dashboard_mem_rss_mb = Gauge(
+                "component_rss",
+                "RSS usage of all components on the node.",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="mb",
+                namespace="ray",
+                registry=self.registry,
+            )
+            self.metrics_dashboard_mem_rss_bytes = Gauge(
                 "component_rss",
                 "RSS usage of all components on the node.",
                 tuple(COMPONENT_METRICS_TAG_KEYS),

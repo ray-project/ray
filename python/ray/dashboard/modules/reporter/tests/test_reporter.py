@@ -285,6 +285,8 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_total" in metric_names,
             "ray_node_mem_used_host" in metric_names,
             "ray_node_mem_total_host" in metric_names,
+            "ray_component_rss_mb" in metric_names,
+            "ray_component_uss_mb" in metric_names,
             "ray_component_rss_bytes" in metric_names,
             "ray_component_uss_bytes" in metric_names,
             "ray_component_num_fds" in metric_names,
@@ -351,6 +353,8 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
         metric_names = metric_descriptors.keys()
         expected_metrics = [
             "ray_component_cpu_percentage",
+            "ray_component_rss_mb",
+            "ray_component_uss_mb",
             "ray_component_rss_bytes",
             "ray_component_uss_bytes",
             "ray_component_num_fds",

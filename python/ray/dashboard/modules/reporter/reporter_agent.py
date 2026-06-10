@@ -359,17 +359,29 @@ METRICS_GAUGES = {
         "percentage",
         COMPONENT_METRICS_TAG_KEYS,
     ),
-    "component_mem_shared_bytes": Gauge(
-        "component_mem_shared_bytes",
+    "component_shared_bytes": Gauge(
+        "component_shared_bytes",
         "SHM usage of all components of the node. "
         "It is equivalent to the top command's SHR column.",
         "bytes",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
+    "component_rss_mb": Gauge(
+        "component_rss_mb",
+        "RSS usage of all components on the node.",
+        "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_rss_bytes": Gauge(
         "component_rss_bytes",
         "RSS usage of all components on the node.",
         "bytes",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
+    "component_uss_mb": Gauge(
+        "component_uss_mb",
+        "USS usage of all components on the node.",
+        "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_uss_bytes": Gauge(
@@ -1233,7 +1245,14 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
+                gauge=METRICS_GAUGES["component_shared_bytes"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_rss_mb"],
                 value=0.0,
                 tags=tags,
             )
@@ -1241,6 +1260,13 @@ class ReporterAgent(
         records.append(
             Record(
                 gauge=METRICS_GAUGES["component_rss_bytes"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_uss_mb"],
                 value=0.0,
                 tags=tags,
             )
@@ -1324,8 +1350,15 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
+                gauge=METRICS_GAUGES["component_shared_bytes"],
                 value=total_shm_bytes,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_rss_mb"],
+                value=total_shm_bytes / 1.0e6,
                 tags=tags,
             )
         )
@@ -1337,6 +1370,13 @@ class ReporterAgent(
             )
         )
         if total_uss_bytes > 0.0:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_uss_mb"],
+                    value=total_uss_bytes / 1.0e6,
+                    tags=tags,
+                )
+            )
             records.append(
                 Record(
                     gauge=METRICS_GAUGES["component_uss_bytes"],
