@@ -40,8 +40,7 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-triton==3.3.0
-torch==2.7.0
+torch==2.9.0
 torchaudio
 torchmetrics
 # torchtext has no py3.13 wheels (last release 0.18.0 supports up to py3.12)

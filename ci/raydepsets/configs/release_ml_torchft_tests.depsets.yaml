@@ -18,7 +18,7 @@ depsets:
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
       - release/ray_release/byod/requirements_ml_byod_${PYTHON_VERSION}.in
-      - release/ray_release/byod/requirements_ml_torchft.in
+      - python/requirements/ml/py313/torchft.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: release/ray_release/byod/ml_torchft_py${PYTHON_VERSION}.lock
