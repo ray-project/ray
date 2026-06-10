@@ -485,6 +485,135 @@ class TestClusterAutoscaling:
                 result = _get_node_resource_spec_and_count()
                 assert result == expected
 
+    @pytest.mark.parametrize(
+        "nodes,node_groups,subcluster,expected",
+        [
+            pytest.param(
+                # Head node with CPU zeroed out (as configured to avoid
+                # scheduling tasks on the head), plus 2 worker nodes.
+                [
+                    {"resources": {"memory": 32 * GiB, "node:__internal_head__": 1.0}},
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}},
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}},
+                ],
+                [
+                    # Worker group: can scale up to 10 nodes.
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}, "max_count": 10},
+                    # Dedicated head group: matches the head node, max_count == 1.
+                    {"resources": {"memory": 32 * GiB}, "max_count": 1},
+                ],
+                None,
+                # Only the worker shape is present (with the 2 running workers);
+                # the dedicated head group is excluded entirely.
+                {_NodeResourceSpec.of(cpu=8, gpu=0, mem=32 * GiB): 2},
+                id="dedicated_head_group_excluded",
+            ),
+            pytest.param(
+                # Head node group that can also host workers (max_count > 1):
+                # scaling its shape adds a worker, so it must be kept.
+                [
+                    {
+                        "resources": {
+                            "CPU": 4,
+                            "memory": 1000,
+                            "node:__internal_head__": 1.0,
+                        }
+                    }
+                ],
+                [{"resources": {"CPU": 4, "memory": 1000}, "max_count": 3}],
+                None,
+                {_NodeResourceSpec.of(cpu=4, gpu=0, mem=1000): 0},
+                id="head_group_with_workers_kept",
+            ),
+            pytest.param(
+                # Worker group limited to a single node with a shape that does
+                # NOT match the head node: must not be over-excluded.
+                [
+                    {
+                        "resources": {
+                            "CPU": 4,
+                            "memory": 1000,
+                            "node:__internal_head__": 1.0,
+                        }
+                    }
+                ],
+                [
+                    {
+                        "resources": {"CPU": 8, "GPU": 2, "memory": 2000},
+                        "max_count": 1,
+                    }
+                ],
+                None,
+                {_NodeResourceSpec.of(cpu=8, gpu=2, mem=2000): 0},
+                id="single_worker_group_kept",
+            ),
+            pytest.param(
+                # Head + subcluster interaction: the head node has no subcluster
+                # label, and there are workers in two subclusters. Computing for
+                # "training" must drop the dedicated head group (head detection
+                # is global, not subcluster-scoped) and count only the training
+                # workers, ignoring the validation worker.
+                [
+                    {"resources": {"memory": 32 * GiB, "node:__internal_head__": 1.0}},
+                    {
+                        "resources": {"CPU": 8, "memory": 32 * GiB},
+                        "labels": {"__subcluster__": "training"},
+                    },
+                    {
+                        "resources": {"CPU": 8, "memory": 32 * GiB},
+                        "labels": {"__subcluster__": "training"},
+                    },
+                    {
+                        "resources": {"CPU": 4, "memory": 16 * GiB},
+                        "labels": {"__subcluster__": "validation"},
+                    },
+                ],
+                [
+                    {"resources": {"CPU": 8, "memory": 32 * GiB}, "max_count": 10},
+                    {"resources": {"memory": 32 * GiB}, "max_count": 1},
+                ],
+                "training",
+                {_NodeResourceSpec.of(cpu=8, gpu=0, mem=32 * GiB): 2},
+                id="dedicated_head_excluded_and_subcluster_scoped",
+            ),
+        ],
+    )
+    def test_get_node_resource_spec_and_count_head_node_group(
+        self, nodes, node_groups, subcluster, expected
+    ):
+        """The head node must not be scaled up, but worker-capable groups are.
+
+        A node group is only excluded when it's dedicated to the head node
+        (``max_count == 1`` and a shape matching the running head node). Groups
+        that can host workers (``max_count > 1``) or that have a non-head shape
+        are kept so scale-from-zero still works. Head detection spans the whole
+        cluster, while worker counting is scoped to ``subcluster``.
+        """
+        node_table = [
+            {
+                "Resources": node["resources"],
+                "Labels": node.get("labels", {}),
+                "Alive": True,
+            }
+            for node in nodes
+        ]
+
+        cluster_config = autoscaler_pb2.ClusterConfig()
+        for group in node_groups:
+            node_group_config = autoscaler_pb2.NodeGroupConfig()
+            for name, value in group["resources"].items():
+                node_group_config.resources[name] = value
+            node_group_config.max_count = group["max_count"]
+            cluster_config.node_group_configs.append(node_group_config)
+
+        with patch("ray.nodes", return_value=node_table):
+            with patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=cluster_config,
+            ):
+                result = _get_node_resource_spec_and_count(subcluster=subcluster)
+                assert result == expected
+
     def test_get_node_resource_spec_and_count_missing_all_resources(self):
         """Regression test for nodes with empty resources (ie missing CPU, GPU, and memory keys entirely)."""
 

@@ -415,7 +415,7 @@ void NodeManager::RegisterGcs() {
   periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugState();
-        WarnResourceDeadlock();
+        WarnAndGCStuckActors();
       },
       RayConfig::instance().debug_dump_period_milliseconds(),
       "NodeManager.deadline_timer.debug_state_dump");
@@ -827,19 +827,14 @@ void NodeManager::QueryAllWorkerStates(
   }
 }
 
-// This warns users that there could be the resource deadlock. It works this way;
-// - If there's no available workers for scheduling
-// - But if there are still pending leases waiting for resource acquisition
-// It means the cluster might not have enough resources to be in progress.
-// Note that this can print the false negative messages
-// e.g., there are many actors taking up resources for a long time.
-void NodeManager::WarnResourceDeadlock() {
+// This warns users that there could be an actor handle cycle and actors thus can't be
+// recycled. Note that this can print false positive messages e.g., there are many
+// actors taking up resources for a long time.
+void NodeManager::WarnAndGCStuckActors() {
   int pending_actor_creations = 0;
   int pending_leases = 0;
 
-  // Check if any progress is being made on this raylet.
-  if (worker_pool_.IsWorkerAvailableForScheduling()) {
-    // Progress is being made in a lease, don't warn.
+  if (!worker_pool_.AllAliveWorkersAreActors()) {
     resource_deadlock_warned_ = 0;
     return;
   }
