@@ -46,5 +46,29 @@ def test_get_version_without_seq_no():
     assert server.get_version() == -1
 
 
+def test_pull_if_newer_only_returns_strictly_newer_state():
+    server = EnvRunnerStateServer()
+    # Empty server -> nothing to return, regardless of the caller's version.
+    assert server.pull_if_newer(-1) is None
+
+    state = _state(5)
+    server.push(state)
+    # Equal-or-newer caller version -> None, so the (heavy) state is NOT transferred.
+    assert server.pull_if_newer(5) is None
+    assert server.pull_if_newer(6) is None
+    # Older caller version -> the full state, returned verbatim (same object).
+    assert server.pull_if_newer(4) is state
+    assert server.pull_if_newer(-1) is state
+
+
+def test_pull_if_newer_without_seq_no():
+    # A state lacking WEIGHTS_SEQ_NO is treated as version -1 ("no usable version"), so
+    # it is never newer than a caller (EnvRunners start at `_weights_seq_no=0`).
+    server = EnvRunnerStateServer()
+    server.push({"rl_module": "WEIGHTS_OBJ_REF"})
+    assert server.pull_if_newer(0) is None
+    assert server.pull_if_newer(-1) is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

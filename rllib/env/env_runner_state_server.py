@@ -43,6 +43,19 @@ class EnvRunnerStateServer:
         """Returns the latest stored state, or None if nothing has been pushed yet."""
         return self._state
 
+    def pull_if_newer(self, weights_seq_no: int) -> Optional[StateDict]:
+        """Returns the stored state, but only if it is newer than `weights_seq_no`.
+
+        Lets an EnvRunner do its freshness check in a single round-trip: the (heavy)
+        state dict crosses the wire only when there actually is a newer version;
+        otherwise this returns None and the caller keeps its current weights. Reads
+        ``self._state`` exactly once, so it stays lock-free for concurrent pulls.
+        """
+        state = self._state
+        if state is None or state.get(WEIGHTS_SEQ_NO, -1) <= weights_seq_no:
+            return None
+        return state
+
     def get_version(self) -> int:
         """Returns the `WEIGHTS_SEQ_NO` of the stored state, or -1 if empty."""
         if self._state is None:

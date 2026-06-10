@@ -219,20 +219,22 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             window=1,
         )
 
-        # Pull-based weight sync: if a global `EnvRunnerStateServer` is configured, pull
-        # the latest state and apply it only if it is newer than ours.
+        # Pull-based weight sync: if a global `EnvRunnerStateServer` is configured, ask
+        # it for the latest state, transferring it only if it is newer than ours.
         if self._env_runner_state_server is not None:
             try:
-                # Block for the freshest weights; fall back to current ones if the
+                # Single round-trip: the server returns the full state only if it is
+                # newer than ours (else None). Fall back to current weights if the
                 # server is unavailable.
                 with self.metrics.log_time(ENV_RUNNER_STATE_SERVER_PULL_TIMER):
-                    _server_state = ray.get(self._env_runner_state_server.pull.remote())
+                    _server_state = ray.get(
+                        self._env_runner_state_server.pull_if_newer.remote(
+                            self._weights_seq_no
+                        )
+                    )
             except ray.exceptions.RayError:
                 _server_state = None
-            if (
-                _server_state
-                and _server_state.get(WEIGHTS_SEQ_NO, 0) > self._weights_seq_no
-            ):
+            if _server_state is not None:
                 self.set_state(_server_state)
 
         with self.metrics.log_time(SAMPLE_TIMER):
