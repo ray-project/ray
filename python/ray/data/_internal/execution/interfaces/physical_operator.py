@@ -235,10 +235,8 @@ class DataOpTask(OpTask):
         ``object_size`` is looked up via
         ``ray.experimental.get_local_object_locations`` — local-only,
         no RPC. The driver owns every block ref the streaming generator
-        yields, so in the steady state the size is known locally and the
-        budget loop uses it directly. If it isn't (e.g. the block was lost
-        to a node failure), the pair is left pending and retried on a later
-        iteration instead of being consumed.
+        yields, so the size is always known locally; the budget loop uses
+        it directly.
 
         A task whose previously pulled pairs are still awaiting their
         background metadata fetch (``_pending_emit_count > 0``) pulls
@@ -287,28 +285,10 @@ class DataOpTask(OpTask):
                     "block, it means there's an error in the implementation."
                 )
 
-                gen = self._streaming_gen
-                if gen.worker.core_worker.is_object_ref_stream_finished(
-                    gen._generator_ref
-                ):
-                    # The stream is exhausted: `_next_sync` would enter its
-                    # end-of-stream handling, which `ray.get`s the generator's
-                    # return object WITHOUT a timeout to distinguish a normal
-                    # end from a task failure. If that object isn't locally
-                    # available (e.g. it was lost with a dead node), the get
-                    # would block the scheduling thread until reconstruction
-                    # completes — potentially forever on a saturated cluster.
-                    # Probe availability non-blockingly and retry on a later
-                    # iteration if it isn't there yet; the wait also nudges
-                    # the background fetch / lineage reconstruction.
-                    # (Master has the same exposure in a much narrower window
-                    # — between the last metadata fetch and the next probe.)
-                    ready, _ = ray.wait([gen.completed()], timeout=0, fetch_local=True)
-                    if not ready:
-                        break
-
                 try:
-                    self._pending_block_ref = gen._next_sync(timeout_s=0)
+                    self._pending_block_ref = self._streaming_gen._next_sync(
+                        timeout_s=0
+                    )
                 except StopIteration:
                     # Defer firing ``task_done_callback`` until after the
                     # caller's deferred-replay updates
@@ -356,29 +336,23 @@ class DataOpTask(OpTask):
                 self._metadata_ready_callback(self._pending_meta_ref)
 
             # Local size lookup (no RPC). The driver owns every block ref the
-            # streaming generator yields, so in the steady state the
-            # object_size is known locally — it's the value that matches
-            # ``meta.size_bytes`` used by the budget loop.
+            # streaming generator yields, so the object_size is always known
+            # locally — it's the value that matches ``meta.size_bytes`` used
+            # by the budget loop.
             info = get_local_object_locations([self._pending_block_ref]).get(
                 self._pending_block_ref
             )
-            object_size = info.get("object_size") if info is not None else None
-            if object_size is None:
-                # The block's size isn't known — e.g. the object was lost to
-                # a node failure and hasn't been reconstructed yet. Don't
-                # consume the pair: keep it pending and retry on a later
-                # iteration, mirroring the pre-deferred behavior of not
-                # advancing past a pair whose metadata couldn't be fetched
-                # (consuming it would also advance the generator stream to
-                # end-of-stream, whose handling blocks on the generator ref).
-                # Nudge Ray to restore the pair in the background without
-                # blocking the scheduling thread: the zero-timeout wait on
-                # the (tiny) metadata object registers a fetch, and
-                # reconstructing it re-executes the producer task, which
-                # also restores the block. We never pull block data to the
-                # driver.
-                ray.wait([self._pending_meta_ref], timeout=0, fetch_local=True)
-                break
+            assert info is not None, (
+                "Expected the driver to know the location of block "
+                f"{self._pending_block_ref.hex()} yielded by operator "
+                f"'{self._operator_name}'."
+            )
+            object_size = info.get("object_size")
+            assert object_size is not None, (
+                "Expected the driver to know the local object_size of block "
+                f"{self._pending_block_ref.hex()} yielded by operator "
+                f"'{self._operator_name}'."
+            )
 
             # Defer everything: no ray.get inside the loop, no emit,
             # no _last_block_meta update. The caller batch-fetches the
