@@ -31,7 +31,6 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._common.utils import env_float
 from ray._private.ray_constants import (
     env_integer,
 )
@@ -93,32 +92,6 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
 
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 1 * GiB
-)
-
-# Transient heap overhead of finalizing a partition relative to its observed
-# (in-memory) accumulated size: combining shards and an optional sort can hold
-# roughly two copies of the partition at once.
-DEFAULT_HASH_SHUFFLE_FINALIZE_MEMORY_OVERHEAD_FACTOR = env_float(
-    "RAY_DATA_HASH_SHUFFLE_FINALIZE_MEMORY_OVERHEAD_FACTOR", 2.0
-)
-
-# Fraction of a *single node's* memory that concurrently-running finalization
-# tasks placed on that node are allowed to occupy. Finalization is gated against
-# a per-node budget derived from each node's memory and the actual placement of
-# the aggregators running on it (see ``_select_partitions_to_finalize``), which
-# hard-bounds per-node finalization memory pressure rather than bounding it only
-# on average.
-DEFAULT_HASH_SHUFFLE_FINALIZE_MEMORY_BUDGET_FRACTION = env_float(
-    "RAY_DATA_HASH_SHUFFLE_FINALIZE_MEMORY_BUDGET_FRACTION", 0.5
-)
-
-# Max number of finalization tasks a single aggregator may run concurrently.
-# Each finalization materializes a partition (concat + optional sort) in the
-# aggregator's heap, so this caps how much a single aggregator can pile onto its
-# node irrespective of the per-node memory budget below. Must be >= 1 to
-# guarantee forward progress.
-DEFAULT_HASH_SHUFFLE_MAX_CONCURRENT_FINALIZE_TASKS_PER_AGGREGATOR = env_integer(
-    "RAY_DATA_HASH_SHUFFLE_MAX_CONCURRENT_FINALIZE_TASKS_PER_AGGREGATOR", 2
 )
 
 
@@ -520,19 +493,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
     _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
-    _MEMORY_ESTIMATION_SAMPLE_NUM_BUNDLES = 16
-
-    # Finalization memory-gating knobs (env-configurable; see the module-level
-    # ``DEFAULT_HASH_SHUFFLE_FINALIZE_MEMORY_*`` definitions for semantics).
-    _FINALIZE_MEMORY_OVERHEAD_FACTOR = (
-        DEFAULT_HASH_SHUFFLE_FINALIZE_MEMORY_OVERHEAD_FACTOR
-    )
-    _FINALIZE_MEMORY_BUDGET_FRACTION = (
-        DEFAULT_HASH_SHUFFLE_FINALIZE_MEMORY_BUDGET_FRACTION
-    )
-    _FINALIZE_MAX_CONCURRENT_TASKS_PER_AGGREGATOR = (
-        DEFAULT_HASH_SHUFFLE_MAX_CONCURRENT_FINALIZE_TASKS_PER_AGGREGATOR
-    )
 
     def __init__(
         self,
@@ -612,12 +572,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             None if disallow_block_splitting else data_context.target_max_block_size
         )
         self._aggregator_pool: Optional[AggregatorPool] = None
-        self._memory_estimation_sample: Deque[Tuple[int, RefBundle]] = deque()
-        self._memory_estimation_sample_size_bytes: int = 0
-        self._memory_estimation_sample_num_blocks: int = 0
-        self._memory_estimation_sample_max_block_size_bytes: int = 0
-        self._memory_estimation_sample_size_limit_bytes = (
-            data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
+        self._shuffle_started: bool = False
+        self._buffered_input_bundles: DefaultDict[int, Deque[RefBundle]] = defaultdict(
+            deque
         )
 
         # We track the running usage total because iterating
@@ -652,15 +609,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._pending_finalization_partition_ids: Set[int] = set(
             range(target_num_partitions)
         )
-
-        # Per-node memory budgets for concurrently-running finalization tasks,
-        # keyed by node id, alongside the resolved aggregator-id -> node-id
-        # placement. Both are computed lazily (once) when finalization first
-        # begins, then cached. ``None`` until computed; an empty mapping means
-        # placement/node memory couldn't be determined (fall back to count-based
-        # gating only).
-        self._finalize_node_budgets_bytes: Optional[Dict[str, int]] = None
-        self._aggregator_node_ids: Optional[Dict[int, str]] = None
 
         self._output_queue: Deque[RefBundle] = deque()
 
@@ -702,10 +650,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         # TODO move to base class
         self._shuffle_metrics.on_input_received(input_bundle)
 
-        if self._aggregator_pool is None:
-            self._add_memory_estimation_sample(input_bundle, input_index)
-            if self._should_start_aggregator_pool_from_sample():
-                self._start_aggregator_pool_and_replay_sample()
+        if not self._shuffle_started:
+            self._buffered_input_bundles[input_index].append(input_bundle)
+            self._shuffle_metrics.on_input_queued(input_bundle, input_index=input_index)
             return
 
         self._do_add_input_inner(input_bundle, input_index)
@@ -860,80 +807,32 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        if self._aggregator_pool is None:
-            self._start_aggregator_pool_and_replay_sample()
+        self._start_shuffle_from_buffered_inputs()
 
-    def _start_aggregator_pool_and_replay_sample(self) -> None:
-        estimated_dataset_bytes = self._get_runtime_estimated_dataset_size_bytes()
+    def _start_shuffle_from_buffered_inputs(self) -> None:
+        if self._shuffle_started:
+            return
+
+        self._shuffle_started = True
+
+        dataset_bytes = sum(
+            bundle.size_bytes()
+            for bundles in self._buffered_input_bundles.values()
+            for bundle in bundles
+        )
+
         self._aggregator_pool = self._create_aggregator_pool(
-            estimated_dataset_bytes=estimated_dataset_bytes,
+            estimated_dataset_bytes=dataset_bytes,
         )
         self._aggregator_pool.start()
 
-        while self._memory_estimation_sample:
-            input_index, input_bundle = self._memory_estimation_sample.popleft()
-            self._shuffle_metrics.on_input_dequeued(
-                input_bundle, input_index=input_index
-            )
-            self._do_add_input_inner(input_bundle, input_index)
-
-    def _add_memory_estimation_sample(
-        self, input_bundle: RefBundle, input_index: int
-    ) -> None:
-        self._memory_estimation_sample.append((input_index, input_bundle))
-        self._memory_estimation_sample_size_bytes += input_bundle.size_bytes()
-        self._memory_estimation_sample_num_blocks += len(input_bundle.blocks)
-        self._memory_estimation_sample_max_block_size_bytes = max(
-            self._memory_estimation_sample_max_block_size_bytes,
-            max(
-                (entry.metadata.size_bytes for entry in input_bundle.blocks),
-                default=0,
-            ),
-        )
-        self._shuffle_metrics.on_input_queued(input_bundle, input_index=input_index)
-
-    def _should_start_aggregator_pool_from_sample(self) -> bool:
-        if self._partition_size_hint is not None:
-            return True
-
-        return (
-            len(self._memory_estimation_sample)
-            >= self._MEMORY_ESTIMATION_SAMPLE_NUM_BUNDLES
-            or self._memory_estimation_sample_size_bytes
-            >= self._memory_estimation_sample_size_limit_bytes
-        )
-
-    def _get_runtime_estimated_dataset_size_bytes(self) -> Optional[int]:
-        if self._partition_size_hint is not None:
-            return self._partition_size_hint * self._num_partitions
-
-        num_sampled_bundles = len(self._memory_estimation_sample)
-        if num_sampled_bundles == 0:
-            return 0
-
-        if self._inputs_complete:
-            return self._memory_estimation_sample_size_bytes
-
-        num_upstream_outputs = self.upstream_op_num_outputs()
-        if num_upstream_outputs <= 0:
-            return None
-
-        avg_bundle_size_bytes = (
-            self._memory_estimation_sample_size_bytes / num_sampled_bundles
-        )
-        avg_blocks_per_bundle = (
-            self._memory_estimation_sample_num_blocks / num_sampled_bundles
-        )
-        max_block_biased_bundle_size_bytes = (
-            self._memory_estimation_sample_max_block_size_bytes * avg_blocks_per_bundle
-        )
-        estimated_bundle_size_bytes = max(
-            avg_bundle_size_bytes,
-            max_block_biased_bundle_size_bytes,
-        )
-        estimated_num_bundles = max(num_upstream_outputs, num_sampled_bundles)
-
-        return math.ceil(estimated_bundle_size_bytes * estimated_num_bundles)
+        for input_index, bundles in list(self._buffered_input_bundles.items()):
+            while bundles:
+                input_bundle = bundles.popleft()
+                self._shuffle_metrics.on_input_dequeued(
+                    input_bundle, input_index=input_index
+                )
+                self._do_add_input_inner(input_bundle, input_index)
 
     def _get_next_inner(self) -> RefBundle:
         bundle: RefBundle = self._output_queue.popleft()
@@ -1049,42 +948,44 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         num_running_finalizing_tasks = len(self._finalizing_tasks)
         num_remaining_partitions = len(self._pending_finalization_partition_ids)
 
-        # Cap on how many *new* finalization tasks may be launched this round.
+        # Finalization is executed in batches of no more than
+        # `DataContext.max_hash_shuffle_finalization_batch_size` tasks at a time.
         #
-        # `max_hash_shuffle_finalization_batch_size` (defaulting to the number of
-        # aggregators) bounds the concurrent task *count*; on top of that we gate
-        # on a memory budget below (see `_select_partitions_to_finalize`).
-        max_new_tasks = max_batch_size - num_running_finalizing_tasks
+        # Batch size is used as a lever to limit memory pressure on the nodes
+        # where aggregators are run by limiting # of finalization tasks running
+        # concurrently
+        next_batch_size = min(
+            num_remaining_partitions,
+            max_batch_size - num_running_finalizing_tasks,
+        )
 
-        assert max_new_tasks >= 0, (
-            f"Finalization batch size must be >= 0 "
-            f"(got {max_new_tasks}; "
+        assert next_batch_size >= 0, (
+            f"Finalization batch size must be greater than 0 "
+            f"(got {next_batch_size}; "
             f"remaining={num_remaining_partitions}, "
             f"finalizing={num_running_finalizing_tasks}, "
             f"max_batch_size={max_batch_size})"
         )
 
-        if max_new_tasks == 0 or num_remaining_partitions == 0:
+        if next_batch_size == 0:
             return
 
-        # Select the next set of partitions to finalize.
+        # We're sampling randomly next set of partitions to be finalized
+        # to distribute finalization window uniformly across the nodes of the cluster
+        # and avoid effect of "sliding lense" effect where we finalize the batch of
+        # N *adjacent* partitions that may be co-located on the same node:
         #
-        # Finalization materializes each partition (concatenation, plus an
-        # optional sort) in the aggregator's heap. Running too many *large*
-        # finalizations concurrently can exhaust a node's memory irrespective of
-        # the per-aggregator memory reservation (which is sized from an early
-        # sample and frozen at pool creation). We therefore gate finalization
-        # concurrency on a memory budget derived from the *observed* per-partition
-        # sizes accumulated during shuffling (`_partitions_stats`), which are
-        # exact by the time finalization begins -- no estimation required.
-        target_partition_ids = self._select_partitions_to_finalize(
-            max_new_tasks=max_new_tasks,
+        #   - Adjacent partitions i and i+1 are handled by adjacent
+        #   aggregators (since membership is determined as i % num_aggregators)
+        #
+        #   - Adjacent aggregators have high likelihood of running on the
+        #   same node (when num aggregators > num nodes)
+        #
+        # NOTE: This doesn't affect determinism, since this only impacts order
+        #       of finalization (hence not required to be seeded)
+        target_partition_ids = random.sample(
+            list(self._pending_finalization_partition_ids), next_batch_size
         )
-
-        if not target_partition_ids:
-            # Nothing fits the in-flight memory budget yet; wait for running
-            # finalizations to drain. This method is re-invoked as tasks complete.
-            return
 
         logger.debug(
             f"Scheduling partitions {target_partition_ids} for finalization: "
@@ -1096,12 +997,12 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 partition_id
             )
 
-            # NOTE: Per-task memory can't be requested for an actor method, so
-            #       finalization memory pressure is instead bounded by gating how
-            #       many (and how large) partitions finalize concurrently -- see
-            #       `_select_partitions_to_finalize` /
-            #       `_estimate_finalization_memory_req`.
-            finalize_task_resource_bundle = {}
+            # Estimate (heap) memory requirement to execute finalization task
+            # Compose shuffling task resource bundle
+            finalize_task_resource_bundle = {
+                # TODO currently not possible to specify the resources for an actor
+                # "memory": self._estimate_finalization_memory_req(partition_id),
+            }
 
             # Request finalization of the partition
             block_gen = aggregator.finalize.options(
@@ -1140,7 +1041,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
         # Release any pending refs
-        self._memory_estimation_sample.clear()
+        self._buffered_input_bundles.clear()
         self._shuffling_tasks.clear()
         self._finalizing_tasks.clear()
 
@@ -1279,148 +1180,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             input_seq_id: partition_stats_map.get(partition_id)
             for input_seq_id, partition_stats_map in self._partitions_stats.items()
         }
-
-    def _estimate_finalization_memory_req(self, partition_id: int) -> int:
-        """Heap memory required to finalize ``partition_id``.
-
-        Derived from the *observed* per-partition shard sizes accumulated during
-        shuffling (summed across input sequences), scaled by a transient
-        combine/sort overhead factor. These sizes are exact by the time
-        finalization begins, so no estimation/extrapolation is involved.
-        """
-        partition_bytes = sum(
-            stats.byte_size
-            for stats in self._get_partition_stats(partition_id).values()
-            if stats is not None
-        )
-        return math.ceil(partition_bytes * self._FINALIZE_MEMORY_OVERHEAD_FACTOR)
-
-    def _get_aggregator_id_for_partition(self, partition_id: int) -> int:
-        return partition_id % self._num_aggregators
-
-    def _get_finalize_node_budgets_bytes(self) -> Optional[Dict[str, int]]:
-        """Per-node concurrent-finalization memory budgets, keyed by node id.
-
-        Computed once (and cached) from each node's memory and the resolved
-        placement of the aggregators running on it. Returns ``None`` when
-        placement or node memory can't be determined, in which case finalization
-        falls back to count-based gating only.
-        """
-        if self._finalize_node_budgets_bytes is None:
-            self._finalize_node_budgets_bytes = self._compute_finalize_node_budgets()
-        return self._finalize_node_budgets_bytes or None
-
-    def _compute_finalize_node_budgets(self) -> Dict[str, int]:
-        """Resolve aggregator placement and derive each node's finalize budget."""
-        try:
-            if self._aggregator_node_ids is None:
-                assert self._aggregator_pool is not None
-                self._aggregator_node_ids = (
-                    self._aggregator_pool.get_aggregator_node_ids()
-                )
-            node_memory = {
-                node["NodeID"]: node.get("Resources", {}).get("memory", 0)
-                for node in ray.nodes()
-                if node.get("Alive", False)
-            }
-        except Exception as e:
-            logger.warning(
-                f"Failed to derive per-node finalization budgets ({e}); falling "
-                f"back to count-based finalization gating."
-            )
-            return {}
-
-        budgets: Dict[str, int] = {}
-        for node_id in set(self._aggregator_node_ids.values()):
-            node_bytes = node_memory.get(node_id, 0)
-            if node_bytes > 0:
-                budgets[node_id] = math.floor(
-                    node_bytes * self._FINALIZE_MEMORY_BUDGET_FRACTION
-                )
-        return budgets
-
-    def _get_node_id_for_partition(self, partition_id: int) -> Optional[str]:
-        """Node id of the aggregator that will finalize ``partition_id``.
-
-        ``None`` when placement is unknown (gating then ignores node budgets for
-        this partition and relies on the count / per-aggregator caps only).
-        """
-        if not self._aggregator_node_ids:
-            return None
-        return self._aggregator_node_ids.get(
-            self._get_aggregator_id_for_partition(partition_id)
-        )
-
-    def _select_partitions_to_finalize(self, *, max_new_tasks: int) -> List[int]:
-        """Pick the next partitions to finalize, gated per node and per aggregator.
-
-        Partitions are considered in randomized order to spread finalization
-        uniformly across nodes (avoids finalizing a run of adjacent partitions
-        that may be co-located on the same node, since aggregator membership is
-        ``partition_id % num_aggregators``). Order-only randomization -> no
-        determinism impact, hence not seeded.
-
-        A partition is admitted while, on the node hosting its aggregator, the
-        sum of in-flight + already-selected finalization memory stays within that
-        node's budget -- subject to ``max_new_tasks`` concurrent tasks overall and
-        ``_FINALIZE_MAX_CONCURRENT_TASKS_PER_AGGREGATOR`` per aggregator. To
-        guarantee forward progress, at least one partition is always admitted onto
-        an otherwise-idle node, so a partition larger than its node's whole budget
-        still runs (alone, with maximal headroom).
-        """
-        candidates = list(self._pending_finalization_partition_ids)
-        random.shuffle(candidates)
-
-        node_budgets = self._get_finalize_node_budgets_bytes()
-        per_aggregator_cap = self._FINALIZE_MAX_CONCURRENT_TASKS_PER_AGGREGATOR
-
-        # Tally already-running finalizations by hosting node (memory) and by
-        # aggregator (task count).
-        in_flight_bytes_by_node: DefaultDict[Optional[str], int] = defaultdict(int)
-        in_flight_count_by_aggregator: DefaultDict[int, int] = defaultdict(int)
-        for pid in self._finalizing_tasks:
-            in_flight_bytes_by_node[
-                self._get_node_id_for_partition(pid)
-            ] += self._estimate_finalization_memory_req(pid)
-            in_flight_count_by_aggregator[
-                self._get_aggregator_id_for_partition(pid)
-            ] += 1
-
-        selected: List[int] = []
-        scheduled_bytes_by_node: DefaultDict[Optional[str], int] = defaultdict(int)
-        scheduled_count_by_aggregator: DefaultDict[int, int] = defaultdict(int)
-        for partition_id in candidates:
-            if len(selected) >= max_new_tasks:
-                break
-
-            aggregator_id = self._get_aggregator_id_for_partition(partition_id)
-            # Hard per-aggregator concurrency cap (>= 1, so progress is preserved).
-            aggregator_in_flight = (
-                in_flight_count_by_aggregator[aggregator_id]
-                + scheduled_count_by_aggregator[aggregator_id]
-            )
-            if aggregator_in_flight >= per_aggregator_cap:
-                continue
-
-            node_id = self._get_node_id_for_partition(partition_id)
-            node_used = (
-                in_flight_bytes_by_node[node_id] + scheduled_bytes_by_node[node_id]
-            )
-            node_budget = node_budgets.get(node_id) if node_budgets else None
-
-            cost = self._estimate_finalization_memory_req(partition_id)
-            fits = node_budget is None or node_used + cost <= node_budget
-            # Always admit at least one partition onto an idle node so that a
-            # partition larger than the node's whole budget can make progress.
-            node_idle = node_used == 0
-
-            if fits or node_idle:
-                selected.append(partition_id)
-                scheduled_bytes_by_node[node_id] += cost
-                scheduled_count_by_aggregator[aggregator_id] += 1
-            # else: defer this partition to a later finalization round
-
-        return selected
 
     @classmethod
     def _estimate_shuffling_memory_req(
@@ -1866,19 +1625,6 @@ class AggregatorPool:
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]
 
-    def get_aggregator_node_ids(self) -> Dict[int, str]:
-        """Resolve the node each (already-started) aggregator landed on.
-
-        Returns a mapping of ``aggregator_id -> node_id`` (hex). Blocks on a
-        lightweight round-trip to every aggregator, so callers should resolve
-        this once and cache it (placement is stable for the operator's lifetime;
-        actor restarts trigger a full retry of the shuffle).
-        """
-        node_ids: List[str] = ray.get(
-            [aggregator.get_node_id.remote() for aggregator in self._aggregators]
-        )
-        return dict(enumerate(node_ids))
-
     def _allocate_partitions(self, *, num_partitions: int):
         assert num_partitions >= self._num_aggregators
 
@@ -2058,14 +1804,6 @@ class HashShuffleAggregator:
             daemon=True,
         )
         self._bg_thread.start()
-
-    def get_node_id(self) -> str:
-        """Return the hex node id this aggregator is running on.
-
-        Used by the operator to derive per-node finalization memory budgets from
-        actual aggregator placement.
-        """
-        return ray.get_runtime_context().get_node_id()
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         """Accepts a partition shard for accumulation.
