@@ -1596,8 +1596,7 @@ class HAProxyManager(ProxyActorInterface):
 
             desired_backend_servers = {
                 self._generate_backend_name(tg): {
-                    self._generate_server_name(target)
-                    for target in tg.targets
+                    self._generate_server_name(target) for target in tg.targets
                 }
                 for tg in self._target_groups
             }
