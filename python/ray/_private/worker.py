@@ -2804,9 +2804,8 @@ def disconnect(exiting_interpreter=False):
         worker.threads_stopped.clear()
 
         # Ignore the prefix if the logging config is set.
-        # Defend against Windows teardown C++ memory access violation (Issue #62442)
-        import sys
-        if sys.platform == "win32" and exiting_interpreter:
+        # Defend against teardown C++ memory access violations and Python interpreter shutdown issues (Issue #62442)
+        if exiting_interpreter:
             ignore_prefix = False
         else:
             ignore_prefix = worker.job_logging_config is not None
