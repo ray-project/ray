@@ -4183,6 +4183,75 @@ class TestMultiAgentEpisodeCommonInfos(unittest.TestCase):
         self.assertIn("__common__", all_infos)
         self.assertEqual(all_infos["__common__"], [{"round": 0}, {"round": 1}])
 
+    def _build_two_step_episode_with_common(self):
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(
+            observations={"p1": 0, "p2": 0},
+            infos={"p1": {}, "p2": {}, "__common__": {"round": 0}},
+        )
+        episode.add_env_step(
+            observations={"p1": 1, "p2": 1},
+            actions={"p1": 0, "p2": 0},
+            rewards={"p1": 0.0, "p2": 0.0},
+            infos={"p1": {}, "p2": {}, "__common__": {"round": 1}},
+            terminateds={"__all__": False},
+            truncateds={"__all__": False},
+        )
+        return episode
+
+    def test_common_infos_survive_get_state_from_state(self):
+        """``MultiAgentEpisode.get_state`` / ``from_state`` round-trip
+        ``_common_infos`` so checkpointed and remoted episodes retain the
+        cross-agent info history.
+        """
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+
+        episode = self._build_two_step_episode_with_common()
+        restored = MultiAgentEpisode.from_state(episode.get_state())
+        # Buffer contents must round-trip end-to-end.
+        self.assertEqual(restored._common_infos.data, [{"round": 0}, {"round": 1}])
+        # And the user-visible ``get_infos`` path must still surface them.
+        restored_infos = restored.get_infos()
+        self.assertIn("__common__", restored_infos)
+        self.assertEqual(restored_infos["__common__"], [{"round": 0}, {"round": 1}])
+
+    def test_common_infos_survive_concat_episode(self):
+        """``concat_episode`` carries the successor's ``_common_infos`` (minus
+        the seam-overlap entry) onto ``self``.
+        """
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+
+        first = self._build_two_step_episode_with_common()
+        # Cut into a successor and add one more common-info step to it.
+        successor = first.cut()
+        successor.add_env_step(
+            observations={"p1": 2, "p2": 2},
+            actions={"p1": 0, "p2": 0},
+            rewards={"p1": 0.0, "p2": 0.0},
+            infos={"p1": {}, "p2": {}, "__common__": {"round": 2}},
+            terminateds={"__all__": False},
+            truncateds={"__all__": False},
+        )
+        first.concat_episode(successor)
+        # The combined buffer must contain all three common-info rounds in
+        # order with no duplicates from the seam.
+        self.assertEqual(
+            first._common_infos.data,
+            [{"round": 0}, {"round": 1}, {"round": 2}],
+        )
+
+    def test_common_infos_survive_cut(self):
+        """``cut`` propagates the tail of ``_common_infos`` into the
+        successor so the successor's ``get_infos`` sees the boundary
+        entry as expected.
+        """
+        episode = self._build_two_step_episode_with_common()
+        successor = episode.cut(len_lookback_buffer=1)
+        # The successor's buffer must hold the boundary's common entry.
+        self.assertIn({"round": 1}, successor._common_infos.data)
+
 
 if __name__ == "__main__":
     import sys

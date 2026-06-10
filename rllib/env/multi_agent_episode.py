@@ -421,7 +421,9 @@ class MultiAgentEpisode:
         # Capture any cross-agent ("__common__") info dict for this env step
         # so it survives ingestion and can be surfaced from ``get_infos``
         # (#58668). One entry per env_t, ``None`` when not provided.
-        self._common_infos.append(infos.get("__common__"))
+        # ``infos`` is already normalized to ``{}`` above when the caller
+        # passed ``None``; the ``or {}`` here is belt-and-suspenders.
+        self._common_infos.append((infos or {}).get("__common__"))
 
         # Find out, whether this episode is terminated/truncated (for all agents).
         # Case 1: all agents are terminated or all are truncated.
@@ -912,6 +914,14 @@ class MultiAgentEpisode:
         # `custom_data`.
         self.custom_data.update(other.custom_data)
 
+        # Concatenate the cross-agent ("__common__") info buffer. The boundary
+        # entry (env_t at the seam) lives in both ``self`` (as its last entry)
+        # and ``other`` (as its first entry), so skip ``other``'s first entry
+        # to avoid duplicating the seam timestep (mirrors how
+        # ``env_t_to_agent_t`` is concatenated above).
+        for common_info in other._common_infos.data[1:]:
+            self._common_infos.append(common_info)
+
         # Validate.
         self.validate()
 
@@ -1026,6 +1036,19 @@ class MultiAgentEpisode:
 
         # Deepcopy all custom data in `self` to be continued in the cut episode.
         successor._custom_data = copy.deepcopy(self.custom_data)
+
+        # Carry the cross-agent ("__common__") info buffer's tail into the
+        # successor. We mirror how observations/infos handle the seam: take
+        # the last (lookback + 1) entries so the successor sees the same
+        # boundary timestep as the source episode.
+        if len(self._common_infos) > 0:
+            tail = self._common_infos.data[-(len_lookback_buffer + 1) :]
+            successor._common_infos = InfiniteLookbackBuffer(
+                data=list(tail),
+                lookback=min(len_lookback_buffer, len(tail) - 1)
+                if len(tail) > 0
+                else 0,
+            )
 
         return successor
 
@@ -1757,6 +1780,7 @@ class MultiAgentEpisode:
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
             "custom_data": self.custom_data,
+            "_common_infos": self._common_infos.get_state(),
         }
 
     @staticmethod
@@ -1801,6 +1825,16 @@ class MultiAgentEpisode:
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
         episode._custom_data = state.get("custom_data", {})
+
+        # Restore the cross-agent ("__common__") info buffer when present.
+        # ``state.get`` (rather than ``state[...]``) keeps backward
+        # compatibility with state dicts produced before this field
+        # existed; older states simply get an empty buffer.
+        common_infos_state = state.get("_common_infos")
+        if common_infos_state is not None:
+            episode._common_infos = InfiniteLookbackBuffer.from_state(
+                common_infos_state
+            )
 
         # Validate the episode.
         episode.validate()
