@@ -521,8 +521,6 @@ class NormalTaskSubmitterTest : public testing::Test {
   std::shared_ptr<MockRayletClient> raylet_client;
   std::shared_ptr<MockWorkerClient> worker_client;
   InstrumentedIOContextWithThread store_io_context_;
-  // Declared before `store` so it is constructed first and outlives the store,
-  // which holds a reference to it.
   FakeClock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
