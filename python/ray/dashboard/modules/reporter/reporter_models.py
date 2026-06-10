@@ -39,6 +39,18 @@ if PYDANTIC_INSTALLED:
         powerMw: Optional[int] = None  # current power draw in milliwatts
         temperatureC: Optional[int] = None  # temperature in Celsius
 
+    class ProcessTPUInfo(BaseModel):
+        """
+        Information about TPU usage for a single process.
+        NOTE: Backwards compatibility for this model must be maintained.
+        If broken, the downstream dashboard API and UI code will break.
+        If you must make a backwards-incompatible change, you must make sure
+        to update the relevant code in the dashboard API and UI as well.
+        """
+
+        pid: int
+        tpuMemoryUsage: int  # in bytes
+
     class TpuUtilizationInfo(BaseModel):
         """
         TPU utilization information for a single TPU device.
@@ -57,6 +69,7 @@ if PYDANTIC_INSTALLED:
         dutyCycle: float  # percentage
         memoryUsed: int  # in bytes
         memoryTotal: int  # in bytes
+        processesPids: Optional[List[ProcessTPUInfo]] = None
 
     class CpuTimes(BaseModel):
         """

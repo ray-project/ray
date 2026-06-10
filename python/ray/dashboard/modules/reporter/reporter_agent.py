@@ -1,14 +1,16 @@
 import asyncio
 import datetime
+import glob
 import json
 import logging
 import os
+import re
 import socket
 import sys
 import traceback
 from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from grpc.aio import ServicerContext
@@ -64,6 +66,7 @@ from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManag
 from ray.dashboard.modules.reporter.gpu_providers import (
     GpuMetricProvider,
     GpuUtilizationInfo,
+    ProcessTPUInfo,
     TpuUtilizationInfo,
 )
 from ray.dashboard.modules.reporter.profile_manager import (
@@ -761,6 +764,28 @@ class ReporterAgent(
         return self._gpu_metric_provider.get_gpu_usage()
 
     @staticmethod
+    def _get_tpu_pid_mapping() -> Dict[int, int]:
+        """Returns a mapping of TPU chip indices to PIDs using them."""
+        chip_to_pid = {}
+
+        for link in glob.glob("/proc/*/fd/*"):
+            try:
+                target = os.readlink(link)
+            except (FileNotFoundError, OSError):
+                continue
+
+            # Matches /dev/accelN or /dev/vfio/N where N is the chip index.
+            match = re.fullmatch(r"/dev/(?:accel|vfio/)(\d+)", target)
+            if match:
+                chip_index = int(match.group(1))
+                # Extract PID from the /proc/{pid}/fd/... path
+                pid_match = re.match(r"/proc/(\d+)/", link)
+                if pid_match:
+                    chip_to_pid[chip_index] = int(pid_match.group(1))
+
+        return chip_to_pid
+
+    @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:
 
         global enable_tpu_usage_check
@@ -810,6 +835,7 @@ class ReporterAgent(
                             duty_cycle=0.0,
                             memory_used=0,
                             memory_total=0,
+                            processes_pids={},
                         )
                         tpu_utilizations.append(info)
 
@@ -824,6 +850,7 @@ class ReporterAgent(
                             duty_cycle=0.0,
                             memory_used=0,
                             memory_total=0,
+                            processes_pids={},
                         )
                         tpu_utilizations.append(info)
 
@@ -838,6 +865,7 @@ class ReporterAgent(
                             duty_cycle=sample.value,
                             memory_used=0,
                             memory_total=0,
+                            processes_pids={},
                         )
                         tpu_utilizations.append(info)
 
@@ -852,6 +880,7 @@ class ReporterAgent(
                             duty_cycle=0.0,
                             memory_used=sample.value,
                             memory_total=0,
+                            processes_pids={},
                         )
                         tpu_utilizations.append(info)
 
@@ -866,6 +895,7 @@ class ReporterAgent(
                             duty_cycle=0.0,
                             memory_used=0,
                             memory_total=sample.value,
+                            processes_pids={},
                         )
                         tpu_utilizations.append(info)
         except Exception as e:
@@ -877,6 +907,8 @@ class ReporterAgent(
         # sample records together. The aggregated list should be indexed by the
         # TPU accelerator index.
         merged_tpu_utilizations = {}
+
+        pid_mapping = ReporterAgent._get_tpu_pid_mapping()
 
         for info in tpu_utilizations:
             index = int(info.get("index"))
@@ -890,6 +922,15 @@ class ReporterAgent(
                 merged_info["memory_used"] += info.get("memory_used")
                 merged_info["memory_total"] += info.get("memory_total")
             else:
+                # Map TPU index to owner PID found from /proc.
+                processes_pids = {}
+                pid = pid_mapping.get(index)
+                if pid:
+                    processes_pids[pid] = ProcessTPUInfo(
+                        pid=pid,
+                        tpu_memory_usage=0,  # Updated after merging.
+                    )
+
                 merged_info = TpuUtilizationInfo(
                     index=info.get("index"),
                     name=info.get("name"),
@@ -900,12 +941,21 @@ class ReporterAgent(
                     duty_cycle=info.get("duty_cycle"),
                     memory_used=info.get("memory_used"),
                     memory_total=info.get("memory_total"),
+                    processes_pids=processes_pids,
                 )
                 merged_tpu_utilizations[index] = merged_info
 
         sorted_tpu_utilizations = [
             value for _, value in sorted(merged_tpu_utilizations.items())
         ]
+
+        # Since we can assume one PID per TPU device, we can attribute the
+        # entire memory usage of the TPU to that PID.
+        for tpu_info in sorted_tpu_utilizations:
+            if tpu_info.get("processes_pids"):
+                for proc_info in tpu_info["processes_pids"].values():
+                    proc_info["tpu_memory_usage"] = int(tpu_info["memory_used"])
+
         return sorted_tpu_utilizations
 
     @staticmethod
@@ -2021,6 +2071,10 @@ class ReporterAgent(
         for gpu in stats["gpus"]:
             if isinstance(gpu.get("processes_pids"), dict):
                 gpu["processes_pids"] = list(gpu["processes_pids"].values())
+
+        for tpu in stats["tpus"]:
+            if isinstance(tpu.get("processes_pids"), dict):
+                tpu["processes_pids"] = list(tpu["processes_pids"].values())
 
         if StatsPayload is not None:
             stats_dict = dashboard_utils.to_google_style(recursive_asdict(stats))

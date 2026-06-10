@@ -57,6 +57,13 @@ class GpuUtilizationInfo(TypedDict):
     temperature_c: NotRequired[Optional[int]]
 
 
+class ProcessTPUInfo(TypedDict):
+    """Information about TPU usage for a single process."""
+
+    pid: int
+    tpu_memory_usage: Bytes
+
+
 # tpu utilization for google tpu
 class TpuUtilizationInfo(TypedDict):
     index: int
@@ -68,6 +75,7 @@ class TpuUtilizationInfo(TypedDict):
     duty_cycle: Percentage
     memory_used: Bytes
     memory_total: Bytes
+    processes_pids: NotRequired[Optional[Dict[int, ProcessTPUInfo]]]
 
 
 class GpuProvider(abc.ABC):

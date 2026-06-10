@@ -40,6 +40,10 @@ import {
 } from "../pages/node/AcceleratorMemoryColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
+import {
+  acceleratorColumnLabels,
+  getAcceleratorType,
+} from "../util/accelerator";
 import { memoryConverter } from "../util/converter";
 import { useFilter, useSorter } from "../util/hook";
 import OverflowCollapsibleCell from "./OverflowCollapsibleCell";
@@ -170,6 +174,14 @@ const ActorTable = ({
     maxPage,
   } = sliceToPage(sortedActors, pageNo, pageSize ?? 10);
 
+  const hasGpus = Object.values(actors).some(
+    (actor) => actor.gpus && actor.gpus.length > 0,
+  );
+  const hasTpus = Object.values(actors).some(
+    (actor) => actor.tpus && actor.tpus.length > 0,
+  );
+  const acceleratorType = getAcceleratorType(hasGpus, hasTpus);
+
   const columns = [
     { label: "" },
     { label: "ID" },
@@ -281,25 +293,26 @@ const ActorTable = ({
       ),
     },
     {
-      label: "GPU",
+      label: acceleratorColumnLabels[acceleratorType].utilization,
       helpInfo: (
         <Typography>
-          Usage of each GPU device. If no GPU usage is detected, here are the
-          potential root causes:
+          Usage of each accelerator device (e.g. GPU, TPU). If no usage is
+          detected, here are the potential root causes:
           <br />
-          1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
-          and try again. <br />
-          2. Non Nvidia or AMD GPUs are being used.
+          1. Non-accelerator Ray image is used on this node. Switch to an
+          appropriate image and try again. <br />
+          2. Non Nvidia, AMD, or Google TPU accelerators are being used.
           <br />
-          3. pynvml or pyamdsmi module raises an exception.
+          3. pynvml, pyamdsmi, or TPU plugin raises an exception.
         </Typography>
       ),
     },
     {
-      label: "GRAM",
+      label: acceleratorColumnLabels[acceleratorType].memory,
       helpInfo: (
         <Typography>
-          Actor's GRAM usage (from Worker Process). <br />
+          Actor's {acceleratorColumnLabels[acceleratorType].memory} usage (from
+          Worker Process). <br />
         </Typography>
       ),
     },
@@ -547,8 +560,14 @@ const ActorTable = ({
               ["processStats.cpuPercent", "CPU"],
               // Fake attribute key used when sorting by GPU utilization and
               // GRAM usage because aggregate function required on actor key before sorting.
-              [gpuUtilizationSorterKey, "GPU Utilization"],
-              [gramUsageSorterKey, "GRAM Usage"],
+              [
+                gpuUtilizationSorterKey,
+                `${acceleratorColumnLabels[acceleratorType].utilization} Utilization`,
+              ],
+              [
+                gramUsageSorterKey,
+                `${acceleratorColumnLabels[acceleratorType].memory} Usage`,
+              ],
             ]}
             onChange={(val) => setSortKey(val)}
             showAllOption={false}
