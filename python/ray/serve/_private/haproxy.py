@@ -1662,14 +1662,18 @@ class HAProxyManager(ProxyActorInterface):
                 }
                 for tg in self._target_groups
             }
+            fallback_servers = {
+                self._generate_server_name(target)
+                for target in (
+                    self._http_fallback_target,
+                    self._grpc_fallback_target,
+                )
+                if target is not None
+            }
 
             try:
                 stats = await self._haproxy.get_all_stats()
                 ready_backends = set()
-                logger.info(
-                    f"Desired backend servers: {desired_backend_servers}.",
-                    extra={"log_to_stderr": True},
-                )
                 for backend, servers in stats.items():
                     logger.info(
                         f"Backend: {backend} with servers: {servers}.",
@@ -1677,7 +1681,13 @@ class HAProxyManager(ProxyActorInterface):
                     )
                     desired_servers = desired_backend_servers.get(backend, set())
                     for server_name, server in servers.items():
-                        if server_name in desired_servers and server.is_up:
+                        if not server.is_up:
+                            continue
+
+                        if server_name in desired_servers or (
+                            len(desired_servers) == 0
+                            and server_name in fallback_servers
+                        ):
                             ready_backends.add(backend)
                             break
 
@@ -1689,7 +1699,7 @@ class HAProxyManager(ProxyActorInterface):
             except Exception:
                 pass
             if not ready_to_serve:
-                await asyncio.sleep(5)
+                await asyncio.sleep(0.2)
 
     def _is_draining(self) -> bool:
         """Whether is haproxy is in the draining status or not."""
