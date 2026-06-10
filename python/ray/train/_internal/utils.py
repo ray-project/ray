@@ -99,20 +99,20 @@ def count_required_parameters(fn: Callable) -> int:
 
     Examples:
 
-    >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
-    ...    pass
-    >>> count_required_parameters(fn)
-    4
+        >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
+        ...    pass
+        >>> count_required_parameters(fn)
+        4
 
-    >>> fn = lambda: 1
-    >>> count_required_parameters(fn)
-    0
+        >>> fn = lambda: 1
+        >>> count_required_parameters(fn)
+        0
 
-    >>> def fn(config, a, b=1, c=2):
-    ...     pass
-    >>> from functools import partial
-    >>> count_required_parameters(partial(fn, a=0))
-    1
+        >>> def fn(config, a, b=1, c=2):
+        ...     pass
+        >>> from functools import partial
+        >>> count_required_parameters(partial(fn, a=0))
+        1
     """
     params = inspect.signature(fn).parameters.values()
 

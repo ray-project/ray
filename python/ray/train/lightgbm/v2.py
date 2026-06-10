@@ -15,66 +15,66 @@ class LightGBMTrainer(DataParallelTrainer):
 
     Example:
 
-    .. testcode::
-        :skipif: True
+        .. testcode::
+            :skipif: True
 
-        import lightgbm as lgb
+            import lightgbm as lgb
 
-        import ray.data
-        import ray.train
-        from ray.train.lightgbm import (
-            LightGBMTrainer,
-            RayTrainReportCallback,
-            normalize_pandas_for_lightgbm,
-        )
-
-
-        def train_fn_per_worker(config: dict):
-            # (Optional) Add logic to resume training state from a checkpoint.
-            # ray.train.get_checkpoint()
-
-            # 1. Get the dataset shard for the worker and convert to a `lgb.Dataset`
-            train_ds_iter, eval_ds_iter = (
-                ray.train.get_dataset_shard("train"),
-                ray.train.get_dataset_shard("validation"),
-            )
-            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-            train_df = normalize_pandas_for_lightgbm(train_ds.to_pandas())
-            eval_df = normalize_pandas_for_lightgbm(eval_ds.to_pandas())
-            train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
-            eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
-
-            train_set = lgb.Dataset(train_X, label=train_y)
-            eval_set = lgb.Dataset(eval_X, label=eval_y)
-
-            # 2. Run distributed data-parallel training.
-            # `get_network_params` sets up the necessary configurations for LightGBM
-            # to set up the data parallel training worker group on your Ray cluster.
-            params = {
-                "objective": "regression",
-                # Adding the line below is the only change needed
-                # for your `lgb.train` call!
-                **ray.train.lightgbm.get_network_params(),
-            }
-            lgb.train(
-                params,
-                train_set,
-                valid_sets=[eval_set],
-                valid_names=["eval"],
-                callbacks=[RayTrainReportCallback()],
+            import ray.data
+            import ray.train
+            from ray.train.lightgbm import (
+                LightGBMTrainer,
+                RayTrainReportCallback,
+                normalize_pandas_for_lightgbm,
             )
 
-        train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        eval_ds = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32, 32 + 16)]
-        )
-        trainer = LightGBMTrainer(
-            train_fn_per_worker,
-            datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
-        )
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
+
+            def train_fn_per_worker(config: dict):
+                # (Optional) Add logic to resume training state from a checkpoint.
+                # ray.train.get_checkpoint()
+
+                # 1. Get the dataset shard for the worker and convert to a `lgb.Dataset`
+                train_ds_iter, eval_ds_iter = (
+                    ray.train.get_dataset_shard("train"),
+                    ray.train.get_dataset_shard("validation"),
+                )
+                train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
+                train_df = normalize_pandas_for_lightgbm(train_ds.to_pandas())
+                eval_df = normalize_pandas_for_lightgbm(eval_ds.to_pandas())
+                train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
+                eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
+
+                train_set = lgb.Dataset(train_X, label=train_y)
+                eval_set = lgb.Dataset(eval_X, label=eval_y)
+
+                # 2. Run distributed data-parallel training.
+                # `get_network_params` sets up the necessary configurations for LightGBM
+                # to set up the data parallel training worker group on your Ray cluster.
+                params = {
+                    "objective": "regression",
+                    # Adding the line below is the only change needed
+                    # for your `lgb.train` call!
+                    **ray.train.lightgbm.get_network_params(),
+                }
+                lgb.train(
+                    params,
+                    train_set,
+                    valid_sets=[eval_set],
+                    valid_names=["eval"],
+                    callbacks=[RayTrainReportCallback()],
+                )
+
+            train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+            eval_ds = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32, 32 + 16)]
+            )
+            trainer = LightGBMTrainer(
+                train_fn_per_worker,
+                datasets={"train": train_ds, "validation": eval_ds},
+                scaling_config=ray.train.ScalingConfig(num_workers=4),
+            )
+            result = trainer.fit()
+            booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.

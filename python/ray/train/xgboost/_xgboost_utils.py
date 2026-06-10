@@ -177,41 +177,41 @@ class RayTrainReportCallback(RayReportCallback):
 
     Examples:
 
-    Reporting checkpoints and metrics to Ray Tune when running many
-    independent xgboost trials (without data parallelism within a trial).
+        Reporting checkpoints and metrics to Ray Tune when running many
+        independent xgboost trials (without data parallelism within a trial).
 
-    .. testcode::
-        :skipif: True
+        .. testcode::
+            :skipif: True
 
-        import xgboost
+            import xgboost
 
-        from ray.tune import Tuner
-        from ray.train.xgboost import RayTrainReportCallback
+            from ray.tune import Tuner
+            from ray.train.xgboost import RayTrainReportCallback
 
-        def train_fn(config):
-            # Report log loss to Ray Tune after each validation epoch.
-            bst = xgboost.train(
-                ...,
-                callbacks=[
-                    RayTrainReportCallback(
-                        metrics={"loss": "eval-logloss"}, frequency=1
-                    )
-                ],
-            )
+            def train_fn(config):
+                # Report log loss to Ray Tune after each validation epoch.
+                bst = xgboost.train(
+                    ...,
+                    callbacks=[
+                        RayTrainReportCallback(
+                            metrics={"loss": "eval-logloss"}, frequency=1
+                        )
+                    ],
+                )
 
-        tuner = Tuner(train_fn)
-        results = tuner.fit()
+            tuner = Tuner(train_fn)
+            results = tuner.fit()
 
-    Loading a model from a checkpoint reported by this callback.
+        Loading a model from a checkpoint reported by this callback.
 
-    .. testcode::
-        :skipif: True
+        .. testcode::
+            :skipif: True
 
-        from ray.train.xgboost import RayTrainReportCallback
+            from ray.train.xgboost import RayTrainReportCallback
 
-        # Get a `Checkpoint` object that is saved by the callback during training.
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
+            # Get a `Checkpoint` object that is saved by the callback during training.
+            result = trainer.fit()
+            booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     """
 
