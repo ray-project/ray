@@ -115,6 +115,10 @@ def current_ray_pip_specifier(
 ) -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
 
+    Args:
+        logger: Logger used to warn when the running Ray version cannot be
+            detected (e.g. when running a source build).
+
     Returns:
         A string which can be passed to `pip install` to install the
         currently running Ray version, or None if running on a version
@@ -160,7 +164,7 @@ def inject_dependencies(
             environment YAML file.  This dict will be modified and returned.
         py_version: A string representing a Python version to inject
             into the conda dependencies, e.g. "3.7.7"
-        pip_dependencies (List[str]): A list of pip dependencies that
+        pip_dependencies: A list of pip dependencies that
             will be prepended to the list of pip dependencies in
             the conda dict.  If the conda dict does not already have a "pip"
             field, one will be created.

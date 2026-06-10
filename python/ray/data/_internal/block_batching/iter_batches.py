@@ -13,12 +13,12 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
+    iter_threaded,
     resolve_block_refs,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats, _StatsManager
-from ray.data._internal.util import make_async_gen
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -98,6 +98,11 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
+        preserve_order: Whether to maintain the original order that the batches
+            were formed from the blocks (e.g., the input block order).
+            This only takes effect in the case that the format/collate threadpool
+            has more than one thread and the output batches have non-deterministic
+            order.
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -119,6 +124,7 @@ class BatchIterator:
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        preserve_order: bool = False,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
@@ -133,6 +139,7 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
+        self._preserve_order = preserve_order
         self._eager_free = (
             clear_block_after_read and DataContext.get_current().eager_free
         )
@@ -227,27 +234,23 @@ class BatchIterator:
         # Step 5: Finalize the batches (e.g., move to GPU).
         batch_iter = self._finalize_batches(batch_iter)
 
-        # Step 6: Restore the original order of the batches, as the prior
-        # threadpool operations may have reordered the batches non-deterministically.
-        batch_iter = self._restore_original_batch_order(batch_iter)
+        # Step 6 (optional): Restore the original order of the batches
+        # if preserve_order is True, in the case that the format/collate threadpool
+        # shuffles around the batches non-deterministically.
+        if self._preserve_order:
+            batch_iter = self._restore_original_batch_order(batch_iter)
 
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
-        async_batch_iter = make_async_gen(
-            self._ref_bundles,
-            fn=self._pipeline,
-            num_workers=1,
-            preserve_ordering=False,
-            buffer_size=max(self._prefetch_batches, 1),
-        )
+        batch_iter = iter_threaded(self._ref_bundles, fn=self._pipeline)
 
         self.before_epoch_start()
 
         while True:
             with self.get_next_batch_context():
                 try:
-                    batch = next(async_batch_iter)
+                    batch = next(batch_iter)
                 except StopIteration:
                     break
             with self.yield_batch_context(batch):
@@ -330,6 +333,9 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+
+    Returns:
+        An iterator over batches with formatting and collation applied.
     """
 
     def threadpool_computations_format_collate(
@@ -349,11 +355,13 @@ def _format_in_threadpool(
         return formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        collated_iter = make_async_gen(
+        # Output order is non-deterministic across workers and is restored
+        # downstream by `restore_original_order`.
+        collated_iter = iter_threaded(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
-            preserve_ordering=False,
             num_workers=num_threadpool_workers,
+            output_buffer_size=num_threadpool_workers,
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
@@ -417,32 +425,30 @@ def prefetch_batches_locally(
         except StopIteration:
             break
 
-    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
     if stats:
         stats.iter_prefetched_bytes = sum(
-            metadata.size_bytes or 0 for _, metadata in sliding_window
+            entry.metadata.size_bytes or 0 for entry in sliding_window
         )
 
     while sliding_window:
-        block_ref, metadata = sliding_window.popleft()
-        current_window_size -= metadata.num_rows
+        entry = sliding_window.popleft()
+        current_window_size -= entry.metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 next_ref_bundle = get_next_ref_bundle()
-                for block_ref_and_md in next_ref_bundle.blocks:
-                    sliding_window.append(block_ref_and_md)
-                    current_window_size += block_ref_and_md[1].num_rows
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
+                for next_entry in next_ref_bundle.blocks:
+                    sliding_window.append(next_entry)
+                    current_window_size += next_entry.metadata.num_rows
+                prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
             except StopIteration:
                 pass
         if stats:
             stats.iter_prefetched_bytes = sum(
-                metadata.size_bytes or 0 for _, metadata in sliding_window
+                entry.metadata.size_bytes or 0 for entry in sliding_window
             )
-        yield block_ref
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        yield entry.ref
+        trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()
 
 

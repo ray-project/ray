@@ -158,29 +158,34 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
     batch_size = 2
-    batches = list(
-        ds.iter_batches(
-            prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
+    old_preserve_order = ds.context.execution_options.preserve_order
+    try:
+        ds.context.execution_options.preserve_order = True
+        batches = list(
+            ds.iter_batches(
+                prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
+            )
         )
-    )
-    assert all(len(batch) == batch_size for batch in batches)
-    assert len(batches) == math.ceil(
-        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size
-    )
-    assert pd.concat(batches, ignore_index=True).equals(
-        pd.concat(dfs, ignore_index=True)
-    )
+        assert all(len(batch) == batch_size for batch in batches)
+        assert len(batches) == math.ceil(
+            (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size
+        )
+        assert pd.concat(batches, ignore_index=True).equals(
+            pd.concat(dfs, ignore_index=True)
+        )
 
-    # Prefetch more than number of blocks.
-    batches = list(
-        ds.iter_batches(
-            prefetch_batches=len(dfs), batch_size=None, batch_format="pandas"
+        # Prefetch more than number of blocks.
+        batches = list(
+            ds.iter_batches(
+                prefetch_batches=len(dfs), batch_size=None, batch_format="pandas"
+            )
         )
-    )
-    assert len(batches) == len(dfs)
-    for batch, df in zip(batches, dfs):
-        assert isinstance(batch, pd.DataFrame)
-        assert batch.equals(df)
+        assert len(batches) == len(dfs)
+        for batch, df in zip(batches, dfs):
+            assert isinstance(batch, pd.DataFrame)
+            assert batch.equals(df)
+    finally:
+        ds.context.execution_options.preserve_order = old_preserve_order
 
     # Prefetch with ray.wait.
     context = DataContext.get_current()
@@ -575,8 +580,8 @@ def test_iter_internal_ref_bundles(ray_start_regular_shared):
     out = []
     ref_bundle_count = 0
     for ref_bundle in iter_ref_bundles:
-        for block_ref, block_md in ref_bundle.blocks:
-            b = ray.get(block_ref)
+        for entry in ref_bundle.blocks:
+            b = ray.get(entry.ref)
             out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
         ref_bundle_count += 1
     out = sorted(out)

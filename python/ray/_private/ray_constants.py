@@ -279,7 +279,7 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
-
+RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
@@ -540,6 +540,22 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 )
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
+
+# Comma-separated list of event types that are emitted through the Python
+# EventRecorder (One-Event Framework) to the AggregatorAgent.
+# Valid values are the names of EventType entries defined in
+# src/ray/protobuf/public/events_base_event.proto
+# Defaults to PLATFORM_EVENTS if not set.
+RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
+    {
+        t.strip()
+        for t in os.environ.get(
+            "RAY_ENABLE_PYTHON_RAY_EVENT_TYPES", "PLATFORM_EVENT"
+        ).split(",")
+        if t.strip()
+    }
+)
+
 
 # If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`
 # environment to all workers. Ray does this by setting the `py_executable` to the

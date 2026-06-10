@@ -527,6 +527,39 @@ class TestReplicaSlotReservation:
             if not drain_task.done():
                 drain_task.cancel()
 
+    async def test_drain_honors_min_period_then_waits_for_ongoing(self):
+        # The minimum draining period keeps the replica alive (still serving) so
+        # external load balancers deregister it. The drain must not exit until the
+        # period has elapsed AND there are no ongoing requests -- so a request
+        # admitted during the period and still running keeps it alive, instead of
+        # being reset when the replica tears down.
+        replica = FakeServeReplicaForSlotReservation(graceful_shutdown_wait_loop_s=0.02)
+        min_period_s = 0.2
+
+        drain_task = asyncio.create_task(
+            replica._drain_ongoing_requests(min_draining_period_s=min_period_s)
+        )
+        try:
+            # Nothing in flight, but the minimum period has not elapsed yet.
+            await asyncio.sleep(0.1)
+            assert not drain_task.done(), "drain must honor the minimum period"
+
+            # A request becomes ongoing partway through the period.
+            replica._metrics_manager.num_ongoing_requests = 1
+
+            # The period elapses, but the request is still ongoing -> keep waiting.
+            await asyncio.sleep(0.2)
+            assert (
+                not drain_task.done()
+            ), "drain must not exit while a request is still ongoing"
+
+            # Request finishes; only now may the drain complete.
+            replica._metrics_manager.num_ongoing_requests = 0
+            await asyncio.wait_for(drain_task, timeout=1.0)
+        finally:
+            if not drain_task.done():
+                drain_task.cancel()
+
     async def test_direct_ingress_request_is_rejected(self):
         replica = FakeServeReplicaForSlotReservation()
 
