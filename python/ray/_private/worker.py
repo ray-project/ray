@@ -3469,35 +3469,10 @@ def _wait_generators_bulk(
 
             refs_to_fetch_local = collect_missing_local_refs()
             pending_last_indices_in_order = sorted(pending_last_indices)
-            if not refs_to_fetch_local and not pending_last_indices_in_order:
-                break
 
-            wait_on_both = bool(refs_to_fetch_local and pending_last_indices_in_order)
-            if refs_to_fetch_local:
-                local_timeout = timeout_remaining()
-                if wait_on_both and (
-                    local_timeout is None or local_timeout > poll_timeout_s
-                ):
-                    local_timeout = poll_timeout_s
-                if first_iteration or local_timeout is None or local_timeout > 0:
-                    ready_refs, _ = wait(
-                        refs_to_fetch_local,
-                        num_returns=1,
-                        timeout=local_timeout,
-                        fetch_local=True,
-                    )
-                    ready_local_ref_set.update(ready_refs)
-                    collect_ready_results()
-                    if len(result_indices) >= num_return:
-                        break
-
-            if not first_iteration and timed_out():
-                break
-
-            pending_last_indices_in_order = sorted(pending_last_indices)
             if pending_last_indices_in_order:
                 last_timeout = timeout_remaining()
-                if collect_missing_local_refs() and (
+                if refs_to_fetch_local and (
                     last_timeout is None or last_timeout > poll_timeout_s
                 ):
                     last_timeout = poll_timeout_s
@@ -3516,9 +3491,21 @@ def _wait_generators_bulk(
                             ready_last_indices.add(gen_index)
                             pending_last_indices.remove(gen_index)
                     collect_ready_results()
+            elif refs_to_fetch_local:
+                local_timeout = timeout_remaining()
+                if first_iteration or local_timeout is None or local_timeout > 0:
+                    ready_refs, _ = wait(
+                        refs_to_fetch_local,
+                        num_returns=1,
+                        timeout=local_timeout,
+                        fetch_local=True,
+                    )
+                    ready_local_ref_set.update(ready_refs)
+                    collect_ready_results()
+            else:
+                break
 
             first_iteration = False
-
         result = []
         for gen_index in sorted(result_indices):
             generator = ray_generators[gen_index][0]

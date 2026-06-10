@@ -1603,143 +1603,56 @@ Status CoreWorker::WaitAndFetch(const std::vector<ObjectID> &ids,
     }
   }
 
-  const bool wait_forever = timeout_ms < 0;
-  const int64_t deadline_ms = wait_forever ? -1 : current_time_ms() + timeout_ms;
-  const int64_t check_interval_ms =
-      RayConfig::instance().get_check_signal_interval_milliseconds();
-  auto get_remaining_timeout_ms = [&]() -> int64_t {
-    if (wait_forever) {
-      return -1;
-    }
-    return std::max<int64_t>(0, deadline_ms - current_time_ms());
-  };
-  auto get_call_timeout_ms = [&](bool interleave_waits) -> int64_t {
-    const auto remaining_timeout_ms = get_remaining_timeout_ms();
-    if (!interleave_waits) {
-      return remaining_timeout_ms;
-    }
-    if (wait_forever) {
-      return check_interval_ms;
-    }
-    return std::min(remaining_timeout_ms, check_interval_ms);
-  };
-
-  absl::flat_hash_set<ObjectID> ready;
-  absl::flat_hash_set<ObjectID> pending_memory_object_ids(ids.begin(), ids.end());
-  absl::flat_hash_set<ObjectID> known_plasma_object_ids;
+  int64_t start_time = current_time_ms();
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
+  RAY_RETURN_NOT_OK(memory_store_->Wait(
+      memory_object_ids,
+      std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+      timeout_ms,
+      *worker_context_,
+      &ready,
+      &plasma_object_ids));
+  RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+  if (timeout_ms > 0) {
+    timeout_ms =
+        std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+  }
 
-  auto mark_no_fetch_plasma_ready = [&]() {
-    // Plasma objects that do not require a local copy count as ready in input order
-    // until we have num_objects ready.
-    for (size_t i = 0; i < ids.size(); i++) {
-      if (ready.size() >= static_cast<size_t>(num_objects)) {
-        break;
-      }
-      const auto &object_id = ids[i];
-      if (!fetch_local_per_id[i] &&
-          known_plasma_object_ids.find(object_id) != known_plasma_object_ids.end()) {
-        ready.insert(object_id);
-      }
-    }
-  };
-
-  bool first_iteration = true;
-  while (ready.size() < static_cast<size_t>(num_objects)) {
-    if (!first_iteration && !wait_forever && get_remaining_timeout_ms() == 0) {
-      break;
-    }
-
-    std::vector<ObjectID> fetch_ids;
-    fetch_ids.reserve(known_plasma_object_ids.size());
-    for (size_t i = 0; i < ids.size(); i++) {
-      const auto &object_id = ids[i];
-      if (fetch_local_per_id[i] &&
-          known_plasma_object_ids.find(object_id) != known_plasma_object_ids.end() &&
-          ready.find(object_id) == ready.end()) {
-        fetch_ids.push_back(object_id);
-      }
-    }
-
-    const bool interleave_waits =
-        !pending_memory_object_ids.empty() && !fetch_ids.empty();
-
-    if (!pending_memory_object_ids.empty()) {
-      absl::flat_hash_set<ObjectID> memory_ready;
-      absl::flat_hash_set<ObjectID> memory_plasma_object_ids;
-      RAY_RETURN_NOT_OK(memory_store_->Wait(pending_memory_object_ids,
-                                            /*num_objects=*/1,
-                                            get_call_timeout_ms(interleave_waits),
-                                            *worker_context_,
-                                            &memory_ready,
-                                            &memory_plasma_object_ids));
-
-      for (const auto &object_id : memory_ready) {
-        pending_memory_object_ids.erase(object_id);
-        if (ready.size() < static_cast<size_t>(num_objects)) {
-          ready.insert(object_id);
-        }
-      }
-      for (const auto &object_id : memory_plasma_object_ids) {
-        pending_memory_object_ids.erase(object_id);
-        known_plasma_object_ids.insert(object_id);
-      }
-      mark_no_fetch_plasma_ready();
-    }
-
+  // Plasma objects that do not require a local copy count as ready in input order
+  // until we have num_objects ready.
+  for (size_t i = 0; i < ids.size(); i++) {
     if (ready.size() >= static_cast<size_t>(num_objects)) {
       break;
     }
-
-    fetch_ids.clear();
-    for (size_t i = 0; i < ids.size(); i++) {
-      const auto &object_id = ids[i];
-      if (fetch_local_per_id[i] &&
-          known_plasma_object_ids.find(object_id) != known_plasma_object_ids.end() &&
-          ready.find(object_id) == ready.end()) {
-        fetch_ids.push_back(object_id);
-      }
+    const auto &object_id = ids[i];
+    if (!fetch_local_per_id[i] &&
+        plasma_object_ids.find(object_id) != plasma_object_ids.end()) {
+      ready.insert(object_id);
     }
-    if (!fetch_ids.empty()) {
-      const int num_to_fetch =
-          std::min(static_cast<int>(fetch_ids.size()),
-                   num_objects - static_cast<int>(ready.size()));
-      auto owner_addresses = reference_counter_->GetOwnerAddresses(fetch_ids);
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(fetch_ids,
-                                                     owner_addresses,
-                                                     num_to_fetch,
-                                                     get_call_timeout_ms(
-                                                         !pending_memory_object_ids.empty()),
-                                                     *worker_context_,
-                                                     &ready));
-    } else if (pending_memory_object_ids.empty()) {
-      break;
-    }
-
-    first_iteration = false;
   }
 
-  RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-
-  // Start pulling known plasma objects that require a local copy even if
-  // num_objects is already satisfied, matching ray.wait(fetch_local=True)'s
-  // prefetch behavior.
+  // Pull objects that require a local copy. When any key still has fetch_local=true,
+  // issue plasma wait (possibly with num_to_fetch == 0) to start local pulls even if
+  // num_objects is already satisfied (same prefetch idea as ray.wait fetch_local=true).
   std::vector<ObjectID> fetch_ids;
-  fetch_ids.reserve(known_plasma_object_ids.size());
+  fetch_ids.reserve(plasma_object_ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     const auto &object_id = ids[i];
     if (fetch_local_per_id[i] &&
-        known_plasma_object_ids.find(object_id) != known_plasma_object_ids.end() &&
-        ready.find(object_id) == ready.end()) {
+        plasma_object_ids.find(object_id) != plasma_object_ids.end()) {
       fetch_ids.push_back(object_id);
     }
   }
   if (!fetch_ids.empty()) {
+    const int num_to_fetch =
+        std::min(static_cast<int>(fetch_ids.size()),
+                 std::max(0, num_objects - static_cast<int>(ready.size())));
     auto owner_addresses = reference_counter_->GetOwnerAddresses(fetch_ids);
-    absl::flat_hash_set<ObjectID> prefetched;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-        fetch_ids, owner_addresses, 0, 0, *worker_context_, &prefetched));
+        fetch_ids, owner_addresses, num_to_fetch, timeout_ms, *worker_context_, &ready));
   }
+  RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
   for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {
