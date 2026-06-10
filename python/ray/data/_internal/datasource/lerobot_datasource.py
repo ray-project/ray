@@ -18,6 +18,10 @@ shipped to workers via ``ray.put``.
 import enum
 import json
 import logging
+import os
+import shutil
+import tempfile
+import weakref
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -37,9 +41,6 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 import ray
-from ray.data._internal.datasource._lerobot_patch import (
-    apply_lerobot_fsspec_patches,
-)
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -263,56 +264,72 @@ def _stats_to_json(stats: Optional[dict]) -> str:
 def _load_lerobot_metadata(
     root: Union[str, Path], storage_options: Optional[Dict[str, Any]] = None
 ) -> "LeRobotDatasetMetadata":
-    """Construct a pristine :class:`lerobot.LeRobotDatasetMetadata` for
-    *root*, applying the fsspec patch first so cloud URIs work.
+    """Construct a pristine :class:`lerobot.LeRobotDatasetMetadata` for *root*.
 
-    Pre-validates that ``meta/info.json`` exists at *root* before invoking
-    lerobot, so missing-dataset errors stay as ``FileNotFoundError`` rather
-    than getting transformed into HuggingFace Hub validation errors by
-    lerobot's local-then-Hub fallback logic.
+    lerobot's metadata loader only reads local paths. For a local *root* we point
+    it straight at the dataset; for a remote/URI *root* we materialize the small
+    ``meta/`` tree (info/tasks/episodes/stats — KBs to a few MB) into a temp dir
+    via ``fsspec`` and load from there. Either way lerobot's *own* parser runs —
+    no reimplementation, no monkeypatch — which keeps us robust across lerobot
+    versions.
 
-    *storage_options* is forwarded to ``fsspec`` for the existence check and
-    captured by the patched metadata loader for its own reads.
+    Pre-validates that ``meta/info.json`` exists at *root* so a missing dataset
+    stays a clean ``FileNotFoundError`` rather than getting transformed into a
+    HuggingFace Hub validation error by lerobot's local-then-Hub fallback.
+
+    *storage_options* is forwarded to ``fsspec`` for the existence check and the
+    metadata copy.
     """
     import fsspec
 
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
-    apply_lerobot_fsspec_patches()
     root_uri = str(root).rstrip("/")
     storage_options = dict(storage_options or {})
 
     fs, fs_root = fsspec.core.url_to_fs(root_uri, **storage_options)
     fs_root = fs_root.rstrip("/")
-    info_path = f"{fs_root}/meta/info.json"
-    if not fs.exists(info_path):
+    if not fs.exists(f"{fs_root}/meta/info.json"):
         raise FileNotFoundError(
             f"No LeRobot dataset found at {root_uri!r}: meta/info.json is missing. "
             "Make sure the path points to the dataset root."
         )
 
-    # repo_id is decorative for read-only use: it appears only in error
-    # messages and as the HF Hub fallback target when files are missing.
-    # We pass the root itself so any fallback fails clearly.
-    return LeRobotDatasetMetadata(
-        repo_id=root_uri, root=root_uri, storage_options=storage_options
-    )
+    # repo_id is decorative for read-only use (error messages / HF Hub fallback
+    # target); we pass the root itself so any fallback fails clearly.
+    if "://" not in root_uri:
+        # Local path: lerobot reads it directly.
+        return LeRobotDatasetMetadata(repo_id=root_uri, root=root_uri)
+
+    # Remote URI: copy meta/ locally and let lerobot parse the local copy.
+    local_root = tempfile.mkdtemp(prefix="ray_data_lerobot_")
+    fs.get(f"{fs_root}/meta", os.path.join(local_root, "meta"), recursive=True)
+    meta = LeRobotDatasetMetadata(repo_id=root_uri, root=local_root)
+    # lerobot may read meta files lazily, and `meta` is exposed via
+    # ``source.meta``; drop the temp copy when the object is garbage-collected.
+    weakref.finalize(meta, shutil.rmtree, local_root, ignore_errors=True)
+    return meta
 
 
 def _build_root(
     meta: "LeRobotDatasetMetadata",
+    root: Union[str, Path],
     storage_options: Optional[Dict[str, Any]] = None,
     frame_tolerance_s: Optional[float] = None,
 ) -> _LeRobotRoot:
     """Compute the per-root derived state bundle for a (pristine) lerobot
     ``LeRobotDatasetMetadata`` instance.  Does not mutate *meta*.
 
+    *root* is the original dataset location (where data + video files live). For
+    a remote root ``meta.root`` points at a local temp copy of ``meta/`` only, so
+    data/video paths must be resolved against *root* — not ``meta.root``.
+
     *storage_options* is forwarded to ``fsspec`` and captured on the returned
     :class:`_LeRobotRoot` so workers reuse the same credentials.
     """
     import fsspec
 
-    root_uri = str(meta.root).rstrip("/")
+    root_uri = str(root).rstrip("/")
     storage_options = dict(storage_options or {})
 
     # In lerobot 0.5.x, meta.info is a dict; accessing meta.video_path
@@ -420,11 +437,12 @@ class _LeRobotReadTask(ReadTask):
         2. For each camera, group rows by their video file (``(chunk, file)``
            tuple from the episode metadata), compute the per-row absolute
            timestamp (``from_timestamp[ep] + row_ts``), and batch-decode one
-           video file at a time via :func:`lerobot.datasets.video_utils.decode_video_frames`.
+           video file at a time via the torchcodec helper in ``_lerobot_compat``.
         3. Yield Arrow batches of ``self._rows_per_batch`` rows.
         """
         import fsspec
-        from lerobot.datasets.video_utils import decode_video_frames
+
+        from ray.data._internal.datasource._lerobot_compat import decode_frames
 
         fs, _ = fsspec.core.url_to_fs(root.root, **root.storage_options)
 
@@ -444,9 +462,7 @@ class _LeRobotReadTask(ReadTask):
         # full's row order.
         decoded_frames: dict = {}
         if root.video_keys:
-            decoded_frames = self._decode_video_frames(
-                root, full, decode_video_frames
-            )
+            decoded_frames = self._decode_video_frames(root, full, decode_frames)
 
         # 3. Emit Arrow batches.
         task_idx_pylist = full.column("task_index").to_pylist()
@@ -479,9 +495,8 @@ class _LeRobotReadTask(ReadTask):
         """Decode all video frames for ``full``, batched per video file.
 
         Returns ``{video_key: list[np.ndarray HWC uint8]}`` aligned to
-        ``full``'s row order.  Uses ``decode_fn`` (typically the patched
-        :func:`lerobot.datasets.video_utils.decode_video_frames`) which
-        handles both local paths and cloud URIs.
+        ``full``'s row order.  ``decode_fn`` (``_lerobot_compat.decode_frames``)
+        streams from local paths and fsspec cloud URIs via torchcodec.
         """
         n_rows = full.num_rows
         ep_idx_col = full.column("episode_index").to_pylist()
@@ -798,8 +813,8 @@ class LeRobotDatasource(Datasource):
         # driver and shipped to workers via ray.put — workers don't need
         # lerobot installed at runtime.
         self._roots: List[_LeRobotRoot] = [
-            _build_root(m, self._storage_options, self._frame_tolerance_s)
-            for m in self.metas
+            _build_root(m, r, self._storage_options, self._frame_tolerance_s)
+            for m, r in zip(self.metas, roots)
         ]
 
         if isinstance(partitioning, LeRobotPartitioning):

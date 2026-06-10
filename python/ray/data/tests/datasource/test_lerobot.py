@@ -292,6 +292,29 @@ def test_read_lerobot_frame_tolerance_invalid(
         LeRobotDatasource(lerobot_dataset_no_video, frame_tolerance_s=0)
 
 
+def test_read_lerobot_file_uri(ray_start_regular_shared, lerobot_dataset):
+    """A ``file://`` URI exercises the remote metadata-copy + torchcodec decode
+    path (the non-local branch) end to end, using only local files."""
+    ds = ray.data.read_lerobot("file://" + lerobot_dataset)
+    assert ds.count() == 15
+
+    rows = ds.take(1)
+    assert len(rows) == 1
+    frame = np.asarray(rows[0]["observation.image"], dtype=np.uint8)
+    assert frame.size == FRAME_H * FRAME_W * FRAME_C
+
+
+def test_lerobot_compat_warns_when_lerobot_supports_storage_options(monkeypatch):
+    """When lerobot gains native storage_options support, the compat shim warns
+    (so it gets removed) rather than silently switching to the native path."""
+    from ray.data._internal.datasource import _lerobot_compat as compat
+
+    monkeypatch.setattr(compat, "_native_storage_options", lambda: True)
+    monkeypatch.setattr(compat, "_WARNED_NATIVE_AVAILABLE", False)
+    with pytest.warns(RuntimeWarning, match="no longer necessary"):
+        compat._warn_if_native_available()
+
+
 def test_read_lerobot_sequential(ray_start_regular_shared, lerobot_dataset):
     """Test SEQUENTIAL partitioning."""
     from ray.data.datasource import LeRobotPartitioning
