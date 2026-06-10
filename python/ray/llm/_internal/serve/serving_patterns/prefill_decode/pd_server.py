@@ -551,6 +551,25 @@ class PDPrefillServer(LLMServer):
     method used during the pre-warm handshake.
     """
 
+    async def record_replica_metadata(self) -> Dict[str, Any]:
+        """Publish this prefill replica's connector coordination metadata.
+
+        Read by the decode orchestrator via the replica-metadata hook
+        (``ReplicaSelection.replica_metadata``) so peer-binding connectors (e.g.
+        MoRIIO) can address the selected prefill replica. Returns ``{}`` for
+        connectors that publish nothing (the ``BaseConnectorBackend`` default).
+
+        Returns the metadata of the backend that engine init
+        (``setup_engine_backend``) created, ``setup()``-ed, and stored on this
+        server's ``_llm_config``. The replica-metadata hook is captured after
+        engine init, so for connector deployments the backend is present by
+        then; with no backend stored there is nothing to publish.
+        """
+        backend = getattr(self._llm_config, "kv_connector_backend", None)
+        if backend is None:
+            return {}
+        return backend.replica_metadata()
+
     async def prewarm_prefill(
         self, prefill_request: CompletionRequest
     ) -> Optional[dict]:

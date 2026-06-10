@@ -159,6 +159,19 @@ class BaseConnectorBackend(abc.ABC):
         """
         pass
 
+    def replica_metadata(self) -> Dict[str, Any]:
+        """Static per-replica coordination data published to the orchestrator.
+
+        Surfaced via the replica-metadata hook on ``ReplicaSelection`` so that a
+        connector opting into ``requires_peer_binding`` can address the selected
+        prefill peer. The default backend publishes nothing; connectors that need
+        to advertise an address (e.g. MoRIIO's zmq endpoint) override this.
+
+        Returns:
+            A JSON-serializable dict of per-replica metadata (empty by default).
+        """
+        return {}
+
 
 class DefaultPDProtocolMixin:
     """The default P/D protocol policy: no peer binding, sequential handoff.
