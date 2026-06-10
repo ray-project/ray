@@ -705,7 +705,7 @@ def test_get_tpu_usage(tmp_path):
 
             expected_utilizations = [
                 TpuUtilizationInfo(
-                    index="0",
+                    index=0,
                     name="1234-0",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -716,7 +716,7 @@ def test_get_tpu_usage(tmp_path):
                     memory_total=4000,
                 ),
                 TpuUtilizationInfo(
-                    index="1",
+                    index=1,
                     name="1234-1",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -775,9 +775,9 @@ def test_get_tpu_usage_idle_and_duplicates(tmp_path):
             # Should have 4 unique TPUs
             assert len(tpu_utilizations) == 4
             # Verify mapping (10 mapped to 0, 11 to 1, etc.)
-            assert tpu_utilizations[0]["index"] == "0"
+            assert tpu_utilizations[0]["index"] == 0
             assert tpu_utilizations[0]["memory_total"] == 4000
-            assert tpu_utilizations[3]["index"] == "3"
+            assert tpu_utilizations[3]["index"] == 3
             assert tpu_utilizations[3]["memory_total"] == 4000
 
 

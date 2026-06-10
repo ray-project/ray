@@ -807,7 +807,7 @@ class ReporterAgent(
                         continue
                     labels = sample.labels
                     accelerator_id = labels["accelerator_id"]
-                    index = accelerator_id.split("-")[1]
+                    index = int(accelerator_id.split("-")[1])
 
                     info = TpuUtilizationInfo(
                         index=index,
@@ -848,8 +848,8 @@ class ReporterAgent(
             logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
             return []
 
-        desired_indices = sorted({int(i["index"]) for i in tpu_utilizations_host})
-        rewrite_indices = sorted({int(i["index"]) for i in tpu_utilizations_other})
+        desired_indices = sorted({i["index"] for i in tpu_utilizations_host})
+        rewrite_indices = sorted({i["index"] for i in tpu_utilizations_other})
 
         # Some TPU types do not have runtime metrics reported from the device
         # plugin and the rewrite_indices list will be empty.
@@ -860,7 +860,7 @@ class ReporterAgent(
                 )
                 return []
 
-            index_map = dict(zip(map(str, rewrite_indices), map(str, desired_indices)))
+            index_map = dict(zip(rewrite_indices, desired_indices))
             for info in tpu_utilizations_other:
                 info["index"] = index_map[info["index"]]
 
