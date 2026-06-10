@@ -290,14 +290,15 @@ frontend grpc_frontend
 backend grpc_fallback_backend
     mode http
     log global
-    # gRPC health check: POST a Healthz request over HTTP/2 and require the
-    # success marker in the response body. HAProxy can't inspect HTTP/2
-    # trailers (where gRPC carries grpc-status), so instead rely on the
-    # response body to contain the healthy message.
-    option httpchk
-    http-check connect proto h2
-    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr Host ray-serve-grpc hdr content-type application/grpc hdr te trailers
-    http-check expect string {{ healthy_message }}
+    # gRPC health check: replay a complete unary `Healthz` request via
+    # `tcp-check send-binary` and match the healthy message in the response.
+    # `http-check` can't be used because its body is truncated at the first NUL
+    # byte and a gRPC frame always starts with the NUL compression flag, so the
+    # server would get a message-less unary and stall until timeout.
+    option tcp-check
+    tcp-check connect
+    tcp-check send-binary {{ hc.grpc_healthcheck_request_hex }}
+    tcp-check expect binary {{ hc.grpc_healthcheck_expect_hex }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to the fallback gRPC server.
     server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
@@ -329,14 +330,15 @@ backend {{ backend.name or 'unknown' }}
     {%- if backend.timeout_client_s is not none %}
     timeout client {{ backend.timeout_client_s }}s
     {%- endif %}
-    # gRPC health check: POST a Healthz request over HTTP/2 and require the
-    # success marker in the response body. HAProxy can't inspect HTTP/2
-    # trailers (where gRPC carries grpc-status), so instead rely on the
-    # response body to contain the healthy message.
-    option httpchk
-    http-check connect proto h2
-    http-check send meth POST uri {{ hc.health_path }} ver HTTP/2.0 hdr Host ray-serve-grpc hdr content-type application/grpc hdr te trailers
-    http-check expect string {{ healthy_message }}
+    # gRPC health check: replay a complete unary `Healthz` request via
+    # `tcp-check send-binary` and match the healthy message in the response.
+    # `http-check` can't be used because its body is truncated at the first NUL
+    # byte and a gRPC frame always starts with the NUL compression flag, so the
+    # server would get a message-less unary and stall until timeout.
+    option tcp-check
+    tcp-check connect
+    tcp-check send-binary {{ hc.grpc_healthcheck_request_hex }}
+    tcp-check expect binary {{ hc.grpc_healthcheck_expect_hex }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
     {%- for server in backend.servers %}

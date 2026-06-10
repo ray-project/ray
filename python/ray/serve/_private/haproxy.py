@@ -355,6 +355,57 @@ class HealthRouteInfo:
     routes_content_type: str = "application/json"
 
 
+def build_grpc_healthcheck_request_hex(path: str) -> str:
+    """Build the raw HTTP/2 bytes for a unary gRPC health-check request.
+
+    HAProxy's `http-check` cannot health-check a gRPC server: `http-check send`
+    truncates its body at the first NUL byte, and a gRPC length-prefixed message
+    always begins with the NUL compression-flag byte. With no message frame, the
+    server receives a message-less unary call and stalls until the check times
+    out. We therefore drive the check via `tcp-check send-binary`, which emits
+    exact bytes (NUL included), replaying a complete gRPC request: the HTTP/2
+    connection preface, an empty SETTINGS frame, a HEADERS frame (HPACK literal,
+    no Huffman/dynamic table), and a DATA frame carrying an empty message
+    (`00 00 00 00 00`) with END_STREAM. The peer responds with the real
+    `Healthz` body, which `tcp-check expect binary` matches against the healthy
+    message. Returns the request as a hex string for `tcp-check send-binary`.
+    """
+
+    def hpack_str(s: str) -> bytes:
+        b = s.encode()
+        # Literal string, no Huffman; lengths here are always < 127.
+        assert len(b) < 127, f"header value too long for simple HPACK: {s!r}"
+        return bytes([len(b)]) + b
+
+    def hpack_header(name: str, value: str) -> bytes:
+        # 0x00 = literal header field without indexing, new name.
+        return b"\x00" + hpack_str(name) + hpack_str(value)
+
+    def h2_frame(frame_type: int, flags: int, stream_id: int, payload: bytes) -> bytes:
+        return (
+            len(payload).to_bytes(3, "big")
+            + bytes([frame_type, flags])
+            + stream_id.to_bytes(4, "big")
+            + payload
+        )
+
+    preface = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    settings = h2_frame(0x4, 0x0, 0, b"")  # empty SETTINGS
+    headers_block = b"".join(
+        [
+            hpack_header(":method", "POST"),
+            hpack_header(":scheme", "http"),
+            hpack_header(":path", path),
+            hpack_header(":authority", "ray-serve-grpc"),
+            hpack_header("te", "trailers"),
+            hpack_header("content-type", "application/grpc"),
+        ]
+    )
+    headers = h2_frame(0x1, 0x4, 1, headers_block)  # END_HEADERS (not END_STREAM)
+    data = h2_frame(0x0, 0x1, 1, b"\x00\x00\x00\x00\x00")  # empty msg, END_STREAM
+    return (preface + settings + headers + data).hex()
+
+
 @dataclass
 class ServerConfig:
     """Configuration for a single server."""
@@ -511,10 +562,22 @@ class BackendConfig:
 
         default_server_directive = "default-server " + " ".join(parts)
 
-        return {
+        result = {
             "health_path": health_path,
             "default_server_directive": default_server_directive,
         }
+
+        # gRPC backends are health-checked via `tcp-check send-binary` (see
+        # build_grpc_healthcheck_request_hex for why `http-check` can't be used).
+        # Precompute the request bytes and the expected response marker so the
+        # template just emits them.
+        if self.protocol == RequestProtocol.GRPC:
+            result["grpc_healthcheck_request_hex"] = build_grpc_healthcheck_request_hex(
+                health_path
+            )
+            result["grpc_healthcheck_expect_hex"] = HEALTHY_MESSAGE.encode().hex()
+
+        return result
 
     def __str__(self) -> str:
         return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, ingress_request_router_servers={self.ingress_request_router_servers}, fallback_server={self.fallback_server}, protocol={self.protocol.value})"
@@ -1052,8 +1115,7 @@ class HAProxyApi(ProxyApi):
                 for backend in http_backends
             ]
 
-            # gRPC backends use TCP-level health checks because direct-ingress
-            # gRPC servers don't expose an HTTP healthz path.
+            # Enrich gRPC backends with precomputed health check configuration strings
             grpc_backends_with_health_config = [
                 {
                     "backend": backend,
@@ -1604,7 +1666,9 @@ class HAProxyManager(ProxyActorInterface):
             try:
                 stats = await self._haproxy.get_all_stats()
                 ready_backends = set()
+                logger.info(f"Desired backend servers: {desired_backend_servers}.", extra={"log_to_stderr": True})
                 for backend, servers in stats.items():
+                    logger.info(f"Backend: {backend} with servers: {servers}.", extra={"log_to_stderr": True})
                     desired_servers = desired_backend_servers.get(backend, set())
                     for server_name, server in servers.items():
                         if server_name in desired_servers and server.is_up:
