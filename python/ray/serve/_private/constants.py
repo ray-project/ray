@@ -752,6 +752,16 @@ RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
 )
 
+# HAProxy close-spread-time (seconds; None = directive omitted): a soft-stopping
+# worker spreads closing its idle frontend connections over this window instead
+# of holding them until hard-stop-after. Size
+# hard-stop-after >= close-spread-time + max request duration.
+RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S")
+    else None
+)
+
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
 # can fire reloads tens of ms apart.
