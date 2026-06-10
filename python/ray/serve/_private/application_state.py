@@ -1319,7 +1319,7 @@ class ApplicationStateManager:
 
         Args:
             name: application name
-            deployment_args_list: arguments for deploying a list of deployments.
+            deployment_args: arguments for deploying a list of deployments.
             application_args: application arguments.
         """
         self.deploy_apps({name: deployment_args}, {name: application_args})
@@ -1739,7 +1739,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
@@ -1749,7 +1748,8 @@ def override_deployment_info(
             to {actor_name: serialized_actor_class_bytes} for each deployment
             actor, produced by the build task
 
-    Returns: the updated deployment infos.
+    Returns:
+        The updated deployment infos.
 
     Raises:
         ValueError: If config options have invalid values.

@@ -5,6 +5,7 @@ FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
 COPY python/requirements/llm/patches/vllm-trial-import-patch ./
+COPY python/requirements/llm/patches/vllm-cuda-visible-devices-patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
@@ -39,6 +40,9 @@ uv pip install --system --no-cache-dir --no-deps \
 # Temporarily patch fixes from https://github.com/vllm-project/vllm/pull/39873
 # until the pinned vLLM release includes it.
 VLLM_IMPORT_UTILS_PATCH="$(pwd)/vllm-trial-import-patch"
+# Fix RayExecutorV2 GPU collision when multiple engines share a node.
+# Remove this patch once https://github.com/vllm-project/vllm/pull/44466 is merged.
+VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/vllm-cuda-visible-devices-patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -62,6 +66,7 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_IMPORT_UTILS_PATCH}"
+    git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
 )
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
