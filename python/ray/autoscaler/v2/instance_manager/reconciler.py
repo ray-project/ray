@@ -275,7 +275,8 @@ class Reconciler:
             6. Install ray
               (ALLOCATED -> RAY_INSTALLING)
                 When ray could be installed and launched.
-            7. Handle any stuck instances with timeouts.
+            7. Reconcile IM instances whose ray nodes are missing from GCS.
+            8. Handle any stuck instances with timeouts.
 
         Args:
             autoscaling_state: The autoscaling state populated by this reconcile loop.
@@ -291,6 +292,11 @@ class Reconciler:
             autoscaling_config: The autoscaling config.
             _logger: The logger (for testing).
         """
+
+        Reconciler._handle_missing_ray_nodes(
+            instance_manager=instance_manager,
+            ray_nodes=ray_cluster_resource_state.node_states,
+        )
 
         Reconciler._handle_stuck_instances(
             instance_manager=instance_manager,
@@ -902,6 +908,65 @@ class Reconciler:
         return all_to_launch
 
     @staticmethod
+    def _handle_missing_ray_nodes(
+        instance_manager: InstanceManager,
+        ray_nodes: List[NodeState],
+    ) -> None:
+        """
+        Reconcile IM instances that still point at ray nodes missing from GCS.
+
+        GCS is the source of truth for Ray node liveness. A worker instance in
+        RAY_RUNNING / RAY_STOP_REQUESTED / RAY_STOPPING with a node_id should
+        have a corresponding entry in the GCS node snapshot. If the node is
+        absent entirely, GCS has either GC'd its DEAD entry or otherwise no
+        longer considers the ray node alive. Treat this the same as a stopped ray
+        node so the instance can continue through the existing RAY_STOPPED ->
+        TERMINATING path instead of lingering as RAY_RUNNING with a stale
+        node_id.
+
+        We intentionally skip the head node here. During head startup/restart,
+        GCS can be reachable while the head raylet is not present in
+        ClusterResourceState yet; head-node recovery is outside this worker
+        cleanup path.
+
+        Args:
+            instance_manager: The instance manager to reconcile.
+            ray_nodes: The ray cluster's view of ray nodes from GCS.
+        """
+        statuses_requiring_ray_node = {
+            IMInstance.RAY_RUNNING,
+            IMInstance.RAY_STOP_REQUESTED,
+            IMInstance.RAY_STOPPING,
+        }
+        im_instances, version = Reconciler._get_im_instances(instance_manager)
+        candidates = [
+            instance
+            for instance in im_instances
+            if instance.status in statuses_requiring_ray_node
+            and instance.node_kind != NodeKind.HEAD
+            and instance.node_id
+        ]
+        if not candidates:
+            return
+
+        ray_node_ids = {binary_to_hex(n.node_id) for n in ray_nodes}
+
+        updates = {}
+        for instance in candidates:
+            if instance.node_id in ray_node_ids:
+                continue
+
+            updates[instance.instance_id] = IMInstanceUpdateEvent(
+                instance_id=instance.instance_id,
+                new_instance_status=IMInstance.RAY_STOPPED,
+                details=f"ray node {instance.node_id} no longer found in GCS",
+                ray_node_id=instance.node_id,
+                instance_type=instance.instance_type,
+            )
+
+        Reconciler._update_instance_manager(instance_manager, version, updates)
+
+    @staticmethod
     def _handle_stuck_instances(
         instance_manager: InstanceManager,
         reconcile_config: InstanceReconcileConfig,
@@ -998,8 +1063,9 @@ class Reconciler:
 
         # If we tried to stop ray on the instance, but it doesn't stop after a long
         # time, we will transition it back to RAY_RUNNING as the stop/drain somehow
-        # failed. If it had succeed, we should have transitioned it to RAY_STOPPING
-        # or RAY_STOPPED.
+        # failed. Instances whose ray node has already disappeared from GCS are moved
+        # to RAY_STOPPED earlier by _handle_missing_ray_nodes, so anything still in
+        # RAY_STOP_REQUESTED here genuinely failed to drain.
         for instance in instances_by_status[IMInstance.RAY_STOP_REQUESTED]:
             update = Reconciler._handle_stuck_instance(
                 instance,
@@ -1270,13 +1336,41 @@ class Reconciler:
 
         im_instances, version = Reconciler._get_im_instances(instance_manager)
         updates = {}
+        statuses_to_terminate = {
+            IMInstance.RAY_STOPPED,
+            IMInstance.ALLOCATION_TIMEOUT,
+            IMInstance.RAY_INSTALL_FAILED,
+            IMInstance.TERMINATION_FAILED,
+        }
+        inactive_statuses = statuses_to_terminate | {
+            IMInstance.TERMINATED,
+            IMInstance.ALLOCATION_FAILED,
+        }
+        # A RAY_STOPPED row can be stale after a raylet restart on the same
+        # cloud instance. If another active IM row still owns that cloud
+        # instance, clean up only the stale row without terminating the cloud.
+        active_cloud_instance_ids = {
+            instance.cloud_instance_id
+            for instance in im_instances
+            if instance.cloud_instance_id and instance.status not in inactive_statuses
+        }
         for instance in im_instances:
-            if instance.status not in [
-                IMInstance.RAY_STOPPED,
-                IMInstance.ALLOCATION_TIMEOUT,
-                IMInstance.RAY_INSTALL_FAILED,
-                IMInstance.TERMINATION_FAILED,
-            ]:
+            if instance.status not in statuses_to_terminate:
+                continue
+
+            if (
+                instance.status == IMInstance.RAY_STOPPED
+                and instance.cloud_instance_id in active_cloud_instance_ids
+            ):
+                updates[instance.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance.instance_id,
+                    new_instance_status=IMInstance.TERMINATED,
+                    details=(
+                        "marking stale instance record as terminated from "
+                        f"{IMInstance.InstanceStatus.Name(instance.status)} "
+                        "without terminating its cloud instance"
+                    ),
+                )
                 continue
 
             # Terminate the instance.
