@@ -33,7 +33,6 @@ from ray.exceptions import (
     LocalRayletDiedError,
     NodeDiedError,
     ObjectFetchTimedOutError,
-    ObjectFreedError,
     ObjectLostError,
     ObjectReconstructionFailedError,
     ObjectRefStreamEndOfStreamError,
@@ -499,10 +498,6 @@ class SerializationContext:
                 return NodeDiedError(error_info.error_message)
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value("OBJECT_FREED"):
-                return ObjectFreedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("OWNER_DIED"):

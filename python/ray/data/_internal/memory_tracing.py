@@ -1,4 +1,4 @@
-"""Utility for debugging object store memory eager deletion in Datasets.
+"""Utility for debugging object store memory usage in Datasets.
 
 NOTE: the performance overhead of tracing object allocation is fairly substantial.
 This is meant to use in unit test for debugging. Please do not enable in production,
@@ -7,11 +7,11 @@ without performance optimization.
 Enable with RAY_DATA_TRACE_ALLOCATIONS=1.
 
 Basic usage is to call `trace_allocation` each time a new object is created, and call
-`trace_deallocation` when an object should be disposed of. When the workload is
+`trace_deallocation` when an object is no longer needed. When the workload is
 complete, call `leak_report` to view possibly leaked objects.
 
 Note that so called "leaked" objects will be reclaimed eventually by reference counting
-in Ray. This is just to debug the eager deletion protocol which is more efficient.
+in Ray. This is just to surface objects that Ray Data is holding longer than expected.
 """
 
 from io import StringIO
@@ -35,21 +35,20 @@ def trace_allocation(ref: ray.ObjectRef, loc: str) -> None:
         ray.get(tracer.trace_alloc.remote([ref], loc))
 
 
-def trace_deallocation(ref: ray.ObjectRef, loc: str, free: bool = True) -> None:
-    """Record that an object has been deleted (and delete if free=True).
+def trace_deallocation(ref: ray.ObjectRef, loc: str, freed: bool = True) -> None:
+    """Record that an object is no longer needed by Ray Data.
 
     Args:
         ref: The object we no longer need.
         loc: A human-readable string identifying the call site.
-        free: Whether to eagerly destroy the object instead of waiting for Ray
-            reference counting to kick in.
+        freed: Whether Ray Data owns this object and is dropping its reference
+            (so it can be reclaimed by reference counting). Used only for memory
+            tracing / leak reporting; objects are never eagerly deleted.
     """
-    if free:
-        ray._private.internal_api.free(ref, local_only=False)
     ctx = DataContext.get_current()
     if ctx.trace_allocations:
         tracer = _get_mem_actor()
-        ray.get(tracer.trace_dealloc.remote([ref], loc, free))
+        ray.get(tracer.trace_dealloc.remote([ref], loc, freed))
 
 
 def leak_report() -> str:

@@ -85,10 +85,6 @@ python/ray/_private/inspect_util.py
     DOC107: Function `is_static_method`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC201: Function `is_static_method` does not have a return section in docstring
 --------------------
-python/ray/_private/internal_api.py
-    DOC111: Function `free`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC201: Function `free` does not have a return section in docstring
---------------------
 python/ray/_private/metrics_agent.py
     DOC101: Method `OpenCensusProxyCollector.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OpenCensusProxyCollector.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [component_timeout_s: int].

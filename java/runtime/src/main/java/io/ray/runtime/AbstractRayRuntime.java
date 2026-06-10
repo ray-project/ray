@@ -55,7 +55,6 @@ import io.ray.runtime.utils.parallelactor.ParallelActorContextImpl;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,16 +126,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     }
     LOGGER.debug("Getting Objects {}.", objectIds);
     return objectStore.get(objectIds, objectType, timeoutMs);
-  }
-
-  @Override
-  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly) {
-    List<ObjectId> objectIds =
-        objectRefs.stream()
-            .map(ref -> ((ObjectRefImpl<?>) ref).getId())
-            .collect(Collectors.toList());
-    LOGGER.debug("Freeing Objects {}, localOnly = {}.", objectIds, localOnly);
-    objectStore.delete(objectIds, localOnly);
   }
 
   @Override

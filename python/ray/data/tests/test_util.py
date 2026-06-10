@@ -224,11 +224,12 @@ def test_memory_tracing(enabled):
     trace_allocation(ref1, "test1")
     trace_allocation(ref2, "test2")
     trace_allocation(ref3, "test5")
-    trace_deallocation(ref1, "test3", free=False)
-    trace_deallocation(ref2, "test4", free=True)
+    trace_deallocation(ref1, "test3", freed=False)
+    trace_deallocation(ref2, "test4", freed=True)
+    # Objects are no longer eagerly freed; both remain retrievable. The `freed`
+    # flag only affects how the deallocation is recorded for the leak report.
     ray.get(ref1)
-    with pytest.raises(ray.exceptions.ObjectFreedError):
-        ray.get(ref2)
+    ray.get(ref2)
     report = leak_report()
     print(report)
 

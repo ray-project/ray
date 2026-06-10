@@ -13,7 +13,6 @@ from ray.data.block import (
     Schema,
     _take_first_non_empty_schema,
 )
-from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
@@ -201,17 +200,19 @@ class RefBundle:
         return total
 
     def destroy_if_owned(self) -> int:
-        """Clears the object store memory for these blocks if owned.
+        """Records that these blocks are no longer needed for memory tracing.
+
+        Objects are reclaimed by Ray reference counting once no references remain;
+        this only records the deallocation for memory tracing / leak reporting.
 
         Returns:
-            The number of bytes freed.
+            The number of bytes freed (always 0; objects are not eagerly deleted).
         """
-        should_free = self.owns_blocks and DataContext.get_current().eager_free
         for block_ref in self.block_refs:
             trace_deallocation(
-                block_ref, "RefBundle.destroy_if_owned", free=should_free
+                block_ref, "RefBundle.destroy_if_owned", freed=self.owns_blocks
             )
-        return self.size_bytes() if should_free else 0
+        return 0
 
     def get_preferred_object_locations(self) -> Dict[NodeIdStr, int]:
         """Returns a mapping of node IDs to total bytes stored on each node.

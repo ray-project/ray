@@ -62,7 +62,6 @@ class CoreWorkerServiceHandlerProxy : public rpc::CoreWorkerServiceHandler {
   RAY_CORE_WORKER_RPC_PROXY(RegisterMutableObjectReader)
   RAY_CORE_WORKER_RPC_PROXY(GetCoreWorkerStats)
   RAY_CORE_WORKER_RPC_PROXY(LocalGC)
-  RAY_CORE_WORKER_RPC_PROXY(DeleteObjects)
   RAY_CORE_WORKER_RPC_PROXY(SpillObjects)
   RAY_CORE_WORKER_RPC_PROXY(RestoreSpilledObjects)
   RAY_CORE_WORKER_RPC_PROXY(DeleteSpilledObjects)

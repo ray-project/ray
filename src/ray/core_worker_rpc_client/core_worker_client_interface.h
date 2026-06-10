@@ -91,9 +91,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void LocalGC(const LocalGCRequest &request,
                        const ClientCallback<LocalGCReply> &callback) = 0;
 
-  virtual void DeleteObjects(const DeleteObjectsRequest &request,
-                             const ClientCallback<DeleteObjectsReply> &callback) = 0;
-
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) = 0;
 

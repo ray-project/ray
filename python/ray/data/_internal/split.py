@@ -205,14 +205,11 @@ def _split_all_blocks(
             all_blocks_split_results[block_id] = zip(block_refs, meta)
 
     # We make a copy for the blocks that have been splitted, so the input blocks
-    # can be cleared if they are owned by consumer (consumer-owned blocks will
-    # only be consumed by the owner).
-    if owned_by_consumer:
-        for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks")
-    else:
-        for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks", free=False)
+    # can be released if they are owned by consumer (consumer-owned blocks will
+    # only be consumed by the owner). This only records the deallocation for
+    # memory tracing; reclamation is handled by Ray reference counting.
+    for b in blocks_splitted:
+        trace_deallocation(b, "split._split_all_blocks", freed=owned_by_consumer)
 
     return itertools.chain.from_iterable(all_blocks_split_results)
 

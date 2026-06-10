@@ -1538,48 +1538,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
-Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
-  absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
-  absl::flat_hash_map<WorkerID, rpc::Address> addresses;
-  // Group by owner id.
-  for (const auto &obj_id : object_ids) {
-    auto owner_address = GetOwnerAddressOrDie(obj_id);
-    auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
-    by_owner[worker_id].push_back(obj_id);
-    addresses[worker_id] = owner_address;
-  }
-  // Send a batch delete call per owner id.
-  for (const auto &entry : by_owner) {
-    if (entry.first != worker_context_->GetWorkerID()) {
-      RAY_LOG(INFO).WithField(entry.first)
-          << "Deleting remote objects " << entry.second.size();
-      auto conn = core_worker_client_pool_->GetOrConnect(addresses[entry.first]);
-      rpc::DeleteObjectsRequest request;
-      for (const auto &obj_id : entry.second) {
-        request.add_object_ids(obj_id.Binary());
-      }
-      request.set_local_only(local_only);
-      conn->DeleteObjects(
-          request,
-          [object_ids](const Status &status, const rpc::DeleteObjectsReply &reply) {
-            if (status.ok()) {
-              RAY_LOG(INFO) << "Completed object delete request " << status;
-            } else {
-              RAY_LOG(ERROR) << "Failed to delete objects, status: " << status
-                             << ", object IDs: " << debug_string(object_ids);
-            }
-          });
-    }
-  }
-  // Also try to delete all objects locally.
-  Status status = DeleteImpl(object_ids, local_only);
-  if (status.IsIOError()) {
-    return Status::UnexpectedSystemExit(status.ToString());
-  } else {
-    return status;
-  }
-}
-
 Status CoreWorker::GetLocationFromOwner(
     const std::vector<ObjectID> &object_ids,
     int64_t timeout_ms,
@@ -4131,39 +4089,6 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
     send_reply_callback(
         Status::NotImplemented("GC callback not defined"), nullptr, nullptr);
   }
-}
-
-void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
-                                     rpc::DeleteObjectsReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  std::vector<ObjectID> object_ids;
-  for (const auto &obj_id : request.object_ids()) {
-    object_ids.push_back(ObjectID::FromBinary(obj_id));
-  }
-  auto status = DeleteImpl(object_ids, request.local_only());
-  send_reply_callback(status, nullptr, nullptr);
-}
-
-Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
-  // Release the object from plasma. This does not affect the object's ref
-  // count. If this was called from a non-owning worker, then a warning will be
-  // logged and the object will not get released.
-  reference_counter_->FreePlasmaObjects(object_ids);
-
-  // Store an error in the in-memory store to indicate that the plasma value is
-  // no longer reachable.
-  memory_store_->Delete(object_ids);
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
-    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),
-                       object_id,
-                       reference_counter_->HasReference(object_id));
-  }
-
-  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
-  // objects can only be deleted once the ref count goes to 0.
-  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
 void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,

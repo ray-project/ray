@@ -133,9 +133,7 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
-        self._eager_free = (
-            clear_block_after_read and DataContext.get_current().eager_free
-        )
+        self._clear_block_after_read = clear_block_after_read
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
@@ -162,7 +160,7 @@ class BatchIterator:
             prefetcher=self._prefetcher,
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
-            eager_free=self._eager_free,
+            clear_block_after_read=self._clear_block_after_read,
             stats=self._stats,
         )
 
@@ -366,7 +364,7 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
-    eager_free: bool = False,
+    clear_block_after_read: bool = False,
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
@@ -379,7 +377,8 @@ def prefetch_batches_locally(
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
-        eager_free: Whether to eagerly free the object reference from the object store.
+        clear_block_after_read: Whether Ray Data owns the blocks and drops its
+            references after reading (recorded for memory tracing only).
         stats: Dataset stats object used to store ref bundle retrieval time.
     """
 
@@ -440,7 +439,7 @@ def prefetch_batches_locally(
                 entry.metadata.size_bytes or 0 for entry in sliding_window
             )
         yield entry.ref
-        trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
+        trace_deallocation(entry.ref, loc="iter_batches", freed=clear_block_after_read)
     prefetcher.stop()
 
 

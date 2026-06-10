@@ -97,9 +97,6 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
   void LocalGC(const LocalGCRequest &request,
                const ClientCallback<LocalGCReply> &callback) override {}
 
-  void DeleteObjects(const DeleteObjectsRequest &request,
-                     const ClientCallback<DeleteObjectsReply> &callback) override {}
-
   void SpillObjects(const SpillObjectsRequest &request,
                     const ClientCallback<SpillObjectsReply> &callback) override {}
 
