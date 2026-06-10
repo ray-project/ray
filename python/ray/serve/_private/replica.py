@@ -1923,9 +1923,9 @@ class Replica:
         """Wait until the minimum draining period has elapsed and no ongoing
         requests remain.
 
-        The period is folded into the loop (not slept concurrently) so a request
-        admitted during it -- before load balancers deregister this replica --
-        becomes ongoing and is waited for, not reset at teardown.
+        The minimum draining period gives load balancers time to deregister
+        this replica; a request admitted during it becomes ongoing and is
+        waited for like any other.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
         deadline = time.monotonic() + min_draining_period_s
