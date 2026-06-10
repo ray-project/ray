@@ -1382,6 +1382,12 @@ class Replica:
         # servers shut down gracefully, and any request that still arrives is
         # served to completion (rejecting it would surface a client-visible
         # error rather than a safe retry).
+        # NOTE: this only quiesces callers that support rejection
+        # (`handle_request_with_rejection` / `reserve_slot`). Callers of the
+        # non-rejection paths (`handle_request`, `handle_request_streaming`)
+        # cannot retry a rejection, so they are deliberately still accepted;
+        # the graceful inter-deployment server stop below serves them to
+        # completion before the replica exits.
         if self._quiescing and not request_metadata.is_direct_ingress:
             return False
 
@@ -1995,6 +2001,22 @@ class Replica:
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
+        # Budget for the whole graceful shutdown, mirroring the deadline after
+        # which the controller force-kills this replica (see
+        # `DeploymentReplica.stop`). Each quiesce step below consumes from the
+        # remaining budget so the graceful close never runs past the
+        # controller's force-kill deadline; once the budget is exhausted, the
+        # steps degrade to the previous (abrupt) close behavior.
+        shutdown_budget_s = self._deployment_config.graceful_shutdown_timeout_s
+        if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress:
+            shutdown_budget_s = max(
+                shutdown_budget_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+            )
+        shutdown_deadline = time.monotonic() + shutdown_budget_s
+
+        def remaining_grace_s() -> float:
+            return max(0.0, shutdown_deadline - time.monotonic())
+
         # If the replica was never initialized it never served traffic, so we
         # can skip the drain entirely.
         if self._user_callable_initialized:
@@ -2019,7 +2041,6 @@ class Replica:
         # connections are closed cleanly. This guarantees the subsequent
         # `ray.kill` from the controller can't sever an in-flight request.
         self._quiescing = True
-        grace_period_s = self._deployment_config.graceful_shutdown_timeout_s
 
         if self._direct_ingress_http_server is not None:
             # Graceful shutdown: stop accepting new connections, close idle
@@ -2030,12 +2051,13 @@ class Replica:
                 # On timeout, `wait_for` cancels the server task, which
                 # matches the previous (abrupt) close behavior.
                 await asyncio.wait_for(
-                    self._direct_ingress_http_server_task, timeout=grace_period_s
+                    self._direct_ingress_http_server_task,
+                    timeout=remaining_grace_s(),
                 )
             except asyncio.TimeoutError:
                 logger.warning(
                     "Direct ingress HTTP server didn't shut down gracefully "
-                    f"within {grace_period_s}s; closing it abruptly."
+                    "within the graceful shutdown budget; closing it abruptly."
                 )
             except Exception:
                 logger.exception("Error shutting down the direct ingress HTTP server.")
@@ -2043,9 +2065,12 @@ class Replica:
             self._direct_ingress_http_server_task.cancel()
 
         if self._direct_ingress_grpc_server is not None:
-            # Stops accepting new RPCs immediately and waits up to
-            # `grace_period_s` for in-flight RPCs to finish.
-            await self._direct_ingress_grpc_server.stop(grace_period_s)
+            # Stops accepting new RPCs immediately and waits up to the
+            # remaining grace period for in-flight RPCs to finish.
+            try:
+                await self._direct_ingress_grpc_server.stop(remaining_grace_s())
+            except Exception:
+                logger.exception("Error shutting down the direct ingress gRPC server.")
         if self._direct_ingress_grpc_server_task:
             self._direct_ingress_grpc_server_task.cancel()
 
@@ -2053,8 +2078,16 @@ class Replica:
         # Without this, the replica keeps accepting and executing handle
         # requests until the controller's `ray.kill`, severing whatever is
         # in flight at that instant.
+        # NOTE: `self._server` is always constructed in `__init__` but only
+        # started in `_on_initialized` (which sets `_internal_grpc_port`), so
+        # gate on the port to avoid stopping a never-started server.
         if self._internal_grpc_port is not None:
-            await self._server.stop(grace_period_s)
+            try:
+                await self._server.stop(remaining_grace_s())
+            except Exception:
+                logger.exception(
+                    "Error shutting down the inter-deployment gRPC server."
+                )
 
         await self.shutdown()
 

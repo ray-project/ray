@@ -152,13 +152,19 @@ class TestPerformGracefulShutdown:
 
         assert fake._shutting_down is True
         assert fake._quiescing is True
-        assert events == [
-            ("drain", 0.0),
-            ("http_should_exit", True),
-            ("direct_ingress_grpc_stop", 1.0),
-            ("inter_deployment_stop", 1.0),
-            ("shutdown",),
+        assert [e[0] for e in events] == [
+            "drain",
+            "http_should_exit",
+            "direct_ingress_grpc_stop",
+            "inter_deployment_stop",
+            "shutdown",
         ]
+        # The grace passed to each stop is the REMAINING shutdown budget at
+        # that step (deadline-based), so it must be positive and within the
+        # configured budget.
+        for name, *args in events:
+            if name.endswith("_stop"):
+                assert 0.0 < args[0] <= 1.0
         # The direct ingress gRPC server task is cancelled after the
         # graceful stop completes.
         assert grpc_task.cancel.called
@@ -195,10 +201,10 @@ class TestPerformGracefulShutdown:
         await Replica.perform_graceful_shutdown(fake)
 
         assert http_task.cancel.called
-        assert events == [
-            ("drain", 0.0),
-            ("inter_deployment_stop", 1.0),
-            ("shutdown",),
+        assert [e[0] for e in events] == [
+            "drain",
+            "inter_deployment_stop",
+            "shutdown",
         ]
 
     @pytest.mark.asyncio
