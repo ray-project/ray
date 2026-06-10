@@ -18,6 +18,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
+    ObjectStoreUsage,
     OpTask,
     estimate_total_num_of_blocks,
 )
@@ -110,15 +111,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
-
-    # Map outputs are pipeline-internal shuffle shards: they will be
-    # consumed by the immediately-downstream ShuffleReduceOp and spill
-    # cleanly to disk if plasma fills up.  Excluding them from the
-    # framework's plasma budget prevents downstream ops (Reduce, Write)
-    # from being starved by transient shuffle intermediates — matching
-    # the actor-pool shuffle's behavior where shards live in process
-    # memory and never appear in plasma accounting.
-    exclude_from_plasma_accounting: bool = True
 
     def __init__(
         self,
@@ -523,6 +515,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             cpu=self._map_resource_usage.cpu,
             memory=self._map_resource_usage.memory,
         )
+
+    def estimate_object_store_usage(self, state) -> ObjectStoreUsage:
+        return ObjectStoreUsage(internal=0, outputs=0)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         # Memory ask should match what `_submit_shuffle_map_task` declares
