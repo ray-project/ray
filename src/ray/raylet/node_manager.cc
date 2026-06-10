@@ -415,7 +415,7 @@ void NodeManager::RegisterGcs() {
   periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugState();
-        WarnResourceDeadlock();
+        WarnAndGCStuckActors();
       },
       RayConfig::instance().debug_dump_period_milliseconds(),
       "NodeManager.deadline_timer.debug_state_dump");
@@ -827,19 +827,14 @@ void NodeManager::QueryAllWorkerStates(
   }
 }
 
-// This warns users that there could be the resource deadlock. It works this way;
-// - If there's no available workers for scheduling
-// - But if there are still pending leases waiting for resource acquisition
-// It means the cluster might not have enough resources to be in progress.
-// Note that this can print the false negative messages
-// e.g., there are many actors taking up resources for a long time.
-void NodeManager::WarnResourceDeadlock() {
+// This warns users that there could be an actor handle cycle and actors thus can't be
+// recycled. Note that this can print false positive messages e.g., there are many
+// actors taking up resources for a long time.
+void NodeManager::WarnAndGCStuckActors() {
   int pending_actor_creations = 0;
   int pending_leases = 0;
 
-  // Check if any progress is being made on this raylet.
-  if (worker_pool_.IsWorkerAvailableForScheduling()) {
-    // Progress is being made in a lease, don't warn.
+  if (!worker_pool_.AllAliveWorkersAreActors()) {
     resource_deadlock_warned_ = 0;
     return;
   }
@@ -976,6 +971,17 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // can remove it from any cached locations.
   object_directory_.HandleNodeRemoved(node_id);
   object_manager_.HandleNodeRemoved(node_id);
+
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedByOwnersOn(node_id)) {
+    ids.insert(id);
+  }
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
@@ -999,6 +1005,17 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
         << "Killing leased worker because its owner died.";
     worker->KillAsync(io_service_);
   }
+
+  // LocalObjectManager has spilled + pinned copies; ObjectManager has
+  // secondary + pinned copies. Dedupe the pinned overlap.
+  absl::flat_hash_set<ObjectID> ids;
+  for (const auto &id : local_object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
+    ids.insert(id);
+  }
+  FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
@@ -2590,6 +2607,19 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
+
+  // Skip pinning if the owner is already known dead
+  const auto owner_worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
+  const auto owner_node_id = NodeID::FromBinary(request.owner_address().node_id());
+  if (failed_workers_cache_.contains(owner_worker_id) ||
+      failed_nodes_cache_.contains(owner_node_id)) {
+    for (size_t i = 0; i < object_ids.size(); ++i) {
+      reply->add_successes(false);
+    }
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -3110,13 +3140,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
           RAY_LOG(INFO) << absl::StrFormat(
-              "Killing %d worker(s), kill details: %s; suggestions: %s",
+              "Killing %d worker(s), kill details: %s\n suggestions: %s",
               workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
 
           std::string worker_exit_message = absl::StrFormat(
-              "%d worker(s) were killed due to the node running low on memory. %s; %s",
+              "%d worker(s) were killed due to the node running low on memory. %s\n%s",
               workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
@@ -3270,15 +3300,15 @@ std::string NodeManager::CreateOomKillMessageDetails(
   }
 
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f); "
-      "OOM kill reason: %s; "
-      "Object store memory usage: [%s]; "
-      "Ray killed %d worker(s) based on the killing policy; "
-      "Considered workers: [; %s]; "
-      "Total non-selected idle workers: %d; "
-      "Total non-selected idle workers USS bytes: %sGB; "
+      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f)\n"
+      "OOM kill reason: %s\n"
+      "Object store memory usage: [%s]\n"
+      "Ray killed %d worker(s) based on the killing policy\n"
+      "Considered workers: [\n%s\n]\n"
+      "Total non-selected idle workers: %d\n"
+      "Total non-selected idle workers USS bytes: %sGB\n"
       "To see more information about memory usage on this node, "
-      "use `ray logs raylet.out -ip %s`; "
+      "use `ray logs raylet.out -ip %s`\n"
       "Top 10 memory users: %s",
       node_ip,
       node_id.Hex(),
@@ -3286,9 +3316,9 @@ std::string NodeManager::CreateOomKillMessageDetails(
       total_bytes_gb,
       usage_fraction,
       trigger_reason,
-      absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
+      object_store_memory_usage,
       workers_to_kill.size(),
-      absl::StrJoin(worker_details, "; "),
+      absl::StrJoin(worker_details, "\n"),
       total_non_selected_idle_workers,
       absl::StrFormat("%.2f",
                       static_cast<float>(total_non_selected_idle_workers_uss_bytes) /
@@ -3334,7 +3364,8 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
 
   return absl::StrFormat(
       "Refer to the documentation on how to address the out of memory issue: "
-      "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
+      "https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/"
+      "debug-memory.html. "
       "Consider provisioning more memory on this node or reducing task "
       "parallelism by requesting more CPUs per task. %s"
       "To adjust the kill "
@@ -3666,6 +3697,24 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
           timer->cancel();
         }
       });
+}
+
+void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                                         rpc::FreeLocalObjectsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_str : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_str));
+  }
+  FreeLocalObjects(object_ids);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::FreeLocalObjects(const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
+    local_object_manager_.ReleaseFreedLocalObject(object_id);
+  }
 }
 
 }  // namespace ray::raylet

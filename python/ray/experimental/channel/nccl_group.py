@@ -121,11 +121,13 @@ class _NcclGroup(Communicator):
         return self._actor_handles
 
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-        """
-        Return the given actor's rank in the NCCL communicator.
+        """Return the given actor's rank in the NCCL communicator.
 
         Args:
             actor: The actor handle to look up.
+
+        Returns:
+            The rank of ``actor`` within the NCCL group.
         """
         actor_ids = [a._ray_actor_id for a in self._actor_handles]
         try:
@@ -188,18 +190,22 @@ class _NcclGroup(Communicator):
         shape: Tuple[int],
         dtype: "torch.dtype",
         peer_rank: int,
-        allocator=Optional[TorchTensorAllocator],
+        allocator: Optional[TorchTensorAllocator] = None,
     ) -> "torch.Tensor":
-        """
-        Receive a torch.Tensor from a peer and synchronize the current stream.
+        """Receive a torch.Tensor from a peer and synchronize the current stream.
 
         After this call returns, the receive buffer is safe to read from from
         any stream. An RayChannelError will be raised if an error occurred (e.g.,
         remote actor died), and the buffer is not safe to read.
 
         Args:
-            buf: The torch.Tensor to receive into. This buffer is safe to read
+            shape: The shape of the tensor to receive.
+            dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
+            allocator: A function used to allocate the receive buffer.
+
+        Returns:
+            The tensor received from ``peer_rank``.
         """
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
