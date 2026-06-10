@@ -676,7 +676,7 @@
 # dominates large-schema production workloads.
 - name: worker_scaling_{{num_workers}}_{{worker_type}}_{{num_operators}}ops
   python: "3.10"
-  frequency: nightly
+  frequency: weekly
   cluster:
     anyscale_sdk_2026: true
     byod:
