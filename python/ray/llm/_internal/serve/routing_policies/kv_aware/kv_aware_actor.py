@@ -24,6 +24,16 @@ KV_ROUTER_ACTOR_NAME = "serve_llm_kv_router"
 _MODEL_NAME = "default"
 _TENANT_ID = "default"
 
+# Hooks a replica may invoke through ``KVRouterActor.on_lifecycle_events``.
+LIFECYCLE_HOOKS = frozenset(
+    {
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_request_completed",
+    }
+)
+
 
 def get_worker_id(replica_unique_id: str) -> int:
     """Deterministically derive a Dynamo worker id from a replica's unique id."""
@@ -56,9 +66,8 @@ class KVRouterActor:
        mapping each running replica to a Dynamo worker id.
     4. The ``SelectionService`` maintains a global KV index radix tree, fed by
        every replica's KV events; each node records which workers hold that KV block.
-    5. TODO (jeffreywang): Scoring ranks candidate workers by KV-cache overlap
-       (queried from the KV index) plus prefill/decode load to pick the best
-       worker.
+    5. Scoring (``select_worker``) ranks candidate workers by KV-cache overlap
+       and prefill/decode load.
     """
 
     def __init__(self, block_size: int):
@@ -250,46 +259,40 @@ class KVRouterActor:
             "overlap_tokens": selection["overlap"]["longest_matched"],
         }
 
+    async def on_lifecycle_events(self, events: List[tuple]) -> None:
+        """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
+
+        The hooks are order-sensitive (e.g. a completion arriving before its
+        admission would resurrect an evicted request) so a replica sends its
+        events in submission order, batched into one call.
+        """
+        for hook_name, args in events:
+            if hook_name in LIFECYCLE_HOOKS:
+                await getattr(self, hook_name)(*args)
+            else:
+                logger.warning("Ignoring unknown lifecycle hook %s", hook_name)
+
     async def on_request_added(
         self,
         request_id: str,
-        expected_output_tokens: Optional[int] = None,
+        worker_id: int,
+        token_ids: List[int],
     ) -> None:
-        """Commit a routed request to the worker chosen by ``select_worker``.
-
-        Args:
-            request_id: Unique identifier for the request.
-            expected_output_tokens: Predicted number of output tokens.
-        """
-        raise NotImplementedError("KVRouterActor.on_request_added is not implemented")
+        """Admit a routed request into ``worker_id``'s active load, booking it
+        into the selection service which computes the worker's KV overlap from
+        ``token_ids``, so the recorded prefill excludes the cached prefix."""
 
     async def on_prefill_complete(self, request_id: str) -> None:
-        """Record a request's transition from prefill to decode.
-
-        Args:
-            request_id: Unique identifier for the request.
-        """
-        raise NotImplementedError(
-            "KVRouterActor.on_prefill_complete is not implemented"
-        )
+        """Record a request's prefill -> decode transition, dropping its prefill
+        load in the selection service."""
 
     async def on_decode_progress(
         self, request_id: str, cumulative_output_tokens: int
     ) -> None:
-        """Adds any newly crossed decode blocks to the request's accounted load.
-
-        Args:
-            request_id: Unique identifier for the request.
-            cumulative_output_tokens: Total output tokens generated so far.
+        """Advance ``request_id`` to an exact cumulative output-token count,
+        booking one decode block in the selection service per crossed boundary.
         """
-        raise NotImplementedError("KVRouterActor.on_decode_progress is not implemented")
 
     async def on_request_completed(self, request_id: str) -> None:
-        """Release the KV-cache accounting for a finished request.
-
-        Args:
-            request_id: Unique identifier for the request.
-        """
-        raise NotImplementedError(
-            "KVRouterActor.on_request_completed is not implemented"
-        )
+        """Free ``request_id`` from the selection service's active load and the
+        local view."""

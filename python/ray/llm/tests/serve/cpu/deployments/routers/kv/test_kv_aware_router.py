@@ -51,7 +51,7 @@ def get_kv_actor_configs(deployment):
     ]
 
 
-def build_test_llm_config() -> LLMConfig:
+def build_test_llm_config(**engine_kwargs) -> LLMConfig:
     return LLMConfig(
         model_loading_config={
             "model_id": "qwen3-0.6b",
@@ -62,6 +62,7 @@ def build_test_llm_config() -> LLMConfig:
             "autoscaling_config": {"min_replicas": 1, "max_replicas": 1},
             "request_router_config": {"request_router_class": KVAwareRouter},
         },
+        engine_kwargs=engine_kwargs,
     )
 
 
@@ -125,16 +126,26 @@ def serve_instance():
     serve.shutdown()
 
 
-def test_build_openai_app_attaches_kv_actor():
-    """A KVAwareRouter on the LLMConfig attaches the KVRouterActor."""
-    app = build_openai_app(LLMServingArgs(llm_configs=[build_test_llm_config()]))
+@pytest.mark.parametrize("engine_kwargs", [{}, {"block_size": 32}])
+def test_build_openai_app_attaches_kv_actor(engine_kwargs):
+    """A KVAwareRouter on the LLMConfig attaches the KVRouterActor seeded with the
+    deployment's KV block size (the ``block_size`` engine kwarg, or vLLM's default
+    when omitted).
+    """
+    from vllm.config import CacheConfig
+
+    llm_config = build_test_llm_config(**engine_kwargs)
+    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
     configs = get_kv_actor_configs(app._bound_deployment)
     assert len(configs) == 1
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
-    assert actor_cfg.init_kwargs == {"block_size": 16}
+    expected_block_size = engine_kwargs.get(
+        "block_size", CacheConfig.DEFAULT_BLOCK_SIZE
+    )
+    assert actor_cfg.init_kwargs == {"block_size": expected_block_size}
 
 
 def test_yaml_config_attaches_kv_actor(serve_instance):
