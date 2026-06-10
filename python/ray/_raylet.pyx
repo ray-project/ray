@@ -2761,6 +2761,22 @@ cdef class GcsClient:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
 
+# Invoked by the dedicated object_freed_callback_service_ thread when an object
+# goes out of scope. Acquires the GIL, calls the Python callable stored as
+# user_data, then decrements the refcount taken in add_object_out_of_scope_callback.
+cdef void _invoke_object_out_of_scope_callback(
+        const CObjectID &c_object_id, void *user_data) noexcept nogil:
+    with gil:
+        object_ref_id = ObjectRef(c_object_id.Binary())
+        try:
+            (<object>user_data)(object_ref_id)
+        except Exception:
+            # Exceptions in these callbacks cannot propagate to the C++ caller.
+            pass
+        finally:
+            cpython.Py_DECREF(<object>user_data)
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -4101,6 +4117,25 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                 c_object_id)
+
+    def add_object_out_of_scope_callback(self, ObjectRef object_ref, callback):
+        """Register a Python callable to fire when object_ref goes out of scope.
+
+        Returns True if registered; False if the object is already out of scope
+        (the callback will never fire and should be discarded).
+        """
+        cdef CObjectID c_object_id = object_ref.native()
+        # Keep the callable alive until the C++ callback fires (or never fires).
+        cpython.Py_INCREF(callback)
+        registered = CCoreWorkerProcess.GetCoreWorker() \
+            .AddObjectOutOfScopeOrFreedCallback(
+                c_object_id,
+                _invoke_object_out_of_scope_callback,
+                <void *>callback)
+        if not registered:
+            # Callback will never fire; balance the Py_INCREF we just took.
+            cpython.Py_DECREF(callback)
+        return registered
 
     def get_owner_address(self, ObjectRef object_ref):
         cdef:

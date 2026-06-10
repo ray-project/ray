@@ -235,6 +235,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
+        c_bool AddObjectOutOfScopeOrFreedCallback(
+            const CObjectID &object_id,
+            void (*callback)(const CObjectID &, void *) nogil,
+            void *user_data)
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
