@@ -22,10 +22,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     configure_kv_events_for_kv_routing,
 )
-from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.serve.llm.request_router import KVAwareRouter
+
+from utils import discover_deployment_actor
 
 MODEL_ID = "qwen3-0.6b"
 MODEL_SOURCE = "Qwen/Qwen3-0.6B"
@@ -97,21 +98,6 @@ class _TestKVRouterActor(KVRouterActor):
             }
         )
         return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
-
-
-def discover_deployment_actor(app_name, deployment_name, actor_name):
-    """Resolve a deployment-scoped actor by its registered name."""
-    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::{deployment_name}::"
-    suffix = f"::{actor_name}"
-    for entry in ray.util.list_named_actors(all_namespaces=True):
-        name = entry.get("name") or ""
-        if (
-            entry.get("namespace") == SERVE_NAMESPACE
-            and name.startswith(prefix)
-            and name.endswith(suffix)
-        ):
-            return ray.get_actor(name, namespace=SERVE_NAMESPACE)
-    return None
 
 
 def post_chat(endpoint, messages=MESSAGES, max_tokens=MAX_TOKENS):

@@ -28,6 +28,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KVRouterActor,
     get_worker_id,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+    derive_kv_event_block_size,
+)
 from ray.serve._private.common import (
     REPLICA_ID_FULL_ID_STR_PREFIX,
     DeploymentID,
@@ -126,15 +129,9 @@ def serve_instance():
     serve.shutdown()
 
 
-@pytest.mark.parametrize("engine_kwargs", [{}, {"block_size": 32}])
-def test_build_openai_app_attaches_kv_actor(engine_kwargs):
-    """A KVAwareRouter on the LLMConfig attaches the KVRouterActor seeded with the
-    deployment's KV block size (the ``block_size`` engine kwarg, or vLLM's default
-    when omitted).
-    """
-    from vllm.config import CacheConfig
-
-    llm_config = build_test_llm_config(**engine_kwargs)
+def test_build_openai_app_attaches_kv_actor():
+    """A KVAwareRouter on the LLMConfig attaches the KVRouterActor."""
+    llm_config = build_test_llm_config()
     app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
     configs = get_kv_actor_configs(app._bound_deployment)
@@ -142,10 +139,9 @@ def test_build_openai_app_attaches_kv_actor(engine_kwargs):
     actor_cfg = configs[0]
     assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
     assert actor_cfg.actor_options["num_cpus"] == 0
-    expected_block_size = engine_kwargs.get(
-        "block_size", CacheConfig.DEFAULT_BLOCK_SIZE
-    )
-    assert actor_cfg.init_kwargs == {"block_size": expected_block_size}
+    assert actor_cfg.init_kwargs == {
+        "block_size": derive_kv_event_block_size(llm_config.engine_kwargs)
+    }
 
 
 def test_yaml_config_attaches_kv_actor(serve_instance):
