@@ -54,7 +54,8 @@ class MapTransformFn(ABC):
         is_udf: bool = False,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
     ):
-        """
+        """Initialize a :class:`MapTransformFn`.
+
         Args:
             input_type: Expected type of the input data.
             is_udf: Whether this transformation is UDF or not.
@@ -158,7 +159,8 @@ class MapTransformer:
         init_fn: Optional[Callable[[], None]] = None,
         output_block_size_option_override: Optional[OutputBlockSizeOption] = None,
     ):
-        """
+        """Initialize a :class:`MapTransformer`.
+
         Args:
             transform_fns: A list of `MapTransformFn`s that will be executed sequentially
                 to transform data.

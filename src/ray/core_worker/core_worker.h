@@ -1383,7 +1383,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
+  /// Send a FreeLocalObjects RPC to every raylet holding a copy of the object.
+  ///
+  /// \param object_id The object whose copies should be freed.
+  /// \param locations All nodes that hold a copy of the object, including primary
+  /// and secondary copies.
+  void FreeObjectOnNodesAsync(const ObjectID &object_id,
+                              const absl::flat_hash_set<NodeID> &locations);
+
  private:
+  /// Resolve a raylet RPC client by node id. Should be used to only get a temporary RPC
+  /// client, since the retryable GRPC client relies on clients going out of scope to
+  /// determine when to fail any pending RPCs
+  ///
+  /// \param node_id The node to resolve.
+  /// \return The local client for the current node, the pooled client for any
+  /// other live node, or nullptr if the node is dead or unknown to GCS.
+  std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 

@@ -154,6 +154,8 @@ class TaskManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            /*free_object_on_nodes_async=*/
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             lineage_pinning_enabled)),
@@ -1491,6 +1493,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
@@ -1554,6 +1558,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
@@ -1618,6 +1624,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
@@ -3293,6 +3301,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);
@@ -3376,6 +3386,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);

@@ -37,14 +37,43 @@ class PrometheusClient:
         url = f"{self.prometheus_host}/api/v1/{query_type}?" + "&".join(
             [f"{k}={quote(str(v), safe='')}" for k, v in kwargs.items()]
         )
+        query_str = kwargs.get("query", url)
         logger.debug(f"Running Prometheus query {url}")
+        last_error = None
         for attempt in range(RETRIES):
-            async with self.http_session.get(url) as resp:
-                if resp.status == 200:
-                    prom_data = await resp.json()
-                    return prom_data["data"]["result"]
+            try:
+                async with self.http_session.get(url) as resp:
+                    if resp.status == 200:
+                        prom_data = await resp.json()
+                        return prom_data["data"]["result"]
+                    body = (await resp.text())[:500]
+                    last_error = f"non-200 status {resp.status}: {body}"
+                    logger.warning(
+                        f"Prometheus query returned non-200 status {resp.status} "
+                        f"(attempt {attempt + 1}/{RETRIES}). Query: {query_str!r}. "
+                        f"Body: {body}"
+                    )
+            except asyncio.TimeoutError:
+                last_error = "request timed out"
+                logger.warning(
+                    f"Prometheus query timed out "
+                    f"(attempt {attempt + 1}/{RETRIES}). Query: {query_str!r}."
+                )
+            except aiohttp.ClientError as e:
+                last_error = f"connection error: {e}"
+                logger.warning(
+                    f"Prometheus query connection error "
+                    f"(attempt {attempt + 1}/{RETRIES}). Query: {query_str!r}. "
+                    f"Error: {e}"
+                )
             if attempt < RETRIES - 1:
                 await asyncio.sleep(1)
+        logger.error(
+            f"Prometheus query failed after {RETRIES} attempts and returned no data. "
+            f"Query: {query_str!r}. Last error: {last_error}. "
+            "This is a metrics-collection failure (Prometheus unreachable/erroring), "
+            "NOT an empty result for a healthy metric."
+        )
         return None
 
     async def close(self):
@@ -149,6 +178,26 @@ async def _get_prometheus_metrics(
     }
     metrics = {k: await v for k, v in metrics.items()}
     await client.close()
+
+    # Summarise the outcome so a glance at the logs tells whether the metrics
+    # are trustworthy. `None` => the query failed to collect (infra/timeout);
+    # `[]` => collected fine but no matching series (e.g. no OOMs happened);
+    # truthy => collected data.
+    failed = sorted(k for k, v in metrics.items() if v is None)
+    empty = sorted(k for k, v in metrics.items() if v == [])
+    with_data = sorted(k for k, v in metrics.items() if v)
+    logger.info(
+        f"Prometheus collection summary: {len(with_data)} metric(s) with data, "
+        f"{len(empty)} empty, {len(failed)} failed to collect "
+        f"(out of {len(metrics)} total)."
+    )
+    if failed:
+        logger.error(
+            f"{len(failed)} metric(s) FAILED to collect and will be null in the "
+            f"output: {failed}. See the per-query warnings above for the cause "
+            "(timeout / connection error / non-200). This indicates a "
+            "metrics-collection/infra problem, not a real metric signal."
+        )
     return metrics
 
 
@@ -209,6 +258,10 @@ def save_prometheus_metrics(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s",
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument("start_time", type=float, help="Start time")
     parser.add_argument(

@@ -41,6 +41,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
@@ -4691,6 +4692,35 @@ void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));
+}
+
+std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
+    const NodeID &node_id) {
+  if (node_id == GetCurrentNodeId()) {
+    return local_raylet_rpc_client_;
+  }
+  auto node_info =
+      gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
+  if (!node_info) {
+    return nullptr;
+  }
+  auto address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node_info->node_manager_address(), node_info->node_manager_port());
+  return raylet_client_pool_->GetOrConnectByAddress(address);
+}
+
+void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
+                                        const absl::flat_hash_set<NodeID> &locations) {
+  rpc::FreeLocalObjectsRequest request;
+  request.add_object_ids(object_id.Binary());
+
+  for (const auto &node_id : locations) {
+    auto client = GetRayletRpcClient(node_id);
+    if (client == nullptr) {
+      continue;
+    }
+    client->FreeLocalObjects(request);
+  }
 }
 
 }  // namespace ray::core
