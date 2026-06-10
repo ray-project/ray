@@ -1178,21 +1178,50 @@ cdef report_streaming_generator_output(
         # Ray Objects created from an output.
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] return_objs
         size_t i
+        c_bool output_error_reported = False
 
     start = time.perf_counter()
 
     # Report the intermediate result if there was no error.
-    create_generator_return_objs(
-        output,
-        context.generator_id,
-        worker,
-        context.caller_address,
-        context.task_id,
-        context.return_size,
-        generator_index,
-        context.num_objects_per_yield,
-        context.is_async,
-        &return_objs)
+    try:
+        create_generator_return_objs(
+            output,
+            context.generator_id,
+            worker,
+            context.caller_address,
+            context.task_id,
+            context.return_size,
+            generator_index,
+            context.num_objects_per_yield,
+            context.is_async,
+            &return_objs)
+    except Exception as e:
+        if (
+            context.num_objects_per_yield == 1
+            or return_objs.size() != context.num_objects_per_yield
+            or determine_if_retryable(
+                context.should_retry_exceptions,
+                e,
+                context.serialized_retry_exception_allowlist,
+                context.function_descriptor,
+            )
+        ):
+            raise
+
+        # Dynamic IDs for this grouped yield are already allocated. If storing
+        # failed after some objects were written, report the whole group so the
+        # caller does not block waiting for later stream indexes.
+        context.is_retryable_error[0] = False
+        store_task_errors(
+            worker, e,
+            True,  # task_exception
+            context.actor,  # actor
+            context.actor_id,  # actor id
+            context.function_name, context.task_type, context.title,
+            context.caller_address,
+            &return_objs,
+            context.application_error)
+        output_error_reported = True
 
     # Del output here so that we can GC the memory
     # usage asap.
@@ -1220,6 +1249,8 @@ cdef report_streaming_generator_output(
             context.attempt_number,
             context.waiter))
 
+    if output_error_reported:
+        return None
 
     return StreamingGeneratorStats(
         object_creation_dur_s=serialization_dur_s,
@@ -1329,6 +1360,8 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
                 # Track serialization duration of the next output
                 stats = report_streaming_generator_output(
                     context, output, gen_index, None)
+                if stats is None:
+                    break
 
                 gen_index += context.num_objects_per_yield
 
@@ -1412,6 +1445,8 @@ async def execute_streaming_generator_async(
                     cur_generator_index,
                     interrupt_signal_event,
                 )
+                if stats is None:
+                    break
                 cur_generator_index += context.num_objects_per_yield
 
             except StopAsyncIteration:
