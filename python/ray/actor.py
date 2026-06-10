@@ -641,48 +641,52 @@ def method(*args: Any, **kwargs: Any):
         _, _ = f.bar.remote()
 
     Args:
-        *args: The actor method when this is used as ``@ray.method``.
-        **kwargs: Method options when this is used as ``@ray.method(...)``.
+        *args: When used as a bare decorator (``@ray.method``), this contains
+            the single decorated method. When used with arguments
+            (``@ray.method(...)``), this is empty.
+        **kwargs: Per-method options. Supported keys include:
 
-    Supported keyword options:
-        num_returns: The number of object refs that should be returned by
-            invocations of this actor method. The default value is 1 for a
-            normal actor task and "streaming" for an actor generator task (a
-            function that yields objects instead of returning them).
-        max_task_retries: How many times to retry an actor task if the task
-            fails due to a runtime error, e.g., the actor has died. The
-            default value is 0. If set to -1, the system will retry the
-            failed task until the task succeeds, or the actor has reached
-            its max_restarts limit. If set to `n > 0`, the system will retry
-            the failed task up to n times, after which the task will throw a
-            `RayActorError` exception upon :obj:`ray.get`.  Note that Python
-            exceptions may trigger retries
-            *only if* `retry_exceptions` is set for the method, in that case
-            when `max_task_retries` runs out the task will rethrow the
-            exception from the task. You can override this number with the
-            method's `max_task_retries` option in `@ray.method` decorator or
-            in `.option()`.
-        retry_exceptions: Boolean of whether to retry all Python
-            exceptions, or a list of allowlist exceptions to retry. The default
-            value is False (only retry tasks upon system failures and if
-            max_task_retries is set)
-        _num_objects_per_yield: Private streaming generator option for how many
-            ObjectRefs each yield should unpack into. Defaults to 1.
-        concurrency_group: The name of the concurrency group
-            to use for the actor method. By default, the actor is
-            single-threaded and runs all actor tasks on the same thread.
-            See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
-        tensor_transport: [Alpha] The tensor transport protocol to
-            use for the actor method. If a tensor transport is specified,
-            Ray will store a *reference* instead of a copy of any torch.Tensors found inside
-            values returned by this task, and the tensors will be sent directly
-            to other tasks using the specified transport. The object store will be used
-            when this is None (default). "NIXL", "NCCL", and "GLOO" (case-insensitive) are
-            the three transports supported by default. The NCCL and GLOO transports
-            require first creating a collective with the involved actors using
-            :func:`ray.experimental.collective.create_collective_group`.
-            See :ref:`Ray Direct Transport (RDT) <direct-transport>` for more
-            details.
+            - ``num_returns``: The number of object refs that should be returned by
+              invocations of this actor method. The default value is 1 for a
+              normal actor task and ``"streaming"`` for an actor generator task (a
+              function that yields objects instead of returning them).
+            - ``max_task_retries``: How many times to retry an actor task if the task
+              fails due to a runtime error, e.g., the actor has died. The
+              default value is 0. If set to -1, the system will retry the
+              failed task until the task succeeds, or the actor has reached
+              its max_restarts limit. If set to ``n > 0``, the system will retry
+              the failed task up to n times, after which the task will throw a
+              ``RayActorError`` exception upon :obj:`ray.get`. Note that Python
+              exceptions may trigger retries *only if* ``retry_exceptions`` is
+              set for the method, in that case when ``max_task_retries`` runs
+              out the task will rethrow the exception from the task. You can
+              override this number with the method's ``max_task_retries``
+              option in ``@ray.method`` decorator or in ``.option()``.
+            - ``retry_exceptions``: Boolean of whether to retry all Python
+              exceptions, or a list of allowlist exceptions to retry. The
+              default value is False (only retry tasks upon system failures
+              and if ``max_task_retries`` is set).
+            - ``concurrency_group``: The name of the concurrency group to use
+              for the actor method. By default, the actor is single-threaded
+              and runs all actor tasks on the same thread. See
+              :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
+            - ``tensor_transport``: [Alpha] The tensor transport protocol to
+              use for the actor method. If a tensor transport is specified,
+              Ray will store a *reference* instead of a copy of any
+              ``torch.Tensors`` found inside values returned by this task, and
+              the tensors will be sent directly to other tasks using the
+              specified transport. The object store will be used when this is
+              None (default). ``"NIXL"``, ``"NCCL"``, and ``"GLOO"``
+              (case-insensitive) are the three transports supported by default.
+              The NCCL and GLOO transports require first creating a collective
+              with the involved actors using
+              :func:`ray.experimental.collective.create_collective_group`. See
+              :ref:`Ray Direct Transport (RDT) <direct-transport>` for more
+              details.
+
+    Returns:
+        The decorated actor method (when used as a bare decorator) or a
+        decorator that applies the supplied options to the method it wraps.
     """
     valid_kwargs = [
         "num_returns",
@@ -850,8 +854,8 @@ class ActorMethod:
 
     def __init__(
         self,
-        actor,
-        method_name,
+        actor: "ActorHandle",
+        method_name: str,
         num_returns: Optional[Union[int, Literal["streaming"]]],
         max_task_retries: int,
         retry_exceptions: Union[bool, list, tuple],
@@ -859,7 +863,7 @@ class ActorMethod:
         generator_backpressure_num_objects: int,
         num_objects_per_yield: int,
         enable_task_events: bool,
-        decorator=None,
+        decorator: Optional[Callable] = None,
         signature: Optional[List[inspect.Parameter]] = None,
         tensor_transport: Optional[str] = None,
     ):
@@ -940,7 +944,7 @@ class ActorMethod:
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def options(self, **options):
+    def options(self, **options: Any):
         """Convenience method for executing an actor method call with options.
 
         Same arguments as func._remote(), but returns a wrapped function
@@ -950,6 +954,14 @@ class ActorMethod:
             # The following two calls are equivalent.
             >>> actor.my_method._remote(args=[x, y], name="foo", num_returns=2)
             >>> actor.my_method.options(name="foo", num_returns=2).remote(x, y)
+
+        Args:
+            **options: Per-call option overrides forwarded to ``._remote()``
+                (e.g. ``name``, ``num_returns``, ``tensor_transport``).
+
+        Returns:
+            A wrapper exposing ``.remote()`` / ``.bind()`` that applies the
+            given options when the method is invoked.
         """
 
         tensor_transport = options.get("tensor_transport", None)
@@ -1397,26 +1409,63 @@ class _ActorClassMetadata:
 
     def __init__(
         self,
-        language,
-        modified_class,
-        actor_creation_function_descriptor,
-        class_id,
-        method_meta,
-        max_restarts,
-        max_task_retries,
-        num_cpus,
-        num_gpus,
-        memory,
-        object_store_memory,
-        resources,
-        label_selector,
-        fallback_strategy,
-        accelerator_type,
-        runtime_env,
-        concurrency_groups,
+        language: Language,
+        modified_class: type,
+        actor_creation_function_descriptor: Any,
+        class_id: Any,
+        method_meta: "_ActorClassMethodMetadata",
+        max_restarts: Optional[int],
+        max_task_retries: Optional[int],
+        num_cpus: Optional[Union[int, float]],
+        num_gpus: Optional[Union[int, float]],
+        memory: Optional[int],
+        object_store_memory: Optional[int],
+        resources: Optional[Dict[str, float]],
+        label_selector: Optional[Dict[str, str]],
+        fallback_strategy: Optional[List[Dict[str, Any]]],
+        accelerator_type: Optional[str],
+        runtime_env: Optional[Dict[str, Any]],
+        concurrency_groups: Optional[Dict[str, int]],
         scheduling_strategy: SchedulingStrategyT,
         enable_tensor_transport: bool,
     ):
+        """Initialize the actor class metadata. See class docstring for argument
+        descriptions; each constructor argument maps 1:1 to a public attribute
+        of the same name.
+
+        Args:
+            language: The actor language, e.g. Python, Java.
+            modified_class: The original class that was decorated (with some
+                additional methods added like ``__ray_terminate__``).
+            actor_creation_function_descriptor: The function descriptor for the
+                actor creation task.
+            class_id: The ID of this actor class.
+            method_meta: The actor method metadata.
+            max_restarts: Default ``max_restarts`` for actors of this class.
+            max_task_retries: Default ``max_task_retries`` for actors of this
+                class.
+            num_cpus: The default number of CPUs required by the actor creation
+                task.
+            num_gpus: The default number of GPUs required by the actor creation
+                task.
+            memory: The heap memory quota for this actor.
+            object_store_memory: The default object store memory quota for this
+                actor.
+            resources: The default resources required by the actor creation
+                task.
+            label_selector: The labels required for the node on which this
+                actor can be scheduled.
+            fallback_strategy: Soft scheduling constraints expressed as a list
+                of decorator options to fall back on.
+            accelerator_type: The specified type of accelerator required for
+                the node on which this actor runs.
+            runtime_env: The runtime environment for this actor.
+            concurrency_groups: The concurrency-group configuration for this
+                actor.
+            scheduling_strategy: Strategy about how to schedule this actor.
+            enable_tensor_transport: Whether to enable out-of-band tensor
+                transport for this actor.
+        """
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = actor_creation_function_descriptor
@@ -1495,12 +1544,17 @@ class ActorClass(Generic[T]):
         __ray_metadata__: Contains metadata for the actor.
     """
 
-    def __init__(cls, name, bases, attr):
+    def __init__(cls, name: str, bases: tuple, attr: dict):
         """Prevents users from directly inheriting from an ActorClass.
 
         This will be called when a class is defined with an ActorClass object
         as one of its base classes. To intentionally construct an ActorClass,
         use the '_ray_from_modified_class' classmethod.
+
+        Args:
+            name: The name of the subclass being defined.
+            bases: The tuple of base classes of the subclass being defined.
+            attr: The attribute namespace of the subclass being defined.
 
         Raises:
             ActorClassInheritanceException: When ActorClass is inherited.
@@ -1528,12 +1582,16 @@ class ActorClass(Generic[T]):
             "the @ray.remote decorator instead."
         )
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any):
         """Prevents users from directly instantiating an ActorClass.
 
         This will be called instead of __init__ when 'ActorClass()' is executed
         because an is an object rather than a metaobject. To properly
         instantiated a remote actor, use 'ActorClass.remote()'.
+
+        Args:
+            *args: Positional arguments. Unused; always raises.
+            **kwargs: Keyword arguments. Unused; always raises.
 
         Raises:
             Exception: Always.
@@ -1641,13 +1699,13 @@ class ActorClass(Generic[T]):
             self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
-    def remote(self, *args, **kwargs) -> ActorProxy[T]:
+    def remote(self, *args: Any, **kwargs: Any) -> ActorProxy[T]:
         """Create an actor.
 
         Args:
-            args: These arguments are forwarded directly to the actor
+            *args: These arguments are forwarded directly to the actor
                 constructor.
-            kwargs: These arguments are forwarded directly to the actor
+            **kwargs: These arguments are forwarded directly to the actor
                 constructor.
 
         Returns:
@@ -1655,92 +1713,11 @@ class ActorClass(Generic[T]):
         """
         return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
-    def options(self, **actor_options) -> "ActorClass[T]":
+    def options(self, **actor_options: Any) -> "ActorClass[T]":
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
         to :obj:`ray.remote`.
-
-        Args:
-            num_cpus: The quantity of CPU cores to reserve
-                for this task or for the lifetime of the actor.
-            num_gpus: The quantity of GPUs to reserve
-                for this task or for the lifetime of the actor.
-            resources (Dict[str, float]): The quantity of various custom resources
-                to reserve for this task or for the lifetime of the actor.
-                This is a dictionary mapping strings (resource names) to floats.
-            label_selector (Dict[str, str]): If specified, requires that the actor run
-                on a node which meets the specified label conditions (equals, in, not in, etc.).
-            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
-                through a list of decorator options to fall back on when scheduling on a node.
-            accelerator_type: If specified, requires that the task or actor run
-                on a node with the specified type of accelerator.
-                See :ref:`accelerator types <accelerator_types>`.
-            memory: The heap memory request in bytes for this task/actor,
-                rounded down to the nearest integer.
-            object_store_memory: The object store memory request for actors only.
-            max_restarts: This specifies the maximum
-                number of times that the actor should be restarted when it dies
-                unexpectedly. The minimum valid value is 0 (default),
-                which indicates that the actor doesn't need to be restarted.
-                A value of -1 indicates that an actor should be restarted
-                indefinitely.
-            max_task_retries: How many times to retry an actor task if the task
-                fails due to a runtime error, e.g., the actor has died. The
-                default value is 0. If set to -1, the system will retry the
-                failed task until the task succeeds, or the actor has reached
-                its max_restarts limit. If set to `n > 0`, the system will retry
-                the failed task up to n times, after which the task will throw a
-                `RayActorError` exception upon :obj:`ray.get`.  Note that Python
-                exceptions may trigger retries
-                *only if* `retry_exceptions` is set for the method, in that case
-                when `max_task_retries` runs out the task will rethrow the
-                exception from the task. You can override this number with the
-                method's `max_task_retries` option in `@ray.method` decorator or
-                in `.option()`.
-            max_pending_calls: Set the max number of pending calls
-                allowed on the actor handle. When this value is exceeded,
-                PendingCallsLimitExceeded will be raised for further tasks.
-                Note that this limit is counted per handle. -1 means that the
-                number of pending calls is unlimited.
-            max_concurrency: The max number of concurrent calls to allow for
-                this actor. This only works with direct actor calls. The max
-                concurrency defaults to 1 for threaded execution, and 1000 for
-                asyncio execution. Note that the execution order is not
-                guaranteed when max_concurrency > 1.
-            allow_out_of_order_execution: Only for *actors*. Whether Ray executes actor
-                tasks out of order. If you're using multi-threaded
-                (``max_concurrency > 1``) or async actors, you can't set this to False.
-                Defaults to True if you're using multi-threaded or async actors, and
-                False otherwise. Actor task retries are always executed out of order.
-            name: The globally unique name for the actor, which can be used
-                to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive.
-            namespace: Override the namespace to use for the actor. By default,
-                actors are created in an anonymous namespace. The actor can
-                be retrieved via ray.get_actor(name=name, namespace=namespace).
-            lifetime: Either `None`, which defaults to the actor will fate
-                share with its creator and will be deleted once its refcount
-                drops to zero, or "detached", which means the actor will live
-                as a global object independent of the creator.
-            runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children. See
-                :ref:`runtime-environments` for detailed documentation.
-            scheduling_strategy: Strategy about how to
-                schedule a remote function or actor. Possible values are
-                None: ray will figure out the scheduling strategy to use, it
-                will either be the PlacementGroupSchedulingStrategy using parent's
-                placement group if parent has one and has
-                placement_group_capture_child_tasks set to true,
-                or "DEFAULT";
-                "DEFAULT": default hybrid scheduling;
-                "SPREAD": best effort spread scheduling;
-                `PlacementGroupSchedulingStrategy`:
-                placement group based scheduling;
-                `NodeAffinitySchedulingStrategy`:
-                node id based affinity scheduling.
-            enable_task_events: True if tracing is enabled, i.e., task events from
-                the actor should be reported. Defaults to True.
 
         Examples:
 
@@ -1753,6 +1730,98 @@ class ActorClass(Generic[T]):
             # Class Bar will require 1 cpu instead of 2.
             # It will also require no custom resources.
             Bar = Foo.options(num_cpus=1, resources=None)
+
+        Args:
+            **actor_options: Per-actor options that override the defaults
+                supplied via :obj:`ray.remote`. Supported keys include:
+
+                - ``num_cpus``: The quantity of CPU cores to reserve
+                  for this task or for the lifetime of the actor.
+                - ``num_gpus``: The quantity of GPUs to reserve
+                  for this task or for the lifetime of the actor.
+                - ``resources``: The quantity of various custom resources to
+                  reserve for this task or for the lifetime of the actor.
+                  This is a dictionary mapping strings (resource names) to floats.
+                - ``label_selector``: If specified, requires that the actor run
+                  on a node which meets the specified label conditions (equals,
+                  in, not in, etc.).
+                - ``fallback_strategy``: If specified, expresses soft constraints
+                  through a list of decorator options to fall back on when
+                  scheduling on a node.
+                - ``accelerator_type``: If specified, requires that the task or
+                  actor run on a node with the specified type of accelerator.
+                  See :ref:`accelerator types <accelerator_types>`.
+                - ``memory``: The heap memory request in bytes for this
+                  task/actor, rounded down to the nearest integer.
+                - ``object_store_memory``: The object store memory request for
+                  actors only.
+                - ``max_restarts``: This specifies the maximum number of times
+                  that the actor should be restarted when it dies unexpectedly.
+                  The minimum valid value is 0 (default), which indicates that
+                  the actor doesn't need to be restarted. A value of -1
+                  indicates that an actor should be restarted indefinitely.
+                - ``max_task_retries``: How many times to retry an actor task
+                  if the task fails due to a runtime error, e.g., the actor
+                  has died. The default value is 0. If set to -1, the system
+                  will retry the failed task until the task succeeds, or the
+                  actor has reached its max_restarts limit. If set to ``n > 0``,
+                  the system will retry the failed task up to n times, after
+                  which the task will throw a ``RayActorError`` exception upon
+                  :obj:`ray.get`. Note that Python exceptions may trigger
+                  retries *only if* ``retry_exceptions`` is set for the method,
+                  in that case when ``max_task_retries`` runs out the task will
+                  rethrow the exception from the task. You can override this
+                  number with the method's ``max_task_retries`` option in
+                  ``@ray.method`` decorator or in ``.option()``.
+                - ``max_pending_calls``: Set the max number of pending calls
+                  allowed on the actor handle. When this value is exceeded,
+                  PendingCallsLimitExceeded will be raised for further tasks.
+                  Note that this limit is counted per handle. -1 means that
+                  the number of pending calls is unlimited.
+                - ``max_concurrency``: The max number of concurrent calls to
+                  allow for this actor. This only works with direct actor
+                  calls. The max concurrency defaults to 1 for threaded
+                  execution, and 1000 for asyncio execution. Note that the
+                  execution order is not guaranteed when ``max_concurrency > 1``.
+                - ``allow_out_of_order_execution``: Only for *actors*. Whether
+                  Ray executes actor tasks out of order. If you're using
+                  multi-threaded (``max_concurrency > 1``) or async actors,
+                  you can't set this to False. Defaults to True if you're
+                  using multi-threaded or async actors, and False otherwise.
+                  Actor task retries are always executed out of order.
+                - ``name``: The globally unique name for the actor, which can
+                  be used to retrieve the actor via ``ray.get_actor(name)`` as
+                  long as the actor is still alive.
+                - ``namespace``: Override the namespace to use for the actor.
+                  By default, actors are created in an anonymous namespace.
+                  The actor can be retrieved via
+                  ``ray.get_actor(name=name, namespace=namespace)``.
+                - ``lifetime``: Either ``None``, which defaults to the actor
+                  will fate share with its creator and will be deleted once
+                  its refcount drops to zero, or ``"detached"``, which means
+                  the actor will live as a global object independent of the
+                  creator.
+                - ``runtime_env``: Specifies the runtime environment for this
+                  actor or task and its children. See
+                  :ref:`runtime-environments` for detailed documentation.
+                - ``scheduling_strategy``: Strategy about how to schedule a
+                  remote function or actor. Possible values are ``None``:
+                  ray will figure out the scheduling strategy to use, it
+                  will either be the ``PlacementGroupSchedulingStrategy``
+                  using parent's placement group if parent has one and has
+                  ``placement_group_capture_child_tasks`` set to true, or
+                  ``"DEFAULT"``; ``"DEFAULT"``: default hybrid scheduling;
+                  ``"SPREAD"``: best effort spread scheduling;
+                  ``PlacementGroupSchedulingStrategy``: placement group based
+                  scheduling; ``NodeAffinitySchedulingStrategy``: node id
+                  based affinity scheduling.
+                - ``enable_task_events``: True if tracing is enabled, i.e.,
+                  task events from the actor should be reported. Defaults to
+                  True.
+
+        Returns:
+            A new ``ActorClass`` whose ``.remote()`` will apply the merged
+            options.
         """
 
         actor_cls = self
@@ -1796,7 +1865,12 @@ class ActorClass(Generic[T]):
 
     @wrap_auto_init
     @_tracing_actor_creation
-    def _remote(self, args=None, kwargs=None, **actor_options) -> ActorProxy[T]:
+    def _remote(
+        self,
+        args: Optional[List[Any]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+        **actor_options: Any,
+    ) -> ActorProxy[T]:
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -2229,13 +2303,13 @@ class ActorHandle(Generic[T]):
 
     def __init__(
         self,
-        language,
-        actor_id,
+        language: Language,
+        actor_id: Any,
         max_task_retries: Optional[int],
         enable_task_events: bool,
         method_is_generator: Dict[str, bool],
-        method_decorators,
-        method_signatures,
+        method_decorators: Dict[str, Callable],
+        method_signatures: Dict[str, Any],
         method_num_returns: Dict[str, Union[int, Literal["streaming"]]],
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
@@ -2245,9 +2319,9 @@ class ActorHandle(Generic[T]):
         enable_tensor_transport: bool,
         method_name_to_tensor_transport: Dict[str, str],
         actor_method_cpus: int,
-        actor_creation_function_descriptor,
-        cluster_and_job,
-        original_handle=False,
+        actor_creation_function_descriptor: Any,
+        cluster_and_job: Any,
+        original_handle: bool = False,
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
     ):
@@ -2653,17 +2727,24 @@ class ActorHandle(Generic[T]):
         return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref=None):
+    def _deserialization_helper(
+        cls,
+        state: Any,
+        weak_ref: bool,
+        outer_object_ref: Optional["ObjectRef"] = None,
+    ):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
+            weak_ref: Whether this was serialized from an actor handle with a
+                weak ref to the actor.
             outer_object_ref: The ObjectRef that the serialized actor handle
                 was contained in, if any. This is used for counting references
                 to the actor handle.
-            weak_ref: Whether this was serialized from an actor handle with a
-                weak ref to the actor.
 
+        Returns:
+            The deserialized ``ActorHandle`` registered with the core worker.
         """
         worker = ray._private.worker.global_worker
         worker.check_connected()
