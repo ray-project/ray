@@ -695,10 +695,6 @@ ray.get(a)
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on macos")
-# Run repeatedly to guard against regressions in flakiness (see the SUBMITTED_TO_WORKER
-# handling in close_to_expected below).
-# XXX: remove before merging.
-@pytest.mark.parametrize("trial", range(50))
 def test_pull_manager_stats(shutdown_only, trial):
     info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
     timeseries = PrometheusTimeseries()
