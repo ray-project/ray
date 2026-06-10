@@ -550,6 +550,10 @@ message ResourcesData {
   int64 draining_deadline_timestamp_ms = 18;
   // Te key-value labels of this node.
   map<string, string> labels = 19;
+  // IPPR memory pressure ratio (cgroup current/limit) observed on
+  // this node. Field presence (has_...) is the pressure signal: unset means
+  // the node is not currently under memory pressure.
+  optional double memory_pressure_ratio = 20;
 }
 
 message ResourceUsageBatchData {

@@ -345,6 +345,14 @@ class IPPRStatus:
     last_failed_at: Optional[int] = None
     last_failed_reason: Optional[str] = None
     raylet_id: Optional[str] = None
+    # IPPR memory pressure flag.
+    # True means the autoscaler currently sees a raylet pressure signal for this
+    # pod. A pure in-memory flag: rebuilt from the live signal every reconcile
+    # cycle, not persisted (the raylet signal is level-triggered, conveyed as
+    # presence of the NodeState.memory_pressure_ratio field; no signal means no
+    # pressure). Only presence drives Phase B' (which jumps straight to
+    # spec.max_memory() in one shot), so the observe instant is not tracked.
+    memory_pressure: bool = False
 
     def queue_resize_request(
         self,
@@ -376,6 +384,44 @@ class IPPRStatus:
             self.k8s_resize_status = "new"
             self.k8s_resize_message = None
         return updated
+
+    def apply_pressure_signal(self, node: Optional[NodeState]) -> None:
+        """Absorb the raylet memory-pressure signal from the matching NodeState.
+
+        Mirrors how the task-driven path absorbs ``raylet_id`` from the node at
+        the scheduler injection point: both run on the same ``instance.ray_node``
+        so the pressure signal and the raylet id are folded in one place.
+
+        The signal is level-triggered (re-sent every heartbeat while pressure
+        lasts), so ``memory_pressure`` is rebuilt fresh each cycle. ``node`` is
+        ``None`` for pending instances or when no matching NodeState exists; in
+        that case ``memory_pressure`` is left at its per-cycle default of
+        ``False`` (no clearing needed). The raylet already applied its ratio
+        threshold (it withholds the signal below threshold), so field presence
+        (``memory_pressure_ratio``) alone means the pod is under pressure; the
+        ratio value itself is observability-only.
+
+        Args:
+            node: The ``NodeState`` for this pod's raylet, or ``None``.
+        """
+        if node is not None and node.HasField("memory_pressure_ratio"):
+            self.memory_pressure = True
+
+    def compute_pressure_target(self) -> "tuple[float, int]":
+        """Compute the pressure-driven target for (cpu, memory).
+
+        Pressure triggers a one-shot jump straight to ``max_memory()`` —
+        no geometric ladder. CPU is held constant since pressure is a
+        memory-only signal.
+
+        Returns:
+            (target_cpu, target_memory). When no pressure is active,
+            returns the current resources (no-op target).
+        """
+        if not self.memory_pressure:
+            return (self.current_cpu, self.current_memory)
+        target_memory = max(self.current_memory, self.max_memory())
+        return (self.current_cpu, target_memory)
 
     def has_resize_request_to_send(self) -> bool:
         """Whether this pod should be sent an IPPR request now.

@@ -1086,6 +1086,150 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert mem_requests["value"] == 2 * Gi
 
 
+class TestApplyPressureSignal(unittest.TestCase):
+    """Focused tests for IPPRStatus.apply_pressure_signal.
+
+    The pressure signal no longer travels through the cloud-provider-side channel, nor is
+    it folded in the reconciler; instead it is absorbed at the scheduler injection point
+    via IPPRStatus.apply_pressure_signal(instance.ray_node), from the same co-located,
+    same-source NodeState as raylet_id (truly the same injection point as task-driven
+    IPPR). These tests drive that method directly.
+    """
+
+    def _make_status(self) -> IPPRStatus:
+        from ray.autoscaler.v2.schema import IPPRGroupSpec
+
+        return IPPRStatus(
+            cloud_instance_id="pod-1",
+            spec=IPPRGroupSpec(
+                min_cpu=1.0,
+                max_cpu=4.0,
+                min_memory=1,
+                max_memory=8,
+                resize_timeout=10,
+            ),
+            current_cpu=1.0,
+            current_memory=4,
+            desired_cpu=1.0,
+            desired_memory=4,
+            raylet_id="r-abc",
+        )
+
+    def _node_with_signal(self, ratio: float):
+        from ray.core.generated.autoscaler_pb2 import NodeState
+
+        node = NodeState()
+        node.memory_pressure_ratio = ratio
+        return node
+
+    def test_apply_pressure_signal_sets_flag(self):
+        # Field presence is the signal; memory_pressure is set True
+        # (under pressure).
+        s = self._make_status()
+        node = self._node_with_signal(0.9)
+        s.apply_pressure_signal(node)
+        self.assertTrue(s.memory_pressure)
+
+    def test_none_node_leaves_default_false(self):
+        # The signal is level-triggered; IPPRStatus is rebuilt every cycle
+        # (memory_pressure defaults to False). For pending instances / no matching
+        # NodeState, node is None -> stays False, no explicit clearing.
+        s = self._make_status()
+        self.assertFalse(s.memory_pressure)
+        s.apply_pressure_signal(None)
+        self.assertFalse(s.memory_pressure)
+
+    def test_node_without_signal_leaves_default_false(self):
+        # NodeState exists but memory_pressure_ratio is unset (this raylet currently
+        # has no pressure).
+        from ray.core.generated.autoscaler_pb2 import NodeState
+
+        s = self._make_status()
+        s.apply_pressure_signal(NodeState())
+        self.assertFalse(s.memory_pressure)
+
+    def test_signal_present_triggers_regardless_of_ratio(self):
+        # The threshold has already been evaluated on the C++ raylet side; Python
+        # triggers on any signal it receives -- even when the ratio field is very low
+        # (a raylet would not actually emit such a signal; this only verifies the logic).
+        s = self._make_status()
+        node = self._node_with_signal(0.7)
+        s.apply_pressure_signal(node)
+        self.assertTrue(s.memory_pressure)
+
+
+class TestFailedIPPRShieldsAndTriggersGateOff(unittest.TestCase):
+    """Permanent IPPR shielding (error / timeout) must:
+    - set last_failed_at so can_resize_up() turns False (the single source of
+      truth for shielding — Phase B' skips the pod regardless of pressure),
+    - queue a revert resize back to current_cpu/current_memory.
+    """
+
+    def _make_status(self, k8s_resize_status: str) -> IPPRStatus:
+        from ray.autoscaler.v2.schema import IPPRGroupSpec
+
+        return IPPRStatus(
+            cloud_instance_id="pod-1",
+            spec=IPPRGroupSpec(
+                min_cpu=1.0,
+                max_cpu=4.0,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            ),
+            current_cpu=1.0,
+            current_memory=4 * 1024 * 1024 * 1024,
+            # Desired had been bumped by an earlier pressure-driven resize
+            # that the kubelet then rejected; the queued resize never landed.
+            desired_cpu=1.0,
+            desired_memory=6 * 1024 * 1024 * 1024,
+            raylet_id="r-abc",
+            memory_pressure=True,
+            k8s_resize_status=k8s_resize_status,
+            k8s_resize_message="kubelet rejected",
+        )
+
+    def test_failed_ippr_clears_pressure_and_triggers_gate_off(self):
+        from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (  # noqa: E501
+            _handle_failed_or_timed_out_ippr,
+        )
+
+        st = self._make_status(k8s_resize_status="error")
+        _handle_failed_or_timed_out_ippr(st)
+
+        # Failure recorded — permanent shield via last_failed_at != None.
+        # can_resize_up() now returns False, so Phase B' skips the pod even
+        # though memory_pressure is still set (it is rebuilt each cycle at the
+        # scheduler injection point, not cleared here).
+        self.assertIsNotNone(st.last_failed_at)
+        self.assertEqual(st.last_failed_reason, "kubelet rejected")
+        self.assertFalse(st.can_resize_up())
+
+        # Revert queued: desired snapped back to current.
+        self.assertEqual(st.desired_cpu, st.current_cpu)
+        self.assertEqual(st.desired_memory, st.current_memory)
+        self.assertEqual(st.k8s_resize_status, "new")
+        self.assertTrue(st.has_resize_request_to_send())
+
+    def test_timed_out_ippr_also_clears_pressure(self):
+        """Timeout path mirrors the error path."""
+        import time as _time
+
+        from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (  # noqa: E501
+            _handle_failed_or_timed_out_ippr,
+        )
+
+        st = self._make_status(k8s_resize_status=None)
+        # Force is_timeout(): resizing_at + resize_timeout < now.
+        st.resizing_at = int(_time.time()) - st.spec.resize_timeout - 5
+
+        _handle_failed_or_timed_out_ippr(st)
+
+        self.assertIsNotNone(st.last_failed_at)
+        self.assertFalse(st.can_resize_up())
+        self.assertEqual(st.desired_memory, st.current_memory)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

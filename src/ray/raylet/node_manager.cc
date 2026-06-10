@@ -50,6 +50,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/pressure_monitor_factory.h"
 #include "ray/raylet/throttler.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_killing_policy_factory.h"
@@ -264,6 +265,14 @@ NodeManager::NodeManager(
       [this]() { CheckForUnexpectedWorkerDisconnects(); },
       RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
       "NodeManager.CheckForUnexpectedWorkerDisconnects");
+
+  // IPPR memory pressure monitor — behind RAY_memory_pressure_monitor_enabled.
+  // Config reads and sampling-loop orchestration are consolidated into
+  // CreatePressureMonitor() and the implementation's internal self-driving; node_manager
+  // only holds the interface handle.
+  if (RayConfig::instance().memory_pressure_monitor_enabled()) {
+    memory_pressure_monitor_ = CreatePressureMonitor();
+  }
 
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manager rpc server.
@@ -1790,6 +1799,17 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_lease_manager_.FillResourceUsage(*resources_data);
+  // IPPR: propagate the per-pod memory pressure snapshot so the
+  // autoscaler Phase B' can consume it.
+  if (memory_pressure_monitor_ != nullptr) {
+    auto ratio = memory_pressure_monitor_->GetCurrentSignal();
+    if (ratio.has_value()) {
+      RAY_LOG_EVERY_MS(INFO, 5000)
+          << "HandleGetResourceLoad: filling memory_pressure_ratio node="
+          << self_node_id_ << " ratio=" << *ratio;
+      resources_data->set_memory_pressure_ratio(*ratio);
+    }
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2123,6 +2143,19 @@ void NodeManager::HandleResizeLocalResourceInstances(
     RAY_LOG(INFO) << "Available resources: " << debug_string(updated_available_map);
     // Trigger scheduling to account for the new resources
     cluster_lease_manager_.ScheduleAndGrantLeases();
+  }
+
+  // IPPR: any memory target write (upsize / downsize / revert / noop) first calls
+  // OnResize() to reset the monitor -- after a downsize, limit_bytes shrinks and the old
+  // current_signal_'s limit is immediately stale; not resetting would pollute the next
+  // round of pressure evaluation. OnResize() atomically performs "read the pressure-cause
+  // latch -> reset state" and returns whether this resize was driven by memory pressure
+  // (isolation decision: see phase two).
+  if (memory_pressure_monitor_ != nullptr) {
+    const auto mem_target_it = target_resource_map.find(kMemory_ResourceLabel);
+    if (mem_target_it != target_resource_map.end()) {
+      memory_pressure_monitor_->OnResize();
+    }
   }
 
   // Populate the reply with the current resource state
@@ -2564,6 +2597,17 @@ std::string NodeManager::DebugString() const {
 
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats()->StatsString();
+
+  if (memory_pressure_monitor_ != nullptr) {
+    auto ratio = memory_pressure_monitor_->GetCurrentSignal();
+    if (ratio.has_value()) {
+      result << "\nmemory_pressure_signal=active ratio=" << *ratio;
+    } else {
+      result << "\nmemory_pressure_signal=inactive";
+    }
+  } else {
+    result << "\nmemory_pressure_signal=disabled";
+  }
 
   result << "\nDebugString() time ms: "
          << std::chrono::duration_cast<std::chrono::milliseconds>(clock_.SteadyNow() -

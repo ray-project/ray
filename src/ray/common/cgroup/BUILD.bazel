@@ -1,0 +1,45 @@
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
+
+# IPPR memory-pressure cgroup reader.
+# A narrower, single-purpose reader than the broader cgroup2 manager in
+# //src/ray/common/cgroup2 — it only produces (current_bytes, limit_bytes)
+# snapshots for the MemoryPressureMonitor.
+ray_cc_library(
+    name = "memory_pressure_reader",
+    srcs = [
+        "memory_pressure_reader.cc",
+    ],
+    hdrs = [
+        "memory_pressure_reader.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "mock_memory_pressure_reader",
+    hdrs = [
+        "mock_memory_pressure_reader.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":memory_pressure_reader",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_test(
+    name = "memory_pressure_reader_test",
+    srcs = [
+        "tests/memory_pressure_reader_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":memory_pressure_reader",
+        ":mock_memory_pressure_reader",
+        "//src/ray/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

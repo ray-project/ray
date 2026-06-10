@@ -371,7 +371,20 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  auto populate_node_state = [this, state](const rpc::GcsNodeInfo &gcs_node_info) {
+
+  // IPPR memory_pressure_signal forwarding stats: accumulate within a single
+  // GetNodeStates call and emit one aggregate summary at the end, so that call-site-level
+  // throttling does not erroneously suppress multiple simultaneously-pressured nodes.
+  struct PressureFwdStats {
+    size_t forwarded = 0;
+    size_t dropped_stale = 0;
+    int64_t max_dropped_age_ms = 0;
+    double max_ratio = 0.0;
+    NodeID max_ratio_node;
+  } pressure_stats;
+
+  auto populate_node_state = [this, state, &pressure_stats](
+                                 const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
@@ -446,6 +459,48 @@ void GcsAutoscalerStateManager::GetNodeStates(
     const auto &total = node_resource_data.resources_total();
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
+    // IPPR: propagate the raylet-observed memory pressure signal
+    // into the autoscaler NodeState so Phase B' can consume it. Guard
+    // against stale cached signals from silent raylets — if the raylet
+    // stops sending ResourcesData altogether (crash, network partition),
+    // the cached pressure signal would otherwise keep driving Phase B'
+    // forever. Drop signals older than 2× the typical heartbeat cadence.
+    //
+    // Freshness is measured against the GCS-side receive time (node_resource_item.first,
+    // written by UpdateResourceLoadAndUsage every time a ResourcesData is received),
+    // not the raylet-reported observed_at_unix_ms. Both share the same process and wall
+    // clock, so no NTP alignment is needed and the clock-reversal (age < 0) special case
+    // is no longer required. The semantics shift accordingly from "how long since the
+    // signal was observed" to "how long since GCS last received a report from this node"
+    // -- which precisely captures the raylet-silence failure mode.
+    // Per-node detail goes to DEBUG; INFO/WARNING are emitted by the aggregate summary at
+    // the end of the call, avoiding RAY_LOG_EVERY_MS call-site-level throttling that would
+    // suppress other simultaneously-pressured nodes.
+    if (node_resource_data.has_memory_pressure_ratio()) {
+      const double ratio = node_resource_data.memory_pressure_ratio();
+      const int64_t signal_stale_ms =
+          RayConfig::instance().memory_pressure_signal_stale_ms();
+      const int64_t age =
+          absl::ToInt64Milliseconds(absl::Now() - node_resource_item.first);
+      if (age < signal_stale_ms) {
+        RAY_LOG(DEBUG) << "GetNodeStates: forwarding memory_pressure_ratio node="
+                       << node_id << " ratio=" << ratio << " age_ms=" << age;
+        node_state_proto->set_memory_pressure_ratio(ratio);
+        ++pressure_stats.forwarded;
+        if (ratio > pressure_stats.max_ratio) {
+          pressure_stats.max_ratio = ratio;
+          pressure_stats.max_ratio_node = node_id;
+        }
+      } else {
+        RAY_LOG(DEBUG) << "GetNodeStates: dropping stale memory_pressure_ratio node="
+                       << node_id << " age_ms=" << age;
+        ++pressure_stats.dropped_stale;
+        if (age > pressure_stats.max_dropped_age_ms) {
+          pressure_stats.max_dropped_age_ms = age;
+        }
+      }
+    }
+
     // Add dynamic PG labels.
     // DEPRECATED: Dynamic labels feature is deprecated. Do not introduce new usages.
     // This assignment is kept only for backward compatibility in the autoscaler, where
@@ -475,6 +530,25 @@ void GcsAutoscalerStateManager::GetNodeStates(
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
     populate_node_state(*gcs_node_info.second);
   });
+
+  // IPPR: aggregate summary -- one line per GetNodeStates call, covering all
+  // nodes. Emitted only when there are pressure-related events (forwarded or dropped);
+  // the INFO line is throttled to 5 seconds, while stale drops are logged immediately at
+  // WARNING (operators are more sensitive to silent raylets).
+  if (pressure_stats.forwarded > 0) {
+    RAY_LOG_EVERY_MS(INFO, 5000)
+        << "GetNodeStates memory_pressure_signal: forwarded="
+        << pressure_stats.forwarded << " dropped_stale=" << pressure_stats.dropped_stale
+        << " max_ratio=" << pressure_stats.max_ratio
+        << " max_ratio_node=" << pressure_stats.max_ratio_node;
+  }
+  if (pressure_stats.dropped_stale > 0) {
+    RAY_LOG_EVERY_MS(WARNING, 5000)
+        << "GetNodeStates memory_pressure_signal: dropped_stale="
+        << pressure_stats.dropped_stale
+        << " max_age_ms=" << pressure_stats.max_dropped_age_ms
+        << " forwarded=" << pressure_stats.forwarded;
+  }
 }
 
 void GcsAutoscalerStateManager::HandleDrainNode(

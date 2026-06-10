@@ -1137,3 +1137,32 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// --- Memory-pressure-driven in-place pod resize (IPPR) monitor -----------
+// Top-level feature switch. Disabled by default — when false, the raylet
+// constructs a no-op monitor that never polls or emits signals.
+RAY_CONFIG(bool, memory_pressure_monitor_enabled, false)
+// Poll cadence for the pod-level cgroup reader.
+RAY_CONFIG(uint64_t, memory_pressure_poll_interval_ms, 2000)
+// Ratio threshold (current_bytes / limit_bytes) above which the monitor
+// starts accruing pressure hits. Matches the default of the
+// `memory-pressure-ratio` IPPR group annotation; per-pod overrides are
+// resolved on the autoscaler side and surface only through annotations, so
+// this env flag is the Raylet-local fallback.
+RAY_CONFIG(double, memory_pressure_ratio, 0.85)
+// Number of consecutive above-threshold samples required before the monitor
+// emits a signal and closes the lease gate.
+RAY_CONFIG(int, memory_pressure_consecutive_hits, 2)
+// Number of consecutive below-(ratio - hysteresis) samples required before
+// the monitor clears the signal and opens the lease gate.
+RAY_CONFIG(int, memory_pressure_release_consecutive_hits, 3)
+// Hysteresis width: release threshold = memory_pressure_ratio minus this.
+RAY_CONFIG(double, memory_pressure_release_hysteresis, 0.10)
+// Rate-limit interval for the "pressure persists at max capacity" warning.
+RAY_CONFIG(int64_t, memory_pressure_persistent_warning_interval_ms, 60000)
+// GCS-side staleness window for memory_pressure_signal forwarding. A signal
+// older than this is dropped at GetNodeStates time so a silent raylet
+// (crash / network partition) does not keep driving Phase B' from a frozen
+// cached snapshot. Default well above the 10s heartbeat cadence used by
+// kuberay deployments; tune in lockstep when changing report periods.
+RAY_CONFIG(int64_t, memory_pressure_signal_stale_ms, 30000)

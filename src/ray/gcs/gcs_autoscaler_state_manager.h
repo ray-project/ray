@@ -102,6 +102,21 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
     return node_resource_info_;
   }
 
+  /// Test-only: backfill the cached ResourcesData receipt time for a given node.
+  ///
+  /// The stale-drop of the IPPR memory_pressure_signal is measured against the
+  /// GCS-side receipt time (the absl::Time in node_resource_info_), which is written as
+  /// absl::Now() by UpdateResourceLoadAndUsage and cannot be injected by unit tests. This
+  /// method lets a unit test rewind the receipt time into the past, hitting the stale
+  /// branch of GetNodeStates without any sleep. It has no production callers.
+  void SetNodeResourceReceiptTimeForTest(const NodeID &node_id,
+                                         absl::Time received_at) {
+    auto it = node_resource_info_.find(node_id);
+    RAY_CHECK(it != node_resource_info_.end())
+        << "SetNodeResourceReceiptTimeForTest: node not found " << node_id;
+    it->second.first = received_at;
+  }
+
  private:
   /// \brief Get the aggregated resource load from all nodes.
   absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> GetAggregatedResourceLoad()

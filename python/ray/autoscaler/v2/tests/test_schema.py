@@ -225,6 +225,61 @@ def test_ippr_status_failure_and_timeout_helpers():
     assert not status2.is_timeout()
 
 
+def _make_ippr_status_with_memory(current: int, max_mem: int) -> IPPRStatus:
+    """Helper for pressure-target tests with a fat enough memory envelope."""
+    return IPPRStatus(
+        cloud_instance_id="ray-worker-pressure",
+        spec=IPPRGroupSpec(
+            min_cpu=1.0,
+            max_cpu=4.0,
+            min_memory=1,
+            max_memory=max_mem,
+            resize_timeout=10,
+        ),
+        current_cpu=1.0,
+        current_memory=current,
+        desired_cpu=1.0,
+        desired_memory=current,
+    )
+
+
+def test_ippr_status_defaults():
+    s = _make_ippr_status()
+    assert s.memory_pressure is False
+
+
+def test_compute_pressure_target_no_pressure_returns_current():
+    s = _make_ippr_status_with_memory(current=4, max_mem=12)
+    assert s.compute_pressure_target() == (1.0, 4)
+
+
+def test_compute_pressure_target_jumps_to_max():
+    s = _make_ippr_status_with_memory(current=4, max_mem=12)
+    s.memory_pressure = True
+    assert s.compute_pressure_target() == (1.0, 12)
+
+
+def test_compute_pressure_target_clamps_when_current_above_max():
+    s = _make_ippr_status_with_memory(current=14, max_mem=10)
+    s.memory_pressure = True
+    _, target = s.compute_pressure_target()
+    assert target == 14  # never below current_memory
+
+
+def test_record_failure_shields_via_can_resize_up():
+    # record_failure sets last_failed_at, the single source of truth for
+    # permanent shielding: can_resize_up() turns False, so Phase B' skips the
+    # pod regardless of a live memory_pressure flag. The flag itself is
+    # left untouched (rebuilt each cycle at the scheduler injection point, not here).
+    s = _make_ippr_status_with_memory(current=4, max_mem=12)
+    s.memory_pressure = True
+    assert s.can_resize_up()
+    s.record_failure("boom", failed_at=1234)
+    assert s.last_failed_at == 1234
+    assert not s.can_resize_up()
+    assert s.memory_pressure is True
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

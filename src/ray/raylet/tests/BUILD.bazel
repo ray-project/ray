@@ -18,6 +18,30 @@ ray_cc_library(
 )
 
 ray_cc_test(
+    name = "ratio_hysteresis_pressure_monitor_test",
+    size = "small",
+    srcs = ["ratio_hysteresis_pressure_monitor_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/cgroup:mock_memory_pressure_reader",
+        "//src/ray/raylet:ratio_hysteresis_pressure_monitor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "pressure_monitor_factory_test",
+    size = "small",
+    srcs = ["pressure_monitor_factory_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/raylet:ratio_hysteresis_pressure_monitor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "wait_manager_test",
     size = "small",
     srcs = ["wait_manager_test.cc"],

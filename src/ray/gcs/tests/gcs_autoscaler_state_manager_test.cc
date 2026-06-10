@@ -246,6 +246,40 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
+  // IPPR: inject a ResourcesData heartbeat carrying a
+  // memory_pressure_ratio so we can exercise the GCS-side forwarding +
+  // stale-drop path inside GetNodeStates.
+  //
+  // Note on the freshness basis: the stale-drop in GetNodeStates keys off the
+  // GCS-side *receipt time* (the absl::Now() written into node_resource_info_ by
+  // UpdateResourceLoadAndUsage). Calling this helper represents "received right
+  // now", so the node is always fresh afterward. To construct a stale state,
+  // additionally call BackdateNodeReceiptForTest to rewind the receipt time.
+  void UpdateFromResourceViewWithPressureSync(
+      const NodeID &node_id,
+      const absl::flat_hash_map<std::string, double> &available_resources,
+      const absl::flat_hash_map<std::string, double> &total_resources,
+      double ratio) {
+    rpc::ResourcesData resources_data;
+    FillResourcesData(resources_data,
+                      node_id,
+                      available_resources,
+                      total_resources,
+                      /*idle_ms=*/0,
+                      /*is_draining=*/false,
+                      /*draining_deadline_timestamp_ms=*/-1);
+    resources_data.set_memory_pressure_ratio(ratio);
+    gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
+  }
+
+  // IPPR: rewind a node's cached ResourcesData receipt time by age_ms
+  // milliseconds, simulating "it has been age_ms since GCS last received a report
+  // from this raylet" -- i.e. the raylet has gone silent. No sleep required.
+  void BackdateNodeReceiptForTest(const NodeID &node_id, int64_t age_ms) {
+    gcs_autoscaler_state_manager_->SetNodeResourceReceiptTimeForTest(
+        node_id, absl::Now() - absl::Milliseconds(age_ms));
+  }
+
   rpc::autoscaler::GetClusterStatusReply GetClusterStatusSync() {
     rpc::autoscaler::GetClusterStatusRequest request;
     rpc::autoscaler::GetClusterStatusReply reply;
@@ -1432,6 +1466,267 @@ TEST_F(GcsAutoscalerStateManagerTest,
   ASSERT_EQ(req.bundle_selectors_size(), 1);
   // Does not use label-domain scheduling, so locality_requirement should not be set.
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
+}
+
+// ============================================================================
+// IPPR: GCS-side memory_pressure_signal forwarding tests.
+//
+// Covers the GetNodeStates branch added in
+// gcs_autoscaler_state_manager.cc:GetNodeStates (the per-node forward + 30s
+// stale-drop logic plus the per-call aggregate summary counters).
+// ============================================================================
+
+TEST_F(GcsAutoscalerStateManagerTest, TestForwardsFreshMemoryPressureSignal) {
+  // Arrange
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 4});
+  node->mutable_resources_total()->insert({"memory", 1024 * 1024 * 1024});
+  node->set_instance_id("instance_pressure_fresh");
+  AddNode(node);
+
+  // Report just received (receipt time = now), age ~= 0, well within the window.
+  UpdateFromResourceViewWithPressureSync(NodeID::FromBinary(node->node_id()),
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.93);
+
+  // Act
+  const auto &state = GetClusterResourceStateSync();
+
+  // Assert: a fresh signal is forwarded with its ratio passed through verbatim.
+  ASSERT_EQ(state.node_states_size(), 1);
+  const auto &ns = state.node_states(0);
+  ASSERT_TRUE(ns.has_memory_pressure_ratio());
+  EXPECT_DOUBLE_EQ(ns.memory_pressure_ratio(), 0.93);
+}
+
+// Blind spot 2: a test named "stale" must carry a discriminating assertion. The
+// freshness basis is now the GCS receipt time, so the stale state is constructed
+// by rewinding the receipt time (simulating a silent raylet) rather than
+// manipulating observed_at. The discriminating power comes from: if
+// BackdateNodeReceiptForTest is removed (receipt time = now), this case would
+// forward and the assertion would fail, proving the assertion truly bites the
+// stale branch.
+TEST_F(GcsAutoscalerStateManagerTest, TestDropsStaleMemoryPressureSignal) {
+  // Arrange
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 4});
+  node->set_instance_id("instance_pressure_stale");
+  AddNode(node);
+
+  const NodeID node_id = NodeID::FromBinary(node->node_id());
+  UpdateFromResourceViewWithPressureSync(node_id,
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.97);
+  // raylet silent for 31s: receipt time rewound past the 30s default threshold ->
+  // must be dropped.
+  BackdateNodeReceiptForTest(node_id, /*age_ms=*/31'000);
+
+  // Act
+  const auto &state = GetClusterResourceStateSync();
+
+  // Assert
+  ASSERT_EQ(state.node_states_size(), 1);
+  EXPECT_FALSE(state.node_states(0).has_memory_pressure_ratio())
+      << "stale signal (raylet silent 31s) must not be forwarded into NodeState";
+}
+
+// Facet 5 / blind spot 5: magic number vs config-derived relationship. If the old
+// implementation hardcoded the stale threshold as 30'000, a unit test verifying
+// the "30s boundary" would be equivalent to verifying a literal. This case
+// explicitly overrides the config to a non-default value to verify the derived
+// relationship: when the node's receipt-time age falls between
+// (override_value, default_value), the drop decision only honors the override
+// value, proving GetNodeStates genuinely reads RayConfig rather than a hardcoded
+// constant.
+TEST_F(GcsAutoscalerStateManagerTest, TestStaleThresholdHonorsRayConfigOverride) {
+  // Arrange: lower the stale threshold to 5s, well below the 30s default.
+  RayConfig::instance().initialize(R"({"memory_pressure_signal_stale_ms": 5000})");
+
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 4});
+  node->set_instance_id("instance_pressure_override");
+  AddNode(node);
+
+  const NodeID node_id = NodeID::FromBinary(node->node_id());
+  UpdateFromResourceViewWithPressureSync(node_id,
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.95);
+  // Receipt time rewound 10s: > the 5s override threshold but < the 30s default
+  // threshold. Reading config -> drop; reading a hardcoded 30s -> forward. The two
+  // behave oppositely, providing strict discriminating power.
+  BackdateNodeReceiptForTest(node_id, /*age_ms=*/10'000);
+
+  // Act
+  const auto &state = GetClusterResourceStateSync();
+
+  // Assert
+  ASSERT_EQ(state.node_states_size(), 1);
+  EXPECT_FALSE(state.node_states(0).has_memory_pressure_ratio())
+      << "stale threshold must derive from RayConfig, not a hardcoded 30s";
+
+  // Restore the default config to avoid contaminating subsequent tests.
+  RayConfig::instance().initialize("{}");
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestForwardsMultipleNodesIndependently) {
+  // Two raylets reporting fresh pressure in the same GetNodeStates call. The
+  // pre-fix code path used RAY_LOG_EVERY_MS at the call-site, which meant the
+  // proto fields were always written but only one log line surfaced. With the
+  // aggregate-summary refactor every node still gets its own NodeState entry
+  // populated; we assert both pods are visible to the autoscaler.
+  auto node_a = GenNodeInfo();
+  node_a->mutable_resources_total()->insert({"CPU", 4});
+  node_a->set_instance_id("instance_pressure_a");
+  AddNode(node_a);
+
+  auto node_b = GenNodeInfo();
+  node_b->mutable_resources_total()->insert({"CPU", 4});
+  node_b->set_instance_id("instance_pressure_b");
+  AddNode(node_b);
+
+  const std::string id_a = NodeID::FromBinary(node_a->node_id()).Hex();
+  const std::string id_b = NodeID::FromBinary(node_b->node_id()).Hex();
+  UpdateFromResourceViewWithPressureSync(NodeID::FromBinary(node_a->node_id()),
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.91);
+  UpdateFromResourceViewWithPressureSync(NodeID::FromBinary(node_b->node_id()),
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.95);
+
+  const auto &state = GetClusterResourceStateSync();
+  ASSERT_EQ(state.node_states_size(), 2);
+  std::map<std::string, double> seen;
+  for (const auto &ns : state.node_states()) {
+    ASSERT_TRUE(ns.has_memory_pressure_ratio())
+        << "every fresh signal must be forwarded, not just the first";
+    seen[NodeID::FromBinary(ns.node_id()).Hex()] =
+        ns.memory_pressure_ratio();
+  }
+  ASSERT_EQ(seen.size(), 2u);
+  EXPECT_DOUBLE_EQ(seen[id_a], 0.91);
+  EXPECT_DOUBLE_EQ(seen[id_b], 0.95);
+}
+
+// Blind spot 3 + blind spot 1: hugging the edge but not equal. The drop gate is
+// `age < signal_stale_ms` (default 30s), and age now comes from the GCS receipt
+// time. The existing Fresh(~0s) and Stale(31s) cover both ends but are far from
+// the boundary. This adds age=29s -- hugging the 30s threshold yet still inside
+// the window, so it should *forward*. Together with the 31s case it pins both
+// sides of the 30s boundary, preventing the drop threshold from being mistakenly
+// changed to a smaller constant (e.g. 25s) that would slip past coarse-grained
+// tests.
+TEST_F(GcsAutoscalerStateManagerTest, TestForwardsSignalJustInsideStaleWindow) {
+  // Arrange
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 4});
+  node->set_instance_id("instance_pressure_edge");
+  AddNode(node);
+
+  const NodeID node_id = NodeID::FromBinary(node->node_id());
+  UpdateFromResourceViewWithPressureSync(node_id,
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.96);
+  // Receipt time rewound 29s: age 29s < 30s default threshold -> inside the
+  // window, should forward.
+  BackdateNodeReceiptForTest(node_id, /*age_ms=*/29'000);
+
+  // Act
+  const auto &state = GetClusterResourceStateSync();
+
+  // Assert: 29s still counts as fresh and must be forwarded.
+  ASSERT_EQ(state.node_states_size(), 1);
+  ASSERT_TRUE(state.node_states(0).has_memory_pressure_ratio())
+      << "signal received 29s ago is inside the 30s window and must be forwarded";
+  EXPECT_DOUBLE_EQ(state.node_states(0).memory_pressure_ratio(), 0.96);
+}
+
+// Blind spot 6: config robustness -- threshold at the boundary value 0. If
+// operators set memory_pressure_signal_stale_ms to 0, the drop gate `age < 0` is
+// always false for any age >= 0 -> all signals are dropped. This is the
+// reasonable degradation of "forwarding turned off"; it should neither crash nor
+// conversely forward everything. A just-received fresh signal (age ~= 0) must
+// also fall into the stale branch under a threshold of 0.
+TEST_F(GcsAutoscalerStateManagerTest, TestZeroStaleThresholdDropsEvenFreshSignal) {
+  // Arrange: set the threshold to 0.
+  RayConfig::instance().initialize(R"({"memory_pressure_signal_stale_ms": 0})");
+
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 4});
+  node->set_instance_id("instance_pressure_zero_thresh");
+  AddNode(node);
+
+  // Just received (age ~= 0), no rewind. Under threshold 0, `age < 0` is always
+  // false -> dropped.
+  UpdateFromResourceViewWithPressureSync(NodeID::FromBinary(node->node_id()),
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.99);
+
+  // Act
+  const auto &state = GetClusterResourceStateSync();
+
+  // Assert: threshold 0 is equivalent to turning forwarding off; even fresh
+  // signals are dropped, and it does not crash.
+  ASSERT_EQ(state.node_states_size(), 1);
+  EXPECT_FALSE(state.node_states(0).has_memory_pressure_ratio())
+      << "stale threshold 0 must drop all signals including fresh ones";
+
+  // Restore the default config to avoid contaminating subsequent tests.
+  RayConfig::instance().initialize("{}");
+}
+
+// Blind spot 1: truth-table cross. When fresh and stale nodes coexist in the same
+// GetNodeStates call, each must be judged independently -- fresh forwarded, stale
+// dropped, and the aggregate summary must not let one class affect the other.
+// This covers the mixed quadrant of the (fresh, stale) truth table, distinct from
+// the existing all-fresh multi-node case.
+TEST_F(GcsAutoscalerStateManagerTest, TestMixedFreshAndStaleJudgedIndependently) {
+  // Arrange: node_fresh reports a fresh signal, node_stale reports a stale one.
+  auto node_fresh = GenNodeInfo();
+  node_fresh->mutable_resources_total()->insert({"CPU", 4});
+  node_fresh->set_instance_id("instance_mixed_fresh");
+  AddNode(node_fresh);
+
+  auto node_stale = GenNodeInfo();
+  node_stale->mutable_resources_total()->insert({"CPU", 4});
+  node_stale->set_instance_id("instance_mixed_stale");
+  AddNode(node_stale);
+
+  const NodeID fresh_id = NodeID::FromBinary(node_fresh->node_id());
+  const NodeID stale_id = NodeID::FromBinary(node_stale->node_id());
+  UpdateFromResourceViewWithPressureSync(fresh_id,
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.92);
+  UpdateFromResourceViewWithPressureSync(stale_id,
+                                         /*available=*/{{"CPU", 4}},
+                                         /*total=*/{{"CPU", 4}},
+                                         /*ratio=*/0.98);
+  // The fresh node keeps its receipt time at now; the stale node is rewound 31s to
+  // simulate silence.
+  BackdateNodeReceiptForTest(stale_id, /*age_ms=*/31'000);
+
+  // Act
+  const auto &state = GetClusterResourceStateSync();
+
+  // Assert: both nodes are present, but only the fresh one carries a signal.
+  ASSERT_EQ(state.node_states_size(), 2);
+  int with_signal = 0;
+  NodeID forwarded_node;
+  for (const auto &ns : state.node_states()) {
+    if (ns.has_memory_pressure_ratio()) {
+      ++with_signal;
+      forwarded_node = NodeID::FromBinary(ns.node_id());
+    }
+  }
+  EXPECT_EQ(with_signal, 1) << "exactly the fresh node's signal should survive";
+  EXPECT_EQ(forwarded_node, fresh_id);
 }
 
 }  // namespace gcs

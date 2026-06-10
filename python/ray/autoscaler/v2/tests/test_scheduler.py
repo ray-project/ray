@@ -3476,6 +3476,555 @@ def test_ippr_max_limits_affect_new_node_capacity_2():
     assert reply.to_ippr == []
 
 
+def test_phase_b_prime_resizes_pressure_pod():
+    """pod A with memory_pressure → Phase B' jumps memory straight to max."""
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={
+                "CPU": 1,
+                "memory": 4 * 1024 * 1024 * 1024,
+            },
+            total_resources={
+                "CPU": 1,
+                "memory": 4 * 1024 * 1024 * 1024,
+            },
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=12 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=4 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=4 * 1024 * 1024 * 1024,
+        memory_pressure=True,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    assert len(reply.to_ippr) == 1
+    # One-shot jump straight to max_memory (12Gi).
+    assert reply.to_ippr[0].desired_memory == 12 * 1024 * 1024 * 1024
+    assert reply.to_ippr[0].desired_cpu == 1  # CPU unchanged.
+    assert reply.to_launch == []
+
+
+def test_phase_b_prime_absorbs_signal_at_injection_point():
+    """End-to-end: a pressure signal carried on NodeState.memory_pressure_ratio
+    (not a manually set memory_pressure) is absorbed at the scheduler injection
+    point by IPPRStatus.apply_pressure_signal, so only the pod backing the
+    pressured raylet is expanded by Phase B'; the quiet raylet is untouched.
+
+    This covers the real risk of migrating the injection point from reconciler to
+    scheduler: whether the signal join actually happens on instance.ray_node,
+    co-located with raylet_id. The two pods deliberately share one IPPRSpec group,
+    ruling out passing the test by manually setting fields."""
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=12 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+
+    def _instance(node_id: bytes, cloud_id: str, under_pressure: bool):
+        ray_node = NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            total_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            node_id=node_id,
+        )
+        if under_pressure:
+            # The signal lives on NodeState (sourced from the raylet heartbeat);
+            # field presence is the signal, do not manually set memory_pressure.
+            ray_node.memory_pressure_ratio = 0.95
+        return make_autoscaler_instance(
+            ray_node=ray_node,
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id=cloud_id,
+                node_id=node_id.hex(),
+            ),
+            cloud_instance_id=cloud_id,
+        )
+
+    pressured = _instance(b"r1", "pod-1", under_pressure=True)
+    quiet = _instance(b"r2", "pod-2", under_pressure=False)
+
+    # IPPRStatus does not preset memory_pressure; it must be absorbed from
+    # ray_node at the injection point.
+    def _status(cloud_id: str):
+        return IPPRStatus(
+            cloud_instance_id=cloud_id,
+            spec=ippr_specs.groups["type_1"],
+            current_cpu=1,
+            current_memory=4 * 1024 * 1024 * 1024,
+            desired_cpu=1,
+            desired_memory=4 * 1024 * 1024 * 1024,
+        )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[],
+        instances=[pressured, quiet],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": _status("pod-1"), "pod-2": _status("pod-2")},
+    )
+
+    reply = scheduler.schedule(request)
+
+    # Only the pressured pod-1 is expanded to max (12Gi); the quiet pod-2 has no
+    # IPPR request.
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    assert reply.to_ippr[0].desired_memory == 12 * 1024 * 1024 * 1024
+    assert reply.to_launch == []
+
+
+def test_phase_b_prime_skips_when_at_max():
+    """When current_memory == max_memory, Phase B' issues no request."""
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "memory": 8 * 1024 * 1024 * 1024},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={
+                "CPU": 1,
+                "memory": 8 * 1024 * 1024 * 1024,
+            },
+            total_resources={
+                "CPU": 1,
+                "memory": 8 * 1024 * 1024 * 1024,
+            },
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=8 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=8 * 1024 * 1024 * 1024,
+        memory_pressure=True,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    assert reply.to_ippr == []
+
+
+def test_phase_b_prime_runs_before_phase_b():
+    """Phase B' runs before Phase B, so a pressured pod gets its
+    memory upsize before pending bin-packing eats the spare capacity.
+
+    Setup: pod-A (pressure, current 4Gi/CPU 1) + pod-B (no pressure, idle).
+    Pending request {CPU: 6}. Expected:
+    - Phase B' queues pod-A with memory upsize 4Gi → max (CPU unchanged).
+    - Phase B picks pod-B for the pending CPU bundle, queueing CPU upsize.
+    - Both appear in reply.to_ippr; pod-A's resize is not eaten by Phase B.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    spec = IPPRGroupSpec(
+        min_cpu=1,
+        max_cpu=8,
+        min_memory=1 * 1024 * 1024 * 1024,
+        max_memory=12 * 1024 * 1024 * 1024,
+        resize_timeout=60,
+    )
+    ippr_specs = IPPRSpecs(groups={"type_1": spec})
+
+    instance_a = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            total_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-A",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-A",
+    )
+    instance_b = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            total_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            node_id=b"r2",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-B",
+            node_id="r2",
+        ),
+        cloud_instance_id="pod-B",
+    )
+    status_a = IPPRStatus(
+        cloud_instance_id="pod-A",
+        spec=spec,
+        current_cpu=1,
+        current_memory=4 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=4 * 1024 * 1024 * 1024,
+        memory_pressure=True,
+    )
+    status_b = IPPRStatus(
+        cloud_instance_id="pod-B",
+        spec=spec,
+        current_cpu=1,
+        current_memory=4 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=4 * 1024 * 1024 * 1024,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 6})],
+        instances=[instance_a, instance_b],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-A": status_a, "pod-B": status_b},
+    )
+
+    reply = scheduler.schedule(request)
+    by_pod = {req.cloud_instance_id: req for req in reply.to_ippr}
+    assert set(by_pod.keys()) == {"pod-A", "pod-B"}
+    # Phase B' result on pod-A: memory jumps straight to max (12Gi), CPU unchanged.
+    assert by_pod["pod-A"].desired_memory == 12 * 1024 * 1024 * 1024
+    assert by_pod["pod-A"].desired_cpu == 1
+    # Phase B result on pod-B: CPU upsized (queued at max effective CPU).
+    assert by_pod["pod-B"].desired_cpu > 1
+
+
+def test_phase_b_prime_and_phase_b_do_not_conflict():
+    """A pod queued by Phase B' has can_resize_up()==False (because
+    k8s_resize_status='new'), so Phase B does not re-queue it. Single
+    request entry in reply.to_ippr."""
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    spec = IPPRGroupSpec(
+        min_cpu=1,
+        max_cpu=8,
+        min_memory=1 * 1024 * 1024 * 1024,
+        max_memory=12 * 1024 * 1024 * 1024,
+        resize_timeout=60,
+    )
+    ippr_specs = IPPRSpecs(groups={"type_1": spec})
+
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            total_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+    status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=spec,
+        current_cpu=1,
+        current_memory=4 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=4 * 1024 * 1024 * 1024,
+        memory_pressure=True,
+    )
+
+    # Pending request that would otherwise drag this pod into Phase B too.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 4})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Exactly one IPPR action — the Phase B' resize. Phase B saw
+    # k8s_resize_status="new" and skipped this pod via can_resize_up().
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    # Memory jumped to max; CPU stays at current (no Phase B
+    # double-queue from the pending CPU request).
+    assert reply.to_ippr[0].desired_memory == 12 * 1024 * 1024 * 1024
+    assert reply.to_ippr[0].desired_cpu == 1
+
+
+# Aspect 2: consistency between the test name and its assertions. The original
+# test_phase_b_prime_runs_before_phase_b claimed "runs before" in its name but
+# only asserted "both pods are queued" -- if Phase B' and update_total_resources
+# were swapped in order (i.e. Phase B' takes no effect this iteration and only
+# applies on the next one), the original test would still pass. This case
+# explicitly asserts that "the capacity lifted by Phase B' is used by binpacking
+# in the same iteration", using whether to_launch is empty as the discriminating
+# signal.
+def test_phase_b_prime_capacity_is_visible_to_binpacking_same_iteration():
+    """Phase B' must queue_resize_request before update_total_resources so that
+    binpacking in this iteration sees the lifted desired capacity.
+
+    Discriminating setup:
+    - pod-1 old total = 4Gi memory, Phase B' lifts it to 12Gi.
+    - pending request = {memory: 8Gi}, doesn't fit the old capacity but fits the
+      new one.
+    - Phase B' effective this iteration -> request lands on pod-1 -> to_launch empty.
+    - Phase B' deferred one iteration -> request doesn't fit -> triggers a new node
+      -> to_launch non-empty.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    Gi = 1024 * 1024 * 1024
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 4, "memory": 4 * Gi},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    spec = IPPRGroupSpec(
+        min_cpu=1,
+        max_cpu=8,
+        min_memory=1 * Gi,
+        max_memory=12 * Gi,
+        resize_timeout=60,
+    )
+    ippr_specs = IPPRSpecs(groups={"type_1": spec})
+
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 4, "memory": 4 * Gi},
+            total_resources={"CPU": 4, "memory": 4 * Gi},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+    status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=spec,
+        current_cpu=1,
+        current_memory=4 * Gi,
+        desired_cpu=1,
+        desired_memory=4 * Gi,
+        memory_pressure=True,
+    )
+
+    # Key: the pending request needs 8Gi memory, which doesn't fit the old 4Gi
+    # total; only after Phase B' lifts desired=12Gi does it fit.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1, "memory": 8 * Gi})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": status},
+    )
+
+    reply = scheduler.schedule(request)
+
+    # 1. Phase B' triggers: pod-1 desired_memory is lifted to 12Gi.
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    assert reply.to_ippr[0].desired_memory == 12 * Gi
+
+    # 2. Key assertion: the 8Gi request fits into pod-1 this iteration, with no
+    #    new node needed. If Phase B' is ordered wrong (deferred one iteration),
+    #    binpacking still computes against the old 4Gi capacity, can't fit, and
+    #    triggers to_launch to start a new node.
+    assert reply.to_launch == [], (
+        f"Phase B' did not lift capacity in the same iteration: "
+        f"binpacking still saw the old 4Gi total and asked to launch new "
+        f"nodes ({reply.to_launch}). The Phase B' loop must run BEFORE the "
+        f"update_total_resources loop in scheduler._sched_resources."
+    )
+
+
+def test_phase_b_prime_respects_suggested_max_memory():
+    """A prior Deferred/Infeasible response sets suggested_max_memory.
+    Phase B' must respect this cap (via max_memory()) instead of climbing to
+    spec.max_memory."""
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+    spec = IPPRGroupSpec(
+        min_cpu=1,
+        max_cpu=4,
+        min_memory=1 * 1024 * 1024 * 1024,
+        max_memory=12 * 1024 * 1024 * 1024,
+        resize_timeout=60,
+    )
+    ippr_specs = IPPRSpecs(groups={"type_1": spec})
+
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            total_resources={"CPU": 1, "memory": 4 * 1024 * 1024 * 1024},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+    # Raw target = spec.max_memory (12Gi), but kubelet previously suggested
+    # max=5Gi. Phase B' must clamp to 5Gi.
+    status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=spec,
+        current_cpu=1,
+        current_memory=4 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=4 * 1024 * 1024 * 1024,
+        memory_pressure=True,
+        suggested_max_memory=5 * 1024 * 1024 * 1024,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": status},
+    )
+
+    reply = scheduler.schedule(request)
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].desired_memory == 5 * 1024 * 1024 * 1024
+    assert reply.to_ippr[0].desired_cpu == 1
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

@@ -958,6 +958,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                         node.ippr_status = req.ippr_statuses[instance.cloud_instance_id]
                         if node.ray_node_id:
                             node.ippr_status.raylet_id = node.ray_node_id
+                        # Absorb the pressure signal from the same, co-located
+                        # instance.ray_node as raylet_id above: task-driven needs
+                        # raylet_id, pressure-driven (Phase B') needs memory_pressure.
+                        # The signal is level-triggered, rebuilt every cycle; stays
+                        # False when ray_node is None.
+                        node.ippr_status.apply_pressure_signal(instance.ray_node)
 
             return cls(
                 nodes=nodes,
@@ -1687,6 +1693,31 @@ class ResourceDemandScheduler(IResourceScheduler):
         #   1. existing nodes in the cluster. or
         #   2. new nodes that are launched to satisfy the resource requests.
         target_nodes = []
+
+        # Phase B' (IPPR): pods under memory pressure jump straight
+        # to spec.max_memory before task-driven IPPR so their cap isn't eaten
+        # by pending binpacking. One-shot — no geometric ladder.
+        # queue_resize_request must run before update_total_resources below;
+        # otherwise this cycle's binpacking still computes capacity from the old
+        # desired value, deferring Phase B's actual effect to the next reconcile
+        # cycle.
+        for node in existing_nodes:
+            # ippr_status and ippr_spec are attached as a pair during reconcile, so
+            # checking status alone suffices; the target memory is computed inside
+            # compute_pressure_target() via max_memory() and does not need spec.
+            status = node.ippr_status
+            if status is None:
+                continue
+            if not status.memory_pressure:
+                continue
+            if not status.can_resize_up():
+                continue
+            target_cpu, target_memory = status.compute_pressure_target()
+            if target_memory <= status.current_memory:
+                continue
+            status.queue_resize_request(
+                desired_cpu=target_cpu, desired_memory=target_memory
+            )
 
         for node in existing_nodes:
             if node.ippr_status is not None:

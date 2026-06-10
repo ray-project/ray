@@ -44,6 +44,7 @@
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/memory_pressure_signal_monitor.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/scheduling/cluster_lease_manager_interface.h"
@@ -1016,6 +1017,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   // Controls the lifecycle of the CgroupManager.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+
+  // IPPR memory pressure monitor — may be null when
+  // RAY_memory_pressure_monitor_enabled=false (default).
+  std::unique_ptr<MemoryPressureSignalMonitor> memory_pressure_monitor_;
 
   std::atomic_bool &shutting_down_;
 

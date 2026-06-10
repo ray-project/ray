@@ -47,6 +47,7 @@ py_test_module_list(
     size = "medium",
     files = [
         "tests/test_autoscaler.py",
+        "tests/test_inflight_ippr_memory_pressure.py",
         "tests/test_sdk.py",
     ],
     tags = [
