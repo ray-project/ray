@@ -577,11 +577,24 @@ class MultiRLModuleSpec:
         # Figure out global inference_only setting.
         # If not provided (None), only if all submodules are
         # inference_only, this MultiRLModule will be inference_only.
-        self.inference_only = (
-            self.inference_only
-            if self.inference_only is not None
-            else all(spec.inference_only for spec in self.rl_module_specs.values())
-        )
+        #
+        # ``rl_module_specs`` is documented to be either a single shared
+        # ``RLModuleSpec`` (applied to every module_id, see the shared
+        # policy net example in the RLlib RLModule docs) or a dict mapping
+        # ModuleID -> RLModuleSpec. The dict expansion for the single-spec
+        # case happens later in
+        # ``AlgorithmConfig.get_multi_rl_module_spec`` once the agent IDs
+        # are known. Here we only need to derive ``inference_only`` from
+        # whatever shape is provided so construction does not crash with
+        # ``AttributeError: 'RLModuleSpec' object has no attribute 'values'``
+        # on the documented shared-spec usage (#63616).
+        if self.inference_only is None:
+            if isinstance(self.rl_module_specs, RLModuleSpec):
+                self.inference_only = self.rl_module_specs.inference_only
+            else:
+                self.inference_only = all(
+                    spec.inference_only for spec in self.rl_module_specs.values()
+                )
 
     @OverrideToImplementCustomLogic
     def build(self, module_id: Optional[ModuleID] = None) -> RLModule:

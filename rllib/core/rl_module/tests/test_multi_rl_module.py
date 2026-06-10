@@ -241,6 +241,70 @@ class TestMultiRLModule(unittest.TestCase):
         MultiAgentEnvRunner(algo_config)
 
 
+class TestMultiRLModuleSpecSingleSpec(unittest.TestCase):
+    """Regression tests for #63616.
+
+    ``MultiRLModuleSpec.rl_module_specs`` is documented (line 553 of
+    ``multi_rl_module.py``) to accept either a dict mapping ModuleID ->
+    RLModuleSpec or a single shared ``RLModuleSpec`` (applied to every
+    module_id; see the shared policy net example in the RLlib RLModule
+    docs). Prior to #63616 the construction path called ``.values()`` on
+    ``rl_module_specs`` unconditionally and crashed with
+    ``AttributeError: 'RLModuleSpec' object has no attribute 'values'``
+    on the documented shared-spec usage.
+    """
+
+    def test_single_shared_spec_construction_does_not_raise(self):
+        """The documented shared-spec form must construct without raising."""
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            model_config={"hidden_dim": 32},
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+        # The shape of ``rl_module_specs`` is preserved as the single spec;
+        # the dict expansion happens later in
+        # ``AlgorithmConfig.get_multi_rl_module_spec``.
+        self.assertIs(multi_spec.rl_module_specs, shared_spec)
+
+    def test_single_shared_spec_inherits_inference_only_flag(self):
+        """``inference_only`` defaults to the shared spec's own flag."""
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            inference_only=True,
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=shared_spec)
+        self.assertTrue(multi_spec.inference_only)
+
+        non_inference_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            inference_only=False,
+        )
+        multi_spec = MultiRLModuleSpec(rl_module_specs=non_inference_spec)
+        self.assertFalse(multi_spec.inference_only)
+
+    def test_explicit_inference_only_overrides_shared_spec_default(self):
+        """User-provided ``inference_only`` wins over the spec-derived default."""
+        shared_spec = RLModuleSpec(
+            module_class=VPGTorchRLModule,
+            observation_space=gym.spaces.Box(0, 1, shape=(4,)),
+            action_space=gym.spaces.Discrete(2),
+            inference_only=True,
+        )
+        # User asks for inference_only=False even though the inner spec
+        # is inference_only=True; explicit value must be honored.
+        multi_spec = MultiRLModuleSpec(
+            rl_module_specs=shared_spec,
+            inference_only=False,
+        )
+        self.assertFalse(multi_spec.inference_only)
+
+
 if __name__ == "__main__":
     import sys
 
