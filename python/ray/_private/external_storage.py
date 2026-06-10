@@ -79,10 +79,6 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     When inheriting this class, please make sure to implement validation
     logic inside __init__ method. When ray instance starts, it will
     instantiating external storage to validate the config.
-
-    Raises:
-        ValueError: when given configuration for
-            the external storage is invalid.
     """
 
     HEADER_LENGTH = 24
@@ -142,10 +138,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             url: url where the object ref is stored
                 in the external storage.
 
-        Return:
+        Returns:
             List of urls_with_offset of fused objects.
             The order of returned keys are equivalent to the one
             with given object_refs.
+
+        Raises:
+            ValueError: when given configuration for
+                the external storage is invalid.
         """
         keys = []
         offset = 0
@@ -159,20 +159,18 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 error = f"Object {ref.hex()} does not exist."
                 raise ValueError(error)
             buf_len = 0 if buf is None else len(buf)
-            payload = (
+            header = (
                 address_len.to_bytes(8, byteorder="little")
                 + metadata_len.to_bytes(8, byteorder="little")
                 + buf_len.to_bytes(8, byteorder="little")
                 + owner_address
                 + metadata
-                + (memoryview(buf) if buf_len else b"")
             )
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            payload_len = len(payload)
-            assert (
-                self.HEADER_LENGTH + address_len + metadata_len + buf_len == payload_len
-            )
-            written_bytes = f.write(payload)
+            payload_len = self.HEADER_LENGTH + address_len + metadata_len + buf_len
+            written_bytes = f.write(header)
+            if buf_len:
+                written_bytes += f.write(memoryview(buf))
             assert written_bytes == payload_len
             url_with_offset = create_url_with_offset(
                 url=url, offset=offset, size=written_bytes
@@ -183,7 +181,13 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         f.flush()
         return keys
 
-    def _size_check(self, address_len, metadata_len, buffer_len, obtained_data_size):
+    def _size_check(
+        self,
+        address_len: int,
+        metadata_len: int,
+        buffer_len: int,
+        obtained_data_size: int,
+    ):
         """Check whether or not the obtained_data_size is as expected.
 
         Args:
@@ -207,13 +211,16 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             )
 
     @abc.abstractmethod
-    def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+    def spill_objects(
+        self, object_refs: List[ObjectRef], owner_addresses: List[str]
+    ) -> List[str]:
         """Spill objects to the external storage. Objects are specified
         by their object refs.
 
         Args:
             object_refs: The list of the refs of the objects to be spilled.
             owner_addresses: Owner addresses for the provided objects.
+
         Returns:
             A list of internal URLs with object offset.
         """
@@ -269,12 +276,7 @@ class NullStorage(ExternalStorage):
 
 
 class FileSystemStorage(ExternalStorage):
-    """The class for filesystem-like external storage.
-
-    Raises:
-        ValueError: Raises directory path to
-            spill objects doesn't exist.
-    """
+    """The class for filesystem-like external storage."""
 
     def __init__(
         self,
@@ -282,6 +284,16 @@ class FileSystemStorage(ExternalStorage):
         directory_path: Union[str, List[str]],
         buffer_size: Optional[int] = None,
     ):
+        """Initialize FileSystemStorage.
+
+        Args:
+            node_id: The ID of the node this storage is associated with.
+            directory_path: A path or list of paths to spill objects to.
+            buffer_size: File buffer size used for writes.
+
+        Raises:
+            ValueError: Raises directory path to spill objects doesn't exist.
+        """
         super().__init__()
 
         # -- A list of directory paths to spill objects --
@@ -404,26 +416,29 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     To use this implementation, you should pre-create the given uri.
     For example, if your uri is a local file path, you should pre-create
     the directory.
-
-    Args:
-        uri: Storage URI used for smart open.
-        prefix: Prefix of objects that are stored.
-        override_transport_params: Overriding the default value of
-            transport_params for smart-open library.
-
-    Raises:
-        ModuleNotFoundError: If it fails to setup.
-            For example, if smart open library
-            is not downloaded, this will fail.
     """
 
     def __init__(
         self,
         node_id: str,
-        uri: str or list,
+        uri: Union[str, list],
         override_transport_params: dict = None,
-        buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
+        buffer_size: int = 1024
+        * 1024,  # For remote spilling, at least 1MB is recommended.
     ):
+        """Initialize ExternalStorageSmartOpenImpl.
+
+        Args:
+            node_id: The ID of the node this storage is associated with.
+            uri: Storage URI used for smart open.
+            override_transport_params: Overriding the default value of
+                transport_params for smart-open library.
+            buffer_size: File buffer size used for writes.
+
+        Raises:
+            ModuleNotFoundError: If it fails to setup. For example, if smart
+                open library is not downloaded, this will fail.
+        """
         super().__init__()
 
         try:
@@ -609,13 +624,16 @@ def reset_external_storage():
     _external_storage = NullStorage()
 
 
-def spill_objects(object_refs, owner_addresses):
+def spill_objects(
+    object_refs: List[ObjectRef], owner_addresses: List[str]
+) -> List[str]:
     """Spill objects to the external storage. Objects are specified
     by their object refs.
 
     Args:
         object_refs: The list of the refs of the objects to be spilled.
         owner_addresses: The owner addresses of the provided object refs.
+
     Returns:
         A list of keys corresponding to the input object refs.
     """
@@ -630,6 +648,9 @@ def restore_spilled_objects(
     Args:
         object_refs: List of object IDs (note that it is not ref).
         url_with_offset_list: List of url_with_offset.
+
+    Returns:
+        The total number of bytes restored.
     """
     return _external_storage.restore_spilled_objects(object_refs, url_with_offset_list)
 
@@ -643,10 +664,13 @@ def delete_spilled_objects(urls: List[str]):
     _external_storage.delete_spilled_objects(urls)
 
 
-def _get_unique_spill_filename(object_refs: List[ObjectRef]):
-    """Generate a unqiue spill file name.
+def _get_unique_spill_filename(object_refs: List[ObjectRef]) -> str:
+    """Generate a unique spill file name.
 
     Args:
         object_refs: objects to be spilled in this file.
+
+    Returns:
+        A unique filename for the spilled object batch.
     """
     return f"{uuid.uuid4().hex}-multi-{len(object_refs)}"

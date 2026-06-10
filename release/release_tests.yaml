@@ -1678,6 +1678,25 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+            - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+      run:
+        timeout: 7200
+        long_running: false
+        # HAProxy is HTTP-only and does not proxy the gRPC server bound by
+        # gRPCOptions(port=9000); --run-grpc would crash with connection refused
+        # under RAY_SERVE_ENABLE_HA_PROXY=1. Run the HAProxy-proxied transports
+        # only.
+        script: >-
+          python workloads/microbenchmarks.py
+          --run-http --run-handle --run-latency --run-throughput
+          --run-streaming
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1811,11 +1830,13 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet
 
     - __suffix__: full_training.parquet.preserve_order
+      frequency: weekly
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --image_classification_data_format=parquet --preserve_order=True
 
     - __suffix__: full_training.parquet.torch_dataloader
+      frequency: manual
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --image_classification_data_format=parquet
@@ -1826,11 +1847,13 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet
 
     - __suffix__: skip_training.parquet.preserve_order
+      frequency: weekly
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --preserve_order=True
 
     - __suffix__: skip_training.parquet.torch_dataloader
+      frequency: manual
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet
@@ -1841,21 +1864,10 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --train_step_sleep_s=5.0 --max_train_batches=500 --limit_training_rows=-1 --image_classification_use_1t_dataset=True
 
     - __suffix__: skip_training.parquet.fault_tolerance
+      frequency: weekly
       run:
         timeout: 2700
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu=True --skip_train_step=True --skip_validation_step=True --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet
-        prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
-      cluster:
-        byod:
-          runtime_env:
-            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
-        cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
-
-    - __suffix__: skip_training.parquet.fault_tolerance.preserve_order
-      run:
-        timeout: 2700
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu=True --skip_train_step=True --skip_validation_step=True --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet --preserve_order=True
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
         byod:
@@ -1880,11 +1892,13 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16
 
     - __suffix__: full_training.jpeg.preserve_order
+      frequency: weekly
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --preserve_order=True
 
     - __suffix__: full_training.jpeg.torch_dataloader
+      frequency: manual
       run:
         timeout: 2000
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16
@@ -1895,11 +1909,13 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True
 
     - __suffix__: skip_training.jpeg.preserve_order
+      frequency: weekly
       run:
         timeout: 2400
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
 
     - __suffix__: skip_training.jpeg.torch_dataloader
+      frequency: manual
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --dataloader_type=torch --num_workers=16 --num_torch_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True
@@ -1912,6 +1928,7 @@
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs.preserve_order
+      frequency: manual
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=ray_data --num_workers=1 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
@@ -1919,6 +1936,7 @@
         cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs.torch_dataloader
+      frequency: manual
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=torch --num_workers=1 --num_torch_workers=32 --skip_train_step=True --skip_validation_at_epoch_end=True
@@ -1933,6 +1951,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.preserve_order
+      frequency: manual
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=ray_data --num_workers=4 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
@@ -1940,6 +1959,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.torch_dataloader
+      frequency: manual
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step=True --skip_validation_at_epoch_end=True
@@ -2455,7 +2475,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2470,7 +2490,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2487,7 +2507,7 @@
   python: "3.10"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2504,7 +2524,7 @@
   python: "3.12"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -2523,7 +2543,7 @@
   python: "3.12"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   cluster:
@@ -4206,6 +4226,31 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
 
+- name: llm_serve_llama_3dot1_8B_quantized_tp_1_direct_streaming
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1.yaml --run-vllm-profiler --run-serve-llm-profiler
+
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
@@ -4217,6 +4262,31 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_tp2.yaml --run-vllm-profiler --run-serve-llm-profiler
+
+- name: llm_serve_llama_3dot1_8B_tp_2_direct_streaming
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4240,6 +4310,29 @@
       type: llm-cu130
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
+    anyscale_sdk_2026: true
+    cluster_compute: llm_2x_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      pytest -sv test_llm_serve_multi_node_integration.py
+
+- name: llm_serve_multi_node_direct_streaming
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
@@ -4454,6 +4547,31 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_1p1d.yaml --skip-hf-token true
 
+- name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d_direct_streaming
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_1p1d.yaml --skip-hf-token true
+
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d
   frequency: nightly
   python: "3.12"
@@ -4464,6 +4582,31 @@
   cluster:
     byod:
       type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d.yaml --skip-hf-token true
+
+- name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_direct_streaming
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+        - RAY_SERVE_ENABLE_HA_PROXY=1
+        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4657,210 +4800,6 @@
 #######################
 
 
-- name: e2e_xgboost  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-xgboost # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py311-cu123
-      post_build_script: byod_e2e_xgboost.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: PYTHONPATH=. python dist_xgboost/train.py  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57222
-  frequency: manual
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: mcp_ray_serve  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/mcp-ray-serve  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: serve
-  working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: multi_agent_a2a  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: serve
-  working_dir: //doc/source/ray-overview/examples/multi_agent_a2a
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_multi_agent_a2a.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: serve
-  working_dir: //doc/source/serve/tutorials/model_multiplexing_forecast  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
-      post_build_script: byod_model_multiplexing_forecast.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 1800
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: model_composition_recsys  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: serve
-  working_dir: //doc/source/serve/tutorials/model_composition_recsys  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: cpu  # anyscale/ray:<PR_RAY_VERSION>-py312
-      post_build_script: byod_model_composition_recsys.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 1800
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: asynchronous_inference  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: serve
-  working_dir: //doc/source/serve/tutorials/asynchronous-inference
-
-  cluster:
-    byod:
-      type: cpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_asynchronous_inference.sh
-    cluster_compute: ci/aws.yaml
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
 - name: video_analysis_pipeline  # do not use dashes (regex sensitive)
   frequency: weekly
   python: "3.10"
@@ -4887,156 +4826,6 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
-- name: distributing_pytorch  # do not use dashes (regex sensitive)
-  python: "3.10"
-  frequency: weekly
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/train/examples/pytorch/distributing-pytorch
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: pytorch_fsdp  # do not use dashes (regex sensitive)
-  python: "3.10"
-  frequency: weekly
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/train/examples/pytorch/pytorch-fsdp
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: tensor_parallel_dtensor  # do not use dashes (regex sensitive)
-  python: "3.10"
-  frequency: weekly
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/train/examples/pytorch/tensor_parallel_dtensor
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: deepspeed_finetune  # do not use dashes (regex sensitive)
-  python: "3.10"
-  frequency: weekly
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/train/examples/pytorch/deepspeed_finetune
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
-  python: "3.12"
-  frequency: weekly
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/train/examples/pytorch/tensor_parallel_autotp
-
-  cluster:
-    byod:
-      type: llm-cu130
-      post_build_script: byod_tensor_parallel_autotp.sh
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: pytorch_profiling  # do not use dashes (regex sensitive)
-  python: "3.10"
-  frequency: weekly
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/train/examples/pytorch/pytorch-profiling
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
 - name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
   python: "3.10"
   frequency: weekly
@@ -5056,283 +4845,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: e2e_audio
-  # https://github.com/ray-project/ray/issues/57220
-  frequency: manual
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-audio  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130
-      post_build_script: byod_e2e_audio.sh
-    cluster_compute: ci/aws.yaml
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # Relative to working_dir.
-
-- name: e2e_timeseries
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-timeseries  # Use // to access from repo's root.
-
-  cluster:
-    byod:
-      type: cu123
-      post_build_script: byod_e2e_timeseries.sh
-    cluster_compute: ci/aws.yaml
-
-  run:
-    prepare: pip install -e .
-    prepare_timeout: 300
-    script: bash ci/run_tests.sh
-    timeout: 3600
-
-  variations:
-    - __suffix__: aws
-
-- name: e2e_multimodal_ai_workloads  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57219
-  frequency: manual
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-multimodal-ai-workloads  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: cu123  # anyscale/ray:<PR_RAY_VERSION>-py312-cu123
-      post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: object_detection  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57228
-  frequency: manual
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/object-detection
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_object_detection.sh # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: e2e_rag  # do not use dashes (regex sensitive)
-  # https://github.com/ray-project/ray/issues/57224
-  frequency: manual
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
-  frequency: manual # was weekly
-  python: "3.11"
-  group: ray-examples
-  team: data
-  working_dir: //doc/source/data/examples/unstructured_data_ingestion  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu130"]
-      post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: llamafactory_llm_fine_tune  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/ray-overview/examples/llamafactory-llm-fine-tune  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: ray_train_workloads  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: train
-  working_dir: //doc/source/train/tutorials  # use // from repo root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses the default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: tune_pytorch_asha  # do not use dashes
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: tune
-  working_dir: //doc/source/tune/examples/tune_pytorch_asha
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_tune_pytorch_asha.sh
-    cluster_compute: ci/aws.yaml
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml
-
-- name: llm_batch_inference_text  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
-
-- name: llm_batch_inference_vision  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.12"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
-      post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
     - __suffix__: gce
       env: gce
       frequency: manual

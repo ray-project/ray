@@ -197,6 +197,10 @@ class TaskExecWorkerStats:
     # Total task's wall-clock time from start to finish (measured on the worker)
     task_wall_time_s: float
 
+    # Peak USS (Unique Set Size) memory in bytes observed during the task,
+    # or None if USS measurement is unavailable (e.g., non-Linux platforms).
+    max_uss_bytes: Optional[int] = None
+
 
 @DeveloperAPI
 @dataclass(frozen=True)
@@ -224,10 +228,6 @@ class BlockExecStats:
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
-
-    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
-    # as estimated by the memory profiler.
-    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -408,6 +408,9 @@ class BlockAccessor:
         Args:
             public_row_format: Whether to cast rows into the public Dict row
                 format (this incurs extra copy conversions).
+
+        Returns:
+            An iterator over rows in this block.
         """
         raise NotImplementedError
 
@@ -475,6 +478,10 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+
+        Returns:
+            A NumPy ndarray when a single column is selected, or a dict mapping
+            column names to ndarrays when multiple columns are selected.
         """
         raise NotImplementedError
 
@@ -742,8 +749,6 @@ class BlockAccessor:
         NOTE: In each column, NaNs/None are considered to be the same group.
 
         Args:
-            block: sorted block for which grouping of rows will be determined
-                    based on provided key
             keys: list of columns determining the key for every row based on
                     which the block will be grouped
 
