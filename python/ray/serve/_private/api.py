@@ -207,9 +207,8 @@ def serve_start(
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
-          for HTTP proxy. You can pass in a dictionary or HTTPOptions object
-          with fields:
+        http_options: Configuration options for HTTP proxy. You can pass in a
+          dictionary or HTTPOptions object with fields:
 
             - host(str, None): Host for HTTP servers to listen on. Defaults to
               localhost. To expose Serve publicly, you probably want to set
@@ -237,11 +236,20 @@ def serve_start(
             - grpc_servicer_functions(list): List of import paths for gRPC
                 `add_servicer_to_server` functions to add to Serve's gRPC proxy.
                 Default empty list, meaning not to start the gRPC server.
+        global_logging_config: Optional ``LoggingConfig`` (or dict) applied as
+            the default logging configuration for the Serve controller and all
+            proxies/replicas in this Serve instance.
         controller_options: Optional ``ControllerOptions`` (or dict) for the
             Serve controller actor. Currently only ``runtime_env.env_vars``
             is honored; see ``ray.serve.config.ControllerOptions``. Only
             applied on first controller creation -- ignored if the controller
             is already running in this Ray cluster (a log line is emitted).
+        **kwargs: Reserved for forwarding to internal controller-start hooks;
+            no public keys are currently supported and unknown keys may raise.
+
+    Returns:
+        A ``ServeControllerClient`` connected to the Serve controller (either
+        newly started or an already-running one in this Ray cluster).
     """
 
     usage_lib.record_library_usage("serve")

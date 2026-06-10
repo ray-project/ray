@@ -87,9 +87,11 @@ class OneToOneOperator(PhysicalOperator):
         target_max_block_size_override: Optional[int] = None,
     ):
         """Create a OneToOneOperator.
+
         Args:
-            input_op: Operator generating input data for this op.
             name: The name of this operator.
+            input_op: Operator generating input data for this op.
+            data_context: The :class:`DataContext` to use for this operator.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
         """
