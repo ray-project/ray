@@ -292,8 +292,6 @@ def test_threaded_actor_integration_test_stress(
         ), "Resource deadlock warning shouldn't be printed, but it did."
 
 
-# Simple single-threaded counter actor used to observe how many actor tasks
-# have started executing. Single-threaded, so it needs no locks.
 @ray.remote(num_cpus=0)
 class _StartCounter:
     def __init__(self):
@@ -315,7 +313,6 @@ def test_exit_actor_delivers_inflight_task_results(ray_start_regular):
     num_tasks = 3
     started = _StartCounter.remote()
 
-    # One extra slot beyond the blocking tasks so the exit() task can run.
     @ray.remote(max_concurrency=num_tasks + 1)
     class ThreadedActor:
         def wait_for_exit_then_return(self, value):
@@ -330,7 +327,6 @@ def test_exit_actor_delivers_inflight_task_results(ray_start_regular):
 
     a = ThreadedActor.remote()
     refs = [a.wait_for_exit_then_return.remote(i) for i in range(num_tasks)]
-    # Wait until all tasks are executing before requesting the exit.
     wait_for_condition(lambda: ray.get(started.get.remote()) == num_tasks)
     exit_ref = a.exit.remote()
 
@@ -354,7 +350,6 @@ def test_exit_actor_delivers_inflight_task_errors(ray_start_regular):
     class ThreadedActor:
         def wait_for_exit_then_raise(self):
             ray.get(started.send.remote())
-            # Block until exit_actor() has been called from another thread.
             core_worker = ray._private.worker.global_worker.core_worker
             wait_for_condition(lambda: core_worker.get_current_actor_should_exit())
             raise ValueError("application error")
