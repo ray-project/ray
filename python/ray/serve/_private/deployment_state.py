@@ -4578,14 +4578,19 @@ class DeploymentState:
         if self._in_transition:
             self._check_and_update_transitioning_replicas()
 
-        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS and (
-            healthy_replicas or unhealthy_replicas
-        ):
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             # When the replica tag is disabled, this is a single
             # deployment/application series. Emit it once with the aggregate
             # value so per-replica iteration order cannot decide the result.
+            has_running_replica = (
+                self._replicas.count(
+                    states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
+                )
+                > 0
+            )
             deployment_is_healthy = (
-                not unhealthy_replicas
+                has_running_replica
+                and not unhealthy_replicas
                 and self._curr_status_info.status == DeploymentStatus.HEALTHY
             )
             self.health_check_gauge.set(1 if deployment_is_healthy else 0)

@@ -1327,10 +1327,32 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             if should_fail_health_check:
                 raise RuntimeError("Intentional health check failure.")
 
+    @serve.deployment(
+        name="scale_down_metrics_model",
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "initial_replicas": 1,
+            "target_ongoing_requests": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 5,
+        },
+        max_ongoing_requests=1,
+        health_check_period_s=0.1,
+        graceful_shutdown_timeout_s=0.1,
+    )
+    class ScaleDownModel:
+        async def __call__(self):
+            return "hello"
+
     autoscaling_app_name = "autoscaling_metrics_app"
     autoscaling_deployment_name = "autoscaling_metrics_model"
     lifecycle_app_name = "lifecycle_metrics_app"
     lifecycle_deployment_name = "lifecycle_metrics_model"
+    scale_down_app_name = "scale_down_metrics_app"
+    scale_down_deployment_name = "scale_down_metrics_model"
     serve.run(
         AutoscalingModel.bind(),
         name=autoscaling_app_name,
@@ -1350,6 +1372,42 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
         return len(lifecycle_replica_ids) == 2
 
     wait_for_condition(check_lifecycle_replicas_running, timeout=60)
+    timeseries = PrometheusTimeseries()
+
+    def get_health_status_value(deployment: str, application: str) -> float:
+        return get_metric_float(
+            "ray_serve_deployment_replica_healthy",
+            {
+                "deployment": deployment,
+                "application": application,
+            },
+            timeseries=timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
+    if not include_high_cardinality:
+        serve.run(
+            ScaleDownModel.bind(),
+            name=scale_down_app_name,
+            route_prefix="/scale-down",
+        )
+
+        wait_for_condition(
+            lambda: get_health_status_value(
+                scale_down_deployment_name, scale_down_app_name
+            )
+            == 1,
+            timeout=60,
+        )
+
+        wait_for_condition(
+            lambda: get_health_status_value(
+                scale_down_deployment_name, scale_down_app_name
+            )
+            == 0,
+            timeout=60,
+        )
+
     ray.get(
         replica_health_state.add_failing_replica.remote(
             sorted(lifecycle_replica_ids)[0]
@@ -1359,8 +1417,6 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
         autoscaling_deployment_name, autoscaling_app_name
     )
     [handle.remote() for _ in range(10)]
-
-    timeseries = PrometheusTimeseries()
 
     def get_matching_metrics(metric_name: str, deployment: str, application: str):
         return [
@@ -1414,14 +1470,8 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             assert_high_cardinality_tag(metric, "replica")
 
         if not include_high_cardinality:
-            health_status_value = get_metric_float(
-                "ray_serve_deployment_replica_healthy",
-                {
-                    "deployment": lifecycle_deployment_name,
-                    "application": lifecycle_app_name,
-                },
-                timeseries=timeseries,
-                timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+            health_status_value = get_health_status_value(
+                lifecycle_deployment_name, lifecycle_app_name
             )
             if health_status_value != 0:
                 return False
