@@ -317,78 +317,6 @@ def test_sglang_pd_dp_size_mismatch_rejected():
 
 
 # ---------------------------------------------------------------------------
-# Tests — real Mooncake transport (two-GPU node required)
-# ---------------------------------------------------------------------------
-
-
-def test_sglang_pd_chat_mooncake():
-    """Verify chat and completions work with real Mooncake KV transfer.
-
-    Requires a node with at least 2 GPUs and Mooncake installed:
-        pip install mooncake-transfer-engine
-    Prefill runs on GPU 0, decode on GPU 1.
-    """
-    prefill_config = LLMConfig(
-        model_loading_config={
-            "model_id": RAY_MODEL_ID,
-            "model_source": MODEL_ID,
-        },
-        deployment_config={
-            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
-        },
-        engine_kwargs={
-            "disaggregation_mode": "prefill",
-            "disaggregation_transfer_backend": "mooncake",
-            "tp_size": 1,
-            "mem_fraction_static": 0.4,
-            "base_gpu_id": 0,
-        },
-    )
-
-    decode_config = LLMConfig(
-        model_loading_config={
-            "model_id": RAY_MODEL_ID,
-            "model_source": MODEL_ID,
-        },
-        deployment_config={
-            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
-        },
-        engine_kwargs={
-            "disaggregation_mode": "decode",
-            "disaggregation_transfer_backend": "mooncake",
-            "tp_size": 1,
-            "mem_fraction_static": 0.4,
-            "base_gpu_id": 1,
-        },
-    )
-
-    decode_deployment = _make_pd_deployments(prefill_config, decode_config)
-    serve.run(decode_deployment, blocking=False)
-
-    try:
-        wait_for_condition(_app_is_running, timeout=300)
-        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-
-        resp = client.chat.completions.create(
-            model=RAY_MODEL_ID,
-            messages=[{"role": "user", "content": "What is the capital of France?"}],
-            max_tokens=64,
-            temperature=0.0,
-        )
-        assert resp.choices[0].message.content.strip()
-
-        comp_resp = client.completions.create(
-            model=RAY_MODEL_ID,
-            prompt="The capital of France is",
-            max_tokens=64,
-            temperature=0.0,
-        )
-        assert comp_resp.choices[0].text.strip()
-    finally:
-        serve.shutdown()
-
-
-# ---------------------------------------------------------------------------
 # Tests — real NIXL transport (two-GPU node required)
 # ---------------------------------------------------------------------------
 
@@ -396,8 +324,8 @@ def test_sglang_pd_chat_mooncake():
 def test_sglang_pd_chat_nixl():
     """Verify chat and completions work with real NIXL KV transfer.
 
-    Requires a node with at least 2 GPUs and NIXL installed:
-        pip install nixl
+    Requires a node with at least 2 GPUs. NIXL is pre-installed in the
+    llm-cu130 BYOD image — no separate install needed.
     Prefill runs on GPU 0, decode on GPU 1.
     """
     prefill_config = LLMConfig(

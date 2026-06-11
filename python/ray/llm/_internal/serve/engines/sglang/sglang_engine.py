@@ -65,10 +65,29 @@ class SGLangServer:
             # Returns default handler to satisfy signal.signal() return signature
             return signal.SIG_DFL
 
+        # Inject model_path from model_loading_config if the user hasn't set it
+        # explicitly in engine_kwargs. This mirrors what VLLMEngineConfig does for
+        # vLLM — the user specifies the model via model_loading_config.model_source
+        # and the engine layer handles the translation to the backend's kwarg name.
+        engine_init_kwargs = dict(self.engine_kwargs)
+
+        if "model_path" not in engine_init_kwargs:
+            model_source = llm_config.model_loading_config.model_source
+            engine_init_kwargs["model_path"] = (
+                model_source if isinstance(model_source, str) else llm_config.model_id
+            )
+
+        if not engine_init_kwargs.get("model_path"):
+            raise ValueError(
+                "SGLang engine requires 'model_path' but it could not be determined. "
+                "Set it via model_loading_config.model_source or "
+                "engine_kwargs['model_path'] directly."
+            )
+
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
+            self.engine = sglang.Engine(**engine_init_kwargs)
         finally:
             signal.signal = original_signal_func
 
