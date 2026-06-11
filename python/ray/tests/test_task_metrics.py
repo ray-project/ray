@@ -73,8 +73,10 @@ def test_task_basic(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     driver = """
-import ray
 import time
+
+import ray
+from ray._common.test_utils import wait_for_condition
 
 ray.init("auto")
 
@@ -86,11 +88,16 @@ def a():
 def b():
     time.sleep(999)
 
-@ray.remote
+@ray.remote(num_cpus=3)
 def c():
     time.sleep(999)
 
-ray.get([a.remote(), b.remote()] + [c.remote() for _ in range(8)])
+refs = [a.remote(), b.remote()]
+wait_for_condition(
+    lambda: ray.available_resources().get("CPU", 0) == 0,
+)
+
+ray.get(refs + [c.remote() for _ in range(8)])
 """
     proc = run_string_as_driver_nonblocking(driver)
     timeseries = PrometheusTimeseries()
