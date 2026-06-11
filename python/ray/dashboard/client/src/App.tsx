@@ -12,6 +12,7 @@ import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
 import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
+import PlatformEventsPage from "./pages/events/PlatformEventsPage";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
@@ -62,6 +63,7 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
+import { getPlatformEventsEnabled } from "./service/platform";
 import { darkTheme, lightTheme } from "./theme";
 
 dayjs.extend(duration);
@@ -103,6 +105,10 @@ export type GlobalContextType = {
    */
   prometheusHealth: boolean | undefined;
   /**
+   * Whether platform events are enabled
+   */
+  platformEventsEnabled?: boolean;
+  /**
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
@@ -137,6 +143,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   grafanaClusterFilter: undefined,
   dashboardUids: undefined,
   prometheusHealth: undefined,
+  platformEventsEnabled: false,
   sessionName: undefined,
   dashboardDatasource: undefined,
   serverTimeZone: undefined,
@@ -181,6 +188,7 @@ const App = () => {
     grafanaClusterFilter: undefined,
     dashboardUids: undefined,
     prometheusHealth: undefined,
+    platformEventsEnabled: false,
     sessionName: undefined,
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
@@ -263,6 +271,16 @@ const App = () => {
       }));
     };
     doEffect();
+  }, []);
+
+  // Detect if platform events are enabled
+  useEffect(() => {
+    getPlatformEventsEnabled().then((platformEventsEnabled) => {
+      setContext((existingContext) => ({
+        ...existingContext,
+        platformEventsEnabled,
+      }));
+    });
   }, []);
 
   useEffect(() => {
@@ -403,6 +421,10 @@ const App = () => {
                 <Route element={<MainNavLayout />} path="/">
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
+                  <Route
+                    element={<PlatformEventsPage />}
+                    path="platform-events"
+                  />
                   <Route element={<ClusterMainPageLayout />} path="cluster">
                     <Route element={<ClusterLayout />} path="">
                       <Route
