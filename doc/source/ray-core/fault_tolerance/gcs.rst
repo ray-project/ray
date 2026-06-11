@@ -80,6 +80,26 @@ The recovery model is identical to Redis-backed FT — GCS restarts,
 reads state, workers reconnect — only the location of persisted state
 differs.
 
+.. note::
+
+   Because RocksDB persists each GCS write with a synchronous WAL ``fsync``,
+   individual writes are slightly slower than in-memory or (non-durable) Redis
+   GCS — typically single-digit to tens of milliseconds. This is negligible
+   relative to the seconds-scale failure-detection and recovery timeline and
+   does not affect the common fault-tolerance paths (GCS restart, actor
+   reconstruction).
+
+   One known interaction: GCS publishes node-death notifications only after the
+   death record is durably persisted, so the per-write ``fsync`` delays the
+   cluster-wide notification by that same small margin. In a narrow,
+   pre-existing Ray-core object/generator-reconstruction race this added delay
+   can be enough to stall reconstruction. This is a core race rather than a
+   storage-backend correctness issue (reads return correct data; only write
+   latency differs) and is tracked as a REP-64 follow-up. If you run
+   reconstruction-heavy workloads, bound long-running ``ray.get`` calls with an
+   application-level timeout so a stalled reconstruction surfaces as a
+   retryable error instead of blocking indefinitely.
+
 Enable it by setting two environment variables on the head process
 (or head pod):
 

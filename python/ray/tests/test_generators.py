@@ -449,11 +449,14 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     ray_start_cluster, too_many_returns, num_returns_type
 ):
     # REP-64 (RocksDB GCS backend): the num_returns_type=None variants
-    # (static num_returns reconstruction path) intermittently hang under the
-    # RocksDB GCS backend. Investigation (kill-9 repro + py-spy/eu-stack on a
-    # caught hang) found this is NOT a RocksDbStoreClient defect:
+    # (static num_returns reconstruction path) hang under the RocksDB GCS
+    # backend. Investigation (kill-9 repro + py-spy/eu-stack on a caught hang,
+    # plus a controlled fsync on/off experiment) found this is NOT a
+    # RocksDbStoreClient correctness defect:
     #   * The driver hangs in `list(gen)` -> ObjectRefGenerator._next_sync,
-    #     waiting for the next reconstructed generator return object.
+    #     waiting for the next reconstructed generator return object. The hang is
+    #     permanent: a caught hang ran 25 min (>20x the ~70s normal runtime) with
+    #     zero progress, so it does not self-heal.
     #   * Reconstruction re-executes `dynamic_generator`, a *normal* task whose
     #     lease is raylet-direct and never touches the GCS storage backend. The
     #     driver's normal_task_submitter fails the lease on the killed node
@@ -461,21 +464,29 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     #     then the resubmission stalls -- the re-lease never reaches any raylet
     #     (head raylet's ClusterLeaseManager stays empty), so the task never
     #     re-runs and the generator never advances.
-    #   * GCS processed the node/actor deaths correctly and promptly, and all
-    #     GCS reads/writes were fast; in-memory GCS passes reliably.
-    # This is a pre-existing, timing-sensitive Ray-core generator-reconstruction
-    # / task-resubmission race (the test is explicitly "nondeterministic" and
-    # carries TODOs about its flakiness). RocksDB's synchronous WAL writes shift
-    # death-notification timing by ~tens of ms, which widens the race window and
-    # makes the hang frequent. The [dynamic] variants take a different path (they
-    # fail the refs instead of reconstructing them) and pass, so they keep
-    # coverage. Fixing the underlying core race is out of scope for the storage
-    # backend and is tracked as a REP-64 follow-up.
+    #   * GCS persisted and processed the node/actor deaths correctly; reads
+    #     return correct data. The single trigger is WAL-fsync write *latency*:
+    #     GCS publishes the node-death notification inside the storage write's
+    #     on_done callback (GcsNodeManager::InternalOnNodeFailure -> NodeTable
+    #     Put), so RocksDB's per-write fsync delays the cluster-wide death
+    #     notification just enough to open a pre-existing Ray-core
+    #     reconstruction/task-resubmission race. Proven causally: with fsync
+    #     disabled, RocksDB passes 3/3 and recovers in ~10.5s -- identical to
+    #     in-memory GCS (which passes reliably); with fsync enabled it hangs.
+    #   * This is NOT tunable via fault-tolerance timing: relaxing the
+    #     health-check / object-timeout / retry-delay knobs to production-like
+    #     values still hangs (6/6), because those knobs do not control the fsync
+    #     delay that opens the window.
+    # The [dynamic] variants take a different path (they fail the refs instead of
+    # reconstructing them) and pass, so they keep coverage. Fixing the underlying
+    # core race -- and/or decoupling the GCS node-death publish from the storage
+    # write so notifications are not gated on fsync -- is out of scope for the
+    # storage backend and is tracked as a REP-64 follow-up.
     if num_returns_type is None and rocksdb_gcs_test_enabled():
         pytest.skip(
-            "Pre-existing Ray-core generator-reconstruction race, timing-exposed "
-            "by RocksDB GCS (not a storage-backend defect). See comment above; "
-            "tracked as a REP-64 follow-up."
+            "Pre-existing Ray-core generator-reconstruction race exposed by "
+            "RocksDB GCS WAL-fsync latency (not a storage-backend correctness "
+            "defect). See comment above; tracked as a REP-64 follow-up."
         )
     config = {
         "health_check_failure_threshold": 10,
