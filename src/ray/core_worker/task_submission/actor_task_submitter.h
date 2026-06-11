@@ -459,8 +459,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
-
-  /// Clock used for task timeout tracking and death-info grace periods.
   ClockInterface &clock_;
 };
 

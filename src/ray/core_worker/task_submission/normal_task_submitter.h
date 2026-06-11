@@ -377,7 +377,6 @@ class NormalTaskSubmitter {
 
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
 
-  /// Clock used for lease expiration tracking and lease grant timestamps.
   ClockInterface &clock_;
 };
 

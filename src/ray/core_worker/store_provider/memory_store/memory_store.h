@@ -203,9 +203,6 @@ class CoreWorkerMemoryStore {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   instrumented_io_context &io_context_;
-
-  /// Clock used for timestamping object creation/access (e.g. for unhandled error grace
-  /// period checks).
   ClockInterface &clock_;
 
   /// Set to true if reference counting is enabled (i.e. not local mode).
