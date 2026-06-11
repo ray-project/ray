@@ -57,7 +57,8 @@ class Autoscaler:
         event_logger: Optional[AutoscalerEventLogger] = None,
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
-        """
+        """Initialize the autoscaler.
+
         Args:
             session_name: The current Ray session name.
             config_reader: The config reader.

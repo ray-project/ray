@@ -133,6 +133,36 @@ def test_parse_cluster_info_default_address():
     ) == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
 
 
+def test_submit_job_does_not_mutate_runtime_env():
+    class TestClient(JobSubmissionClient):
+        def __init__(self):
+            self._default_metadata = {}
+
+        def _upload_working_dir_if_needed(self, runtime_env):
+            runtime_env["working_dir"] = "gcs://test.zip"
+
+        def _upload_py_modules_if_needed(self, runtime_env):
+            runtime_env["py_modules"] = ["gcs://test_module.zip"]
+
+        def _do_request(self, method, endpoint, **kwargs):
+            return MagicMock(
+                status_code=200,
+                json=lambda: {"job_id": "test_job", "submission_id": "test_job"},
+            )
+
+    runtime_env = {"working_dir": "/tmp/test", "py_modules": ["/tmp/test_module"]}
+    original_runtime_env = {
+        "working_dir": runtime_env["working_dir"],
+        "py_modules": list(runtime_env["py_modules"]),
+    }
+
+    assert (
+        TestClient().submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+        == "test_job"
+    )
+    assert runtime_env == original_runtime_env
+
+
 @pytest.mark.parametrize("expiration_s", [0, 10])
 def test_temporary_uri_reference(monkeypatch, expiration_s):
     """Test that temporary GCS URI references are deleted after expiration_s."""
@@ -155,8 +185,11 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
 
             start = time.time()
 
-            client.submit_job(
-                entrypoint="echo hi", runtime_env={"working_dir": tmp_dir}
+            runtime_env = {"working_dir": tmp_dir}
+            job_id = client.submit_job(entrypoint="echo hi", runtime_env=runtime_env)
+            assert runtime_env == {"working_dir": tmp_dir}
+            wait_for_condition(
+                _check_job_succeeded, client=client, job_id=job_id, timeout=30
             )
 
             # Give time for deletion to occur if expiration_s is 0.
@@ -173,6 +206,15 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
             else:
                 wait_for_condition(check_internal_kv_gced)
                 print("Internal KV was GC'ed at time ", time.time() - start)
+
+                # Regression test for #46625: reusing the same runtime_env after
+                # the package has been GC'ed should re-upload the local working_dir.
+                job_id = client.submit_job(
+                    entrypoint="echo hi", runtime_env=runtime_env
+                )
+                wait_for_condition(
+                    _check_job_succeeded, client=client, job_id=job_id, timeout=30
+                )
 
 
 def get_register_agents_number(gcs_client):
