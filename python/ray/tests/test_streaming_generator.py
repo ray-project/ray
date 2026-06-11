@@ -41,17 +41,6 @@ def mocked_worker():
     yield worker
 
 
-class FailsOnSecondSerialization:
-    def __init__(self):
-        self.num_serializations = 0
-
-    def __reduce__(self):
-        self.num_serializations += 1
-        if self.num_serializations == 2:
-            raise TypeError("fails on second serialization")
-        return FailsOnSecondSerialization, ()
-
-
 def test_streaming_object_ref_generator_basic_unit(mocked_worker):
     """
     Verify the basic case:
@@ -618,11 +607,11 @@ def test_streaming_generator_num_objects_per_yield_serialization_failure(shutdow
 
     @ray.remote(_num_objects_per_yield=2)
     def generator():
-        # The first object is serializable, but the second object is not.
-        # The grouped yield should fail before any dynamic return IDs are allocated.
-        yield 1, threading.Lock()
+        yield threading.Lock(), 1
 
     gen = generator.remote()
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(next(gen))
 
@@ -637,9 +626,9 @@ def test_streaming_generator_num_objects_per_yield_partial_store_failure(
 
     @ray.remote(_num_objects_per_yield=2)
     def generator():
-        # The object serializes during preflight but fails during the actual
-        # store, after the first grouped object has already been stored.
-        yield 1, FailsOnSecondSerialization()
+        # If a later object fails after an earlier object has been stored, the
+        # caller should still receive a ref for every object in the grouped yield.
+        yield 1, threading.Lock()
 
     gen = generator.remote()
     assert ray.get(next(gen)) == 1
