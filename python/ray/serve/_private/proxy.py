@@ -79,9 +79,9 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
     gRPCStreamingType,
 )
+from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
-from ray.serve._private.request_metrics import RequestMetrics
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -161,7 +161,7 @@ class GenericProxy(ABC):
 
         self.proxy_router = proxy_router
 
-        self._request_metrics = RequestMetrics(
+        self._proxy_metrics = ProxyMetrics(
             self.protocol,
             source="proxy",
             node_id=node_id,
@@ -252,7 +252,7 @@ class GenericProxy(ABC):
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        self._request_metrics.set_num_ongoing_requests(self._ongoing_requests)
+        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -261,7 +261,7 @@ class GenericProxy(ABC):
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        self._request_metrics.set_num_ongoing_requests(self._ongoing_requests)
+        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _setup_proxy_tracing(
         self,
@@ -474,7 +474,7 @@ class GenericProxy(ABC):
                 extra=self._access_log_context,
             )
 
-        self._request_metrics.record_request(
+        self._proxy_metrics.record_request(
             route=response_handler_info.metadata.route,
             method=proxy_request.method,
             application=response_handler_info.metadata.application_name,

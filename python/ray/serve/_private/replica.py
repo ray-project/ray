@@ -131,8 +131,8 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
-from ray.serve._private.request_metrics import RequestMetrics
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
 from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
@@ -484,12 +484,12 @@ class ReplicaMetricsManager:
 
         if self._is_direct_ingress:
             # These ingress metrics share the same names, tag keys, and emission
-            # logic as those collected by the proxy (see RequestMetrics). When
+            # logic as those collected by the proxy (see ProxyMetrics). When
             # direct ingress is enabled traffic bypasses the proxy, so a given
             # request is recorded by exactly one of the two (proxy XOR replica).
             node_id = ray.get_runtime_context().get_node_id()
             node_ip_address = ray.util.get_node_ip_address()
-            self._ingress_http_metrics = RequestMetrics(
+            self._ingress_http_metrics = ProxyMetrics(
                 RequestProtocol.HTTP,
                 source="ingress",
                 node_id=node_id,
@@ -860,7 +860,7 @@ class ReplicaMetricsManager:
         # Cached path: accumulate per-tag-set counts/latencies keyed by the same
         # canonical tag schemas used by the direct emit path, and flush them in
         # `_report_cached_metrics`.
-        request_tags = RequestMetrics.request_tags(
+        request_tags = ProxyMetrics.request_tags(
             route=route,
             method=method,
             application=app_name,
@@ -873,13 +873,13 @@ class ReplicaMetricsManager:
             frozenset(request_tags.items())
         ].append(latency_ms)
         if was_error:
-            request_error_tags = RequestMetrics.request_error_tags(
+            request_error_tags = ProxyMetrics.request_error_tags(
                 route=route,
                 method=method,
                 application=app_name,
                 status_code=status_code,
             )
-            deployment_error_tags = RequestMetrics.deployment_error_tags(
+            deployment_error_tags = ProxyMetrics.deployment_error_tags(
                 route=route,
                 method=method,
                 application=app_name,
