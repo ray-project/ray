@@ -12,7 +12,10 @@ from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.preemption import PreemptionWatcher
 
 if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.worker_group import WorkerGroup
+    from ray.train.v2._internal.execution.worker_group import (
+        WorkerGroup,
+        WorkerGroupContext,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,8 @@ logger = logging.getLogger(__name__)
 class PreemptionCallback(WorkerGroupCallback):
     """Manages a :class:`PreemptionWatcher` across worker-group lifecycles.
 
-    Spawns a fresh watcher in :meth:`after_worker_group_start` and stops it in
-    :meth:`before_worker_group_shutdown`. Each worker group gets its own
+    Spawns a fresh watcher in :meth:`after_worker_group_start` and stops it on
+    every teardown path (shutdown and abort). Each worker group gets its own
     watcher and failure-domain map, so elastic resizes and restarts never
     leak stale state.
     """
@@ -59,6 +62,13 @@ class PreemptionCallback(WorkerGroupCallback):
         )
 
     def before_worker_group_shutdown(self, worker_group: "WorkerGroup") -> None:
+        self._stop_watcher()
+
+    def after_worker_group_abort(
+        self, worker_group_context: "WorkerGroupContext"
+    ) -> None:
+        # abort() doesn't run the shutdown hook, so tear the watcher down here
+        # too — otherwise it keeps polling GCS until the cluster reaps it.
         self._stop_watcher()
 
     def _stop_watcher(self) -> None:

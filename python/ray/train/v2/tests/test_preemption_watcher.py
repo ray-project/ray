@@ -1,10 +1,11 @@
 """Unit tests for the preemption watcher."""
 from typing import Dict
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
+from ray.train.v2._internal.callbacks.preemption_callback import PreemptionCallback
 from ray.train.v2._internal.execution.preemption import PreemptionWatcher
 
 _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
@@ -165,6 +166,24 @@ class TestBuildFailureDomainMap:
             result = PreemptionWatcher._build_failure_domain_map(node_to_ranks)
 
         assert result == expected
+
+
+class TestPreemptionCallbackTeardown:
+    @pytest.mark.parametrize(
+        "teardown_hook",
+        ["before_worker_group_shutdown", "after_worker_group_abort"],
+    )
+    def test_teardown_kills_watcher(self, teardown_hook):
+        """Both shutdown and abort must kill the watcher (abort skips shutdown)."""
+        callback = PreemptionCallback()
+        watcher = Mock()
+        callback._watcher = watcher
+
+        with patch.object(ray, "kill") as mock_kill:
+            getattr(callback, teardown_hook)(None)
+
+        mock_kill.assert_called_once_with(watcher)
+        assert callback._watcher is None
 
 
 if __name__ == "__main__":
