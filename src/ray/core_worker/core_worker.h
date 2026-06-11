@@ -401,6 +401,21 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     memory_store_->Delete(deleted);
   }
 
+  /// Register a callback to fire when an object goes out of scope or is freed.
+  ///
+  /// The callback is posted to the dedicated object_freed_callback_service_ thread
+  /// so it never blocks the main IO thread.
+  ///
+  /// \return true if the callback was registered; false if the object is already
+  ///         out of scope or was explicitly freed (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
+
+  /// C function-pointer overload for use from Cython.
+  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                          void (*callback)(const ObjectID &, void *),
+                                          void *user_data);
+
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
@@ -1483,21 +1498,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void AddLocalReference(const ObjectID &object_id, const std::string &call_site) {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
-
-  /// Register a callback to fire when an object goes out of scope or is freed.
-  ///
-  /// The callback is posted to the dedicated object_freed_callback_service_ thread
-  /// so it never blocks the main IO thread.
-  ///
-  /// \return true if the callback was registered; false if the object is already
-  ///         out of scope or was explicitly freed (callback will never fire).
-  bool AddObjectOutOfScopeOrFreedCallback(
-      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
-
-  /// C function-pointer overload for use from Cython.
-  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
-                                          void (*callback)(const ObjectID &, void *),
-                                          void *user_data);
 
   /// Stops the children tasks from the given TaskID
   ///
