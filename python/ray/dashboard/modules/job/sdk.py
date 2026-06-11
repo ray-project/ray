@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
@@ -217,7 +218,7 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.8 or higher.",
             )
 
-        runtime_env = runtime_env or {}
+        runtime_env = copy.deepcopy(runtime_env or {})
         metadata = metadata or {}
         metadata.update(self._default_metadata)
 

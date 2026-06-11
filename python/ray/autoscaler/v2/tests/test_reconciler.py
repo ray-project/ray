@@ -845,14 +845,20 @@ class TestReconciler:
                 "no-update",
                 cur_status,
                 status_times=[(cur_status, (cur_time_s - timeout_s + 1) * s_to_ns)],
-                ray_node_id="r-1",
+                ray_node_id=binary_to_hex(b"r-1"),
             ),
             create_instance(
                 "updated",
                 cur_status,
                 status_times=[(cur_status, (cur_time_s - timeout_s - 1) * s_to_ns)],
-                ray_node_id="r-2",
+                ray_node_id=binary_to_hex(b"r-2"),
             ),
+        ]
+        # Both nodes are still RUNNING in GCS, so the drain is treated as having
+        # genuinely failed: the stuck handler must fall back to RAY_RUNNING.
+        ray_nodes = [
+            NodeState(node_id=b"r-1", status=NodeStatus.RUNNING),
+            NodeState(node_id=b"r-2", status=NodeStatus.RUNNING),
         ]
 
         TestReconciler._add_instances(instance_storage, instances)
@@ -862,7 +868,7 @@ class TestReconciler:
             scheduler=MockScheduler(),
             cloud_provider=MagicMock(),
             cloud_resource_monitor=cloud_resource_monitor,
-            ray_cluster_resource_state=ClusterResourceState(),
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
             non_terminated_cloud_instances={},
             cloud_provider_errors=[],
             ray_install_errors=[],
@@ -877,6 +883,101 @@ class TestReconciler:
         instances, _ = instance_storage.get_instances()
         assert instances["no-update"].status == cur_status
         assert instances["updated"].status == Instance.RAY_RUNNING
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "cur_status",
+        [
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOP_REQUESTED,
+            Instance.RAY_STOPPING,
+        ],
+        ids=["ray_running", "ray_stop_requested", "ray_stopping"],
+    )
+    def test_missing_ray_node_marks_ray_stopped_and_terminates(cur_status, setup):
+        # If an instance that should have a ray node points at a node_id that no
+        # longer appears in GCS, the ray node has either been GC'd from the DEAD
+        # list or is otherwise no longer alive. Reconcile it to RAY_STOPPED so it
+        # can move through the normal termination path instead of lingering with a
+        # stale node_id (especially after RAY_STOP_REQUESTED fell back to
+        # RAY_RUNNING in a previous iteration).
+        instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "updated",
+                cur_status,
+                ray_node_id=binary_to_hex(b"r-stale"),
+                cloud_instance_id="c-stale",
+            ),
+        ]
+
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(node_states=[]),
+            non_terminated_cloud_instances={
+                "c-stale": CloudInstance(
+                    cloud_instance_id="c-stale",
+                    node_type="worker_nodes1",
+                    node_kind=NodeKind.WORKER,
+                    is_running=True,
+                ),
+            },
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                configs={"max_concurrent_launches": 0}
+            ),
+        )
+
+        events = subscriber.events
+        assert len(events) == 2
+        assert events[0].new_instance_status == Instance.RAY_STOPPED
+        assert events[0].ray_node_id == binary_to_hex(b"r-stale")
+        assert events[1].new_instance_status == Instance.TERMINATING
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["updated"].status == Instance.TERMINATING
+
+    @staticmethod
+    def test_ray_stopped_shared_cloud_terminates_stale_record_only(setup):
+        instance_manager, instance_storage, subscriber, _ = setup
+
+        TestReconciler._add_instances(
+            instance_storage,
+            [
+                create_instance(
+                    "stale",
+                    Instance.RAY_STOPPED,
+                    ray_node_id=binary_to_hex(b"r-stale"),
+                    cloud_instance_id="c-shared",
+                ),
+                create_instance(
+                    "healthy",
+                    Instance.RAY_RUNNING,
+                    ray_node_id=binary_to_hex(b"r-live"),
+                    cloud_instance_id="c-shared",
+                ),
+            ],
+        )
+
+        Reconciler._terminate_instances(instance_manager)
+
+        assert [e.new_instance_status for e in subscriber.events_by_id("stale")] == [
+            Instance.TERMINATED
+        ]
+        assert all(
+            e.new_instance_status != Instance.TERMINATING for e in subscriber.events
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["stale"].status == Instance.TERMINATED
+        assert instances["healthy"].status == Instance.RAY_RUNNING
 
     @staticmethod
     @mock.patch("time.time_ns")
@@ -1653,13 +1754,16 @@ class TestReconciler:
         assert events[2].new_instance_status == Instance.RAY_STOPPED
         assert events[2].instance_id == "i-1"
         assert events[2].ray_node_id == binary_to_hex(b"r-1")
-        assert events[3].new_instance_status == Instance.TERMINATING
+        # c-1 has been reused by the new ray node r-2 (now RAY_RUNNING), so the
+        # stale i-1 row must not terminate c-1. It is marked TERMINATED to clean
+        # up the record without issuing a cloud termination request.
+        assert events[3].new_instance_status == Instance.TERMINATED
         assert events[3].instance_id == "i-1"
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         statuses = {instance.status for instance in instances.values()}
-        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATED}
 
     @staticmethod
     def test_ray_head_restarted_on_the_same_cloud_instance(setup):
@@ -1719,13 +1823,16 @@ class TestReconciler:
         assert events[3].instance_id == events[1].instance_id
         assert events[3].ray_node_id == binary_to_hex(b"r-1")
 
-        assert events[4].new_instance_status == Instance.TERMINATING
+        # c-1 has been reused by the new ray node r-2 (now RAY_RUNNING), so the
+        # stale row must not terminate c-1. It is marked TERMINATED to clean up
+        # the record without issuing a cloud termination request.
+        assert events[4].new_instance_status == Instance.TERMINATED
         assert events[4].instance_id == events[1].instance_id
 
         instances, _ = instance_storage.get_instances()
         assert len(instances) == 2
         statuses = {instance.status for instance in instances.values()}
-        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATING}
+        assert statuses == {Instance.RAY_RUNNING, Instance.TERMINATED}
 
     @staticmethod
     def test_reconcile_max_worker_nodes_limit_triggers_termination(setup):

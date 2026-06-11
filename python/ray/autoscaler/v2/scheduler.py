@@ -395,10 +395,23 @@ class SchedulingNode:
         node_config = node_type_configs.get(instance.im_instance.instance_type, None)
 
         if instance.im_instance.status == Instance.RAY_RUNNING:
-            assert instance.ray_node is not None, (
-                "ray node should not be None "
-                f"when the instance is running ray: instance={instance}"
-            )
+            if instance.ray_node is None:
+                # Defensive: a RAY_RUNNING instance whose ray_node we cannot
+                # find in GCS indicates a transient inconsistency between the
+                # instance manager and GCS (e.g. the worker pod restarted
+                # during the drain window and the stuck-instance handler
+                # reverted the instance back to RAY_RUNNING with a stale
+                # node_id). Skip rather than asserting, so that a single bad
+                # row does not crash the entire reconcile loop and block all
+                # autoscaling decisions.
+                logger.warning(
+                    "Skipping RAY_RUNNING instance with ray_node=None (stale "
+                    f"state): instance_id={instance.im_instance.instance_id}, "
+                    f"node_id={instance.im_instance.node_id}. This usually "
+                    "indicates a transient inconsistency between the instance "
+                    "manager and GCS."
+                )
+                return None
             # An running ray node
             return SchedulingNode(
                 node_type=instance.im_instance.instance_type,
