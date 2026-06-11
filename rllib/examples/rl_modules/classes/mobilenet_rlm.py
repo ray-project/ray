@@ -9,6 +9,8 @@ value-heads. You can modify this example to accommodate your own encoder network
 other pre-trained networks.
 """
 # __sphinx_doc_begin__
+from dataclasses import dataclass
+
 import gymnasium as gym
 import numpy as np
 
@@ -31,9 +33,6 @@ torch, nn = try_import_torch()
 
 # torchvision's pre-trained image classifiers expect (3, 224, 224) inputs.
 MOBILENET_INPUT_SHAPE = (3, 224, 224)
-
-
-from dataclasses import dataclass
 
 
 @dataclass
