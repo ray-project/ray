@@ -33,10 +33,17 @@ torch, nn = try_import_torch()
 MOBILENET_INPUT_SHAPE = (3, 224, 224)
 
 
+from dataclasses import dataclass
+
+
+@dataclass
 class MobileNetV3EncoderConfig(ModelConfig):
-    # MobileNet V3 (small) has a flat output of length 1000 (its ImageNet logits).
-    output_dims = (1000,)
-    freeze = True
+    freeze: bool = True
+
+    @property
+    def output_dims(self):
+        # MobileNet V3 (small) has a flat output of length 1000 (its ImageNet logits).
+        return (1000,)
 
     def build(self, framework):
         assert framework == "torch", "Unsupported framework `{}`!".format(framework)
