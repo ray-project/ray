@@ -1,7 +1,7 @@
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 import ray
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
@@ -16,26 +16,25 @@ class PreemptionInfo:
 
     Attributes:
         deadline_ms: UNIX timestamp in milliseconds by which the affected nodes
-            are expected to be reclaimed, as reported by Ray Core's
-            ``get_draining_nodes``. ``0`` means the source reported no deadline.
+            are expected to be reclaimed. When multiple nodes are draining, this
+            is the earliest reclaim deadline among them. ``None`` if no deadline
+            was reported.
         preempted_ranks: Worker `world_rank` whose nodes are being reclaimed, expanded to all ranks in the same failure domain
             (e.g., all ranks in a fate-shared TPU slice). Sorted ascending.
         preempted_node_ids: Node IDs being reclaimed, hex-encoded as returned
             by Ray Core. Sorted lexicographically.
     """
 
-    deadline_ms: int
+    deadline_ms: Optional[int]
     preempted_ranks: List[int]
     preempted_node_ids: List[str]
 
 
-# Drain source contract: () -> {node_id_hex: deadline_ms}, where deadline_ms
-# == 0 means "no deadline reported". The default reads Ray Core's GCS state;
-# unit tests inject a synthetic source.
-DrainSource = Callable[[], Dict[str, int]]
+def _get_draining_nodes() -> Dict[str, int]:
+    """Return Ray Core's currently-draining nodes as ``{node_id_hex: deadline_ms}``.
 
-
-def _default_drain_source() -> Dict[str, int]:
+    ``deadline_ms == 0`` from Ray Core means "no deadline reported".
+    """
     return ray._private.state.state.get_draining_nodes()
 
 
@@ -47,25 +46,27 @@ class PreemptionWatcher:
     failure-domain map is built once on construction and is immutable for the
     watcher's lifetime.
 
+    The failure-domain map answers "if this node is reclaimed, which of our
+    ranks are affected?". For a GPU node it's just the ranks on that node; for
+    a TPU node it's every rank in the node's slice, since a TPU slice is
+    reclaimed atomically.
+
     Args:
         node_to_ranks: Map ``node_id_hex -> [ranks on that node]``. Used both
             as the set of nodes we care about (drains elsewhere are ignored)
             and as the seed for failure-domain expansion.
         poll_interval_s: Seconds between drain-state polls.
-        drain_source: Override the default drain source (used by unit tests).
     """
 
     def __init__(
         self,
         node_to_ranks: Dict[str, List[int]],
         poll_interval_s: float = DEFAULT_PREEMPTION_POLL_INTERVAL_S,
-        drain_source: Optional[DrainSource] = None,
     ):
         self._node_to_ranks: Dict[str, List[int]] = {
             nid: sorted(ranks) for nid, ranks in node_to_ranks.items()
         }
         self._poll_interval_s = poll_interval_s
-        self._drain_source = drain_source or _default_drain_source
         self._failure_domain_map: Dict[str, List[int]] = self._build_failure_domain_map(
             self._node_to_ranks
         )
@@ -131,7 +132,7 @@ class PreemptionWatcher:
             )
             return per_node
 
-    def get_latest_info(self) -> Optional[PreemptionInfo]:
+    def get_latest_preemption_info(self) -> Optional[PreemptionInfo]:
         """Most recent :class:`PreemptionInfo` observed, or ``None``."""
         return self._latest_info
 
@@ -153,12 +154,12 @@ class PreemptionWatcher:
         doesn't kill the watcher loop.
         """
         try:
-            drained = self._drain_source() or {}
-            # Only consider drains on this job's own nodes. That's complete for
-            # TPU — an SPMD job fully occupies its slice, so every fate-shared
-            # host is one of our nodes and a drain on any slice host appears
-            # here. For GPU, a drain on a host we don't run on is correctly
-            # irrelevant.
+            drained = _get_draining_nodes() or {}
+            # Keep only drains on this job's own nodes (others are ignored).
+            # That's complete for TPU — an SPMD job fully occupies its slice, so
+            # every fate-shared host is one of our nodes and a drain on any slice
+            # host appears here. For GPU, a drain on a host we don't run on is
+            # correctly irrelevant.
             relevant = {
                 n: d for n, d in drained.items() if n in self._failure_domain_map
             }
@@ -171,7 +172,11 @@ class PreemptionWatcher:
             logger.warning("PreemptionWatcher poll failed", exc_info=True)
 
     def _on_drain_change(self, drained: Dict[str, int]) -> None:
-        """Handle a change in the (already-filtered) drained-node set."""
+        """Handle a change in the drained-node set.
+
+        ``drained`` has already been narrowed to this job's nodes by the
+        caller (``_poll_once``).
+        """
         if not drained:
             return
 
@@ -184,12 +189,10 @@ class PreemptionWatcher:
             }
         )
 
-        # Earliest non-zero deadline wins; 0 means "unknown" when no node
-        # reported a deadline. ``or 0`` guards against a None/missing value.
-        nonzero_deadlines = [
-            drained[n] for n in affected_node_ids if (drained[n] or 0) > 0
-        ]
-        deadline_ms = min(nonzero_deadlines) if nonzero_deadlines else 0
+        # Earliest deadline across the draining nodes; None if none reported one
+        # (Ray Core uses 0 for "no deadline", which is falsy and filtered out).
+        reported_deadlines = [drained[n] for n in affected_node_ids if drained[n]]
+        deadline_ms = min(reported_deadlines) if reported_deadlines else None
 
         info = PreemptionInfo(
             deadline_ms=deadline_ms,
@@ -205,9 +208,9 @@ class PreemptionWatcher:
             affected_ranks,
             deadline_ms,
         )
-        # TODO(lehui): fan out mark_preempt(info) to the worker actors here
-        # so the UDF can read it via ray.train.preemption_status().
-        # TODO(lehui): the controller's PreemptingState (stage 4) must coalesce
-        # all drains seen within a single preemption window into one restart, so
-        # a staggered drain (e.g. node A at t, node B at t+60s) doesn't trigger
-        # back-to-back worker-group restarts (flapping).
+        # Stage 1 is observability-only: the detected preemption is logged but
+        # not yet delivered anywhere. Later stages will (1) forward this signal
+        # to the workers so the training loop can react, and (2) coalesce drains
+        # seen within one preemption window into a single worker-group restart,
+        # so a staggered drain (node A at t, node B at t+60s) doesn't cause
+        # back-to-back restarts.

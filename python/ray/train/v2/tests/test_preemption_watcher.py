@@ -1,6 +1,6 @@
 """Unit tests for the preemption watcher."""
-from typing import Callable, Dict
-from unittest.mock import Mock, patch
+from typing import Dict
+from unittest.mock import patch
 
 import pytest
 
@@ -13,23 +13,26 @@ _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 def _make_watcher(
     node_to_ranks: Dict[str, list],
     fd_map: Dict[str, list],
-    drain_source: Callable[[], Dict[str, int]],
 ) -> PreemptionWatcher:
     """Construct a watcher with a fixed failure-domain map, then halt its loop.
 
-    The background poll thread is stopped so tests can drive ``_poll_once()``
-    synchronously and deterministically.
+    The background poll thread is stopped (while the GCS drain call is mocked
+    out) so tests can drive ``_poll_once()`` synchronously and deterministically.
     """
     fd = {nid: sorted(ranks) for nid, ranks in fd_map.items()}
-    with patch.object(PreemptionWatcher, "_build_failure_domain_map", return_value=fd):
-        watcher = PreemptionWatcher(
-            node_to_ranks=node_to_ranks,
-            drain_source=drain_source,
-        )
-    # Halt the background poll thread so the test can drive _poll_once() itself.
-    watcher._stop_event.set()
-    watcher._monitor_thread.join(timeout=5)
+    with patch.object(
+        PreemptionWatcher, "_build_failure_domain_map", return_value=fd
+    ), patch(f"{_PREEMPTION_MOD}._get_draining_nodes", return_value={}):
+        watcher = PreemptionWatcher(node_to_ranks=node_to_ranks)
+        watcher._stop_event.set()
+        watcher._monitor_thread.join(timeout=5)
     return watcher
+
+
+def _poll_once_with(watcher: PreemptionWatcher, **patch_kwargs) -> None:
+    """Drive one poll with the GCS drain call mocked (``return_value``/``side_effect``)."""
+    with patch(f"{_PREEMPTION_MOD}._get_draining_nodes", **patch_kwargs):
+        watcher._poll_once()
 
 
 class TestPreemptionWatcher:
@@ -63,53 +66,41 @@ class TestPreemptionWatcher:
                 [0, 1, 2, 3],
                 30_000,
             ),
-            # deadline_ms=0 is preserved as 0 (unknown), per Ray Core's convention.
-            ({"node-a": [0]}, {"node-a": 0}, ["node-a"], [0], 0),
-            # A None deadline is treated as unknown (0) rather than raising.
-            ({"node-a": [0]}, {"node-a": None}, ["node-a"], [0], 0),
+            # deadline_ms=0 from Ray Core means "no deadline" -> surfaced as None.
+            ({"node-a": [0]}, {"node-a": 0}, ["node-a"], [0], None),
+            # A None deadline is also surfaced as None rather than raising.
+            ({"node-a": [0]}, {"node-a": None}, ["node-a"], [0], None),
         ],
     )
     def test_drain_produces_info(
         self, fd_map, drained, exp_nodes, exp_ranks, exp_deadline_ms
     ):
-        watcher = _make_watcher(
-            node_to_ranks=fd_map, fd_map=fd_map, drain_source=lambda: dict(drained)
-        )
-        watcher._poll_once()
+        watcher = _make_watcher(node_to_ranks=fd_map, fd_map=fd_map)
+        _poll_once_with(watcher, return_value=dict(drained))
 
-        info = watcher.get_latest_info()
+        info = watcher.get_latest_preemption_info()
         assert info.preempted_node_ids == exp_nodes
         assert info.preempted_ranks == exp_ranks
         assert info.deadline_ms == exp_deadline_ms
 
     def test_no_drain_means_no_info(self):
-        watcher = _make_watcher(
-            node_to_ranks={"node-a": [0]},
-            fd_map={"node-a": [0]},
-            drain_source=lambda: {},
-        )
-        watcher._poll_once()
-        assert watcher.get_latest_info() is None
+        watcher = _make_watcher(node_to_ranks={"node-a": [0]}, fd_map={"node-a": [0]})
+        _poll_once_with(watcher, return_value={})
+        assert watcher.get_latest_preemption_info() is None
 
-    def test_poll_swallows_drain_source_errors(self):
-        """A raising drain source must not propagate out of a poll."""
-        watcher = _make_watcher(
-            node_to_ranks={"node-a": [0]},
-            fd_map={"node-a": [0]},
-            drain_source=Mock(side_effect=RuntimeError("transient")),
-        )
-        watcher._poll_once()  # must not raise
-        assert watcher.get_latest_info() is None
+    def test_poll_swallows_drain_errors(self):
+        """A raising drain call must not propagate out of a poll."""
+        watcher = _make_watcher(node_to_ranks={"node-a": [0]}, fd_map={"node-a": [0]})
+        _poll_once_with(
+            watcher, side_effect=RuntimeError("transient")
+        )  # must not raise
+        assert watcher.get_latest_preemption_info() is None
 
-    def test_none_drain_source_is_safe(self):
-        """A drain source returning None is treated as no drains."""
-        watcher = _make_watcher(
-            node_to_ranks={"node-a": [0]},
-            fd_map={"node-a": [0]},
-            drain_source=lambda: None,
-        )
-        watcher._poll_once()  # must not raise
-        assert watcher.get_latest_info() is None
+    def test_none_drain_result_is_safe(self):
+        """A drain call returning None is treated as no drains."""
+        watcher = _make_watcher(node_to_ranks={"node-a": [0]}, fd_map={"node-a": [0]})
+        _poll_once_with(watcher, return_value=None)  # must not raise
+        assert watcher.get_latest_preemption_info() is None
 
 
 class TestBuildFailureDomainMap:
