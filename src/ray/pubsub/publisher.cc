@@ -358,7 +358,8 @@ bool SubscriberState::ConnectionExists() const {
 }
 
 bool SubscriberState::IsActive() const {
-  return clock_.NowUnixMillis() - last_connection_update_time_ms_ < connection_timeout_ms_;
+  return clock_.NowUnixMillis() - last_connection_update_time_ms_ <
+         connection_timeout_ms_;
 }
 
 void Publisher::ConnectToSubscriber(

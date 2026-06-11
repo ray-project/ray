@@ -86,12 +86,12 @@ class PublisherTest : public ::testing::Test {
   }
 
   SubscriberState *CreateSubscriber() {
-    subscribers_.push_back(std::make_unique<SubscriberState>(
-        NodeID::FromRandom(),
-        /*clock=*/fake_clock_,
-        /*subscriber_timeout_ms=*/1000,
-        /*publish_batch_size=*/1000,
-        kDefaultPublisherId));
+    subscribers_.push_back(
+        std::make_unique<SubscriberState>(NodeID::FromRandom(),
+                                          /*clock=*/fake_clock_,
+                                          /*subscriber_timeout_ms=*/1000,
+                                          /*publish_batch_size=*/1000,
+                                          kDefaultPublisherId));
     return subscribers_.back().get();
   }
 
@@ -349,11 +349,7 @@ TEST_F(PublisherTest, TestSubscriber) {
   };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_,
-      fake_clock_,
-      subscriber_timeout_ms_,
-      10,
-      kDefaultPublisherId);
+      subscriber_id_, fake_clock_, subscriber_timeout_ms_, 10, kDefaultPublisherId);
   // If there's no connection, it will return false.
   subscriber->PublishIfPossible(/*force_noop=*/false);
   // Try connecting.
@@ -444,12 +440,11 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   };
 
   auto max_publish_size = 5;
-  auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_,
-      fake_clock_,
-      subscriber_timeout_ms_,
-      max_publish_size,
-      kDefaultPublisherId);
+  auto subscriber = std::make_shared<SubscriberState>(subscriber_id_,
+                                                      fake_clock_,
+                                                      subscriber_timeout_ms_,
+                                                      max_publish_size,
+                                                      kDefaultPublisherId);
 
   std::vector<ObjectID> oids;
   for (int i = 0; i < 10; i++) {
@@ -494,11 +489,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
                                        std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_,
-      fake_clock_,
-      subscriber_timeout_ms_,
-      10,
-      kDefaultPublisherId);
+      subscriber_id_, fake_clock_, subscriber_timeout_ms_, 10, kDefaultPublisherId);
 
   subscriber->ConnectToSubscriber(request_,
                                   reply.mutable_publisher_id(),
@@ -575,11 +566,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
                                        std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_,
-      fake_clock_,
-      subscriber_timeout_ms_,
-      10,
-      kDefaultPublisherId);
+      subscriber_id_, fake_clock_, subscriber_timeout_ms_, 10, kDefaultPublisherId);
 
   // Suppose the new connection is removed.
   subscriber->ConnectToSubscriber(request_,
@@ -646,11 +633,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
                                        std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
-      subscriber_id_,
-      fake_clock_,
-      subscriber_timeout_ms_,
-      10,
-      kDefaultPublisherId);
+      subscriber_id_, fake_clock_, subscriber_timeout_ms_, 10, kDefaultPublisherId);
 
   // Suppose the new connection is removed.
   subscriber->ConnectToSubscriber(request_,
