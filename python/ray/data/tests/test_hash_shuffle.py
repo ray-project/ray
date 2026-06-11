@@ -305,8 +305,10 @@ class HashOperatorTestCase:
             expected_num_aggregators=4,
             expected_ray_remote_args={
                 "max_concurrency": 4,
-                "num_cpus": 0.16,
-                "memory": 671088640,
+                # estimate-derived 640MiB is floored up to the modest default:
+                #   min(32GiB / 4 / 2, DEFAULT_ALLOCATION=1GiB) = 1GiB
+                "num_cpus": 0.25,  # min(min(4, 4*0.25/4), 1GiB / 4GiB) = 0.25
+                "memory": 1073741824,
                 "scheduling_strategy": "SPREAD",
                 "allow_out_of_order_execution": True,
             },
@@ -809,6 +811,14 @@ def _make_shuffle_op(upstream_num_outputs):
     ``upstream_num_outputs`` bundles (None/0 => unknown)."""
     logical_op_mock = MagicMock(LogicalOperator)
     logical_op_mock.estimated_num_outputs.return_value = 16
+    # No logical size estimate by default (mirrors DataSource V2); tests that
+    # exercise the logical-estimate path override this.
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=None,
+        exec_stats=None,
+        input_files=None,
+    )
 
     op_mock = MagicMock(PhysicalOperator)
     op_mock._output_dependencies = []
@@ -932,6 +942,48 @@ def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
     assert op._extrapolate_dataset_bytes() is None
 
 
+def test_hash_shuffle_prefers_logical_estimate_when_sample_underestimates(
+    ray_start_regular,
+):
+    # Regression: a shuffle fed by a read whose runtime output count is still a
+    # large under-estimate when sampled. The accurate logical estimate must win
+    # so aggregators aren't under-sized (cf. the aggregate_groups timeout).
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=10)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=50 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    # Small early sample -> sampled estimate ~= 100 bytes * max(10, 4) = 1000.
+    op._sample_bytes = 400
+    op._sample_bundles = 4
+    assert not op._inputs_complete
+
+    # max(sampled=1000, logical=50 GiB) -> logical.
+    assert op._extrapolate_dataset_bytes() == 50 * GiB
+
+
+def test_hash_shuffle_floors_aggregator_memory_at_modest_default(
+    ray_start_regular,
+):
+    # Regression: a tiny dataset estimate (e.g. a chained join whose upstream is
+    # back-loaded and sampled at ~0 bytes) must not size aggregators below the
+    # modest default (cf. the TPC-H Q3 0.0GiB -> 11.5MiB OOM).
+    op, _ = _make_shuffle_op(upstream_num_outputs=16)
+
+    cluster = ExecutionResources(cpu=4.0, memory=32 * GiB)
+    args = op._get_default_aggregator_ray_remote_args(
+        num_partitions=16,
+        num_aggregators=16,
+        total_available_cluster_resources=cluster,
+        estimated_dataset_bytes=1 * MiB,  # absurdly small
+    )
+
+    # modest default = min(32GiB / 16 / 2, DEFAULT_ALLOCATION=1GiB) = 1 GiB
+    assert args["memory"] == 1 * GiB
+
+
 def test_hash_shuffle_partition_size_hint_skips_sampling(ray_start_regular):
     op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
     # Simulate a partition-size hint (not exposed on HashShuffleOperator ctor).
@@ -975,6 +1027,12 @@ def test_hash_shuffle_aggregate_sampling_across_input_sequences(ray_start_regula
     def _join_input_mock():
         logical_op_mock = MagicMock(LogicalOperator)
         logical_op_mock.estimated_num_outputs.return_value = 16
+        logical_op_mock.infer_metadata.return_value = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            exec_stats=None,
+            input_files=None,
+        )
         op_mock = MagicMock(PhysicalOperator)
         op_mock._output_dependencies = []
         op_mock._logical_operators = [logical_op_mock]

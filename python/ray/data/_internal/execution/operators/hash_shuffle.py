@@ -883,30 +883,52 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         return self._sample_bundles >= target_bundles
 
     def _extrapolate_dataset_bytes(self) -> Optional[int]:
-        """Estimate total dataset bytes from the online sample.
+        """Estimate total dataset bytes used to size the aggregator pool.
 
-        Bundle-based ratio estimator: scale the average sampled bundle size by
-        the expected total number of upstream output bundles. Returns ``None``
-        when no estimate is possible, in which case
-        ``_get_default_aggregator_ray_remote_args`` falls back to a modest
-        default reservation.
+        Combines two signals and takes their max (under-sizing aggregators leads
+        to OOM, over-sizing is safe):
+
+        - The online ratio estimate from the sampled bundles. Accurate when the
+          upstream output count is reliable, but it can severely under-estimate
+          early in execution -- especially for a shuffle fed by a back-loaded
+          upstream (e.g. another join/aggregate) that emits most of its output
+          during finalization, so the sampled count/sizes are tiny.
+        - The logical (planning-time) estimate. Accurate for the legacy
+          datasource path; ``None`` for DataSource V2 (empty ``infer_metadata``).
+
+        Returns ``None`` when neither is available, in which case
+        ``_get_default_aggregator_ray_remote_args`` uses a modest default.
         """
         if self._partition_size_hint is not None:
             return self._partition_size_hint * self._num_partitions
 
         if self._inputs_complete:
-            # Every input is buffered, so the sample is the whole dataset (and
-            # ``_sample_bytes`` is exact, including 0 for an empty dataset).
+            # Every input is buffered, so the sample is the exact dataset size.
             return self._sample_bytes
 
+        sampled_estimate = self._estimate_dataset_bytes_from_sample()
+        logical_estimate = _try_estimate_output_bytes(self._input_logical_ops)
+
+        candidates = [
+            estimate
+            for estimate in (sampled_estimate, logical_estimate)
+            if estimate is not None
+        ]
+        if not candidates:
+            return None
+        return max(candidates)
+
+    def _estimate_dataset_bytes_from_sample(self) -> Optional[int]:
+        """Bundle-ratio estimate of total dataset bytes from the online sample,
+        or ``None`` if no reliable estimate can be derived yet."""
         if self._sample_bundles == 0:
             return None
 
         expected_total_bundles = self.upstream_op_num_outputs()
         if expected_total_bundles <= 0:
-            # No reliable upstream count (e.g. DataSource V2 before any read task
-            # finished). Fall back to the logical estimate, else modest default.
-            return _try_estimate_output_bytes(self._input_logical_ops)
+            # Upstream output count hasn't materialized yet (e.g. DataSource V2
+            # before any read task finished).
+            return None
 
         avg_bytes_per_bundle = self._sample_bytes / self._sample_bundles
         # Never extrapolate below what we've already observed.
@@ -1303,6 +1325,22 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     ):
         assert num_partitions >= num_aggregators
 
+        # Conservative floor applied to every aggregator's ``memory`` reservation:
+        #   - 50% of an even share of total cluster memory, but
+        #   - no more than ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION``.
+        # This is also the reservation used when we can't estimate the dataset
+        # size at all. Flooring the estimate-derived value here guards against a
+        # weak/early runtime estimate (e.g. a shuffle fed by a back-loaded
+        # upstream join whose output count is ~0 when sampled) sizing aggregators
+        # so small they OOM once real data arrives.
+        max_memory_per_aggregator = (
+            total_available_cluster_resources.memory / num_aggregators
+        )
+        modest_memory_per_aggregator = min(
+            max_memory_per_aggregator / 2,
+            DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
+        )
+
         if estimated_dataset_bytes is not None:
             estimated_aggregator_memory_required = self._estimate_aggregator_memory_allocation(
                 num_aggregators=num_aggregators,
@@ -1310,6 +1348,13 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 # NOTE: If no partition size hint is provided we simply assume target
                 #       max block size specified as the best partition size estimate
                 estimated_dataset_bytes=estimated_dataset_bytes,
+            )
+
+            # Never reserve less than the modest default, even if the estimate is
+            # tiny -- under-sizing leads to OOM, over-sizing is safe.
+            estimated_aggregator_memory_required = max(
+                estimated_aggregator_memory_required,
+                math.ceil(modest_memory_per_aggregator),
             )
 
             # A per-aggregator ``memory`` request must fit on a single node,
@@ -1335,21 +1380,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 )
                 estimated_aggregator_memory_required = max_node_memory
         else:
-            # NOTE: In cases when we're unable to estimate dataset size,
-            #       we simply fallback to request the minimum of:
-            #       - conservative 50% of total available memory for a join operation.
-            #       - ``DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION`` worth of
-            #       memory for every Aggregator.
-
-            max_memory_per_aggregator = (
-                total_available_cluster_resources.memory / num_aggregators
-            )
-            modest_memory_per_aggregator = max_memory_per_aggregator / 2
-
-            estimated_aggregator_memory_required = min(
-                modest_memory_per_aggregator,
-                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
-            )
+            # No dataset-size estimate available: fall back to the modest
+            # default reservation computed above.
+            estimated_aggregator_memory_required = modest_memory_per_aggregator
 
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
