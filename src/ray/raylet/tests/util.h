@@ -180,11 +180,6 @@ class MockWorker : public WorkerInterface {
 
   rpc::CoreWorkerClientInterface *rpc_client() override { return rpc_client_.get(); }
 
-  bool IsAvailableForScheduling() const override {
-    RAY_CHECK(false) << "Method unused";
-    return true;
-  }
-
   void SetJobId(const JobID &job_id) override { job_id_ = job_id; }
 
   const ActorID &GetRootDetachedActorId() const override {
