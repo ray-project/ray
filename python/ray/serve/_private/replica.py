@@ -132,6 +132,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
+from ray.serve._private.request_metrics import RequestMetrics
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
 from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
@@ -187,7 +188,6 @@ from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 from ray.types import ObjectRef
-from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -483,31 +483,17 @@ class ReplicaMetricsManager:
         self.set_autoscaling_config(autoscaling_config)
 
         if self._is_direct_ingress:
-            # TODO(alexyang): De-duplicate these metrics from those collected by
-            # the proxy.
-            self.ingress_http_request_counter = self._init_ingress_request_counter(
-                "HTTP"
-            )
-
-            self.ingress_http_request_error_counter = (
-                self._init_ingress_request_error_counter("HTTP")
-            )
-
-            self.deployment_http_request_error_counter = (
-                self._init_deployment_request_error_counter("HTTP")
-            )
-
-            logger.debug(f"REQUEST_LATENCY_BUCKETS_MS: {REQUEST_LATENCY_BUCKETS_MS}")
-            self.ingress_http_processing_latency_tracker = (
-                self._init_ingress_processing_latency_tracker("HTTP")
-            )
-
+            # These ingress metrics share the same names, tag keys, and emission
+            # logic as those collected by the proxy (see RequestMetrics). When
+            # direct ingress is enabled traffic bypasses the proxy, so a given
+            # request is recorded by exactly one of the two (proxy XOR replica).
             node_id = ray.get_runtime_context().get_node_id()
             node_ip_address = ray.util.get_node_ip_address()
-            self.ingress_num_ongoing_http_requests_gauge = (
-                self._init_ingress_num_ongoing_requests_gauge(
-                    "HTTP", node_id, node_ip_address
-                )
+            self._ingress_http_metrics = RequestMetrics(
+                RequestProtocol.HTTP,
+                source="ingress",
+                node_id=node_id,
+                node_ip_address=node_ip_address,
             )
             self._ingress_ongoing_http_requests = 0
 
@@ -528,70 +514,6 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
-
-    def _init_ingress_request_counter(self, protocol: str):
-        return ray_metrics.Counter(
-            f"serve_num_{protocol.lower()}_requests",
-            description=f"The number of {protocol} requests processed.",
-            tag_keys=("route", "method", "application", "status_code"),
-        )
-
-    def _init_ingress_request_error_counter(self, protocol: str):
-        return ray_metrics.Counter(
-            f"serve_num_{protocol.lower()}_error_requests",
-            description=(f"The number of errored {protocol} responses."),
-            tag_keys=(
-                "route",
-                "error_code",
-                "method",
-                "application",
-            ),
-        )
-
-    def _init_deployment_request_error_counter(self, protocol: str):
-        return ray_metrics.Counter(
-            f"serve_num_deployment_{protocol.lower()}_error_requests",
-            description=(
-                f"The number of errored {protocol} responses returned by each deployment."
-            ),
-            tag_keys=(
-                "deployment",
-                "error_code",
-                "method",
-                "route",
-                "application",
-            ),
-        )
-
-    def _init_ingress_processing_latency_tracker(self, protocol: str):
-        return ray_metrics.Histogram(
-            f"serve_{protocol.lower()}_request_latency_ms",
-            description=(
-                f"The end-to-end latency of {protocol} requests "
-                f"(measured from the Serve ingress)."
-            ),
-            boundaries=REQUEST_LATENCY_BUCKETS_MS,
-            tag_keys=(
-                "method",
-                "route",
-                "application",
-                "status_code",
-            ),
-        )
-
-    def _init_ingress_num_ongoing_requests_gauge(
-        self, protocol: str, node_id: str, node_ip_address: str
-    ):
-        return ray_metrics.Gauge(
-            name=f"serve_num_ongoing_{protocol.lower()}_requests",
-            description=f"The number of ongoing requests in this {protocol} ingress.",
-            tag_keys=("node_id", "node_ip_address"),
-        ).set_default_tags(
-            {
-                "node_id": node_id,
-                "node_ip_address": node_ip_address,
-            }
-        )
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -618,15 +540,17 @@ class ReplicaMetricsManager:
 
         for protocol in [RequestProtocol.HTTP]:
             if protocol == RequestProtocol.HTTP:
-                ingress_request_counter = self.ingress_http_request_counter
-                ingress_request_error_counter = self.ingress_http_request_error_counter
+                ingress_request_counter = self._ingress_http_metrics.request_counter
+                ingress_request_error_counter = (
+                    self._ingress_http_metrics.request_error_counter
+                )
                 deployment_request_error_counter = (
-                    self.deployment_http_request_error_counter
+                    self._ingress_http_metrics.deployment_request_error_counter
                 )
                 ingress_processing_latencies = (
-                    self.ingress_http_processing_latency_tracker
+                    self._ingress_http_metrics.processing_latency_tracker
                 )
-                self.ingress_num_ongoing_http_requests_gauge.set(
+                self._ingress_http_metrics.set_num_ongoing_requests(
                     self._ingress_ongoing_http_requests
                 )
             else:
@@ -778,7 +702,7 @@ class ReplicaMetricsManager:
 
             if self._is_direct_ingress and request_metadata.is_direct_ingress:
                 if request_metadata.is_http_request:
-                    self.ingress_num_ongoing_http_requests_gauge.set(
+                    self._ingress_http_metrics.set_num_ongoing_requests(
                         self._ingress_ongoing_http_requests
                     )
 
@@ -793,7 +717,7 @@ class ReplicaMetricsManager:
 
             if self._is_direct_ingress and request_metadata.is_direct_ingress:
                 if request_metadata.is_http_request:
-                    self.ingress_num_ongoing_http_requests_gauge.set(
+                    self._ingress_http_metrics.set_num_ongoing_requests(
                         self._ingress_ongoing_http_requests
                     )
 
@@ -917,56 +841,57 @@ class ReplicaMetricsManager:
         if not self._is_direct_ingress:
             return
 
-        if protocol == RequestProtocol.HTTP:
-            latency_tracker = self.ingress_http_processing_latency_tracker
-            request_error_counter = self.ingress_http_request_error_counter
-            deployment_error_counter = self.deployment_http_request_error_counter
-            request_counter = self.ingress_http_request_counter
-        else:
+        if protocol != RequestProtocol.HTTP:
             # TODO(alexyang): Add metrics for gRPC.
             return
 
-        request_tags = {
-            "route": route,
-            "method": method,
-            "application": app_name,
-            "status_code": status_code,
-        }
-        latency_tags = request_tags
-        request_error_tags = {
-            "route": route,
-            "method": method,
-            "application": app_name,
-            "error_code": status_code,
-        }
-        deployment_error_tags = {
-            "route": route,
-            "method": method,
-            "application": app_name,
-            "error_code": status_code,
-            "deployment": deployment_name,
-        }
+        if not self._cached_metrics_enabled:
+            self._ingress_http_metrics.record_request(
+                route=route,
+                method=method,
+                application=app_name,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                is_error=was_error,
+                deployment_name=deployment_name,
+            )
+            return
 
-        if self._cached_metrics_enabled:
-            self._cached_ingress_request_counter[protocol][
-                frozenset(request_tags.items())
+        # Cached path: accumulate per-tag-set counts/latencies keyed by the same
+        # canonical tag schemas used by the direct emit path, and flush them in
+        # `_report_cached_metrics`.
+        request_tags = RequestMetrics.request_tags(
+            route=route,
+            method=method,
+            application=app_name,
+            status_code=status_code,
+        )
+        self._cached_ingress_request_counter[protocol][
+            frozenset(request_tags.items())
+        ] += 1
+        self._cached_ingress_processing_latencies[protocol][
+            frozenset(request_tags.items())
+        ].append(latency_ms)
+        if was_error:
+            request_error_tags = RequestMetrics.request_error_tags(
+                route=route,
+                method=method,
+                application=app_name,
+                status_code=status_code,
+            )
+            deployment_error_tags = RequestMetrics.deployment_error_tags(
+                route=route,
+                method=method,
+                application=app_name,
+                status_code=status_code,
+                deployment=deployment_name,
+            )
+            self._cached_ingress_request_error_counter[protocol][
+                frozenset(request_error_tags.items())
             ] += 1
-            self._cached_ingress_processing_latencies[protocol][
-                frozenset(latency_tags.items())
-            ].append(latency_ms)
-            if was_error:
-                self._cached_ingress_request_error_counter[protocol][
-                    frozenset(request_error_tags.items())
-                ] += 1
-                self._cached_deployment_request_error_counter[protocol][
-                    frozenset(deployment_error_tags.items())
-                ] += 1
-        else:
-            request_counter.inc(tags=request_tags)
-            latency_tracker.observe(latency_ms, tags=latency_tags)
-            if was_error:
-                request_error_counter.inc(tags=request_error_tags)
-                deployment_error_counter.inc(tags=deployment_error_tags)
+            self._cached_deployment_request_error_counter[protocol][
+                frozenset(deployment_error_tags.items())
+            ] += 1
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
