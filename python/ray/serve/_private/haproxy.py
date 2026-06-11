@@ -258,7 +258,7 @@ class ServerStats:
 
     @property
     def is_up(self) -> bool:
-        return self.status.startswith("UP")
+        return self.status == "UP"
 
     @property
     def is_draining(self) -> bool:
