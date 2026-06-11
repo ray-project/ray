@@ -298,10 +298,10 @@ class PDOrchestratorMixin:
 
     async def _concurrent_decode(
         self,
-        method,
-        decode_request,
-        prefill_resp,
-        raw_request_info,
+        method: str,
+        decode_request: RequestType,
+        prefill_resp: AsyncGenerator,
+        raw_request_info: Optional[RawRequestInfo],
         *,
         cancel_on_failure: bool = True,
     ):
@@ -315,6 +315,10 @@ class PDOrchestratorMixin:
         prefill/decode engines.
 
         Args:
+            method: The handle method name ("chat" or "completions").
+            decode_request: The request to run on the local decode engine.
+            prefill_resp: The in-flight remote prefill response stream.
+            raw_request_info: Raw HTTP request info forwarded to the engine.
             cancel_on_failure: Whether to cancel the in-flight prefill when
                 local decode does not complete. Must be False for
                 ``dispatch()``-based prefill (the choose_replica path): its
