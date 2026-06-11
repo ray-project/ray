@@ -2,6 +2,7 @@
 
 import pickle
 import time
+from dataclasses import replace
 from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
 import pyarrow as pa
@@ -20,13 +21,7 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 
-# Maps rows of a pa.Table block to output partition IDs.  num_partitions
-# and any other config are bound via closure.  The operator filters out empty
-# entries, so implementations don't need to.
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
-
-# Takes (partition_id, accumulated_shard_tables) and yields output blocks.
-# See ShuffleReduceOp for streaming vs. blocking call semantics.
 ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
 
 
@@ -42,13 +37,13 @@ _REDUCE_BATCH_SIZE = 16
 def _partition_blocks_to_shards(
     blocks: Tuple[Block, ...], partition_fn: PartitionFn
 ) -> Dict[int, List[pa.Table]]:
-    """Run partition_fn on each block; collect non-empty shards by pid.
+    """Partition each block independently, grouping shards by partition id.
 
-    Each block is partitioned independently so we never materialize a single
-    concatenated table across all inputs.  Chunked columns are defragmented
-    here (combine_chunks) before calling partition_fn — this is a real
-    performance constraint, not optional: hash_partition's per-column take
-    is sensitive to chunk count, and leaving chunked input alone halves map
+    Blocks are partitioned one at a time rather than concatenated first, so we
+    never hold a single table spanning all inputs in memory.
+
+    We combine_chunks before partitioning because partition_fn's per-column
+    take is much slower on chunked input -- enough to roughly halve map
     throughput.
     """
     partition_accumulators: Dict[int, List[pa.Table]] = {}
@@ -62,9 +57,9 @@ def _partition_blocks_to_shards(
         if any(col.num_chunks > 1 for col in block.columns):
             block = block.combine_chunks()
         block_partitions = partition_fn(block)
-        for pid, shard in block_partitions.items():
+        for partition_id, shard in block_partitions.items():
             if shard.num_rows > 0:
-                partition_accumulators.setdefault(pid, []).append(shard)
+                partition_accumulators.setdefault(partition_id, []).append(shard)
         del block, block_partitions
     return partition_accumulators
 
@@ -73,13 +68,7 @@ def _encode_partition_ipc(
     table: pa.Table,
     ipc_write_options: pa.ipc.IpcWriteOptions,
 ) -> pa.Buffer:
-    """ZSTD-encode one partition's shard as a single Arrow IPC stream.
-
-    ``combine_chunks`` usually collapses a Table to one batch, but the
-    Arrow API doesn't strictly guarantee that — e.g. tables hitting the
-    2 GB-per-batch offset limit may come out with multiple batches.  We
-    write every batch so the reader can re-merge correctly.
-    """
+    """Encode one partition's shard as a single Arrow IPC stream."""
     if table.num_columns > 0:
         table = table.combine_chunks()
     batches = table.to_batches()
@@ -100,71 +89,39 @@ def _shuffle_map_task(
     partition_fn: PartitionFn,
     num_partitions: int,
 ):
-    """Map stage: partition input blocks and return one shard per partition.
-
-    Multiple input blocks may be passed when pre-map merge is enabled; they
-    are partitioned individually (to avoid a large combine_chunks on the
-    merged table) and their shards are accumulated per pid before encoding.
-
-    Must be called with ``num_returns = num_partitions + 1``.
-
-    Args:
-        *blocks: One or more input blocks.
-        partition_fn: Callable (pa.Table) -> Dict[int, pa.Table] that
-            assigns rows to output partitions.
-        num_partitions: Total number of output partitions.
-
-    Returns:
-        Tuple of ``num_partitions + 1`` values:
-
-        - Index 0: (BlockMetadata, Dict) — aggregate input metadata and a
-          per-partition (rows, bytes) size dict (keys are the partitions
-          that received any rows from this mapper).
-        - Index 1 … N: a ZSTD-compressed Arrow IPC stream for that
-          partition, or ``None`` if the partition received no rows.
-    """
-    from dataclasses import replace as _dc_replace
-
+    """Map stage: partition the input blocks and return one shard per partition."""
     stats = BlockExecStats.builder()
 
-    if not blocks:
-        empty_meta = BlockAccessor.for_block(pa.table({})).get_metadata(
-            block_exec_stats=stats.build(block_ser_time_s=0)
-        )
-        return (empty_meta, {}), *([None] * num_partitions)
-
-    # Use BlockAccessor so we work for non-Arrow block types (pandas, numpy)
-    # whose num_rows / nbytes attributes aren't named the same.
+    # Use BlockAccessor so we also work for non-Arrow blocks (pandas, numpy)
     accessors = [BlockAccessor.for_block(b) for b in blocks]
     total_rows = sum(a.num_rows() for a in accessors)
     total_bytes = sum((a.size_bytes() or 0) for a in accessors)
 
-    # Empty-input fast path.
     if total_rows == 0:
-        input_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
+        empty_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
             block_exec_stats=stats.build(block_ser_time_s=0),
         )
-        return (input_meta, {}), *([None] * num_partitions)
+        return (empty_meta, {}), *([None] * num_partitions)
 
-    # Step 1: partition each input block into (pid -> [shard_table, ...]).
+    # Step 1: partition each input block into partition_id -> [shard_table, ...].
     partition_accumulators = _partition_blocks_to_shards(blocks, partition_fn)
 
-    # Step 2: merge per-pid shards and ZSTD-encode each partition.
+    # Step 2: merge each partition's shards and encode them into one IPC stream.
     ipc_write_options = pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[Optional[pa.Buffer]] = [None] * num_partitions
-    for pid in sorted(partition_accumulators.keys()):
-        tables = partition_accumulators.pop(pid)
+    for partition_id in sorted(partition_accumulators.keys()):
+        tables = partition_accumulators.pop(partition_id)
         merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
-        shard_sizes[pid] = (merged.num_rows, merged.nbytes)
-        partition_bufs[pid] = _encode_partition_ipc(merged, ipc_write_options)
+        shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
+        partition_bufs[partition_id] = _encode_partition_ipc(merged, ipc_write_options)
         del merged
 
     # Step 3: build aggregate input metadata and return.
     input_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
         block_exec_stats=stats.build(block_ser_time_s=0),
     )
-    input_meta = _dc_replace(input_meta, num_rows=total_rows, size_bytes=total_bytes)
+    input_meta = replace(input_meta, num_rows=total_rows, size_bytes=total_bytes)
     return (input_meta, shard_sizes), *partition_bufs
 
 
@@ -200,47 +157,33 @@ def _shuffle_reduce_task(
     target_max_block_size: Optional[int],
     streaming: bool = True,
 ) -> Generator[Union[Block, bytes], None, None]:
-    """Reduce stage: fetch one partition's shards and call reduce_fn.
+    """Reduce stage: fetch one partition's shards and run reduce_fn over them.
 
-    Both modes use batched ray.get (_REDUCE_BATCH_SIZE refs at a time) to
-    avoid memory spikes from a single large dereference.
+    Shards are fetched in batches of _REDUCE_BATCH_SIZE to avoid a memory spike
+    from dereferencing every ref at once.
 
-    Streaming mode (streaming=True):
-        Calls reduce_fn(partition_id, accumulated_tables) whenever the
-        accumulator exceeds target_max_block_size, then pushes the produced
-        blocks through a BlockOutputBuffer so each emitted block respects
-        target_max_block_size.  Peak input accumulator bounded to
-        ~target_max_block_size.  reduce_fn must produce valid output from
-        partial data.
-
-    Blocking mode (streaming=False):
-        Accumulates all shards before calling reduce_fn(partition_id,
-        all_tables) once.  Use this when reduce_fn requires the full
-        partition (sort, aggregate).
+    With streaming=True, reduce_fn is called each time the accumulated input
+    passes target_max_block_size and its output is reshaped to that size via a
+    BlockOutputBuffer; this bounds peak input memory but requires reduce_fn to
+    produce valid output from partial input.  With streaming=False, all shards
+    are accumulated and reduce_fn is called once, use this when it needs the
+    whole partition (sort, aggregate).
 
     Args:
-        shard_refs: ObjectRefs to this partition's compressed IPC shards
-            from all mappers.  May include ``None`` entries for mappers
-            that produced no rows for this partition.
-        partition_id: Partition this reducer is responsible for.
+        shard_refs: ObjectRefs to this partition's IPC shards from every mapper.
+            May contain None for mappers that produced no rows here.
+        partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
-        target_max_block_size: Target output block size (also the streaming
-            flush threshold).  ``None`` means emit blocks as-is (no
-            BlockOutputBuffer reshaping, no streaming flush) — used under
-            the "partition = block" contract.
-        streaming: Whether to flush incrementally (True) or accumulate all
-            shards before reducing (False).
-
-    Returns:
-        Generator yielding output blocks, each followed by a serialized
-        BlockMetadataWithSchema.  Emits one block per non-empty partition;
-        partitions that received no rows produce no output.
+        target_max_block_size: Output block size, and the streaming flush
+            threshold.  None emits blocks as-is (no reshaping, no streaming
+            flush) -- the "partition = block" contract.
+        streaming: Flush incrementally (True) or accumulate then reduce (False).
     """
     start_time_s = time.perf_counter()
 
     accum_tables: List[pa.Table] = []
     accum_bytes: int = 0
-    output_buffer: Optional[BlockOutputBuffer] = None  # lazily created
+    output_buffer: Optional[BlockOutputBuffer] = None
 
     def _yield_with_stats(block: Block):
         """Yield (block, pickled metadata) following the streaming-gen protocol."""

@@ -573,7 +573,7 @@ def test_e2e_same_key_lands_in_same_block(
 
     seen_keys_per_block = []
     for ref_bundle in out.iter_internal_ref_bundles():
-        for block_ref, _ in ref_bundle.block_refs:
+        for block_ref in ref_bundle.block_refs:
             block = ray.get(block_ref)
             seen_keys_per_block.append(set(block["k"].to_pylist()))
 

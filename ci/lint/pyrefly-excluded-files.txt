@@ -355,7 +355,7 @@ python/ray/data/tests/datasource/test_kafka.py
 python/ray/data/_internal/gpu_shuffle/rapidsmpf_backend.py
 python/ray/data/_internal/gpu_shuffle/hash_shuffle.py
 python/ray/data/_internal/execution/bundle_queue/base.py
-python/ray/data/_internal/execution/operators/shuffle_operators/_shuffle_tasks.py
+python/ray/data/_internal/execution/operators/shuffle_operators/shuffle_tasks.py
 python/ray/data/_internal/execution/operators/shuffle_operators/shuffle_map_operator.py
 python/ray/data/_internal/execution/operators/shuffle_operators/shuffle_reduce_operator.py
 python/ray/data/tests/test_hash_shuffle_v2.py
