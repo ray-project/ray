@@ -8,8 +8,10 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     HEAD_NODE_RESOURCE_LABEL,
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,
+    _format_resources_for_log,
     get_or_create_autoscaling_coordinator,
 )
+from ray.data._internal.util import GiB
 from ray.tests.conftest import wait_for_condition
 
 CLUSTER_NODES_WITH_HEAD = [
@@ -210,6 +212,49 @@ def test_double_allocation_with_multiple_request_remaining():
     # Both requesters should get their specific requests + fair share of remaining
     assert res1 == req1 + [expected_remaining_per_requester]
     assert res2 == req2 + [expected_remaining_per_requester]
+
+
+def test_format_resources_for_log():
+    # Two bundles that are identical except for sub-precision differences in
+    # object_store_memory (8.96 vs 9.04 GiB), plus custom labels and a GPU: 0
+    # entry. They should aggregate into a single entry, with custom/zero
+    # resources dropped.
+    resources = [
+        {
+            "CPU": 8,
+            "GPU": 0,
+            "memory": 32 * GiB,
+            "object_store_memory": int(8.96 * GiB),
+            "anyscale/cpu_only:true": 1.0,
+            "anyscale/region:us-west-2": 1.0,
+            "node:10.0.193.159": 1.0,
+        },
+        {
+            "CPU": 8,
+            "GPU": 0,
+            "memory": 32 * GiB,
+            "object_store_memory": int(9.04 * GiB),
+            "anyscale/cpu_only:true": 1.0,
+            "anyscale/region:us-west-2": 1.0,
+            "node:10.0.241.173": 1.0,
+        },
+        {
+            "CPU": 0,
+            "GPU": 0,
+            "memory": 0,
+            "object_store_memory": 0,
+            "anyscale/cpu_only:true": 1.0,
+            "node:10.0.252.14": 1.0,
+        },
+    ]
+
+    log_message = _format_resources_for_log(resources)
+    assert log_message == (
+        "[2 x {CPU: 8, memory: 32.0GiB, object_store_memory: 9.0GiB}]"
+    )
+    assert "anyscale/" not in log_message
+    assert "node:" not in log_message
+    assert "GPU" not in log_message
 
 
 @pytest.fixture
