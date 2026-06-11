@@ -396,7 +396,7 @@ def test_report_stats(tmp_path):
             assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 43
+    assert len(records) == 49
     # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
@@ -428,7 +428,7 @@ def test_report_stats(tmp_path):
     # Test stats without raylets
     stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 41
+    assert len(records) == 46
     # Test stats with gpus
     stats["gpus"] = [
         {
@@ -455,11 +455,11 @@ def test_report_stats(tmp_path):
         }
     ]
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 50
+    assert len(records) == 55
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 48
+    assert len(records) == 53
 
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
