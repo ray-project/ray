@@ -951,6 +951,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
         self._internal_inqueues[input_index].remove(input)
+        # Decrement per-node bytes on the producing operator, since the
+        # block is now being consumed by this operator's task.
+        if input_index < len(self._op.input_dependencies):
+            from ray.data._internal.execution.operators.input_data_buffer import (
+                InputDataBuffer,
+            )
+
+            upstream_op = self._op.input_dependencies[input_index]
+            if not isinstance(upstream_op, InputDataBuffer):
+                upstream_op.metrics._update_per_node_obj_store_bytes(input, -1)
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_inqueue,
@@ -973,7 +983,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.obj_store_mem_internal_outqueue,
             output_size,
         )
-        self._update_per_node_obj_store_bytes(output, -1)
 
     def _update_per_node_obj_store_bytes(self, bundle: RefBundle, sign: int):
         for entry in bundle.blocks:
