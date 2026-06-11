@@ -9,6 +9,7 @@ from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
+import grpc
 import pytest
 
 import ray
@@ -34,7 +35,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
 from ray.serve._private.replica import Replica as ServeReplica
-from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
     RequestRouter,
@@ -736,6 +737,104 @@ class TestDeploymentBroadcastResponseLocalTesting:
         # Second call returns the same cached list.
         replica_results_2 = response._fetch_replica_results_sync()
         assert replica_results_2 is replica_results
+
+
+class FakeGrpcCallForRejection:
+    """Minimal stand-in for a grpc.aio.Call whose connection attempt fails."""
+
+    def __init__(self, error: Exception):
+        self._error = error
+
+    async def wait_for_connection(self):
+        raise self._error
+
+
+class FakeGrpcReplicaResultForRejection(gRPCReplicaResult):
+    """Bypasses the real __init__ (context bookkeeping, background tasks);
+    sets only the attributes get_rejection_response() reads."""
+
+    def __init__(self, call, *, is_streaming: bool = False):
+        self._call = call
+        self._with_rejection = True
+        self._rejection_response = None
+        self._is_streaming = is_streaming
+        self._actor_id = Mock(binary=Mock(return_value=b"fake-actor-id"))
+
+
+def _aio_rpc_error(
+    code: grpc.StatusCode, initial_metadata: Optional[grpc.aio.Metadata] = None
+) -> grpc.aio.AioRpcError:
+    return grpc.aio.AioRpcError(
+        code=code,
+        initial_metadata=initial_metadata or grpc.aio.Metadata(),
+        trailing_metadata=grpc.aio.Metadata(),
+        details=code.name,
+        debug_error_string=None,
+    )
+
+
+@pytest.mark.asyncio
+class TestGrpcRejectionResponseErrorMapping:
+    """get_rejection_response() error mapping for dispatches that provably
+    never started executing (no `accepted` initial metadata received).
+
+    CANCELLED is what a replica's gRPC server returns for streams landing in
+    its `server.stop()` window during graceful shutdown (quiesce). Like
+    UNAVAILABLE, it must surface as ActorUnavailableError so the router
+    retries the request on another replica instead of failing it.
+    """
+
+    @pytest.mark.parametrize(
+        "code", [grpc.StatusCode.CANCELLED, grpc.StatusCode.UNAVAILABLE]
+    )
+    async def test_pre_accept_errors_map_to_actor_unavailable(self, code):
+        result = FakeGrpcReplicaResultForRejection(
+            FakeGrpcCallForRejection(_aio_rpc_error(code))
+        )
+
+        with pytest.raises(ActorUnavailableError):
+            await result.get_rejection_response()
+
+    async def test_other_codes_propagate_raw(self):
+        result = FakeGrpcReplicaResultForRejection(
+            FakeGrpcCallForRejection(_aio_rpc_error(grpc.StatusCode.INTERNAL))
+        )
+
+        with pytest.raises(grpc.aio.AioRpcError):
+            await result.get_rejection_response()
+
+    async def test_accepted_metadata_on_error_is_not_retried(self):
+        # A unary call that fails mid-execution carries `accepted=1` initial
+        # metadata in the error: the request DID start executing, so it must
+        # NOT be converted into a retryable ActorUnavailableError.
+        error = _aio_rpc_error(
+            grpc.StatusCode.CANCELLED,
+            initial_metadata=grpc.aio.Metadata(
+                ("accepted", "1"), ("num_ongoing_requests", "3")
+            ),
+        )
+        result = FakeGrpcReplicaResultForRejection(FakeGrpcCallForRejection(error))
+
+        info = await result.get_rejection_response()
+        assert info.accepted is True
+        assert info.num_ongoing_requests == 3
+
+    async def test_streaming_pre_accept_cancelled_maps_to_actor_unavailable(self):
+        # For streaming calls initial metadata is sent before execution, so
+        # an error during connection establishment always means the request
+        # never started; the unary metadata-recovery branch is skipped.
+        error = _aio_rpc_error(
+            grpc.StatusCode.CANCELLED,
+            initial_metadata=grpc.aio.Metadata(
+                ("accepted", "1"), ("num_ongoing_requests", "3")
+            ),
+        )
+        result = FakeGrpcReplicaResultForRejection(
+            FakeGrpcCallForRejection(error), is_streaming=True
+        )
+
+        with pytest.raises(ActorUnavailableError):
+            await result.get_rejection_response()
 
 
 @pytest.mark.asyncio

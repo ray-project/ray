@@ -503,7 +503,19 @@ class gRPCReplicaResult(ReplicaResult):
                         num_ongoing_requests=int(num_ongoing_requests),
                     )
 
-            if e.code() == grpc.StatusCode.UNAVAILABLE:
+            # CANCELLED is what the replica's gRPC server returns for a
+            # stream that lands in its `server.stop()` window during
+            # graceful shutdown: the server cancels the stream before the
+            # handler runs. Since no `accepted` initial metadata was
+            # received (checked above), the request was never accepted, so
+            # it is safe to retry on another replica via the same path as
+            # UNAVAILABLE. A locally-cancelled call surfaces as
+            # `asyncio.CancelledError` (handled above), not `AioRpcError`,
+            # so this branch only sees peer-originated cancellation.
+            if e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.CANCELLED,
+            ):
                 raise ActorUnavailableError(
                     "Actor is unavailable.",
                     self._actor_id.binary(),
