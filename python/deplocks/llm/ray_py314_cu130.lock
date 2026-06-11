@@ -588,9 +588,9 @@ farama-notifications==0.0.4 \
     # via
     #   -c python/deplocks/llm/ray_test_py314_cu130.lock
     #   gymnasium
-fastapi==0.121.0 \
-    --hash=sha256:06663356a0b1ee93e875bbf05a31fb22314f5bed455afaaad2b2dad7f26e98fa \
-    --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
+fastapi==0.133.0 \
+    --hash=sha256:0a78878483d60702a1dde864c24ab349a1a53ef4db6b6f74f8cd4a2b2bc67d2f \
+    --hash=sha256:b900a2bf5685cdb0647a41d5900bdeafc3a9e8a28ac08c6246b76699e164d60d
     # via
     #   -c python/deplocks/llm/ray_test_py314_cu130.lock
     #   -r python/requirements.txt
@@ -2396,9 +2396,9 @@ smart-open==6.2.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py314_cu130.lock
     #   -r python/requirements.txt
-starlette==0.49.3 \
-    --hash=sha256:1c14546f299b5901a1ea0e34410575bc33bbd741377a10484a54445588d00284 \
-    --hash=sha256:b579b99715fdc2980cf88c8ec96d3bf1ce16f5a8051a7c2b84ef9b1cdecaea2f
+starlette==1.0.1 \
+    --hash=sha256:512399c5f1de7fac99c88572212ded9ddeddef2fb32afa82d724000e88b38f4f \
+    --hash=sha256:7c0e69b2ee1c848bd54669d908500117a3ee13de603a21427e5c6fc1adf98dcd
     # via
     #   -c python/deplocks/llm/ray_test_py314_cu130.lock
     #   -r python/requirements.txt
@@ -2452,6 +2452,7 @@ typing-inspection==0.4.2 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   fastapi
     #   pydantic
 tzdata==2026.1 \
     --hash=sha256:4b1d2be7ac37ceafd7327b961aa3a54e467efbdb563a23655fbfe0d39cfc42a9 \
