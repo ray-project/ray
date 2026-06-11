@@ -2768,7 +2768,7 @@ cdef void _invoke_object_out_of_scope_callback(
         const CObjectID &c_object_id, void *user_data) noexcept nogil:
     with gil:
         try:
-            object_ref_id = ObjectRef(c_object_id.Binary(), weak_ref=True)
+            object_ref_id = ObjectRef(c_object_id.Binary(), skip_adding_local_ref=True)
             (<object>user_data)(object_ref_id)
         except BaseException:
             logger.exception("Error in object out-of-scope callback")
