@@ -76,7 +76,6 @@ def test_task_basic(shutdown_only):
 import time
 
 import ray
-from ray._common.test_utils import SignalActor
 from ray._common.test_utils import wait_for_condition
 
 ray.init("auto")
