@@ -1316,13 +1316,13 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     auto debug_str = spec.DebugString();
     if (!absl::StrContains(debug_str, "__ray_terminate__") &&
         (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-         (clock_.NowUnixMillis() - last_log_time_ms_) >
+         (clock_.SteadyNowMillis() - last_log_time_ms_) >
              kTaskFailureLoggingFrequencyMillis)) {
       if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
         RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
                          << kTaskFailureLoggingFrequencyMillis << " millis.";
       }
-      last_log_time_ms_ = clock_.NowUnixMillis();
+      last_log_time_ms_ = clock_.SteadyNowMillis();
       if (status != nullptr) {
         RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
       } else {

@@ -1541,7 +1541,6 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 TEST(NormalTaskSubmitterSchedulingKeyTest, TestSchedulingKeys) {
   InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
   Clock clock;
-  // Mock reference counter as enabled
   auto memory_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
 

@@ -809,7 +809,7 @@ void CoreWorker::InternalHeartbeat() {
   std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
-    const auto current_time = clock_.NowUnixMillis();
+    const auto current_time = clock_.SteadyNowMillis();
     while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
       tasks_to_resubmit.emplace_back(to_resubmit_.top());
       to_resubmit_.pop();
@@ -1304,7 +1304,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  auto start_time = clock_.NowUnixMillis();
+  auto start_time = clock_.SteadyNowMillis();
 
   StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
 
@@ -1356,7 +1356,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
-                                  timeout_ms - (clock_.NowUnixMillis() - start_time));
+                                  timeout_ms - (clock_.SteadyNowMillis() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
@@ -1483,7 +1483,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-  int64_t start_time = clock_.NowUnixMillis();
+  int64_t start_time = clock_.SteadyNowMillis();
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
   RAY_RETURN_NOT_OK(memory_store_->Wait(
@@ -1495,8 +1495,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
       &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
-    timeout_ms =
-        std::max(0, static_cast<int>(timeout_ms - (clock_.NowUnixMillis() - start_time)));
+    timeout_ms = std::max(
+        0, static_cast<int>(timeout_ms - (clock_.SteadyNowMillis() - start_time)));
   }
   if (fetch_local) {
     // With fetch_local we want to start fetching plasma_object_ids from other nodes'
@@ -4547,7 +4547,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
 void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
   absl::MutexLock lock(&mutex_);
-  TaskToRetry task_to_retry{clock_.NowUnixMillis() + delay_ms, spec};
+  TaskToRetry task_to_retry{clock_.SteadyNowMillis() + delay_ms, spec};
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));
