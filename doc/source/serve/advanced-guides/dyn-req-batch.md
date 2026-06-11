@@ -39,7 +39,7 @@ You can supply 4 optional parameters to the decorators:
 Once the first request arrives, the batching decorator waits for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, Serve sends the batch to the model regardless of the batch size.
 
 :::{tip}
-You can reconfigure your `batch_wait_timeout_s` and `max_batch_size` parameters using the `set_batch_wait_timeout_s` and `set_max_batch_size` methods:
+You can reconfigure your `batch_wait_timeout_s`, `max_batch_size`, and `max_concurrent_batches` parameters using the `set_batch_wait_timeout_s`, `set_max_batch_size`, and `set_max_concurrent_batches` methods:
 
 ```{literalinclude} ../doc_code/batching_guide.py
 ---

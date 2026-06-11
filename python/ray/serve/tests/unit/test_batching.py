@@ -590,6 +590,54 @@ async def test_batch_setters(use_class):
 
 
 @pytest.mark.asyncio
+async def test_set_max_concurrent_batches():
+    """max_concurrent_batches is enforced and can be updated at runtime."""
+    loop = get_or_create_event_loop()
+    state = {"in_flight": 0, "peak": 0, "gate": asyncio.Event()}
+
+    @serve.batch(max_batch_size=1, batch_wait_timeout_s=0, max_concurrent_batches=2)
+    async def func(numbers):
+        state["in_flight"] += 1
+        state["peak"] = max(state["peak"], state["in_flight"])
+        await state["gate"].wait()
+        state["in_flight"] -= 1
+        return list(numbers)
+
+    async def peak_concurrency_over_wave(num_requests):
+        # Each request is its own batch (max_batch_size=1); they all block on the
+        # gate, so the peak number running at once is the effective concurrency.
+        state["peak"] = 0
+        state["gate"] = asyncio.Event()
+        tasks = [loop.create_task(func(i)) for i in range(num_requests)]
+        await asyncio.sleep(0.2)
+        peak = state["peak"]
+        state["gate"].set()
+        await asyncio.gather(*tasks)
+        return peak
+
+    assert func._get_max_concurrent_batches() == 2
+    assert await peak_concurrency_over_wave(6) == 2
+
+    func.set_max_concurrent_batches(4)
+    assert func._get_max_concurrent_batches() == 4
+    assert await peak_concurrency_over_wave(6) == 4
+
+
+@pytest.mark.asyncio
+async def test_set_max_concurrent_batches_rejects_invalid():
+    """set_max_concurrent_batches rejects values < 1 (would hang the gate)."""
+
+    @serve.batch(max_batch_size=1, batch_wait_timeout_s=0)
+    async def func(numbers):
+        return list(numbers)
+
+    with pytest.raises(TypeError):
+        func.set_max_concurrent_batches(0)
+    with pytest.raises(TypeError):
+        func.set_max_concurrent_batches(-1)
+
+
+@pytest.mark.asyncio
 async def test_batch_use_earliest_setters():
     """@serve.batch should use the right settings when constructing a batch.
 
