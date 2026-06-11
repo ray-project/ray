@@ -12,6 +12,7 @@ from ray.data._internal.execution.bundle_queue import (
     FIFOBundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -56,8 +57,8 @@ def make_partition_sentinel(partition_id: int) -> List[str]:
 def extract_partition_id(bundle: RefBundle) -> int:
     """Recover the partition_id stamped onto an upstream bundle by
     `make_partition_sentinel`.  Raises if no sentinel is found."""
-    for _, meta in bundle.blocks:
-        files = meta.input_files
+    for entry in bundle.blocks:
+        files = entry.metadata.input_files
         if not files:
             continue
         for f in files:
@@ -316,7 +317,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         # `_flush_merge_buffer` returns early for empty buffers), so
         # `input_bundles` here also has at least one block.
         all_blocks_meta = [
-            (ref, meta)
+            BlockEntry(ref=ref, metadata=meta)
             for bundle in input_bundles
             for ref, meta in zip(bundle.block_refs, bundle.metadata)
         ]
@@ -363,7 +364,11 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 exec_stats=None,
                 input_files=None,
             )
-            shard_bundle = RefBundle([(ref, shard_meta)], schema=None, owns_blocks=True)
+            shard_bundle = RefBundle(
+                [BlockEntry(ref=ref, metadata=shard_meta)],
+                schema=None,
+                owns_blocks=True,
+            )
             self._partition_staging[pid].add(shard_bundle)
             self._partition_bytes[pid] += nbytes
 
@@ -418,12 +423,13 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             # first block so the downstream reducer can recover the
             # partition this bundle represents.
             stamped_blocks = []
-            for i, (ref, meta) in enumerate(merged.blocks):
+            for i, entry in enumerate(merged.blocks):
+                meta = entry.metadata
                 if i == 0:
                     meta = dataclasses.replace(
                         meta, input_files=make_partition_sentinel(pid)
                     )
-                stamped_blocks.append((ref, meta))
+                stamped_blocks.append(BlockEntry(ref=entry.ref, metadata=meta))
             stamped = RefBundle(
                 stamped_blocks,
                 schema=merged.schema,
