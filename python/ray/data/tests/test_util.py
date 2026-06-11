@@ -224,20 +224,22 @@ def test_memory_tracing(enabled):
     trace_allocation(ref1, "test1")
     trace_allocation(ref2, "test2")
     trace_allocation(ref3, "test5")
-    trace_deallocation(ref1, "test3", freed=False)
-    trace_deallocation(ref2, "test4", freed=True)
-    # Objects are no longer eagerly freed; both remain retrievable. The `freed`
-    # flag only affects how the deallocation is recorded for the leak report.
+    trace_deallocation(ref1, "test3")
+    trace_deallocation(ref2, "test4")
+    # Objects are no longer eagerly freed; both remain retrievable. The
+    # deallocation is only recorded for the leak report.
     ray.get(ref1)
     ray.get(ref2)
     report = leak_report()
     print(report)
 
     if enabled:
-        assert "Leaked object, created at test1" in report, report
+        # ref3 (test5) was never deallocated, so it's reported as leaked.
         assert "Leaked object, created at test5" in report, report
+        # ref1/ref2 were deallocated, so they're reported as freed (not leaked).
+        assert "Leaked object, created at test1" not in report, report
+        assert "Freed object from test1 at test3" in report, report
         assert "Freed object from test2 at test4" in report, report
-        assert "skipped dealloc at test3" in report, report
     else:
         assert "test1" not in report, report
         assert "test2" not in report, report

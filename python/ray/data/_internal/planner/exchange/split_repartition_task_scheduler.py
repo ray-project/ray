@@ -79,7 +79,6 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         split_return = _split_at_indices(
             blocks_with_metadata,
             indices,
-            input_owned_by_consumer,
             label_selector=map_ray_remote_args.get("label_selector"),
         )
         split_block_refs, split_metadata = [], []

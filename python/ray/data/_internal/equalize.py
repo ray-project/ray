@@ -156,7 +156,6 @@ def _split_leftovers(
     ] = _split_at_indices(
         [(entry.ref, entry.metadata) for entry in leftovers.blocks],
         split_indices,
-        leftovers.owns_blocks,
     )
     return [list(zip(block_refs, meta)) for block_refs, meta in zip(*split_result)][
         :num_splits

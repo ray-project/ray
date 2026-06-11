@@ -620,35 +620,35 @@ def test_generate_global_split_results(ray_start_regular_shared_2_cpus):
 
 def test_private_split_at_indices(ray_start_regular_shared_2_cpus):
     inputs = _create_blocks_with_metadata([])
-    splits = list(zip(*_split_at_indices(inputs, [0], True)))
+    splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
 
-    splits = list(zip(*_split_at_indices(inputs, [], True)))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
 
-    splits = list(zip(*_split_at_indices(inputs, [1], True)))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2], True)))
+    splits = list(zip(*_split_at_indices(inputs, [2])))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [1], True)))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2, 2], True)))
+    splits = list(zip(*_split_at_indices(inputs, [2, 2])))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [], True)))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [0, 4], True)))
+    splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
 

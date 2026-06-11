@@ -209,9 +209,7 @@ class RefBundle:
             The number of bytes freed (always 0; objects are not eagerly deleted).
         """
         for block_ref in self.block_refs:
-            trace_deallocation(
-                block_ref, "RefBundle.destroy_if_owned", freed=self.owns_blocks
-            )
+            trace_deallocation(block_ref, "RefBundle.destroy_if_owned")
         return 0
 
     def get_preferred_object_locations(self) -> Dict[NodeIdStr, int]:

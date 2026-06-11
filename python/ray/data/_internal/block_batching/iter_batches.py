@@ -67,11 +67,6 @@ class BatchIterator:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
         dataset_tag: The tag of the dataset to record timing and other statistics.
-        clear_block_after_read: Whether to clear the block from object store
-            manually (i.e. without waiting for Python's automatic GC) after it
-            is read. Doing so will reclaim memory faster and hence reduce the
-            memory footprint. However, the caller has to ensure the safety, i.e.
-            the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -108,7 +103,6 @@ class BatchIterator:
         *,
         stats: Optional[DatasetStats] = None,
         dataset_tag: Optional[str] = None,
-        clear_block_after_read: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
@@ -133,7 +127,6 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
-        self._clear_block_after_read = clear_block_after_read
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
@@ -160,7 +153,6 @@ class BatchIterator:
             prefetcher=self._prefetcher,
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
-            clear_block_after_read=self._clear_block_after_read,
             stats=self._stats,
         )
 
@@ -364,7 +356,6 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
-    clear_block_after_read: bool = False,
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
@@ -377,8 +368,6 @@ def prefetch_batches_locally(
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
-        clear_block_after_read: Whether Ray Data owns the blocks and drops its
-            references after reading (recorded for memory tracing only).
         stats: Dataset stats object used to store ref bundle retrieval time.
     """
 
@@ -439,7 +428,7 @@ def prefetch_batches_locally(
                 entry.metadata.size_bytes or 0 for entry in sliding_window
             )
         yield entry.ref
-        trace_deallocation(entry.ref, loc="iter_batches", freed=clear_block_after_read)
+        trace_deallocation(entry.ref, loc="iter_batches")
     prefetcher.stop()
 
 

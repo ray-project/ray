@@ -106,7 +106,7 @@ class DataIterator(abc.ABC):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[
-        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
+        Iterator[RefBundle], Optional[DatasetStats], Optional["StreamingExecutor"]
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -114,7 +114,6 @@ class DataIterator(abc.ABC):
             A tuple containing:
             - An iterator over RefBundles.
             - A DatasetStats object used for recording stats during iteration.
-            - A boolean indicating if the blocks can be safely cleared after use.
             - An optional executor (StreamingExecutor) for reporting prefetched bytes.
         """
         ...
@@ -252,7 +251,6 @@ class DataIterator(abc.ABC):
             (
                 ref_bundles_iterator,
                 stats,
-                blocks_owned_by_consumer,
                 executor,
             ) = self._to_ref_bundle_iterator()
 
@@ -277,7 +275,6 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats=stats,
                 dataset_tag=dataset_tag,
-                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -1234,7 +1231,7 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
         context = self.get_context()
         logical_plan = LogicalPlan(

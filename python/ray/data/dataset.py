@@ -2463,7 +2463,6 @@ class Dataset:
         blocks, metadata = _split_at_indices(
             [(entry.ref, entry.metadata) for entry in bundle.blocks],
             indices,
-            False,
         )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._raw_stats()
