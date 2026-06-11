@@ -569,6 +569,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Per-node live object store bytes for this operator's outputs.
         # Incremented when outputs are queued, decremented when dequeued.
         self._per_node_obj_store_bytes: Dict[str, int] = defaultdict(int)
+        self._per_node_obj_store_bytes_peak: Dict[str, int] = defaultdict(int)
 
         self._issue_detector_hanging = 0
         self._issue_detector_high_memory = 0
@@ -978,10 +979,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         for entry in bundle.blocks:
             node_id = node_id_from_block_metadata(entry.metadata)
             size = entry.metadata.size_bytes or 0
-            self._per_node_obj_store_bytes[node_id] += sign * size
+            current = self._per_node_obj_store_bytes[node_id] + sign * size
+            self._per_node_obj_store_bytes[node_id] = current
+            if current > self._per_node_obj_store_bytes_peak[node_id]:
+                self._per_node_obj_store_bytes_peak[node_id] = current
 
     def get_per_node_obj_store_bytes(self) -> Dict[str, int]:
         return dict(self._per_node_obj_store_bytes)
+
+    def get_per_node_obj_store_bytes_peak(self) -> Dict[str, int]:
+        return dict(self._per_node_obj_store_bytes_peak)
 
     def on_toggle_task_submission_backpressure(self, in_backpressure):
         if in_backpressure and self._task_submission_backpressure_start_time == -1:

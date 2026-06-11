@@ -708,20 +708,33 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 
+    node_current: Dict[str, int] = defaultdict(int)
+    node_peak: Dict[str, int] = defaultdict(int)
     node_to_op_bytes: Dict[str, Dict[str, int]] = defaultdict(dict)
     for op in topology:
         by_node = op.metrics.get_per_node_obj_store_bytes()
+        by_node_peak = op.metrics.get_per_node_obj_store_bytes_peak()
         for node_id, nbytes in by_node.items():
+            node_current[node_id] += nbytes
             if nbytes > 0:
                 node_to_op_bytes[node_id][op.name] = nbytes
-    per_node_log = "Per-node object store memory:\n"
-    for node_id, op_bytes in sorted(node_to_op_bytes.items()):
-        node_total = sum(op_bytes.values())
-        ops_str = ", ".join(
-            f"{name}: {memory_string(nbytes)}" for name, nbytes in op_bytes.items()
-        )
-        per_node_log += f"  {node_id} ({memory_string(node_total)}) -> {ops_str}\n"
-    logger.debug(per_node_log)
+        for node_id, nbytes in by_node_peak.items():
+            node_peak[node_id] = max(node_peak[node_id], nbytes)
+    all_nodes = set(node_current) | set(node_peak)
+    if any(node_current[n] > 0 or node_peak[n] > 0 for n in all_nodes):
+        per_node_log = "Per-node object store memory:\n"
+        for node_id in sorted(all_nodes):
+            cur = node_current[node_id]
+            peak = node_peak[node_id]
+            ops_str = ", ".join(
+                f"{name}: {memory_string(nbytes)}"
+                for name, nbytes in node_to_op_bytes.get(node_id, {}).items()
+            )
+            line = f"  {node_id} (current={memory_string(cur)}, peak={memory_string(peak)})"
+            if ops_str:
+                line += f" -> {ops_str}"
+            per_node_log += line + "\n"
+        logger.debug(per_node_log)
 
 
 def _log_op_metrics(topology: Topology) -> None:
