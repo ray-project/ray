@@ -168,7 +168,7 @@ SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
-SAMPLE_TIMER = "sample"  # @OldAPIStack
+SAMPLE_TIMER = "sample"
 # Time an EnvRunner spends pulling the latest state from the `EnvRunnerStateServer`
 # (PULL-based weight sync) at the top of each `sample()` call.
 ENV_RUNNER_STATE_SERVER_PULL_TIMER = "env_runner_state_server_pull"

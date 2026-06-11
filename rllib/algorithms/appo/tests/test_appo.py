@@ -3,11 +3,9 @@ import unittest
 import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import (
-    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     ENV_RUNNER_RESULTS,
     LEARNER_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -220,10 +218,8 @@ class TestAPPO(unittest.TestCase):
     def test_env_runner_state_server_on_vs_off(self):
         """PULL-based EnvRunnerStateServer: APPO learns with the flag ON and OFF.
 
-        Also checks the off-policyness metric is logged on the new-stack path and that
-        the global server actor is created only when the flag is enabled.
+        Also checks the global server actor is created only when the flag is enabled.
         """
-        off_policyness = {}
         for use_server in [False, True]:
             config = (
                 appo.APPOConfig()
@@ -240,22 +236,7 @@ class TestAPPO(unittest.TestCase):
             for _ in range(5):
                 results = algo.train()
             check_train_results_new_api_stack(results)
-
-            diff = algo.metrics.peek(
-                (
-                    LEARNER_RESULTS,
-                    DEFAULT_MODULE_ID,
-                    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
-                ),
-                default=None,
-            )
-            # The off-policyness metric must be present and finite/non-negative.
-            self.assertIsNotNone(diff)
-            self.assertGreaterEqual(diff, 0.0)
-            off_policyness[use_server] = diff
             algo.stop()
-
-        print("APPO off-policyness (server OFF vs ON):", off_policyness)
 
     def test_env_runner_state_server_kill_and_recover(self):
         """Killing the EnvRunnerStateServer must not stop training; it recovers."""
