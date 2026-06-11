@@ -46,11 +46,10 @@ class PublisherTest : public ::testing::Test {
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[this]() { return current_time_; },
+        /*clock=*/fake_clock_,
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
         /*batch_size*/ 100,
         kDefaultPublisherId);
-    current_time_ = 0;
     request_.set_subscriber_id(subscriber_id_.Binary());
     request_.set_publisher_id(kDefaultPublisherId.Binary());
   }
@@ -89,7 +88,7 @@ class PublisherTest : public ::testing::Test {
   SubscriberState *CreateSubscriber() {
     subscribers_.push_back(std::make_unique<SubscriberState>(
         NodeID::FromRandom(),
-        /*get_time_ms=*/[]() { return 1.0; },
+        /*clock=*/fake_clock_,
         /*subscriber_timeout_ms=*/1000,
         /*publish_batch_size=*/1000,
         kDefaultPublisherId));
@@ -119,10 +118,12 @@ class PublisherTest : public ::testing::Test {
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  // Declared before publisher_/subscribers_ so it outlives the objects that hold a
+  // ClockInterface& to it. Tests drive time via AdvanceTime().
+  FakeClock fake_clock_;
   std::shared_ptr<Publisher> publisher_;
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
   const uint64_t subscriber_timeout_ms_ = 30000;
-  double current_time_;
   const UniqueID subscriber_id_ = UniqueID::FromRandom();
   rpc::PubsubLongPollingRequest request_;
   std::vector<std::unique_ptr<SubscriberState>> subscribers_;
@@ -349,7 +350,7 @@ TEST_F(PublisherTest, TestSubscriber) {
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
-      [this]() { return current_time_; },
+      fake_clock_,
       subscriber_timeout_ms_,
       10,
       kDefaultPublisherId);
@@ -445,7 +446,7 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   auto max_publish_size = 5;
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
-      [this]() { return current_time_; },
+      fake_clock_,
       subscriber_timeout_ms_,
       max_publish_size,
       kDefaultPublisherId);
@@ -494,7 +495,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
-      [this]() { return current_time_; },
+      fake_clock_,
       subscriber_timeout_ms_,
       10,
       kDefaultPublisherId);
@@ -509,12 +510,12 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_TRUE(subscriber->ConnectionExists());
 
   // Some time has passed, but it is not timed out yet.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
 
   // Timeout is reached, and the long polling connection should've been refreshed.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_FALSE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
 
@@ -532,7 +533,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_TRUE(subscriber->ConnectionExists());
 
   // Some time has passed, but it is not timed out yet.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
 
@@ -546,7 +547,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   // Although time has passed, since the connection was refreshed, timeout shouldn't
   // happen.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
@@ -575,7 +576,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
-      [this]() { return current_time_; },
+      fake_clock_,
       subscriber_timeout_ms_,
       10,
       kDefaultPublisherId);
@@ -591,13 +592,13 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   ASSERT_FALSE(subscriber->ConnectionExists());
 
   // Some time has passed, but it is not timed out yet.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
   // Timeout is reached. Since there was no new long polling connection, it is considered
   // as disconnected.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_FALSE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
@@ -610,7 +611,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   ASSERT_EQ(reply_count, 2);
 
   // Some time has passed, but it is not timed out yet.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
@@ -622,12 +623,12 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
                                   send_reply_callback);
   subscriber->PublishIfPossible(/*force_noop=*/true);
   ASSERT_EQ(reply_count, 3);
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
   // IF there's no new connection for a long time it should eventually timeout.
-  current_time_ += subscriber_timeout_ms_ / 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ / 2));
   ASSERT_FALSE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
@@ -646,7 +647,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
-      [this]() { return current_time_; },
+      fake_clock_,
       subscriber_timeout_ms_,
       10,
       kDefaultPublisherId);
@@ -662,27 +663,27 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
   ASSERT_FALSE(subscriber->ConnectionExists());
 
   // Some time has passed, and the connection is removed.
-  current_time_ += subscriber_timeout_ms_ - 1;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ - 1));
   subscriber->ConnectToSubscriber(request_,
                                   reply.mutable_publisher_id(),
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
-  current_time_ += 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(2));
   // Timeout shouldn't happen because the connection has been refreshed.
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_TRUE(subscriber->ConnectionExists());
 
   // Right before the timeout, connection is removed. In this case, timeout shouldn't also
   // happen.
-  current_time_ += subscriber_timeout_ms_ - 1;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_ - 1));
   subscriber->PublishIfPossible(/*force_noop=*/true);
-  current_time_ += 2;
+  fake_clock_.AdvanceTime(absl::Milliseconds(2));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
   // Timeout is reached. Since there was no connection, it should be considered
   // disconnected.
-  current_time_ += subscriber_timeout_ms_;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
   ASSERT_FALSE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
@@ -982,13 +983,13 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
       << "Register subscription for a valid channel type should succeed.";
   // Timeout is reached. The connection should've been refreshed. Since the subscriber is
   // dead, no new connection is made.
-  current_time_ += subscriber_timeout_ms_;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
   publisher_->CheckDeadSubscribers();
   ASSERT_EQ(long_polling_connection_replied, true);
 
   // More time has passed, and since there was no new long polling connection, this
   // subscriber is considered as dead.
-  current_time_ += subscriber_timeout_ms_;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
   publisher_->CheckDeadSubscribers();
 
   // Connection should be replied (removed) when the subscriber is unregistered.
@@ -1004,7 +1005,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
                                        oid.Binary())
                 .ok())
       << "Register subscription for a valid channel type should succeed.";
-  current_time_ += subscriber_timeout_ms_;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
   publisher_->CheckDeadSubscribers();
   publisher_->UnregisterSubscriber(subscriber_id_);
   ASSERT_TRUE(publisher_->CheckNoLeaks());
@@ -1043,7 +1044,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
 
   // After the timeout, the subscriber should be considered as dead because there was no
   // new long polling connection.
-  current_time_ += subscriber_timeout_ms_;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
   publisher_->CheckDeadSubscribers();
   // Make sure the registration is cleaned up.
   ASSERT_TRUE(publisher_->CheckNoLeaks());
@@ -1059,7 +1060,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   publisher_->Publish(GeneratePubMessage(oid));
 
   // No new long polling connection was made until timeout.
-  current_time_ += subscriber_timeout_ms_;
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
   publisher_->CheckDeadSubscribers();
   // Make sure the registration is cleaned up.
   ASSERT_TRUE(publisher_->CheckNoLeaks());

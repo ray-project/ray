@@ -31,6 +31,7 @@
 #include "ray/common/id.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
@@ -236,15 +237,15 @@ struct LongPollConnection {
 class SubscriberState {
  public:
   SubscriberState(UniqueID subscriber_id,
-                  std::function<double()> get_time_ms,
+                  ClockInterface &clock,
                   uint64_t connection_timeout_ms,
                   int64_t publish_batch_size,
                   UniqueID publisher_id)
       : subscriber_id_(subscriber_id),
-        get_time_ms_(std::move(get_time_ms)),
+        clock_(clock),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(get_time_ms_()),
+        last_connection_update_time_ms_(clock_.NowUnixMillis()),
         publisher_id_binary_(publisher_id.Binary()) {}
 
   ~SubscriberState() {
@@ -325,8 +326,8 @@ class SubscriberState {
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
   std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
-  /// Callback to get the current time.
-  const std::function<double()> get_time_ms_;
+  /// Clock used to read the current time.
+  ClockInterface &clock_;
   /// The time in which the connection is considered as timed out.
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
@@ -361,7 +362,7 @@ class Publisher : public PublisherInterface {
    * @param channels Channels where publishing and subscribing are accepted.
    * @param periodical_runner Periodic runner used to periodically run
    *                          CheckDeadSubscribers.
-   * @param get_time_ms Callback to get the current time in milliseconds.
+   * @param clock Clock used to read the current time.
    * @param subscriber_timeout_ms The subscriber timeout in milliseconds.
    *                              See CheckDeadSubscribers() for more details.
    * @param publish_batch_size The batch size of published messages.
@@ -369,12 +370,12 @@ class Publisher : public PublisherInterface {
    */
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunnerInterface &periodical_runner,
-            std::function<double()> get_time_ms,
+            ClockInterface &clock,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
             UniqueID publisher_id = NodeID::FromRandom())
       : periodical_runner_(&periodical_runner),
-        get_time_ms_(std::move(get_time_ms)),
+        clock_(clock),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
         publisher_id_(publisher_id) {
@@ -452,8 +453,16 @@ class Publisher : public PublisherInterface {
   friend class MockPublisher;
   friend class FakePublisher;
 
-  /// Testing only.
-  Publisher() : publish_batch_size_(-1) {}
+  /// Testing only. Binds clock_ to a process-wide real clock; subclasses that use
+  /// this ctor (mocks/fakes) do not read the clock.
+  Publisher() : clock_(TestOnlyDefaultClock()), publish_batch_size_(-1) {}
+
+  /// Testing only. A shared real clock used solely to satisfy the clock_ reference
+  /// in the default constructor.
+  static ClockInterface &TestOnlyDefaultClock() {
+    static Clock clock;
+    return clock;
+  }
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
@@ -470,8 +479,8 @@ class Publisher : public PublisherInterface {
   // Nonnull in production, may be nullptr in tests.
   PeriodicalRunnerInterface *periodical_runner_;
 
-  /// Callback to get the current time.
-  std::function<double()> get_time_ms_;
+  /// Clock used to read the current time.
+  ClockInterface &clock_;
 
   /// The timeout where subscriber is considered as dead.
   uint64_t subscriber_timeout_ms_;

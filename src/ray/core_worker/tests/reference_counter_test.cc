@@ -159,7 +159,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscriber_id_(subscriber_id),
         subscriber_(std::make_unique<pubsub::SubscriberState>(
             subscriber_id,
-            /*get_time_ms=*/[]() { return 1.0; },
+            /*clock=*/clock_,
             /*subscriber_timeout_ms=*/1000,
             /*publish_batch_size=*/1000,
             UniqueID::FromRandom())),
@@ -230,6 +230,9 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   UniqueID subscriber_id_;
+  // Declared before subscriber_ so it outlives the SubscriberState that holds a
+  // ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<pubsub::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
