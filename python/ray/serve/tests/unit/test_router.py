@@ -425,6 +425,9 @@ class FakeServeReplicaForSlotReservation(ServeReplica):
         self._metrics_manager = FakeReplicaMetricsManager()
         self._reserved_slots = set()
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
+        # The real __init__ is bypassed; set the quiesce flag read by
+        # _can_accept_request (reservations are rejected once quiescing).
+        self._quiescing = False
 
 
 @pytest.mark.asyncio
