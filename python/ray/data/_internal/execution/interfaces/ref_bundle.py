@@ -199,18 +199,14 @@ class RefBundle:
                 total += metadata.size_bytes
         return total
 
-    def destroy_if_owned(self) -> int:
+    def destroy_if_owned(self) -> None:
         """Records that these blocks are no longer needed for memory tracing.
 
         Objects are reclaimed by Ray reference counting once no references remain;
         this only records the deallocation for memory tracing / leak reporting.
-
-        Returns:
-            The number of bytes freed (always 0; objects are not eagerly deleted).
         """
         for block_ref in self.block_refs:
             trace_deallocation(block_ref, "RefBundle.destroy_if_owned")
-        return 0
 
     def get_preferred_object_locations(self) -> Dict[NodeIdStr, int]:
         """Returns a mapping of node IDs to total bytes stored on each node.
