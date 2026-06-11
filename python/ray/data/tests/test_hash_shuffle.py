@@ -804,6 +804,213 @@ def test_hash_shuffle_starts_from_empty_buffer_when_inputs_done(
     mock_pool.start.assert_called_once()
 
 
+def _make_shuffle_op(upstream_num_outputs):
+    """Build a HashShuffleOperator whose single upstream reports
+    ``upstream_num_outputs`` bundles (None/0 => unknown)."""
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+    op_mock.num_outputs_total.return_value = upstream_num_outputs
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle"
+        "._get_total_cluster_resources",
+        return_value=ExecutionResources(cpu=4.0, memory=32 * GiB),
+    ):
+        op = HashShuffleOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            key_columns=("id",),
+        )
+    return op, logical_op_mock
+
+
+def test_hash_shuffle_sample_window_trips_on_max_bundles_when_count_unknown(
+    ray_start_regular,
+):
+    # Upstream output count never materializes -> defer to MAX_BUNDLES.
+    op, _ = _make_shuffle_op(upstream_num_outputs=None)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+        # First MAX_BUNDLES - 1 bundles only buffer; none trip the window.
+        for _ in range(op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES - 1):
+            op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        create_pool.assert_not_called()
+        assert not op._shuffle_started
+
+        # The MAX_BUNDLES-th bundle trips the window mid-stream.
+        op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        assert op._shuffle_started
+        create_pool.assert_called_once()
+        # All buffered bundles are replayed exactly once.
+        assert replay.call_count == op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
+
+        # Subsequent bundles stream straight through (not buffered).
+        op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        assert replay.call_count == op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES + 1
+        assert not op._buffered_input_bundles[0]
+
+
+def test_hash_shuffle_sample_window_trips_on_byte_ceiling(ray_start_regular):
+    op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        # A single bundle at/above the byte ceiling trips the window
+        # immediately, regardless of bundle count.
+        op._add_input_inner(_make_ref_bundle(op._sample_byte_limit), input_index=0)
+
+    assert op._shuffle_started
+    create_pool.assert_called_once()
+
+
+def test_hash_shuffle_extrapolates_dataset_bytes_from_sample(ray_start_regular):
+    op, _ = _make_shuffle_op(upstream_num_outputs=100)
+    # 8 bundles averaging 200 bytes, inputs still streaming.
+    op._sample_bytes = 1600
+    op._sample_bundles = 8
+    assert not op._inputs_complete
+
+    # avg_bytes_per_bundle (200) * max(upstream=100, sample=8) = 20_000
+    assert op._extrapolate_dataset_bytes() == 20_000
+
+
+def test_hash_shuffle_extrapolation_never_below_observed(ray_start_regular):
+    # Upstream reports fewer bundles than we've already sampled -> use sample.
+    op, _ = _make_shuffle_op(upstream_num_outputs=2)
+    op._sample_bytes = 1000
+    op._sample_bundles = 10
+    assert not op._inputs_complete
+
+    # avg (100) * max(upstream=2, sample=10) = 1000 (not 200)
+    assert op._extrapolate_dataset_bytes() == 1000
+
+
+def test_hash_shuffle_extrapolation_falls_back_to_logical_estimate(
+    ray_start_regular,
+):
+    # Upstream count unknown (DataSource-V2-like) -> logical fallback.
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=4242,
+        exec_stats=None,
+        input_files=None,
+    )
+    op._sample_bytes = 500
+    op._sample_bundles = 4
+    assert not op._inputs_complete
+
+    assert op._extrapolate_dataset_bytes() == 4242
+
+
+def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
+    ray_start_regular,
+):
+    # Upstream count unknown AND logical estimate unavailable -> None, so the
+    # remote-args builder falls back to its modest default.
+    op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=None,
+        exec_stats=None,
+        input_files=None,
+    )
+    op._sample_bytes = 500
+    op._sample_bundles = 4
+    assert not op._inputs_complete
+
+    assert op._extrapolate_dataset_bytes() is None
+
+
+def test_hash_shuffle_partition_size_hint_skips_sampling(ray_start_regular):
+    op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
+    # Simulate a partition-size hint (not exposed on HashShuffleOperator ctor).
+    op._partition_size_hint = 1234
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        # The very first bundle trips the window since the estimate is exact.
+        op._add_input_inner(_make_ref_bundle(10), input_index=0)
+
+    assert op._shuffle_started
+    create_pool.assert_called_once_with(
+        estimated_dataset_bytes=1234 * op._num_partitions
+    )
+
+
+def test_hash_shuffle_does_not_double_start(ray_start_regular):
+    # Window trips mid-stream, then all_inputs_done fires: pool created once.
+    op, _ = _make_shuffle_op(upstream_num_outputs=None)
+
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        for _ in range(op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES):
+            op._add_input_inner(_make_ref_bundle(10), input_index=0)
+        assert op._shuffle_started
+        create_pool.assert_called_once()
+
+        op.all_inputs_done()
+
+    create_pool.assert_called_once()
+    mock_pool.start.assert_called_once()
+
+
+def test_hash_shuffle_aggregate_sampling_across_input_sequences(ray_start_regular):
+    # Sampling is aggregated across input sequences (e.g. joins): the byte
+    # ceiling accounts for bundles arriving on multiple input indices.
+    def _join_input_mock():
+        logical_op_mock = MagicMock(LogicalOperator)
+        logical_op_mock.estimated_num_outputs.return_value = 16
+        op_mock = MagicMock(PhysicalOperator)
+        op_mock._output_dependencies = []
+        op_mock._logical_operators = [logical_op_mock]
+        op_mock.num_output_splits.return_value = 1
+        op_mock.num_outputs_total.return_value = 10_000
+        return op_mock
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = JoinOperator(
+            left_input_op=_join_input_mock(),
+            right_input_op=_join_input_mock(),
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=16,
+        )
+
+    half = op._sample_byte_limit // 2
+    mock_pool = MagicMock()
+    with patch.object(
+        op, "_create_aggregator_pool", return_value=mock_pool
+    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+        op._add_input_inner(_make_ref_bundle(half), input_index=0)
+        create_pool.assert_not_called()
+        # A bundle on the *other* input sequence pushes the aggregate sample
+        # over the ceiling, proving the sample is shared across sequences.
+        op._add_input_inner(_make_ref_bundle(half + 1), input_index=1)
+
+    assert op._shuffle_started
+    create_pool.assert_called_once()
+
+
 def test_partial_aggregate_preserves_sort_after_builder_compaction(
     ray_start_regular,
     monkeypatch,

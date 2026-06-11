@@ -56,6 +56,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
@@ -494,6 +495,18 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
     _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
 
+    # Online-sampling bounds used to size the aggregator pool from the first few
+    # input bundles (instead of buffering the whole dataset). We start the
+    # shuffle once we've observed roughly ``_MEMORY_ESTIMATION_SAMPLE_RATIO`` of
+    # the expected upstream bundles, clamped to
+    # ``[_MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES, _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES]``,
+    # or as soon as the buffered sample reaches the byte ceiling (see
+    # ``_sample_byte_limit``). Keeping the window small bounds buffering and
+    # preserves streaming/pipelining.
+    _MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES = 8
+    _MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES = 16
+    _MEMORY_ESTIMATION_SAMPLE_RATIO = 0.05
+
     def __init__(
         self,
         name_factory: Callable[[int], str],
@@ -514,6 +527,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         input_logical_ops = [
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
         ]
+
+        self._input_logical_ops = input_logical_ops
 
         estimated_input_blocks = [
             input_op.estimated_num_outputs() for input_op in input_logical_ops
@@ -575,6 +590,17 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._shuffle_started: bool = False
         self._buffered_input_bundles: DefaultDict[int, Deque[RefBundle]] = defaultdict(
             deque
+        )
+
+        # Online sample of arriving input bundles used to size the aggregator
+        # pool before it is started. Tracked in *bundles* to match the unit of
+        # ``upstream_op_num_outputs()`` (estimated output bundle count). The byte
+        # limit caps how much we buffer while sampling, guaranteeing we never
+        # hold the whole dataset (a single oversized bundle trips it immediately).
+        self._sample_bytes: int = 0
+        self._sample_bundles: int = 0
+        self._sample_byte_limit: int = (
+            data_context.target_max_block_size or DEFAULT_TARGET_MAX_BLOCK_SIZE
         )
 
         # We track the running usage total because iterating
@@ -653,6 +679,15 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         if not self._shuffle_started:
             self._buffered_input_bundles[input_index].append(input_bundle)
             self._shuffle_metrics.on_input_queued(input_bundle, input_index=input_index)
+            # Accumulate an online sample (across all input sequences) used to
+            # size the aggregator pool. Once we've seen a small, bounded window
+            # we start the shuffle and stream the remainder.
+            self._sample_bytes += input_bundle.size_bytes()
+            self._sample_bundles += 1
+            if self._should_start_shuffle_from_sample():
+                self._start_shuffle(
+                    estimated_dataset_bytes=self._extrapolate_dataset_bytes()
+                )
             return
 
         self._do_add_input_inner(input_bundle, input_index)
@@ -807,22 +842,85 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        self._start_shuffle_from_buffered_inputs()
+        # Fallback: the sampling window never tripped (dataset smaller than the
+        # window, or the upstream output count never materialized). We now have
+        # every input buffered, so ``_extrapolate_dataset_bytes`` returns the
+        # exact buffered size (``_inputs_complete`` is set above).
+        if not self._shuffle_started:
+            self._start_shuffle(
+                estimated_dataset_bytes=self._extrapolate_dataset_bytes()
+            )
 
-    def _start_shuffle_from_buffered_inputs(self) -> None:
+    def _should_start_shuffle_from_sample(self) -> bool:
+        """Whether the online sample is large enough to size the aggregator pool.
+
+        Bounded by both a bundle count and a byte ceiling so that a handful of
+        large bundles trips the window immediately, keeping buffering small and
+        preserving streaming.
+        """
+        if self._partition_size_hint is not None:
+            # The estimate is exact; no need to sample.
+            return True
+
+        if self._sample_bytes >= self._sample_byte_limit:
+            return True
+
+        expected_total_bundles = self.upstream_op_num_outputs()
+        if expected_total_bundles <= 0:
+            # The upstream output count hasn't materialized yet (e.g. DataSource
+            # V2, whose count only appears once upstream read tasks finish). Wait
+            # until the bundle cap to give it a chance to appear before falling
+            # back to a worse estimate, but stay bounded.
+            return self._sample_bundles >= self._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES
+
+        target_bundles = int(
+            self._MEMORY_ESTIMATION_SAMPLE_RATIO * expected_total_bundles
+        )
+        target_bundles = min(
+            max(target_bundles, self._MEMORY_ESTIMATION_SAMPLE_MIN_BUNDLES),
+            self._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES,
+        )
+        return self._sample_bundles >= target_bundles
+
+    def _extrapolate_dataset_bytes(self) -> Optional[int]:
+        """Estimate total dataset bytes from the online sample.
+
+        Bundle-based ratio estimator: scale the average sampled bundle size by
+        the expected total number of upstream output bundles. Returns ``None``
+        when no estimate is possible, in which case
+        ``_get_default_aggregator_ray_remote_args`` falls back to a modest
+        default reservation.
+        """
+        if self._partition_size_hint is not None:
+            return self._partition_size_hint * self._num_partitions
+
+        if self._inputs_complete:
+            # Every input is buffered, so the sample is the whole dataset (and
+            # ``_sample_bytes`` is exact, including 0 for an empty dataset).
+            return self._sample_bytes
+
+        if self._sample_bundles == 0:
+            return None
+
+        expected_total_bundles = self.upstream_op_num_outputs()
+        if expected_total_bundles <= 0:
+            # No reliable upstream count (e.g. DataSource V2 before any read task
+            # finished). Fall back to the logical estimate, else modest default.
+            return _try_estimate_output_bytes(self._input_logical_ops)
+
+        avg_bytes_per_bundle = self._sample_bytes / self._sample_bundles
+        # Never extrapolate below what we've already observed.
+        expected_total_bundles = max(expected_total_bundles, self._sample_bundles)
+        return math.ceil(avg_bytes_per_bundle * expected_total_bundles)
+
+    def _start_shuffle(self, *, estimated_dataset_bytes: Optional[int]) -> None:
         if self._shuffle_started:
             return
 
         self._shuffle_started = True
 
-        dataset_bytes = sum(
-            bundle.size_bytes()
-            for bundles in self._buffered_input_bundles.values()
-            for bundle in bundles
-        )
-
         self._aggregator_pool = self._create_aggregator_pool(
-            estimated_dataset_bytes=dataset_bytes,
+            estimated_dataset_bytes=estimated_dataset_bytes,
         )
         self._aggregator_pool.start()
 
@@ -1996,3 +2094,28 @@ def _get_max_single_node_memory() -> Optional[int]:
         default=0,
     )
     return int(max_node_memory) if max_node_memory > 0 else None
+
+
+# TODO rebase on generic operator output estimation
+def _try_estimate_output_bytes(
+    input_logical_ops: List[LogicalOperator],
+) -> Optional[int]:
+    """Best-effort estimate of input ops' total output bytes from logical
+    metadata, or ``None`` if any input op can't provide an estimate.
+
+    Used only as a fallback when the runtime online sample lacks a reliable
+    upstream output count (e.g. the legacy datasource path before any sizing
+    signal is available). DataSource V2 reads return ``None`` here by design
+    (their logical ``infer_metadata()`` is empty), so they rely on the online
+    sample instead.
+    """
+    inferred_op_output_bytes = [
+        op.infer_metadata().size_bytes for op in input_logical_ops
+    ]
+
+    # Return sum of input ops estimated output byte sizes,
+    # if all are well defined
+    if all(nbs is not None for nbs in inferred_op_output_bytes):
+        return sum(inferred_op_output_bytes)
+
+    return None
