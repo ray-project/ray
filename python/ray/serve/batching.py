@@ -230,6 +230,28 @@ class _BatchQueue:
         self.max_batch_size = new_max_batch_size
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
+def set_max_concurrent_batches(self, new_max_concurrent_batches: int) -> None:
+        """Safely updates queue's max_concurrent_batches and modifies semaphore limits."""
+        old_max = self.max_concurrent_batches
+        self.max_concurrent_batches = new_max_concurrent_batches
+        
+        # Calculate the delta between old and new limits
+        delta = new_max_concurrent_batches - old_max
+        
+        if delta > 0:
+            # If the limit increased, release the extra tokens onto the existing semaphore
+            for _ in range(delta):
+                self.semaphore.release()
+        elif delta < 0:
+            # If the limit decreased, manually lower the internal permit value
+            # asyncio.Semaphore tracks total capacity via its private _value attribute
+            self.semaphore._value += delta
+
+        # Fix Issue #3: Trigger the validation safety warning
+        self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+
+
+
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         self.requests_available_event.set()
@@ -677,6 +699,17 @@ class _LazyBatchQueueWrapper:
         if self._queue is not None:
             self._queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
+    def set_max_concurrent_batches(self, new_max_concurrent_batches: int) -> None:
+        _validate_max_concurrent_batches(new_max_concurrent_batches)
+        self.max_concurrent_batches = new_max_concurrent_batches
+
+        if self._queue is not None:
+            self._queue.set_max_concurrent_batches(new_max_concurrent_batches)
+
+    def get_max_concurrent_batches(self) -> int:
+        return self.max_concurrent_batches
+
+
     def get_max_batch_size(self) -> int:
         return self.max_batch_size
 
@@ -983,6 +1016,12 @@ def batch(
 
         # We store the lazy_batch_queue_wrapper's getters and setters as
         # batch_wrapper attributes, so they can be accessed in user code.
+
+wrapper.set_max_batch_size = lazy_batch_queue_wrapper.set_max_batch_size
+        wrapper.set_batch_wait_timeout_s = lazy_batch_queue_wrapper.set_batch_wait_timeout_s
+        # Fix Bugbot & Gemini Bot: Expose the new APIs to the outer function wrapper handle
+        wrapper.set_max_concurrent_batches = lazy_batch_queue_wrapper.set_max_concurrent_batches
+        wrapper.get_max_concurrent_batches = lazy_batch_queue_wrapper.get_max_concurrent_batches
         wrapper._get_max_batch_size = lazy_batch_queue_wrapper.get_max_batch_size
         wrapper._get_batch_wait_timeout_s = (
             lazy_batch_queue_wrapper.get_batch_wait_timeout_s
