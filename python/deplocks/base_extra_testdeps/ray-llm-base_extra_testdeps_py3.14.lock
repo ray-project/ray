@@ -170,8 +170,8 @@ anyio==4.13.0 \
     #   taskiq
     #   watchfiles
 anyscale==0.26.103 \
-    --hash=sha256:12cbe08c37a0f15ef88d432bb60c9cd9d32a4fbf5742ec3303e1cbc0da571f25 \
-    --hash=sha256:3b7c3e342c183cb9a26f2fd9722aba59f903c0e097119c4af2ece8ececa8d333
+    --hash=sha256:37cd073d45c79fc62605fccf33bea9ac6a0c8ebc35781aa6ff9ffb0c4d6f89f3 \
+    --hash=sha256:76ac0765936e376cbfc13b89a2fb4f543c5aa48111a6d9f377bcafd84c4b06b4
     # via -r docker/base-extra/requirements.in
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \

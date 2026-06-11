@@ -174,7 +174,8 @@ anyio==4.4.0 \
     #   starlette
     #   watchfiles
 anyscale==0.26.103 \
-    --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
+    --hash=sha256:37cd073d45c79fc62605fccf33bea9ac6a0c8ebc35781aa6ff9ffb0c4d6f89f3 \
+    --hash=sha256:76ac0765936e376cbfc13b89a2fb4f543c5aa48111a6d9f377bcafd84c4b06b4
     # via -r release/requirements_py310.in
 appnope==0.1.4 \
     --hash=sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee \
