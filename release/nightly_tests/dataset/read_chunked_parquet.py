@@ -219,6 +219,10 @@ class _LocalBackend(_Backend):
 
 
 class _S3Backend(_Backend):
+    # A single PutObject tops out at 5 GiB; larger objects require multipart.
+    SINGLE_PUT_MAX = 5 * 1024**3
+    MULTIPART_CHUNK = 256 * 1024**2  # 256 MiB parts (S3 needs >=5 MiB, <=10k parts)
+
     def __init__(self, bucket: str, prefix: str):
         import boto3  # local import: only needed for s3:// outputs
 
@@ -233,7 +237,44 @@ class _S3Backend(_Backend):
         return bool(resp.get("KeyCount"))
 
     def put(self, key: str, body: bytes) -> None:
-        self.s3.put_object(Bucket=self.bucket, Key=self.prefix + key, Body=body)
+        if len(body) <= self.SINGLE_PUT_MAX:
+            self.s3.put_object(Bucket=self.bucket, Key=self.prefix + key, Body=body)
+        else:
+            self._multipart_put(key, body)
+
+    def _multipart_put(self, key: str, body: bytes) -> None:
+        """Upload a >5 GiB body via multipart. The body is shared across files,
+        so we slice it with a memoryview (no whole-buffer copy) and only the
+        current part is materialised as bytes at a time. Any failure aborts the
+        upload so no half-finished multipart object is left to accrue storage."""
+        full_key = self.prefix + key
+        mv = memoryview(body)
+        total, chunk = len(body), self.MULTIPART_CHUNK
+        upload_id = self.s3.create_multipart_upload(Bucket=self.bucket, Key=full_key)[
+            "UploadId"
+        ]
+        parts = []
+        try:
+            for part_no, start in enumerate(range(0, total, chunk), start=1):
+                resp = self.s3.upload_part(
+                    Bucket=self.bucket,
+                    Key=full_key,
+                    UploadId=upload_id,
+                    PartNumber=part_no,
+                    Body=bytes(mv[start : start + chunk]),
+                )
+                parts.append({"ETag": resp["ETag"], "PartNumber": part_no})
+            self.s3.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=full_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        except Exception:
+            self.s3.abort_multipart_upload(
+                Bucket=self.bucket, Key=full_key, UploadId=upload_id
+            )
+            raise
 
     def size(self, key: str) -> Optional[int]:
         try:
@@ -299,10 +340,27 @@ def _read_back(
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
+    # Route through DataSource V2 when requested. DataContext is a slot-less
+    # dataclass, so a plain `ctx.use_datasource_v2 = ...` would silently create
+    # a dead attribute on builds that don't have the field -- the flag would
+    # appear to work while changing nothing. Check the field exists first
+    # (a fresh context returns False from hasattr for unknown names) and warn
+    # loudly if the requested version can't actually be honored.
+    want_v2 = use_version == "v2"
     ctx = ray.data.DataContext.get_current()
-    ctx.use_datasource_v2 = (
-        use_version == "v2"
-    )  # route read_parquet through DataSource V2
+    flag = "use_datasource_v2"
+    if hasattr(ctx, flag):
+        setattr(ctx, flag, want_v2)
+        print(f"[read] datasource {use_version} (ctx.{flag}={want_v2})", flush=True)
+    elif want_v2:
+        print(
+            f"[read][warn] this Ray build ({ray.__version__}) has no DataContext."
+            f"{flag}; cannot force V2 -- read_parquet will use the default "
+            f"datasource. Confirm the flag name for your Ray build.",
+            flush=True,
+        )
+    else:
+        print(f"[read] datasource {use_version} (build default)", flush=True)
 
     print(
         f"[read] ray.data.read_parquet(memory={human(memory)}) <- {path}",
@@ -350,7 +408,8 @@ def generate(
     if not force and backend.exists_nonempty(""):
         print(f"[skip] {output} already populated (use --force to overwrite).")
         if read_back:
-            _read_back(output, None, read_memory)  # benchmark the existing data
+            # benchmark the existing data
+            _read_back(output, None, read_memory, use_version)
         return
 
     if codec == "none" and compression_ratio != 1.0:
@@ -408,6 +467,15 @@ def _put_all(backend: _Backend, items: List[Tuple[str, bytes]]) -> None:
     done = [0]
     t0 = time.time()
 
+    # Multipart uploads buffer one ~256 MiB part per in-flight file, so cap
+    # concurrency for large bodies to keep transient memory bounded; small
+    # files keep the full fan-out to stay NIC-bound.
+    body_bytes = len(items[0][1]) if items else 0
+    workers = _PUT_PARALLELISM
+    if body_bytes > _S3Backend.SINGLE_PUT_MAX:
+        workers = min(_PUT_PARALLELISM, 8)
+    workers = max(1, min(workers, total))
+
     def _one(item):
         key, body = item
         backend.put(key, body)
@@ -419,7 +487,7 @@ def _put_all(backend: _Backend, items: List[Tuple[str, bytes]]) -> None:
                 f"  [put] {done[0]}/{total} ({rate:.1f}/s, {elapsed:.0f}s)", flush=True
             )
 
-    with ThreadPoolExecutor(max_workers=_PUT_PARALLELISM) as ex:
+    with ThreadPoolExecutor(max_workers=workers) as ex:
         list(ex.map(_one, items))
 
 
