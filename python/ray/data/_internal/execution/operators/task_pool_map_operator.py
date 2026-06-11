@@ -45,12 +45,15 @@ class TaskPoolMapOperator(MapOperator):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        default_logical_memory_enabled: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
+            data_context: The :class:`DataContext` to use for this operator.
             name: The name of this operator.
             target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
@@ -76,6 +79,9 @@ class TaskPoolMapOperator(MapOperator):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            default_logical_memory_enabled: If ``True``, the operator launches tasks
+                with a default logical ``memory``. The method for choosing the
+                default is an implementation detail.
         """
         super().__init__(
             map_transformer,
@@ -90,6 +96,7 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
+            default_logical_memory_enabled,
         )
 
         self._isolate_workers = isolate_workers
