@@ -615,6 +615,11 @@ def test_next_sync_timeout_when_generator_ref_unavailable(
     assert g._next_sync(timeout_s=0).is_nil()
     assert time.monotonic() - start < 10
 
+    # The async counterpart must honor the timeout the same way.
+    start = time.monotonic()
+    assert asyncio.run(g._next_async(timeout_s=0)).is_nil()
+    assert time.monotonic() - start < 10
+
     # Once a node is back, lineage reconstruction restores the return object
     # and the stream terminates normally.
     cluster.add_node(num_cpus=1)
