@@ -1606,6 +1606,52 @@ class TestDataOpTask:
         # Done callbacks fire only after each task's pairs are fully emitted.
         assert sorted(done) == [0, 1]
 
+    def test_prefetcher_holds_later_ready_outputs_for_order(
+        self, ray_start_regular_shared
+    ):
+        """Within a task, a later pair whose metadata is fetched FIRST must
+        be held until the earlier pair's metadata arrives, so the task's
+        outputs are emitted in yield order."""
+        from ray.data._internal.execution.metadata_prefetcher import (
+            MetadataPrefetcher,
+        )
+
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        task = DataOpTask(0, gen, output_ready_callback=lambda b: outputs.append(b))
+
+        ray.wait([gen], fetch_local=False)
+        deferred: list[DeferredEmit] = []
+        deadline = time.time() + 30
+        while not task._task_done_pending and time.time() < deadline:
+            task.on_data_ready(None, deferred)
+            time.sleep(0.01)
+        assert len(deferred) == 2
+        first, second = deferred
+
+        # Don't start the fetch thread: publish fetch results by hand to
+        # control which pair's metadata is "fetched" first.
+        prefetcher = MetadataPrefetcher()
+        prefetcher.submit("op", deferred, [task])
+        meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
+
+        # Only the LATER pair's metadata is available: it must be held.
+        with prefetcher._results_lock:
+            prefetcher._results[second.meta_ref] = meta_bytes_second
+        prefetcher.drain()
+        assert outputs == []
+        assert not task.has_finished
+
+        # Once the EARLIER pair's metadata arrives, both emit, in yield order.
+        with prefetcher._results_lock:
+            prefetcher._results[first.meta_ref] = meta_bytes_first
+        prefetcher.drain()
+        assert [b.size_bytes() for b in outputs] == [
+            pytest.approx(100, abs=64),
+            pytest.approx(200, abs=64),
+        ]
+        assert task.has_finished
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )
@@ -1658,6 +1704,15 @@ class TestDataOpTask:
         assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
         assert not deferred
 
+    @pytest.mark.skip(
+        reason=(
+            "Requires the ObjectRefGenerator._next_sync end-of-stream timeout "
+            "fix (#64014): without it, probing the exhausted stream while the "
+            "generator's return object is lost blocks the scheduling thread "
+            "until reconstruction. Un-skip after merging master once #64014 "
+            "lands."
+        )
+    )
     def test_on_data_ready_with_preemption_after_wait(
         self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
     ):
