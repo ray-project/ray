@@ -240,6 +240,14 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         transfer_id = f"{_TRANSFER_PREFIX}-{uid}"
         return request_id, transfer_id
 
+    def engine_request_id(
+        self, *, request: Any, peer: Optional[Dict[str, Any]]
+    ) -> Optional[str]:
+        """The MoRIIO dual-address id both engines must observe (peer zmq is
+        encoded in the id itself; the orchestrator delivers it via the
+        ``X-Request-Id`` header and the Serve request context)."""
+        return self._dual_ids(request, peer)[0]
+
     def prepare_prefill_request(
         self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
     ) -> "RequestType":

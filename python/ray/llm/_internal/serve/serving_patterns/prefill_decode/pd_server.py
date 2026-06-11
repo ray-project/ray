@@ -6,6 +6,7 @@ decode deployment owns a real engine and orchestrates remote prefill.
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import uuid
 import warnings
@@ -40,6 +41,7 @@ from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
 from ray.serve._private.http_util import session_id_from_headers
+from ray.serve.context import _set_request_context
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
@@ -160,6 +162,59 @@ class PDOrchestratorMixin:
             request=request, peer=None, prefill_response=prefill_chunk
         )
 
+    def _connector_raw_request_info(
+        self,
+        backend: BaseConnectorBackend,
+        request: RequestType,
+        peer: Optional[Dict[str, Any]],
+        raw_request_info: Optional[RawRequestInfo],
+    ) -> Optional[RawRequestInfo]:
+        """Deliver a connector-owned engine request id to both engines.
+
+        When the backend encodes coordination data in the request id itself
+        (``engine_request_id`` returns non-None, e.g. MoRIIO's dual-address id),
+        that id must reach both the remote prefill and the local decode engine.
+        Two channels are needed because the engines read the id differently:
+
+        * vLLM derives the engine request id from the ``X-Request-Id`` header of
+          the raw request, so we stamp it there (and the returned info is passed
+          to both the prefill dispatch and the local decode).
+        * The local-decode pipeline (``_maybe_add_request_id_to_request``)
+          overwrites ``request.request_id`` from the Serve request context, so we
+          set the context id too -- otherwise that overwrite would clobber ours.
+
+        For connectors that don't own the id this is a no-op and the original
+        ``raw_request_info`` is returned unchanged.
+
+        Args:
+            backend: The resolved connector backend.
+            request: The incoming request.
+            peer: The selected prefill replica's metadata, or None.
+            raw_request_info: The incoming raw request info, or None.
+
+        Returns:
+            The raw request info to pass to both engines.
+        """
+        engine_request_id = backend.engine_request_id(request=request, peer=peer)
+        if not engine_request_id:
+            return raw_request_info
+        # Set the Serve context so the local-decode pipeline's overwrite copies
+        # our id rather than the incoming Serve request id.
+        _set_request_context(request_id=engine_request_id)
+        # Drop any case/underscore variant of x-request-id before setting ours,
+        # so to_starlette_request() doesn't leave a duplicate header that
+        # shadows it (Starlette's headers.get returns the first match).
+        src = raw_request_info.headers if raw_request_info is not None else {}
+        headers = {
+            k: v
+            for k, v in src.items()
+            if k.replace("_", "-").lower() != "x-request-id"
+        }
+        headers["x-request-id"] = engine_request_id
+        if raw_request_info is None:
+            return RawRequestInfo(headers=headers)
+        return dataclasses.replace(raw_request_info, headers=headers)
+
     # ---- Orchestrated Request Flow ----
 
     async def _pd_handle_request(
@@ -202,6 +257,11 @@ class PDOrchestratorMixin:
             async with prefill_handle_method.choose_replica(request) as selection:
                 # The selected replica's published metadata (empty dict if none).
                 peer = getattr(selection, "replica_metadata", {})
+                # Deliver a connector-owned engine id (e.g. MoRIIO's
+                # dual-address id) to both engines before dispatching.
+                raw_request_info = self._connector_raw_request_info(
+                    backend, request, peer, raw_request_info
+                )
                 prefill_request = backend.prepare_prefill_request(
                     request=request, peer=peer
                 )
@@ -260,6 +320,9 @@ class PDOrchestratorMixin:
 
         # Default path: no pre-dispatch peer binding; dispatch prefill via the
         # standard handle path.
+        raw_request_info = self._connector_raw_request_info(
+            backend, request, None, raw_request_info
+        )
         prefill_request = backend.prepare_prefill_request(request=request, peer=None)
 
         if backend.concurrent_handoff:
@@ -439,9 +502,21 @@ class PDOrchestratorMixin:
 
         logger.info("[PDDecodeServer] Starting pre-warm across all P replicas.")
 
+        backend = self._get_connector_backend()
+        if backend.requires_peer_binding:
+            # Peer-binding connectors (e.g. MoRIIO) shape a prefill request
+            # against a specific selected replica's metadata; a peerless
+            # broadcast prewarm cannot bind one. The connector handshake
+            # completes on the first real request instead.
+            logger.info(
+                "[PDDecodeServer] Skipping pre-warm: connector %s requires peer "
+                "binding (handshake completes on the first real request).",
+                type(backend).__name__,
+            )
+            return
+
         model_id = self._llm_config.model_id
         dummy = self._make_dummy_request(model_id)
-        backend = self._get_connector_backend()
         prefill_req = backend.prepare_prefill_request(request=dummy, peer=None)
 
         # Broadcast to every live P replica; retry until they are up.

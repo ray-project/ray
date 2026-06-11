@@ -780,6 +780,87 @@ class TestConnectorProtocolHook:
         assert chunks == [prefill_error]
         assert decode_aborted["value"] is True
 
+    def test_connector_raw_request_info_delivers_owned_id(self):
+        """When the backend owns the engine request id, the orchestrator stamps
+        it on the X-Request-Id header (dropping case/underscore variants) and on
+        the Serve request context, so both engines observe it."""
+        from ray.llm._internal.serve.core.protocol import RawRequestInfo
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+        from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
+        from ray.serve.context import _unset_request_context
+
+        class _OwnsIdBackend(BaseConnectorBackend):
+            def prepare_prefill_request(self, *, request, peer):
+                return request
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                return request
+
+            def engine_request_id(self, *, request, peer):
+                return "DUAL-ADDR-ID"
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        backend = _OwnsIdBackend(llm_config=None)
+        raw = RawRequestInfo(headers={"X-Request-ID": "incoming", "accept": "json"})
+        try:
+            out = server._connector_raw_request_info(backend, object(), None, raw)
+            # Only our id survives as x-request-id; other headers preserved.
+            assert out.headers["x-request-id"] == "DUAL-ADDR-ID"
+            assert "X-Request-ID" not in out.headers
+            assert out.headers["accept"] == "json"
+            # Serve context updated so the local-decode overwrite copies our id.
+            assert get_serve_request_id() == "DUAL-ADDR-ID"
+            # None raw info -> a fresh RawRequestInfo carrying the header.
+            out_none = server._connector_raw_request_info(backend, object(), None, None)
+            assert out_none.headers["x-request-id"] == "DUAL-ADDR-ID"
+        finally:
+            _unset_request_context()
+
+    def test_connector_raw_request_info_noop_for_default_backend(self):
+        """A backend that doesn't own the id (engine_request_id -> None) leaves
+        the raw request info untouched."""
+        from ray.llm._internal.serve.core.protocol import RawRequestInfo
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            DefaultConnectorBackend,
+        )
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        backend = DefaultConnectorBackend(llm_config=None)
+        raw = RawRequestInfo(headers={"x-request-id": "incoming"})
+        out = server._connector_raw_request_info(backend, object(), None, raw)
+        assert out is raw
+
+    @pytest.mark.asyncio
+    async def test_prewarm_skipped_for_peer_binding_backend(self):
+        """Pre-warm broadcasts a peerless prefill request, which a peer-binding
+        connector (e.g. MoRIIO) cannot shape -- so it must be skipped rather
+        than crash decode-replica init."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        class _PeerBindingBackend(BaseConnectorBackend):
+            requires_peer_binding = True
+
+            def prepare_prefill_request(self, *, request, peer):
+                raise AssertionError("prepare_prefill_request must not be called")
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                raise AssertionError("prepare_decode_request must not be called")
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            experimental_configs={"_prewarm_prefill_decode": True},
+        )
+        server._llm_config._kv_connector_backend = _PeerBindingBackend(
+            server._llm_config
+        )
+        # Must return without raising (and without touching prepare_*).
+        await server._maybe_prewarm()
+
 
 class TestBuildPDOpenaiApp:
     """Test suite for build_pd_openai_app function."""

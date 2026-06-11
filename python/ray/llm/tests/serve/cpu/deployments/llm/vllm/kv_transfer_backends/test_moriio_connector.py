@@ -204,6 +204,20 @@ class TestMoRIIORequestId:
             r"tx-[0-9a-f]{32}", prefill.kv_transfer_params["transfer_id"]
         )
 
+    def test_engine_request_id_matches_shaped_request_id(self):
+        """``engine_request_id`` returns the dual-address id the orchestrator
+        must deliver to both engines -- identical to the id stamped on the
+        shaped prefill/decode requests."""
+        backend = _make_backend(read_mode=False)
+        _setup(backend, rank=0)
+        peer = {"mori_zmq_address": "host:10.0.0.9,handshake:6301,notify:61005"}
+        req = self._request_with_copy("user-req-123")
+
+        engine_id = backend.engine_request_id(request=req, peer=peer)
+        prefill = backend.prepare_prefill_request(request=req, peer=peer)
+        assert engine_id == prefill.request_id
+        assert parse_peer_zmq(engine_id, is_producer=False) == peer["mori_zmq_address"]
+
     def test_id_is_deterministic_across_calls(self):
         backend = _make_backend(read_mode=False)
         _setup(backend, rank=0)
