@@ -324,15 +324,14 @@ def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
         {"http_options": {"host": None}},
-        # {"http_options": {"location": None}},
-        # {"http_options": {"location": "NoServer"}},
+        {"http_options": {"location": None}},
+        {"http_options": {"location": "NoServer"}},
     ]
 
     address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
         print(f"[{i + 1}/{len(options)}] Running with {option}")
         serve.start(**option)
-        time.sleep(10)
 
         # Only controller actor should exist
         live_actors = list_actors(
