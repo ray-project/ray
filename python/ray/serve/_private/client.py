@@ -405,6 +405,7 @@ class ServeControllerClient:
         )
 
         handles = []
+        ready_apps = []
         for app in built_apps:
             # The deployment state is not guaranteed to be created after
             # deploy_application returns; the application state manager will
@@ -414,17 +415,27 @@ class ServeControllerClient:
 
             if wait_for_applications_running:
                 self._wait_for_application_running(app.name)
-                if app.route_prefix is not None:
-                    url_part = " at " + self._root_url + app.route_prefix
-                else:
-                    url_part = ""
-                logger.info(f"Application '{app.name}' is ready{url_part}.")
+                ready_apps.append(app)
 
             handles.append(
                 self.get_handle(
                     app.ingress_deployment_name, app.name, check_exists=False
                 )
             )
+
+        # Wait for the proxies to be serving before declaring the applications
+        # ready, so the "is ready" log line only prints once requests can
+        # actually be routed to the applications.
+        self.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+
+        for app in ready_apps:
+            if app.route_prefix is not None:
+                url_part = " at " + self._root_url + app.route_prefix
+            else:
+                url_part = ""
+            logger.info(f"Application '{app.name}' is ready{url_part}.")
 
         return handles
 
