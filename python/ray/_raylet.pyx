@@ -1199,18 +1199,13 @@ cdef report_streaming_generator_output(
         if (
             context.num_objects_per_yield == 1
             or return_objs.size() != <size_t>context.num_objects_per_yield
-            or determine_if_retryable(
-                context.should_retry_exceptions,
-                e,
-                context.serialized_retry_exception_allowlist,
-                context.function_descriptor,
-            )
         ):
             raise
 
         # Dynamic IDs for this grouped yield are already allocated. If storing
-        # failed after some objects were written, report the whole group so the
-        # caller does not block waiting for later stream indexes.
+        # failed after some objects were written, report the whole group as
+        # non-retryable so the caller does not block waiting for later stream
+        # indexes and the allocated IDs can be cleared.
         context.is_retryable_error[0] = False
         store_task_errors(
             worker, e,

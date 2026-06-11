@@ -639,6 +639,26 @@ def test_streaming_generator_num_objects_per_yield_partial_store_failure(
         next(gen)
 
 
+def test_streaming_generator_num_objects_per_yield_failure_not_retried(
+    shutdown_only,
+):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2, retry_exceptions=True, max_retries=1)
+    def generator():
+        # Once grouped-yield IDs are allocated, the whole group must be
+        # reported so those temporary refs are cleared instead of retrying.
+        yield 1, threading.Lock()
+
+    gen = generator.remote()
+    assert ray.get(next(gen)) == 1
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
 def test_streaming_generator_exception(shutdown_only):
     # Verify the exceptions are correctly raised.
     # Also verify the followup next will raise StopIteration.
