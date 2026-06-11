@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray._common.test_utils
 import ray._private.test_utils as test_utils
-from ray._common.test_utils import Semaphore
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.state import available_resources
 
 
@@ -292,34 +292,49 @@ def test_threaded_actor_integration_test_stress(
         ), "Resource deadlock warning shouldn't be printed, but it did."
 
 
-def test_exit_actor_delivers_inflight_task_results(shutdown_only):
+# Simple single-threaded counter actor used to observe how many actor tasks
+# have started executing. Single-threaded, so it needs no locks.
+@ray.remote(num_cpus=0)
+class _StartCounter:
+    def __init__(self):
+        self._count = 0
+
+    def incr(self):
+        self._count += 1
+
+    def get(self):
+        return self._count
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_exit_actor_delivers_inflight_task_results(ray_start_regular):
     """Tasks that are already executing when exit_actor() is called from a
     concurrent thread must run to completion and deliver their results,
     instead of failing with ActorDiedError.
     """
-    ray.init(num_cpus=2)
-    running = Semaphore.remote(value=0)
+    num_tasks = 3
+    started = _StartCounter.remote()
 
-    @ray.remote(max_concurrency=4)
+    # One extra slot beyond the blocking tasks so the exit() task can run.
+    @ray.remote(max_concurrency=num_tasks + 1)
     class ThreadedActor:
         def wait_for_exit_then_return(self, value):
-            ray.get(running.release.remote())
+            ray.get(started.incr.remote())
             # Block until exit_actor() has been called from another thread.
             core_worker = ray._private.worker.global_worker.core_worker
-            while not core_worker.get_current_actor_should_exit():
-                time.sleep(0.01)
+            wait_for_condition(lambda: core_worker.get_current_actor_should_exit())
             return value
 
         def exit(self):
             ray.actor.exit_actor()
 
     a = ThreadedActor.remote()
-    refs = [a.wait_for_exit_then_return.remote(i) for i in range(3)]
-    # Wait until all three tasks are executing before requesting the exit.
-    ray.get([running.acquire.remote() for _ in range(3)])
+    refs = [a.wait_for_exit_then_return.remote(i) for i in range(num_tasks)]
+    # Wait until all tasks are executing before requesting the exit.
+    wait_for_condition(lambda: ray.get(started.get.remote()) == num_tasks)
     exit_ref = a.exit.remote()
 
-    assert ray.get(refs, timeout=30) == [0, 1, 2]
+    assert ray.get(refs, timeout=30) == list(range(num_tasks))
     # The exit task itself completes by exiting the actor, so its ref
     # resolves to the actor death.
     with pytest.raises(ray.exceptions.RayActorError):
@@ -329,20 +344,19 @@ def test_exit_actor_delivers_inflight_task_results(shutdown_only):
         ray.get(a.wait_for_exit_then_return.remote(99), timeout=30)
 
 
-def test_exit_actor_delivers_inflight_task_errors(shutdown_only):
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_exit_actor_delivers_inflight_task_errors(ray_start_regular):
     """An in-flight task that raises an application exception while the actor
     is gracefully exiting must deliver that exception, not ActorDiedError."""
-    ray.init(num_cpus=2)
-    running = Semaphore.remote(value=0)
+    started = SignalActor.remote()
 
     @ray.remote(max_concurrency=2)
     class ThreadedActor:
         def wait_for_exit_then_raise(self):
-            ray.get(running.release.remote())
+            ray.get(started.send.remote())
             # Block until exit_actor() has been called from another thread.
             core_worker = ray._private.worker.global_worker.core_worker
-            while not core_worker.get_current_actor_should_exit():
-                time.sleep(0.01)
+            wait_for_condition(lambda: core_worker.get_current_actor_should_exit())
             raise ValueError("application error")
 
         def exit(self):
@@ -350,13 +364,53 @@ def test_exit_actor_delivers_inflight_task_errors(shutdown_only):
 
     a = ThreadedActor.remote()
     ref = a.wait_for_exit_then_raise.remote()
-    ray.get(running.acquire.remote())
+    ray.get(started.wait.remote())
     exit_ref = a.exit.remote()
 
     with pytest.raises(ValueError, match="application error"):
         ray.get(ref, timeout=30)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(exit_ref, timeout=30)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_exit_actor_fails_queued_tasks(ray_start_regular):
+    """Methods that are queued (submitted but not yet started executing) when
+    exit_actor() is called fail with ActorDiedError."""
+    max_concurrency = 2
+    started = _StartCounter.remote()
+    release = SignalActor.remote()
+
+    @ray.remote(max_concurrency=max_concurrency)
+    class ThreadedActor:
+        def block_then_exit(self):
+            ray.get(started.incr.remote())
+            # Hold the concurrency slot until released, then exit the actor.
+            ray.get(release.wait.remote())
+            ray.actor.exit_actor()
+
+        def work(self, value):
+            return value
+
+    a = ThreadedActor.remote()
+    # Fill every concurrency slot with a blocking task so later calls can't
+    # start and remain queued.
+    blocking_refs = [a.block_then_exit.remote() for _ in range(max_concurrency)]
+    wait_for_condition(lambda: ray.get(started.get.remote()) == max_concurrency)
+    # These can't start (all slots busy) and are queued when the actor exits.
+    queued_refs = [a.work.remote(i) for i in range(3)]
+
+    # Release the blocking tasks; they call exit_actor() and the actor exits.
+    ray.get(release.send.remote())
+
+    # The tasks that called exit_actor() resolve to the actor death.
+    for ref in blocking_refs:
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(ref, timeout=30)
+    # Queued (never-started) tasks fail with ActorDiedError.
+    for ref in queued_refs:
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(ref, timeout=30)
 
 
 if __name__ == "__main__":

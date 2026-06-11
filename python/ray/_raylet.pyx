@@ -271,11 +271,11 @@ warnings.filterwarnings("once", category=NumReturnsWarning)
 current_task_id = None
 current_task_id_lock = threading.Lock()
 
-# Ray task ids of the tasks that called exit_actor(). Used to preserve the
-# exit semantics for the task that called exit_actor() — its return value is
-# discarded (the caller sees the actor death) even if user code swallows the
-# resulting exception — while other tasks that complete during the graceful
-# exit still deliver their results. Mutations are protected by the GIL.
+# Task ids of the tasks (there can be >1 exit tasks when max_concurrency > 1)
+# that called exit_actor(). Used to ensure that for tasks that called exit_actor(),
+# their results are discarded (the caller sees the actor death error) even
+# if user code swallows the resulting exception — while other tasks that complete
+# during the graceful exit still deliver their results.
 exit_actor_task_ids = set()
 
 job_config_initialized = False
@@ -1952,7 +1952,7 @@ cdef void execute_task(
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
                         raise task_exception_instance
-                    if task_id in exit_actor_task_ids:
+                    if task_id in exit_actor_task_ids and core_worker.get_current_actor_should_exit():
                         # This task called exit_actor(). Exit before storing
                         # its outputs even if user code swallowed the
                         # resulting exception, so the caller sees the actor
@@ -2060,9 +2060,7 @@ cdef void execute_task(
             # that the worker exits even when exit_actor() is called from a
             # concurrently running task (threaded/async actors) or a background
             # thread rather than this task itself. The check must run only after
-            # the task's outputs (or errors) have been stored above; otherwise the
-            # results of in-flight tasks that complete during a graceful exit
-            # would be discarded and callers would see an ActorDiedError instead.
+            # the task's outputs (or errors) have been stored above;
             # Skip the check if an exception is propagating: it is either an exit
             # or cancellation path (SystemExit/KeyboardInterrupt) or an internal
             # error that must surface as such, and it must not be masked by

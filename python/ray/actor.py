@@ -2709,13 +2709,14 @@ def exit_actor():
     will exit immediately. For asyncio actors, there may be a short
     delay before the actor exits if the API is called from a background
     task.
-    For threaded actors (``max_concurrency > 1``), methods that are
-    already executing on other threads run to completion and deliver
-    their results to the caller before the actor exits.
-    Any queued methods (submitted but not started executing) will fail.
-    Note that threaded actors may execute methods out of submission
-    order, so a method submitted before the one calling this API is not
-    guaranteed to have started executing.
+    For threaded actors (``max_concurrency > 1``), methods that have
+    already started executing on other threads run to completion and
+    deliver their results to the caller before the actor exits.
+    Any queued methods (submitted but not yet started executing) will fail.
+    Note that a threaded actor runs methods on a thread pool, so execution
+    start order is not guaranteed to match submission order: a method
+    submitted before the one calling this API is not guaranteed to have
+    started executing.
     Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
