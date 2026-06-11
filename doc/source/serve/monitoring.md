@@ -749,13 +749,13 @@ This setting doesn't affect replica-emitted metrics such as
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
-| `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `replica`, `application` | Health status of the replica: `1` = healthy, `0` = unhealthy. |
+| `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `application`, `replica` by default; `deployment`, `application` when `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` | Tracks healthy replicas. With `replica`, each replica series is `1` for healthy and `0` for unhealthy. Without `replica`, the deployment/application series is the healthy replica count. |
 | `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
 | `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
 | `ray_serve_replica_initialization_latency_ms` | Histogram | `deployment`, `application` | Time for the actor constructor to run in milliseconds. This is a subset of `ray_serve_replica_startup_latency_ms`. |
 | `ray_serve_replica_reconfigure_latency_ms` | Histogram | `deployment`, `application` | Time in milliseconds for a replica to complete reconfiguration. Includes both reconfigure time and one control-loop iteration, so very low values may be unreliable. |
 | `ray_serve_health_check_latency_ms` | Histogram | `deployment`, `application` | Duration of health check calls in milliseconds. Useful for identifying slow health checks blocking scaling. |
-| `ray_serve_health_check_failures_total` | Counter | `deployment`, `replica`, `application` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
+| `ray_serve_health_check_failures_total` | Counter | `deployment`, `application`, `replica` by default; `deployment`, `application` when `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
 | `ray_serve_replica_shutdown_duration_ms` | Histogram | `deployment`, `application` | Time from shutdown signal to replica fully stopped in milliseconds. Useful for debugging slow draining during scale-down or rolling updates. |
 
 ### Autoscaling metrics

@@ -1275,13 +1275,23 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
     @ray.remote
     class ReplicaHealthState:
         def __init__(self):
-            self.failing_replica_ids = set()
+            self.replica_ids = set()
+            self.failures_enabled = False
+            self.failing_replica_id = None
 
-        def add_failing_replica(self, replica_id: str):
-            self.failing_replica_ids.add(replica_id)
+        def get_num_registered_replicas(self) -> int:
+            return len(self.replica_ids)
 
-        def should_fail_health_check(self, replica_id: str) -> bool:
-            return replica_id in self.failing_replica_ids
+        def enable_failures(self):
+            self.failures_enabled = True
+
+        def register_and_should_fail_health_check(self, replica_id: str) -> bool:
+            self.replica_ids.add(replica_id)
+            if not self.failures_enabled:
+                return False
+            if self.failing_replica_id is None:
+                self.failing_replica_id = replica_id
+            return replica_id == self.failing_replica_id
 
     signal = SignalActor.remote()
     replica_health_state = ReplicaHealthState.remote()
@@ -1310,7 +1320,7 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
 
     @serve.deployment(
         name="lifecycle_metrics_model",
-        num_replicas=1,
+        num_replicas=2,
         health_check_period_s=0.1,
         health_check_timeout_s=1,
         graceful_shutdown_timeout_s=0.1,
@@ -1322,7 +1332,9 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
         async def check_health(self):
             replica_id = serve.get_replica_context().replica_tag
             should_fail_health_check = (
-                await replica_health_state.should_fail_health_check.remote(replica_id)
+                await replica_health_state.register_and_should_fail_health_check.remote(
+                    replica_id
+                )
             )
             if should_fail_health_check:
                 raise RuntimeError("Intentional health check failure.")
@@ -1342,16 +1354,10 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
         route_prefix="/lifecycle",
     )
 
-    url = get_application_url("HTTP", lifecycle_app_name)
-    lifecycle_replica_ids = set()
-
-    def check_lifecycle_replica_running():
-        response = httpx.get(url)
-        response.raise_for_status()
-        lifecycle_replica_ids.add(response.text)
-        return len(lifecycle_replica_ids) == 1
-
-    wait_for_condition(check_lifecycle_replica_running, timeout=60)
+    wait_for_condition(
+        lambda: ray.get(replica_health_state.get_num_registered_replicas.remote()) == 2,
+        timeout=60,
+    )
     timeseries = PrometheusTimeseries()
 
     def get_health_status_value(deployment: str, application: str) -> float:
@@ -1365,11 +1371,16 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             timeout=PROMETHEUS_METRICS_TIMEOUT_S,
         )
 
-    ray.get(
-        replica_health_state.add_failing_replica.remote(
-            sorted(lifecycle_replica_ids)[0]
+    if not include_high_cardinality:
+        wait_for_condition(
+            lambda: get_health_status_value(
+                lifecycle_deployment_name, lifecycle_app_name
+            )
+            == 2,
+            timeout=60,
         )
-    )
+
+    ray.get(replica_health_state.enable_failures.remote())
     handle = serve.get_deployment_handle(
         autoscaling_deployment_name, autoscaling_app_name
     )
@@ -1425,13 +1436,6 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             assert_high_cardinality_tag(metric, "handle")
         for metric in replica_metrics:
             assert_high_cardinality_tag(metric, "replica")
-
-        if not include_high_cardinality:
-            health_status_value = get_health_status_value(
-                lifecycle_deployment_name, lifecycle_app_name
-            )
-            if health_status_value != 0:
-                return False
 
         return True
 

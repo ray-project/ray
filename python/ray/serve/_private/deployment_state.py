@@ -2886,8 +2886,9 @@ class DeploymentState:
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
             description=(
-                "Tracks whether this deployment replica is healthy. 1 means "
-                "healthy, 0 means unhealthy."
+                "Tracks healthy replicas. When source tags are enabled, each "
+                "replica series is 1 for healthy and 0 for unhealthy; otherwise, "
+                "the deployment/application series is the healthy replica count."
             ),
             tag_keys=replica_lifecycle_metric_tag_keys,
         )
@@ -4357,6 +4358,9 @@ class DeploymentState:
         every control-loop iteration while still refreshing the metric often
         enough for Prometheus export.
         """
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            return
+
         now = time.time()
         cached = self._health_gauge_cache.get(replica_unique_id)
         if (
@@ -4365,8 +4369,7 @@ class DeploymentState:
             and (now - cached[1]) < RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
         ):
             return
-        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-            self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
+        self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
         self._health_gauge_cache[replica_unique_id] = (value, now)
 
     def _register_gang_replica(self, replica_id: ReplicaID, gang_id: str) -> None:
@@ -4580,20 +4583,13 @@ class DeploymentState:
 
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             # When the replica tag is disabled, this is a single
-            # deployment/application series. Emit it once with the aggregate
-            # value so per-replica iteration order cannot decide the result.
-            has_running_replica = (
-                self._replicas.count(
-                    states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
-                )
-                > 0
+            # deployment/application series. Emit the aggregate count of
+            # healthy replicas so per-replica iteration order cannot decide
+            # the result.
+            healthy_replica_count = self._replicas.count(
+                states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
             )
-            deployment_is_healthy = (
-                has_running_replica
-                and not unhealthy_replicas
-                and self._curr_status_info.status == DeploymentStatus.HEALTHY
-            )
-            self.health_check_gauge.set(1 if deployment_is_healthy else 0)
+            self.health_check_gauge.set(healthy_replica_count)
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
         # This ensures ranks are continuous after lifecycle events
