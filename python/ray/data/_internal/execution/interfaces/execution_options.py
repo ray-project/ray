@@ -115,11 +115,16 @@ class ExecutionResources:
         memory: Optional[float] = None,
     ) -> "ExecutionResources":
         """Create an ExecutionResources object that represents resource limits.
+
         Args:
             cpu: Amount of logical CPU slots.
             gpu: Amount of logical GPU slots.
             object_store_memory: Amount of object store memory.
             memory: Amount of logical memory in bytes.
+
+        Returns:
+            An ``ExecutionResources`` with the given limits (defaulting to
+            infinity for any unspecified field).
         """
         return ExecutionResources(
             cpu=safe_or(cpu, float("inf")),
@@ -243,6 +248,9 @@ class ExecutionResources:
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
         """Adds execution resources.
 
+        Args:
+            other: The other ``ExecutionResources`` to add to this one.
+
         Returns:
             A new ExecutionResource object with summed resources.
         """
@@ -255,6 +263,9 @@ class ExecutionResources:
 
     def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
         """Subtracts execution resources.
+
+        Args:
+            other: The other ``ExecutionResources`` to subtract from this one.
 
         Returns:
             A new ExecutionResource object with subtracted resources.
@@ -292,7 +303,7 @@ class ExecutionResources:
         self,
         limit: "ExecutionResources",
         *,
-        ignore_object_store_memory=False,
+        ignore_object_store_memory: bool = False,
     ) -> bool:
         """Return if this resource struct meets the specified limits.
 
@@ -302,6 +313,9 @@ class ExecutionResources:
             limit: The resource limits to check against.
             ignore_object_store_memory: If True, ignore the object store memory
                 limit when checking if this resource struct meets the limits.
+
+        Returns:
+            ``True`` if every resource is within the corresponding limit.
         """
         # Quantize on access so accumulated float drift (e.g. a budget
         # produced by chained add/subtract) doesn't flip the result. This

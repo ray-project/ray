@@ -731,10 +731,22 @@ ray.get([a.remote(buf[0]), b.remote(buf[1])] + [c.remote(x) for x in buf[2:]])
     # This test is non-deterministic since pull bundles can sometimes end up fallback
     # allocated. This leads to slightly more objects pulled than you'd expect.
     def close_to_expected(stats):
-        assert len(stats) == 3, stats
-        assert stats["RUNNING"] == 2, stats
+        # A scheduled task can momentarily sit in SUBMITTED_TO_WORKER (lease granted,
+        # waiting on the worker to fetch its spilled arg) before it reports RUNNING.
+        # Under the object store pressure this test creates, that transition can be
+        # slow, so count SUBMITTED_TO_WORKER as running to avoid flakiness.
+        running = stats.get("RUNNING", 0) + stats.get("SUBMITTED_TO_WORKER", 0)
+        assert running == 2, stats
         assert 7 <= stats["PENDING_NODE_ASSIGNMENT"] <= 17, stats
         assert 81 <= stats["PENDING_OBJ_STORE_MEM_AVAIL"] <= 91, stats
+        assert set(stats.keys()).issubset(
+            {
+                "RUNNING",
+                "SUBMITTED_TO_WORKER",
+                "PENDING_NODE_ASSIGNMENT",
+                "PENDING_OBJ_STORE_MEM_AVAIL",
+            }
+        ), stats
         assert sum(stats.values()) == 100, stats
         return True
 

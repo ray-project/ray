@@ -80,6 +80,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
+    RECORD_REPLICA_METADATA_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -193,6 +194,23 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
 
 
+def _validate_replica_metadata(metadata: Any) -> Dict[str, Any]:
+    """Validate the return value of a user ``record_replica_metadata`` hook.
+
+    Returns an empty dict for ``None``; raises ``TypeError`` if the hook returned
+    something other than a dict (it must be a JSON-serializable mapping that the
+    controller can propagate to routers).
+    """
+    if metadata is None:
+        return {}
+    if not isinstance(metadata, dict):
+        raise TypeError(
+            f"{RECORD_REPLICA_METADATA_METHOD} must return a dict, got "
+            f"{type(metadata).__name__}."
+        )
+    return metadata
+
+
 def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
 
@@ -290,6 +308,7 @@ ReplicaMetadata = Tuple[
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
     Optional[GangContext],  # gang_context
+    Dict[str, Any],  # replica_metadata
 ]
 
 
@@ -1110,6 +1129,9 @@ class Replica:
         self._shutting_down = False
         # Gang context for this replica.
         self._gang_context: Optional[GangContext] = None
+        # Static, immutable per-replica metadata captured once at init time
+        # via the user's `record_replica_metadata` hook (if defined).
+        self._replica_metadata: Dict[str, Any] = {}
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -1249,6 +1271,7 @@ class Replica:
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
             self._gang_context,
+            self._replica_metadata,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -1779,6 +1802,13 @@ class Replica:
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )
+                    # Capture static per-replica metadata exactly once, now that
+                    # the user callable is initialized. Unlike routing stats,
+                    # this is never polled and is treated as immutable.
+                    if self._user_callable_wrapper.has_user_replica_metadata_method:
+                        self._replica_metadata = _validate_replica_metadata(
+                            await self._user_callable_wrapper.call_user_record_replica_metadata()
+                        )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
                             self._user_callable_wrapper._callable.docs_path
@@ -1919,22 +1949,27 @@ class Replica:
         finally:
             self._semaphore.release()
 
-    async def _drain_ongoing_requests(self):
-        """Wait for any ongoing requests to finish.
+    async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
+        """Wait until the minimum draining period has elapsed and no ongoing
+        requests remain.
 
-        Sleep for a grace period before the first time we check the number of ongoing
-        requests to allow the notification to remove this replica to propagate to
-        callers first.
+        The minimum draining period gives load balancers time to deregister
+        this replica; a request admitted during it becomes ongoing and is
+        waited for like any other.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
+        deadline = time.monotonic() + min_draining_period_s
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
-            if num_ongoing_requests > 0:
+            min_period_remaining_s = deadline - time.monotonic()
+            if num_ongoing_requests > 0 or min_period_remaining_s > 0:
                 logger.info(
-                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
-                    f"because there are {num_ongoing_requests} ongoing requests."
+                    f"Waiting for an additional {wait_loop_period_s}s to shut down: "
+                    f"{num_ongoing_requests} ongoing requests, "
+                    f"{max(0.0, min_period_remaining_s):.1f}s minimum draining "
+                    f"period remaining."
                 )
             else:
                 logger.info(
@@ -1963,33 +1998,27 @@ class Replica:
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
-        coros = []
-        if (
-            RAY_SERVE_ENABLE_DIRECT_INGRESS
-            and self._ingress
-            and self._user_callable_initialized
-        ):
-            # In direct ingress mode, we need to wait at least
-            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
-            # balancers (e.g., ALB) time to deregister the replica, in addition to
-            # waiting for requests to drain.
-            coros.append(asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S))
-
         # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
+        # can skip the drain entirely.
         if self._user_callable_initialized:
-            coros.append(self._drain_ongoing_requests())
+            # In direct ingress mode, hold the replica open at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S so load balancers can
+            # deregister it; the drain also waits for in-flight requests.
+            min_draining_period_s = (
+                RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+                if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
+                else 0.0
+            )
+            await self._drain_ongoing_requests(min_draining_period_s)
 
-        if coros:
-            await asyncio.gather(*coros)
-
-        await self.shutdown()
-
-        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
+        # Close listeners before tearing down user code so a late connection
+        # can't hit a mid-shutdown replica (the drain above ensured none remain).
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
         if self._direct_ingress_grpc_server_task:
             self._direct_ingress_grpc_server_task.cancel()
+
+        await self.shutdown()
 
     async def check_health(self):
         try:
@@ -3449,6 +3478,9 @@ class UserCallableWrapper:
         self._user_record_routing_stats = getattr(
             self._callable, REQUEST_ROUTING_STATS_METHOD, None
         )
+        self._user_record_replica_metadata = getattr(
+            self._callable, RECORD_REPLICA_METADATA_METHOD, None
+        )
         self._user_autoscaling_stats = getattr(
             self._callable, "record_autoscaling_stats", None
         )
@@ -3506,6 +3538,21 @@ class UserCallableWrapper:
 
         return None
 
+    @property
+    def has_user_replica_metadata_method(self) -> bool:
+        """Whether the user has defined a record_replica_metadata method."""
+        return self._user_record_replica_metadata is not None
+
+    def call_user_record_replica_metadata(
+        self,
+    ) -> Optional[concurrent.futures.Future]:
+        self._raise_if_not_initialized("call_user_record_replica_metadata")
+
+        if self._user_record_replica_metadata is not None:
+            return self._call_user_record_replica_metadata()
+
+        return None
+
     def call_record_autoscaling_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_record_autoscaling_stats")
 
@@ -3521,6 +3568,11 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
         result, _ = await self._call_func_or_gen(self._user_record_routing_stats)
+        return result
+
+    @_run_user_code
+    async def _call_user_record_replica_metadata(self) -> Dict[str, Any]:
+        result, _ = await self._call_func_or_gen(self._user_record_replica_metadata)
         return result
 
     @_run_user_code
