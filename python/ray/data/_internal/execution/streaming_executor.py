@@ -3,6 +3,7 @@ import os
 import threading
 import time
 import typing
+from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import (
@@ -39,6 +40,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logging import (
     get_log_directory,
     register_dataset_logger,
@@ -705,6 +707,21 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
             f"{i}: {op.name} - {summary_str}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
+
+    node_to_op_bytes: Dict[str, Dict[str, int]] = defaultdict(dict)
+    for op in topology:
+        by_node = op.metrics.get_per_node_obj_store_bytes()
+        for node_id, nbytes in by_node.items():
+            if nbytes > 0:
+                node_to_op_bytes[node_id][op.name] = nbytes
+    per_node_log = "Per-node object store memory:\n"
+    for node_id, op_bytes in sorted(node_to_op_bytes.items()):
+        node_total = sum(op_bytes.values())
+        ops_str = ", ".join(
+            f"{name}: {memory_string(nbytes)}" for name, nbytes in op_bytes.items()
+        )
+        per_node_log += f"  {node_id} ({memory_string(node_total)}) -> {ops_str}\n"
+    logger.debug(per_node_log)
 
 
 def _log_op_metrics(topology: Topology) -> None:
