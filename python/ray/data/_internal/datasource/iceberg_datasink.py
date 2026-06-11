@@ -5,9 +5,14 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
+import ray
 from ray._common.retry import call_with_retry
+from ray.data._internal.datasource.parquet_datasource import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
+from ray.data._internal.util import MiB
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
@@ -17,14 +22,144 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
-    from pyiceberg.table import Table
+    from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
     from pyiceberg.table.update.schema import UpdateSchema
 
 logger = logging.getLogger(__name__)
+
+_REWRITE_STALL_TIMEOUT_S = 600
+
+
+@ray.remote
+def _rewrite_iceberg_file(
+    file_scan_task: "FileScanTask",
+    keys_ref: "pa.Table",
+    upsert_cols: List[str],
+    table_metadata: "TableMetadata",
+    io: "FileIO",
+) -> "tuple[Optional[DataFile], List[DataFile]]":
+    """Read one Iceberg file, anti-join against upsert keys, write preserved rows.
+
+    Preserved rows are rows in the file that are not in the upsert batch. The
+    coarse range filter would delete them (see ``IcebergDatasink._build_coarse_range_filter``),
+    so we preserve them by writing them as new data files before the delete.
+
+    The file is read in streaming fashion via ``ArrowScan.to_record_batches()``
+    so the full file is never materialised at once. The anti-join is applied
+    per RecordBatch and preserved rows are accumulated, then concatenated and
+    written as a single output once the stream is exhausted.
+
+    Returns (original DataFile to delete, list of new preserved DataFiles).
+    If the entire file is matched (no preserved rows), returns (file, []).
+    If the file has no matched rows at all, returns (None, []), leave it untouched.
+    """
+    import hashlib
+    import time as _time
+    import uuid as _uuid
+
+    import numpy as np
+    import pyarrow as pa
+    from pyiceberg.expressions import AlwaysTrue
+    from pyiceberg.io.pyarrow import ArrowScan, _dataframe_to_data_files
+
+    file_path = file_scan_task.file.file_path
+    file_name = file_path.split("/")[-1]
+    file_size_mb = file_scan_task.file.file_size_in_bytes / MiB
+    t_start = _time.perf_counter()
+
+    # Cast target pulled from keys_ref once.  Applied per batch so PyArrow's join
+    # doesn't raise ArrowInvalid on utf8/large_utf8 or similar width mismatches.
+    target_key_schema = pa.schema([keys_ref.schema.field(c) for c in upsert_cols])
+
+    record_batches = ArrowScan(
+        table_metadata=table_metadata,
+        io=io,
+        projected_schema=table_metadata.schema(),
+        row_filter=AlwaysTrue(),
+    ).to_record_batches(tasks=[file_scan_task])
+
+    preserved_rows: Optional["pa.Table"] = None
+    total_in_rows = 0
+    total_preserved_rows = 0
+    n_batches = 0
+
+    for rb in record_batches:
+        n_batches += 1
+        batch_table = pa.Table.from_batches([rb])
+        if len(batch_table) == 0:
+            continue
+        total_in_rows += len(batch_table)
+
+        batch_keys = batch_table.select(upsert_cols).cast(target_key_schema)
+
+        idx_col = pa.array(np.arange(len(batch_table), dtype=np.int64))
+        preserved_keys = batch_keys.append_column("__row_idx__", idx_col).join(
+            keys_ref, keys=upsert_cols, join_type="left anti"
+        )
+
+        if len(preserved_keys) > 0:
+            new_rows = batch_table.take(preserved_keys["__row_idx__"])
+            if preserved_rows is None:
+                preserved_rows = new_rows
+            else:
+                preserved_rows = pa.concat_tables(
+                    [preserved_rows, new_rows], promote_options="permissive"
+                )
+            total_preserved_rows += len(preserved_keys)
+
+    t_read = _time.perf_counter()
+    logger.debug(
+        "[rewrite] stream-read+join %d rows / %.1f MB (compressed) from %s "
+        "across %d batch(es) in %.2fs",
+        total_in_rows,
+        file_size_mb,
+        file_name,
+        n_batches,
+        t_read - t_start,
+    )
+
+    if total_in_rows == 0:
+        return (None, [])
+
+    if total_preserved_rows == 0:
+        # Every row in this file is being upserted — delete the whole file, no preserved file needed.
+        logger.debug(
+            "[rewrite] %s: all %d rows matched -> whole-file delete",
+            file_name,
+            total_in_rows,
+        )
+        return (file_scan_task.file, [])
+
+    if total_preserved_rows == total_in_rows:
+        # No rows in this file match any upsert key — leave it alone entirely.
+        logger.debug("[rewrite] %s: 0 rows matched -> untouched", file_name)
+        return (None, [])
+
+    # Derive a deterministic write_uuid from the source file path so that
+    # task retries overwrite the same object rather than leaking orphan files.
+    preserved_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
+    preserved_files = list(
+        _dataframe_to_data_files(
+            table_metadata=table_metadata,
+            df=preserved_rows,
+            io=io,
+            write_uuid=preserved_write_uuid,
+        )
+    )
+    logger.debug(
+        "[rewrite] %s: %d/%d rows preserved -> wrote %d preserved file(s) in %.2fs",
+        file_name,
+        total_preserved_rows,
+        total_in_rows,
+        len(preserved_files),
+        _time.perf_counter() - t_read,
+    )
+    return (file_scan_task.file, preserved_files)
 
 
 @dataclass
@@ -198,23 +333,253 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         upsert_cols = self._upsert_kwargs.get(_UPSERT_COLS_ID, [])
         if not upsert_cols:
             # Use table's identifier fields as fallback
+            identifier_cols = []
             schema = self._table_metadata.schema()
             for field_id in schema.identifier_field_ids:
                 col_name = schema.find_column_name(field_id)
                 if col_name:
-                    upsert_cols.append(col_name)
+                    identifier_cols.append(col_name)
+            return identifier_cols
+
+        case_sensitive = self._upsert_kwargs.get("case_sensitive", True)
+
+        # To support case insensitivity, we need to define a mapping of
+        # provided (possibly case-modified) names to their original names in the schema
+        if not case_sensitive:
+            schema = self._table_metadata.schema()
+            lower_to_original_mapping = {
+                col.name.lower(): col.name for col in schema.fields
+            }
+            resolved_upsert_cols = []
+            for upsert_col in upsert_cols:
+                resolved_col = lower_to_original_mapping.get(upsert_col.lower())
+                if resolved_col is None:
+                    raise ValueError(
+                        f"Upsert join column {upsert_col!r} does not match any column in "
+                        f"table schema (case-insensitive)."
+                    )
+                resolved_upsert_cols.append(resolved_col)
+            upsert_cols = resolved_upsert_cols
+
         return upsert_cols
 
+    def _build_coarse_range_filter(
+        self,
+        keys_table: "pa.Table",
+        upsert_cols: List[str],
+    ) -> "BooleanExpression":
+        """Build an O(1) coarse range filter covering all upsert key values.
+
+        For each upsert column computes AND(GTE(col, min), LTE(col, max)).
+        The filter may match rows outside the upsert batch (filter overshoot);
+        callers must anti-join to identify and preserve those rows.
+        """
+        import pyarrow.compute as pc
+        from pyiceberg.expressions import (
+            AlwaysTrue,
+            And,
+            GreaterThanOrEqual,
+            LessThanOrEqual,
+        )
+
+        expr = None
+        for col_name in upsert_cols:
+            mm = pc.min_max(keys_table[col_name])
+            min_val = mm["min"].as_py()
+            max_val = mm["max"].as_py()
+            if min_val is None:
+                continue
+            col_expr = And(
+                GreaterThanOrEqual(col_name, min_val),
+                LessThanOrEqual(col_name, max_val),
+            )
+            expr = col_expr if expr is None else And(expr, col_expr)
+
+        return expr if expr is not None else AlwaysTrue()
+
+    def _commit_upsert_scan_merge(
+        self,
+        txn: "Table.transaction",
+        data_files: List["DataFile"],
+        keys_table: "pa.Table",
+        upsert_cols: List[str],
+    ) -> None:
+        """Upsert commit using coarse range filter + per-file distributed anti-join.
+
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 1: Build coarse filter (driver)                      │
+        │    keys_table ──► min/max per col ──► coarse_filter         │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 2: Plan candidate files (driver)                     │
+        │    table.scan(coarse_filter).plan_files()                   │
+        │        ──► file_scan_tasks                                  │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 3: Rewrite (one _rewrite_iceberg_file task per file) │
+        │    read file ─► anti-join keys ─► write preserved rows      │
+        │    returns (old_file, preserved_files)                      │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │  Stage 4: Atomic overwrite (driver)                         │
+        │    delete  old_file         (each rewritten candidate)      │
+        │    append  preserved_files  (preserved rows kept)           │
+        │    append  data_files       (new upsert payload)            │
+        └─────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                            commit_transaction
+
+        1. Build an O(1) coarse range filter using min-max covering upsert key values (for each column).
+        2. plan_files() on the driver to find candidate files that could be updated
+        3. Dispatch one Ray task per candidate file. Each task reads its file,
+           anti-joins against the upsert keys to find preserved rows (rows that
+           the coarse delete would remove but that are NOT being upserted), and
+           writes them as new data files directly to storage.
+        4. Commit atomically via txn.update_snapshot().overwrite(): delete each
+           original candidate file and append preserved files + new upsert data files.
+        """
+        import time
+
+        case_sensitive = self._upsert_kwargs.get("case_sensitive", True)
+        branch = self._upsert_kwargs.get("branch", "main")
+        unknown = set(self._upsert_kwargs) - {
+            _UPSERT_COLS_ID,
+            "case_sensitive",
+            "branch",
+        }
+        if unknown:
+            logger.warning(
+                "[scan-merge] ignoring unsupported upsert_kwargs: %s", sorted(unknown)
+            )
+
+        # Dedup keys to minimise per-task anti-join hash table size.
+        keys_table = keys_table.group_by(upsert_cols).aggregate([])
+
+        coarse_filter = self._build_coarse_range_filter(keys_table, upsert_cols)
+        logger.debug("[scan-merge] coarse_filter=%s", coarse_filter)
+
+        # plan_files() reads only manifest metadata, no Parquet data on the driver.
+        t0 = time.perf_counter()
+        scan: "DataScan" = self._table.scan(
+            row_filter=coarse_filter, case_sensitive=case_sensitive
+        )
+        # Use the specific branch for the scan
+        scan = scan.use_ref(branch)
+        file_scan_tasks: List["FileScanTask"] = list(scan.plan_files())
+
+        logger.info(
+            "[scan-merge] planned %d candidate file(s) in %.2fs",
+            len(file_scan_tasks),
+            time.perf_counter() - t0,
+        )
+
+        if not file_scan_tasks:
+            # No existing files match the coarse filter, so it's a pure insert.
+            self._append_and_commit(txn, data_files, branch=branch)
+            return
+
+        # Put the deduped keys in the object store once; all tasks share one copy.
+        keys_ref = ray.put(keys_table)
+
+        t0 = time.perf_counter()
+        refs = [
+            _rewrite_iceberg_file.options(
+                memory=int(
+                    task.file.file_size_in_bytes
+                    * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+                    * 3  # Bump memory estimate to account for the anti-join and the preserved rows (also since to_record_batches materializes the entire table in memory, see https://github.com/apache/iceberg-python/issues/3036)
+                ),
+                num_cpus=1,
+            ).remote(task, keys_ref, upsert_cols, self._table_metadata, self._io)
+            for task in file_scan_tasks
+        ]
+        logger.info("[scan-merge] dispatched %d rewrite task(s)", len(refs))
+
+        # Collect results with periodic progress logs so long rewrites aren't silent.
+        results = []
+        pending = list(refs)
+        _LOG_INTERVAL = max(1, len(refs) // 10)  # log ~10 times total
+        while pending:
+            done, pending = ray.wait(
+                pending,
+                num_returns=min(_LOG_INTERVAL, len(pending)),
+                timeout=_REWRITE_STALL_TIMEOUT_S,
+                fetch_local=True,
+            )
+            results.extend(ray.get(done))
+            logger.debug(
+                "[scan-merge] rewrite progress: %d/%d file(s) done (%.1fs elapsed)",
+                len(results),
+                len(refs),
+                time.perf_counter() - t0,
+            )
+
+        logger.info(
+            "[scan-merge] all %d file(s) rewritten in %.2fs",
+            len(refs),
+            time.perf_counter() - t0,
+        )
+
+        # Count how many files were wholly deleted vs partially rewritten.
+        n_whole_delete = n_partial = n_untouched = 0
+        for old, preserved_files in results:
+            if old is None:
+                n_untouched += 1
+            elif preserved_files:
+                n_partial += 1
+            else:
+                n_whole_delete += 1
+        logger.info(
+            "[scan-merge] files: %d whole-delete, %d partial-rewrite, %d untouched",
+            n_whole_delete,
+            n_partial,
+            n_untouched,
+        )
+
+        # Single atomic commit: schema update (already staged in txn), and overwrite.
+        # _OverwriteFiles handles both file-level deletes and appends in one snapshot.
+        t0 = time.perf_counter()
+        with txn.update_snapshot(
+            snapshot_properties=self._snapshot_properties, branch=branch
+        ).overwrite() as snap:
+            for old_file, preserved_files in results:
+                if old_file is not None:
+                    snap.delete_data_file(old_file)
+                for preserved_file in preserved_files:
+                    snap.append_data_file(preserved_file)
+            for df in data_files:
+                snap.append_data_file(df)
+
+        self._with_retry(
+            txn.commit_transaction,
+            description=f"commit upsert transaction to Iceberg table '{self.table_identifier}'",
+        )
+        logger.info("[scan-merge] committed in %.2fs", time.perf_counter() - t0)
+
     def _append_and_commit(
-        self, txn: "Table.transaction", data_files: List["DataFile"]
+        self,
+        txn: "Table.transaction",
+        data_files: List["DataFile"],
+        branch: str = "main",
     ) -> None:
         """Append data files to a transaction and commit.
 
         Args:
             txn: PyIceberg transaction object
             data_files: List of DataFile objects to append
+            branch: Iceberg branch to commit the snapshot to. Defaults to "main"
+                to match pyiceberg's default
         """
-        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
+        with txn._append_snapshot_producer(
+            self._snapshot_properties, branch=branch
+        ) as append_files:
             for data_file in data_files:
                 append_files.append_data_file(data_file)
 
@@ -241,7 +606,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         import time
 
         import pyarrow as pa
-        from pyiceberg.table.upsert_util import create_match_filter
 
         # Create delete filter if we have join keys
         if upsert_keys is not None and len(upsert_keys) > 0:
@@ -267,45 +631,19 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
             # Only delete if we have non-NULL keys
             if len(keys_table) > 0:
-                logger.info(
-                    "[upsert commit] Building delete filter from %d keys (cols: %s) ...",
-                    len(keys_table),
-                    upsert_cols,
-                )
-                t0 = time.perf_counter()
-                # Use PyIceberg's helper to build delete filter
-                delete_filter = create_match_filter(keys_table, upsert_cols)
-                logger.info(
-                    "[upsert commit] create_match_filter done in %.2fs: filter type=%s",
-                    time.perf_counter() - t0,
-                    type(delete_filter).__name__,
-                )
-
-                # Prepare kwargs for delete
-                delete_kwargs = self._upsert_kwargs.copy()
-                delete_kwargs.pop(_UPSERT_COLS_ID, None)
-
-                logger.info("[upsert commit] Executing txn.delete() ...")
-                t0 = time.perf_counter()
-                txn.delete(
-                    delete_filter=delete_filter,
-                    snapshot_properties=self._snapshot_properties,
-                    **delete_kwargs,
-                )
-                logger.info(
-                    "[upsert commit] txn.delete() done in %.2fs",
-                    time.perf_counter() - t0,
-                )
+                self._commit_upsert_scan_merge(txn, data_files, keys_table, upsert_cols)
+                return
         else:
             logger.info("[upsert commit] No upsert keys — skipping delete phase")
 
-        # Append new data files (includes updates and inserts) and commit
+        # No non-NULL keys — just append new data files and commit
         logger.info(
             "[upsert commit] Appending %d data files and committing ...",
             len(data_files),
         )
         t0 = time.perf_counter()
-        self._append_and_commit(txn, data_files)
+        branch = self._upsert_kwargs.get("branch", "main")
+        self._append_and_commit(txn, data_files, branch=branch)
         logger.info(
             "[upsert commit] Append+commit done in %.2fs",
             time.perf_counter() - t0,
@@ -503,8 +841,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             **self._overwrite_kwargs,
         )
 
-        # Append new data files and commit
-        self._append_and_commit(txn, data_files)
+        # Append on the same branch the delete targeted (defaults to "main").
+        branch = self._overwrite_kwargs.get("branch", "main")
+        self._append_and_commit(txn, data_files, branch=branch)
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """

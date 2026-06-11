@@ -16,10 +16,12 @@ from typing import (
 
 import numpy as np
 
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _has_file_extension
 from ray.util.annotations import DeveloperAPI
@@ -120,6 +122,9 @@ class BaseFileMetadataProvider(FileMetadataProvider):
                 given filesystem.
             filesystem: The filesystem implementation that should be used for
                 expanding all paths and reading their files.
+            partitioning: Partitioning describing how files under directories are
+                organized into partitions. If ``None``, paths are not interpreted as
+                partitioned.
             ignore_missing_paths: If True, ignores any file paths in ``paths`` that
                 are not found. Defaults to False.
 
@@ -395,6 +400,10 @@ def _fetch_metadata_parallel(
 ) -> Iterator[Meta]:
     """Fetch file metadata in parallel using Ray tasks."""
     remote_fetch_func = cached_remote_fn(fetch_func)
+    ray_remote_args = merge_label_selector(
+        dict(ray_remote_args),
+        DataContext.get_current().execution_options.label_selector,
+    )
     if ray_remote_args:
         remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
     # Choose a parallelism that results in a # of metadata fetches per task that
@@ -453,6 +462,8 @@ def _expand_directory(
         exclude_prefixes: The file relative path prefixes that should be
             excluded from the returned file set. Default excluded prefixes are
             "." and "_".
+        ignore_missing_path: If True, returns an empty list when ``path`` does not
+            exist instead of raising.
 
     Returns:
         An iterator of (file_path, file_size) tuples.

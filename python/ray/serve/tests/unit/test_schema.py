@@ -22,6 +22,7 @@ from ray.serve.config import (
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     ApplyStrategy,
+    ControllerHealthMetrics,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
@@ -810,6 +811,56 @@ class TestServeApplicationSchema:
 
 
 class TestServeDeploySchema:
+    def test_controller_options_default_is_none(self):
+        cfg = ServeDeploySchema.model_validate({"applications": []})
+        assert cfg.controller_options is None
+
+    def test_controller_options_passthrough(self):
+        cfg = ServeDeploySchema.model_validate(
+            {
+                "applications": [],
+                "controller_options": {
+                    "runtime_env": {
+                        "env_vars": {
+                            "RAY_SERVE_HAPROXY_TCP_NODELAY": "1",
+                            "RAY_SERVE_HAPROXY_NBTHREAD": "16",
+                        }
+                    }
+                },
+            }
+        )
+        assert (
+            cfg.controller_options.runtime_env["env_vars"][
+                "RAY_SERVE_HAPROXY_TCP_NODELAY"
+            ]
+            == "1"
+        )
+
+    def test_controller_options_rejects_disallowed_runtime_env_keys(self):
+        # The ControllerOptions validator runs through the nested schema,
+        # so bad runtime_env keys fail at YAML / JSON parse time -- not at
+        # controller-creation time.
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"pip": ["numpy"]}},
+                }
+            )
+        msg = str(e.value)
+        assert "only supports ['env_vars']" in msg
+        assert "pip" in msg
+
+    def test_controller_options_rejects_non_str_env_value(self):
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.model_validate(
+                {
+                    "applications": [],
+                    "controller_options": {"runtime_env": {"env_vars": {"FOO": 1}}},
+                }
+            )
+        assert "must be str" in str(e.value)
+
     def test_deploy_config_duplicate_apps(self):
         deploy_config_dict = {
             "applications": [
@@ -1425,6 +1476,52 @@ def test_serve_instance_details_is_json_serializable():
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+def test_serve_instance_details_default_controller_health_metrics():
+    """ServeInstanceDetails.controller_health_metrics defaults to a
+    ControllerHealthMetrics instance with zeroed values."""
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+
+    assert isinstance(details.controller_health_metrics, ControllerHealthMetrics)
+    assert details.controller_health_metrics.timestamp == 0.0
+    assert details.controller_health_metrics.num_control_loops == 0
+    assert details.controller_health_metrics.last_control_loop_time == 0.0
+
+
+def test_serve_instance_details_includes_controller_health_metrics():
+    """When controller_health_metrics is explicitly set, it should appear in the
+    user-facing JSON-serializable representation."""
+    health_metrics = ControllerHealthMetrics(
+        timestamp=1000.0,
+        controller_start_time=900.0,
+        uptime_s=100.0,
+        num_control_loops=50,
+        last_control_loop_time=999.5,
+    )
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        controller_health_metrics=health_metrics,
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    assert "controller_health_metrics" in details
+    serialized = details["controller_health_metrics"]
+    assert serialized["timestamp"] == 1000.0
+    assert serialized["controller_start_time"] == 900.0
+    assert serialized["uptime_s"] == 100.0
+    assert serialized["num_control_loops"] == 50
+    assert serialized["last_control_loop_time"] == 999.5
+
+    # Should be JSON serializable end-to-end.
+    json.dumps(details)
 
 
 def test_deployment_info_to_schema_includes_max_replicas_per_node():

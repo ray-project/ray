@@ -1267,6 +1267,12 @@ class AsyncioRouter:
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
+        # Internal opt-out for pick-only callers (e.g. ingress router that
+        # forwards traffic out-of-band via HAProxy). Skips the replica-side
+        # reserve_slot RPC and the rejection-retry loop; the configured
+        # RequestRouter still drives ordering.
+        reserve = request_kwargs.pop("_reserve", True)
+
         await self._request_router_initialized.wait()
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
@@ -1279,7 +1285,25 @@ class AsyncioRouter:
                 await self._resolve_args_with_metrics(pr)
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
-            replica, slot_token = await self._pick_and_reserve_replica(pr)
+            if reserve:
+                replica, slot_token = await self._pick_and_reserve_replica(pr)
+            else:
+                # Fast path: synchronously ask the configured RequestRouter to
+                # pick a replica from the current snapshot, bypassing the
+                # _pending_requests_to_fulfill queue and the routing-task
+                # workers. Safe because there's no reservation -> no rejection
+                # -> no retry, so the queue's ordering/backoff guarantees are
+                # unused.
+                ranks = await self.request_router.choose_replicas(
+                    candidate_replicas=self.request_router._replicas_list,
+                    pending_request=pr,
+                )
+                replica = next((r for rank in ranks for r in rank), None)
+                if replica is None:
+                    raise RuntimeError(
+                        f"no replicas available for {self.deployment_id}"
+                    )
+                slot_token = None
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,
@@ -1287,12 +1311,17 @@ class AsyncioRouter:
                 port=replica._replica_info.port,
                 node_id=replica.node_id,
                 availability_zone=replica.availability_zone,
+                replica_metadata=replica.replica_metadata,
                 _replica=replica,
                 _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
                 _request_metadata=request_meta,
                 _method_name=request_meta.call_method,
                 _slot_token=slot_token,
             )
+
+        if not reserve:
+            yield selection
+            return
 
         try:
             self._metrics_manager.inc_reserved_slots()
@@ -1361,6 +1390,11 @@ class AsyncioRouter:
         re-raising.
         """
         replica = selection._replica
+        if selection._slot_token is None:
+            raise RuntimeError(
+                "Cannot dispatch a ReplicaSelection that was created without a "
+                "reservation (_reserve=False)."
+            )
         # Inject the slot token so the replica skips re-acquiring its semaphore.
         # Args are re-resolved here because dispatch may carry augmented args.
         pr = PendingRequest(
@@ -1698,6 +1732,11 @@ class SingletonThreadRouter(Router):
         asyncio event loop thread. It returns a `concurrent.futures.Future` that
         can be awaited or queried from the calling thread.
 
+        Args:
+            request_meta: Metadata describing the inbound request.
+            *request_args: Positional arguments forwarded to the replica handler.
+            **request_kwargs: Keyword arguments forwarded to the replica handler.
+
         Returns:
             A concurrent.futures.Future resolving to the ReplicaResult representing
             the assigned request.
@@ -1731,19 +1770,38 @@ class SingletonThreadRouter(Router):
         async def exit_context(cm, exc_type, exc_val, exc_tb):
             return await cm.__aexit__(exc_type, exc_val, exc_tb)
 
+        async def release_entered_context(entry_future):
+            """Release a slot whose caller was cancelled before owning the selection.
+
+            Awaits the entry on the router loop and drives ``__aexit__`` on the
+            entered context manager. The inner CM is parked at ``yield`` holding
+            the slot, and only an explicit ``__aexit__`` releases it reliably.
+            """
+            try:
+                _, cm = await asyncio.wrap_future(entry_future)
+            except BaseException:
+                # __aenter__ was cancelled/failed: nothing entered to release.
+                return
+            try:
+                await cm.__aexit__(None, None, None)
+            except Exception:
+                logger.exception("Failed to release reserved replica slot.")
+
         future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
+        # Shield so a caller cancellation does not propagate through wrap_future
+        # and cancel ``enter_context``: __aenter__ finishes and returns, so the
+        # entered CM stays reachable for release. Otherwise the CM is discarded
+        # mid-entry and the slot leaks until GC.
         try:
-            selection, context_manager = await asyncio.wrap_future(future)
+            selection, context_manager = await asyncio.shield(
+                asyncio.wrap_future(future)
+            )
         except BaseException:
-            # Cancelled after __aenter__ reserved the slot but before we
-            # observed the result: exit the entered CM to release the slot.
-            if future.done() and not future.cancelled() and future.exception() is None:
-                entered_cm = future.result()[1]
-                exc_info = sys.exc_info()
-                cleanup = asyncio.run_coroutine_threadsafe(
-                    exit_context(entered_cm, *exc_info), self._asyncio_loop
-                )
-                await asyncio.shield(asyncio.wrap_future(cleanup))
+            # Honor the cancellation now; release the orphaned slot on the
+            # router loop instead of making the cancelled caller wait on it.
+            asyncio.run_coroutine_threadsafe(
+                release_entered_context(future), self._asyncio_loop
+            )
             raise
 
         try:

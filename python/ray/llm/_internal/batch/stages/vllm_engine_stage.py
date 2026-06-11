@@ -57,8 +57,6 @@ class vLLMEngineRequest(BaseModel):
     # The full prompt string (with chat template applied if any).
     # Either prompt or prompt_token_ids must be provided.
     prompt: Optional[str] = None
-    # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
-    images: List[Any]
     # The multimodal data for the multimodal model.
     multimodal_data: Optional[MultiModalDataDict] = None
     # The kwargs for the multimodal processor.
@@ -207,8 +205,13 @@ class vLLMEngineWrapper:
     """Wrapper around the vLLM engine to handle async requests.
 
     Args:
-        *args: The positional arguments for the engine.
+        idx_in_batch_column: The column name for the index of the row in the batch.
         max_pending_requests: The maximum number of pending requests in the queue.
+            If None, it will be auto-resolved to
+            ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)`` using values
+            from vLLM's resolved engine config (so the default tracks vLLM's
+            GPU-dependent ``max_num_seqs``). Pass a non-positive value (e.g.
+            ``-1``) to disable the semaphore entirely.
         dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
         log_engine_metrics: Whether to export vLLM metrics to Ray's Prometheus endpoint.
         **kwargs: The keyword arguments for the engine.
@@ -217,7 +220,7 @@ class vLLMEngineWrapper:
     def __init__(
         self,
         idx_in_batch_column: str,
-        max_pending_requests: int = -1,
+        max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
         log_engine_metrics: bool = True,
         **kwargs,
@@ -225,8 +228,7 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        self._guided_decoding_warning_logged = False
-        self._truncate_prompt_tokens_warning_logged = False
+        self._image_row_column_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -294,8 +296,29 @@ class vLLMEngineWrapper:
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
+        # When the caller did not specify a limit, derive it from the resolved
+        # vLLM config rather than from raw engine_kwargs. vLLM's default
+        # `max_num_seqs` is GPU-dependent (e.g. 256 on A10G/A100, 1024 on H100),
+        # so reading from `scheduler_config` avoids silently capping the
+        # semaphore below vLLM's actual capacity.
+        scheduler_config = self._vllm_config.scheduler_config
+        parallel_config = self._vllm_config.parallel_config
+        engine_capacity = (
+            scheduler_config.max_num_seqs * parallel_config.pipeline_parallel_size
+        )
+        if max_pending_requests is None:
+            max_pending_requests = math.ceil(engine_capacity * 1.1)
+        elif 0 < max_pending_requests < engine_capacity:
+            logger.warning(
+                "max_pending_requests (%d) < max_num_seqs * pipeline_parallel_size "
+                "(%d); may underutilize vLLM. Consider >=%d, or <=0 to disable.",
+                max_pending_requests,
+                engine_capacity,
+                math.ceil(engine_capacity * 1.1),
+            )
         self.max_pending_requests = max_pending_requests
         if self.max_pending_requests > 0:
+            logger.info("Max pending requests is set to %d", self.max_pending_requests)
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
             self.semaphore = asyncio.NullContext()
@@ -369,19 +392,32 @@ class vLLMEngineWrapper:
 
         multimodal_data = row.pop("multimodal_data", None)
 
-        # Extract image data from preprocessing output
-        # Note: Field name is 'image' (singular) not 'images' (plural).
-        if multimodal_data is not None:
-            # When multimodal_data is present, images are handled through multimodal_data,
-            # so we should set image to an empty list.
-            row.pop("image", None)
-            image = []
-        elif "image" in row:
-            image = row.pop("image")
-        else:
-            image = []
-        # TODO (jeffreywang): As we decouple the multimodal processor from the vLLM engine,
-        # these kwargs are not needed in the vLLM engine stage.
+        # TODO (jeffreywang): Remove the legacy `image` row column path in Ray 2.58.0.
+        if "image" in row:
+            legacy_image = row.pop("image")
+            if not self._image_row_column_warning_logged:
+                logger.warning(
+                    "The 'image' input column is deprecated. Provide images via "
+                    "the 'multimodal_data' column (e.g. multimodal_data="
+                    "{'image': [...]}), or enable `prepare_multimodal_stage` to "
+                    "populate it automatically from chat messages."
+                )
+                self._image_row_column_warning_logged = True
+            if legacy_image is not None and len(legacy_image) > 0:
+                if multimodal_data is None:
+                    multimodal_data = {"image": legacy_image}
+                elif "image" in multimodal_data:
+                    raise ValueError(
+                        "Both the deprecated 'image' column and "
+                        "multimodal_data['image'] are set on the same row. "
+                        "Remove the 'image' column and pass images only via "
+                        "multimodal_data['image']."
+                    )
+                else:
+                    multimodal_data = {**multimodal_data, "image": legacy_image}
+
+        # TODO (jeffreywang): Remove in Ray 2.58.0 as we decouple the multimodal
+        # processor from the vLLM engine; these kwargs become unneeded here.
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
@@ -395,26 +431,10 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             structured_outputs_config = None
-            # Handle new structured_outputs parameter (preferred)
             if "structured_outputs" in sampling_params:
                 structured_outputs_config = maybe_convert_ndarray_to_list(
                     sampling_params.pop("structured_outputs")
                 )
-                # Remove guided_decoding if present to avoid passing it to SamplingParams
-                sampling_params.pop("guided_decoding", None)
-            # Handle legacy guided_decoding parameter for backward compatibility
-            # TODO (jeffreywang): Remove guided_decoding support in ray 2.56.0.
-            elif "guided_decoding" in sampling_params:
-                structured_outputs_config = maybe_convert_ndarray_to_list(
-                    sampling_params.pop("guided_decoding")
-                )
-                # Log deprecation warning only once to avoid log spam
-                if not self._guided_decoding_warning_logged:
-                    logger.warning(
-                        "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_outputs' in sampling_params instead."
-                    )
-                    self._guided_decoding_warning_logged = True
 
             if structured_outputs_config:
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
@@ -435,27 +455,6 @@ class vLLMEngineWrapper:
                 row.pop("pooling_params", {})
             )
 
-            # vLLM 0.16.0 deprecates truncate_prompt_tokens in PoolingParams.
-            # truncate_prompt_tokens must be passed via tokenization_kwargs instead.
-            # TODO (jeffreywang): Remove this in Ray 2.56.0.
-            if "truncate_prompt_tokens" in pooling_params:
-                truncate_value = pooling_params.pop("truncate_prompt_tokens")
-                if not self._truncate_prompt_tokens_warning_logged:
-                    logger.warning(
-                        "Setting truncate_prompt_tokens in pooling_params is "
-                        "deprecated. Please pass "
-                        "tokenization_kwargs={'truncation': True, "
-                        "'max_length': N} via the tokenization_kwargs column instead."
-                    )
-                    self._truncate_prompt_tokens_warning_logged = True
-                if truncate_value == -1:
-                    truncate_value = self._vllm_config.model_config.max_model_len
-
-                if tokenization_kwargs is None:
-                    tokenization_kwargs = {}
-                tokenization_kwargs.setdefault("truncation", True)
-                tokenization_kwargs.setdefault("max_length", truncate_value)
-
             params = vllm.PoolingParams(
                 **pooling_params,
                 task=self.task_type,
@@ -468,7 +467,6 @@ class vLLMEngineWrapper:
             idx_in_batch=row[self.idx_in_batch_column],
             prompt=prompt,
             prompt_token_ids=tokenized_prompt,
-            images=image,
             multimodal_data=multimodal_data,
             mm_processor_kwargs=mm_processor_kwargs,
             multimodal_uuids=multimodal_uuids,
@@ -485,7 +483,7 @@ class vLLMEngineWrapper:
         """Process a single request.
 
         Args:
-            request: The request.
+            row: The input row.
 
         Returns:
             A tuple of index in batch, request output and bypassed custom fields, and time taken.
@@ -513,20 +511,10 @@ class vLLMEngineWrapper:
 
         import vllm
 
-        # TODO (jeffreywang): Consolidate to multimodal_data only in Ray 2.56.0
-        if request.images:
-            multi_modal_data = (
-                {**request.multimodal_data, "image": request.images}
-                if request.multimodal_data
-                else {"image": request.images}
-            )
-        else:
-            multi_modal_data = request.multimodal_data
-
         if request.prompt_token_ids is not None:
             llm_prompt = vllm.inputs.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
-                multi_modal_data=multi_modal_data,
+                multi_modal_data=request.multimodal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
                 multi_modal_uuids=request.multimodal_uuids,
             )
@@ -534,7 +522,7 @@ class vLLMEngineWrapper:
             assert request.prompt
             llm_prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
-                multi_modal_data=multi_modal_data,
+                multi_modal_data=request.multimodal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
                 multi_modal_uuids=request.multimodal_uuids,
             )
@@ -608,11 +596,16 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
+            batch_size: The batch size for the stage.
+            max_concurrent_batches: The maximum number of concurrent batches.
             model: The model to use for the vLLM engine.
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             max_pending_requests: The maximum number of pending requests. If None,
-                it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
+                it will be set to ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)``,
+                where ``max_num_seqs`` and ``pipeline_parallel_size`` are read from
+                vLLM's resolved engine config (so the default tracks vLLM's
+                GPU-dependent ``max_num_seqs``, not a hardcoded value).
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
             should_continue_on_error: If True, continue processing when inference fails for
@@ -628,14 +621,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Setup vLLM engine kwargs.
         self.task_type = task_type
         self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
-
-        # Set up the max pending requests.
-        pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
-        self.max_pending_requests = max_pending_requests or math.ceil(
-            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
-        )
-        if self.max_pending_requests > 0:
-            logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
         exclude_safetensors = (
             self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
@@ -662,11 +647,14 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             enable_log_requests=False,
-            max_pending_requests=self.max_pending_requests,
+            max_pending_requests=max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
             log_engine_metrics=log_engine_metrics,
             **self.engine_kwargs,
         )
+        # The wrapper resolves a None into a concrete value using vLLM's
+        # resolved engine config; surface that back on the UDF.
+        self.max_pending_requests = self.llm.max_pending_requests
 
         max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
         if batch_size * max_concurrent_batches < max_num_seqs:
@@ -790,8 +778,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Args:
             batch: A list of rows to run the vLLM engine on.
 
-        Returns:
-            The response of the vLLM engine.
+        Yields:
+            Dict[str, Any]: The response of the vLLM engine.
         """
         batch_uuid = uuid.uuid4()
         batch_start_time = time.perf_counter()
@@ -881,7 +869,7 @@ class vLLMEngineStage(StatefulStage):
     fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
     @root_validator(pre=True)
-    def post_init(cls, values):
+    def post_init(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Post-initialize the stage. Specifically,
         this function determines the num_gpus and Ray remote args
         for the .map_batches() call in this stage.
@@ -990,7 +978,7 @@ class vLLMEngineStage(StatefulStage):
         ret = {
             "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
             "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
-            "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
+            "image": "[DEPRECATED] The image(s) for multimodal input. Prefer `multimodal_data={'image': [...]}` or enable `prepare_multimodal_stage`.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
             "multimodal_data": "The multimodal data to pass to the model, if the model supports it.",
