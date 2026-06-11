@@ -270,7 +270,16 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     # TODO(Clark): Optimize this with propagated DataFrame metadata containing a list of
     # column names containing tensor columns, to make this an O(# of tensor columns)
     # check rather than the current O(# of columns) check.
-    for col_name, col in df.items():
+
+    # Scan dtypes rather than df.items(), which would
+    # materialize a Series for every column just to read its dtype.
+    # The below approach avoids the cost of a Series build for non-tensor columns.
+    for col_name, dtype in df.dtypes.items():
+        if (
+            dtype.type is not np.object_
+        ):  # Short circuit if non-object type before materializing the column
+            continue
+        col = df[col_name]
         if column_needs_tensor_extension(col):
             try:
                 # Suppress Pandas warnings:
@@ -334,8 +343,11 @@ def _cast_tensor_columns_to_ndarrays(
                     for arr in df[field.name]
                 ]
 
-    for col_name, col in df.items():
-        if isinstance(col.dtype, TensorDtype):
+    # Scan dtypes rather than df.items(), which would
+    # materialize a Series for every column just to read its dtype.
+    # The below approach avoids the cost of a Series build for non-tensor columns.
+    for col_name, dtype in df.dtypes.items():
+        if isinstance(dtype, TensorDtype):
             # Suppress Pandas warnings:
             # https://github.com/ray-project/ray/issues/29270
             # We actually want in-place operations so we surpress this warning.
@@ -344,5 +356,5 @@ def _cast_tensor_columns_to_ndarrays(
                 warnings.simplefilter("ignore", category=FutureWarning)
                 if SettingWithCopyWarning is not None:
                     warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                df[col_name] = list(col.to_numpy())
+                df[col_name] = list(df[col_name].to_numpy())
     return df
