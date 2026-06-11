@@ -597,6 +597,7 @@ def test_next_sync_timeout_when_generator_ref_unavailable(
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
+
     @ray.remote(num_returns="streaming")
     def gen():
         yield 1
