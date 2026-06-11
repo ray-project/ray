@@ -15,19 +15,33 @@ class PreemptionInfo:
     """Information about an imminent preemption event.
 
     Attributes:
-        deadline_ms: UNIX timestamp in milliseconds by which the affected nodes
-            are expected to be reclaimed. When multiple nodes are draining, this
-            is the earliest reclaim deadline among them. ``None`` if no deadline
-            was reported.
-        preempted_ranks: Worker `world_rank` whose nodes are being reclaimed, expanded to all ranks in the same failure domain
-            (e.g., all ranks in a fate-shared TPU slice). Sorted ascending.
-        preempted_node_ids: Node IDs being reclaimed, hex-encoded as returned
-            by Ray Core. Sorted lexicographically.
+        deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
+            across all preempted nodes — the soonest any affected node is
+            expected to be preempted. ``None`` if no deadline was reported.
+            This is a single value for now; per-rank deadlines (so a
+            later-deadline rank can use its full window) will be added when the
+            ``report()`` barrier is relaxed in a later stage.
+        preempted_node_to_ranks: Map of preempted ``node_id`` (hex, as returned
+            by Ray Core) to the worker ``world_rank``\\ s affected when that node
+            is preempted — its failure domain (for a TPU slice, every rank in
+            the slice). Use the :attr:`preempted_node_ids` and
+            :attr:`preempted_ranks` getters for flat, sorted views.
     """
 
     deadline_ms: Optional[int]
-    preempted_ranks: List[int]
-    preempted_node_ids: List[str]
+    preempted_node_to_ranks: Dict[str, List[int]]
+
+    @property
+    def preempted_node_ids(self) -> List[str]:
+        """Preempted node IDs, sorted lexicographically."""
+        return sorted(self.preempted_node_to_ranks)
+
+    @property
+    def preempted_ranks(self) -> List[int]:
+        """All affected ranks across the preempted nodes, sorted ascending."""
+        return sorted(
+            {r for ranks in self.preempted_node_to_ranks.values() for r in ranks}
+        )
 
 
 def _get_draining_nodes() -> Dict[str, int]:
@@ -181,31 +195,26 @@ class PreemptionWatcher:
             return
 
         affected_node_ids = sorted(drained.keys())
-        affected_ranks = sorted(
-            {
-                r
-                for node_id in affected_node_ids
-                for r in self._failure_domain_map[node_id]
-            }
-        )
+        preempted_node_to_ranks = {
+            node_id: self._failure_domain_map[node_id] for node_id in affected_node_ids
+        }
 
-        # Earliest deadline across the draining nodes; None if none reported one
+        # Earliest deadline across the preempted nodes; None if none reported one
         # (Ray Core uses 0 for "no deadline", which is falsy and filtered out).
         reported_deadlines = [drained[n] for n in affected_node_ids if drained[n]]
         deadline_ms = min(reported_deadlines) if reported_deadlines else None
 
         info = PreemptionInfo(
             deadline_ms=deadline_ms,
-            preempted_ranks=affected_ranks,
-            preempted_node_ids=affected_node_ids,
+            preempted_node_to_ranks=preempted_node_to_ranks,
         )
         self._latest_info = info
 
         logger.warning(
-            "PreemptionWatcher: drain detected — "
+            "PreemptionWatcher: preemption detected — "
             "preempted_node_ids=%s, preempted_ranks=%s, deadline_ms=%s",
-            affected_node_ids,
-            affected_ranks,
+            info.preempted_node_ids,
+            info.preempted_ranks,
             deadline_ms,
         )
         # Stage 1 is observability-only: the detected preemption is logged but

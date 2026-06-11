@@ -82,6 +82,9 @@ class TestPreemptionWatcher:
         assert info.preempted_node_ids == exp_nodes
         assert info.preempted_ranks == exp_ranks
         assert info.deadline_ms == exp_deadline_ms
+        # The node->ranks map keys are the preempted nodes; each maps to its
+        # failure domain. The flat getters above derive from it.
+        assert info.preempted_node_to_ranks == {n: sorted(fd_map[n]) for n in exp_nodes}
 
     def test_no_drain_means_no_info(self):
         watcher = _make_watcher(node_to_ranks={"node-a": [0]}, fd_map={"node-a": [0]})
