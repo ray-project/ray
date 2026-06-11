@@ -156,7 +156,6 @@ class _BatchQueue:
         self.batch_size_fn = batch_size_fn
         self._in_flight_batches = 0
         self._concurrency_condition = asyncio.Condition()
-        self._concurrency_notify_task: Optional[asyncio.Task] = None
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
 
@@ -241,11 +240,9 @@ class _BatchQueue:
         """
         self.max_concurrent_batches = new_max_concurrent_batches
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
-        # Wake waiters so a raised limit takes effect now (sync setter can't await).
-        if self._loop.is_running():
-            self._concurrency_notify_task = self._loop.create_task(
-                self._notify_concurrency_waiters()
-            )
+        # Wake waiters so a raised limit takes effect now. reconfigure may run on a worker
+        # thread (RAY_SERVE_RUN_SYNC_IN_THREADPOOL), so schedule on the loop thread-safely.
+        asyncio.run_coroutine_threadsafe(self._notify_concurrency_waiters(), self._loop)
 
     async def _notify_concurrency_waiters(self) -> None:
         async with self._concurrency_condition:
