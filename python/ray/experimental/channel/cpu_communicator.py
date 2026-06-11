@@ -169,11 +169,13 @@ class CPUCommunicator(Communicator):
         return self._actor_handles
 
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-        """
-        Return the given actor's rank in the CPU communicator.
+        """Return the given actor's rank in the CPU communicator.
 
         Args:
             actor: The actor handle to look up.
+
+        Returns:
+            The rank of ``actor`` within the CPU communicator group.
         """
         actor_ids = [a._ray_actor_id for a in self._actor_handles]
         try:
