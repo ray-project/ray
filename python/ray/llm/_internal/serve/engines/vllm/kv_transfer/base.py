@@ -40,10 +40,18 @@ class BaseConnectorBackend(abc.ABC):
     #     (sequential handoff).
     #   * True  -> prefill dispatch and local decode run concurrently.
     #
-    # The two flags are independent. For example: a standard (pull-on-response)
-    # connector is (False, False); a push-based, request-id-addressed connector
-    # is (True, True); a pull-based request-id-addressed connector is
-    # (True, False).
+    # The two flags are independent; the known combos:
+    #   * (False, False) — e.g. NixlConnector / LMCacheConnectorV1: decode learns
+    #     everything it needs (remote engine id / block ids) from the prefill
+    #     response, so it must wait for that response (sequential).
+    #   * (True, True)   — e.g. MoRIIO WRITE mode: the peer address is bound
+    #     into the request id before dispatch and prefill *pushes* KV to decode,
+    #     so decode needs nothing from prefill's response and can start
+    #     immediately (concurrent). Concurrent handoff is only possible because
+    #     peer binding happens up front.
+    #   * (True, False)  — e.g. MoRIIO READ mode: the peer is bound up front,
+    #     but decode *pulls* KV using block ids returned in prefill's response,
+    #     so it still waits for prefill to finish (sequential).
     requires_peer_binding: bool = False
     concurrent_handoff: bool = False
 

@@ -7,6 +7,7 @@ import pytest
 from ray import serve
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
+    DefaultConnectorBackend,
     DefaultPDProtocolMixin,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
@@ -81,10 +82,6 @@ class TestKVConnectorBackendFactory:
         subclass (``DefaultConnectorBackend``) that is instantiable and provides
         the default P/D protocol policy.
         """
-        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
-            DefaultConnectorBackend,
-        )
-
         backend_class = KVConnectorBackendFactory.get_backend_class(
             "UnregisteredConnector"
         )

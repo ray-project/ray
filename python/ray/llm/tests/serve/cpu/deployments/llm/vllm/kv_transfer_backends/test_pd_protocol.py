@@ -1,6 +1,6 @@
 """Tests for the P/D coordination protocol on the KV connector backends.
 
-Proves that NIXL, LMCache, and the default backend are migrated onto the abstract
+Proves that NIXL, LMCache, and the default backend implement the abstract
 ``BaseConnectorBackend`` protocol via ``DefaultPDProtocolMixin``, that Multi delegates
 the protocol to its top-most sub-connector, and that the abstract base itself cannot
 be instantiated.
@@ -61,8 +61,8 @@ def test_base_connector_backend_is_abstract():
     ],
     ids=["nixl", "lmcache", "default"],
 )
-class TestMigratedBackendsProtocol:
-    """All migrated concrete backends expose the default P/D protocol shaping."""
+class TestConcreteBackendsProtocol:
+    """The concrete backends expose the default P/D protocol shaping."""
 
     def test_is_concrete_subclass(self, backend_factory):
         be = backend_factory()
@@ -156,7 +156,7 @@ class TestMultiConnectorDelegation:
     "ray.llm._internal.serve.engines.vllm.kv_transfer.lmcache._check_lmcache_installed"
 )
 def test_lmcache_setup_still_works(_mock_check):
-    """Migration must not break the connector-specific setup() behavior."""
+    """The P/D protocol must not break the connector-specific setup() behavior."""
     be = LMCacheConnectorV1Backend(llm_config=_llm_config("LMCacheConnectorV1"))
     be.setup()  # no-op path (no kv_connector_extra_config), must not raise
 

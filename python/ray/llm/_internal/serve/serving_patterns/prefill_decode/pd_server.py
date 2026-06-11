@@ -143,7 +143,7 @@ class PDOrchestratorMixin:
     #
     # Thin instance delegates to the resolved backend's protocol so existing
     # callers/tests that reference these names keep working. The orchestrator
-    # itself goes through ``be.prepare_*`` directly.
+    # itself goes through ``backend.prepare_*`` directly.
 
     def _prepare_prefill_request(self, request: RequestType) -> RequestType:
         return self._get_connector_backend().prepare_prefill_request(
@@ -184,7 +184,7 @@ class PDOrchestratorMixin:
         else:
             raise ValueError(f"Unsupported request type: {type(request)}")
 
-        be = self._get_connector_backend()
+        backend = self._get_connector_backend()
 
         prefill_handle = self._prefill_handle
         if raw_request_info is not None:
@@ -193,7 +193,7 @@ class PDOrchestratorMixin:
                 prefill_handle = prefill_handle.options(session_id=session_id)
         prefill_handle_method = getattr(prefill_handle, method)
 
-        if be.requires_peer_binding:
+        if backend.requires_peer_binding:
             # Connector needs to bind to the selected prefill replica *before*
             # dispatch (e.g. request-id-addressed transfers). Reserve a replica
             # via choose_replica, expose its metadata to the backend, then
@@ -201,20 +201,31 @@ class PDOrchestratorMixin:
             async with prefill_handle_method.choose_replica(request) as selection:
                 # The selected replica's published metadata (empty dict if none).
                 peer = getattr(selection, "replica_metadata", {})
-                prefill_request = be.prepare_prefill_request(request=request, peer=peer)
+                prefill_request = backend.prepare_prefill_request(
+                    request=request, peer=peer
+                )
 
-                if be.concurrent_handoff:
+                if backend.concurrent_handoff:
                     # Concurrent handoff: start remote prefill and run local decode
                     # together, draining prefill before leaving the choose_replica
                     # context (so on_request_completed fires once).
-                    decode_request = be.prepare_decode_request(
+                    decode_request = backend.prepare_decode_request(
                         request=request, peer=peer, prefill_response=None
                     )
                     prefill_resp = prefill_handle_method.dispatch(
                         selection, prefill_request, raw_request_info
                     )
+                    # dispatch()'s completion accounting fires when its result
+                    # completes, so the response must be drained to exhaustion
+                    # inside the choose_replica context — never cancelled
+                    # (prefill is clamped to a single token, so draining is
+                    # bounded).
                     async for chunk in self._concurrent_decode(
-                        method, decode_request, prefill_resp, raw_request_info
+                        method,
+                        decode_request,
+                        prefill_resp,
+                        raw_request_info,
+                        cancel_on_failure=False,
                     ):
                         yield chunk
                     return
@@ -225,11 +236,18 @@ class PDOrchestratorMixin:
                     selection, prefill_request, raw_request_info
                 )
                 prefill_chunk = await prefill_gen.__anext__()
+                # Drain the dispatched stream to exhaustion inside the
+                # choose_replica context: dispatch()'s completion accounting
+                # (queue-length cache decrement) fires when the result
+                # completes. Prefill is clamped to a single token, so this is
+                # at most one trivial extra iteration.
+                async for _ in prefill_gen:
+                    pass
                 if isinstance(prefill_chunk, ErrorResponse):
                     logger.error(f"Prefill returned error: {prefill_chunk}")
                     yield prefill_chunk
                     return
-                decode_request = be.prepare_decode_request(
+                decode_request = backend.prepare_decode_request(
                     request=request, peer=peer, prefill_response=prefill_chunk
                 )
                 local_gen = await getattr(super(), method)(
@@ -241,12 +259,12 @@ class PDOrchestratorMixin:
 
         # Default path: no pre-dispatch peer binding; dispatch prefill via the
         # standard handle path.
-        prefill_request = be.prepare_prefill_request(request=request, peer=None)
+        prefill_request = backend.prepare_prefill_request(request=request, peer=None)
 
-        if be.concurrent_handoff:
+        if backend.concurrent_handoff:
             # Concurrent handoff: dispatch via remote() and run local decode
             # together.
-            decode_request = be.prepare_decode_request(
+            decode_request = backend.prepare_decode_request(
                 request=request, peer=None, prefill_response=None
             )
             prefill_resp = prefill_handle_method.remote(
@@ -270,7 +288,7 @@ class PDOrchestratorMixin:
         # 2. Local decode via super().chat / super().completions so the
         # standard LLMServer request pipeline (request_id, LoRA multiplex,
         # batch_output_stream) runs on the decode side.
-        decode_request = be.prepare_decode_request(
+        decode_request = backend.prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
         local_gen = await getattr(super(), method)(decode_request, raw_request_info)
@@ -278,13 +296,26 @@ class PDOrchestratorMixin:
             yield chunk
 
     async def _concurrent_decode(
-        self, method, decode_request, prefill_resp, raw_request_info
+        self,
+        method,
+        decode_request,
+        prefill_resp,
+        raw_request_info,
+        *,
+        cancel_on_failure: bool = True,
     ):
         """Run local decode while a remote prefill drains concurrently.
 
         Yields the local decode chunks. The background prefill task is always
-        awaited, and is cancelled if local decode does not complete (so it never
-        leaks on the prefill/decode engines).
+        awaited so it never leaks on the prefill/decode engines.
+
+        Args:
+            cancel_on_failure: Whether to cancel the in-flight prefill when
+                local decode does not complete. Must be False for
+                ``dispatch()``-based prefill (the choose_replica path): its
+                completion accounting fires when the response completes, so the
+                stream must be drained to exhaustion, never abandoned. Prefill
+                is clamped to a single token, so draining is bounded either way.
         """
         prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
         completed = False
@@ -294,7 +325,7 @@ class PDOrchestratorMixin:
                 yield chunk
             completed = True
         finally:
-            if not completed:
+            if not completed and cancel_on_failure:
                 prefill_task.cancel()
             try:
                 err = await prefill_task
@@ -364,8 +395,8 @@ class PDOrchestratorMixin:
 
         model_id = self._llm_config.model_id
         dummy = self._make_dummy_request(model_id)
-        be = self._get_connector_backend()
-        prefill_req = be.prepare_prefill_request(request=dummy, peer=None)
+        backend = self._get_connector_backend()
+        prefill_req = backend.prepare_prefill_request(request=dummy, peer=None)
 
         # Broadcast to every live P replica; retry until they are up.
         kv_params_list: List[Any] = []
