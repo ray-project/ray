@@ -278,16 +278,7 @@ def test_chained_filter_with_expressions(parquet_ds):
     [
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        # NOTE: an ``s3_fs`` parametrization was previously listed here, but
-        # it didn't actually exercise S3 — the test uses ``_unwrap_protocol``
-        # to derive a local FS path, which on the moto-mocked ``s3_path``
-        # fixture returns a *relative* path (the fixture strips the leading
-        # ``/`` so the first segment becomes a moto bucket name). The
-        # resulting ``lance.write_dataset(<relative-path>)`` wrote into the
-        # current working directory, polluting the repo on every run.
-        # If S3 lance pushdown ever needs end-to-end coverage, add it
-        # separately and pass an actual ``s3://`` URI plus storage options
-        # through to ``lance.write_dataset``/``ray.data.read_lance``.
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
     ],
 )
 # Same pylance version gate as tests/datasource/test_lance.py
@@ -480,9 +471,8 @@ def test_pushdown_with_rename_and_filter(
     ds = operations(ray.data.read_parquet(path))
     result = ds.take_all()
 
-    # Filters are pushed into the scan; renames stay as a ``Project`` of
-    # ``AliasExpr``s above the pruned scan.
-    _check_plan_with_flexible_read(ds, "Project[Project]", result)
+    # Check that plan is just the read (filters and renames pushed down/fused)
+    _check_plan_with_flexible_read(ds, "", result)
 
     ds1 = ray.data.read_parquet(path).filter(expr=expected_filter_expr)
     # Convert to pandas to ensure both datasets are fully executed
@@ -720,16 +710,13 @@ class TestPassthroughWithSubstitutionBehavior:
     def test_rename_with_partition_residual_filter(
         self, ray_start_regular_shared, tmp_path
     ):
-        """Residual Filter ends up below a rename Project, in original names.
+        """Residual Filter above a renamed ReadFiles must use renamed columns.
 
         When a predicate mixes partition and data columns under OR, the
-        unsplittable part is wrapped in a Filter above ReadFiles by
-        ``ReadFiles.apply_predicate``. The read stage never renames
-        columns (renaming is always carried by a ``Project`` above the
-        read), so the residual Filter — which sits between the rename
-        ``Project`` and ``ReadFiles`` after predicate pushdown — must
-        reference the original on-disk column names that the scanner
-        produces, not the renamed ones the user wrote.
+        unsplittable part is wrapped in a Filter above the new ReadFiles by
+        ``ReadFiles.apply_predicate``. ``ReadFiles`` applies ``column_renames``
+        to its output blocks, so that residual Filter must reference renamed
+        columns at runtime — not the originals the scanner sees.
         """
         table = pa.table(
             {
@@ -768,17 +755,17 @@ class TestPassthroughWithSubstitutionBehavior:
         result = ds.to_pandas().rename(columns={"D1": "data1", "D2": "data2"})
         assert rows_same(result, expected.to_pandas())
 
-        # A residual Filter should remain below the rename ``Project``,
-        # and its predicate must reference the original on-disk column
-        # names (``data1``), not the renamed ones the user wrote.
+        # A residual Filter should remain above the read, and its predicate
+        # must reference the renamed columns (``D1``), not the originals.
         optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         residual_filters = get_operators_of_type(optimized_plan, Filter)
-        assert (
-            len(residual_filters) == 1
-        ), f"Expected one residual Filter, got plan: {optimized_plan.dag.dag_str}"
+        assert len(residual_filters) == 1, (
+            f"Expected one residual Filter above the read, got plan: "
+            f"{optimized_plan.dag.dag_str}"
+        )
         residual_expr_str = str(residual_filters[0].predicate_expr)
-        assert "data1" in residual_expr_str and "D1" not in residual_expr_str, (
-            f"Residual Filter predicate should reference original column 'data1', "
+        assert "D1" in residual_expr_str and "data1" not in residual_expr_str, (
+            f"Residual Filter predicate should reference renamed column 'D1', "
             f"got: {residual_expr_str}"
         )
 
@@ -944,21 +931,12 @@ class TestProjectionWithFilterEdgeCases:
         has_filter = plan_has_operator(optimized_plan, Filter)
         has_project = plan_has_operator(optimized_plan, Project)
 
-        # Three valid post-optimization shapes:
-        #   1. ``has_filter=False, has_project=False`` — both pushed into a
-        #      legacy Read (rare; happens when neither rename nor filter
-        #      survives optimization).
-        #   2. ``has_filter=False, has_project=True`` - file-based reads
-        #      can push the filter into the scan and leave the rename
-        #      ``Project`` above it.
-        #   3. ``has_filter=True, has_project=True`` — source doesn't
-        #      support predicate pushdown (e.g. in-memory); filter at
-        #      least pushed below the rename ``Project``.
+        # For file-based reads that support predicate pushdown (e.g., parquet),
+        # the filter should be completely pushed into the read operator.
+        # We detect this by checking if the filter is gone after optimization.
         if not has_filter and not has_project:
             # Filter was pushed into Read - this is the optimal case
-            pass
-        elif not has_filter and has_project:
-            pass
+            pass  # Test passes
         elif has_filter and has_project:
             # For in-memory datasets, filter should at least push through projection
             assert plan_operator_comes_before(

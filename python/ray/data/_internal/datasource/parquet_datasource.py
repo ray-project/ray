@@ -827,6 +827,7 @@ class ParquetDatasource(Datasource):
                 block_udf,
                 to_batches_kwargs,
                 data_columns,
+                data_columns_rename_map,
                 partition_columns,
                 read_schema,
                 include_paths,
@@ -836,6 +837,7 @@ class ParquetDatasource(Datasource):
                 self._block_udf,
                 self._scanner_kwargs,
                 self._get_data_columns(),
+                self.get_column_renames(),
                 self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
@@ -850,6 +852,7 @@ class ParquetDatasource(Datasource):
                         block_udf,
                         to_batches_kwargs,
                         data_columns,
+                        data_columns_rename_map,
                         partition_columns,
                         read_schema,
                         f,
@@ -1148,6 +1151,7 @@ def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
     data_columns: Optional[List[str]],
+    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
@@ -1175,6 +1179,7 @@ def read_fragments(
                 fragment.original,
                 schema=schema,
                 data_columns=data_columns,
+                data_columns_rename_map=data_columns_rename_map,
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
@@ -1538,6 +1543,7 @@ def _read_batches_from(
     *,
     schema: "pyarrow.Schema",
     data_columns: Optional[List[str]],
+    data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -1554,6 +1560,8 @@ def _read_batches_from(
     """
 
     import pyarrow as pa
+
+    from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})
@@ -1585,6 +1593,7 @@ def _read_batches_from(
     row_offset = 0
 
     def _generate_tables() -> "pa.Table":
+        """Inner generator that yields tables without renaming."""
         nonlocal row_offset
 
         def _postprocess_table(table):
@@ -1652,7 +1661,10 @@ def _read_batches_from(
                 )
             raise
 
-    yield from _generate_tables()
+    # Apply renames to all tables from the generator
+    yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
+        _generate_tables(), data_columns_rename_map
+    )
 
 
 def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:

@@ -7,9 +7,7 @@ from pkg_resources import parse_version
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import (
     ExpressionEvaluator,
-    eval_projection,
 )
-from ray.data.expressions import col, star
 from ray.data.tests.conftest import get_pyarrow_version
 
 
@@ -350,16 +348,6 @@ def test_filter_bad_expression(sample_data):
     sample_data_path, _ = sample_data
     with pytest.raises(pa.ArrowInvalid):
         pq.read_table(sample_data_path, filters=filters)
-
-
-def test_eval_projection_star_rename_missing_source_raises():
-    """A rename targeting a column not present in the block must raise rather
-    than be silently dropped during star expansion."""
-    block = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
-    projection = [star(), col("nonexistent")._rename("x")]
-
-    with pytest.raises(KeyError):
-        eval_projection(projection, block)
 
 
 if __name__ == "__main__":

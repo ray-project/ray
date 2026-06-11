@@ -212,6 +212,9 @@ class Read(
             num_outputs=self._num_outputs,
         )
 
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        return self.datasource.get_column_renames()
+
     def supports_predicate_pushdown(self) -> bool:
         return self.datasource.supports_predicate_pushdown()
 
@@ -246,16 +249,10 @@ class ReadFiles(
 
     Consumes ``FileManifest`` blocks produced by a :class:`ListFiles`
     source operator upstream. Owns the :class:`Scanner` (with any pushed
-    column/predicate/limit state) and the post-pushdown schema. Listing,
-    shuffling, and size-balanced bucketing happen in the upstream op;
-    this op's physical planner just reads each manifest bucket via
-    ``scanner.create_reader().read(manifest)``.
-
-    V2 reads never rename columns at the read stage — column renaming
-    is always handled by a ``Project`` operator above ``ReadFiles``.
-    This simplifies projection and predicate pushdown by eliminating
-    the "predicate above uses new names, predicate below uses old
-    names" rebinding dance.
+    column/predicate/limit state), schema, and ``column_renames`` map.
+    Listing, shuffling, and size-balanced bucketing happen in the
+    upstream op; this op's physical planner just reads each manifest
+    bucket via ``scanner.create_reader().read(manifest)``.
     """
 
     datasource_name: str
@@ -264,11 +261,15 @@ class ReadFiles(
     parallelism: int
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     compute: Optional[ComputeStrategy] = None
+    # ``old_name → new_name`` for any columns the projection pushdown rule
+    # renamed. The scanner only knows original names; renames are applied
+    # in ``plan_read_files_op`` after each block is read.
+    column_renames: Optional[Dict[str, str]] = None
     # Optional post-read block transform. Used by ``read_parquet``'s
     # ``_block_udf`` and ``tensor_column_schema`` (the latter is folded
     # into a ``_block_udf`` by ``_resolve_parquet_args`` before it gets
     # here). Applied in ``plan_read_files_op.do_read`` after each
-    # table is read.
+    # table is read and before column renames.
     block_udf: Optional[Callable[[Block], Block]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
@@ -313,6 +314,14 @@ class ReadFiles(
                 schema = transformed.with_metadata(schema.metadata)
             except Exception:
                 pass
+        if self.column_renames:
+            import pyarrow as pa
+
+            renamed_fields = [
+                pa.field(self.column_renames.get(f.name, f.name), f.type, f.nullable)
+                for f in schema
+            ]
+            schema = pa.schema(renamed_fields)
         return schema
 
     def infer_metadata(self) -> BlockMetadata:
@@ -339,11 +348,11 @@ class ReadFiles(
         columns = self.scanner.pruned_column_names()
         if columns is None:
             return None
-        # The read stage never renames at the read layer; the projection
-        # map is always an identity (original name -> original name).
-        # Renaming is always carried by an ``AliasExpr`` in a ``Project``
-        # operator above the read.
-        return {name: name for name in columns}
+        renames = self.column_renames or {}
+        return {name: renames.get(name, name) for name in columns}
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        return self.column_renames
 
     def apply_projection(
         self,
@@ -357,13 +366,29 @@ class ReadFiles(
 
         assert isinstance(self.scanner, SupportsColumnPruning)
 
-        # V2 reads only prune columns at the read stage. Any rename info
-        # in ``projection_map`` is dropped here; the optimizer rule keeps
-        # a ``Project`` op on top of ``ReadFiles`` to carry rename
-        # ``AliasExpr`` instances. Only the keys (column names to keep)
-        # are used.
-        new_scanner = self.scanner.prune_columns(list(projection_map.keys()))
-        return replace(self, scanner=new_scanner)
+        # ``projection_map`` is ``{input_name: output_name}`` where the
+        # input names are what this op's current output produces — which
+        # includes any renames applied on a prior pushdown. Translate
+        # input names back to the ORIGINAL on-disk column names via the
+        # existing ``column_renames`` map, then hand those originals to
+        # the scanner. The new rename map is composed on top of the old
+        # so a chain like ``sepal.length → a → b`` collapses to
+        # ``sepal.length → b``.
+        existing = self.column_renames or {}
+        reverse = {out: orig for orig, out in existing.items()}
+
+        original_to_new: Dict[str, str] = {}
+        for input_name, output_name in projection_map.items():
+            original = reverse.get(input_name, input_name)
+            original_to_new[original] = output_name
+
+        new_scanner = self.scanner.prune_columns(list(original_to_new.keys()))
+        merged = {orig: out for orig, out in original_to_new.items() if orig != out}
+        return replace(
+            self,
+            scanner=new_scanner,
+            column_renames=merged or None,
+        )
 
     def supports_predicate_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (
