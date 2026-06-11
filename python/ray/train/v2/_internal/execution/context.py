@@ -4,6 +4,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -16,7 +17,10 @@ from ray.train.v2._internal.constants import (
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
 )
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.checkpoint.sync_actor import (
+    SynchronizationActor,
+    SynchronizationBarrierResetError,
+)
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
@@ -223,14 +227,20 @@ class TrainContext:
         # Get a consensus across ranks on the remote storage path, so distributed
         # checkpoints will be stored to the same place.
         sync_actor = self.get_synchronization_actor()
-        return ray.get(
-            sync_actor.broadcast_from_rank_zero.remote(
-                world_rank=self.distributed_context.world_rank,
-                world_size=self.distributed_context.world_size,
-                data=checkpoint_dir_name,
-                caller_method_name="ray.train.report",
+        with invoke_context_managers(
+            [
+                callback.on_checkpoint_sync
+                for callback in self.execution_context.train_context_callbacks
+            ]
+        ):
+            return ray.get(
+                sync_actor.broadcast_from_rank_zero.remote(
+                    world_rank=self.distributed_context.world_rank,
+                    world_size=self.distributed_context.world_size,
+                    data=checkpoint_dir_name,
+                    caller_method_name="ray.train.report",
+                )
             )
-        )
 
     # TODO: make retry configurable
     @retry(description="upload checkpoint", max_attempts=3, match=AWS_RETRYABLE_TOKENS)
@@ -282,43 +292,49 @@ class TrainContext:
                     )
                 )
 
-        try:
-            # Persist the checkpoint to the remote storage path.
-            if checkpoint_upload_fn:
-                # Wraps the checkpoint_upload_fn with warning if slow
-                with context_watchdog(
-                    slow_upload_warning, CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
-                ):
-                    persisted_checkpoint = checkpoint_upload_fn(
-                        checkpoint, checkpoint_dir_name
-                    )
-
-                # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
-                if persisted_checkpoint is None or not isinstance(
-                    persisted_checkpoint, ray.train.Checkpoint
-                ):
-                    raise ValueError(
-                        "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
-                    )
-            else:
-                # Wraps the `storage_context.persist_current_checkpoint` with warning if slow
-                with context_watchdog(
-                    slow_upload_warning, DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
-                ):
-                    persisted_checkpoint = (
-                        self.storage_context.persist_current_checkpoint(
+        # Records how long the checkpoint transfer took
+        warn_message = (
+            CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
+            if checkpoint_upload_fn
+            else DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
+        )
+        with invoke_context_managers(
+            [
+                callback.on_checkpoint_transfer
+                for callback in self.execution_context.train_context_callbacks
+            ]
+        ):
+            try:
+                with context_watchdog(slow_upload_warning, warn_message):
+                    if checkpoint_upload_fn:
+                        # Upload the checkpoint using the custom checkpoint_upload_fn
+                        persisted_checkpoint = checkpoint_upload_fn(
                             checkpoint, checkpoint_dir_name
                         )
-                    )
+                    else:
+                        # Upload the checkpoint using PyArrow
+                        persisted_checkpoint = (
+                            self.storage_context.persist_current_checkpoint(
+                                checkpoint, checkpoint_dir_name
+                            )
+                        )
+            except FileNotFoundError:
+                logger.exception(
+                    f"Failed to find local checkpoint ({checkpoint}) when attempting to upload it. "
+                    "This could be caused by multiple workers on a node attempting to upload the "
+                    "same directory, and then one of the workers deletes the directory before the "
+                    "others finish."
+                )
+                raise
 
-        except FileNotFoundError:
-            logger.exception(
-                f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
-                "This could be caused by multiple workers on a node attempting to upload the "
-                "same directory, and then one of the workers deletes the directory before the "
-                "others finish."
+        # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
+        if checkpoint_upload_fn and not isinstance(
+            persisted_checkpoint, ray.train.Checkpoint
+        ):
+            raise ValueError(
+                f"checkpoint_upload_fn must return a `ray.train.Checkpoint`. Actual type is {type(persisted_checkpoint)}"
             )
-            raise
+
         # TODO: consider deleting local checkpoint as async callback instead
         if delete_local_checkpoint_after_upload:
             try:
@@ -352,7 +368,8 @@ class TrainContext:
                 lambda: self.current_report_index == report_call_index - 1
             )
             logger.info(
-                f"Reporting training result {report_call_index}: {training_report}"
+                f"Reporting training result {report_call_index}: {training_report} "
+                f"from rank {self.get_world_rank()}"
             )
             # Update latest checkpoint as the persisted checkpoint.
             if training_report.checkpoint:
@@ -378,16 +395,16 @@ class TrainContext:
         result on the result queue of this worker process.
 
         TODO: the report function should be implemented in the worker instead
-        of in the train context. The train context should only keep the train
-        related information and not the worker related actions. This refactor
-        would also require the `TrainContextCallback` to be updated as well.
+          of in the train context. The train context should only keep the train
+          related information and not the worker related actions. This refactor
+          would also require the `TrainContextCallback` to be updated as well.
         """
         if "torch" in sys.modules:
             from ray.air._internal.torch_utils import contains_tensor
 
             if contains_tensor(metrics):
                 raise ValueError(
-                    "Passing objects containg Torch tensors as metrics "
+                    "Passing objects containing Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
                     "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
@@ -399,6 +416,30 @@ class TrainContext:
                 "`validation_config` was not set on the trainer, but a validation was requested."
             )
 
+        if delete_local_checkpoint_after_upload and checkpoint is not None:
+            experiment_path = Path(self.storage_context.experiment_fs_path)
+            checkpoint_path = Path(checkpoint.path)
+
+            # Resolve symlinks only for local (absolute) paths.
+            # Remote paths (S3, GCS, etc.) are relative after URI and resolve()
+            # would prepend CWD, producing a meaningless local path.
+            # Mixed absolute/relative paths return False
+            if experiment_path.is_absolute():
+                experiment_path = experiment_path.resolve()
+            if checkpoint_path.is_absolute():
+                checkpoint_path = checkpoint_path.resolve()
+
+            if experiment_path.is_relative_to(checkpoint_path):
+                raise ValueError(
+                    f"Ray Train's experiment directory ({self.storage_context.experiment_fs_path}) "
+                    f"is contained within the checkpoint path ({checkpoint.path}) "
+                    f"and `ray.train.report(delete_local_checkpoint_after_upload=True)`. "
+                    "As a result, this would delete the experiment directory. "
+                    "Please write the checkpoint to a temporary directory, "
+                    "a subdirectory of the experiment directory, "
+                    "or use `delete_local_checkpoint_after_upload=False`."
+                )
+
         with invoke_context_managers(
             [
                 callback.on_report
@@ -409,9 +450,20 @@ class TrainContext:
             report_call_index = self.report_call_index
 
             # Sync the checkpoint dir name across ranks.
-            checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
-                checkpoint_dir_name
-            )
+            try:
+                checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
+                    checkpoint_dir_name
+                )
+            except ray.exceptions.RayTaskError as e:
+                if not isinstance(e.cause, SynchronizationBarrierResetError):
+                    raise e
+                logger.warning(
+                    "Synchronization barrier was reset (likely due to a "
+                    "worker failure). Skipping this report."
+                )
+                # Keep report indexes aligned across workers.
+                self.report_call_index -= 1
+                return
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:

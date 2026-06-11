@@ -10,11 +10,16 @@ import time
 import traceback
 from collections import Counter
 from dataclasses import asdict
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_localhost,
+    parse_address,
+)
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -55,7 +60,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def parse_resource_demands(resource_load_by_shape):
+def parse_resource_demands(
+    resource_load_by_shape: "gcs_pb2.ResourceLoad",
+) -> Tuple[List[Dict], List[Dict]]:
     """Handle the message.resource_load_by_shape protobuf for the demand
     based autoscaling. Catch and log all exceptions so this doesn't
     interfere with the utilization based autoscaler until we're confident
@@ -63,12 +70,10 @@ def parse_resource_demands(resource_load_by_shape):
     resource demand vector.
 
     Args:
-        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
-            in protobuf form or None.
+        resource_load_by_shape: The resource demands in protobuf form or None.
 
     Returns:
-        List[ResourceDict]: Waiting bundles (ready and feasible).
-        List[ResourceDict]: Infeasible bundles.
+        Tuple of (Waiting bundles both ready and feasible, and Infeasible bundles).
     """
     waiting_bundles, infeasible_bundles = [], []
     try:
@@ -195,7 +200,9 @@ class Monitor:
                         AUTOSCALER_METRIC_PORT
                     )
                 )
-                kwargs = {"addr": "127.0.0.1"} if head_node_ip == "127.0.0.1" else {}
+                kwargs = (
+                    {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
+                )
                 prometheus_client.start_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=self.prom_metrics.registry,

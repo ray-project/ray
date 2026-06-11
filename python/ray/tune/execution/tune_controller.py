@@ -54,7 +54,10 @@ from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -443,7 +446,7 @@ class TuneController:
             f"{Path(newest_state_path).name}"
         )
         with self._storage.storage_filesystem.open_input_stream(newest_state_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         self.__setstate__(experiment_state["runner_data"])
 
@@ -1283,6 +1286,9 @@ class TuneController:
         Args:
             trial: Trial to act on.
             decision: Scheduling decision to undertake.
+            after_save: True if this action is being executed immediately
+                after a trial save; suppresses an additional checkpoint when
+                pausing.
         """
         if decision == TrialScheduler.CONTINUE:
             self._schedule_trial_train(trial)
@@ -1737,6 +1743,8 @@ class TuneController:
 
         Args:
             trial: Trial being saved.
+            checkpoint_value: The training result containing the checkpoint
+                that was produced by the trial save.
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 

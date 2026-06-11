@@ -4,6 +4,7 @@ import subprocess
 import time
 import traceback
 from threading import Thread
+from typing import Any, Dict, List, Optional
 
 import click
 
@@ -53,6 +54,11 @@ class NodeUpdater:
         runtime_hash: Used to check for config changes
         file_mounts_contents_hash: Used to check for changes to file mounts
         is_head_node: Whether to use head start/setup commands
+        node_resources: Optional resources string that the raylet should
+            advertise on startup.
+        node_labels: Optional labels for the node.
+        cluster_synced_files: Files synced from the head to worker nodes after
+            the head node finishes its setup.
         rsync_options: Extra options related to the rsync command.
         process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
@@ -66,34 +72,34 @@ class NodeUpdater:
 
     def __init__(
         self,
-        node_id,
-        provider_config,
-        provider,
-        auth_config,
-        cluster_name,
-        file_mounts,
-        initialization_commands,
-        setup_commands,
-        ray_start_commands,
-        runtime_hash,
-        file_mounts_contents_hash,
-        is_head_node,
-        node_resources=None,
-        node_labels=None,
-        cluster_synced_files=None,
-        rsync_options=None,
-        process_runner=subprocess,
-        use_internal_ip=False,
-        docker_config=None,
-        restart_only=False,
-        for_recovery=False,
+        node_id: str,
+        provider_config: dict,
+        provider: Any,
+        auth_config: dict,
+        cluster_name: str,
+        file_mounts: dict,
+        initialization_commands: list,
+        setup_commands: list,
+        ray_start_commands: list,
+        runtime_hash: str,
+        file_mounts_contents_hash: str,
+        is_head_node: bool,
+        node_resources: Optional[str] = None,
+        node_labels: Optional[Dict[str, str]] = None,
+        cluster_synced_files: Optional[List[str]] = None,
+        rsync_options: Optional[Dict[str, Any]] = None,
+        process_runner: Any = subprocess,
+        use_internal_ip: bool = False,
+        docker_config: Optional[Dict[str, Any]] = None,
+        restart_only: bool = False,
+        for_recovery: bool = False,
     ):
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         # Three cases:
         # 1) use_internal_ip arg is True -> use_internal_ip is True
         # 2) worker node -> use value of provider_config["use_internal_ips"]
         # 3) head node -> use value of provider_config["use_internal_ips"] unless
-        #                 overriden by provider_config["use_external_head_ip"]
+        #                 overridden by provider_config["use_external_head_ip"]
         use_internal_ip = use_internal_ip or (
             provider_config.get("use_internal_ips", False)
             and not (

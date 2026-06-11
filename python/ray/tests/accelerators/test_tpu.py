@@ -21,6 +21,24 @@ def test_autodetect_num_tpus_accel(mock_glob):
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
+@patch("os.path.isdir")
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_accel_ignores_blackwell_directory(
+    mock_list, mock_glob, mock_isdir
+):
+    # NVIDIA drivers 570.x (Blackwell-class GPUs, e.g. RTX 5090) create
+    # /dev/accel as a directory containing /dev/accel/accel0. The non-recursive
+    # glob matches the directory entry; filtering directories out keeps real
+    # TPU chips (character devices at /dev/accel0..N) while rejecting the
+    # NVIDIA false positive.
+    mock_glob.return_value = ["/dev/accel"]
+    mock_isdir.side_effect = lambda p: p == "/dev/accel"
+    mock_list.side_effect = FileNotFoundError
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
 @patch("glob.glob")
 @patch("os.listdir")
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
@@ -281,6 +299,47 @@ def test_is_valid_tpu_accelerator_type(accelerator_type, expected):
         TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type)
         == expected
     )
+
+
+def test_get_total_chips_from_accelerator_type():
+    assert tpu.get_total_chips_from_accelerator_type("v6e-16") == 16
+    assert tpu.get_total_chips_from_accelerator_type("v6e-8") == 8
+    assert (
+        tpu.get_total_chips_from_accelerator_type("v7x-16") == 8
+    )  # v7x has 2 cores per chip
+    assert (
+        tpu.get_total_chips_from_accelerator_type("v4-8") == 4
+    )  # v4 has 2 cores per chip
+
+    # Test invalid cases
+    with pytest.raises(ValueError, match="Accelerator type must include size"):
+        tpu.get_total_chips_from_accelerator_type("v6e")
+
+    with pytest.raises(ValueError, match="Invalid accelerator type"):
+        tpu.get_total_chips_from_accelerator_type("invalid-8")
+
+
+def test_get_num_tpu_visible_chips_per_host():
+    # v6e multi-host (4 chips per VM)
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-16") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-32") == 4
+
+    # v6e single-host/sub-host (exact chip count)
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-8") == 8
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-4") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-1") == 1
+
+    # v5litepod multi-host defaults to 4, single-host is 8 chips
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-16") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-8") == 8
+
+    # v5litepod sub-host
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-4") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-1") == 1
+
+    # Other TPU generations default to 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v4-8") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
 
 
 if __name__ == "__main__":

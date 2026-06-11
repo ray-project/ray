@@ -23,6 +23,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
@@ -248,7 +249,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
-                                        options.node_ip_address == "127.0.0.1");
+                                        IsLocalhost(options.node_ip_address));
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -334,6 +335,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*is_node_dead=*/
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
+      },
+      /*free_object_on_nodes_async=*/
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,

@@ -27,7 +27,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
@@ -341,6 +341,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
+  /// Read the next index of an ObjectRefStream of generator_id without
+  /// consuming an index, and return just the ObjectID of that index.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return The ObjectID of the next index. It should not be nil.
+  ObjectID PeekObjectIdStream(const ObjectID &generator_id);
+
   /// Asynchronously delete the ObjectRefStream that was created upon the
   /// initial task submission. This method triggers a timer. On each interval,
   /// we check whether the generator ref and all dynamic return refs have been
@@ -519,8 +526,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] owner_address The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \param[in] tensor_transport The tensor transport to use for the object.
@@ -532,7 +537,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true,
       const std::optional<std::string> &tensor_transport = std::nullopt);
 
@@ -564,12 +568,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
-  /// \param[in] The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id,
-                   bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+  Status SealOwned(const ObjectID &object_id, bool pin_object);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -1282,11 +1282,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                   rpc::SendReplyCallback send_reply_callback);
 
   // Set local worker as the owner of object.
-  // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
-                               rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback);
-
   // Get the number of pending tasks.
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
@@ -1367,7 +1362,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
 
+  /// Send a FreeLocalObjects RPC to every raylet holding a copy of the object.
+  ///
+  /// \param object_id The object whose copies should be freed.
+  /// \param locations All nodes that hold a copy of the object, including primary
+  /// and secondary copies.
+  void FreeObjectOnNodesAsync(const ObjectID &object_id,
+                              const absl::flat_hash_set<NodeID> &locations);
+
  private:
+  /// Resolve a raylet RPC client by node id. Should be used to only get a temporary RPC
+  /// client, since the retryable GRPC client relies on clients going out of scope to
+  /// determine when to fail any pending RPCs
+  ///
+  /// \param node_id The node to resolve.
+  /// \return The local client for the current node, the pooled client for any
+  /// other live node, or nullptr if the node is dead or unknown to GCS.
+  std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 

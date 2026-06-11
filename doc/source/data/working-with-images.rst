@@ -68,7 +68,7 @@ To view the full list of supported file formats, see the
             Column     Type
             ------     ----
             image_url  string
-            bytes      null
+            bytes      binary
 
     .. tab-item:: NumPy
 
@@ -194,7 +194,7 @@ To transform images, call :meth:`~ray.data.Dataset.map` or
 
     ds = (
         ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages")
-        .map_batches(increase_brightness)
+        .map_batches(increase_brightness, batch_size="auto")
     )
 
 For more information on transforming data, see

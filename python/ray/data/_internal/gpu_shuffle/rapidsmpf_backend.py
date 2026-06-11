@@ -78,33 +78,26 @@ def lazy_load() -> type[Any]:
 
     # Exempt this class from coverage is it's indirectly tested by the ShuffleStage which coverage tools don't pick up.
     class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
-        """
-        Class that performs a bulk shuffle operation.
-        This class is compatible with Ray Actors communicating with each other using UCXX communication.
-        Parameters
-        ----------
-        nranks
-            Number of ranks in the communication group.
-        total_nparts
-            Total number of output partitions.
-        shuffle_on
-            List of column names to shuffle on.
-        output_path
-            Path to write output files.
-        rmm_pool_size
-            Size of the RMM GPU memory pool in bytes.
-            If "auto", the memory pool is set to 90% of the free GPU memory.
-            If None, the memory pool is set to 50% of the free GPU memory that can expand if needed.
-        spill_memory_limit
-            Device memory limit in bytes for spilling to host.
-            If "auto", the limit is set to 80% of the RMM pool size.
-            If None spilling is disabled.
-        enable_statistics
-            Whether to collect shuffle statistics.
-        read_kwargs
-            Keyword arguments for cudf.read_parquet method.
-        write_kwargs
-            Keyword arguments for cudf.to_parquet method.
+        """Class that performs a bulk shuffle operation.
+
+        This class is compatible with Ray Actors communicating with each
+        other using UCXX communication.
+
+        Args:
+            nranks: Number of ranks in the communication group.
+            total_nparts: Total number of output partitions.
+            shuffle_on: List of column names to shuffle on.
+            output_path: Path to write output files.
+            rmm_pool_size: Size of the RMM GPU memory pool in bytes.
+                If "auto", the memory pool is set to 90% of the free GPU memory.
+                If None, the memory pool is set to 50% of the free GPU memory
+                that can expand if needed.
+            spill_memory_limit: Device memory limit in bytes for spilling to host.
+                If "auto", the limit is set to 80% of the RMM pool size.
+                If None spilling is disabled.
+            enable_statistics: Whether to collect shuffle statistics.
+            read_kwargs: Keyword arguments for cudf.read_parquet method.
+            write_kwargs: Keyword arguments for cudf.to_parquet method.
         """
 
         def __init__(  # noqa: PLR0913
@@ -158,13 +151,11 @@ def lazy_load() -> type[Any]:
             self.write_kwargs = write_kwargs if write_kwargs is not None else {}
 
         def setup_worker(self, root_address_bytes: bytes) -> None:
-            """
-            Setup the UCXX communication and a shuffle operation.
+            """Setup the UCXX communication and a shuffle operation.
 
-            Parameters
-            ----------
-            root_address_bytes
-                Address of the root worker for UCXX initialization.
+            Args:
+                root_address_bytes: Address of the root worker for UCXX
+                    initialization.
             """
             super().setup_worker(root_address_bytes)
 
@@ -208,15 +199,11 @@ def lazy_load() -> type[Any]:
         def insert_chunk(
             self, table: plc.Table | cudf.DataFrame, column_names: list[str]
         ) -> None:
-            """
-            Insert a pylibcudf Table or cuDF DataFrame into the shuffler.
+            """Insert a pylibcudf Table or cuDF DataFrame into the shuffler.
 
-            Parameters
-            ----------
-            table
-                The table or DataFrame to insert.
-            column_names
-                The column names of the table.
+            Args:
+                table: The table or DataFrame to insert.
+                column_names: The column names of the table.
             """
             from rmm.pylibrmm.stream import DEFAULT_STREAM
 
@@ -239,19 +226,19 @@ def lazy_load() -> type[Any]:
             self.comm.logger.info("Insert finished")
 
         def extract(self) -> Iterator[tuple[int, plc.Table]]:
-            """
-            Extract shuffled partitions as they become ready.
+            """Extract shuffled partitions as they become ready.
 
             Partitions are yielded in completion order (via ``wait_any()``),
             not partition order. Callers are responsible for reordering.
 
-            Returns
-            -------
-                An iterator over (partition_id, partition) tuples.
+            Yields:
+                tuple[int, plc.Table]: ``(partition_id, partition)`` tuples.
             """
             from rmm.pylibrmm.stream import DEFAULT_STREAM
 
-            while not self.shuffler.finished():
+            first_time = True
+            while not self.shuffler.finished() or first_time:
+                first_time = False
                 partition_id = self.shuffler.wait_any()
                 packed_chunks = self.shuffler.extract(partition_id)
                 partition = unpack_and_concat(

@@ -59,7 +59,7 @@ def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     batch["petal area (cm^2)"] = length * width
     return batch
 
-transformed_ds = ds.map_batches(compute_area)
+transformed_ds = ds.map_batches(compute_area, batch_size="auto")
 
 # Iterate over batches of data.
 for batch in transformed_ds.iter_batches(batch_size=4):
@@ -787,7 +787,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 
 ### Videos
 
-- [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
+- [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://www.youtube.com/watch?v=wl4tvru9_Cg) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
 - [Programming at any Scale with Ray \| SF Python Meetup Sept 2019](https://www.youtube.com/watch?v=LfpHyIXBhlE)
 - [Ray for Reinforcement Learning \| Data Council 2019](https://www.youtube.com/watch?v=Ayc0ca150HI)
 - [Scaling Interactive Pandas Workflows with Modin](https://www.youtube.com/watch?v=-HjLd_3ahCw)

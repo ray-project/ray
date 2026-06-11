@@ -102,7 +102,12 @@ class FunctionActorManager:
             ActorClass:function_id) that are already in GCS.
     """
 
-    def __init__(self, worker):
+    def __init__(self, worker: "ray._private.worker.Worker"):
+        """Initialize FunctionActorManager.
+
+        Args:
+            worker: The worker this manager belongs to.
+        """
         self._worker = worker
         self._functions_to_export = []
         self._actors_to_export = []
@@ -139,7 +144,7 @@ class FunctionActorManager:
         function_id = function_descriptor.function_id
         return self._num_task_executions[function_id]
 
-    def compute_collision_identifier(self, function_or_class):
+    def compute_collision_identifier(self, function_or_class: Callable) -> bytes:
         """The identifier is used to detect excessive duplicate exports.
         The identifier is used to determine when the same function or class is
         exported many times. This can yield false positives.
@@ -211,8 +216,9 @@ class FunctionActorManager:
 
         return key
 
-    def export(self, remote_function):
+    def export(self, remote_function: RemoteFunction) -> None:
         """Pickle a remote function and export it to redis.
+
         Args:
             remote_function: the RemoteFunction object.
         """
@@ -348,7 +354,9 @@ class FunctionActorManager:
                 )
         return True
 
-    def get_execution_info(self, job_id, function_descriptor):
+    def get_execution_info(
+        self, job_id: JobID, function_descriptor: PythonFunctionDescriptor
+    ) -> FunctionExecutionInfo:
         """Get the FunctionExecutionInfo of a remote function.
         Args:
             job_id: ID of the job that the function belongs to.
@@ -416,18 +424,25 @@ class FunctionActorManager:
         else:
             return False
 
-    def _wait_for_function(self, function_descriptor, job_id: str, timeout=10):
+    def _wait_for_function(
+        self,
+        function_descriptor: PythonFunctionDescriptor,
+        job_id: str,
+        timeout: float = 10,
+    ):
         """Wait until the function to be executed is present on this worker.
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
         a problem somewhere and we will push an error message to the user.
         If this worker is an actor, then this will wait until the actor has
         been defined.
+
         Args:
-            function_descriptor : The FunctionDescriptor of the function that
+            function_descriptor: The FunctionDescriptor of the function that
                 we want to execute.
             job_id: The ID of the job to push the error message to
                 if this times out.
+            timeout: Seconds to wait before pushing a warning to the user.
         """
         start_time = time.time()
         # Only send the warning once.
@@ -530,7 +545,11 @@ class FunctionActorManager:
         # within tasks. I tried to disable this, but it may be necessary
         # because of https://github.com/ray-project/ray/issues/1146.
 
-    def load_actor_class(self, job_id, actor_creation_function_descriptor):
+    def load_actor_class(
+        self,
+        job_id: JobID,
+        actor_creation_function_descriptor: PythonFunctionDescriptor,
+    ) -> type:
         """Load the actor class.
         Args:
             job_id: job ID of the actor.
@@ -695,7 +714,7 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(self, method_name: str, method):
+    def _make_actor_method_executor(self, method_name: str, method: Callable):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.

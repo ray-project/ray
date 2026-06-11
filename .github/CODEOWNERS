@@ -38,7 +38,7 @@
 # ==== Libraries and frameworks ====
 
 # Dependencies
-/python/setup.py @richardliaw @edoakes @aslonnie
+/python/setup.py @richardliaw @edoakes @ray-project/ray-ci
 
 # Common directory shared by core and the libraries.
 # Stricter enforcement because this defines the public boundary supported by core.
@@ -131,3 +131,9 @@
 /.github/workflows/ @ray-project/ray-ci
 
 /.gemini/ @edoakes @ray-project/ray-ci
+
+# TPU
+/python/ray/util/tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/tests/test_tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/tests/accelerators/test_tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/_private/accelerators/tpu.py @andrewsykim @edoakes @ryanaoleary

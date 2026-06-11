@@ -9,6 +9,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
+        "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker/actor_management:fake_actor_creator",
         "//src/ray/core_worker/task_submission:dependency_resolver",
     ],
@@ -20,7 +21,6 @@ ray_cc_test(
     srcs = ["out_of_order_actor_submit_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:asio",
         "//src/ray/core_worker/task_submission:out_of_order_actor_submit_queue",
     ],
 )
@@ -31,6 +31,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker/task_submission:actor_task_submitter",
         "//src/ray/pubsub:fake_publisher",
@@ -45,7 +46,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:asio",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:reference_counter",

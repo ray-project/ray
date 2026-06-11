@@ -3,7 +3,7 @@ import functools
 from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
 from ray.data._internal.util import unify_ref_bundles_schema
 from ray.data.block import (
@@ -35,7 +35,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     input_blocks: InitVar[List[ObjectRef[Block]]]
     input_metadata: InitVar[List[BlockMetadataWithSchema]]
     input_data: List[RefBundle] = field(init=False)
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
     )
@@ -57,14 +56,13 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
             "input_data",
             [
                 RefBundle(
-                    [(input_blocks[i], input_metadata[i])],
+                    [BlockEntry(input_blocks[i], input_metadata[i])],
                     owns_blocks=False,
                     schema=input_metadata[i].schema,
                 )
                 for i in range(len(input_blocks))
             ],
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_num_outputs", len(input_blocks))
 
     def output_data(self) -> Optional[List[RefBundle]]:

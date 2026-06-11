@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -153,6 +154,8 @@ class TaskManagerTest : public ::testing::Test {
             publisher_.get(),
             subscriber_.get(),
             /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            /*free_object_on_nodes_async=*/
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>(),
             lineage_pinning_enabled)),
@@ -693,6 +696,36 @@ TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
   manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
 }
 
+TEST_F(TaskManagerTest, TestTaskOomKillWithFiniteOomRetryDecrementsCounter) {
+  const int kOomRetries = 3;
+  RayConfig::instance().initialize(
+      absl::StrFormat(R"({"task_oom_retries": %d})", kOomRetries));
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/10);
+  auto return_id = spec.ReturnId(0);
+
+  for (int i = 0; i < kOomRetries; i++) {
+    ASSERT_EQ(num_retries_, i);
+    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+    ASSERT_EQ(num_retries_, i + 1);
+    ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_oom_retry_delay_base_ms());
+  }
+
+  ASSERT_EQ(num_retries_, kOomRetries);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::OUT_OF_MEMORY);
+  ASSERT_EQ(num_retries_, kOomRetries);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, rpc::ErrorType::OUT_OF_MEMORY);
+}
+
 TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryCounter) {
   RayConfig::instance().initialize(R"({"task_oom_retries": 1})");
   int num_retries = 0;
@@ -866,8 +899,14 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       0,
       TaskID::Nil(),
       "");
-  builder.SetActorTaskSpec(
-      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0, std::nullopt);
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           num_retries,
+                           false,
+                           "",
+                           0,
+                           std::nullopt,
+                           /*is_detached_actor=*/false);
   TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -1454,6 +1493,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
@@ -1517,6 +1558,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
@@ -1581,6 +1624,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       lineage_pinning_enabled_);
@@ -3078,6 +3123,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);
@@ -3161,6 +3208,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       publisher_.get(),
       subscriber_.get(),
       /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *std::make_shared<ray::observability::FakeGauge>(),
       *std::make_shared<ray::observability::FakeGauge>(),
       false);

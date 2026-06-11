@@ -28,6 +28,10 @@ class MockObjectManager : public ObjectManagerInterface {
                const TaskMetricsKey &task_key),
               (override));
   MOCK_METHOD(void, CancelPull, (uint64_t request_id), (override));
+  MOCK_METHOD(void,
+              MarkObjectFailed,
+              (const ObjectID &object_id, rpc::ErrorType error_type),
+              (override));
   MOCK_METHOD(bool,
               PullRequestActiveOrWaitingForMetadata,
               (uint64_t request_id),
@@ -54,6 +58,14 @@ class MockObjectManager : public ObjectManagerInterface {
   MOCK_METHOD(void, Stop, (), (override));
   MOCK_METHOD(void, RecordMetrics, (), (override));
   MOCK_METHOD(void, HandleNodeRemoved, (const NodeID &node_id), (override));
+  MOCK_METHOD(std::vector<ObjectID>,
+              GetLocalObjectsOwnedBy,
+              (const WorkerID &worker_id),
+              (const, override));
+  MOCK_METHOD(std::vector<ObjectID>,
+              GetLocalObjectsOwnedByOwnersOn,
+              (const NodeID &node_id),
+              (const, override));
   MOCK_METHOD(void, HandleObjectAdded, (const ObjectInfo &object_info), (override));
   MOCK_METHOD(void, HandleObjectDeleted, (const ObjectID &object_id), (override));
 };

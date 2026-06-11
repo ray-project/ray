@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
@@ -182,10 +182,10 @@ void RaySyncer::Register(MessageType message_type,
                 if (*stopped) {
                   return;
                 }
-                OnDemandBroadcasting(message_type);
+                BroadcastMessageIfNewVersion(message_type);
               },
               pull_from_reporter_interval_ms,
-              "RaySyncer.OnDemandBroadcasting");
+              "RaySyncer.BroadcastMessageIfNewVersion");
         }
 
         RAY_LOG(DEBUG) << "Registered components: "
@@ -196,7 +196,7 @@ void RaySyncer::Register(MessageType message_type,
       "RaySyncerRegister");
 }
 
-bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
+bool RaySyncer::BroadcastMessageIfNewVersion(MessageType message_type) {
   auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());

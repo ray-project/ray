@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ray.data import ActorPoolStrategy
 from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
+    vLLMEngineRequest,
     vLLMEngineStage,
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
@@ -35,7 +36,7 @@ def mock_vllm_wrapper():
                     request_id=0,
                     prompt=row["prompt"],
                     prompt_token_ids=None,
-                    images=[],
+                    multimodal_data=None,
                     params=row["sampling_params"],
                     idx_in_batch=row["__idx_in_batch"],
                 ),
@@ -123,6 +124,12 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
 
 @pytest.mark.asyncio
 async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
+    # Simulate vLLM's resolved state when the user sets `max_num_seqs=100`:
+    # the wrapper owns the resolution of `max_pending_requests`, and the UDF
+    # reads the resolved value back.
+    expected_max_pending_requests = math.ceil(100 * 1.1)
+    mock_vllm_wrapper.return_value.max_pending_requests = expected_max_pending_requests
+
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
         data_column="__data",
@@ -134,7 +141,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # This is overriden in the processor, so it remains unchanged when we bypass
+            # This is overridden in the processor, so it remains unchanged when we bypass
             # the processor and pass it directly to the stage via vLLMEngineStageUDF.
             "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
@@ -146,7 +153,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     assert udf.task_type == vLLMTaskType.GENERATE
     assert udf.engine_kwargs["task_type"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
-    assert udf.max_pending_requests == math.ceil(100 * 1.1)
+    assert udf.max_pending_requests == expected_max_pending_requests
 
     # Test batch processing
     batch = {
@@ -168,13 +175,16 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     assert responses[1]["prompt"] in ["Hello", "World"]
     assert responses[0]["prompt"] != responses[1]["prompt"]
 
-    # Verify the wrapper was constructed with correct arguments
+    # Verify the wrapper was constructed with correct arguments. The UDF
+    # passes `max_pending_requests=None` straight through when the caller
+    # doesn't supply it; the wrapper resolves the default from vLLM's
+    # resolved engine config.
     mock_vllm_wrapper.assert_called_once_with(
         model=model_llama_3_2_216M,
         model_source=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
-        max_pending_requests=111,
+        max_pending_requests=None,
         task_type=vLLMTaskType.EMBED,
         max_num_seqs=100,
         dynamic_lora_loading_path=None,
@@ -254,6 +264,172 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
 
         # Clean up GPU memory
         wrapper.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "task_type",
+    [
+        vLLMTaskType.GENERATE,
+        vLLMTaskType.EMBED,
+        vLLMTaskType.CLASSIFY,
+        vLLMTaskType.SCORE,
+    ],
+)
+async def test_vllm_wrapper_forwards_lora_request(task_type):
+    """Regression test: lora_request must be forwarded to the vLLM engine.
+
+    A prior bug populated vLLMEngineRequest.lora_request correctly but never
+    passed it to the vLLM engine, causing per-row LoRA adapters to be
+    silently dropped. GENERATE dispatches to engine.generate(); pooling task
+    types (EMBED / CLASSIFY / SCORE) dispatch to engine.encode().
+    """
+
+    async def finished_stream():
+        output = MagicMock()
+        output.finished = True
+        yield output
+
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.engine = MagicMock()
+    wrapper.engine.generate = MagicMock(return_value=finished_stream())
+    wrapper.engine.encode = MagicMock(return_value=finished_stream())
+    wrapper.task_type = task_type
+
+    sentinel_lora = object()
+    request = vLLMEngineRequest(
+        request_id=0,
+        idx_in_batch=0,
+        prompt="hello",
+        prompt_token_ids=None,
+        multimodal_data=None,
+        mm_processor_kwargs=None,
+        multimodal_uuids=None,
+        params=MagicMock(),
+        tokenization_kwargs=None,
+        lora_request=sentinel_lora,
+    )
+
+    await wrapper._generate_async(request)
+
+    expected = (
+        wrapper.engine.generate
+        if task_type == vLLMTaskType.GENERATE
+        else wrapper.engine.encode
+    )
+    assert expected.call_args.kwargs.get("lora_request") is sentinel_lora
+
+
+def _make_bare_wrapper():
+    """Build a vLLMEngineWrapper without invoking __init__ (which boots vLLM)."""
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.request_id = 0
+    wrapper.idx_in_batch_column = "__idx_in_batch"
+    wrapper.task_type = vLLMTaskType.GENERATE
+    wrapper._image_row_column_warning_logged = False
+    wrapper.model = "test-model"
+    wrapper.lora_lock = asyncio.Lock()
+    wrapper.lora_name_to_request = {}
+    return wrapper
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_warns_and_routes():
+    """Legacy `image` row column should warn once and be routed to multimodal_data."""
+    wrapper = _make_bare_wrapper()
+
+    sentinel_image = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [sentinel_image],
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.logger.warning"
+    ) as mock_warning:
+        request = await wrapper._prepare_llm_request(row)
+
+    assert request.multimodal_data == {"image": [sentinel_image]}
+    assert any(
+        "image" in str(call.args[0]) and "deprecated" in str(call.args[0]).lower()
+        for call in mock_warning.call_args_list
+    )
+    assert wrapper._image_row_column_warning_logged is True
+
+    # Second call must not log the deprecation warning again.
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.logger.warning"
+    ) as mock_warning2:
+        await wrapper._prepare_llm_request(
+            {
+                "__idx_in_batch": 1,
+                "prompt": "hi again",
+                "image": [sentinel_image],
+                "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+            }
+        )
+    assert not any(
+        "deprecated" in str(call.args[0]).lower()
+        for call in mock_warning2.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_merges_into_existing_multimodal_data():
+    """Legacy `image` should merge into an explicit multimodal_data dict."""
+    wrapper = _make_bare_wrapper()
+
+    img = object()
+    audio = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [img],
+        "multimodal_data": {"audio": [audio]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+    assert request.multimodal_data == {"audio": [audio], "image": [img]}
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_conflict_with_multimodal_data_raises():
+    """Setting both legacy `image` and multimodal_data['image'] must raise."""
+    wrapper = _make_bare_wrapper()
+
+    legacy_img = object()
+    modern_img = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [legacy_img],
+        "multimodal_data": {"image": [modern_img]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    with pytest.raises(ValueError, match="multimodal_data"):
+        await wrapper._prepare_llm_request(row)
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_empty_list_is_noop():
+    """Empty legacy `image=[]` should be skipped, not merged or conflict."""
+    wrapper = _make_bare_wrapper()
+
+    modern_img = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [],
+        "multimodal_data": {"image": [modern_img]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+    assert request.multimodal_data == {"image": [modern_img]}
 
 
 @pytest.mark.asyncio
@@ -347,9 +523,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     "pooling_params,tokenization_kwargs,expect_same_output",
     [
         ({}, None, True),
-        # Keep to verify backward compatibility
-        ({"truncate_prompt_tokens": 3}, None, False),
-        # Prefer truncation via tokenization_kwargs
+        # Truncation via tokenization_kwargs.
         (None, {"truncation": True, "max_length": 3}, False),
     ],
 )
@@ -408,20 +582,11 @@ async def test_vllm_wrapper_embed_pooling_params(
     wrapper.shutdown()
 
 
-@pytest.mark.parametrize(
-    "pooling_params,tokenization_kwargs",
-    [
-        # Keep to verify backward compatibility
-        ({"truncate_prompt_tokens": -1}, None),
-        # Preferred path: tokenization_kwargs truncation
-        (None, {"truncation": True, "max_length": 2048}),
-    ],
-    ids=["truncate_prompt_tokens_compat", "tokenization_kwargs"],
-)
 @pytest.mark.asyncio
-async def test_vllm_wrapper_embed_long_prompt(
-    model_opt_125m, pooling_params, tokenization_kwargs
-):
+async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
+    # Preferred path: tokenization_kwargs truncation.
+    pooling_params = None
+    tokenization_kwargs = {"truncation": True, "max_length": 2048}
     # Sufficiently long prompt to trigger truncation to max_model_len
     max_model_len = 2048
     prompt = "Hello! How's the weather?" * 10_000
@@ -507,14 +672,9 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     wrapper.shutdown()
 
 
-@pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
-    """Test the JSON output with xgrammar backend.
-
-    This test verifies both the new structured_outputs API and backward
-    compatibility with the deprecated guided_decoding parameter.
-    """
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
+    """Test JSON output with the structured_outputs sampling param."""
 
     class AnswerModel(BaseModel):
         answer: int
@@ -543,7 +703,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
-                param_key: {"json": json_schema},
+                "structured_outputs": {"json": json_schema},
             },
         },
     ]

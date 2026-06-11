@@ -1,11 +1,8 @@
 package io.ray.runtime.object;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.api.Ray;
-import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
 import java.util.HashMap;
@@ -33,14 +30,7 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public ObjectId putRaw(NativeRayObject obj) {
-    return new ObjectId(nativePut(obj, null));
-  }
-
-  @Override
-  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
-    byte[] serializedOwnerAddressBytes =
-        ((AbstractRayRuntime) Ray.internal()).getGcsClient().getActorAddress(ownerActorId);
-    return new ObjectId(nativePut(obj, serializedOwnerAddressBytes));
+    return new ObjectId(nativePut(obj));
   }
 
   @Override
@@ -116,7 +106,7 @@ public class NativeObjectStore extends ObjectStore {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] nativePut(NativeRayObject obj, byte[] serializedOwnerAddressBytes);
+  private static native byte[] nativePut(NativeRayObject obj);
 
   private static native void nativePut(byte[] objectId, NativeRayObject obj);
 

@@ -144,6 +144,20 @@ class FailingDeploymentActor:
             raise RuntimeError("Deployment actor init failed")
 
 
+@ray.remote
+class DeploymentActorContextActor:
+    """Reads deployment actor runtime context for testing."""
+
+    def get_context(self):
+        ctx = serve.get_deployment_actor_context()
+        return {
+            "deployment": ctx.deployment,
+            "app_name": ctx.app_name,
+            "actor_name": ctx.actor_name,
+            "code_version": ctx.code_version,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -677,13 +691,13 @@ def test_redeployment_replaces_actors(serve_instance):
                 init_kwargs={"start": 1},
             ),
         ],
-        version="v1",
     )
     class MyDeployment:
         def __call__(self):
             counter = serve.get_deployment_actor("counter_v1")
             return str(ray.get(counter.get.remote()))
 
+    MyDeployment = MyDeployment.options(_internal=True, version="v1")
     serve.run(MyDeployment.bind())
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "1")
@@ -699,13 +713,13 @@ def test_redeployment_replaces_actors(serve_instance):
                 init_kwargs={"start": 2},
             ),
         ],
-        version="v2",
     )
     class MyDeployment:  # noqa: F811
         def __call__(self):
             counter = serve.get_deployment_actor("counter_v2")
             return str(ray.get(counter.get.remote()))
 
+    MyDeployment = MyDeployment.options(_internal=True, version="v2")
     serve.run(MyDeployment.bind())
     wait_for_condition(lambda: httpx.get(url).text == "2")
 
@@ -726,7 +740,6 @@ def test_replica_context_includes_code_version(serve_instance):
                 init_kwargs={"start": 1},
             ),
         ],
-        version="v1",
     )
     class MyDeployment:
         def __call__(self):
@@ -734,6 +747,7 @@ def test_replica_context_includes_code_version(serve_instance):
             counter = serve.get_deployment_actor("counter")
             return f"{ctx.code_version}|{ray.get(counter.get.remote())}"
 
+    MyDeployment = MyDeployment.options(_internal=True, version="v1")
     serve.run(MyDeployment.bind())
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "v1|1")
@@ -747,7 +761,6 @@ def test_replica_context_includes_code_version(serve_instance):
                 init_kwargs={"start": 2},
             ),
         ],
-        version="v2",
     )
     class MyDeployment:  # noqa: F811
         def __call__(self):
@@ -755,6 +768,7 @@ def test_replica_context_includes_code_version(serve_instance):
             counter = serve.get_deployment_actor("counter")
             return f"{ctx.code_version}|{ray.get(counter.get.remote())}"
 
+    MyDeployment = MyDeployment.options(_internal=True, version="v2")
     serve.run(MyDeployment.bind())
     wait_for_condition(lambda: httpx.get(url).text == "v2|2")
 
@@ -774,22 +788,23 @@ def test_redeployment_with_no_actors_cleans_up_old(serve_instance):
                 init_kwargs={"start": 0},
             ),
         ],
-        version="v1",
     )
     class MyDeployment:
         def __call__(self):
             return "v1"
 
+    MyDeployment = MyDeployment.options(_internal=True, version="v1")
     serve.run(MyDeployment.bind())
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "v1")
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
-    @serve.deployment(version="v2")
+    @serve.deployment
     class MyDeployment:  # noqa: F811
         def __call__(self):
             return "v2"
 
+    MyDeployment = MyDeployment.options(_internal=True, version="v2")
     serve.run(MyDeployment.bind())
     wait_for_condition(lambda: httpx.get(url).text == "v2")
 
@@ -1283,6 +1298,37 @@ def test_get_deployment_actor_outside_replica_raises(serve_instance):
     """get_deployment_actor called outside replica raises RayServeException."""
     with pytest.raises(RayServeException, match="may only be called from within"):
         serve.get_deployment_actor("counter")
+
+
+def test_get_deployment_actor_context_outside_actor_raises(serve_instance):
+    """get_deployment_actor_context called outside actor raises RayServeException."""
+    with pytest.raises(RayServeException, match="may only be called from within"):
+        serve.get_deployment_actor_context()
+
+
+def test_get_deployment_actor_context_returns_runtime_metadata(serve_instance):
+    """Deployment actors can read deployment metadata via context API."""
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="ctx_actor",
+                actor_class=DeploymentActorContextActor,
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            actor = serve.get_deployment_actor("ctx_actor")
+            return ray.get(actor.get_context.remote())
+
+    handle = serve.run(MyDeployment.bind(), name="metadata-app")
+    result = handle.remote().result()
+
+    assert result["deployment"] == "MyDeployment"
+    assert result["app_name"] == "metadata-app"
+    assert result["actor_name"] == "ctx_actor"
+    assert isinstance(result["code_version"], str)
 
 
 def test_deploy_from_yaml_config_file_with_deployment_actors(serve_instance):

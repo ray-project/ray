@@ -25,8 +25,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "boost/functional/hash.hpp"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
 #include "ray/rpc/authentication/authentication_token.h"
@@ -144,13 +144,12 @@ class RaySyncer {
   /// Get the current node id.
   const std::string &GetLocalNodeID() const { return local_node_id_; }
 
-  /// Request trigger a broadcasting for a specific component immediately instead of
-  /// waiting for ray syncer to poll the message.
+  /// Immediately trigger a broadcast for the specified message type if a new version
+  /// is available.
   ///
-  /// \param message_type The component to check.
-  /// \return true if a message is generated. If the component doesn't have a new
-  /// version of message, false will be returned.
-  bool OnDemandBroadcasting(MessageType message_type);
+  /// \param message_type The message type.
+  /// \return true if a new version of the message was available and broadcasted.
+  bool BroadcastMessageIfNewVersion(MessageType message_type);
 
   /// Function to broadcast the messages to other nodes.
   /// A message will be sent to a node if that node doesn't have this message.

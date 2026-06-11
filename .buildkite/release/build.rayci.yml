@@ -13,7 +13,7 @@ steps:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycpubaseextra(*)
+      - raycpubaseextra($)
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{array.python}}.cu{{array.cuda}}.base-extra-testdeps"
@@ -26,16 +26,13 @@ steps:
         - "3.13"
       cuda:
         - "12.3.2-cudnn9"
-      adjustments:
-        - with:
-            python: "3.12"
-            cuda: "13.0.0-cudnn"
+        - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycudabaseextra(*)
+      - raycudabaseextra($)
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{array.python}}.llm.base-extra-testdeps (cuda {{array.cuda}})"
@@ -45,16 +42,12 @@ steps:
         - "3.12"
       cuda:
         - "13.0.0-cudnn"
-      adjustments:
-        - with:
-            python: "3.11"
-            cuda: "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-llm"
     depends_on:
-      - ray-llmbaseextra(*)
+      - ray-llmbaseextra($)
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{array.python}}.cu{{array.cuda}}.ml.base-extra-testdeps"
@@ -69,7 +62,7 @@ steps:
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-ml"
     depends_on:
-      - ray-mlcudabaseextra(*)
+      - ray-mlcudabaseextra($)
 
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
@@ -99,6 +92,7 @@ steps:
     array:
       gpu:
         - "cu12.3.2-cudnn9"
+        - "cu13.0.0-cudnn"
       python:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
@@ -106,10 +100,6 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
-      adjustments:
-        - with:
-            python: "3.12"
-            gpu: "cu13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -133,6 +123,7 @@ steps:
         --image-type ray
         --upload
     depends_on:
+      - forge
       - ray-anyscale-cpu-build($)
     array:
       python:
@@ -154,19 +145,17 @@ steps:
         --image-type ray
         --upload
     depends_on:
+      - forge
       - ray-anyscale-cuda-build($)
     array:
       gpu:
         - cu12.3.2-cudnn9
+        - cu13.0.0-cudnn
       python:
         - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
-      adjustments:
-        - with:
-            python: "3.12"
-            gpu: cu13.0.0-cudnn
 
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{array.python}} {{array.gpu}}"
@@ -177,10 +166,6 @@ steps:
         - "cu13.0.0-cudnn"
       python:
         - "3.12"
-      adjustments:
-        - with:
-            python: "3.11"
-            gpu: "cu12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -204,16 +189,13 @@ steps:
         --image-type ray-llm
         --upload
     depends_on:
+      - forge
       - ray-llm-anyscale-cuda-build($)
     array:
       gpu:
         - cu13.0.0-cudnn
       python:
         - "3.12"
-      adjustments:
-        - with:
-            python: "3.11"
-            gpu: "cu12.8.1-cudnn"
 
   - name: ray-ml-anyscale-cuda-build
     label: "wanda: ray-ml-anyscale py{{array.python}} {{array.gpu}}"
@@ -249,6 +231,7 @@ steps:
         --image-type ray-ml
         --upload
     depends_on:
+      - forge
       - ray-ml-anyscale-cuda-build($)
     array:
       python:

@@ -77,7 +77,6 @@ from ray.experimental.compiled_dag_ref import (
     _process_return_vals,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ def _shutdown_all_compiled_dags():
 
 def _check_unused_dag_input_attributes(
     output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
-) -> Set[str]:
+) -> None:
     """
     Helper function to check that all input attributes are used in the DAG.
     For example, if the user creates an input attribute by calling
@@ -149,7 +148,7 @@ def _check_unused_dag_input_attributes(
 
 @DeveloperAPI
 def do_allocate_channel(
-    self,
+    self: Any,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
     driver_actor_id: Optional[str] = None,
@@ -157,6 +156,7 @@ def do_allocate_channel(
     """Generic actor method to allocate an output channel.
 
     Args:
+        self: The actor instance this method is bound to.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
@@ -184,7 +184,7 @@ def do_allocate_channel(
 
 @DeveloperAPI
 def do_exec_tasks(
-    self,
+    self: Any,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
@@ -195,6 +195,7 @@ def do_exec_tasks(
     exception is thrown.
 
     Args:
+        self: The actor instance this method is bound to.
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
         overlap_gpu_communication: Whether to overlap GPU communication with
@@ -262,7 +263,7 @@ def do_exec_tasks(
 
 @DeveloperAPI
 def do_profile_tasks(
-    self,
+    self: Any,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
@@ -270,6 +271,7 @@ def do_profile_tasks(
     """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
 
     Args:
+        self: The actor instance this method is bound to.
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
         overlap_gpu_communication: Whether to overlap GPU communication with
@@ -386,7 +388,8 @@ class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
 
     def __init__(self, idx: int, dag_node: "ray.dag.DAGNode"):
-        """
+        """Initialize a CompiledTask.
+
         Args:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
@@ -465,6 +468,10 @@ class _ExecutableTaskInput:
 
         Args:
             channel_results: The results from reading the input channels.
+
+        Returns:
+            The resolved input value (either a value read from the channel or
+            the passthrough value).
         """
 
         if isinstance(self.input_variant, ChannelInterface):
@@ -486,7 +493,8 @@ class ExecutableTask:
         resolved_args: List[Any],
         resolved_kwargs: Dict[str, Any],
     ):
-        """
+        """Initialize an ExecutableTask.
+
         Args:
             task: The CompiledTask that this ExecutableTask corresponds to.
             resolved_args: The arguments to the method. Arguments that are
@@ -572,7 +580,7 @@ class ExecutableTask:
         """
         GPUFuture.remove_gpu_future(self.task_idx)
 
-    def prepare(self, overlap_gpu_communication: bool = False):
+    def prepare(self, overlap_gpu_communication: bool = False) -> None:
         """
         Prepare the task for execution. The `exec_operation` function can only
         be called after `prepare` has been called.
@@ -684,7 +692,7 @@ class ExecutableTask:
     def _compute(
         self,
         overlap_gpu_communication: bool,
-        class_handle,
+        class_handle: Any,
     ) -> bool:
         """
         Retrieve the intermediate result from the READ operation and perform the
@@ -756,7 +764,7 @@ class ExecutableTask:
 
     def exec_operation(
         self,
-        class_handle,
+        class_handle: Any,
         op_type: _DAGNodeOperationType,
         overlap_gpu_communication: bool = False,
     ) -> bool:
@@ -839,7 +847,8 @@ class CompiledDAG:
         overlap_gpu_communication: Optional[bool] = None,
         default_communicator: Optional[Union[Communicator, str]] = "create",
     ):
-        """
+        """Initialize the compiled DAG.
+
         Args:
             submit_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout (DAGContext.submit_timeout),
@@ -870,7 +879,7 @@ class CompiledDAG:
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
-            _default_communicator: The default communicator to use to transfer
+            default_communicator: The default communicator to use to transfer
                 tensors. Three types of values are valid. (1) Communicator:
                 For p2p operations, this is the default communicator
                 to use for nodes annotated with `with_tensor_transport()` and when
@@ -885,9 +894,6 @@ class CompiledDAG:
                 an already created collective communicator if the p2p actors are a subset.
                 Otherwise, a new communicator is created.
                 (3) None: a ValueError will be thrown if a custom communicator is not specified.
-
-        Returns:
-            Channel: A wrapper around ray.ObjectRef.
         """
         from ray.dag import DAGContext
 
@@ -1041,9 +1047,9 @@ class CompiledDAG:
             # resized, etc.). The driver actor serves as a way for the output writer
             # to invoke remote functions on the driver node.
             return CompiledDAG.DAGDriverProxyActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
@@ -2545,14 +2551,14 @@ class CompiledDAG:
 
     def execute(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
-            args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode
+            *args: Args to the InputNode.
+            **kwargs: Kwargs to the InputNode
 
         Returns:
             A list of Channels that can be used to read the DAG result.
@@ -2626,16 +2632,16 @@ class CompiledDAG:
 
     async def execute_async(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not thread-safe.
 
         Args:
-            args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode.
+            *args: Args to the InputNode.
+            **kwargs: Kwargs to the InputNode.
 
         Returns:
             A list of Channels that can be used to read the DAG result.
@@ -3044,10 +3050,10 @@ class CompiledDAG:
 
     def visualize(
         self,
-        filename="compiled_graph",
-        format="png",
-        view=False,
-        channel_details=False,
+        filename: str = "compiled_graph",
+        format: str = "png",
+        view: bool = False,
+        channel_details: bool = False,
     ) -> str:
         """
         Visualize the compiled graph by showing tasks and their dependencies.

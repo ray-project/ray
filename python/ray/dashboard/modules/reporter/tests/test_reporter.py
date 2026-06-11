@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
@@ -136,6 +138,8 @@ STATS_TEMPLATE = {
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
     "cmdline": ["fake raylet cmdline"],
+    "host_mem": (10737418240, 17179869184),
+    "cgroup_mem": None,
 }
 
 
@@ -195,6 +199,56 @@ def test_fix_grpc_metrics():
     assert metric == expected_fixed_metric
 
 
+def test_export_histogram_data_normalizes_mixed_attribute_sets():
+    metric = OTelMetric(name="test_histogram", description="Test Histogram")
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([0, 1, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_a"))
+    )
+    data_point.attributes.append(
+        KeyValue(key="SessionName", value=AnyValue(string_value="session_1"))
+    )
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([1, 0, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_b"))
+    )
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+
+    ReporterAgent._export_histogram_data(agent, metric)
+
+    agent._open_telemetry_metric_recorder.register_histogram_metric.assert_called_once_with(
+        "test_histogram", "Test Histogram", [1.0, 2.0]
+    )
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_called_once()
+    (
+        _,
+        batch_data_points,
+    ) = (
+        agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.call_args.args
+    )
+
+    assert batch_data_points == [
+        {
+            "tags": {"Component": "worker_a", "SessionName": "session_1"},
+            "bucket_counts": [0, 1, 0],
+        },
+        {
+            "tags": {"Component": "worker_b", "SessionName": ""},
+            "bucket_counts": [1, 0, 0],
+        },
+    ]
+
+
 @pytest.fixture(autouse=True)
 def enable_profiling():
     os.environ["RAY_DASHBOARD_ENABLE_PROFILING"] = "1"
@@ -229,7 +283,8 @@ def test_prometheus_physical_stats_record(
             "ray_node_mem_used" in metric_names,
             "ray_node_mem_available" in metric_names,
             "ray_node_mem_total" in metric_names,
-            "ray_node_mem_total" in metric_names,
+            "ray_node_mem_used_host" in metric_names,
+            "ray_node_mem_total_host" in metric_names,
             "ray_component_rss_mb" in metric_names,
             "ray_component_uss_mb" in metric_names,
             "ray_component_num_fds" in metric_names,
@@ -337,7 +392,7 @@ def test_report_stats(tmp_path):
             assert val == stats["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 41
+    assert len(records) == 43
     # Verify RayNodeType and IsHeadNode tags
     for record in records:
         if record.gauge.name.startswith("node_"):
@@ -345,10 +400,31 @@ def test_report_stats(tmp_path):
             assert record.tags["RayNodeType"] == "head"
             assert "IsHeadNode" in record.tags
             assert record.tags["IsHeadNode"] == "true"
+    # Verify host memory metrics are reported
+    host_mem_used = [r for r in records if r.gauge.name == "node_mem_used_host"]
+    host_mem_total = [r for r in records if r.gauge.name == "node_mem_total_host"]
+    assert len(host_mem_used) == 1
+    assert host_mem_used[0].value == stats["host_mem"][0]
+    assert len(host_mem_total) == 1
+    assert host_mem_total[0].value == stats["host_mem"][1]
+    # Verify no cgroup records when cgroup_mem is None
+    assert not any(r.gauge.name == "node_cgroup_mem_used" for r in records)
+    assert not any(r.gauge.name == "node_cgroup_mem_total" for r in records)
+
+    # Test cgroup memory metrics when cgroup_mem is populated
+    stats["cgroup_mem"] = (5368709120, 10737418240)
+    records = agent._to_records(stats, cluster_stats)
+    cgroup_used = [r for r in records if r.gauge.name == "node_cgroup_mem_used"]
+    cgroup_total = [r for r in records if r.gauge.name == "node_cgroup_mem_total"]
+    assert len(cgroup_used) == 1
+    assert cgroup_used[0].value == 5368709120
+    assert len(cgroup_total) == 1
+    assert cgroup_total[0].value == 10737418240
+
     # Test stats without raylets
     stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 37
+    assert len(records) == 41
     # Test stats with gpus
     stats["gpus"] = [
         {
@@ -375,11 +451,11 @@ def test_report_stats(tmp_path):
         }
     ]
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 46
+    assert len(records) == 50
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._to_records(stats, cluster_stats)
-    assert len(records) == 44
+    assert len(records) == 48
 
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None

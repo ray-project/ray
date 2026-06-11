@@ -71,14 +71,15 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
 /// Note: when resource isolation is enabled, the memory usage threshold is set to
-/// total memory - system reserved memory (can be specified in ray start) -
-/// kill_memory_buffer_bytes. Notice that the formula does not account for object store
-/// memory in system reserved memory. To configure the usage threshold, please adjust the
-/// system reserved memory in ray start command instead. Ranging from [0, 1]
+/// total memory - system reserved memory (can be specified in ray start).
+/// Notice that the formula does not account for object store memory in system reserved
+/// memory. To configure the usage threshold when resource isolation is enabled,
+/// please adjust the system reserved memory in ray start command instead.
+/// Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
-/// Monitor is disabled when this value is 0.
+/// ThresholdMemoryMonitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 
 /// The minimum amount of free space. If the memory is above the
@@ -90,9 +91,15 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
-/// The amount of memory to free under the memory usage threshold when
-/// killing workers via the worker killing policy.
-RAY_CONFIG(uint64_t, kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GB
+/// The maximum amount of memory to free under the memory usage threshold when
+/// killing workers via the worker killing policy. The system will by default
+/// free up to 5% of total memory under the threshold, capping at
+/// max_kill_memory_buffer_bytes.
+RAY_CONFIG(int64_t, max_kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GiB cap
+
+/// When true, use the legacy group-by-owner worker killing policy instead of the
+/// default time-based policy.
+RAY_CONFIG(bool, worker_killing_policy_by_group, false)
 
 /// The reserved memory bytes for system processes
 /// enforced via cgroup memory.min constraint which guarantees
@@ -107,14 +114,17 @@ RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
 /// Enforced by the cgroup memory.high constraint which throttles the
 /// user processes' when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory. Only configure this value if you are confident that
+/// memory. If resource isolation is enabled, the user memory.high constraint
+/// will be set to the min of total memory - system reserved memory
+/// and user_memory_proportion_high * total memory.
+/// Only configure this value if you are confident that
 /// the configuration is desirable. Bad constraint configurations may
 /// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_high, 1.0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.max constraint which triggers the
-//. kernel OOM killer when the threshold is reached.
+/// kernel OOM killer when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
 /// memory. Only configure this value if you are confident that
 /// the configuration is desirable. Bad constraint configurations may
@@ -228,8 +238,10 @@ RAY_CONFIG(int32_t, scheduler_top_k_absolute, 1);
 /// will become eligible for removal in the autoscaler.
 RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
-// The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled/promoted to plasma.
+/// Maximum size in bytes of a task return value that may be returned inline
+/// in the task reply (and stored in the owner's in-memory store). Return
+/// values larger than this are stored in plasma instead. Applies to all task
+/// types (normal tasks, actor tasks, generators).
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
@@ -347,6 +359,9 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -396,13 +411,13 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// requests and copy from the socket buffer to create the proto request object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_server_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// Number of polling threads for raylet + worker clients on the GCS. These threads poll
 /// for replies and copy from the socket buffer to create the proto Reply object.
 RAY_CONFIG(uint32_t,
            gcs_server_rpc_client_thread_num,
-           std::max(1U, std::thread::hardware_concurrency() / 4U))
+           std::max(1U, static_cast<uint32_t>(ray::CpuMonitorUtils::GetCpuLimit()) / 4U));
 
 /// The interval at which the gcs server will health check the connection to the
 /// external Redis server. If a health check fails, the GCS will crash itself.
@@ -611,6 +626,13 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 /// A probe task is only posted after a previous probe task has completed.
 RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 10000)
 
+/// How often to probe each io_context for loop latency and health.
+RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
+
+/// If a probe has been outstanding longer than this, the io_context is marked
+/// unhealthy.
+RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -655,6 +677,12 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+// The threshold of the memory usage in bytes for the idle worker
+// to be considered as a candidate for killing.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
 
 /// The soft limit of the number of workers to keep around.
 /// We apply this limit to the idle workers instead of total workers,
@@ -825,7 +853,9 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU,RBLN")
+RAY_CONFIG(std::string,
+           custom_unit_instance_resources,
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -957,14 +987,14 @@ RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 /// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+           std::max<int64_t>(1, ray::CpuMonitorUtils::GetCpuLimit() / 4));
 
 /// Thread pool size for sending replies in grpc server (CoreWorkers).
 /// https://github.com/ray-project/ray/issues/58351 shows the
 /// reply path is light enough that 2 threads is sufficient.
 RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
-           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
+           ray::CpuMonitorUtils::GetCpuLimit() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -1107,10 +1137,3 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
-
-// The threshold of the memory usage in bytes for the idle worker to be considered as
-// a candidate for killing.
-// TODO: We should clean it up after the memory monitor is revamped.
-RAY_CONFIG(int64_t,
-           idle_worker_killing_memory_threshold_bytes,
-           1024 * 1024 * 1024)  // 1GB

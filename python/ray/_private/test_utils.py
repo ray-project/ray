@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Hashable
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
 from urllib.parse import quote, urlparse
 
 import requests
@@ -52,7 +52,6 @@ from ray.core.generated import (
     node_manager_pb2,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.state import get_actor, list_actors
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -183,10 +182,10 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
-    replica_of=None,
-    leader_id=None,
-    db_dir=None,
-    free_port=0,
+    replica_of: Optional[int] = None,
+    leader_id: Optional[bytes] = None,
+    db_dir: Optional[str] = None,
+    free_port: int = 0,
 ):
     """Start a single Redis server.
 
@@ -209,12 +208,21 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
+        fate_share: If True, the Redis process is bound to the parent's job
+            on Windows so it terminates with the parent.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
         enable_tls: Enable the TLS/SSL in Redis or not
+        replica_of: When set, configure this server as a replica of the
+            given primary Redis port.
+        leader_id: Cluster node id of the leader to replicate when running
+            with multiple replicas.
+        db_dir: Directory passed to ``--dir`` so Redis persists data here.
+        free_port: Plaintext port used alongside ``--tls-port`` when TLS is
+            enabled.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -315,7 +323,7 @@ def start_redis_instance(
     return node_id, process_info
 
 
-def _pid_alive(pid):
+def _pid_alive(pid: int):
     """Check if the process with this PID is alive or not.
 
     Args:
@@ -526,6 +534,8 @@ def run_string_as_driver_stdout_stderr(
     Args:
         driver_script: A string to run as a Python script.
         env: The environment variables for the driver.
+        encode: Text encoding used to send the script to the subprocess and
+            decode its stdout/stderr.
 
     Returns:
         The script's stdout and stderr.
@@ -552,11 +562,12 @@ def run_string_as_driver_stdout_stderr(
         return out_str, err_str
 
 
-def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
+def run_string_as_driver_nonblocking(driver_script: str, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
         driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         A handle to the driver process.
@@ -705,7 +716,12 @@ def get_metric_check_condition(
 
 
 def wait_until_succeeded_without_exception(
-    func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
+    func: Callable,
+    exceptions: Tuple[Type[BaseException], ...],
+    *args,
+    timeout_ms: int = 1000,
+    retry_interval_ms: int = 100,
+    raise_last_ex: bool = False,
 ):
     """A helper function that waits until a given function
         completes without exceptions.
@@ -713,13 +729,13 @@ def wait_until_succeeded_without_exception(
     Args:
         func: A function to run.
         exceptions: Exceptions that are supposed to occur.
-        args: arguments to pass for a given func
+        *args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
         raise_last_ex: Raise the last exception when timeout.
 
-    Return:
-        Whether exception occurs within a timeout.
+    Returns:
+        Whether ``func`` succeeded within the timeout.
     """
     if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
@@ -982,7 +998,12 @@ def raw_metric_timeseries(
 
 
 def get_system_metric_for_component(
-    system_metric: str, component: str, prometheus_server_address: str
+    system_metric: str,
+    component: str,
+    prometheus_server_address: str,
+    max_attempts: int = 3,
+    backoff_base_s: float = 1.0,
+    request_timeout_s: float = 30.0,
 ) -> List[float]:
     """Get the system metric for a given component from a Prometheus server address.
     Please note:
@@ -990,18 +1011,60 @@ def get_system_metric_for_component(
     requires the server address.
     - It assumes the system metric has a `Component` label and `pid` label. `pid` is the
     process id, so it can be used to uniquely identify the process.
+
+    Retries up to ``max_attempts`` times on connection errors, timeouts, and HTTP 5xx
+    responses, with exponential backoff (``backoff_base_s`` * 2^(attempt-1) seconds).
+    HTTP 4xx responses are not retried — they indicate a bad query.
     """
     session_name = os.path.basename(
         ray._private.worker._global_node.get_session_dir_path()
     )
     query = f"sum({system_metric}{{Component='{component}',SessionName='{session_name}'}}) by (pid)"
-    resp = requests.get(
-        f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
-    )
-    if resp.status_code != 200:
-        raise Exception(f"Failed to query Prometheus: {resp.status_code}")
-    result = resp.json()
-    return [float(item["value"][1]) for item in result["data"]["result"]]
+    url = f"{prometheus_server_address}/api/v1/query?query={quote(query)}"
+
+    for attempt in range(1, max_attempts + 1):
+        backoff_s = backoff_base_s * (2 ** (attempt - 1))
+        try:
+            resp = requests.get(url, timeout=request_timeout_s)
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            # HTTPError from raise_for_status() sets e.response; other
+            # RequestException subclasses (ConnectionError, Timeout, ...) leave it None.
+            err_resp = e.response
+            status_code = err_resp.status_code if err_resp is not None else None
+            body_truncated = (err_resp.text or "")[:500] if err_resp is not None else ""
+            # 4xx indicates a malformed query — don't retry.
+            is_retryable = status_code is None or status_code >= 500
+            if is_retryable and attempt < max_attempts:
+                logger.warning(
+                    "Prometheus query failed (attempt %d/%d), retrying in %.1fs: "
+                    "error=%r, url=%s, query=%s",
+                    attempt,
+                    max_attempts,
+                    backoff_s,
+                    e,
+                    url,
+                    query,
+                )
+                time.sleep(backoff_s)
+                continue
+            if status_code is not None:
+                raise RuntimeError(
+                    f"Failed to query Prometheus after {attempt} attempts: "
+                    f"last_status={status_code}, url={url}, query={query}, "
+                    f"response_body={body_truncated!r}"
+                ) from e
+            raise RuntimeError(
+                f"Failed to query Prometheus after {attempt} attempts: "
+                f"last_error={e!r}, url={url}, query={query}"
+            ) from e
+
+        if attempt > 1:
+            logger.info(
+                "Prometheus query succeeded on attempt %d/%d", attempt, max_attempts
+            )
+        result = resp.json()
+        return [float(item["value"][1]) for item in result["data"]["result"]]
 
 
 def get_test_config_path(config_file_name):
@@ -1041,6 +1104,16 @@ class BatchQueue(Queue):
     ) -> List[Any]:
         """Gets batch of items from the queue and returns them in a
         list in order.
+
+        Args:
+            batch_size: Max number of items to return. ``None`` means drain
+                everything currently in the queue (subject to the timeouts).
+            total_timeout: Total time, in seconds, to wait for the entire batch.
+            first_timeout: Time, in seconds, to wait for the first item before
+                raising ``Empty``.
+
+        Returns:
+            List of items pulled off the queue, in arrival order.
 
         Raises:
             Empty: if the queue does not contain the desired number of items
@@ -1133,8 +1206,11 @@ def monitor_memory_usage(
 
     The monitor will run on the same node as this function is called.
 
-    Params:
-        interval_s: The interval memory usage information is printed
+    Args:
+        print_interval_s: How often, in seconds, memory usage information is
+            logged.
+        record_interval_s: How often, in seconds, the monitor samples and
+            records memory usage between log lines.
         warning_threshold: The threshold where the
             memory usage warning is printed.
 
@@ -1549,13 +1625,8 @@ class WorkerKillerActor(ResourceKillerActor):
             proc = psutil.Process(pid)
             proc.kill()
 
-        scheduling_strategy = (
-            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                node_id=process_to_kill_node_id,
-                soft=False,
-            )
-        )
-        await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+        label_selector = {ray._raylet.RAY_NODE_ID_KEY: process_to_kill_node_id}
+        await kill_process.options(label_selector=label_selector).remote(
             process_to_kill_pid
         )
         return True
@@ -1577,9 +1648,7 @@ def get_and_run_resource_killer(
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     resource_killer = resource_killer_cls.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            node_id=head_node_id, soft=False
-        ),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id},
         namespace=namespace,
         name="ResourceKiller",
         lifetime=lifetime,

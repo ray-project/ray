@@ -27,7 +27,6 @@ ray_cc_test(
     srcs = ["memory_store_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common:test_utils",
@@ -43,7 +42,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",
@@ -192,7 +192,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:fake_periodical_runner",
+        "//src/ray/asio:fake_periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:grpc_service",

@@ -188,6 +188,7 @@ class ReplicaState(str, Enum):
     RECOVERING = "RECOVERING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
     PENDING_MIGRATION = "PENDING_MIGRATION"
 
 
@@ -660,6 +661,7 @@ class RunningReplicaInfo:
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
+    backend_http_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -673,11 +675,14 @@ class RunningReplicaInfo:
                 [
                     self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
+                    self.node_ip if self.node_ip else "",
                     self.actor_name,
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
+                    str(self.port),
+                    str(self.backend_http_port),
                 ]
             )
         )
@@ -785,6 +790,9 @@ class RequestMetadata:
     # Multiplexed model ID.
     multiplexed_model_id: str = ""
 
+    # Session ID.
+    session_id: str = ""
+
     # If this request expects a streaming response.
     is_streaming: bool = False
 
@@ -812,6 +820,9 @@ class RequestMetadata:
     # gRPC serialization options
     request_serialization: str = "cloudpickle"
     response_serialization: str = "cloudpickle"
+
+    # Token for a replica-side slot reserved by choose_replica().
+    _reserved_slot_token: Optional[str] = None
 
     @property
     def is_http_request(self) -> bool:

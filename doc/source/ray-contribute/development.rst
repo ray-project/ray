@@ -1,3 +1,6 @@
+.. meta::
+    :description: Step-by-step instructions for building Ray from source, including Python-only fast-loop development, full C++ editable installs, manylinux wheels, and Docker images. Use this to set up a development environment for making and testing changes to Ray.
+
 .. _building-ray:
 
 Building Ray from source
@@ -299,7 +302,7 @@ If your machine runs out of memory during the build, add the following to ``~/.b
 
   .. code-block:: shell
 
-    build --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4
+    build --local_resources=memory=HOST_RAM*.5 --local_resources=cpu=4
 
   The ``build --disk_cache=~/bazel-cache`` option can also speed up repeated builds.
 

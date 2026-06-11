@@ -12,6 +12,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -55,7 +56,10 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
 def _make_bundle(num_blocks: int = 1) -> RefBundle:
     """Return a RefBundle with *num_blocks* placeholder block refs."""
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
+    blocks = [
+        BlockEntry(ray.ObjectRef(bytes([i % 256]) * 28), meta)
+        for i in range(num_blocks)
+    ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
@@ -237,6 +241,7 @@ class TestGPURankPool:
 
         assert mock_kill.call_count == 2
         assert pool.actors == []
+        assert pool.is_shutdown
 
     def test_shutdown_without_force_clears_actors(self):
         pool = self._make_pool(nranks=2)
@@ -247,6 +252,7 @@ class TestGPURankPool:
 
         mock_kill.assert_not_called()
         assert pool.actors == []
+        assert pool.is_shutdown
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +298,23 @@ class TestGPUShuffleOperatorConstructor:
         op = self._make_op(nranks=6, num_partitions=6)
         usage = op.base_resource_usage
         assert usage.gpu == 6
+
+    def test_current_logical_usage_reserves_nranks_before_pool_start(self):
+        """Empty actor list before start must still reserve configured GPUs."""
+        op = self._make_op(nranks=5, num_partitions=5)
+        assert op.current_logical_usage().gpu == 5
+
+    def test_current_logical_usage_matches_len_actors_when_running(self):
+        op = self._make_op(nranks=4, num_partitions=4)
+        op._rank_pool._actors = [MagicMock() for _ in range(4)]
+        assert op.current_logical_usage().gpu == 4
+
+    def test_current_logical_usage_zero_after_pool_shutdown(self):
+        """Early actor release must drop logical GPU usage for the scheduler."""
+        op = self._make_op(nranks=4, num_partitions=4)
+        op._rank_pool._actors = [MagicMock() for _ in range(4)]
+        op._rank_pool.shutdown(force=False)
+        assert op.current_logical_usage().gpu == 0
 
     def test_incremental_resource_usage_is_one_gpu(self):
         op = self._make_op()
@@ -499,7 +522,7 @@ class TestGPUShuffleOperatorFinalization:
                 num_rows=1, size_bytes=8, exec_stats=None, input_files=None
             )
             bundle = RefBundle(
-                [(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+                [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
                 schema=None,
                 owns_blocks=False,
             )
@@ -555,8 +578,8 @@ class TestPlanAllToAllOpRouting:
 
     def _make_repartition_op(self, keys=("user_id",), num_outputs=8):
         return Repartition(
-            input_op=MagicMock(LogicalOperator),
             num_outputs=num_outputs,
+            input_dependencies=[MagicMock(LogicalOperator)],
             shuffle=True,
             keys=list(keys),
         )
@@ -950,7 +973,7 @@ class TestGPURankPoolReal:
         pool.start()
         actor = pool.actors[0]
         # Actor is fully set up by pool.start(); insert_batch should work immediately
-        table = pa.table({"k": [1], "v": [2]})
+        table = pa.table({"id": [1], "v": [2]})
         ray.get(actor.insert_batch.remote(table))
         pool.shutdown(force=True)
 
