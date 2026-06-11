@@ -99,9 +99,9 @@ def create_lerobot_dataset(
             "dtype": "video",
             "shape": [FRAME_H, FRAME_W, FRAME_C],
         }
-        info["video_path"] = (
-            "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4"
-        )
+        info[
+            "video_path"
+        ] = "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4"
 
     meta_dir = os.path.join(root, "meta")
     os.makedirs(meta_dir, exist_ok=True)
@@ -527,9 +527,9 @@ def test_read_lerobot_all_modes_same_row_count(
         if mode == LeRobotPartitioning.ROW_BLOCK:
             kwargs["block_size"] = 5
         ds = ray.data.read_lerobot(lerobot_dataset, partitioning=mode, **kwargs)
-        assert ds.count() == expected, (
-            f"Mode {mode.name}: expected {expected}, got {ds.count()}"
-        )
+        assert (
+            ds.count() == expected
+        ), f"Mode {mode.name}: expected {expected}, got {ds.count()}"
 
 
 if __name__ == "__main__":

@@ -174,9 +174,7 @@ def _build_episodes_table(hf_episodes: "datasets.Dataset") -> pa.Table:
     global_to = global_from[1:] + [running]
     return episodes.append_column(
         "_global_from_index", pa.array(global_from, type=pa.int64())
-    ).append_column(
-        "_global_to_index", pa.array(global_to, type=pa.int64())
-    )
+    ).append_column("_global_to_index", pa.array(global_to, type=pa.int64()))
 
 
 def _build_tasks_dict(tasks_df: "pd.DataFrame") -> Dict[int, str]:
@@ -206,9 +204,7 @@ def _build_schema(
         pq_schema = pq.read_schema(f)
     fields = list(pq_schema)
     for vk in video_keys:
-        fields.append(
-            pa.field(vk, ArrowVariableShapedTensorType(pa.uint8(), ndim=3))
-        )
+        fields.append(pa.field(vk, ArrowVariableShapedTensorType(pa.uint8(), ndim=3)))
     fields.append(pa.field("task", pa.string()))
     fields.append(pa.field("dataset_index", pa.int32()))
     fields.append(pa.field("stats", pa.string()))
@@ -281,7 +277,6 @@ def _load_lerobot_metadata(
     metadata copy.
     """
     import fsspec
-
     from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 
     root_uri = str(root).rstrip("/")
@@ -334,7 +329,11 @@ def _build_root(
 
     # In lerobot 0.5.x, meta.info is a dict; accessing meta.video_path
     # raises KeyError when the key is absent.  Use dict-aware lookup.
-    video_path = meta.info.get("video_path") if isinstance(meta.info, dict) else getattr(meta.info, "video_path", None)
+    video_path = (
+        meta.info.get("video_path")
+        if isinstance(meta.info, dict)
+        else getattr(meta.info, "video_path", None)
+    )
     if meta.video_keys and not video_path:
         raise ValueError(
             f"{root_uri!r}: dataset has video keys {meta.video_keys} "
@@ -345,9 +344,7 @@ def _build_root(
     fs_root = fs_root.rstrip("/")
     episodes_table = _build_episodes_table(meta.episodes)
     tasks_dict = _build_tasks_dict(meta.tasks)
-    schema = _build_schema(
-        episodes_table, meta.data_path, meta.video_keys, fs, fs_root
-    )
+    schema = _build_schema(episodes_table, meta.data_path, meta.video_keys, fs, fs_root)
     row_size_bytes = _estimated_row_size_bytes(meta.features, root_uri)
     stats_json = _stats_to_json(getattr(meta, "stats", None))
 
@@ -390,9 +387,7 @@ class _LeRobotReadTask(ReadTask):
         resolved: List[tuple] = []
         for root_idx, start, end in segments:
             root = roots[root_idx]
-            parquet_segs, video_segs = _LeRobotReadTask._resolve_paths(
-                root, start, end
-            )
+            parquet_segs, video_segs = _LeRobotReadTask._resolve_paths(root, start, end)
             all_input_files.extend(parquet_segs)
             all_input_files.extend(video_segs)
             total_rows += end - start
@@ -474,8 +469,7 @@ class _LeRobotReadTask(ReadTask):
                 for i in range(batch_start, batch_end)
             ]
             frame_buffers = {
-                vk: decoded_frames[vk][batch_start:batch_end]
-                for vk in root.video_keys
+                vk: decoded_frames[vk][batch_start:batch_end] for vk in root.video_keys
             }
             yield self._build_batch(
                 root.video_keys,
@@ -534,9 +528,7 @@ class _LeRobotReadTask(ReadTask):
             file_to_rows: dict = {}
             for r in range(n_rows):
                 chunk, fi, from_t = ep_info[ep_idx_col[r]]
-                file_to_rows.setdefault((chunk, fi), []).append(
-                    (r, from_t + ts_col[r])
-                )
+                file_to_rows.setdefault((chunk, fi), []).append((r, from_t + ts_col[r]))
 
             frames_by_row: List[Any] = [None] * n_rows
             for (chunk, fi), rows_and_ts in file_to_rows.items():
@@ -569,9 +561,7 @@ class _LeRobotReadTask(ReadTask):
         return decoded
 
     @staticmethod
-    def _resolve_paths(
-        root: _LeRobotRoot, start: int, end: int
-    ) -> tuple:
+    def _resolve_paths(root: _LeRobotRoot, start: int, end: int) -> tuple:
         """Resolve all file paths touched by row range ``[start, end)``.
 
         Returns ``(parquet_segs, video_segs)`` — flat lists of unique file
@@ -680,6 +670,7 @@ class _LeRobotReadTask(ReadTask):
         columns["stats"] = pa.array([stats_json] * len(task_list), type=pa.string())
         return pa.table(columns)
 
+
 @DeveloperAPI
 class LeRobotDatasource(Datasource):
     """Ray Data ``Datasource`` for LeRobot v3 datasets.
@@ -775,9 +766,7 @@ class LeRobotDatasource(Datasource):
         roots = [root] if isinstance(root, (str, Path)) else list(root)
         # Pristine upstream metadata instances, exposed via self.metas /
         # self.meta for callers that want full lerobot API access.
-        self.metas = [
-            _load_lerobot_metadata(r, self._storage_options) for r in roots
-        ]
+        self.metas = [_load_lerobot_metadata(r, self._storage_options) for r in roots]
 
         if len(self.metas) > 1:
             ref = self.metas[0]
@@ -964,7 +953,9 @@ class LeRobotDatasource(Datasource):
         }
         all_ranges: List[tuple] = []
         for root_idx, ds_root in enumerate(self._roots):
-            ranges = sorted(slice_fns[self._partitioning](ds_root, **self._slice_kwargs))
+            ranges = sorted(
+                slice_fns[self._partitioning](ds_root, **self._slice_kwargs)
+            )
             for i in range(1, len(ranges)):
                 if ranges[i - 1][1] != ranges[i][0]:
                     raise ValueError(
@@ -1006,9 +997,7 @@ class LeRobotDatasource(Datasource):
     # ------------------------------------------------------------------
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        return (
-            sum(r.total_frames * r.row_size_bytes for r in self._roots) or None
-        )
+        return sum(r.total_frames * r.row_size_bytes for r in self._roots) or None
 
     def get_read_tasks(
         self,

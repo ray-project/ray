@@ -40,9 +40,10 @@ def _native_storage_options() -> bool:
 
     from lerobot.datasets.video_utils import decode_video_frames_torchcodec
 
-    return "storage_options" in inspect.signature(
-        decode_video_frames_torchcodec
-    ).parameters
+    return (
+        "storage_options"
+        in inspect.signature(decode_video_frames_torchcodec).parameters
+    )
 
 
 def _warn_if_native_available() -> None:
