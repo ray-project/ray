@@ -25,6 +25,33 @@
 # Reading tests
 ###############
 
+- name: "read_chunked_parquet_{{scaling}}_{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{trial}}"
+  python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+      file_size: [512MiB, 1GiB]
+      num_files: [10, 50]
+      row_group_size: [64MiB, 128MiB]
+      compression_ratio: [5.0, 10.0]
+      trial: [1, 2, 3]
+
+  run:
+    timeout: 10800
+    script: >
+      python read_chunked_parquet.py
+      --file-size {{file_size}}
+      --num-files {{num_files}}
+      --row-group-size {{row_group_size}}
+      --compression-ratio {{compression_ratio}}
+      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{scaling}}_{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}
+      --read-back
+      --read-memory 4294967296
+
 - name: "read_parquet_{{scaling}}"
   python: "3.10"
   cluster:
