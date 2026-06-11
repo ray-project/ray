@@ -14,7 +14,11 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+    _canonicalize_request_id_header,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
@@ -697,19 +701,9 @@ class TestGetDeploymentOptions:
 class TestCanonicalizeRequestIdHeader:
     """Unit tests for the X-Request-Id header canonicalization helper."""
 
-    @staticmethod
-    def _canonicalize():
-        from ray.llm._internal.serve.engines.vllm.vllm_engine import (
-            _canonicalize_request_id_header,
-        )
-
-        return _canonicalize_request_id_header
-
     def test_uncanonical_variants_dropped(self):
         """Any case/separator variant of the header is dropped and replaced by a
         single canonical ``x-request-id`` equal to ``request.request_id``."""
-        from ray.llm._internal.serve.core.protocol import RawRequestInfo
-
         request = SimpleNamespace(request_id="canonical-id")
         raw = RawRequestInfo(
             headers={
@@ -718,7 +712,7 @@ class TestCanonicalizeRequestIdHeader:
                 "content-type": "application/json",
             }
         )
-        out = self._canonicalize()(request, raw)
+        out = _canonicalize_request_id_header(request, raw)
 
         rid_keys = [
             k for k in out.headers if k.replace("_", "-").lower() == "x-request-id"
@@ -730,10 +724,11 @@ class TestCanonicalizeRequestIdHeader:
 
     def test_noop_when_request_id_unset(self):
         """With no request_id the helper is a no-op (returns the same object)."""
-        from ray.llm._internal.serve.core.protocol import RawRequestInfo
-
         raw = RawRequestInfo(headers={"x-request-id": "keep"})
-        assert self._canonicalize()(SimpleNamespace(request_id=None), raw) is raw
+        assert (
+            _canonicalize_request_id_header(SimpleNamespace(request_id=None), raw)
+            is raw
+        )
 
 
 if __name__ == "__main__":

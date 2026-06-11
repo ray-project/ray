@@ -97,7 +97,10 @@ def _canonicalize_request_id_header(
         if k.replace("_", "-").lower() != "x-request-id"
     }
     headers["x-request-id"] = str(rid)
-    return RawRequestInfo(headers=headers)
+    if raw_request_info is None:
+        return RawRequestInfo(headers=headers)
+    # Preserve any non-header fields RawRequestInfo carries (now or in the future).
+    return dataclasses.replace(raw_request_info, headers=headers)
 
 
 def _convert_config_dicts(merged: dict) -> dict:
