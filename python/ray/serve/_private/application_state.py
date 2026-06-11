@@ -26,6 +26,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -1631,7 +1632,11 @@ def build_serve_application(
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
         built_app.validate_single_fastapi_ingress()
-        built_app.validate_multiplexing_with_direct_ingress()
+        # This task runs on the cluster, so its view of the direct-ingress flag
+        # mirrors the replicas' (they inherit this task's runtime_env).
+        built_app.validate_multiplexing_with_direct_ingress(
+            RAY_SERVE_ENABLE_DIRECT_INGRESS
+        )
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)

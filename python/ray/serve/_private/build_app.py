@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
 )
@@ -88,9 +87,11 @@ class BuiltApplication:
                 "in your application to avoid this issue."
             )
 
-    def validate_multiplexing_with_direct_ingress(self) -> None:
+    def validate_multiplexing_with_direct_ingress(
+        self, direct_ingress_enabled: bool
+    ) -> None:
         """Reject model multiplexing on the ingress deployment under direct ingress."""
-        if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        if not direct_ingress_enabled:
             return
 
         # Imported lazily to avoid a circular import at module load time

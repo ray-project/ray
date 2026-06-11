@@ -1739,6 +1739,18 @@ class ServeController:
         """
         return self.application_state_manager.get_external_scaler_enabled(app_name)
 
+    def get_serve_constant(self, name: str) -> Any:
+        """Return the effective value of a Ray Serve constant as seen by the controller.
+
+        Lets clients read the controller's view of an env-derived setting.
+        Restricted to public `RAY_SERVE_`-prefixed constants.
+        """
+        from ray.serve._private import constants as serve_constants
+
+        if not name.startswith("RAY_SERVE_") or not hasattr(serve_constants, name):
+            raise ValueError(f"Unknown Ray Serve constant: {name!r}")
+        return getattr(serve_constants, name)
+
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
         statuses = self.deployment_state_manager.get_deployment_statuses()

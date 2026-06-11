@@ -395,8 +395,15 @@ class ServeControllerClient:
                 app.name
             ] = application_args_proto.SerializeToString()
 
-        # Validate applications before sending to controller
-        self._check_ingress_deployments(built_apps)
+        # Validate applications before sending to controller. `build_app` ran
+        # client-side, so the direct-ingress flag must reflect the cluster's view
+        # (queried from the controller).
+        direct_ingress_enabled = ray.get(
+            self._controller.get_serve_constant.remote(
+                "RAY_SERVE_ENABLE_DIRECT_INGRESS"
+            )
+        )
+        self._check_ingress_deployments(built_apps, direct_ingress_enabled)
 
         ray.get(
             self._controller.deploy_applications.remote(
@@ -489,16 +496,18 @@ class ServeControllerClient:
             self.wait_for_proxies_serving(wait_for_applications_running=True)
 
     def _check_ingress_deployments(
-        self, built_apps: Sequence[BuiltApplication]
+        self, built_apps: Sequence[BuiltApplication], direct_ingress_enabled: bool
     ) -> None:
         """Check @serve.ingress of deployments across applications.
 
         Raises: RayServeException if more than one @serve.ingress
-            is found among deployments in any single application.
+            is found among deployments in any single application or
+            if multiplexing is used on the ingress deployment when direct
+            ingress is enabled.
         """
         for app in built_apps:
             app.validate_single_fastapi_ingress()
-            app.validate_multiplexing_with_direct_ingress()
+            app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled)
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):

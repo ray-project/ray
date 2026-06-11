@@ -669,14 +669,10 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
     )
 
     client = object.__new__(ServeControllerClient)
-    client._check_ingress_deployments([built_app])
+    client._check_ingress_deployments([built_app], direct_ingress_enabled=False)
 
 
-def test_build_app_rejects_multiplexing_on_ingress_with_direct_ingress(monkeypatch):
-    monkeypatch.setattr(
-        "ray.serve._private.build_app.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
-    )
-
+def test_build_app_rejects_multiplexing_on_ingress_with_direct_ingress():
     @serve.deployment
     class MultiplexedIngress:
         @serve.multiplexed(max_num_models_per_replica=2)
@@ -692,18 +688,18 @@ def test_build_app_rejects_multiplexing_on_ingress_with_direct_ingress(monkeypat
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
     )
 
-    client = object.__new__(ServeControllerClient)
+    # Not rejected when direct ingress is disabled.
+    built_app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled=False)
+
+    # Rejected when direct ingress is enabled.
     with pytest.raises(RayServeException, match="model multiplexing"):
-        client._check_ingress_deployments([built_app])
+        built_app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled=True)
 
 
-def test_build_app_allows_multiplexing_on_non_ingress_with_direct_ingress(monkeypatch):
+def test_build_app_allows_multiplexing_on_non_ingress_with_direct_ingress():
     """Only the ingress deployment is served via direct ingress; downstream
     deployments are reached through the proxy/router, so multiplexing on them is
     still supported."""
-    monkeypatch.setattr(
-        "ray.serve._private.build_app.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
-    )
 
     @serve.deployment
     class MultiplexedDownstream:
@@ -728,9 +724,9 @@ def test_build_app_allows_multiplexing_on_non_ingress_with_direct_ingress(monkey
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
     )
 
-    client = object.__new__(ServeControllerClient)
-    # Should not raise: the ingress deployment ("Ingress") is not multiplexed.
-    client._check_ingress_deployments([built_app])
+    # Should not raise even with direct ingress enabled: the ingress deployment
+    # ("Ingress") is not multiplexed.
+    built_app.validate_multiplexing_with_direct_ingress(direct_ingress_enabled=True)
 
 
 if __name__ == "__main__":
