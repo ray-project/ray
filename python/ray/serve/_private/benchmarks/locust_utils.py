@@ -131,10 +131,38 @@ def _fine_bucket_response_time(response_time):
 
 
 def _install_fine_response_time_bucketing():
-    """Swap in the finer bucketer; must run in every response-logging process."""
+    """Swap in the finer bucketer; must run in every response-logging process.
+
+    Released locust (through at least 2.41) inlines the rounding in
+    StatsEntry._log_response_time, so patching requires overriding the whole
+    method. Unreleased locust factors it into stats.bucket_response_time."""
     import locust.stats
 
-    locust.stats.bucket_response_time = _fine_bucket_response_time
+    if hasattr(locust.stats, "bucket_response_time"):
+        locust.stats.bucket_response_time = _fine_bucket_response_time
+        return
+
+    def _log_response_time(self, response_time):
+        # Copy of locust 2.x StatsEntry._log_response_time with the inline
+        # rounding replaced by the fine bucketer.
+        if response_time is None:
+            self.num_none_requests += 1
+            return
+
+        self.total_response_time += response_time
+
+        if self.min_response_time is None:
+            self.min_response_time = response_time
+        self.min_response_time = min(self.min_response_time, response_time)
+        self.max_response_time = max(self.max_response_time, response_time)
+
+        rounded_response_time = _fine_bucket_response_time(response_time)
+        # setdefault keeps this compatible with both the plain dict (<=2.18)
+        # and defaultdict (>=2.33) versions of response_times.
+        self.response_times.setdefault(rounded_response_time, 0)
+        self.response_times[rounded_response_time] += 1
+
+    locust.stats.StatsEntry._log_response_time = _log_response_time
 
 
 def on_stage_finished(master_runner, stats_in_stages, stage_duration_s, prev_snapshot):
