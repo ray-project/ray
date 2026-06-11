@@ -2,4 +2,4 @@
 - Inject `ClockInterface &clock_` via the constructor. Pass a `Clock` from the production entrypoint (e.g. `raylet/main.cc`) and a `FakeClock` in tests. Declare the concrete clock member before any object that holds a `ClockInterface &` so it is constructed first and outlives the holder.
 - Use `clock_.Now()` / `clock_.NowUnixMillis()` for wall-clock timestamps and deadlines, and `clock_.SteadyNow()` for elapsed/duration measurements
 - In unit tests use `FakeClock::AdvanceTime`/`SetTime` instead of `sleep` or wall-clock time. Ensure that the tests are written to be fast and deterministic.
-- Excpetions: integration tests, benchmark code, and other non-unit tests can use real time.
+- Exceptions: integration tests, benchmark code, and other non-unit tests can use real time.
