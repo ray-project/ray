@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     PhysicalOperator,
     RefBundle,
 )
@@ -43,7 +44,9 @@ def _make_shard_bundle(ref: ray.ObjectRef, num_rows: int, size_bytes: int) -> Re
     meta = BlockMetadata(
         num_rows=num_rows, size_bytes=size_bytes, exec_stats=None, input_files=None
     )
-    return RefBundle([(ref, meta)], schema=None, owns_blocks=False)
+    return RefBundle(
+        [BlockEntry(ref=ref, metadata=meta)], schema=None, owns_blocks=False
+    )
 
 
 def _make_table(num_rows: int, *, offset: int = 0) -> pa.Table:
@@ -188,23 +191,27 @@ def test_contract_flags(
 # ===========================================================================
 
 
-@pytest.mark.parametrize("pid", [0, 1, 7, 199])
-def test_partition_sentinel_roundtrip(pid):
+@pytest.mark.parametrize("partition_id", [0, 1, 7, 199])
+def test_partition_sentinel_roundtrip(partition_id):
     """`make_partition_sentinel` and `extract_partition_id` are inverses."""
-    files = make_partition_sentinel(pid)
+    files = make_partition_sentinel(partition_id)
     meta = BlockMetadata(
         num_rows=10, size_bytes=100, exec_stats=None, input_files=files
     )
     bundle = RefBundle(
-        [(ray.ObjectRef(b"\x00" * 28), meta)], schema=None, owns_blocks=False
+        [BlockEntry(ref=ray.ObjectRef(b"\x00" * 28), metadata=meta)],
+        schema=None,
+        owns_blocks=False,
     )
-    assert extract_partition_id(bundle) == pid
+    assert extract_partition_id(bundle) == partition_id
 
 
 def test_extract_partition_id_raises_when_missing():
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
     bundle = RefBundle(
-        [(ray.ObjectRef(b"\x00" * 28), meta)], schema=None, owns_blocks=False
+        [BlockEntry(ref=ray.ObjectRef(b"\x00" * 28), metadata=meta)],
+        schema=None,
+        owns_blocks=False,
     )
     with pytest.raises(ValueError, match="missing a partition_id sentinel"):
         extract_partition_id(bundle)
@@ -242,7 +249,8 @@ def test_pre_map_merge_buffer(
             num_rows=10, size_bytes=size_bytes, exec_stats=None, input_files=None
         )
         blocks_list = [
-            (ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)
+            BlockEntry(ref=ray.ObjectRef(bytes([i % 256]) * 28), metadata=meta)
+            for i in range(num_blocks)
         ]
         op._add_input_inner(
             RefBundle(blocks_list, schema=None, owns_blocks=False),
@@ -411,15 +419,17 @@ def test_reduce_op_submits_one_task_per_partition_bundle(monkeypatch):
         MagicMock(),
     )
 
-    for pid in (0, 1, 2, 3):
+    for partition_id in (0, 1, 2, 3):
         blocks = [
-            (
-                ray.ObjectRef(bytes([(pid * 31 + i) % 256]) * 28),
-                BlockMetadata(
+            BlockEntry(
+                ref=ray.ObjectRef(bytes([(partition_id * 31 + i) % 256]) * 28),
+                metadata=BlockMetadata(
                     num_rows=10,
                     size_bytes=100,
                     exec_stats=None,
-                    input_files=make_partition_sentinel(pid) if i == 0 else None,
+                    input_files=(
+                        make_partition_sentinel(partition_id) if i == 0 else None
+                    ),
                 ),
             )
             for i in range(3)
@@ -563,7 +573,7 @@ def test_e2e_same_key_lands_in_same_block(
 
     seen_keys_per_block = []
     for ref_bundle in out.iter_internal_ref_bundles():
-        for block_ref, _ in ref_bundle.blocks:
+        for block_ref, _ in ref_bundle.block_refs:
             block = ray.get(block_ref)
             seen_keys_per_block.append(set(block["k"].to_pylist()))
 
@@ -587,7 +597,7 @@ def test_e2e_repartition_with_sort_produces_sorted_partitions(
     out = ds.repartition(4, keys=["id"], sort=True)
 
     for ref_bundle in out.iter_internal_ref_bundles():
-        for block_ref, _ in ref_bundle.blocks:
+        for block_ref in ref_bundle.block_refs:
             block = ray.get(block_ref)
             ids = block["id"].to_pylist()
             assert ids == sorted(ids)
