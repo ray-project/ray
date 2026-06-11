@@ -126,13 +126,13 @@ def run_dataset_pipeline(model_path: str) -> None:
         model_source=model_path,
         batch_size=1,
         concurrency=1,
-        has_image=True,
+        prepare_multimodal_stage=True,
         engine_kwargs={
             "enable_chunked_prefill": True,
             "enforce_eager": True,
             "limit_mm_per_prompt": {"image": 10},
         },
-        apply_chat_template=True,
+        chat_template_stage=True,
     )
     decode_udf = DecodeFramesUDF()
     ds_decoded = ds.map_batches(decode_udf, batch_format="pyarrow", batch_size=1)

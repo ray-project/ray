@@ -66,3 +66,10 @@ export const get = <T = any, R = AxiosResponse<T>>(
 ): Promise<R> => {
   return axiosInstance.get<T, R>(formatUrl(url), config);
 };
+
+export const head = <R = AxiosResponse>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
+  return axiosInstance.head<unknown, R>(formatUrl(url), config);
+};
