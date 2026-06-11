@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import warnings
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
+    CompletionRequest,
 )
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
@@ -23,7 +25,6 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
-    PDOrchestratorMixin,
     PDPrefillServer,
 )
 from ray.serve._private.http_util import SERVE_SESSION_ID
@@ -287,6 +288,10 @@ class TestServingArgsParsing:
 
 class TestPDOrchestratorMixin:
     def test_prepare_prefill_request_limits_chat_to_one_token(self):
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            DefaultConnectorBackend,
+        )
+
         request = ChatCompletionRequest(
             model="test-model",
             messages=[{"role": "user", "content": "hello"}],
@@ -295,7 +300,8 @@ class TestPDOrchestratorMixin:
             stream_options={"include_usage": True},
         )
 
-        prefill_request = PDOrchestratorMixin._prepare_prefill_request(request)
+        be = DefaultConnectorBackend(llm_config=None)
+        prefill_request = be.prepare_prefill_request(request=request, peer=None)
 
         assert prefill_request.max_tokens == 1
         assert prefill_request.max_completion_tokens == 1
@@ -334,6 +340,14 @@ class TestPDOrchestratorMixin:
         server._llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test-model")
         )
+        # Engine init stores the backend on the config; the orchestrator reads it.
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            DefaultConnectorBackend,
+        )
+
+        server._llm_config._kv_connector_backend = DefaultConnectorBackend(
+            server._llm_config
+        )
         # The direct-streaming app starts from the engine-native ASGI app, so
         # the decode server needs a (mock) engine. PD only re-points the
         # chat/completions routes at the orchestrator, patched below.
@@ -359,6 +373,412 @@ class TestPDOrchestratorMixin:
         assert server._prefill_handle.calls[0]["method"] == method
         assert server._prefill_handle.calls[0]["session_id"] == "session-a"
         assert decode_calls[0].kv_transfer_params == {"remote_engine_id": "prefill-1"}
+
+
+class _ChooseReplicaPrefillHandle:
+    """Fake prefill DeploymentHandle exercising the choose_replica/dispatch path.
+
+    Mirrors the connector-protocol opt-in flow: the orchestrator opens a
+    ``choose_replica`` async context manager, reads ``selection.replica_metadata``,
+    then calls ``dispatch(selection, request, raw_info)``.
+    """
+
+    def __init__(self, calls=None, replica_metadata=None):
+        self.calls = calls if calls is not None else []
+        self._replica_metadata = (
+            replica_metadata if replica_metadata is not None else {"peer": "prefill-7"}
+        )
+
+    def options(self, **kwargs):
+        return self
+
+    def _method(self, name):
+        handle = self
+
+        class _Selection:
+            replica_metadata = handle._replica_metadata
+
+        class _Ctx:
+            async def __aenter__(self_inner):
+                return _Selection()
+
+            async def __aexit__(self_inner, *exc):
+                return False
+
+        def choose_replica(request):
+            handle.calls.append({"phase": "choose_replica", "method": name})
+            return _Ctx()
+
+        def dispatch(selection, request, raw_request_info):
+            handle.calls.append(
+                {"phase": "dispatch", "method": name, "request": request}
+            )
+            return _aiter(
+                [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-7"})]
+            )
+
+        return SimpleNamespace(choose_replica=choose_replica, dispatch=dispatch)
+
+    @property
+    def chat(self):
+        return self._method("chat")
+
+    @property
+    def completions(self):
+        return self._method("completions")
+
+
+class TestConnectorProtocolHook:
+    """The orchestrator delegates request shaping + handoff to the backend."""
+
+    def test_base_connector_backend_is_abstract(self):
+        """``BaseConnectorBackend`` is abstract and cannot be instantiated:
+        ``prepare_prefill_request`` / ``prepare_decode_request`` are abstract."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        with pytest.raises(TypeError):
+            BaseConnectorBackend(llm_config=None)
+
+    def test_default_protocol_mixin_shaping(self):
+        """The ``DefaultPDProtocolMixin`` policy: prefill stamps the standard
+        kv_transfer_params + clamps to one non-streaming token; decode forwards
+        the prefill response's kv_transfer_params, and tolerates a None prefill
+        response (concurrent-handoff mode) without crashing."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            DefaultConnectorBackend,
+        )
+
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "hello"}],
+            max_completion_tokens=16,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        be = DefaultConnectorBackend(llm_config=None)
+
+        prefill = be.prepare_prefill_request(
+            request=request.model_copy(deep=True), peer=None
+        )
+        assert prefill.kv_transfer_params["do_remote_decode"] is True
+        assert prefill.kv_transfer_params["do_remote_prefill"] is False
+        assert prefill.max_tokens == 1
+        assert prefill.max_completion_tokens == 1
+        assert prefill.stream is False
+        assert prefill.stream_options is None
+        # Original untouched.
+        assert request.max_completion_tokens == 16
+        assert request.stream is True
+
+        chunk = SimpleNamespace(kv_transfer_params={"remote_engine_id": "p1"})
+        decode = be.prepare_decode_request(
+            request=request.model_copy(deep=True), peer=None, prefill_response=chunk
+        )
+        assert decode.kv_transfer_params == {"remote_engine_id": "p1"}
+
+        # None prefill_response (concurrent mode) must not crash and leaves
+        # kv_transfer_params unset.
+        decode_none = be.prepare_decode_request(
+            request=request.model_copy(deep=True), peer=None, prefill_response=None
+        )
+        assert getattr(decode_none, "kv_transfer_params", None) is None
+
+    def test_get_connector_backend_returns_stored_backend(self):
+        """``_get_connector_backend`` returns the backend that engine init stored
+        on the LLMConfig (and caches it); asserts if none was stored."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl import (
+            NixlConnectorBackend,
+        )
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                }
+            },
+        )
+
+        # No backend stored (engine init / setup_engine_backend didn't run) -> assert.
+        with pytest.raises(AssertionError):
+            server._get_connector_backend()
+
+        # The backend setup_engine_backend would store is returned.
+        stored = NixlConnectorBackend(llm_config=server._llm_config)
+        assert isinstance(stored, BaseConnectorBackend)
+        server._llm_config._kv_connector_backend = stored
+        assert server._get_connector_backend() is stored
+
+        # Cached on first access: a later config change isn't re-read.
+        server._llm_config._kv_connector_backend = None
+        assert server._get_connector_backend() is stored
+
+    @pytest.mark.asyncio
+    async def test_peer_binding_concurrent_handoff_takes_choose_replica_path(self):
+        """A backend opting into requires_peer_binding + concurrent_handoff must
+        drive the orchestrator down the choose_replica/dispatch + concurrent
+        local-decode path, calling the backend's prepare_* with the peer."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        seen = {}
+
+        class _DummyBackend(BaseConnectorBackend):
+            requires_peer_binding = True
+            concurrent_handoff = True
+
+            def prepare_prefill_request(self, *, request, peer):
+                seen["prefill_peer"] = peer
+                out = request.model_copy(deep=True)
+                out.kv_transfer_params = {"role": "prefill", "peer": peer}
+                return out
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                seen["decode_peer"] = peer
+                seen["prefill_response"] = prefill_response
+                out = request.model_copy(deep=True)
+                out.kv_transfer_params = {"role": "decode", "peer": peer}
+                return out
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        dummy_backend = _DummyBackend(server._llm_config)
+        server._llm_config._kv_connector_backend = dummy_backend
+        prefill = _ChooseReplicaPrefillHandle(replica_metadata={"peer": "prefill-7"})
+        server._prefill_handle = prefill
+
+        decode_calls = []
+
+        async def _fake_super_completions(self, req, raw_info):
+            decode_calls.append(req)
+            return _aiter(["decode-chunk"])
+
+        request = CompletionRequest(model="test-model", prompt="hi")
+
+        # Patch the super() local-decode target (LLMServer.completions in the MRO).
+        with patch.object(LLMServer, "completions", _fake_super_completions):
+            chunks = [c async for c in server._pd_handle_request(request, None)]
+
+        # choose_replica + dispatch were used (not .remote()).
+        phases = [c["phase"] for c in prefill.calls]
+        assert phases == ["choose_replica", "dispatch"], phases
+        # Backend saw the peer metadata from the selection on both prepares.
+        assert seen["prefill_peer"] == {"peer": "prefill-7"}
+        assert seen["decode_peer"] == {"peer": "prefill-7"}
+        # Concurrent handoff -> no prefill chunk captured before decode.
+        assert seen["prefill_response"] is None
+        # Local decode ran with the backend-shaped decode request.
+        assert decode_calls[0].kv_transfer_params == {
+            "role": "decode",
+            "peer": {"peer": "prefill-7"},
+        }
+        assert chunks == ["decode-chunk"]
+
+    @pytest.mark.asyncio
+    async def test_default_nixl_backend_shapes_prefill_and_forwards_decode(self):
+        """End-to-end (mock handle) default path through a resolved NIXL backend:
+        prefill is shaped (max_tokens=1, do_remote_decode), and decode forwards
+        the prefill chunk's kv_transfer_params."""
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model"),
+            engine_kwargs={
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                }
+            },
+        )
+        # Engine init (setup_engine_backend) stores the backend on the config;
+        # the orchestrator reads it from there.
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.nixl import (
+            NixlConnectorBackend,
+        )
+
+        server._llm_config._kv_connector_backend = NixlConnectorBackend(
+            server._llm_config
+        )
+        prefill = _FakePrefillHandle()
+        server._prefill_handle = prefill
+
+        decode_calls = []
+
+        async def _fake_super_completions(self, req, raw_info):
+            decode_calls.append(req)
+            return _aiter(["decode-chunk"])
+
+        request = CompletionRequest(model="test-model", prompt="hi")
+
+        with patch.object(LLMServer, "completions", _fake_super_completions):
+            chunks = [c async for c in server._pd_handle_request(request, None)]
+
+        # Standard (non choose_replica) path: .remote() was used.
+        sent_prefill = prefill.calls[0]["request"]
+        assert sent_prefill.max_tokens == 1
+        assert sent_prefill.kv_transfer_params["do_remote_decode"] is True
+        # Decode forwarded prefill's kv_transfer_params.
+        assert decode_calls[0].kv_transfer_params == {"remote_engine_id": "prefill-1"}
+        assert chunks == ["decode-chunk"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_handoff_cancels_prefill_on_decode_failure(self):
+        """In concurrent-handoff mode, if local decode raises, the background
+        prefill task must be cancelled (no leak)."""
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        prefill_started = asyncio.Event()
+        prefill_cancelled = {"value": False}
+
+        class _SlowPrefillHandle:
+            def __init__(self):
+                self.calls = []
+
+            def options(self, **kwargs):
+                return self
+
+            def _method(self, name):
+                async def _gen():
+                    prefill_started.set()
+                    try:
+                        await asyncio.sleep(100)
+                        yield SimpleNamespace(kv_transfer_params={})
+                    except asyncio.CancelledError:
+                        prefill_cancelled["value"] = True
+                        raise
+
+                def remote(request, raw_request_info):
+                    self.calls.append({"method": name})
+                    return _gen()
+
+                return SimpleNamespace(remote=remote)
+
+            @property
+            def completions(self):
+                return self._method("completions")
+
+        class _ConcurrentBackend(BaseConnectorBackend):
+            requires_peer_binding = False
+            concurrent_handoff = True
+
+            def prepare_prefill_request(self, *, request, peer):
+                out = request.model_copy(deep=True)
+                out.kv_transfer_params = {"do_remote_decode": True}
+                return out
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                return request.model_copy(deep=True)
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        server._llm_config._kv_connector_backend = _ConcurrentBackend(
+            server._llm_config
+        )
+        server._prefill_handle = _SlowPrefillHandle()
+
+        async def _failing_super_completions(self, req, raw_info):
+            await prefill_started.wait()
+
+            async def _gen():
+                raise RuntimeError("decode boom")
+                yield  # pragma: no cover
+
+            return _gen()
+
+        request = CompletionRequest(model="test-model", prompt="hi")
+
+        with patch.object(LLMServer, "completions", _failing_super_completions):
+            with pytest.raises(RuntimeError, match="decode boom"):
+                async for _ in server._pd_handle_request(request, None):
+                    pass
+
+        assert prefill_cancelled["value"] is True
+
+    @pytest.mark.asyncio
+    async def test_concurrent_handoff_surfaces_prefill_error(self):
+        """In concurrent-handoff mode, a prefill ErrorResponse must surface to
+        the client (and abort the hung local decode) instead of being only
+        logged — decode may be waiting on KV that will never arrive."""
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ErrorInfo,
+            ErrorResponse,
+        )
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        prefill_error = ErrorResponse(
+            error=ErrorInfo(message="prefill boom", code=500, type="InternalError")
+        )
+        decode_aborted = {"value": False}
+
+        class _ErrorPrefillHandle:
+            def options(self, **kwargs):
+                return self
+
+            @property
+            def completions(self):
+                async def _gen():
+                    yield prefill_error
+
+                def remote(request, raw_request_info):
+                    return _gen()
+
+                return SimpleNamespace(remote=remote)
+
+        class _ConcurrentBackend(BaseConnectorBackend):
+            requires_peer_binding = False
+            concurrent_handoff = True
+
+            def prepare_prefill_request(self, *, request, peer):
+                return request.model_copy(deep=True)
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                return request.model_copy(deep=True)
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        server._llm_config._kv_connector_backend = _ConcurrentBackend(
+            server._llm_config
+        )
+        server._prefill_handle = _ErrorPrefillHandle()
+
+        async def _hanging_super_completions(self, req, raw_info):
+            async def _gen():
+                try:
+                    # Decode never produces output (waiting on KV that the
+                    # failed prefill will never push).
+                    await asyncio.sleep(100)
+                    yield "never"
+                except (asyncio.CancelledError, GeneratorExit):
+                    decode_aborted["value"] = True
+                    raise
+
+            return _gen()
+
+        request = CompletionRequest(model="test-model", prompt="hi")
+
+        with patch.object(LLMServer, "completions", _hanging_super_completions):
+            chunks = [c async for c in server._pd_handle_request(request, None)]
+
+        assert chunks == [prefill_error]
+        assert decode_aborted["value"] is True
 
 
 class TestBuildPDOpenaiApp:
