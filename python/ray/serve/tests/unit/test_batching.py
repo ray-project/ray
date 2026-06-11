@@ -591,36 +591,34 @@ async def test_batch_setters(use_class):
 
 @pytest.mark.asyncio
 async def test_set_max_concurrent_batches():
-    """max_concurrent_batches is enforced and can be updated at runtime."""
+    """The concurrency limit is enforced, and raising it admits queued batches immediately."""
     loop = get_or_create_event_loop()
-    state = {"in_flight": 0, "peak": 0, "gate": asyncio.Event()}
+    state = {"running": 0, "peak": 0, "gate": asyncio.Event()}
 
-    @serve.batch(max_batch_size=1, batch_wait_timeout_s=0, max_concurrent_batches=2)
+    @serve.batch(max_batch_size=1, batch_wait_timeout_s=0, max_concurrent_batches=1)
     async def func(numbers):
-        state["in_flight"] += 1
-        state["peak"] = max(state["peak"], state["in_flight"])
+        # Each request is its own batch (max_batch_size=1) and blocks on the gate,
+        # so state["peak"] tracks how many batches run concurrently.
+        state["running"] += 1
+        state["peak"] = max(state["peak"], state["running"])
         await state["gate"].wait()
-        state["in_flight"] -= 1
+        state["running"] -= 1
         return list(numbers)
 
-    async def peak_concurrency_over_wave(num_requests):
-        # Each request is its own batch (max_batch_size=1); they all block on the
-        # gate, so the peak number running at once is the effective concurrency.
-        state["peak"] = 0
-        state["gate"] = asyncio.Event()
-        tasks = [loop.create_task(func(i)) for i in range(num_requests)]
-        await asyncio.sleep(0.2)
-        peak = state["peak"]
-        state["gate"].set()
-        await asyncio.gather(*tasks)
-        return peak
+    assert func._get_max_concurrent_batches() == 1
+    tasks = [loop.create_task(func(i)) for i in range(4)]
+    await asyncio.sleep(0.2)
+    assert state["peak"] == 1  # only one of four batches runs under the limit
 
-    assert func._get_max_concurrent_batches() == 2
-    assert await peak_concurrency_over_wave(6) == 2
+    # Raise the limit while the first batch is still blocked: queued batches must be
+    # admitted immediately, not only when an in-flight batch completes.
+    func.set_max_concurrent_batches(3)
+    assert func._get_max_concurrent_batches() == 3
+    await asyncio.sleep(0.2)
+    assert state["peak"] == 3
 
-    func.set_max_concurrent_batches(4)
-    assert func._get_max_concurrent_batches() == 4
-    assert await peak_concurrency_over_wave(6) == 4
+    state["gate"].set()
+    await asyncio.gather(*tasks)
 
 
 @pytest.mark.asyncio
@@ -631,9 +629,9 @@ async def test_set_max_concurrent_batches_rejects_invalid():
     async def func(numbers):
         return list(numbers)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         func.set_max_concurrent_batches(0)
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         func.set_max_concurrent_batches(-1)
 
 

@@ -156,6 +156,7 @@ class _BatchQueue:
         self.batch_size_fn = batch_size_fn
         self._in_flight_batches = 0
         self._concurrency_condition = asyncio.Condition()
+        self._concurrency_notify_tasks: Set[asyncio.Task] = set()
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
 
@@ -235,12 +236,21 @@ class _BatchQueue:
     def set_max_concurrent_batches(self, new_max_concurrent_batches: int) -> None:
         """Updates queue's max_concurrent_batches.
 
-        Raising the limit admits waiting batches as in-flight batches complete;
-        lowering it takes effect as in-flight batches drain. In-flight batches
-        are never cancelled.
+        Raising the limit admits waiting batches immediately; lowering it takes
+        effect as in-flight batches drain. In-flight batches are never cancelled.
         """
         self.max_concurrent_batches = new_max_concurrent_batches
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
+        # This setter is sync and can't await, so schedule the wake: a raised limit
+        # admits queued batches now rather than only when an in-flight batch completes.
+        if self._loop.is_running():
+            task = self._loop.create_task(self._notify_concurrency_waiters())
+            self._concurrency_notify_tasks.add(task)
+            task.add_done_callback(self._concurrency_notify_tasks.discard)
+
+    async def _notify_concurrency_waiters(self) -> None:
+        async with self._concurrency_condition:
+            self._concurrency_condition.notify_all()
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
@@ -523,8 +533,9 @@ class _BatchQueue:
         finally:
             async with self._concurrency_condition:
                 self._in_flight_batches -= 1
-                # Wake all waiters so a raised limit can admit multiple batches.
-                self._concurrency_condition.notify_all()
+                # One slot freed -> wake one waiter. Limit raises are handled by
+                # set_max_concurrent_batches, which wakes all.
+                self._concurrency_condition.notify(1)
 
     async def _process_sub_batches(
         self, func: Callable, sub_batches: List[List[_SingleRequest]]
@@ -784,8 +795,12 @@ def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
 
 
 def _validate_max_concurrent_batches(max_concurrent_batches: int) -> None:
-    if not isinstance(max_concurrent_batches, int) or max_concurrent_batches < 1:
+    if not isinstance(max_concurrent_batches, int):
         raise TypeError(
+            f"max_concurrent_batches must be an integer >= 1, got {max_concurrent_batches}"
+        )
+    if max_concurrent_batches < 1:
+        raise ValueError(
             f"max_concurrent_batches must be an integer >= 1, got {max_concurrent_batches}"
         )
 
