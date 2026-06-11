@@ -34,7 +34,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorPool,
@@ -983,7 +983,9 @@ def _create_bundle_with_single_row(row):
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
     schema = BlockAccessor.for_block(block).schema()
-    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+    return RefBundle(
+        [BlockEntry(block_ref, metadata)], owns_blocks=False, schema=schema
+    )
 
 
 @pytest.mark.parametrize("min_rows_per_bundle", [2, None])
@@ -1292,7 +1294,9 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
         num_rows=None, size_bytes=1, exec_stats=None, input_files=None
     )
     ref_bundle = RefBundle(
-        blocks=[(block_ref, block_metadata)], schema=None, owns_blocks=True
+        blocks=[BlockEntry(block_ref, block_metadata)],
+        schema=None,
+        owns_blocks=True,
     )
     topology[upstream_op].add_output(ref_bundle)
 
@@ -1663,6 +1667,41 @@ def test_map_worker_repr_handles_uninitialized_src_fn_name():
     # Also verify that when src_fn_name IS set, __repr__ returns it correctly
     worker.src_fn_name = "TestFunction"
     assert repr(worker) == "MapWorker(TestFunction)"
+
+
+def test_merge_ray_remote_args_inject_context_label_selector(restore_data_context):
+    """ExecutionOptions.label_selector should propagate to actor remote args."""
+    data_context = ray.data.DataContext.get_current()
+    data_context.execution_options.label_selector = {"subcluster": "train"}
+
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        ray_remote_args={"num_cpus": 1},
+    )
+    merged = op._merge_ray_remote_args()
+    assert merged["label_selector"] == {"subcluster": "train"}
+
+
+def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
+    """Operator-level label_selector wins on key conflict."""
+    data_context = ray.data.DataContext.get_current()
+    data_context.execution_options.label_selector = {"subcluster": "train"}
+
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
+        ray_remote_args={
+            "num_cpus": 1,
+            "label_selector": {"subcluster": "val", "node": "X"},
+        },
+    )
+    merged = op._merge_ray_remote_args()
+    assert merged["label_selector"] == {"subcluster": "val", "node": "X"}
 
 
 if __name__ == "__main__":

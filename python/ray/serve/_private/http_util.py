@@ -149,12 +149,12 @@ class Response:
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
-    def __init__(self, content=None, status_code=200):
+    def __init__(self, content: Any = None, status_code: int = 200):
         """Construct a HTTP Response based on input type.
 
         Args:
             content: Any JSON serializable object.
-            status_code (int, optional): Default status code is 200.
+            status_code: Default status code is 200.
         """
         self._messages = convert_object_to_asgi_messages(
             obj=content,
@@ -255,6 +255,9 @@ class MessageQueue(Send):
 
         This method should not be used together with get_messages_nowait.
         Please use either `get_one_message` or `get_messages_nowait`.
+
+        Returns:
+            The next available ASGI message in the queue.
 
         Raises:
             StopAsyncIteration: if the queue is closed and there are no
@@ -516,6 +519,9 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
 def set_socket_reuse_port(sock: socket.socket) -> bool:
     """Mutate a socket object to allow multiple process listening on the same port.
+
+    Args:
+        sock: The socket to configure with SO_REUSEPORT.
 
     Returns:
         success: whether the setting was successful.
@@ -813,18 +819,41 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
     )
 
 
-def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
-    """Return the SERVE_SESSION_ID header value, or '' if absent.
+def _matches_session_id_header(header_key: str) -> bool:
+    """True if ``header_key`` refers to the configured session-id header.
 
-    Accepts both the underscored constant form (``x_session_id``) and the
-    canonical hyphenated form (``x-session-id``) because intermediate proxies
-    (HAProxy, nginx, AWS API Gateway) canonicalize underscored header names
-    to the hyphenated form. ASGI lowercases header names per spec, so
-    case-folding is not needed here.
+    Compares case-insensitively and treats ``-`` and ``_`` as equivalent
+    so intermediate proxies that rewrite the separator (nginx, AWS API
+    Gateway, ...) don't silently drop session affinity. The header name
+    itself is whatever ``SERVE_SESSION_ID`` resolves to (set via the env
+    var ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
     """
-    for form in (SERVE_SESSION_ID, SERVE_SESSION_ID.replace("_", "-")):
-        value = headers.get(form.encode("utf-8"))
-        if value is not None:
+    return header_key.lower().replace("-", "_") == SERVE_SESSION_ID.lower().replace(
+        "-", "_"
+    )
+
+
+def session_id_from_headers(headers: Dict[str, str]) -> Optional[str]:
+    """Return the session-id header value from str-keyed headers, or None.
+
+    Same matching rule as ``parse_session_id_header`` (which takes bytes
+    keys); use this for already-decoded ``Dict[str, str]`` headers such as
+    Starlette ``request.headers`` or ``RawRequestInfo.headers``.
+    """
+    return next(
+        (value for key, value in headers.items() if _matches_session_id_header(key)),
+        None,
+    )
+
+
+def parse_session_id_header(headers: Dict[bytes, bytes]) -> str:
+    """Return the configured session-id header value, or '' if absent.
+
+    Header name is whatever ``SERVE_SESSION_ID`` resolves to (set via
+    ``RAY_SERVE_SESSION_ID_HEADER_KEY``).
+    """
+    for key, value in headers.items():
+        if _matches_session_id_header(key.decode("utf-8")):
             return value.decode("utf-8")
     return ""
 

@@ -311,7 +311,13 @@ def _configure_loggers(config: dict, handlers: dict) -> None:
     """Configure logger instances from config."""
     for logger_name, logger_config in config.get("loggers", {}).items():
         logger = logging.getLogger(logger_name)
-        logger.setLevel(logger_config.get("level", logging.NOTSET))
+        # The environment variable takes precedence over the config.
+        log_level = (
+            os.environ.get("RAY_DATA_LOG_LEVEL")
+            or logger_config.get("level")
+            or logging.NOTSET
+        )
+        logger.setLevel(log_level)
 
         # Clear existing handlers
         for handler in logger.handlers[:]:
@@ -403,6 +409,9 @@ def register_dataset_logger(dataset_id: str) -> Optional[int]:
 
     Args:
         dataset_id: The ID of the dataset.
+
+    Returns:
+        The ID of the currently active dataset, or ``None`` if no dataset is active.
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
@@ -436,6 +445,9 @@ def unregister_dataset_logger(dataset_id: str) -> Optional[int]:
 
     Args:
         dataset_id: The ID of the dataset.
+
+    Returns:
+        The ID of the currently active dataset, or ``None`` if no dataset is active.
     """
     global _DATASET_LOGGER_HANDLER
     global _ACTIVE_DATASET
