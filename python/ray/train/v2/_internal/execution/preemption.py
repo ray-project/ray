@@ -16,16 +16,9 @@ class PreemptionInfo:
 
     Attributes:
         deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
-            across all preempted nodes — the soonest any affected node is
-            expected to be preempted. ``None`` if no deadline was reported.
-            This is a single value for now; per-rank deadlines (so a
-            later-deadline rank can use its full window) will be added when the
-            ``report()`` barrier is relaxed in a later stage.
-        preempted_node_to_ranks: Map of preempted ``node_id`` (hex, as returned
-            by Ray Core) to the worker ``world_rank``\\ s affected when that node
-            is preempted — its failure domain (for a TPU slice, every rank in
-            the slice). Use the :attr:`preempted_node_ids` and
-            :attr:`preempted_ranks` getters for flat, sorted views.
+            across all preempted nodes. ``None`` if no deadline was reported.
+        preempted_node_to_ranks: Map of preempted ``node_id`` to the worker ``world_rank``s affected when that node
+            is preempted.
     """
 
     deadline_ms: Optional[int]
@@ -45,10 +38,7 @@ class PreemptionInfo:
 
 
 def _get_draining_nodes() -> Dict[str, int]:
-    """Return Ray Core's currently-draining nodes as ``{node_id_hex: deadline_ms}``.
-
-    ``deadline_ms == 0`` from Ray Core means "no deadline reported".
-    """
+    """Ray Core's draining nodes as ``{node_id_hex: deadline_ms}`` (0 = no deadline)."""
     return ray._private.state.state.get_draining_nodes()
 
 
@@ -60,10 +50,9 @@ class PreemptionWatcher:
     failure-domain map is built once on construction and is immutable for the
     watcher's lifetime.
 
-    The failure-domain map answers "if this node is reclaimed, which of our
-    ranks are affected?". For a GPU node it's just the ranks on that node; for
-    a TPU node it's every rank in the node's slice, since a TPU slice is
-    reclaimed atomically.
+    The failure-domain map records which of our ranks are affected if a node is
+    preempted: for a GPU node, the ranks on that node; for a TPU node, every
+    rank in the node's slice, since a TPU slice is preempted atomically.
 
     Args:
         node_to_ranks: Map ``node_id_hex -> [ranks on that node]``. Used both
@@ -217,9 +206,8 @@ class PreemptionWatcher:
             info.preempted_ranks,
             deadline_ms,
         )
-        # Stage 1 is observability-only: the detected preemption is logged but
-        # not yet delivered anywhere. Later stages will (1) forward this signal
-        # to the workers so the training loop can react, and (2) coalesce drains
-        # seen within one preemption window into a single worker-group restart,
-        # so a staggered drain (node A at t, node B at t+60s) doesn't cause
-        # back-to-back restarts.
+        # TODO(lehui): forward the detected preemption to the workers so the
+        # training loop can react to it.
+        # TODO(lehui): coalesce preemptions seen within one window into a single
+        # worker-group restart, so a staggered drain (node A at t, node B at
+        # t+60s) doesn't cause back-to-back restarts.
