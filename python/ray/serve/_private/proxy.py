@@ -69,6 +69,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     HandlerMetadata,
@@ -79,7 +80,6 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
     gRPCStreamingType,
 )
-from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.tracing_utils import (
