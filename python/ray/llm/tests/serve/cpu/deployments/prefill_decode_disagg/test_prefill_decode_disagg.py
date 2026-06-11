@@ -708,6 +708,78 @@ class TestConnectorProtocolHook:
 
         assert prefill_cancelled["value"] is True
 
+    @pytest.mark.asyncio
+    async def test_concurrent_handoff_surfaces_prefill_error(self):
+        """In concurrent-handoff mode, a prefill ErrorResponse must surface to
+        the client (and abort the hung local decode) instead of being only
+        logged — decode may be waiting on KV that will never arrive."""
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ErrorInfo,
+            ErrorResponse,
+        )
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+            BaseConnectorBackend,
+        )
+
+        prefill_error = ErrorResponse(
+            error=ErrorInfo(message="prefill boom", code=500, type="InternalError")
+        )
+        decode_aborted = {"value": False}
+
+        class _ErrorPrefillHandle:
+            def options(self, **kwargs):
+                return self
+
+            @property
+            def completions(self):
+                async def _gen():
+                    yield prefill_error
+
+                def remote(request, raw_request_info):
+                    return _gen()
+
+                return SimpleNamespace(remote=remote)
+
+        class _ConcurrentBackend(BaseConnectorBackend):
+            requires_peer_binding = False
+            concurrent_handoff = True
+
+            def prepare_prefill_request(self, *, request, peer):
+                return request.model_copy(deep=True)
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                return request.model_copy(deep=True)
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        server._llm_config._kv_connector_backend = _ConcurrentBackend(
+            server._llm_config
+        )
+        server._prefill_handle = _ErrorPrefillHandle()
+
+        async def _hanging_super_completions(self, req, raw_info):
+            async def _gen():
+                try:
+                    # Decode never produces output (waiting on KV that the
+                    # failed prefill will never push).
+                    await asyncio.sleep(100)
+                    yield "never"
+                except (asyncio.CancelledError, GeneratorExit):
+                    decode_aborted["value"] = True
+                    raise
+
+            return _gen()
+
+        request = CompletionRequest(model="test-model", prompt="hi")
+
+        with patch.object(LLMServer, "completions", _hanging_super_completions):
+            chunks = [c async for c in server._pd_handle_request(request, None)]
+
+        assert chunks == [prefill_error]
+        assert decode_aborted["value"] is True
+
 
 class TestBuildPDOpenaiApp:
     """Test suite for build_pd_openai_app function."""
