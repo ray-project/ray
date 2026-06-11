@@ -20,7 +20,7 @@ Two transfer disciplines, selected by ``read_mode``:
     returned.
 
 The dual-address request_id and the transfer_id are derived DETERMINISTICALLY
-from the incoming request id (uuid5), so ``prepare_prefill_request`` and
+from the incoming request id (a hash), so ``prepare_prefill_request`` and
 ``prepare_decode_request`` produce identical ids across their two separate calls
 without per-request backend state (the backend instance is shared across
 requests).
@@ -28,9 +28,9 @@ requests).
 Registered with Ray's public connector registry via the factory.
 """
 
+import hashlib
 import logging
 import re
-import uuid
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import ray
@@ -75,10 +75,6 @@ _TRANSFER_PREFIX = "tx"
 # Copies of vLLM's regexes for local validation / round-trip tests.
 _PREFILL_ZMQ_RE = re.compile(r"___prefill_addr_(.+?)___decode_addr_")
 _DECODE_ZMQ_RE = re.compile(r"___decode_addr_(.+)_[0-9a-f]{32}(?:-.*)?$")
-
-# Stable namespace for deterministic uuid5 derivation of the dual-address uid.
-# Fixed so prefill & decode (and any retry) agree on the same id for a request.
-_MORI_UID_NAMESPACE = uuid.UUID("d3b07384-d9a0-4f1b-9c2e-6d6f72690001")
 
 
 def build_zmq_address(host: str, handshake_port: int, notify_port: int) -> str:
@@ -208,8 +204,8 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
 
         ``prepare_prefill_request`` and ``prepare_decode_request`` are two
         independent, stateless calls for the same request, so both ids are
-        derived deterministically (uuid5) from a stable per-request seed plus
-        the two zmq addresses — no per-request backend state.
+        derived deterministically (hash of a stable per-request seed) — no
+        per-request backend state.
         """
         prefill_zmq = (peer or {}).get("mori_zmq_address")
         decode_zmq = self._zmq_address
@@ -233,9 +229,10 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
             or get_serve_request_id()
             or f"mori-fallback-{id(request)}"
         )
-        uid = uuid.uuid5(_MORI_UID_NAMESPACE, seed).hex
-        # Wire format consumed by vLLM's MoRIIO connector: the trailing 32-hex
-        # uid is what _PREFILL_ZMQ_RE / _DECODE_ZMQ_RE anchor on.
+        # 32 hex chars (the trailing uid _PREFILL_ZMQ_RE / _DECODE_ZMQ_RE
+        # anchor on); a hash of the seed, so both prepare_* calls agree.
+        uid = hashlib.sha256(seed.encode()).hexdigest()[:32]
+        # Wire format consumed by vLLM's MoRIIO connector.
         request_id = f"{_PREFILL_PREFIX}{prefill_zmq}{_DECODE_PREFIX}{decode_zmq}_{uid}"
         transfer_id = f"{_TRANSFER_PREFIX}-{uid}"
         return request_id, transfer_id
