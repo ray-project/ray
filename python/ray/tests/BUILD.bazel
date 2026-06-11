@@ -560,6 +560,7 @@ py_test_module_list(
         "test_multinode_failures_2.py",
         "test_node_death.py",
         "test_numba.py",
+        "test_object_out_of_scope_callback.py",
         "test_object_spilling_no_asan.py",
         "test_open_telemetry_metric_recorder.py",
         "test_placement_group_metrics.py",
