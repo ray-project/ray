@@ -486,7 +486,7 @@ class ReplicaMetricsManager:
             # These ingress metrics share the same names, tag keys, and emission
             # logic as those collected by the proxy (see ProxyMetrics). When
             # direct ingress is enabled traffic bypasses the proxy, so a given
-            # request is recorded by exactly one of the two (proxy XOR replica).
+            # request is recorded by exactly one of the two.
             node_id = ray.get_runtime_context().get_node_id()
             node_ip_address = ray.util.get_node_ip_address()
             self._ingress_http_metrics = ProxyMetrics(
@@ -845,7 +845,43 @@ class ReplicaMetricsManager:
             # TODO(alexyang): Add metrics for gRPC.
             return
 
-        if not self._cached_metrics_enabled:
+        if self._cached_metrics_enabled:
+            # Cached path: accumulate per-tag-set counts/latencies keyed by the same
+            # canonical tag schemas used by the direct emit path, and flush them in
+            # `_report_cached_metrics`.
+            request_tags = ProxyMetrics.request_tags(
+                route=route,
+                method=method,
+                application=app_name,
+                status_code=status_code,
+            )
+            self._cached_ingress_request_counter[protocol][
+                frozenset(request_tags.items())
+            ] += 1
+            self._cached_ingress_processing_latencies[protocol][
+                frozenset(request_tags.items())
+            ].append(latency_ms)
+            if was_error:
+                request_error_tags = ProxyMetrics.request_error_tags(
+                    route=route,
+                    method=method,
+                    application=app_name,
+                    status_code=status_code,
+                )
+                deployment_error_tags = ProxyMetrics.deployment_error_tags(
+                    route=route,
+                    method=method,
+                    application=app_name,
+                    status_code=status_code,
+                    deployment=deployment_name,
+                )
+                self._cached_ingress_request_error_counter[protocol][
+                    frozenset(request_error_tags.items())
+                ] += 1
+                self._cached_deployment_request_error_counter[protocol][
+                    frozenset(deployment_error_tags.items())
+                ] += 1
+        else:
             self._ingress_http_metrics.record_request(
                 route=route,
                 method=method,
@@ -855,43 +891,6 @@ class ReplicaMetricsManager:
                 is_error=was_error,
                 deployment_name=deployment_name,
             )
-            return
-
-        # Cached path: accumulate per-tag-set counts/latencies keyed by the same
-        # canonical tag schemas used by the direct emit path, and flush them in
-        # `_report_cached_metrics`.
-        request_tags = ProxyMetrics.request_tags(
-            route=route,
-            method=method,
-            application=app_name,
-            status_code=status_code,
-        )
-        self._cached_ingress_request_counter[protocol][
-            frozenset(request_tags.items())
-        ] += 1
-        self._cached_ingress_processing_latencies[protocol][
-            frozenset(request_tags.items())
-        ].append(latency_ms)
-        if was_error:
-            request_error_tags = ProxyMetrics.request_error_tags(
-                route=route,
-                method=method,
-                application=app_name,
-                status_code=status_code,
-            )
-            deployment_error_tags = ProxyMetrics.deployment_error_tags(
-                route=route,
-                method=method,
-                application=app_name,
-                status_code=status_code,
-                deployment=deployment_name,
-            )
-            self._cached_ingress_request_error_counter[protocol][
-                frozenset(request_error_tags.items())
-            ] += 1
-            self._cached_deployment_request_error_counter[protocol][
-                frozenset(deployment_error_tags.items())
-            ] += 1
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
