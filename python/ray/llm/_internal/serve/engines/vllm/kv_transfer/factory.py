@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Type, Union
 
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
+    DefaultConnectorBackend,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.utils.registry import get_registry
@@ -56,9 +57,11 @@ class KVConnectorBackendFactory:
         """Get the connector backend class by name.
 
         For registered connectors, returns the registered backend class.
-        For unregistered connectors, returns BaseConnectorBackend which has
-        a no-op setup() method, allowing connectors that don't require
-        Ray Serve orchestration to work without registration.
+        For unregistered connectors, returns DefaultConnectorBackend (a concrete
+        backend with a no-op setup() and the default P/D protocol policy),
+        allowing connectors that don't require Ray Serve orchestration to work
+        without registration. (BaseConnectorBackend itself is abstract and
+        cannot be instantiated.)
 
         Args:
             name: The name of the connector backend
@@ -74,9 +77,9 @@ class KVConnectorBackendFactory:
         except ValueError:
             logger.warning(
                 f"Unsupported connector backend: {name}. "
-                f"Using default: {BaseConnectorBackend.__name__}."
+                f"Using default: {DefaultConnectorBackend.__name__}."
             )
-            return BaseConnectorBackend
+            return DefaultConnectorBackend
         except Exception as e:
             raise ImportError(
                 f"Failed to load connector backend '{name}': {type(e).__name__}: {e}"
