@@ -14,7 +14,6 @@ from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig as _ChatTemplateStageConfig,
     DetokenizeStageConfig as _DetokenizeStageConfig,
     HttpRequestStageConfig as _HttpRequestStageConfig,
-    PrepareImageStageConfig as _PrepareImageStageConfig,
     PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
     TokenizerStageConfig as _TokenizerStageConfig,
 )
@@ -569,29 +568,6 @@ class HttpRequestStageConfig(_HttpRequestStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
-class PrepareImageStageConfig(_PrepareImageStageConfig):
-    """The configuration for the prepare image stage.
-
-    Args:
-        enabled: Whether this stage is enabled. Defaults to True.
-        batch_size: Rows per batch. If not specified, will use the processor-level
-            batch_size.
-        concurrency: Actor pool size or range for this stage. If not specified,
-            will use the processor-level concurrency. If ``concurrency`` is a
-            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
-            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
-            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
-        runtime_env: Optional runtime environment for this stage. If not specified,
-            will use the processor-level runtime_env. See
-            :ref:`this doc <handling_dependencies>` for more details.
-        num_cpus: Number of CPUs to reserve for each map worker in this stage.
-        memory: Heap memory in bytes to reserve for each map worker in this stage.
-    """
-
-    pass
-
-
 @PublicAPI(stability="beta")
 def build_processor(
     config: ProcessorConfig,
@@ -608,8 +584,8 @@ def build_processor(
             control over batch_size, concurrency, runtime_env, num_cpus, and memory
             (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
             or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
-            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``,
-            ``has_image``) are deprecated but still supported with deprecation warnings.
+            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``)
+            are deprecated but still supported with deprecation warnings.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -773,6 +749,5 @@ __all__ = [
     "PrepareMultimodalStageConfig",
     "TokenizerStageConfig",
     "HttpRequestStageConfig",
-    "PrepareImageStageConfig",
     "build_processor",
 ]
