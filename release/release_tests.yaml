@@ -4206,7 +4206,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1_direct_streaming
   frequency: nightly
-  python: "3.12"
+  python: "3.14"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4253,7 +4253,7 @@
 
 - name: llm_serve_llama_3dot1_8B_tp_2_direct_streaming
   frequency: nightly
-  python: "3.12"
+  python: "3.14"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4298,7 +4298,7 @@
 
 - name: llm_serve_multi_node_direct_streaming
   frequency: nightly
-  python: "3.12"
+  python: "3.14"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4527,7 +4527,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d_direct_streaming
   frequency: nightly
-  python: "3.12"
+  python: "3.14"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4573,7 +4573,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_direct_streaming
   frequency: nightly
-  python: "3.12"
+  python: "3.14"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
