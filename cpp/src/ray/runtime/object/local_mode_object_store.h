@@ -50,7 +50,6 @@ class LocalModeObjectStore : public ObjectStore {
                                                         int timeout_ms);
 
   InstrumentedIOContextWithThread io_context_;
-  // Declared before memory_store_ so it outlives the store, which holds a reference.
   Clock clock_;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store_;
 
