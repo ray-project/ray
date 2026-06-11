@@ -5,7 +5,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
@@ -173,7 +173,7 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     total_gen_ser = 0
     cumulative_scheduling_time_s = 0.0
@@ -290,7 +290,7 @@ def test_block_size_bytes_histogram():
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     # Test different block sizes
     # Buckets: [1KB, 8KB, 64KB, 128KB, 256KB, 512KB, 1MB, 8MB, 64MB, 128MB, 256MB, 512MB, 1GB, 4GB, 16GB, 64GB, 128GB, 256GB, 512GB, 1024GB, 4096GB]
@@ -340,7 +340,7 @@ def test_block_size_rows_histogram():
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     # Test different row counts
     # Buckets: [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]

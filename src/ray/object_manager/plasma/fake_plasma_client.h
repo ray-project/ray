@@ -44,6 +44,16 @@ class FakePlasmaClient : public PlasmaClientInterface {
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0) override {
+    auto [it, inserted] =
+        objects_in_plasma_.emplace(object_id,
+                                   std::make_pair(std::vector<uint8_t>(data_size),
+                                                  std::vector<uint8_t>(metadata_size)));
+    if (!inserted) {
+      return Status::ObjectExists("Object already exists in plasma");
+    }
+    if (data != nullptr) {
+      *data = std::make_shared<SharedMemoryBuffer>(it->second.first.data(), data_size);
+    }
     return Status::OK();
   }
 
@@ -63,8 +73,11 @@ class FakePlasmaClient : public PlasmaClientInterface {
     if (metadata != nullptr && metadata_size > 0) {
       metadata_vec.assign(metadata, metadata + metadata_size);
     }
-    objects_in_plasma_.emplace(
+    auto [it, inserted] = objects_in_plasma_.emplace(
         object_id, std::make_pair(std::move(data_vec), std::move(metadata_vec)));
+    if (!inserted) {
+      return Status::ObjectExists("Object already exists in plasma");
+    }
     return Status::OK();
   }
 

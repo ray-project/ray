@@ -57,6 +57,7 @@ py_test_module_list(
         "test_exit_observability.py",
         "test_experimental_collective.py",
         "test_failure_3.py",
+        "test_gcs_pubsub.py",
         "test_gcs_utils.py",
         "test_get_locations.py",
         "test_get_or_create_actor.py",
@@ -518,6 +519,7 @@ py_test_module_list(
     files = [
         "accelerators/test_accelerators.py",
         "accelerators/test_amd_gpu.py",
+        "accelerators/test_furiosa.py",
         "accelerators/test_intel_gpu.py",
         "accelerators/test_metax_gpu.py",
         "accelerators/test_npu.py",
@@ -542,7 +544,6 @@ py_test_module_list(
         "test_environ.py",
         "test_error_ray_not_initialized.py",
         "test_exceptions.py",
-        "test_gcs_pubsub.py",
         "test_grpc_client_credentials.py",
         "test_ids.py",
         "test_kill_raylet_signal_log.py",

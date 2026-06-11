@@ -221,8 +221,11 @@ class DashboardHead:
         """Load `DashboardHeadModule`s.
 
         Args:
-            modules: A list of module names to load. By default (None),
+            modules_to_load: A set of module names to load. By default (None),
                 it loads all modules.
+
+        Returns:
+            A tuple of ``(loaded_modules, skipped_module_names)``.
         """
         modules = []
         skipped_modules = set()
@@ -263,13 +266,18 @@ class DashboardHead:
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None
     ) -> List["SubprocessModuleHandle"]:
-        """
+        """Load ``SubprocessModule`` handles.
+
         If minimal, return an empty list.
         If non-minimal, load `SubprocessModule`s by creating Handles to them.
 
         Args:
-            modules: A list of module names to load. By default (None),
+            modules_to_load: A set of module names to load. By default (None),
                 it loads all modules.
+
+        Returns:
+            A list of ``SubprocessModuleHandle`` instances, or an empty list in
+            minimal mode.
         """
         if self.minimal:
             logger.info("Subprocess modules not loaded in minimal mode.")

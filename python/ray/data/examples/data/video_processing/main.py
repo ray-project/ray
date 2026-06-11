@@ -126,7 +126,7 @@ def run_dataset_pipeline(model_path: str) -> None:
         model_source=model_path,
         batch_size=1,
         concurrency=1,
-        has_image=True,
+        prepare_multimodal_stage=True,
         engine_kwargs={
             "enable_chunked_prefill": True,
             "enforce_eager": True,

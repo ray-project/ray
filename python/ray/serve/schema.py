@@ -1392,6 +1392,13 @@ class DeploymentDetails(BaseModel):
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
+    recent_dead_replicas: List[ReplicaDetails] = Field(
+        default_factory=list,
+        description=(
+            "Recently-stopped replicas, retained so their logs stay accessible in "
+            "the dashboard after they die. Not part of `replicas` or the live count."
+        ),
+    )
 
     autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
         default=None,
