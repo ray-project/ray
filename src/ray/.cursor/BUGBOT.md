@@ -74,6 +74,4 @@ Unit tests must not
 > ⚠️ This change reads the current time directly. In Ray C++ (`src/ray`), current-time access must go through an injected `ray::ClockInterface` (`src/ray/util/clock.h`) so it can be faked and unit tested deterministically.
 >
 > - Take a `ray::ClockInterface &` constructor parameter and use `clock_.Now()` / `clock_.NowUnixMillis()` (wall clock) or `clock_.SteadyNow()` (durations).
-> - Thread a `ray::Clock` from the production entrypoint and a `ray::FakeClock` in tests (drive time with `AdvanceTime`/`SetTime` instead of `sleep`).
->
-> Exception: integration tests, benchmark code, and other non-unit tests may read the real time directly.
+> - Dependency inject a `ray::Clock` from the production entrypoint and a `ray::FakeClock` in tests (drive time with `AdvanceTime`/`SetTime` instead of `sleep`).
