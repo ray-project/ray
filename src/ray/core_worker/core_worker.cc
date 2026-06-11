@@ -2483,10 +2483,10 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
   // Wrap so the actual callback runs on the dedicated thread.
   // The wrapper itself is quick (just a post) and safe to call under the
-  // ReferenceCounter mutex.
-  auto wrapped = [this, callback](const ObjectID &id) {
-    object_freed_callback_service_.post([callback, id]() { callback(id); },
-                                        "CoreWorker.ObjFreedCb");
+  // ReferenceCounter mutex. Capture the service by reference (not `this`) so
+  // the lambda remains safe if CoreWorker is destroyed before the RC calls it.
+  auto wrapped = [&svc = object_freed_callback_service_, callback](const ObjectID &id) {
+    svc.post([callback, id]() { callback(id); }, "CoreWorker.ObjFreedCb");
   };
   return reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, wrapped);
 }
@@ -2495,6 +2495,7 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                                     void (*callback)(const ObjectID &,
                                                                      void *),
                                                     void *user_data) {
+  RAY_CHECK(callback != nullptr) << "callback must not be null";
   return AddObjectOutOfScopeOrFreedCallback(
       object_id, [callback, user_data](const ObjectID &id) { callback(id, user_data); });
 }

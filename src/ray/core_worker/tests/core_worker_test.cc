@@ -1407,14 +1407,14 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_RunsOnDedicatedThread) {
       boost::thread([this]() { object_freed_callback_service_.run(); });
 
   auto tid = thread_id_promise.get_future().get();
+  auto expected_tid = object_freed_callback_thread_.get_id();
 
   object_freed_callback_service_.stop();
   if (object_freed_callback_thread_.joinable()) {
     object_freed_callback_thread_.join();
   }
 
-  EXPECT_EQ(tid, object_freed_callback_thread_.get_id())
-      << "Callback must run on object_freed_callback_thread_";
+  EXPECT_EQ(tid, expected_tid) << "Callback must run on object_freed_callback_thread_";
   EXPECT_NE(tid, boost::this_thread::get_id())
       << "Callback must not run on the test thread";
 }

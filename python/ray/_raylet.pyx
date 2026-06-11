@@ -2767,12 +2767,11 @@ cdef class GcsClient:
 cdef void _invoke_object_out_of_scope_callback(
         const CObjectID &c_object_id, void *user_data) noexcept nogil:
     with gil:
-        object_ref_id = ObjectRef(c_object_id.Binary())
         try:
+            object_ref_id = ObjectRef(c_object_id.Binary(), weak_ref=True)
             (<object>user_data)(object_ref_id)
-        except Exception:
-            # Exceptions in these callbacks cannot propagate to the C++ caller.
-            pass
+        except BaseException:
+            logger.exception("Error in object out-of-scope callback")
         finally:
             cpython.Py_DECREF(<object>user_data)
 
@@ -4124,6 +4123,10 @@ cdef class CoreWorker:
         Returns True if registered; False if the object is already out of scope
         (the callback will never fire and should be discarded).
         """
+        if not callable(callback):
+            raise TypeError(
+                f"callback must be callable, got {type(callback).__name__!r}"
+            )
         cdef CObjectID c_object_id = object_ref.native()
         # Keep the callable alive until the C++ callback fires (or never fires).
         cpython.Py_INCREF(callback)

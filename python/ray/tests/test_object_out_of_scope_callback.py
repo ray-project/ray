@@ -62,7 +62,10 @@ class TestAddObjectOutOfScopeCallback:
         # callback — must return False — then use a sentinel to drain the callback
         # thread before asserting fired is still unset.
         fired = threading.Event()
-        _core_worker().add_object_out_of_scope_callback(ref, lambda _: fired.set())
+        registered2 = _core_worker().add_object_out_of_scope_callback(
+            ref, lambda _: fired.set()
+        )
+        assert not registered2, "Second registration on OOS object must return False"
 
         sentinel_done = threading.Event()
         sentinel = ray.put("sentinel")
