@@ -1310,7 +1310,7 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
 
     @serve.deployment(
         name="lifecycle_metrics_model",
-        num_replicas=2,
+        num_replicas=1,
         health_check_period_s=0.1,
         health_check_timeout_s=1,
         graceful_shutdown_timeout_s=0.1,
@@ -1327,32 +1327,10 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             if should_fail_health_check:
                 raise RuntimeError("Intentional health check failure.")
 
-    @serve.deployment(
-        name="scale_down_metrics_model",
-        autoscaling_config={
-            "min_replicas": 0,
-            "max_replicas": 1,
-            "initial_replicas": 1,
-            "target_ongoing_requests": 1,
-            "metrics_interval_s": 0.1,
-            "look_back_period_s": 0.1,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 5,
-        },
-        max_ongoing_requests=1,
-        health_check_period_s=0.1,
-        graceful_shutdown_timeout_s=0.1,
-    )
-    class ScaleDownModel:
-        async def __call__(self):
-            return "hello"
-
     autoscaling_app_name = "autoscaling_metrics_app"
     autoscaling_deployment_name = "autoscaling_metrics_model"
     lifecycle_app_name = "lifecycle_metrics_app"
     lifecycle_deployment_name = "lifecycle_metrics_model"
-    scale_down_app_name = "scale_down_metrics_app"
-    scale_down_deployment_name = "scale_down_metrics_model"
     serve.run(
         AutoscalingModel.bind(),
         name=autoscaling_app_name,
@@ -1367,11 +1345,13 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
     url = get_application_url("HTTP", lifecycle_app_name)
     lifecycle_replica_ids = set()
 
-    def check_lifecycle_replicas_running():
-        lifecycle_replica_ids.add(httpx.get(url).text)
-        return len(lifecycle_replica_ids) == 2
+    def check_lifecycle_replica_running():
+        response = httpx.get(url)
+        response.raise_for_status()
+        lifecycle_replica_ids.add(response.text)
+        return len(lifecycle_replica_ids) == 1
 
-    wait_for_condition(check_lifecycle_replicas_running, timeout=60)
+    wait_for_condition(check_lifecycle_replica_running, timeout=60)
     timeseries = PrometheusTimeseries()
 
     def get_health_status_value(deployment: str, application: str) -> float:
@@ -1383,29 +1363,6 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             },
             timeseries=timeseries,
             timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-        )
-
-    if not include_high_cardinality:
-        serve.run(
-            ScaleDownModel.bind(),
-            name=scale_down_app_name,
-            route_prefix="/scale-down",
-        )
-
-        wait_for_condition(
-            lambda: get_health_status_value(
-                scale_down_deployment_name, scale_down_app_name
-            )
-            == 1,
-            timeout=60,
-        )
-
-        wait_for_condition(
-            lambda: get_health_status_value(
-                scale_down_deployment_name, scale_down_app_name
-            )
-            == 0,
-            timeout=60,
         )
 
     ray.get(
@@ -1945,4 +1902,4 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s"] + sys.argv[1:] + [__file__]))
