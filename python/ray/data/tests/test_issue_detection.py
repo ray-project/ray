@@ -243,9 +243,8 @@ def test_high_memory_detection(
 def test_high_memory_detector_does_not_invoke_ray_remote_args_fn(
     restore_data_context,
 ):
-    # The detector must read remote args statically: invoking
-    # ``ray_remote_args_fn`` can have side effects (e.g. the vLLM engine stage's
-    # fn creates a placement group), leaking one PG per detector call.
+    # The detector must read remote args statically: ray_remote_args_fn can have
+    # side effects (the vLLM stage creates a PG), leaking a PG per detector call.
     ctx = DataContext.get_current()
     num_calls = 0
 
