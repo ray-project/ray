@@ -277,7 +277,9 @@ _PUT_PARALLELISM = int(os.environ.get("DATASET_GEN_PARALLELISM", "32"))
 DEFAULT_READ_MEMORY_BYTES = 4 * 1024**3  # 4 GiB
 
 
-def _read_back(path: str, total_disk_bytes: Optional[int], memory: int) -> None:
+def _read_back(
+    path: str, total_disk_bytes: Optional[int], memory: int, use_version: str
+) -> None:
     """Post-generation read benchmark. Reads the just-written parquet with Ray
     Data and drains it through internal ref bundles -- the iter_bundles consume
     mode: blocks are materialised by the read tasks but never shipped to the
@@ -298,7 +300,9 @@ def _read_back(path: str, total_disk_bytes: Optional[int], memory: int) -> None:
         ray.init(ignore_reinit_error=True)
 
     ctx = ray.data.DataContext.get_current()
-    ctx.use_datasource_v2 = True  # route read_parquet through DataSource V2
+    ctx.use_datasource_v2 = (
+        use_version == "v2"
+    )  # route read_parquet through DataSource V2
 
     print(
         f"[read] ray.data.read_parquet(memory={human(memory)}) <- {path}",
@@ -339,6 +343,7 @@ def generate(
     force: bool,
     read_back: bool,
     read_memory: int,
+    use_version: str,
 ) -> None:
     backend = _make_backend(output)
 
@@ -394,7 +399,7 @@ def generate(
     print(f"[done] {output}", flush=True)
 
     if read_back:
-        _read_back(output, file_disk * num_files, read_memory)
+        _read_back(output, file_disk * num_files, read_memory, use_version)
 
 
 def _put_all(backend: _Backend, items: List[Tuple[str, bytes]]) -> None:
@@ -496,6 +501,12 @@ def main():
         help="Logical memory passed to read_parquet during read-back, "
         "e.g. 4GiB, 512MiB.",
     )
+    p.add_argument(
+        "--use-version",
+        default="v2",
+        choices=["v1", "v2"],
+        help="Use DataSource V1 or V2.",
+    )
     args = p.parse_args()
 
     if args.row_group_size > args.file_size:
@@ -515,6 +526,7 @@ def main():
         force=args.force,
         read_back=args.read_back,
         read_memory=args.read_memory,
+        use_version=args.use_version,
     )
 
 
