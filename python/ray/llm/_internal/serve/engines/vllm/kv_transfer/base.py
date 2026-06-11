@@ -159,33 +159,6 @@ class BaseConnectorBackend(abc.ABC):
         """
         pass
 
-    def engine_request_id(
-        self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
-    ) -> Optional[str]:
-        """The request id both engines must observe for this request, or None.
-
-        Most connectors return None: the engine derives its own id from the
-        Serve request context and the ``X-Request-Id`` header as usual. A
-        connector that encodes coordination data *in the request id itself*
-        (e.g. MoRIIO's ``___prefill_addr_...___decode_addr_..._{uid}``) returns
-        that id here so the orchestrator can deliver it to both the remote
-        prefill and the local decode engine. Returning a value is not enough on
-        its own -- shaping ``request.request_id`` in ``prepare_*`` does not
-        survive, because vLLM reads the engine id from the ``X-Request-Id``
-        header and the local-decode pipeline overwrites ``request.request_id``
-        from the Serve request context. The orchestrator sets both from this
-        value; see ``PDOrchestratorMixin._connector_raw_request_info``.
-
-        Args:
-            request: The incoming chat/completion request.
-            peer: The selected prefill replica's ``replica_metadata`` dict when
-                the connector opted into pre-dispatch peer binding, else None.
-
-        Returns:
-            The id to stamp on both engines, or None to keep the default id.
-        """
-        return None
-
     def replica_metadata(self) -> Dict[str, Any]:
         """Static per-replica coordination data published to the orchestrator.
 

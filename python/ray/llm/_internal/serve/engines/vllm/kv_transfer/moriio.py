@@ -240,19 +240,15 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         transfer_id = f"{_TRANSFER_PREFIX}-{uid}"
         return request_id, transfer_id
 
-    def engine_request_id(
-        self, *, request: Any, peer: Optional[Dict[str, Any]]
-    ) -> Optional[str]:
-        """The MoRIIO dual-address id both engines must observe (peer zmq is
-        encoded in the id itself; the orchestrator delivers it via the
-        ``X-Request-Id`` header and the Serve request context)."""
-        return self._dual_ids(request, peer)[0]
-
     def prepare_prefill_request(
         self, *, request: "RequestType", peer: Optional[Dict[str, Any]]
     ) -> "RequestType":
         request_id, transfer_id = self._dual_ids(request, peer)
         prefill_request = request.model_copy(deep=True)
+        # The dual-address id (peer zmq encoded in it) must reach the engine:
+        # setting request_id explicitly makes the LLMServer pipeline preserve it
+        # (not clobber it with the Serve id) and the engine copies it into the
+        # X-Request-Id header that vLLM's MoRIIO connector parses.
         prefill_request.request_id = request_id
         prefill_request.kv_transfer_params = {
             "do_remote_decode": True,
