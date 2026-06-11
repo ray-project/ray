@@ -65,7 +65,7 @@ def _format_resource_bundle_for_log(bundle: ResourceDict) -> str:
         A human-readable string, e.g. ``"{CPU: 8, memory: 32.0GiB}"``.
 
     Example:
-        >>> _format_resource_bundle_for_log({"CPU": 8, "GPU": 0, "memory": 32 * GiB})
+        >>> _format_resource_bundle_for_log({"CPU": 8, "GPU": 0, "memory": 32 * 1024 ** 3})
         '{CPU: 8, memory: 32.0GiB}'
     """
     resources = []
