@@ -628,7 +628,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// The node id of the worker.
   const NodeID node_id_;
 
-  /// Clock used for timestamping events and for grpc completion deadlines.
   ClockInterface &clock_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);

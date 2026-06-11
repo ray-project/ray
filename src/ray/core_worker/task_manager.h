@@ -850,7 +850,6 @@ class TaskManager : public TaskManagerInterface {
   /// Callback to set the direct transport metadata for a object.
   SetDirectTransportMetadata set_direct_transport_metadata_;
 
-  /// Clock used for timestamping errors and rate-limiting failure logs.
   ClockInterface &clock_;
 
   friend class TaskManagerTest;
