@@ -35,6 +35,9 @@ class MinimalClusterManager(ClusterManager):
         assert self.cluster_env_id is None
         assert self.cluster_env_name
 
+        if self.test.uses_anyscale_sdk_2026():
+            return self._create_cluster_env_new_sdk()
+
         logger.info(
             f"Test uses a cluster env with name "
             f"{self.cluster_env_name}. Looking up existing "
@@ -50,8 +53,48 @@ class MinimalClusterManager(ClusterManager):
             cluster_env_name=self.cluster_env_name,
         )
 
+    def _create_cluster_env_new_sdk(self):
+        """Register the BYOD image as an image using the anyscale.image API (2026 SDK).
+
+        The 2026 SDK replaces cluster environments with images: there is no
+        separate "create env" and "build env" step. Registering a BYOD image
+        is idempotent (it reuses the existing build if the image is unchanged)
+        and produces the build id the job submission needs, so we set both
+        ``cluster_env_id`` and ``cluster_env_build_id`` here and let
+        ``build_cluster_env`` short-circuit.
+        """
+        image = self.test.get_anyscale_byod_image()
+
+        logger.info(
+            f"Test uses an image (2026 SDK) with name "
+            f"{self.cluster_env_name}. Registering BYOD image {image}."
+        )
+
+        anyscale_sdk = self.test.anyscale
+        anyscale_sdk.image.register(image, name=self.cluster_env_name)
+        image_build = anyscale_sdk.image.get(name=self.cluster_env_name)
+
+        self.cluster_env_id = image_build.id
+        self.cluster_env_build_id = image_build.latest_build_id
+
+        logger.info(
+            f"Image registered with id {self.cluster_env_id} and "
+            f"build id {self.cluster_env_build_id}"
+        )
+
     def build_cluster_env(self, timeout: float = 600.0):
         assert self.cluster_env_id
+
+        if self.test.uses_anyscale_sdk_2026():
+            # The 2026 SDK builds the image at registration time in
+            # create_cluster_env, which already set cluster_env_build_id.
+            assert self.cluster_env_build_id
+            logger.info(
+                f"Image already built (2026 SDK) with build id "
+                f"{self.cluster_env_build_id}"
+            )
+            return
+
         assert self.cluster_env_build_id is None
 
         # Fetch build
