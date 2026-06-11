@@ -1704,15 +1704,6 @@ class TestDataOpTask:
         assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
         assert not deferred
 
-    @pytest.mark.skip(
-        reason=(
-            "Requires the ObjectRefGenerator._next_sync end-of-stream timeout "
-            "fix (#64014): without it, probing the exhausted stream while the "
-            "generator's return object is lost blocks the scheduling thread "
-            "until reconstruction. Un-skip after merging master once #64014 "
-            "lands."
-        )
-    )
     def test_on_data_ready_with_preemption_after_wait(
         self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
     ):
