@@ -14,7 +14,6 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
 from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
     DEFAULT_HANDSHAKE_PORT_BASE,
     DEFAULT_NOTIFY_PORT_BASE,
-    ZMQ_ADDRESS_KEY,
     MoRIIOConnectorBackend,
     parse_peer_zmq,
     parse_zmq_address,
@@ -76,7 +75,7 @@ class TestMoRIIOConnectorBackendSetup:
         assert "http_port" in extra
         assert extra["read_mode"] == "false"
 
-        zmq = backend.llm_config.experimental_configs[ZMQ_ADDRESS_KEY]
+        zmq = backend._zmq_address
         host, hs, notify = parse_zmq_address(zmq)
         assert host == _TEST_HOST
         assert hs == DEFAULT_HANDSHAKE_PORT_BASE
@@ -144,9 +143,7 @@ class TestMoRIIOConnectorBackendSetup:
         backend = _make_backend()
         _setup(backend, rank=0)
         meta = backend.replica_metadata()
-        assert meta["mori_zmq_address"] == (
-            backend.llm_config.experimental_configs[ZMQ_ADDRESS_KEY]
-        )
+        assert meta["mori_zmq_address"] == backend._zmq_address
 
     def test_replica_metadata_default_empty(self):
         # The default backend publishes nothing (concrete default on the base).
@@ -183,7 +180,7 @@ class TestMoRIIORequestId:
     def test_prefill_and_decode_share_request_id_and_transfer_id(self):
         backend = _make_backend(read_mode=False)
         _setup(backend, rank=0)
-        decode_zmq = backend.llm_config.experimental_configs[ZMQ_ADDRESS_KEY]
+        decode_zmq = backend._zmq_address
         prefill_zmq = "host:10.0.0.9,handshake:6301,notify:61005"
         peer = {"mori_zmq_address": prefill_zmq}
 

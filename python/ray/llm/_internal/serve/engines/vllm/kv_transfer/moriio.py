@@ -29,7 +29,6 @@ Registered with Ray's public connector registry via the factory.
 """
 
 import logging
-import os
 import re
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -56,10 +55,6 @@ DEFAULT_NOTIFY_PORT_BASE = 61005
 # experimental_configs keys understood by this backend.
 HANDSHAKE_PORT_BASE_KEY = "MORI_HANDSHAKE_PORT_BASE"
 NOTIFY_PORT_BASE_KEY = "MORI_NOTIFY_PORT_BASE"
-# Where setup() stashes the advertised zmq address for replica_metadata() to read.
-ZMQ_ADDRESS_KEY = "_mori_zmq_address"
-# Process-env fallback for the advertised zmq address.
-MORI_ZMQ_ADDRESS_ENV = "MORI_ZMQ_ADDRESS"
 
 # ---------------------------------------------------------------------------
 # Dual-address request_id / zmq address encoding.
@@ -100,34 +95,6 @@ def parse_zmq_address(zmq_address: str) -> Tuple[str, int, int]:
     return parts["host"], int(parts["handshake"]), int(parts["notify"])
 
 
-def derive_uid(seed: str) -> str:
-    """Deterministically derive the 32-hex uid from a stable per-request seed.
-
-    Using uuid5 (not uuid4) so that ``prepare_prefill_request`` and
-    ``prepare_decode_request`` -- two separate, stateless calls for the same
-    request -- agree on the same dual-address id and transfer_id.
-    """
-    return uuid.uuid5(_MORI_UID_NAMESPACE, seed).hex
-
-
-def build_pd_request_id(prefill_zmq: str, decode_zmq: str, uid: str) -> str:
-    """Build the dual-address request id consumed by both P and D engines.
-
-    Format: ``___prefill_addr_{P}___decode_addr_{D}_{uid32}`` where the trailing
-    32-hex uid is what ``_DECODE_ZMQ_RE`` anchors on. ``uid`` MUST be the
-    deterministic value from :func:`derive_uid` so the two prepare_* calls agree.
-    """
-    return f"{_PREFILL_PREFIX}{prefill_zmq}{_DECODE_PREFIX}{decode_zmq}_{uid}"
-
-
-def build_transfer_id(uid: str) -> str:
-    """Per-(P,D) transfer id. Mirrors vllm-router's ``tx-{uuid32}``.
-
-    Derived from the same deterministic ``uid`` as the request id.
-    """
-    return f"{_TRANSFER_PREFIX}-{uid}"
-
-
 def parse_peer_zmq(request_id: str, is_producer: bool) -> str:
     """Recover the peer's zmq address from a request id (for tests/debugging).
 
@@ -154,6 +121,10 @@ def _read_mode_enabled(extra_config: Dict[str, Any]) -> bool:
 class MoRIIOConnectorBackend(BaseConnectorBackend):
     """Set up MoRIIO ports/extra_config and implement the PD connector protocol."""
 
+    # The advertised zmq address ("host:IP,handshake:PORT,notify:PORT"),
+    # computed by setup(); consumers reach it via this backend instance.
+    _zmq_address: Optional[str] = None
+
     # MORI addresses peers by the dual-address request id, so the orchestrator
     # must bind to the selected prefill replica BEFORE dispatch.
     requires_peer_binding: bool = True
@@ -165,7 +136,7 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
     @property
     def _read_mode(self) -> bool:
         """True iff this engine's MoRIIO connector is configured for READ mode."""
-        extra = (self.kv_transfer_config or {}).get("kv_connector_extra_config") or {}
+        extra = self._extra_config()
         return _read_mode_enabled(extra)
 
     @property
@@ -209,27 +180,15 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         # Advertise the Ray internal cluster IP as the zmq host.
         host = ray.util.get_node_ip_address()
         zmq_address = build_zmq_address(host, handshake_port, notify_port)
-        # Stash so replica_metadata() (the PR1 hook) can publish it; the decode
+        # Stash so replica_metadata() can publish it; the decode
         # orchestrator reads the selected prefill replica's copy off the peer.
-        self.llm_config.experimental_configs[ZMQ_ADDRESS_KEY] = zmq_address
-        os.environ.setdefault(MORI_ZMQ_ADDRESS_ENV, zmq_address)
-        # NOTE: cross-node correctness additionally needs MoRIIO's worker to
+        self._zmq_address = zmq_address
+        # TODO: cross-node correctness additionally needs MoRIIO's worker to
         # advertise the node INTERNAL IP (VLLM_HOST_IP inside every worker
         # process). That fix must live in the worker process (a vLLM general
         # plugin) -- see the follow-up worker host-IP PR.
 
     # ---- replica metadata (published via the PR1 hook) ----
-
-    def _own_zmq_address(self) -> Optional[str]:
-        """The replica's own advertised MORI zmq address (set by setup()).
-
-        Prefer the value stashed on llm_config; fall back to the process env the
-        backend also sets (robust if the engine holds a different llm_config copy).
-        """
-        addr = self.llm_config.experimental_configs.get(ZMQ_ADDRESS_KEY)
-        if not addr:
-            addr = os.environ.get(MORI_ZMQ_ADDRESS_ENV)
-        return addr
 
     def replica_metadata(self) -> dict:
         """Static per-replica coordination data published to the orchestrator.
@@ -238,41 +197,22 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         orchestrator reads it off the selected prefill replica's
         ``ReplicaSelection.replica_metadata``.
         """
-        return {"mori_zmq_address": self._own_zmq_address()}
+        return {"mori_zmq_address": self._zmq_address}
 
     # ---- request shaping (PD connector protocol) ----
-
-    @staticmethod
-    def _request_seed(request: Any) -> str:
-        """Stable per-request seed for the deterministic uid derivation.
-
-        An explicitly-set ``request.request_id`` is authoritative; otherwise the
-        serve-context request id (stable across both ``prepare_*`` calls of one
-        orchestration) is used. The ``id(request)`` last resort only applies
-        outside a Serve request context (e.g. unit tests) and is likewise stable
-        within a single orchestration, which operates on one request object.
-        """
-        seed = getattr(request, "request_id", None)
-        if not seed:
-            seed = get_serve_request_id()
-        if not seed:
-            seed = f"mori-fallback-{id(request)}"
-        return str(seed)
-
-    def _peer_prefill_zmq(self, peer: Optional[Dict[str, Any]]) -> Optional[str]:
-        return (peer or {}).get("mori_zmq_address")
 
     def _dual_ids(
         self, request: Any, peer: Optional[Dict[str, Any]]
     ) -> Tuple[str, str]:
         """Compute the (dual-address request_id, transfer_id) for this request.
 
-        Deterministic in (request seed, peer prefill zmq, own decode zmq), so the
-        prefill and decode preparation calls produce identical ids with no
-        per-request backend state.
+        ``prepare_prefill_request`` and ``prepare_decode_request`` are two
+        independent, stateless calls for the same request, so both ids are
+        derived deterministically (uuid5) from a stable per-request seed plus
+        the two zmq addresses — no per-request backend state.
         """
-        prefill_zmq = self._peer_prefill_zmq(peer)
-        decode_zmq = self._own_zmq_address()
+        prefill_zmq = (peer or {}).get("mori_zmq_address")
+        decode_zmq = self._zmq_address
         if not prefill_zmq:
             raise ValueError(
                 "MoRIIO peer is missing 'mori_zmq_address': the selected prefill "
@@ -284,10 +224,20 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
                 "MoRIIO decode zmq address is not set: setup() must run on this "
                 "engine before requests are shaped."
             )
-        seed = self._request_seed(request)
-        uid = derive_uid(seed)
-        request_id = build_pd_request_id(prefill_zmq, decode_zmq, uid)
-        transfer_id = build_transfer_id(uid)
+        # Seed precedence: an explicitly-set request id, else the serve-context
+        # id (stable across both prepare_* calls of one orchestration). The
+        # id(request) last resort only applies outside a Serve request context
+        # (e.g. unit tests); both calls shape the same request object.
+        seed = str(
+            getattr(request, "request_id", None)
+            or get_serve_request_id()
+            or f"mori-fallback-{id(request)}"
+        )
+        uid = uuid.uuid5(_MORI_UID_NAMESPACE, seed).hex
+        # Wire format consumed by vLLM's MoRIIO connector: the trailing 32-hex
+        # uid is what _PREFILL_ZMQ_RE / _DECODE_ZMQ_RE anchor on.
+        request_id = f"{_PREFILL_PREFIX}{prefill_zmq}{_DECODE_PREFIX}{decode_zmq}_{uid}"
+        transfer_id = f"{_TRANSFER_PREFIX}-{uid}"
         return request_id, transfer_id
 
     def prepare_prefill_request(
