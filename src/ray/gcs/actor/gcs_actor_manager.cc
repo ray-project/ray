@@ -856,8 +856,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
                                           session_name_);
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
-  actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
-      current_time_ms());
+  actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(current_time_ms());
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
