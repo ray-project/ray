@@ -14,11 +14,6 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _concat_reduce,
     _make_hash_partition_fn,
 )
-from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (
-    _encode_partition_ipc,
-    _partition_blocks_to_shards,
-    _read_partition_ipc,
-)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     extract_partition_id,
@@ -26,6 +21,11 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    _encode_partition_ipc,
+    _partition_blocks_to_shards,
+    _read_partition_ipc,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.block import BlockMetadata

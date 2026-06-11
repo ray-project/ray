@@ -26,7 +26,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     PartitionFn,
     _shuffle_map_task,
 )

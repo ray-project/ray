@@ -3,7 +3,7 @@ from typing import Dict, Iterable, List
 import pyarrow as pa
 
 from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
-from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     PartitionFn,
     ReduceFn,
 )

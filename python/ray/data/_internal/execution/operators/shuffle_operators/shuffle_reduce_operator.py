@@ -15,13 +15,13 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.shuffle_operators._shuffle_tasks import (
-    ReduceFn,
-    _shuffle_reduce_task,
-)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     extract_partition_id,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    ReduceFn,
+    _shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data.block import BlockStats, TaskExecWorkerStats, to_stats
