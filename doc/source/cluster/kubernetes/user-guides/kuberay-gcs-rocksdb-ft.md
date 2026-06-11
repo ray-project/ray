@@ -117,6 +117,95 @@ env:
   value: "64"
 ```
 
+## Durability and the death-notification tables
+
+By default RocksDB persists every GCS write with a synchronous WAL
+`fsync` (`WriteOptions::sync = true`) before acknowledging it, so a write
+that GCS has acked is guaranteed to survive a crash. There is one
+deliberate exception, controlled by `RAY_gcs_rocksdb_soft_durability_tables`
+(default `"NODE,ACTOR"`), and it is worth understanding because it differs
+from the strict per-write durability you might assume.
+
+### Why an exception exists: publish-after-persist
+
+When a node or actor dies, GCS does two things: it **persists** the new
+death state, and it **publishes** a notification so the rest of the
+cluster (drivers, raylets) learns about the death and can react — for
+example, by reconstructing objects that lived on the dead node.
+
+Crucially, GCS publishes the notification *from inside the storage
+write's completion callback* — i.e. **publish-after-persist**. The
+notification is only sent once the write has been durably committed:
+
+```text
+node/actor dies
+      │
+      ▼
+  GCS writes death record ──► [ WAL fsync ] ──► on_done callback ──► publish notification
+                               ~3–15 ms                              (cluster reacts)
+```
+
+With an in-memory or `appendfsync everysec` Redis backend the "persist"
+step is effectively instant, so the notification goes out immediately.
+Under RocksDB with a per-write fsync, the notification is gated behind
+that fsync. The fsync itself is fast (single-digit to low-tens of
+milliseconds), but it is enough to widen a pre-existing, timing-sensitive
+race in Ray Core's object/generator-reconstruction path: a driver
+reconstructing a `num_returns=None` generator whose task depended on the
+dead actor could stall indefinitely waiting for the death notification
+that the fsync delayed. (The race is in Core reconstruction, not in the
+storage backend — RocksDB returns correct data; only the notification
+timing differs. Per-table isolation testing pinned the trigger to the
+`ACTOR`-table write for the actor-death case.)
+
+### The fix: relax fsync on the death-notification tables
+
+Tables listed in `gcs_rocksdb_soft_durability_tables` are written with
+`sync = false`, so death notifications are no longer gated on the fsync.
+The default carries the two death-notification tables, `NODE` and
+`ACTOR`.
+
+This does **not** make RocksDB FT less durable than the production
+baseline Ray already ships:
+
+* Ray's recommended Redis GCS runs with `appendfsync everysec` — Redis
+  fsyncs its append-only log **once per second**, not per write (see
+  {ref}`kuberay-gcs-persistent-ft`). Per-write fsync (`appendfsync
+  always`) is documented there as an *optional* stronger setting.
+  RocksDB with `sync = false` on these tables still flushes to the OS
+  and is recovered on a clean process restart; only an OS/host crash in
+  the sub-second window before the next background sync can lose the
+  last write — the **same** exposure `appendfsync everysec` already
+  accepts.
+* The affected state is **re-derivable** after a GCS restart regardless:
+  node liveness is re-established by health checks, and actor state is
+  reconciled from the running cluster. These are exactly the tables for
+  which losing the last unsynced record is recoverable.
+
+Every other table keeps the strict per-write fsync. Writes with no table
+name (the cluster-ID marker and the job-ID counter) always fsync.
+
+### Tuning the knob
+
+The default is appropriate for essentially all deployments. The knob
+exists for two reasons: to make the durability decision explicit and
+auditable, and to let an operator who wants strict per-write durability
+on *every* table opt back in:
+
+```yaml
+env:
+# Keep the strict per-write fsync on all tables (reverts the relaxation;
+# may re-expose the reconstruction stall described above).
+- name: RAY_gcs_rocksdb_soft_durability_tables
+  value: ""
+```
+
+The value is a comma-separated list of GCS table names (for example
+`"NODE,ACTOR"`). The proper long-term fix is in Ray Core — decoupling
+the death-notification publish from the storage persist so notifications
+are never gated on fsync regardless of backend — and is tracked as a
+REP-64 follow-up; this knob is the contained, backend-local mitigation.
+
 ## Caveats
 
 * **Volume topology determines failover scope.** With a `ReadWriteOnce`

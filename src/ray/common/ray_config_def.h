@@ -465,6 +465,32 @@ RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
 /// gcs_rocksdb_async_offload is true.
 RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
+/// Comma-separated GCS table names whose RocksDB writes skip the per-write
+/// WAL fsync (WriteOptions::sync = false). Every other table keeps the
+/// fsync-before-ack durability contract.
+///
+/// Why this exists: GCS publishes death notifications (node down, actor
+/// dead) from inside the storage write's completion callback -- i.e.
+/// publish-after-persist. Under RocksDB the per-write fsync therefore
+/// delays the cluster-wide death notification by the fsync latency, which
+/// widens a pre-existing Ray-core object-reconstruction/task-resubmission
+/// race far enough that a generator (num_returns=None) reconstruction can
+/// hang. The other GCS backends do not expose this because their "persist"
+/// is effectively in-memory-fast: Ray's recommended Redis GCS runs with
+/// `appendfsync everysec` (fsync once per second, not per write; see
+/// doc/.../kuberay-gcs-persistent-ft.md) and Ray's test Redis has no
+/// persistence at all.
+///
+/// Relaxing the fsync on these tables keeps RocksDB at least as durable as
+/// that proven, shipped baseline (a crash can lose only the last,
+/// not-yet-fsynced write -- the same window Redis everysec already
+/// tolerates), while removing the notification delay. The defaults are the
+/// two death-notification tables, whose state is re-derivable after a GCS
+/// restart anyway: NODE liveness is re-established by health checks and
+/// ACTOR state is reconciled from the running cluster. Set to "" to keep
+/// the strict per-write fsync on all tables.
+RAY_CONFIG(std::string, gcs_rocksdb_soft_durability_tables, "NODE,ACTOR")
+
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 

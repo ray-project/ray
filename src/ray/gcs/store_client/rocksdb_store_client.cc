@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "boost/asio/post.hpp"
 #include "ray/util/logging.h"
@@ -36,6 +37,27 @@ namespace gcs {
 namespace {
 
 constexpr char kDefaultCFName[] = "default";
+
+// Parse a comma-separated table-name list (e.g. "NODE,ACTOR") into a set,
+// trimming surrounding spaces and dropping empty entries.
+absl::flat_hash_set<std::string> ParseTableSet(const std::string &csv) {
+  absl::flat_hash_set<std::string> out;
+  std::size_t start = 0;
+  while (start <= csv.size()) {
+    std::size_t comma = csv.find(',', start);
+    std::size_t end = (comma == std::string::npos) ? csv.size() : comma;
+    std::size_t b = csv.find_first_not_of(" \t", start);
+    if (b != std::string::npos && b < end) {
+      std::size_t e = csv.find_last_not_of(" \t", end - 1);
+      out.insert(csv.substr(b, e - b + 1));
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+  return out;
+}
 
 rocksdb::Options BuildDbOptions() {
   rocksdb::Options options;
@@ -51,11 +73,16 @@ rocksdb::Options BuildDbOptions() {
 
 }  // namespace
 
-rocksdb::WriteOptions RocksDbStoreClient::SyncWriteOptions() const {
+rocksdb::WriteOptions RocksDbStoreClient::SyncWriteOptions(
+    const std::string &table_name) const {
   rocksdb::WriteOptions wo;
   // REP §"Durability and Consistency Semantics": fsync per write is the
-  // GCS FT durability contract.
-  wo.sync = true;
+  // GCS FT durability contract. The death-notification tables listed in
+  // gcs_rocksdb_soft_durability_tables are the exception (sync = false):
+  // their per-write fsync would delay publish-after-persist death
+  // notifications and widen a core reconstruction race, and their state
+  // is re-derivable after a restart. See the config docstring.
+  wo.sync = !soft_durability_tables_.contains(table_name);
   return wo;
 }
 
@@ -65,7 +92,9 @@ RocksDbStoreClient::RocksDbStoreClient(
     const std::string &expected_cluster_id,
     bool offload_io,
     std::size_t io_pool_size,
-    std::size_t strand_buckets) {
+    std::size_t strand_buckets,
+    const std::string &soft_durability_tables)
+    : soft_durability_tables_(ParseTableSet(soft_durability_tables)) {
   if (offload_io) {
     // Boost requires >=1 thread; clamp here so pool_size=0 from a bad
     // config can't crash the GCS at startup.
@@ -320,7 +349,8 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
                   }
                 }
 
-                auto put_status = db_->Put(SyncWriteOptions(), cf, key, std::move(data));
+                auto put_status =
+                    db_->Put(SyncWriteOptions(table_name), cf, key, std::move(data));
                 RAY_CHECK(put_status.ok())
                     << "RocksDB Put failed for table=" << table_name << " key=" << key
                     << ": " << put_status.ToString();
@@ -429,7 +459,7 @@ void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
         // unchanged: the bool reports whether the key existed at the
         // moment of the read.
         if (existed) {
-          auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
+          auto del_status = db_->Delete(SyncWriteOptions(table_name), cf, key);
           RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
                                      << " key=" << key << ": " << del_status.ToString();
         }
@@ -477,7 +507,7 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
       }
     }
     if (deleted_count > 0) {
-      auto write_status = db_->Write(SyncWriteOptions(), &batch);
+      auto write_status = db_->Write(SyncWriteOptions(table_name), &batch);
       RAY_CHECK(write_status.ok())
           << "RocksDB BatchDelete write failed: " << write_status.ToString();
     }

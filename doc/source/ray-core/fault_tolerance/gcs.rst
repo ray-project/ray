@@ -89,16 +89,17 @@ differs.
    does not affect the common fault-tolerance paths (GCS restart, actor
    reconstruction).
 
-   One known interaction: GCS publishes node-death notifications only after the
-   death record is durably persisted, so the per-write ``fsync`` delays the
-   cluster-wide notification by that same small margin. In a narrow,
-   pre-existing Ray-core object/generator-reconstruction race this added delay
-   can be enough to stall reconstruction. This is a core race rather than a
-   storage-backend correctness issue (reads return correct data; only write
-   latency differs) and is tracked as a REP-64 follow-up. If you run
-   reconstruction-heavy workloads, bound long-running ``ray.get`` calls with an
-   application-level timeout so a stalled reconstruction surfaces as a
-   retryable error instead of blocking indefinitely.
+   GCS publishes death notifications (node down, actor dead) only after the
+   death record is persisted, so a per-write ``fsync`` on those records would
+   delay the cluster-wide notification and, in a narrow pre-existing Ray-core
+   reconstruction race, could stall reconstruction. To avoid this, the
+   death-notification tables are written without the per-write ``fsync`` by
+   default (``gcs_rocksdb_soft_durability_tables``, default ``"NODE,ACTOR"``).
+   Durability for these tables stays at least on par with Ray's recommended
+   Redis GCS, which fsyncs once per second rather than per write (see
+   :ref:`kuberay-gcs-persistent-ft`), and node liveness and actor state are
+   re-derived after a GCS restart anyway. Set the flag to ``""`` to keep the
+   strict per-write ``fsync`` on every table.
 
 Enable it by setting two environment variables on the head process
 (or head pod):
