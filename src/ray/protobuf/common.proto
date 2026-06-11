@@ -239,8 +239,10 @@ enum ErrorType {
   ACTOR_UNSCHEDULABLE_ERROR = 19;
   // We use this error for object fetches that failed due to out of disk.
   OUT_OF_DISK_ERROR = 20;
-  // 21 was OBJECT_FREED, removed along with the internal free() API.
-  reserved 21;
+  // This object is unreachable because the application explicitly freed it,
+  // using the internal free() call. We will only recover this object if it is
+  // needed for reconstruction of another downstream object.
+  OBJECT_FREED = 21;
   // We use this error for failure due to running out of memory.
   OUT_OF_MEMORY = 22;
   // We use this error for failure due to node died unexpectedly.
