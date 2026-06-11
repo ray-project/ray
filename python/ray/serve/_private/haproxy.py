@@ -1659,9 +1659,7 @@ class HAProxyManager(ProxyActorInterface):
         # broadcast self._target_groups) closes a race where serving() runs
         # before the TARGET_GROUPS long-poll broadcast is applied.
         try:
-            controller = ray.get_actor(
-                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-            )
+            controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
             target_groups = await controller.get_target_groups.remote(
                 from_proxy_manager=True
             )
