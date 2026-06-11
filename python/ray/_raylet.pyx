@@ -2769,6 +2769,11 @@ cdef void _invoke_object_out_of_scope_callback(
     with gil:
         try:
             object_ref_id = ObjectRef(c_object_id.Binary(), skip_adding_local_ref=True)
+            # skip_adding_local_ref suppresses add_object_ref_reference, but
+            # __init__ still sets in_core_worker=True so __dealloc__ would call
+            # remove_object_ref_reference without a matching add. Clear it so
+            # the temporary ref is truly no-op on the refcount.
+            object_ref_id.in_core_worker = False
             (<object>user_data)(object_ref_id)
         except BaseException:
             logger.exception("Error in object out-of-scope callback")
