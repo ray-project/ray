@@ -1631,6 +1631,7 @@ def build_serve_application(
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
         built_app.validate_single_fastapi_ingress()
+        built_app.validate_multiplexing_with_direct_ingress()
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)

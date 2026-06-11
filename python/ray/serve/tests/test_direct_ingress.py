@@ -46,6 +46,7 @@ from ray.serve._private.test_utils import (
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -413,6 +414,26 @@ def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
 
 def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
     pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
+
+
+def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_instance):
+    """Model multiplexing on the ingress deployment is unsupported with direct ingress.
+
+    The multiplexed model ID is propagated through the proxy, which direct ingress
+    bypasses, so deploying such an app is rejected at build time with a clear error.
+    """
+
+    @serve.deployment(name="multiplexed-ingress")
+    class MultiplexedIngress:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+        async def __call__(self, request: Request) -> str:
+            return await self.load_model(serve.get_multiplexed_model_id())
+
+    with pytest.raises(RayServeException, match="model multiplexing"):
+        serve.run(MultiplexedIngress.bind())
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):

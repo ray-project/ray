@@ -62,7 +62,10 @@ from ray.serve.context import (
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
-from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.multiplex import (
+    MULTIPLEXED_FUNCTION_MARKER_ATTR,
+    _ModelMultiplexWrapper,
+)
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -1137,6 +1140,11 @@ def multiplexed(
             else:
                 model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
             return await model_multiplex_wrapper.load_model(model_id)
+
+        # Mark the wrapper so that multiplexing can be detected statically (e.g. at
+        # replica startup) without invoking user code, since the
+        # `__serve_multiplex_wrapper` is only created lazily on the first call.
+        setattr(_multiplex_wrapper, MULTIPLEXED_FUNCTION_MARKER_ATTR, True)
 
         return _multiplex_wrapper
 

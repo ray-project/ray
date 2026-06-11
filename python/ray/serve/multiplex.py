@@ -18,6 +18,33 @@ from ray.serve.context import _get_global_client, _get_internal_replica_context
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# Attribute set on functions/methods decorated with `@serve.multiplexed`. The
+# `__serve_multiplex_wrapper` is only created lazily on the first call, so this
+# marker is used to detect multiplexing statically (e.g. at replica startup)
+# without invoking user code.
+MULTIPLEXED_FUNCTION_MARKER_ATTR = "_serve_multiplexed_function"
+
+
+def callable_uses_multiplexing(callable_obj: Any) -> bool:
+    """Whether `callable_obj` is or defines an `@serve.multiplexed` function.
+
+    Accepts a standalone function, a class, or a class instance, so it can be used
+    both at build time (where the deployment's `func_or_class` is available) and at
+    runtime (where an initialized instance is available).
+    """
+    # Standalone function deployment decorated with `@serve.multiplexed`.
+    if getattr(callable_obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
+        return True
+
+    # A class (or instance of one) with a method decorated with `@serve.multiplexed`.
+    klass = callable_obj if isinstance(callable_obj, type) else type(callable_obj)
+    for base in klass.__mro__:
+        for attr in base.__dict__.values():
+            if getattr(attr, MULTIPLEXED_FUNCTION_MARKER_ATTR, False):
+                return True
+
+    return False
+
 
 class _ModelMultiplexWrapper:
     """A wrapper class that wraps the model load function and

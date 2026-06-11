@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -83,6 +87,26 @@ class BuiltApplication:
                 "Please only include one deployment with @serve.ingress "
                 "in your application to avoid this issue."
             )
+
+    def validate_multiplexing_with_direct_ingress(self) -> None:
+        """Reject model multiplexing on the ingress deployment under direct ingress."""
+        if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            return
+
+        # Imported lazily to avoid a circular import at module load time
+        # (multiplex -> metrics -> context -> client -> application_state -> build_app).
+        from ray.serve.multiplex import callable_uses_multiplexing
+
+        for deployment in self.deployments:
+            if deployment.name == self.ingress_deployment_name and (
+                callable_uses_multiplexing(deployment.func_or_class)
+            ):
+                raise RayServeException(
+                    f'Ingress deployment "{deployment.name}" in application '
+                    f'"{self.name}" uses model multiplexing (`@serve.multiplexed`), '
+                    "which is not supported on the ingress deployment when direct "
+                    "ingress or HAProxy is enabled."
+                )
 
 
 def _make_deployment_handle_default(

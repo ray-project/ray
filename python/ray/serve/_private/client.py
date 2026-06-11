@@ -498,6 +498,7 @@ class ServeControllerClient:
         """
         for app in built_apps:
             app.validate_single_fastapi_ingress()
+            app.validate_multiplexing_with_direct_ingress()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):

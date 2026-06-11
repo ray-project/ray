@@ -9,6 +9,7 @@ from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
 
@@ -668,6 +669,67 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
     )
 
     client = object.__new__(ServeControllerClient)
+    client._check_ingress_deployments([built_app])
+
+
+def test_build_app_rejects_multiplexing_on_ingress_with_direct_ingress(monkeypatch):
+    monkeypatch.setattr(
+        "ray.serve._private.build_app.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+    )
+
+    @serve.deployment
+    class MultiplexedIngress:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+        async def __call__(self, request) -> str:
+            return await self.load_model(serve.get_multiplexed_model_id())
+
+    built_app: BuiltApplication = build_app(
+        MultiplexedIngress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    client = object.__new__(ServeControllerClient)
+    with pytest.raises(RayServeException, match="model multiplexing"):
+        client._check_ingress_deployments([built_app])
+
+
+def test_build_app_allows_multiplexing_on_non_ingress_with_direct_ingress(monkeypatch):
+    """Only the ingress deployment is served via direct ingress; downstream
+    deployments are reached through the proxy/router, so multiplexing on them is
+    still supported."""
+    monkeypatch.setattr(
+        "ray.serve._private.build_app.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+    )
+
+    @serve.deployment
+    class MultiplexedDownstream:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+        async def __call__(self, request) -> str:
+            return await self.load_model(serve.get_multiplexed_model_id())
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, downstream: DeploymentHandle):
+            self._downstream = downstream
+
+        async def __call__(self, request) -> str:
+            return await self._downstream.remote(request)
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(MultiplexedDownstream.bind()),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    client = object.__new__(ServeControllerClient)
+    # Should not raise: the ingress deployment ("Ingress") is not multiplexed.
     client._check_ingress_deployments([built_app])
 
 
