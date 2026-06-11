@@ -1646,15 +1646,17 @@ class TestDataOpTask:
 
         # Run the task to completion.
         bytes_read = 0
+        deferred: list = []
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += drain_and_emit(data_op_task, None)
+            bytes_read += drain_and_emit(data_op_task, None, deferred=deferred)
 
         # Ensure that we read the expected amount of data. Since the streaming generator
         # yields a single 128 MiB block, we should read 128 MiB.
         # ``bytes_read`` is the object store's ``object_size``, which includes
         # a small per-object serialization overhead over ``meta.size_bytes``.
         assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
+        assert not deferred
 
     def test_on_data_ready_with_preemption_after_wait(
         self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
@@ -1679,21 +1681,32 @@ class TestDataOpTask:
         ray.wait([streaming_gen], fetch_local=False)
         cluster.remove_node(worker_node)
 
-        # The block shouldn't be available anymore, so we shouldn't read any data.
-        bytes_read = drain_and_emit(data_op_task, None)
-        assert bytes_read == 0
+        # The block was lost with the node. The pair is still consumed and
+        # charged to the budget (the owner remembers its size), but its
+        # metadata can't be fetched, so nothing is emitted and the task
+        # doesn't finish — and, critically, nothing blocks.
+        deferred: list = []
+        bytes_read = drain_and_emit(
+            data_op_task, None, deferred=deferred, fetch_timeout_s=1.0
+        )
+        assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
+        assert len(deferred) == 1
+        assert not data_op_task.has_finished
 
-        # Re-add the worker node, and run the task to completion.
+        # Re-add the worker node, and run the task to completion. Lineage
+        # reconstruction re-executes the generator task, restoring the lost
+        # objects, after which the deferred pair is emitted.
         new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
         cluster.wait_for_nodes()
         while not data_op_task.has_finished:
             ray.wait([streaming_gen], fetch_local=False)
-            bytes_read += drain_and_emit(data_op_task, None)
+            bytes_read += drain_and_emit(data_op_task, None, deferred=deferred)
 
-        # We should now be able to read the 128 MiB block.
+        # The pair was charged exactly once, at consume time.
         # ``bytes_read`` is the object store's ``object_size``, which includes
         # a small per-object serialization overhead over ``meta.size_bytes``.
         assert bytes_read == pytest.approx(128 * MiB, rel=1e-3)
+        assert not deferred
 
     @patch("time.perf_counter")
     def test_on_data_ready_output_backpressure_tracking(

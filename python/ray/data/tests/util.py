@@ -103,19 +103,37 @@ def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
     )
 
 
-def drain_and_emit(task: DataOpTask, max_bytes_to_read: Optional[int]) -> int:
+def drain_and_emit(
+    task: DataOpTask,
+    max_bytes_to_read: Optional[int],
+    deferred: Optional[List[DeferredEmit]] = None,
+    fetch_timeout_s: float = 5.0,
+) -> int:
     """Synchronously drive one ``DataOpTask``: pull its ready pairs, fetch
-    their metadata, emit the ``RefBundle``s, and fire any postponed done
-    callback. Test-only stand-in for the streaming executor's
+    their metadata, emit the ``RefBundle``s in order, and fire any postponed
+    done callback. Test-only stand-in for the streaming executor's
     ``MetadataPrefetcher`` pipeline (the production deferred-emit mode).
+
+    Like the prefetcher, the metadata fetch is gated behind ``ray.wait`` so
+    a lost object (e.g. after node preemption) can't block the call forever:
+    pairs whose metadata isn't available within ``fetch_timeout_s`` stay in
+    ``deferred``. Pass a caller-owned ``deferred`` list to retry them on a
+    later call; otherwise unfetched pairs are dropped when the call returns.
     """
-    deferred: List[DeferredEmit] = []
+    if deferred is None:
+        deferred = []
     bytes_read = task.on_data_ready(max_bytes_to_read, deferred)
     if deferred:
-        metas = ray.get([d.meta_ref for d in deferred])
-        for d, meta_bytes in zip(deferred, metas):
-            _emit_deferred_entry(d, meta_bytes)
-    if task._task_done_pending:
+        refs = [d.meta_ref for d in deferred]
+        ready, _ = ray.wait(
+            refs, num_returns=len(refs), timeout=fetch_timeout_s, fetch_local=True
+        )
+        ready_set = set(ready)
+        # Emit the longest ready prefix, preserving emission order.
+        while deferred and deferred[0].meta_ref in ready_set:
+            d = deferred.pop(0)
+            _emit_deferred_entry(d, ray.get(d.meta_ref))
+    if task._task_done_pending and not any(d.task is task for d in deferred):
         _fire_task_done(task)
     return bytes_read
 
