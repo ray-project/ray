@@ -94,7 +94,6 @@ class BuiltApplication:
             return
 
         # Imported lazily to avoid a circular import at module load time
-        # (multiplex -> metrics -> context -> client -> application_state -> build_app).
         from ray.serve.multiplex import callable_uses_multiplexing
 
         for deployment in self.deployments:
