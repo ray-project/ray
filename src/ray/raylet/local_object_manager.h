@@ -209,6 +209,17 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// filesystem.
   bool HasLocallySpilledObjects() const override;
 
+  /// Release an object that has been freed by its owner. For primary copies
+  /// this updates the pin/spill bookkeeping; for secondary copies the
+  /// bookkeeping step is skipped. In both cases the id is enqueued for the
+  /// next FlushFreeObjects batch so plasma can drop the local entry.
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override;
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
+
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override;
+
   std::string DebugString() const override;
 
  private:
@@ -246,9 +257,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
-
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
 
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.

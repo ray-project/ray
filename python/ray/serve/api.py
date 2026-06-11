@@ -110,6 +110,8 @@ def start(
           ``ray.serve.config.ControllerOptions``. Only applied on first
           controller creation -- ignored if a Serve controller is already
           running in this Ray cluster.
+        **kwargs: Reserved for forward-compatibility; passed through to the
+            internal Serve start helper.
     """
     http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
@@ -187,6 +189,9 @@ def get_replica_context() -> ReplicaContext:
 
     A replica tag uniquely identifies a single replica for a Ray Serve
     deployment.
+
+    Returns:
+        The ``ReplicaContext`` for the currently executing replica.
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
@@ -395,6 +400,9 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
             Pass nothing to defer the app to replica init time; in that mode
             the class must define ``__serve_build_asgi_app__``, which is
             invoked after the user constructor and must return an ASGI app.
+
+    Returns:
+        A class decorator that wraps the deployment class with the ASGI app.
     """
 
     def decorator(cls: Optional[Type[Any]] = None) -> Callable:
@@ -450,6 +458,37 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
 
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
+
+            def __init_subclass__(subcls, **subclass_kwargs):
+                # The parent `__init__` is async, so any sync `__init__`
+                # resolved on the subclass (whether defined directly or
+                # inherited from a mixin earlier in the MRO) would, when
+                # calling `super().__init__(...)`, silently discard the
+                # returned coroutine — leaving the replica uninitialized
+                # (e.g. `_serve_asgi_lifespan` never set). Check the resolved
+                # `__init__` on the class (which honors MRO) rather than only
+                # `__dict__`, so cases like
+                # `class Sub(SyncMixin, WrappedIngress)` are also caught.
+                # Fail loudly at class-definition time with a clear migration
+                # message instead of crashing later at runtime.
+                super().__init_subclass__(**subclass_kwargs)
+                if not inspect.iscoroutinefunction(subcls.__init__):
+                    raise TypeError(
+                        f"{subcls.__name__}.__init__ must be `async def` "
+                        "when subclassing a class decorated with "
+                        "@serve.ingress (or returned by "
+                        "`make_fastapi_ingress`). The parent `__init__` is "
+                        "async; a sync `super().__init__(...)` call would "
+                        "silently drop the returned coroutine and leave the "
+                        "replica uninitialized. Change "
+                        "`def __init__(self, ...)` to "
+                        "`async def __init__(self, ...)` and "
+                        "`super().__init__(...)` to "
+                        "`await super().__init__(...)`. If the sync "
+                        "`__init__` comes from a mixin in the MRO, override "
+                        "it on the subclass with an `async def __init__` "
+                        "that awaits both parents."
+                    )
 
             async def __del__(self):
                 await ASGIAppReplicaWrapper.__del__(self)
@@ -801,10 +840,6 @@ def _run_many(
             wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
             wait_for_applications_running=wait_for_applications_running,
         )
-
-        client.wait_for_proxies_serving(
-            wait_for_applications_running=wait_for_applications_running
-        )
         return handles
 
 
@@ -924,6 +959,8 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        _local_testing_mode: Internal flag for running the application in
+            local-testing mode. Not part of the public contract.
         external_scaler_enabled: Whether external autoscaling is enabled for
             this application.
         controller_options: [EXPERIMENTAL] Options for the Serve controller
@@ -1017,12 +1054,19 @@ def multiplexed(
 
 
     Args:
+        func: When ``@serve.multiplexed`` is applied without arguments, this is
+            the wrapped async loader function. When applied with arguments,
+            ``func`` is ``None`` and a decorator is returned instead.
         max_num_models_per_replica: the maximum number of models
             to be loaded on each replica. By default, it is 3, which
             means that each replica can cache up to 3 models. You can
             set it to a larger number if you have enough memory on
             the node resource, in opposite, you can set it to a smaller
             number if you want to save memory on the node resource.
+
+    Returns:
+        The decorated async function (when ``func`` is supplied) or a decorator
+        that produces one.
     """
 
     if func is not None:
@@ -1179,6 +1223,9 @@ def get_app_handle(name: str) -> DeploymentHandle:
     Args:
         name: Name of application to get a handle to.
 
+    Returns:
+        A ``DeploymentHandle`` pointing at the application's ingress deployment.
+
     Raises:
         RayServeException: If no Serve controller is running, or if the
             application does not exist.
@@ -1225,6 +1272,13 @@ def get_deployment_handle(
             from inside a Serve application and `app_name` is not
             specified, this will default to the application from which
             this API is called.
+        _check_exists: Internal flag controlling whether the controller is
+            queried to confirm the deployment exists before returning a handle.
+        _record_telemetry: Internal flag controlling whether handle creation
+            is recorded for usage telemetry.
+
+    Returns:
+        A ``DeploymentHandle`` pointing at the requested deployment.
 
     Raises:
         RayServeException: If no Serve controller is running, or if

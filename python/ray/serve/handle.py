@@ -1105,6 +1105,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 Available options: "cloudpickle", "pickle", "msgpack", "orjson".
                 Defaults to "cloudpickle".
 
+        Returns:
+            A new ``DeploymentHandle`` with the requested options applied.
+
         Example:
 
         .. code-block:: python
@@ -1138,7 +1141,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         )
 
     def remote(
-        self, *args, **kwargs
+        self, *args: Any, **kwargs: Any
     ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Issue a remote call to a method of the deployment.
 
@@ -1166,6 +1169,10 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 remote method call.
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
+
+        Returns:
+            A ``DeploymentResponse`` (or ``DeploymentResponseGenerator`` if
+            streaming is enabled) representing the in-flight call.
         """
 
         future, request_metadata = self._remote(args, kwargs)

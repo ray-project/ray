@@ -10,13 +10,18 @@ import pyarrow.fs as pafs
 import pytest
 
 from ray.data._internal.planner._obstore_download import (
+    _BUCKET_REGION_CACHE,
     _FILE_SIZE_COLUMN_PREFIX,
+    StoreRegistry,
+    _discover_aws_bucket_region,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
+    _resolve_size,
     _S3FSSessionCredentialProvider,
+    _split_obstore_uri,
     download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
@@ -56,6 +61,255 @@ def test_split_uri(uri, expected_store_url, expected_path):
     store_url, path = _split_uri(uri)
     assert store_url == expected_store_url
     assert path == expected_path
+
+
+# TestSplitObstoreUri — AWS path-style HTTPS URLs must be rewritten to s3://
+# so obstore's S3Store keys off the bucket (with region discovery) instead of
+# off the regional host endpoint (which pins region and fails with
+# BareRedirect on cross-region buckets).
+@pytest.mark.parametrize(
+    "uri, expected_store_url, expected_path",
+    [
+        # Path-style regional: must rewrite to s3://<bucket>.
+        (
+            "https://s3.us-east-1.amazonaws.com/ray-example-data/imagenet/foo.jpg",
+            "s3://ray-example-data",
+            "imagenet/foo.jpg",
+        ),
+        # Path-style legacy global endpoint: also rewrite.
+        (
+            "https://s3.amazonaws.com/my-bucket/key.bin",
+            "s3://my-bucket",
+            "key.bin",
+        ),
+        # Virtual-host style: bucket already in netloc, leave alone.
+        (
+            "https://my-bucket.s3.us-west-2.amazonaws.com/key.bin",
+            "https://my-bucket.s3.us-west-2.amazonaws.com",
+            "key.bin",
+        ),
+        # Native s3:// URIs: no change.
+        (
+            "s3://my-bucket/prefix/key.jpg",
+            "s3://my-bucket",
+            "prefix/key.jpg",
+        ),
+        # Pre-signed URLs (any query string): signature is bound to host +
+        # path + query, so rewriting would invalidate it. Pass through.
+        (
+            "https://s3.us-east-1.amazonaws.com/bucket/key?X-Amz-Signature=abc",
+            "https://s3.us-east-1.amazonaws.com",
+            "bucket/key?X-Amz-Signature=abc",
+        ),
+        # Non-AWS HTTPS (MinIO, R2 custom domain, generic file server):
+        # leave alone — only AWS S3 needs the region-discovery rewrite.
+        (
+            "https://files.example.com/bucket/key.bin",
+            "https://files.example.com",
+            "bucket/key.bin",
+        ),
+        # Other clouds: untouched.
+        ("gs://bucket/path", "gs://bucket", "path"),
+        # Path-style with nested key.
+        (
+            "https://s3.eu-central-1.amazonaws.com/bucket/a/b/c.parquet",
+            "s3://bucket",
+            "a/b/c.parquet",
+        ),
+        # Path-style with only a bucket (no key): bucket is preserved, key
+        # is empty. Edge case; downstream obstore call would fail but that's
+        # the caller's problem.
+        (
+            "https://s3.amazonaws.com/just-a-bucket",
+            "s3://just-a-bucket",
+            "",
+        ),
+    ],
+)
+def test_split_obstore_uri(uri, expected_store_url, expected_path):
+    store_url, path = _split_obstore_uri(uri)
+    assert store_url == expected_store_url
+    assert path == expected_path
+
+
+# TestBucketRegionDiscovery — exercise the region-discovery path used by
+# StoreRegistry to find the real region of cross-region S3 buckets. Region
+# resolution is delegated to ``pyarrow.fs.resolve_s3_region``; these tests
+# patch it to avoid real network calls.
+class TestBucketRegionDiscovery:
+    @staticmethod
+    def _clear_cache():
+        _BUCKET_REGION_CACHE.clear()
+
+    def test_resolved_region_is_returned(self):
+        # Whether the bucket is same-region (200 OK) or cross-region (301
+        # PermanentRedirect), PyArrow reads x-amz-bucket-region and returns it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", return_value="us-west-2"):
+            assert _discover_aws_bucket_region("cross-region-bucket") == "us-west-2"
+
+    def test_cache_hit_avoids_second_probe(self):
+        # First call probes; second call must not invoke resolve_s3_region.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", return_value="eu-west-1") as resolve:
+            _discover_aws_bucket_region("euro-bucket")
+            _discover_aws_bucket_region("euro-bucket")
+            assert resolve.call_count == 1
+
+    def test_failure_returns_none_and_caches(self):
+        # On resolution failure (network error, non-AWS endpoint) return None
+        # so StoreRegistry leaves obstore's defaults intact for MinIO/R2/etc.
+        # Cache the negative result so we don't keep probing.
+        self._clear_cache()
+        with patch(
+            "pyarrow.fs.resolve_s3_region", side_effect=OSError("nope")
+        ) as resolve:
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert resolve.call_count == 1
+
+    def test_missing_resolve_s3_region_returns_none(self):
+        # PyArrow builds compiled without S3 support lack resolve_s3_region,
+        # so the attribute access raises AttributeError; discovery must degrade
+        # to None rather than propagate it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", side_effect=AttributeError("no S3")):
+            assert _discover_aws_bucket_region("no-s3-support") is None
+
+    def test_none_result_does_not_overwrite_cached_region(self):
+        # Race: this thread probes (outside the lock) and gets None, while a
+        # concurrent thread resolves and caches the real region. The failed
+        # probe must not clobber the cached region, otherwise later
+        # StoreRegistry.get calls skip region injection and cross-region
+        # downloads fail intermittently.
+        self._clear_cache()
+
+        def resolve_then_simulate_concurrent_win(bucket):
+            # Stand in for another thread caching the real region mid-probe.
+            _BUCKET_REGION_CACHE[bucket] = "us-west-2"
+            return None
+
+        with patch(
+            "pyarrow.fs.resolve_s3_region",
+            side_effect=resolve_then_simulate_concurrent_win,
+        ):
+            assert _discover_aws_bucket_region("racy-bucket") == "us-west-2"
+        assert _BUCKET_REGION_CACHE["racy-bucket"] == "us-west-2"
+
+
+# TestStoreRegistryRegionInjection — verify region discovery happens at
+# store-construction time for s3:// URLs without an explicit region, and is
+# correctly skipped when the caller has already configured one.
+class TestStoreRegistryRegionInjection:
+    @staticmethod
+    def _make_registry_capturing_kwargs():
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            captured["kwargs"] = kwargs
+            return MagicMock(name="fake-store")
+
+        reg = StoreRegistry()
+        reg._from_url = fake_from_url
+        return reg, captured
+
+    def test_s3_url_injects_discovered_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3://ray-example-data")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_s3a_url_also_injects_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3a://some-bucket")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_explicit_region_not_overridden(self):
+        # Caller (e.g., creds extracted from PyArrow S3FileSystem) already
+        # supplied region; do not probe and do not override.
+        reg = StoreRegistry(region="eu-central-1")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg._from_url = fake_from_url
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+        assert captured["kwargs"]["region"] == "eu-central-1"
+
+    def test_custom_endpoint_skips_probe(self):
+        # MinIO / R2 / localstack: caller configured a custom endpoint, so
+        # the AWS region probe would be both wrong and wasteful.
+        reg = StoreRegistry(endpoint="http://localhost:9000")
+        reg._from_url = lambda *a, **k: MagicMock()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+
+    def test_https_url_does_not_probe(self):
+        # Virtual-hosted-style or presigned HTTPS URLs reach get() unchanged
+        # (after _split_obstore_uri). obstore parses the region from the
+        # netloc directly, so probing would be redundant.
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("https://bucket.s3.us-east-1.amazonaws.com")
+        probe.assert_not_called()
+
+
+# TestResolveSizeRewrite — the HEAD size probe must apply the same path-style
+# -> s3:// rewrite as the download paths. Otherwise a cross-region path-style
+# URL keeps the regional HTTPS store, hits BareRedirect, returns size 0, and
+# wrongly skips ranged downloads even when a whole-file GET would succeed.
+class TestResolveSizeRewrite:
+    def test_resolve_size_rewrites_path_style_uri(self):
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            return MagicMock(name="store")
+
+        registry = StoreRegistry()
+        registry._from_url = fake_from_url
+
+        async def fake_head_async(store, path):
+            captured["path"] = path
+            return {"size": 4096}
+
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ), patch("obstore.head_async", side_effect=fake_head_async):
+            size = asyncio.run(
+                _resolve_size(
+                    "https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin",
+                    registry,
+                    asyncio.Semaphore(),
+                )
+            )
+
+        # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
+        assert size == 4096
+        assert captured["store_url"] == "s3://cross-region-bucket"
+        assert captured["path"] == "key.bin"
 
 
 # TestDownloadHelpers

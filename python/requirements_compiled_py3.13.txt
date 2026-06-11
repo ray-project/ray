@@ -2179,7 +2179,7 @@ semgrep==1.32.0
     # via -r python/requirements/lint-requirements.txt
 send2trash==2.1.0
     # via jupyter-server
-sentencepiece==0.1.96
+sentencepiece==0.2.1
     # via -r python/requirements/ml/py313/train-test-requirements.txt
 sentry-sdk==2.58.0
     # via

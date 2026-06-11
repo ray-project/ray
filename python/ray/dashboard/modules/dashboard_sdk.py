@@ -111,6 +111,13 @@ def get_job_submission_client_cluster_info(
             of the address returned needs to be running. Ray doesn't
             start a cluster before interacting with jobs, but other
             implementations may do so.
+        cookies: Optional cookies forwarded to ``SubmissionClient``.
+        metadata: Optional metadata forwarded to ``SubmissionClient``.
+        headers: Optional HTTP headers forwarded to ``SubmissionClient``.
+        _use_tls: When True, use ``https`` instead of ``http`` for the
+            constructed address.
+        **kwargs: Reserved for forward-compatibility with other client
+            implementations; unused here.
 
     Returns:
         ClusterInfo object consisting of address, cookies, and metadata

@@ -1,3 +1,6 @@
+.. meta::
+    :description: Guide to writing runnable, CI-tested code examples for Ray docs using doctest-style, code-output-style, and literalinclude formats. Read this when adding code snippets to docstrings or user guides so they keep working for users.
+
 .. _writing-code-snippets_ref:
 
 ==========================
