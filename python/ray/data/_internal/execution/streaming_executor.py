@@ -719,7 +719,7 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
             if nbytes > 0:
                 node_to_op_bytes[node_id][op.name] = nbytes
         for node_id, nbytes in by_node_peak.items():
-            node_peak[node_id] = max(node_peak[node_id], nbytes)
+            node_peak[node_id] += nbytes
     all_nodes = set(node_current) | set(node_peak)
     if any(node_current[n] > 0 or node_peak[n] > 0 for n in all_nodes):
         per_node_log = "Per-node object store memory:\n"
