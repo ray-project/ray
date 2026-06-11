@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
+    RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -531,6 +532,9 @@ class HAProxyConfig:
     timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S
     timeout_http_request_s: Optional[int] = None
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
+    # When set, soft-stopping workers spread the closing of idle frontend
+    # connections over this window (see RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S).
+    close_spread_time_s: Optional[int] = RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False

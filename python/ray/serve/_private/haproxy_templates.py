@@ -39,6 +39,13 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
     {%- endif %}
+    {%- if config.close_spread_time_s is not none %}
+    # Spread the closing of idle frontend connections over this window during
+    # soft-stop so reloaded-out workers don't hold idle connections open until
+    # hard-stop-after (a request picked up on such a connection shortly before
+    # the hard stop would be killed mid-request).
+    close-spread-time {{ config.close_spread_time_s }}s
+    {%- endif %}
 defaults
     mode http
     option log-health-checks

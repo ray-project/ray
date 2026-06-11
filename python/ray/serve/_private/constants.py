@@ -750,6 +750,19 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
+# HAProxy close-spread-time: when set, a soft-stopping (reloaded-out) worker
+# spreads the closing of its idle frontend connections over this window
+# instead of leaving them open until `hard-stop-after`. Without it, a
+# connection that stays idle across a reload can pick up a long request
+# shortly before the hard stop fires and have it killed mid-request
+# (termination code `K`). Size it so that
+# `hard-stop-after >= close-spread-time + max expected request duration`.
+# Defaults to None (option omitted) to preserve existing behavior.
+_close_spread_time_s = os.environ.get("RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S")
+RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S = (
+    int(_close_spread_time_s) if _close_spread_time_s is not None else None
+)
+
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
 # can fire reloads tens of ms apart.
