@@ -34,9 +34,9 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         batch_size=64,
         max_concurrent_batches=4,
         max_pending_requests=111,
-        apply_chat_template=True,
-        tokenize=True,
-        detokenize=True,
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
