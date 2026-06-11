@@ -180,6 +180,8 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
 
     # Processor stage configurations (legacy booleans, will be deprecated).
+    # TODO (jeffreywang): Remove apply_chat_template, chat_template, tokenize,
+    # detokenize in Ray 2.57.0 in favor of the *_stage fields below.
     apply_chat_template: bool = Field(
         default=True,
         description="[DEPRECATED] Prefer `chat_template_stage`. Whether to apply chat template.",
