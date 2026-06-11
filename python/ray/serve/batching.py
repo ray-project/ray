@@ -156,7 +156,7 @@ class _BatchQueue:
         self.batch_size_fn = batch_size_fn
         self._in_flight_batches = 0
         self._concurrency_condition = asyncio.Condition()
-        self._concurrency_notify_tasks: Set[asyncio.Task] = set()
+        self._concurrency_notify_task: Optional[asyncio.Task] = None
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
 
@@ -241,12 +241,11 @@ class _BatchQueue:
         """
         self.max_concurrent_batches = new_max_concurrent_batches
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
-        # This setter is sync and can't await, so schedule the wake: a raised limit
-        # admits queued batches now rather than only when an in-flight batch completes.
+        # Wake waiters so a raised limit takes effect now (sync setter can't await).
         if self._loop.is_running():
-            task = self._loop.create_task(self._notify_concurrency_waiters())
-            self._concurrency_notify_tasks.add(task)
-            task.add_done_callback(self._concurrency_notify_tasks.discard)
+            self._concurrency_notify_task = self._loop.create_task(
+                self._notify_concurrency_waiters()
+            )
 
     async def _notify_concurrency_waiters(self) -> None:
         async with self._concurrency_condition:
