@@ -516,13 +516,45 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
             lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
         )
 
-        # Initiate graceful shutdown and verify that health checks fail.
-        serve.delete("default", _blocking=False)
+        # Initiate graceful shutdown while a request is in flight: the drain
+        # waits for it, and during the entire draining phase the direct
+        # ingress servers must keep answering health checks with 503/DRAINING
+        # so load balancers can deregister the replica.
+        with ThreadPoolExecutor() as executor:
+            in_flight = executor.submit(
+                httpx.get, f"http://localhost:{http_port}/", timeout=60
+            )
+            wait_for_condition(
+                lambda: ray.get(wait_signal.cur_num_waiters.remote()) == 1
+            )
+
+            serve.delete("default", _blocking=False)
+            wait_for_condition(
+                lambda: _verify_health_check(passing=False, message="DRAINING"),
+            )
+            for _ in range(10):
+                assert _verify_health_check(passing=False, message="DRAINING")
+
+            # Unblock the in-flight request so the drain can complete.
+            ray.get(wait_signal.send.remote())
+            assert in_flight.result(timeout=30).status_code == 200
+
+        # Once the drain completes, the replica quiesces: the direct ingress
+        # servers are shut down gracefully BEFORE the replica reports
+        # shutdown complete, so by the time the destructor runs (blocked on
+        # `shutdown_signal` below) the health endpoints must be unreachable
+        # rather than still serving 503s.
         wait_for_condition(
             lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
         )
         for _ in range(10):
-            assert _verify_health_check(passing=False, message="DRAINING")
+            with pytest.raises(
+                (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)
+            ):
+                http_client.get(f"http://localhost:{http_port}/-/healthz")
+
+            code, _ = _do_grpc_hc()
+            assert code == grpc.StatusCode.UNAVAILABLE
 
         ray.get(shutdown_signal.send.remote())
         wait_for_condition(
