@@ -30,15 +30,15 @@ class TestAddObjectOutOfScopeCallback:
         done = threading.Event()
 
         ref = ray.put(42)
-        expected_id = ref
+        expected_binary = ref.binary()
         registered = _core_worker().add_object_out_of_scope_callback(
             ref, lambda r: (received_id.append(r), done.set())
         )
         assert registered, "Expected registration to succeed"
 
-        del ref
+        del ref  # drops the last Python reference — callback must now fire
         assert done.wait(timeout=5), "Callback did not fire within 5 s"
-        assert received_id[0] == expected_id
+        assert received_id[0].binary() == expected_binary
 
     def test_returns_false_for_already_out_of_scope(self, ray_instance):
         """Returns False when the object is already out of scope; callback never fires."""
