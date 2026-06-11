@@ -17,7 +17,7 @@
 ! python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc python_dependencies min_build tools
+! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
 ! release_tests spark_on_ray
 
 # NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
@@ -248,6 +248,15 @@ ci/raydepsets/
 ci/ray_ci/macos/macos_ci.sh
 ci/ray_ci/macos/macos_ci_build.sh
 @ macos_wheels
+;
+
+# Windows CI driver scripts (base image build, tool install, cleanup) feed the
+# windowsbuild image that every Windows test consumes. Emit 'windows' so the
+# Windows test steps (tagged 'windows') run, not just the image rebuild. Must
+# precede the general ci/ray_ci/ rule below, which would otherwise swallow
+# these into 'tools' only.
+ci/ray_ci/windows/
+@ windows tools
 ;
 
 ci/pipeline/

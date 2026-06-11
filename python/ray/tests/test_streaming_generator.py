@@ -575,5 +575,65 @@ def test_streaming_generator_exception(shutdown_only):
         ray.get(next(g))
 
 
+def test_next_sync_timeout_when_generator_ref_unavailable(
+    monkeypatch, ray_start_cluster
+):
+    """_next_sync(timeout_s) must not block in its end-of-stream handling.
+
+    After all yielded refs are consumed, ``_next_sync`` calls
+    ``ray.get(generator_ref)`` to distinguish a normal end of the stream
+    from a task failure. If that object is unavailable — e.g. it lived in
+    the plasma store of a node that died — the get must be bounded by the
+    caller's timeout (reporting "not ready yet" with a nil ref) instead of
+    blocking the caller until the object is reconstructed. A blocked caller
+    can deadlock: reconstruction needs a CPU, and the blocked caller may be
+    what releases one (see ray-project/ray#63701).
+    """
+    # Force the generator task's return object into plasma (instead of
+    # being inlined with the owner) so that it is lost when its node dies.
+    monkeypatch.setenv("RAY_max_direct_call_object_size", "0")
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    worker_node = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_returns="streaming")
+    def gen():
+        yield 1
+
+    g = gen.remote()
+    # Consume the single yielded ref so that the stream is exhausted.
+    first = g._next_sync(timeout_s=30)
+    assert not first.is_nil()
+
+    # Lose the generator's return object together with its node.
+    cluster.remove_node(worker_node)
+
+    # End-of-stream handling must honor the timeout: a nil ref, not a block.
+    start = time.monotonic()
+    assert g._next_sync(timeout_s=0).is_nil()
+    assert time.monotonic() - start < 10
+
+    # The async counterpart must honor the timeout the same way.
+    start = time.monotonic()
+    assert asyncio.run(g._next_async(timeout_s=0)).is_nil()
+    assert time.monotonic() - start < 10
+
+    # Once a node is back, lineage reconstruction restores the return object
+    # and the stream terminates normally.
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        try:
+            ref = g._next_sync(timeout_s=1)
+        except StopIteration:
+            break
+        assert ref.is_nil()
+    else:
+        pytest.fail("Generator did not finish after the node was restored.")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

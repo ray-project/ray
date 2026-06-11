@@ -149,6 +149,7 @@ _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_count_requests_created",
     "ray_component_cpu_percentage",
     "ray_component_uss_mb",
+    "ray_component_uss_bytes",
 ]
 
 _EVENT_AGGREGATOR_METRICS = [
@@ -196,7 +197,9 @@ if sys.platform == "linux" or sys.platform == "linux2":
 _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
+    "ray_component_rss_bytes",
     "ray_component_uss_mb",
+    "ray_component_uss_bytes",
     "ray_component_num_fds",
 ]
 
@@ -820,13 +823,15 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_rss_bytes",
         "ray_component_num_fds",
     ]
     timeseries = PrometheusTimeseries()
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
         comp_metrics.append("ray_component_uss_mb")
-        comp_metrics.append("ray_component_mem_shared_bytes")
+        comp_metrics.append("ray_component_uss_bytes")
+        comp_metrics.append("ray_component_shared_bytes")
     addr = ray.init(num_cpus=2)
 
     @ray.remote
