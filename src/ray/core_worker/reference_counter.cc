@@ -836,6 +836,20 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  // Only the owner is allowed to broadcast a free for an object. Borrowers
+  // also reach this code path when their local refs drop to zero, but they
+  // must not tell the cluster to evict an object that is still owned
+  // elsewhere.
+  if (it->second.owned_by_us_) {
+    absl::flat_hash_set<NodeID> locations_set = it->second.locations;
+    if (it->second.pinned_at_node_id_.has_value()) {
+      locations_set.insert(*it->second.pinned_at_node_id_);
+    }
+    if (!locations_set.empty()) {
+      free_object_on_nodes_async_(it->first, locations_set);
+    }
+  }
+
   for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }

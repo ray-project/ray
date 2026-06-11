@@ -225,6 +225,8 @@ class RayletClientInterface {
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
 
+  virtual void FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) = 0;
+
   virtual ~RayletClientInterface() = default;
 };
 
