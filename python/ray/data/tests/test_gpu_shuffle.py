@@ -23,6 +23,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.gpu_shuffle.hash_aggregate import (
     GPUAggregateFn,
+    GPUAggregationPlan,
     GPUHashAggregateActor,
     GPUHashAggregateOperator,
     build_gpu_aggregation_plan,
@@ -704,8 +705,7 @@ class TestGPUHashAggregatePlanning:
             ),
             input_schema=schema,
         )
-
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
         assert plan.shuffle_key_columns == ("user_id",)
         assert plan.output_names == (
             "count()",
@@ -728,13 +728,17 @@ class TestGPUHashAggregatePlanning:
 
     def test_unsupported_aggregation_plan_rejected(self):
         schema = pa.schema([("user_id", pa.int64())])
-        assert (
-            build_gpu_aggregation_plan(
-                ("user_id",), (AsList("value"),), input_schema=schema
-            )
-            is None
+        unsupported_result = build_gpu_aggregation_plan(
+            ("user_id",), (AsList("value"),), input_schema=schema
         )
-        assert build_gpu_aggregation_plan(("user_id",), (Sum("value"),)) is None
+        assert unsupported_result == "AsList is not supported by GPU aggregation."
+
+        missing_schema_result = build_gpu_aggregation_plan(
+            ("user_id",), (Sum("value"),)
+        )
+        assert missing_schema_result == (
+            "missing input schema for key column(s): user_id."
+        )
 
     def test_gpu_shuffle_routes_supported_aggregate_to_gpu_operator(self):
         ctx = DataContext()
@@ -744,14 +748,13 @@ class TestGPUHashAggregatePlanning:
         logical_op = self._make_aggregate_op([Count(), Sum("value")])
         input_physical_op = _make_input_op_mock()
         original_build_plan = hash_aggregate.build_gpu_aggregation_plan
-        built_plans: List[Optional[hash_aggregate.GPUAggregationPlan]] = []
+        built_plans: List[GPUAggregationPlan] = []
 
-        def _build_plan_once(
-            *args: Any, **kwargs: Any
-        ) -> Optional[hash_aggregate.GPUAggregationPlan]:
-            plan = original_build_plan(*args, **kwargs)
-            built_plans.append(plan)
-            return plan
+        def _build_plan_once(*args: Any, **kwargs: Any) -> GPUAggregationPlan:
+            result = original_build_plan(*args, **kwargs)
+            assert isinstance(result, GPUAggregationPlan), result
+            built_plans.append(result)
+            return result
 
         with patch(
             "ray.data._internal.gpu_shuffle.hash_aggregate.build_gpu_aggregation_plan",
@@ -774,6 +777,7 @@ class TestGPUHashAggregatePlanning:
         aggregation_plan = build_gpu_aggregation_plan(
             ("user_id",), (Count(), Sum("value")), input_schema=schema
         )
+        assert isinstance(aggregation_plan, GPUAggregationPlan), aggregation_plan
 
         with patch(
             "ray.data._internal.gpu_shuffle.hash_shuffle.GPURankPool"
@@ -840,8 +844,7 @@ class TestGPUHashAggregatePlanning:
 
     def test_global_aggregate_uses_synthetic_shuffle_key(self):
         plan = build_gpu_aggregation_plan(tuple(), (Count(), Sum("value")))
-
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
         assert plan.shuffle_key_columns == (hash_aggregate._GLOBAL_AGGREGATE_KEY,)
 
     def test_required_columns_excludes_unused_input_columns(self):
@@ -855,7 +858,7 @@ class TestGPUHashAggregatePlanning:
         plan = build_gpu_aggregation_plan(
             ("user_id",), (Count(), Sum("small")), input_schema=table.schema
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
         assert plan.required_columns == ("user_id", "small")
 
         projected = table.select(list(plan.required_columns))
@@ -866,14 +869,14 @@ class TestGPUHashAggregatePlanning:
         plan = build_gpu_aggregation_plan(
             tuple(), (Count(),), input_schema=table.schema
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
         assert plan.required_columns == ()
 
     def test_merge_input_schema_unifies_value_dtype_across_blocks(self):
         block1 = pa.table({"value": pa.array([1], type=pa.int8())})
         block2 = pa.table({"value": pa.array([2], type=pa.int32())})
         plan = build_gpu_aggregation_plan(tuple(), (Sum("value"),))
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         runtime_schema = None
         runtime_schema = plan.merge_input_schema(runtime_schema, block1.schema)
@@ -891,7 +894,7 @@ class TestGPUHashAggregatePlanning:
         plan = build_gpu_aggregation_plan(
             ("user_id",), (Sum("value"),), input_schema=logical_schema
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         runtime_schema = plan.merge_input_schema(
             None, pa.schema([("user_id", pa.int8()), ("value", pa.int64())])
@@ -914,6 +917,7 @@ class TestGPUHashAggregatePlanning:
         null_plan = build_gpu_aggregation_plan(
             ("user_id",), (Sum("value"),), input_schema=null_schema
         )
+        assert isinstance(null_plan, GPUAggregationPlan), null_plan
         output_table = pa.table(
             {
                 "user_id": pa.array([0, 1, 2], type=pa.int64()),
@@ -940,7 +944,7 @@ class TestGPUHashAggregatePlanning:
         plan = build_gpu_aggregation_plan(
             ("user_id",), (Sum("value"),), input_schema=null_schema
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         runtime_schema = plan.merge_input_schema(
             null_schema,
@@ -1274,7 +1278,7 @@ class TestGPUAggregationPlanReal:
             (Sum("small"), Mean("flag"), Sum("ratio")),
             input_schema=schema,
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         df = cudf.DataFrame(
             {
@@ -1312,7 +1316,7 @@ class TestGPUAggregationPlanReal:
             (Count(), Sum("value"), Min("value"), Mean("value")),
             input_schema=schema,
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         result = plan.final_aggregate(cudf.DataFrame())
         result_table = result.to_arrow(preserve_index=False)
@@ -1330,7 +1334,7 @@ class TestGPUAggregationPlanReal:
         global_plan = build_gpu_aggregation_plan(
             tuple(), (Count(),), input_schema=schema
         )
-        assert global_plan is not None
+        assert isinstance(global_plan, GPUAggregationPlan), global_plan
 
         global_result = global_plan.final_aggregate(cudf.DataFrame())
         global_table = global_result.to_arrow(preserve_index=False)
@@ -1348,7 +1352,7 @@ class TestGPUAggregationPlanReal:
                 ]
             ),
         )
-        assert runtime_plan is not None
+        assert isinstance(runtime_plan, GPUAggregationPlan), runtime_plan
 
         runtime_result = runtime_plan.final_aggregate(
             cudf.DataFrame(),
@@ -1445,7 +1449,7 @@ class TestGPUAggregationPlanReal:
         schema = pa.schema([("user_id", pa.int64()), ("value", pa.int32())])
         gpu_agg = _CustomGPUAggregate()
         plan = build_gpu_aggregation_plan(("user_id",), (gpu_agg,), input_schema=schema)
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         partial = plan.partial_aggregate(
             cudf.DataFrame({"user_id": [1], "value": np.array([2], dtype=np.int32)}),
@@ -1556,7 +1560,7 @@ class TestGPUAggregationPlanReal:
         plan = build_gpu_aggregation_plan(
             ("user_id",), (Sum("value"),), input_schema=schema
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
         acc_col = plan.accumulator_columns[0]
 
         df = cudf.DataFrame(
@@ -1582,7 +1586,7 @@ class TestGPUAggregationPlanReal:
             (Count("value", ignore_nulls=True),),
             input_schema=schema,
         )
-        assert count_plan is not None
+        assert isinstance(count_plan, GPUAggregationPlan), count_plan
 
         count_partial = count_plan.partial_aggregate(df)
         count_result = (
@@ -1609,7 +1613,7 @@ class TestGPUAggregationPlanReal:
         plan = build_gpu_aggregation_plan(
             ("user_id",), (Sum("value"),), input_schema=logical_schema
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         df = cudf.DataFrame(
             {
@@ -1629,7 +1633,7 @@ class TestGPUAggregationPlanReal:
         import cudf
 
         plan = build_gpu_aggregation_plan(tuple(), (Count(),))
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         df = cudf.DataFrame(index=range(3))
         partial = plan.partial_aggregate(df)
@@ -1641,6 +1645,7 @@ class TestGPUAggregationPlanReal:
         nan_key_plan = build_gpu_aggregation_plan(
             ("item",), (Count(),), input_schema=pa.schema([("item", pa.null())])
         )
+        assert isinstance(nan_key_plan, GPUAggregationPlan), nan_key_plan
         nan_key_partial = cudf.DataFrame(
             {
                 "item": cudf.Series([None], dtype="float64"),
@@ -1664,7 +1669,7 @@ class TestGPUAggregationPlanReal:
         import cudf
 
         unknown_schema_plan = build_gpu_aggregation_plan(tuple(), (Sum("B"),))
-        assert unknown_schema_plan is not None
+        assert isinstance(unknown_schema_plan, GPUAggregationPlan), unknown_schema_plan
         unknown_schema_acc_col = unknown_schema_plan.accumulator_columns[0]
         int_input = cudf.DataFrame({"A": [0], "B": np.array([1], dtype=np.int64)})
         int_partial = cudf.DataFrame(
@@ -1770,7 +1775,7 @@ class TestGPUHashAggregateActorReal:
             ),
             input_schema=table.schema,
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         actor = self._make_setup_actor(plan)
         try:
@@ -1807,7 +1812,7 @@ class TestGPUHashAggregateActorReal:
             ),
             input_schema=schema,
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         df = cudf.DataFrame(
             {
@@ -1846,7 +1851,7 @@ class TestGPUHashAggregateActorReal:
                 Mean("value"),
             ),
         )
-        assert plan is not None
+        assert isinstance(plan, GPUAggregationPlan), plan
 
         table = pa.table({"value": pa.array([1, None, 2, 5], type=pa.int64())})
         actor = self._make_setup_actor(plan, total_nparts=1)

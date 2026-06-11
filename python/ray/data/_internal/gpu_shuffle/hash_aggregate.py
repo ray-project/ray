@@ -16,6 +16,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    Union,
 )
 
 import pyarrow as pa
@@ -1230,7 +1231,7 @@ def _get_builtin_gpu_aggregate_fn(
     agg: AggregateFn,
     *,
     input_schema: Optional[Schema] = None,
-) -> Optional[GPUAggregateFn]:
+) -> Union[GPUAggregateFn, str]:
     """Get a GPU equivalent function for a built-in aggregation function.
 
     Args:
@@ -1238,10 +1239,13 @@ def _get_builtin_gpu_aggregate_fn(
         input_schema: The schema of the input data.
 
     Returns:
-        A GPU aggregate function, or None if the aggregation function is not supported.
+        A GPU aggregate function if supported, otherwise a fallback reason.
     """
     if not isinstance(agg, AggregateFnV2):
-        return None
+        return (
+            f"{type(agg).__name__} is not supported by GPU aggregation because "
+            "it is not an AggregateFnV2."
+        )
 
     target_column = agg.get_target_column()
     source_dtype = _schema_column_dtype(input_schema, target_column)
@@ -1250,7 +1254,10 @@ def _get_builtin_gpu_aggregate_fn(
         return GPUCount(agg, source_dtype=source_dtype)
 
     if target_column is None:
-        return None
+        return (
+            f"{type(agg).__name__} is not supported by GPU aggregation "
+            "without a target column."
+        )
 
     if isinstance(agg, Sum):
         return GPUSum(agg, source_dtype=source_dtype)
@@ -1261,14 +1268,14 @@ def _get_builtin_gpu_aggregate_fn(
     if isinstance(agg, Mean):
         return GPUMean(agg, source_dtype=source_dtype)
 
-    return None
+    return f"{type(agg).__name__} is not supported by GPU aggregation."
 
 
 def build_gpu_aggregation_plan(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple[AggregateFn, ...],
     input_schema: Optional[Schema] = None,
-) -> Optional[GPUAggregationPlan]:
+) -> Union[GPUAggregationPlan, str]:
     """Build a GPU aggregation plan.
 
     Args:
@@ -1277,16 +1284,23 @@ def build_gpu_aggregation_plan(
         input_schema: The schema of the input data.
 
     Returns:
-        A GPU aggregation plan, or None if the aggregation plan is not supported.
+        A GPU aggregation plan if supported, otherwise a fallback reason string.
     """
     if not aggregation_fns:
         # No aggregation functions, no plan needed.
-        return None
-    if key_columns and not all(
-        _schema_column_dtype(input_schema, column) is not None for column in key_columns
-    ):
+        return "no aggregation functions were provided."
+
+    missing_key_columns = [
+        column
+        for column in key_columns
+        if _schema_column_dtype(input_schema, column) is None
+    ]
+    if missing_key_columns:
         # Missing key columns in the input schema, fallback to CPU.
-        return None
+        return (
+            "missing input schema for key column(s): "
+            f"{', '.join(missing_key_columns)}."
+        )
 
     resolved_names = _resolve_aggregation_names(aggregation_fns)
     gpu_aggregates: List[GPUAggregateFn] = []
@@ -1294,13 +1308,19 @@ def build_gpu_aggregation_plan(
 
     for index, agg in enumerate(aggregation_fns):
         accumulator_prefix = f"__ray_gpu_agg_{index}"
-        gpu_aggregate = (
-            agg
-            if isinstance(agg, GPUAggregateFn)
-            else _get_builtin_gpu_aggregate_fn(agg, input_schema=input_schema)
-        )
-        if gpu_aggregate is None:
-            return None
+        if isinstance(agg, GPUAggregateFn):
+            # handle subclasses of GPUAggregateFn (e.g. custom aggregations)
+            gpu_aggregate = agg
+        else:
+            # try to convert a built-in aggregation function to a GPU equivalent
+            gpu_aggregate = _get_builtin_gpu_aggregate_fn(
+                agg, input_schema=input_schema
+            )
+            if not isinstance(gpu_aggregate, GPUAggregateFn):
+                # unsupported built-in aggregation function
+                fallback_reason = str(gpu_aggregate)
+                return fallback_reason
+
         gpu_aggregates.append(gpu_aggregate)
         accumulator_prefixes.append(accumulator_prefix)
 

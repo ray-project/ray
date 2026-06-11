@@ -113,13 +113,15 @@ def _plan_gpu_shuffle_aggregate(
     aggregation_plan = build_gpu_aggregation_plan(
         key_columns, aggregation_fns, input_schema=input_schema
     )
-    if aggregation_plan is None:
+    if isinstance(aggregation_plan, str):
         # Fall back to CPU hash aggregate if GPU aggregation plan is not supported.
+        fallback_reason = aggregation_plan
         logger.warning(
-            "GPU aggregation plan is not supported for key=%s, aggs=%s, "
+            "GPU aggregation plan is not supported for key=%s, aggs=%s: %s; "
             "falling back to CPU hash aggregate.",
             logical_op.key,
             logical_op.aggs,
+            fallback_reason,
         )
         return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
 
