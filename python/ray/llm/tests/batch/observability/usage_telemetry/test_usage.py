@@ -53,9 +53,9 @@ def test_push_telemetry_report():
         concurrency=4,
         batch_size=64,
         max_pending_requests=111,
-        apply_chat_template=True,
-        tokenize=True,
-        detokenize=True,
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
         prepare_multimodal_stage=True,
     )
     _ = ProcessorBuilder.build(config)
