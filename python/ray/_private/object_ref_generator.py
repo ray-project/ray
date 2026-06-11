@@ -284,8 +284,20 @@ class ObjectRefGenerator:
             try:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
-                # In that case, it should raise StopSyncIteration.
-                await self._generator_ref
+                # In that case, it should raise StopAsyncIteration.
+                #
+                # Bound this await by the caller's timeout, mirroring
+                # _next_sync: the return object can be remote — or lost to a
+                # failed node and pending reconstruction — and an unbounded
+                # await would block the caller until it is restored. Per this
+                # method's contract, a timeout is reported as "no object
+                # ready yet" (nil ref) so the caller retries.
+                if timeout_s is None or timeout_s < 0:
+                    await self._generator_ref
+                else:
+                    await asyncio.wait_for(self._generator_ref, timeout=timeout_s)
+            except asyncio.TimeoutError:
+                return ray.ObjectRef.nil()
             except Exception:
                 self._generator_task_raised = True
                 return self._generator_ref
