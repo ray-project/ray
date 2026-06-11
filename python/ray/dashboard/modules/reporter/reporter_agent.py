@@ -359,8 +359,8 @@ METRICS_GAUGES = {
         "percentage",
         COMPONENT_METRICS_TAG_KEYS,
     ),
-    "component_mem_shared_bytes": Gauge(
-        "component_mem_shared_bytes",
+    "component_shared_bytes": Gauge(
+        "component_shared_bytes",
         "SHM usage of all components of the node. "
         "It is equivalent to the top command's SHR column.",
         "bytes",
@@ -372,10 +372,22 @@ METRICS_GAUGES = {
         "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
+    "component_rss_bytes": Gauge(
+        "component_rss_bytes",
+        "RSS usage of all components on the node.",
+        "bytes",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
     "component_uss_mb": Gauge(
         "component_uss_mb",
         "USS usage of all components on the node.",
         "MB",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
+    "component_uss_bytes": Gauge(
+        "component_uss_bytes",
+        "USS usage of all components on the node.",
+        "bytes",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_num_fds": Gauge(
@@ -1227,7 +1239,7 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
+                gauge=METRICS_GAUGES["component_shared_bytes"],
                 value=0.0,
                 tags=tags,
             )
@@ -1241,7 +1253,21 @@ class ReporterAgent(
         )
         records.append(
             Record(
+                gauge=METRICS_GAUGES["component_rss_bytes"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
                 gauge=METRICS_GAUGES["component_uss_mb"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_uss_bytes"],
                 value=0.0,
                 tags=tags,
             )
@@ -1274,9 +1300,9 @@ class ReporterAgent(
         total_cpu_percentage = 0.0
         total_gpu_percentage = 0.0
         total_gpu_memory = 0.0
-        total_rss = 0.0
-        total_uss = 0.0
-        total_shm = 0.0
+        total_rss_bytes = 0.0
+        total_uss_bytes = 0.0
+        total_shm_bytes = 0.0
         total_num_fds = 0
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
@@ -1287,21 +1313,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                total_rss += float(memory_info.rss) / 1.0e6
+                total_rss_bytes += float(memory_info.rss)
                 if hasattr(memory_info, "shared"):
-                    total_shm += float(memory_info.shared)
+                    total_shm_bytes += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 # For Mac OS X, directly get USS metric from memory_full_info
-                total_uss += float(mem_full_info.uss) / 1.0e6
+                total_uss_bytes += float(mem_full_info.uss)
             elif memory_info is not None:
                 # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
                 if hasattr(memory_info, "shared"):
                     # Linux: USS ≈ RSS - shared
-                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                    total_uss_bytes += float(memory_info.rss - memory_info.shared)
                 elif hasattr(memory_info, "private"):
                     # Windows: private IS USS
-                    total_uss += float(memory_info.private) / 1.0e6
+                    total_uss_bytes += float(memory_info.private)
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
@@ -1318,23 +1344,37 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
-                value=total_shm,
+                gauge=METRICS_GAUGES["component_shared_bytes"],
+                value=total_shm_bytes,
                 tags=tags,
             )
         )
         records.append(
             Record(
                 gauge=METRICS_GAUGES["component_rss_mb"],
-                value=total_rss,
+                value=total_rss_bytes / 1.0e6,
                 tags=tags,
             )
         )
-        if total_uss > 0.0:
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_rss_bytes"],
+                value=total_rss_bytes,
+                tags=tags,
+            )
+        )
+        if total_uss_bytes > 0.0:
             records.append(
                 Record(
                     gauge=METRICS_GAUGES["component_uss_mb"],
-                    value=total_uss,
+                    value=total_uss_bytes / 1.0e6,
+                    tags=tags,
+                )
+            )
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_uss_bytes"],
+                    value=total_uss_bytes,
                     tags=tags,
                 )
             )
