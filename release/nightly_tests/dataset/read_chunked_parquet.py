@@ -297,6 +297,9 @@ def _read_back(path: str, total_disk_bytes: Optional[int], memory: int) -> None:
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_datasource_v2 = True  # route read_parquet through DataSource V2
+
     print(
         f"[read] ray.data.read_parquet(memory={human(memory)}) <- {path}",
         flush=True,
