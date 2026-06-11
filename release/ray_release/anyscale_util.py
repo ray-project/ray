@@ -37,6 +37,10 @@ class Anyscale:
         return self._anyscale().compute_config
 
     @property
+    def image(self) -> ModuleType:
+        return self._anyscale().image
+
+    @property
     def cloud(self) -> ModuleType:
         return self._anyscale().cloud
 
