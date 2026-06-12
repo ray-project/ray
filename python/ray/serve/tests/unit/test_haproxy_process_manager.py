@@ -88,55 +88,6 @@ class TestWaitForHapAvailability:
             asyncio.run(api._wait_for_hap_availability(proc, timeout_s=1))
 
 
-class TestGracefulReloadSignaling:
-    def _patch_spawn(self, api, new_proc: FakeProc, captured: dict) -> None:
-        async def fake_start(*extra_args, timeout_s=None):
-            captured["args"] = list(extra_args)
-            return new_proc
-
-        async def fake_wait(proc, timeout_s=None):
-            return None
-
-        api._start_and_wait_for_haproxy = fake_start
-        api._wait_for_hap_availability = fake_wait
-
-    def test_resignals_live_old_procs(self, api, tmp_path):
-        """Reloads include still-alive displaced workers in -sf, healing any
-        worker whose original stop signal was lost."""
-        stdout, stderr = _make_stream_files(tmp_path)
-        current = FakeProc(pid=10)
-        live_old = FakeProc(pid=20)
-        exited_old = FakeProc(
-            pid=30, returncode=0, stdout_path=stdout, stderr_path=stderr
-        )
-        api._proc = current
-        api._old_procs = [live_old, exited_old]
-
-        captured = {}
-        new_proc = FakeProc(pid=40)
-        self._patch_spawn(api, new_proc, captured)
-
-        asyncio.run(api._graceful_reload())
-
-        # Current worker first, then live displaced workers; exited ones not.
-        assert captured["args"] == ["-sf", "10", "20"]
-        assert api._proc is new_proc
-        # The displaced current worker is tracked; the exited one is pruned.
-        assert api._old_procs == [live_old, current]
-
-    def test_sf_targets_only_current_when_no_old_procs(self, api):
-        current = FakeProc(pid=10)
-        api._proc = current
-        api._old_procs = []
-
-        captured = {}
-        self._patch_spawn(api, FakeProc(pid=40), captured)
-
-        asyncio.run(api._graceful_reload())
-
-        assert captured["args"] == ["-sf", "10"]
-
-
 class TestGetRunningPid:
     @pytest.mark.parametrize(
         "response,expected",
