@@ -34,11 +34,11 @@
   matrix:
     setup:
       scaling: [fixed_size]
-      file_size: [5GiB, 10GiB]
+      file_size: [512MiB, 1GiB, 5GiB, 10GiB]
       num_files: [50]
       row_group_size: [128MiB]
       compression_ratio: [10.0]
-      use_version: [v1, v2]
+      use_version: [v1, v2, v3]
       trial: [1, 2, 3]
   run:
     timeout: 10800

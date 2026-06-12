@@ -340,27 +340,38 @@ def _read_back(
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    # Route through DataSource V2 when requested. DataContext is a slot-less
-    # dataclass, so a plain `ctx.use_datasource_v2 = ...` would silently create
-    # a dead attribute on builds that don't have the field -- the flag would
-    # appear to work while changing nothing. Check the field exists first
-    # (a fresh context returns False from hasattr for unknown names) and warn
-    # loudly if the requested version can't actually be honored.
-    want_v2 = use_version == "v2"
+    # Route through the requested DataSource/chunker combination. Each version
+    # maps to two DataContext flags:
+    #   v1: DataSource V1 (legacy datasource; chunker flag is irrelevant).
+    #   v2: DataSource V2 + legacy byte-estimate Parquet chunker.
+    #   v3: DataSource V2 + row-group-aware Parquet chunker.
+    # DataContext is a slot-less dataclass, so a plain `setattr` on an unknown
+    # name would silently create a dead attribute on builds that lack the field
+    # -- the flag would appear to work while changing nothing. Only set flags
+    # the build actually exposes, and warn loudly when a flag a version needs
+    # turned ON can't be honored.
+    version_flags = {
+        "v1": {"use_datasource_v2": False, "parquet_chunker_row_group_aware": False},
+        "v2": {"use_datasource_v2": True, "parquet_chunker_row_group_aware": False},
+        "v3": {"use_datasource_v2": True, "parquet_chunker_row_group_aware": True},
+    }
     ctx = ray.data.DataContext.get_current()
-    flag = "use_datasource_v2"
-    if hasattr(ctx, flag):
-        setattr(ctx, flag, want_v2)
-        print(f"[read] datasource {use_version} (ctx.{flag}={want_v2})", flush=True)
-    elif want_v2:
-        print(
-            f"[read][warn] this Ray build ({ray.__version__}) has no DataContext."
-            f"{flag}; cannot force V2 -- read_parquet will use the default "
-            f"datasource. Confirm the flag name for your Ray build.",
-            flush=True,
-        )
-    else:
-        print(f"[read] datasource {use_version} (build default)", flush=True)
+    applied = {}
+    for flag, value in version_flags[use_version].items():
+        if hasattr(ctx, flag):
+            setattr(ctx, flag, value)
+            applied[flag] = value
+        elif value:
+            print(
+                f"[read][warn] this Ray build ({ray.__version__}) has no "
+                f"DataContext.{flag}; cannot fully honor {use_version}. Confirm "
+                f"the flag name for your Ray build.",
+                flush=True,
+            )
+    print(
+        f"[read] datasource {use_version} ({applied if applied else 'build default'})",
+        flush=True,
+    )
 
     print(
         f"[read] ray.data.read_parquet(memory={human(memory)}) <- {path}",
@@ -572,8 +583,9 @@ def main():
     p.add_argument(
         "--use-version",
         default="v2",
-        choices=["v1", "v2"],
-        help="Use DataSource V1 or V2.",
+        choices=["v1", "v2", "v3"],
+        help="Datasource/chunker combo: v1=DataSource V1; v2=V2 + byte-estimate "
+        "chunker; v3=V2 + row-group-aware chunker.",
     )
     args = p.parse_args()
 
