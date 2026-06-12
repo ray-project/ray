@@ -20,6 +20,10 @@ absl-py==2.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
+accelerate==1.14.0
+    # via
+    #   -r python/requirements/ml/py313/core-requirements.txt
+    #   -r python/requirements/ml/py313/train-requirements.txt
 adagio==0.2.6
     # via fugue
 adal==1.2.7
@@ -432,6 +436,11 @@ databricks-sdk==0.103.0
     # via
     #   mlflow-skinny
     #   mlflow-tracing
+datasets==4.8.5
+    # via
+    #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   -r python/requirements/ml/py313/train-requirements.txt
+    #   evaluate
 datasketches==5.2.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 debugpy==1.8.20
@@ -460,6 +469,11 @@ deprecated==1.3.1
     # via
     #   deltalake
     #   pymoo
+dill==0.4.1
+    # via
+    #   datasets
+    #   evaluate
+    #   multiprocess
 directsearch==1.0.1
     # via nevergrad
 distlib==0.4.0
@@ -555,7 +569,6 @@ filelock==3.29.0
     #   ray
     #   snowflake-connector-python
     #   torch
-    #   transformers
     #   virtualenv
 flask==2.1.3
     # via
@@ -766,6 +779,8 @@ halo==0.0.31
     # via -r python/requirements/cloud-requirements.txt
 hf-gradio==0.4.1
     # via gradio
+hf-xet==1.5.1
+    # via huggingface-hub
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
@@ -790,8 +805,10 @@ httpx==0.28.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
+    #   datasets
     #   gradio
     #   gradio-client
+    #   huggingface-hub
     #   jupyterlab
     #   openlineage-python
     #   safehttpx
@@ -799,6 +816,17 @@ hudi==0.4.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 huey==2.6.0
     # via mlflow
+huggingface-hub==1.16.1
+    # via
+    #   -r python/requirements/ml/py313/train-requirements.txt
+    #   accelerate
+    #   datasets
+    #   evaluate
+    #   gradio
+    #   gradio-client
+    #   timm
+    #   tokenizers
+    #   transformers
 humanfriendly==10.0
     # via azure-cli-core
 humanize==4.15.0
@@ -1172,6 +1200,10 @@ multidict==6.7.1
     #   yarl
 multipledispatch==1.0.0
     # via botorch
+multiprocess==0.70.19
+    # via
+    #   datasets
+    #   evaluate
 mypy==1.7.0
     # via
     #   -r python/requirements/lint-requirements.txt
@@ -1971,6 +2003,10 @@ referencing==0.36.2
     #   jsonschema-path
     #   jsonschema-specifications
     #   jupyter-events
+regex==2026.5.9
+    # via
+    #   cfn-lint
+    #   transformers
 requests==2.33.1
     # via
     #   -r python/requirements.txt
@@ -1993,7 +2029,6 @@ requests==2.33.1
     #   google-auth
     #   google-cloud-bigquery
     #   google-cloud-storage
-    #   huggingface-hub
     #   jsonschema-path
     #   jupyterlab-server
     #   kubernetes
@@ -2016,7 +2051,6 @@ requests==2.33.1
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
-    #   transformers
     #   wandb
 requests-oauthlib==2.0.0
     # via
@@ -2080,6 +2114,11 @@ s3transfer==0.8.0
     # via boto3
 safehttpx==0.1.7
     # via gradio
+safetensors==0.8.0
+    # via
+    #   accelerate
+    #   timm
+    #   transformers
 scikit-learn==1.7.2
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -2342,6 +2381,8 @@ tinyscaler==1.2.8
     # via
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   supersuit
+tokenizers==0.22.2
+    # via transformers
 toml==0.10.2
     # via tensorflow-datasets
 tomli==2.0.2
@@ -2457,6 +2498,11 @@ traitlets==5.14.3
     #   nbclient
     #   nbconvert
     #   nbformat
+transformers==5.11.0
+    # via
+    #   -r python/requirements/ml/py313/core-requirements.txt
+    #   -r python/requirements/ml/py313/ml-requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 triad==1.0.2
     # via
     #   adagio
@@ -2468,6 +2514,8 @@ typer==0.24.1
     #   -r python/requirements.txt
     #   gradio
     #   hf-gradio
+    #   huggingface-hub
+    #   transformers
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
 types-pyyaml==6.0.12.2
