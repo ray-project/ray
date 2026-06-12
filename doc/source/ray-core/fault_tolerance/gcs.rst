@@ -66,57 +66,6 @@ the correct GCS. You need to ensure that at any time, only one GCS is alive.
   you need to implement additional mechanisms to detect the failure of GCS or the head node
   and restart it.
 
-Embedded RocksDB backend
-------------------------
-
-As an alternative to external Redis, the GCS can persist state to an
-embedded RocksDB database on a local persistent volume. This is the
-backend introduced in
-`REP-64 <https://github.com/ray-project/enhancements/blob/main/reps/2026-02-23-gcs-embedded-storage.md>`_;
-it removes the operational dependency on Redis at the cost of pinning
-GCS recovery to the availability of the head pod's volume.
-
-The recovery model is identical to Redis-backed FT — GCS restarts,
-reads state, workers reconnect — only the location of persisted state
-differs.
-
-.. note::
-
-   Because RocksDB persists each GCS write with a synchronous WAL ``fsync``,
-   individual writes take single-digit to tens of milliseconds. Whether that
-   is faster or slower than external Redis is deployment-dependent: a Redis
-   write is in-memory (Ray runs Redis without a per-write ``fsync``), so it
-   costs roughly the network round-trip plus an in-memory insert — often
-   sub-millisecond on a low-latency network, but higher across a slow link.
-   The local ``fsync`` to disk is usually the dominant term, so on a fast
-   network a RocksDB write can be slower per write than Redis. Either way the
-   per-write cost is negligible relative to the seconds-scale
-   failure-detection and recovery timeline and does not affect the common
-   fault-tolerance paths (GCS restart, actor reconstruction).
-
-   GCS publishes death notifications (node down, actor dead) only after the
-   death record is persisted, so a per-write ``fsync`` on those records would
-   delay the cluster-wide notification and, in a narrow pre-existing Ray-core
-   reconstruction race, could stall reconstruction. To avoid this, the
-   death-notification tables are written without the per-write ``fsync`` by
-   default (``gcs_rocksdb_soft_durability_tables``, default ``"NODE,ACTOR"``).
-   Durability for these tables stays at least on par with Ray's recommended
-   Redis GCS, which fsyncs once per second rather than per write (see
-   :ref:`kuberay-gcs-persistent-ft`), and node liveness and actor state are
-   re-derived after a GCS restart anyway. Set the flag to ``""`` to keep the
-   strict per-write ``fsync`` on every table.
-
-Enable it by setting two environment variables on the head process
-(or head pod):
-
-.. code-block:: shell
-
-  RAY_gcs_storage=rocksdb
-  RAY_gcs_storage_path=/data/gcs-state   # path on a persistent volume
-
-For KubeRay deployments, see :ref:`kuberay-gcs-rocksdb-ft` for the
-full setup guide including PVC configuration and tuning knobs.
-
 .. note::
 
   You can also enable GCS fault tolerance when running Ray on `Anyscale <https://www.anyscale.com/>`_. See the Anyscale `documentation <https://docs.anyscale.com/platform/services/head-node-ft/>`_ for instructions.
