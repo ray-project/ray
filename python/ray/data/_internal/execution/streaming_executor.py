@@ -466,6 +466,9 @@ class StreamingExecutor(Executor, threading.Thread):
             2. Pulling completed refs into operator outqueues.
             3. Selecting and dispatching new inputs to operators.
 
+        Args:
+            topology: The :class:`Topology` of operators being executed.
+
         Returns:
             True if we should continue running the scheduling loop.
         """

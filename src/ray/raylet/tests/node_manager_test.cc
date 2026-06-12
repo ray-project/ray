@@ -103,6 +103,17 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   bool HasLocallySpilledObjects() const override { return false; }
 
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override {}
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override {
+    return {};
+  }
+
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override {
+    return {};
+  }
+
   std::string DebugString() const override { return ""; }
 
  private:
@@ -562,7 +573,7 @@ TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   std::promise<void> promise;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, AsyncCheckAlive(_, _, _))
@@ -589,7 +600,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
 
@@ -665,7 +676,7 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
   EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
       .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
-  EXPECT_CALL(mock_worker_pool_, IsWorkerAvailableForScheduling())
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
       .WillRepeatedly(Return(false));
   EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
 
