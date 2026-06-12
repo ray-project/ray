@@ -144,6 +144,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             self._reduce_fn,
             target_max_block_size,
             self._streaming_reduce,
+            self.data_context.hash_shuffle_reduce_batch_size,
         )
 
         data_task = DataOpTask(

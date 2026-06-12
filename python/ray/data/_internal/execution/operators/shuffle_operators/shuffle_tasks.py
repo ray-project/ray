@@ -27,13 +27,21 @@ PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
 
 
-# Number of ObjectRefs fetched per ray.get() call in reducers.
-_REDUCE_BATCH_SIZE = 16
+def _ipc_write_options(compression: Optional[str]) -> pa.ipc.IpcWriteOptions:
+    """Arrow IPC write options for the given shard compression codec.
 
+    Args:
+        compression: A pyarrow codec name such as "lz4" or "zstd", or "none"
+            (or None) to write shards uncompressed. See pyarrow.Codec for the
+            full list of supported codecs:
+            https://arrow.apache.org/docs/python/generated/pyarrow.Codec.html
 
-# ---------------------------------------------------------------------------
-# Map-side helpers
-# ---------------------------------------------------------------------------
+    Returns:
+        IpcWriteOptions for encoding shards; no compression for "none"/None.
+    """
+    if not compression or compression == "none":
+        return pa.ipc.IpcWriteOptions()
+    return pa.ipc.IpcWriteOptions(compression=pa.Codec(compression))
 
 
 def _partition_blocks_to_shards(
@@ -90,6 +98,7 @@ def _shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
     num_partitions: int,
+    compression: Optional[str],
 ):
     """Map stage: partition the input blocks and return one shard per partition."""
     stats = BlockExecStats.builder()
@@ -109,7 +118,7 @@ def _shuffle_map_task(
     partition_accumulators = _partition_blocks_to_shards(blocks, partition_fn)
 
     # Step 2: merge each partition's shards and encode them into one IPC stream.
-    ipc_write_options = pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
+    ipc_write_options = _ipc_write_options(compression)
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[Optional[pa.Buffer]] = [None] * num_partitions
     for partition_id in sorted(partition_accumulators.keys()):
@@ -125,11 +134,6 @@ def _shuffle_map_task(
     )
     input_meta = replace(input_meta, num_rows=total_rows, size_bytes=total_bytes)
     return (input_meta, shard_sizes), *partition_bufs
-
-
-# ---------------------------------------------------------------------------
-# Reduce-side helpers
-# ---------------------------------------------------------------------------
 
 
 def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
@@ -158,11 +162,9 @@ def _shuffle_reduce_task(
     reduce_fn: ReduceFn,
     target_max_block_size: Optional[int],
     streaming: bool,
+    batch_size: int,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch one partition's shards and run reduce_fn over them.
-
-    Shards are fetched in batches of _REDUCE_BATCH_SIZE to avoid a memory spike
-    from dereferencing every ref at once.
 
     With streaming=True, reduce_fn is called each time the accumulated input
     passes target_max_block_size and its output is reshaped to that size via a
@@ -180,6 +182,7 @@ def _shuffle_reduce_task(
             threshold.  None emits blocks as-is (no reshaping, no streaming
             flush) -- the "partition = block" contract.
         streaming: Flush incrementally (True) or accumulate then reduce (False).
+        batch_size: Number of shard refs to ray.get() at a time.
     """
     start_time_s = time.perf_counter()
 
@@ -221,8 +224,8 @@ def _shuffle_reduce_task(
     # Step 1: fetch shard refs in batches, decompress, accumulate.  In
     # streaming mode, when the accumulator reaches target_max_block_size,
     # flush through reduce_fn and yield any ready output blocks.
-    for batch_start in range(0, len(shard_refs), _REDUCE_BATCH_SIZE):
-        batch = shard_refs[batch_start : batch_start + _REDUCE_BATCH_SIZE]
+    for batch_start in range(0, len(shard_refs), batch_size):
+        batch = shard_refs[batch_start : batch_start + batch_size]
         for buf in ray.get(batch):
             if buf is None:
                 continue

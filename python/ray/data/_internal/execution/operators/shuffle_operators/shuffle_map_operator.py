@@ -242,6 +242,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
+            compression=self.data_context.hash_shuffle_compression,
         )
         metadata_ref = map_refs[0]
         partition_refs = list(map_refs[1:])
