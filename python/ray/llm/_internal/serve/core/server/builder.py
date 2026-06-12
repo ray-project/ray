@@ -23,6 +23,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     KVAwareRouter,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
+    derive_kv_event_block_size,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     configure_kv_events_for_kv_routing,
 )
@@ -61,13 +64,15 @@ def _maybe_setup_kv_aware_routing(
     if not issubclass(request_router_config.get_request_router_class(), KVAwareRouter):
         return
 
-    # TODO (jeffreywang): KVRouterActor requires init_kwargs such as block_size.
     deployment_options["deployment_actors"] = [
         *deployment_options.get("deployment_actors", []),
         DeploymentActorConfig(
             name=KV_ROUTER_ACTOR_NAME,
             actor_class=KVRouterActor,
             actor_options={"num_cpus": 0},
+            init_kwargs={
+                "block_size": derive_kv_event_block_size(llm_config.engine_kwargs)
+            },
         ),
     ]
 

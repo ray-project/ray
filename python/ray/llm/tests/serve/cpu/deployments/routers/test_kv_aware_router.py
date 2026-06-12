@@ -119,6 +119,7 @@ def test_build_openai_app_attaches_kv_actor():
         is KVRouterActor.__ray_actor_class__
     )
     assert actor_cfg.actor_options["num_cpus"] == 0
+    assert actor_cfg.init_kwargs == {"block_size": 16}
 
 
 def test_yaml_config_attaches_kv_actor(serve_instance):
@@ -142,6 +143,7 @@ def test_yaml_config_attaches_kv_actor(serve_instance):
             name=KV_ROUTER_ACTOR_NAME,
             actor_class=KVRouterActor,
             actor_options={"num_cpus": 0},
+            init_kwargs={"block_size": 16},
         ),
     ],
 )

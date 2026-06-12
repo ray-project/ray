@@ -6,7 +6,14 @@ from vllm.distributed.kv_events import ZmqEventPublisher
 
 import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.core.server.builder import (
+    _maybe_setup_kv_aware_routing,
+    build_llm_deployment,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
+    KVRouterActor,
+    get_worker_id,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
     derive_kv_event_block_size,
     kv_event_namespace,
@@ -16,8 +23,16 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     configure_kv_events_for_kv_routing,
     resolve_kv_event_source_endpoint,
 )
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import (
+    DeploymentID,
+    DeploymentTargetInfo,
+    ReplicaID,
+    RunningReplicaInfo,
+)
+from ray.serve.config import RequestRouterConfig
 from ray.serve.llm.request_router import KVAwareRouter
+
+BLOCK_SIZE = 16
 
 
 def make_llm_config(**kwargs) -> LLMConfig:
@@ -52,6 +67,19 @@ class TestConfigureKvEvents:
             "publisher": "zmq",
             "endpoint": "tcp://*:5557",
         }
+
+    def test_build_attaches_router_actor_with_block_size(self):
+        """The actor's init_kwargs carry the build-time derived block size."""
+        llm_config = make_kv_aware_llm_config(engine_kwargs={"block_size": 32})
+        deployment_options = {
+            "request_router_config": RequestRouterConfig(
+                request_router_class=KVAwareRouter
+            )
+        }
+        _maybe_setup_kv_aware_routing(deployment_options, llm_config)
+
+        (actor_config,) = deployment_options["deployment_actors"]
+        assert actor_config.init_kwargs == {"block_size": 32}
 
     def test_build_without_kv_aware_router_is_untouched(self):
         llm_config = make_llm_config(
@@ -154,6 +182,41 @@ def ray_instance():
     if not ray.is_initialized():
         ray.init(address="auto")
     yield
+
+
+@ray.remote(num_cpus=0)
+class LocalKVRouterActor(KVRouterActor.__ray_actor_class__):
+    """The real KVRouterActor with a fixed Dynamo namespace and replica
+    tracking disabled (no Serve controller in these tests)."""
+
+    def __init__(self, namespace: str, block_size: int = BLOCK_SIZE):
+        self._namespace = namespace
+        super().__init__(block_size=block_size)
+
+    def _start_replica_tracking(self) -> None:
+        pass
+
+    def _kv_event_plane_namespace(self) -> str:
+        return self._namespace
+
+    def apply_running_replicas(self, replica_full_ids) -> None:
+        """Feed a replica-membership snapshot as the LongPoll listener would."""
+        self._on_deployment_targets(
+            DeploymentTargetInfo(
+                is_available=True,
+                running_replicas=[
+                    RunningReplicaInfo(
+                        replica_id=ReplicaID.from_full_id_str(full_id),
+                        node_id=None,
+                        node_ip=None,
+                        availability_zone=None,
+                        actor_name=f"actor-{full_id}",
+                        max_ongoing_requests=10,
+                    )
+                    for full_id in replica_full_ids
+                ],
+            )
+        )
 
 
 if __name__ == "__main__":
