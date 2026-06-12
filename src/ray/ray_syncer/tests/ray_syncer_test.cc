@@ -1109,12 +1109,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
         : server_port(port), work_guard(io_context.get_executor()) {
       // Setup syncer and grpc server
-      syncer =
-          std::make_unique<RaySyncer>(io_context,
-                                      PeriodicalRunner::Create(io_context),
-                                      NodeID::FromRandom().Binary(),
-                                      1,
-                                      0);
+      syncer = std::make_unique<RaySyncer>(io_context,
+                                           PeriodicalRunner::Create(io_context),
+                                           NodeID::FromRandom().Binary(),
+                                           1,
+                                           0);
       thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
       // Create service with authentication token
@@ -1155,12 +1154,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ClientSyncer()
         : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
           thread([this]() { io_context.run(); }) {
-      syncer =
-          std::make_unique<RaySyncer>(io_context,
-                                      PeriodicalRunner::Create(io_context),
-                                      NodeID::FromRandom().Binary(),
-                                      1,
-                                      0);
+      syncer = std::make_unique<RaySyncer>(io_context,
+                                           PeriodicalRunner::Create(io_context),
+                                           NodeID::FromRandom().Binary(),
+                                           1,
+                                           0);
       remote_node_id = NodeID::FromRandom().Binary();
     }
 

@@ -1911,8 +1911,12 @@ TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {
   absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
   auto node_1 = scheduling::NodeID(NodeID::FromRandom().Binary());
   instrumented_io_context io_context;
-  ClusterResourceScheduler resource_scheduler(
-      PeriodicalRunner::Create(io_context), node_1, resource_total, is_node_available_fn_, fake_gauge_, clock_);
+  ClusterResourceScheduler resource_scheduler(PeriodicalRunner::Create(io_context),
+                                              node_1,
+                                              resource_total,
+                                              is_node_available_fn_,
+                                              fake_gauge_,
+                                              clock_);
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       node_1, resource_total, resource_total);
 

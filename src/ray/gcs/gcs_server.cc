@@ -838,11 +838,12 @@ void GcsServer::InitGcsTaskManager(
     ray::observability::MetricInterface &task_events_dropped_gauge,
     ray::observability::MetricInterface &task_events_stored_gauge) {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context,
-                                                       PeriodicalRunner::Create(io_context),
-                                                       task_events_reported_gauge,
-                                                       task_events_dropped_gauge,
-                                                       task_events_stored_gauge);
+  gcs_task_manager_ =
+      std::make_unique<GcsTaskManager>(io_context,
+                                       PeriodicalRunner::Create(io_context),
+                                       task_events_reported_gauge,
+                                       task_events_dropped_gauge,
+                                       task_events_stored_gauge);
   // Register service.
   rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
       io_context,
