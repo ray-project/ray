@@ -208,7 +208,7 @@ class ClusterResourceManager {
   BundleLocationIndex bundle_location_index_;
 
   /// Timer to revert local changes to the resources periodically.
-  std::shared_ptr<PeriodicalRunnerInterface> timer_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
 

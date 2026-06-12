@@ -26,10 +26,10 @@ namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(
     std::shared_ptr<PeriodicalRunnerInterface> periodical_runner)
-    : timer_(std::move(periodical_runner)),
+    : periodical_runner_(std::move(periodical_runner)),
       local_resource_view_node_count_gauge_(
           raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
-  timer_->RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
             RayConfig::instance().ray_syncer_message_refresh_interval_ms());

@@ -182,7 +182,7 @@ class RaySyncer {
   std::unique_ptr<NodeState> node_state_;
 
   /// Timer is used to do broadcasting.
-  std::shared_ptr<PeriodicalRunnerInterface> timer_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// The max number of messages to be sent in a batch.
   const size_t max_batch_size_;
