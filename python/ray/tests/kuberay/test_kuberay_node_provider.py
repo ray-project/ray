@@ -91,7 +91,7 @@ def test_worker_group_replicas(group_index, expected_max_replicas, expected_repl
     [(200, 200), (250, 250), (300, 300), (400, 300), (1000, 300)],
 )
 def test_create_node_cap_at_max(
-    attempted_target_replica_count, expected_target_replica_count
+    attempted_target_replica_count: int, expected_target_replica_count: int
 ):
     """Validates that KubeRayNodeProvider does not attempt to create more nodes than
     allowed by maxReplicas. For the config in this test, maxReplicas is fixed at 300.
