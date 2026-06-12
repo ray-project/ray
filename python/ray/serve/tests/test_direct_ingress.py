@@ -101,6 +101,13 @@ def _shared_serve_instance():
         # that condition on specific ports assignments.
         os.environ[env_var_name] = "6"
 
+    # These tests assert specific, immediately-reused port assignments. Disable
+    # the freed-port quarantine so reuse is deterministic; the quarantine itself
+    # is covered by test_node_port_manager.py.
+    quarantine_env_var = "RAY_SERVE_PORT_QUARANTINE_S"
+    quarantine_original = os.environ.get(quarantine_env_var)
+    os.environ[quarantine_env_var] = "0"
+
     ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
@@ -125,6 +132,12 @@ def _shared_serve_instance():
         os.environ[env_var_name] = original_value
     elif env_var_name in os.environ:
         del os.environ[env_var_name]
+
+    # Restore the quarantine env var.
+    if quarantine_original is not None:
+        os.environ[quarantine_env_var] = quarantine_original
+    elif quarantine_env_var in os.environ:
+        del os.environ[quarantine_env_var]
 
 
 @pytest.fixture

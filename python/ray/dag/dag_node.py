@@ -174,6 +174,9 @@ class DAGNode(DAGNodeBase):
                 other data. If a "nccl" transport is used, this allows the
                 sender and receiver to eliminate performance overhead from
                 an additional data transfer.
+
+        Returns:
+            This DAG node with the configured tensor transport.
         """
         try:
             device = Device(device)
@@ -364,16 +367,22 @@ class DAGNode(DAGNodeBase):
         )
 
     def execute(
-        self, *args, _ray_cache_refs: bool = False, **kwargs
+        self, *args: Any, _ray_cache_refs: bool = False, **kwargs: Any
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
+            *args: Positional arguments forwarded to ``_execute_impl`` on each node.
             _ray_cache_refs: If true, stores the default executor's return values
                 on each node in this DAG in a cache. These should be a mix of:
                 - ray.ObjectRefs pointing to the outputs of method and function nodes
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
+            **kwargs: Keyword arguments forwarded to ``_execute_impl`` on each node.
+
+        Returns:
+            The result of executing the DAG (an ``ObjectRef`` or an
+            ``ActorHandle`` depending on the root node type).
         """
         warnings.warn(
             "DAGNode.execute() is deprecated and will be removed in a future release.",
@@ -425,6 +434,10 @@ class DAGNode(DAGNodeBase):
         Examples:
             f.remote(a, [b]) -> [a, b]
             f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
+
+        Returns:
+            All child DAGNodes referenced (transitively) by this node's
+            args, kwargs, and other_args_to_resolve.
         """
 
         scanner = _PyObjScanner()
@@ -579,7 +592,7 @@ class DAGNode(DAGNodeBase):
                     if neighbor not in visited:
                         queue.append(neighbor)
 
-    def _raise_nested_dag_node_error(self, args):
+    def _raise_nested_dag_node_error(self, args: Tuple[Any, ...]) -> None:
         """
         Raise an error for nested DAGNodes in Ray Compiled Graphs.
 

@@ -9,6 +9,7 @@ import logging
 import socket
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from typing import List, Optional, Tuple
 
 from ray._common.network_utils import build_address
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
@@ -25,12 +26,16 @@ def runner_handler(node_provider):
         remote CoordinatorSenderNodeProvider.
         """
 
-        def _do_header(self, response_code=200, headers=None):
+        def _do_header(
+            self,
+            response_code: int = 200,
+            headers: Optional[List[Tuple[str, str]]] = None,
+        ):
             """Sends the header portion of the HTTP response.
 
             Args:
                 response_code: Standard HTTP response code
-                headers (list[tuples]): Standard HTTP response headers
+                headers: Standard HTTP response headers
             """
             if headers is None:
                 headers = [("Content-type", "application/json")]
