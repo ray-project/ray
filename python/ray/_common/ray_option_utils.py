@@ -221,6 +221,16 @@ _task_only_options = {
             "whenever `next` is called). Use -1 to disable this feature. "
         ),
     ),
+    "_num_objects_per_yield": Option(
+        (int, type(None)),
+        lambda x: None
+        if (x is None or x > 0)
+        else (
+            "_num_objects_per_yield is a private streaming generator option "
+            "that must be set to a positive integer."
+        ),
+        default_value=1,
+    ),
 }
 
 _actor_only_options = {

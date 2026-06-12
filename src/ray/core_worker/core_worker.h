@@ -774,12 +774,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// NOTE: The API doesn't guarantee the ordering of the report. The
   /// owner is supposed to reorder the report based on the item_index.
   ///
-  /// \param[in] returned_object A intermediate ray object to report
-  /// to the owner before the task terminates. This object must have been
+  /// \param[in] returned_objects Intermediate ray objects to report
+  /// to the owner before the task terminates. These objects must have been
   /// created dynamically from this worker via AllocateReturnObject.
-  /// If the Object ID is nil, it means it is the end of the task return.
-  /// In this case, the owner is responsible for setting finished = true,
-  /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
   /// \param[in] owner_address The address of the owner of the current task.
@@ -790,7 +787,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
+      const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          &returned_objects,
       const ObjectID &generator_id,
       const rpc::Address &owner_address,
       int64_t item_index,
@@ -1428,7 +1426,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
-      const std::vector<FallbackOption> &fallback_strategy = {});
+      const std::vector<FallbackOption> &fallback_strategy = {},
+      int64_t num_objects_per_yield = 1);
 
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,

@@ -538,6 +538,127 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     asyncio.run(verify_async_task_async_generator())
 
 
+def test_streaming_generator_num_objects_per_yield(shutdown_only):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        for i in range(3):
+            stats = yield i, f"metadata-{i}"
+            assert stats is None or stats.object_creation_dur_s >= 0
+
+    gen = generator.remote()
+    for i in range(3):
+        assert ray.get(next(gen)) == i
+        assert ray.get(next(gen)) == f"metadata-{i}"
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+    @ray.remote
+    def per_call():
+        yield 1, 2
+
+    with pytest.raises(ValueError, match="_num_objects_per_yield"):
+        per_call.options(_num_objects_per_yield=2).remote()
+
+
+def test_actor_streaming_generator_num_objects_per_yield(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        @ray.method(_num_objects_per_yield=2)
+        def decorated(self):
+            yield "block", "metadata"
+
+        def per_call(self):
+            yield 1, 2
+
+    actor = Actor.remote()
+
+    gen = actor.decorated.remote()
+    assert ray.get(next(gen)) == "block"
+    assert ray.get(next(gen)) == "metadata"
+    with pytest.raises(StopIteration):
+        next(gen)
+
+    with pytest.raises(ValueError, match="_num_objects_per_yield"):
+        actor.per_call.options(_num_objects_per_yield=2).remote()
+
+
+def test_streaming_generator_num_objects_per_yield_invalid_yield(shutdown_only):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        yield (1,)
+
+    gen = generator.remote()
+    with pytest.raises(ValueError, match="_num_objects_per_yield=2"):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_streaming_generator_num_objects_per_yield_serialization_failure(shutdown_only):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        yield threading.Lock(), 1
+
+    gen = generator.remote()
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_streaming_generator_num_objects_per_yield_partial_store_failure(
+    shutdown_only,
+):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2)
+    def generator():
+        # If a later object fails after an earlier object has been stored, the
+        # caller should still receive a ref for every object in the grouped yield.
+        yield 1, threading.Lock()
+
+    gen = generator.remote()
+    assert ray.get(next(gen)) == 1
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
+def test_streaming_generator_num_objects_per_yield_failure_not_retried(
+    shutdown_only,
+):
+    ray.init()
+
+    @ray.remote(_num_objects_per_yield=2, retry_exceptions=True, max_retries=1)
+    def generator():
+        # Once grouped-yield IDs are allocated, the whole group must be
+        # reported so those temporary refs are cleared instead of retrying.
+        yield 1, threading.Lock()
+
+    gen = generator.remote()
+    assert ray.get(next(gen)) == 1
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(gen))
+
+    with pytest.raises(StopIteration):
+        next(gen)
+
+
 def test_streaming_generator_exception(shutdown_only):
     # Verify the exceptions are correctly raised.
     # Also verify the followup next will raise StopIteration.
