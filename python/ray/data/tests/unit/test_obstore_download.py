@@ -19,7 +19,6 @@ from ray.data._internal.planner._obstore_download import (
     _is_obstore_supported_url,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
-    _resolve_size,
     _S3FSSessionCredentialProvider,
     _split_obstore_uri,
     download_bytes_async,
@@ -280,6 +279,10 @@ class TestStoreRegistryRegionInjection:
 # wrongly skips ranged downloads even when a whole-file GET would succeed.
 class TestResolveSizeRewrite:
     def test_resolve_size_rewrites_path_style_uri(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            _ObstoreFileSizeProvider,
+        )
+
         _BUCKET_REGION_CACHE.clear()
         captured = {}
 
@@ -294,20 +297,20 @@ class TestResolveSizeRewrite:
             captured["path"] = path
             return {"size": 4096}
 
-        with patch(
-            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
-            return_value="us-west-2",
-        ), patch("obstore.head_async", side_effect=fake_head_async):
-            size = asyncio.run(
-                _resolve_size(
-                    "https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin",
-                    registry,
-                    asyncio.Semaphore(),
+        provider = _ObstoreFileSizeProvider(registry, MagicMock())
+        try:
+            with patch(
+                "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+                return_value="us-west-2",
+            ), patch("obstore.head_async", side_effect=fake_head_async):
+                sizes = provider.get_file_sizes(
+                    ["https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin"]
                 )
-            )
+        finally:
+            provider.close()
 
         # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
-        assert size == 4096
+        assert sizes == [4096]
         assert captured["store_url"] == "s3://cross-region-bucket"
         assert captured["path"] == "key.bin"
 

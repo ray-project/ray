@@ -156,7 +156,8 @@ class _ObstoreFileSizeProvider(_CloseableResource):
         self._registry = registry
         self._fallback_provider = fallback_provider
         self._loop = asyncio.new_event_loop()
-        self._sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
+        # Bound to self._loop inside _run_loop on the background thread.
+        self._sem: Optional[asyncio.Semaphore] = None
         self._loop_thread = threading.Thread(
             target=self._run_loop,
             name="ray-data-obstore-file-size-provider",
@@ -182,11 +183,12 @@ class _ObstoreFileSizeProvider(_CloseableResource):
                     and self._loop_thread is not threading.current_thread()
                 ):
                     self._loop_thread.join(timeout=1)
-            else:
+            if not self._loop.is_running():
                 self._loop.close()
 
     def _run_loop(self):
         asyncio.set_event_loop(self._loop)
+        self._sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
         self._loop.run_forever()
 
     def get_file_sizes(self, uris: List[str]) -> List[Optional[int]]:
