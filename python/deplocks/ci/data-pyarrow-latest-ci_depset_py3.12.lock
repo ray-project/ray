@@ -16,6 +16,12 @@ absl-py==2.4.0 \
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
+accelerate==1.14.0 \
+    --hash=sha256:41b9c4377a54e0b460a959b0defa1b736e4ca0a2373252d9a539964c2afe3c8d \
+    --hash=sha256:e94390c2863b873be18f623f9df48a0d8fe5eff13ea7f1a00092b0a7904888c6
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 aioboto3==12.1.0 \
     --hash=sha256:8eae15dd52c9a43845448508ad0f912028a0a176bbd85b78e1377bb5f2a4d450 \
     --hash=sha256:9f9e07261ddf3d6fec04dd8d5f5a55e0cb3250089f4282f7a60054495ad9699b
@@ -158,6 +164,7 @@ aiohttp==3.13.5 \
     #   aiobotocore
     #   aiohttp-cors
     #   delta-sharing
+    #   fsspec
     #   taskiq
     #   torch-geometric
 aiohttp-cors==0.8.1 \
@@ -321,8 +328,64 @@ attrs==26.1.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiohttp
     #   dm-tree
+    #   jsonlines
     #   jsonschema
     #   referencing
+    #   rerun-sdk
+av==15.1.0 \
+    --hash=sha256:07a8ae30c0cfc3132eff320a6b27d18a5e0dda36effd0ae28892888f4ee14729 \
+    --hash=sha256:08eac47a90ebae1e2bd5935f400dd515166019bab4ff5b03c4625fa6ac3a0a5e \
+    --hash=sha256:11326f197e7001c4ca53a83b2dbc67fd39ddff8cdf62ce6be3b22d9f3f9338bd \
+    --hash=sha256:26426163d96fc3bde9a015ba4d60da09ef848d9284fe79b4ca5e60965a008fc5 \
+    --hash=sha256:2b9623ae848625c59213b610c8665817924f913580c7c5c91e0dc18936deb00d \
+    --hash=sha256:2f77853c3119c59d1bff4214ccbe46e3133eccff85ed96adee51c68684443f4e \
+    --hash=sha256:2f80ec387f04aa34868662b11018b5f09654ae1530a61e24e92a142a24b10b62 \
+    --hash=sha256:315915f6fef9f9f4935153aed8a81df56690da20f4426ee5b9fa55b4dae4bc0b \
+    --hash=sha256:37839d4fa1407f047af82560dfc0f94d8d6266071eff49e1cbe16c4483054621 \
+    --hash=sha256:39cda2dc810e11c1938f8cb5759c41d6b630550236b3365790e67a313660ec85 \
+    --hash=sha256:406fc29103865f17de0f684c5fb2e3d2e43e15c1fa65fcc488f65d20c7a7c7f3 \
+    --hash=sha256:40c5df37f4c354ab8190c6fd68dab7881d112f527906f64ca73da4c252a58cee \
+    --hash=sha256:46875a57562a72d9b11b4b222628eaf7e5b1a723c4225c869c66d5704634c1d1 \
+    --hash=sha256:4975e03177d37d8165c99c8d494175675ba8acb72458fb5d7e43f746a53e0374 \
+    --hash=sha256:4a2a52a56cd8c6a8f0f005d29c3a0ebc1822d31b0d0f39990c4c8e3a69d6c96e \
+    --hash=sha256:4abdf085bfa4eec318efccff567831b361ea56c045cc38366811552e3127c665 \
+    --hash=sha256:53fbdae45aa2a49a22e864ff4f4017416ef62c060a172085d3247ba0a101104e \
+    --hash=sha256:57b99544d91121b8bea570e4ddf61700f679a6b677c1f37966bc1a22e1d4cd5c \
+    --hash=sha256:57cc7a733a7e7d7a153682f35c9cf5d01e8269367b049c954779de36fc3d0b10 \
+    --hash=sha256:5dd73c6447947edcb82e5fecf96e1f146aeda0f169c7ad4c54df4d9f66f63fde \
+    --hash=sha256:5f895315ecfe5821a4a3a178cbbe7f62e6a73ae1f726138bef5bb153b2885ed8 \
+    --hash=sha256:60666833d7e65ebcfc48034a072de74349edbb62c9aaa3e6722fef31ca028eb6 \
+    --hash=sha256:659f9d6145fb2c58e8b31907283b6ba876570f5dd6e7e890d74c09614c436c8e \
+    --hash=sha256:729179cd8622815e8b6f6854d13a806fe710576e08895c77e5e4ad254609de9a \
+    --hash=sha256:7d7804a44c8048bb4b014a99353dd124663a12cd1d4613ba2bd3b457c3b1d539 \
+    --hash=sha256:86226d2474c80c3393fa07a9c366106029ae500716098b72b3ec3f67205524c3 \
+    --hash=sha256:8a7bf5a34dee15c86790414fa86a144e6d0dcc788bc83b565fdcbc080b4fbc90 \
+    --hash=sha256:8f383949b010c3e731c245f80351d19dc0c08f345e194fc46becb1cb279be3ff \
+    --hash=sha256:8f78f3dad11780b4cdd024cdb92ce43cb170929297c00f2f4555c2b103f51e55 \
+    --hash=sha256:92f524541ce74b8a12491d8934164a5c57e983da24826547c212f60123de400b \
+    --hash=sha256:9a0c1840959e1742dcd7fa4f7e9b80eea298049542f233e98d6d7a9441ed292c \
+    --hash=sha256:9a20c5eba3ec49c2f4b281797021923fc68a86aeb66c5cda4fd0252fa8004951 \
+    --hash=sha256:9c7131494a3a318612b4ee4db98fe5bc50eb705f6b6536127c7ab776c524fd8b \
+    --hash=sha256:a631ea879cc553080ee62874f4284765c42ba08ee0279851a98a85e2ceb3cc8d \
+    --hash=sha256:a77b75bdb6899a64302ff923a5246e0747b3f0a3ecee7d61118db407a22c3f53 \
+    --hash=sha256:a81cd515934a5d51290aa66b059b7ed29c4a212e704f3c5e99e32877ff1c312c \
+    --hash=sha256:aa4bf12bdce20edc2a3b13a2776c474c5ab63e1817d53793714504476eeba82e \
+    --hash=sha256:af455ce65ada3d361f80c90c810d9bced4db5655ab9aa513024d6c71c5c476d5 \
+    --hash=sha256:b785948762a8d45fc58fc24a20251496829ace1817e9a7a508a348d6de2182c3 \
+    --hash=sha256:c0bc4471c156a0a1c70a607502434f477bc8dfe085eef905e55b4b0d66bcd3a5 \
+    --hash=sha256:c8ef597087db560514617143532b1fafc4825ebb2dda9a22418f548b113a0cc7 \
+    --hash=sha256:cf067b66cee2248220b29df33b60eb4840d9e7b9b75545d6b922f9c41d88c4ee \
+    --hash=sha256:d0a1154ce081f1720082a133cfe12356c59f62dad2b93a7a1844bf1dcd010d85 \
+    --hash=sha256:d3f66ff200ea166e606cb3c5cb1bd2fc714effbec2e262a5d67ce60450c8234a \
+    --hash=sha256:d5921aa45f4c1f8c1a8d8185eb347e02aa4c3071278a2e2dd56368d54433d643 \
+    --hash=sha256:e30c9a6fd9734784941384a2e25fad3c22881a7682f378914676aa7e795acdb7 \
+    --hash=sha256:e33a76e38f03bb5de026b9f66ccf23dc01ddd2223221096992cb52ac22e62538 \
+    --hash=sha256:e6c51061667983dc801502aff9140bbc4f0e0d97f879586f17fb2f9a7e49c381 \
+    --hash=sha256:f985661644879e4520d28a995fcb2afeb951bc15a1d51412eb8e5f36da85b6fe \
+    --hash=sha256:fe07cf7de162acc09d021e02154b1f760bca742c62609ec0ae586a6a1e0579ac
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
@@ -375,6 +438,7 @@ certifi==2026.4.22 \
     #   httpcore
     #   httpx
     #   requests
+    #   sentry-sdk
     #   snowflake-connector-python
 cffi==1.17.1 \
     --hash=sha256:045d61c734659cc045141be4bae381a41d89b741f795af1dd018bfb532fd0df8 \
@@ -599,6 +663,7 @@ click==8.3.2 \
     #   tensorflow-datasets
     #   typer
     #   uvicorn
+    #   wandb
 click-didyoumean==0.3.1 \
     --hash=sha256:4f82fdff0dbe64ef8ab2279bd6aa3f6a99c3b28c05aa09cbfc07c9d7fbb5a463 \
     --hash=sha256:5c4bb6007cfea5f2fd6583a2fb6701a22a41eb98957e63d0fac41c10e7c3117c
@@ -695,6 +760,29 @@ cloudpickle==3.1.1 \
     #   distributed
     #   gymnasium
     #   tensorflow-probability
+cmake==4.1.3 \
+    --hash=sha256:18e1e2b7b226763017521ba8721c74d1a2a3cd7d1ec8e889b0b869d4e939370b \
+    --hash=sha256:1f29e924fd6d1a4f2f731eb743cc687b82063f73f15f0b4fb8e2b8a8211faba8 \
+    --hash=sha256:3893eb9c20d8a8bac3d951bbef9a4ce9d5495cd35a08b4e08d76215f5ead5897 \
+    --hash=sha256:3b6b25ce8fecc768881b36a1dfbca0013adac10a299c73e24cf4cbb99e4c37d6 \
+    --hash=sha256:3dbddc52f839df0ebc1c6b6915bd78d63d0805137c6f419fbddd587404276c28 \
+    --hash=sha256:44b011b8374aac8f3d7a7fb319b3c25d54c2fd9342d94a855ae3a64240efe828 \
+    --hash=sha256:466cdce904392f18b201471a3a6429cc12b4d98a166faa3ee0ad4461f3043083 \
+    --hash=sha256:487faf892ff5e05084c6a7f229dd9e568d0542b88487386acb42f0cb2f6634b6 \
+    --hash=sha256:6966746b25d1e9c8d32c731452e220e84331b5133544f710b21bd228a93812ca \
+    --hash=sha256:79bd8f92a3385cc6641949b0274cd10ee9a4f45a2c13840121b68b2e90b5af3a \
+    --hash=sha256:81f11b72bc59cbe547d9f283487ef0519bf68176edffcdfa1a4dc5a52f292369 \
+    --hash=sha256:89f48ddc2570eb62447e33311cffc6dfeb09631bd0a19423d8a59cec8af030f1 \
+    --hash=sha256:b1c890af27bb548d0a2c0e1affc81ad180fc17d8dfa9545e0658153446fe7db4 \
+    --hash=sha256:b42e99eb6e976f455f29283dd7583270d611b55c7687b5fe8d022d9ae7c95de5 \
+    --hash=sha256:d37db26f98ac26f0858cf6a30157a4be83b29cb195afeb640b355b097f1d94d7 \
+    --hash=sha256:e3782d5f82e8960290e50747b1fb5ff8396363a656ad5716a3aedc77334ca94f \
+    --hash=sha256:ea40a64b8027f2b7fb1684312a2f170e4d0904b7a4f123cd96e7290103bb1ed4 \
+    --hash=sha256:fd5a2ea9a38c6109036d8c912a7db4df2de241cfbc00b7424ae246494387da80 \
+    --hash=sha256:fd633c4395b1522caedf0b64034d1a48ea0e483f19e9c2985d14ee7152b21593
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 colorful==0.5.8 \
     --hash=sha256:a9381fdda3337fbaba5771991020abc69676afa102646650b759927892875992 \
     --hash=sha256:bb16502b198be2f1c42ba3c52c703d5f651d826076817185f0294c1a549a7445
@@ -1085,6 +1173,10 @@ dask==2026.3.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   distributed
+datasets==4.8.5 \
+    --hash=sha256:0f0c1c3d56ffff2c93b2f4c63c95bac94f3d7e8621aea2a2a576275233bba772 \
+    --hash=sha256:5079900781719c0e063a8efdd2cd95a31ad0c63209178669cd23cf1b926149ff
+    # via lerobot
 datasketches==5.2.0 \
     --hash=sha256:0208fb7bf40edca3f8cfcd9d1acdb95798abc10b685341b39557f59eb5bd862e \
     --hash=sha256:177e9545aafd7359c44e7935b995b0b0f9b08704a78f53e7840a7125d2d1fc9e \
@@ -1136,6 +1228,12 @@ decord==0.6.0 \
     --hash=sha256:9c20674964fb1490c677bd911d2023d2a09fec7a58a4bb0b7ddf1ccc269f107a \
     --hash=sha256:a0eb1258beade34dceb29d97856a7764d179db1b5182899b61874f3418a1abc8
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+deepdiff==8.6.2 \
+    --hash=sha256:186dcbd181e4d76cef11ab05f802d0056c5d6083c5a6748c1473e9d7481e183e \
+    --hash=sha256:4d22034a866c3928303a9332c279362f714192d9305bac17c498720d095fd1b4
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 delta-kernel-rust-sharing-wrapper==0.3.1 \
     --hash=sha256:0e310547b5f0363e03654a19e35d44584a70fb9b8f68862e7171dbd09b36655a \
     --hash=sha256:5326f3d05e7209f8773e55ec480f34c0485ec7af4ae3feb73339cdd583fd27ec \
@@ -1165,6 +1263,18 @@ deprecated==1.3.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   deltalake
+diffusers==0.35.2 \
+    --hash=sha256:30ecd552303edfcfe1724573c3918a8462ee3ab4d529bdbd4c0045f763affded \
+    --hash=sha256:d50d5e74fdd6dcf55e5c1d304bc52cc7c2659abd1752740d736d7b54078b4db5
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
+dill==0.4.1 \
+    --hash=sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d \
+    --hash=sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa
+    # via
+    #   datasets
+    #   multiprocess
 distlib==0.4.0 \
     --hash=sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16 \
     --hash=sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
@@ -1213,12 +1323,19 @@ docker==7.1.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   testcontainers
+draccus==0.10.0 \
+    --hash=sha256:8dd08304219becdcd66cd16058ba98e9c3e6b7bfe48ccb9579dae39f8d37ae19 \
+    --hash=sha256:90243418ae0e9271c390a59cafb6acfd37001193696ed36fcc8525f791a83282
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 einops==0.8.2 \
     --hash=sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193 \
     --hash=sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   etils
+    #   lerobot
 etils==1.13.0 \
     --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
     --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
@@ -1226,6 +1343,11 @@ etils==1.13.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   array-record
     #   tensorflow-datasets
+evdev==1.9.3 ; 'linux' in sys_platform \
+    --hash=sha256:2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   pynput
 farama-notifications==0.0.4 \
     --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
     --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
@@ -1362,6 +1484,8 @@ filelock==3.29.0 \
     --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   datasets
+    #   diffusers
     #   huggingface-hub
     #   python-discovery
     #   ray
@@ -1524,6 +1648,7 @@ fsspec==2023.12.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   dask
+    #   datasets
     #   delta-sharing
     #   etils
     #   getdaft
@@ -1547,6 +1672,18 @@ getdaft==0.4.3 \
     --hash=sha256:b8fa68769f95a71f63d38b12811d94c47dc4bc2a14654bb5e481a8adc3ae5cba \
     --hash=sha256:e2c7ad0a47874f5af20168a437504e00c84fa8c2cffb9e32cb7d508484c6c0db
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+gitdb==4.0.12 \
+    --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
+    --hash=sha256:67073e15955400952c6565cc3e707c554a4eea2e428946f7a4c162fab9bd9bcf
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   gitpython
+gitpython==3.1.47 \
+    --hash=sha256:489f590edfd6d20571b2c0e72c6a6ac6915ee8b8cd04572330e3842207a78905 \
+    --hash=sha256:dba27f922bd2b42cb54c87a8ab3cb6beb6bf07f3d564e21ac848913a05a8a3cd
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   wandb
 google-api-core==2.30.3 \
     --hash=sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8 \
     --hash=sha256:e601a37f148585319b26db36e219df68c5d07b6382cff2d580e83404e44d641b
@@ -1778,7 +1915,9 @@ grpcio-status==1.76.0 \
 gymnasium==1.2.2 \
     --hash=sha256:46d927328f8518bb5a689dbe270d228c1da2b08bcb71ae0152c10aa66f48d530 \
     --hash=sha256:f04ec362b1fdf73a8b327db5ef89384a3f2ba411e05d3521513414fbbb2199c8
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
@@ -1902,6 +2041,7 @@ httpx==0.28.1 \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   datasets
     #   huggingface-hub
 hudi==0.4.0 \
     --hash=sha256:075d9f6550f7b48555b54270bafc09b82d52148831858ffbd760ae635a1c4418 \
@@ -1914,7 +2054,12 @@ hudi==0.4.0 \
 huggingface-hub==1.16.1 \
     --hash=sha256:64340de934b9ce37857ef85a82de72f5629e8a270f9119eabb12bf495eb53c22 \
     --hash=sha256:7f1dc4c5ec21aed69be630ad0c3378616be16f3de1a47b141c0e812965d9c832
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   accelerate
+    #   datasets
+    #   diffusers
+    #   lerobot
 idna==3.12 \
     --hash=sha256:60ffaa1858fac94c9c124728c24fcde8160f3fb4a7f79aa8cdd33a9d1af60a67 \
     --hash=sha256:724e9952cc9e2bd7550ea784adb098d837ab5267ef67a1ab9cf7846bdbdd8254
@@ -1925,11 +2070,28 @@ idna==3.12 \
     #   requests
     #   snowflake-connector-python
     #   yarl
+imageio==2.34.2 \
+    --hash=sha256:5c0c0ee8faa018a1c42f649b90395dd4d3bb6187c09053a0cd6f1fdd51bbff5e \
+    --hash=sha256:a0bb27ec9d5bab36a9f4835e51b21d2cb099e1f78451441f94687ff3404b79f8
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
+imageio-ffmpeg==0.4.5 \
+    --hash=sha256:266601aab7619acf6ff78cd5ba78b5a593a1119a96d266d33b88bfcd01bbd3ca \
+    --hash=sha256:39a9ab4326bdf5eae3457961dfdfb4317078659ebe4e6980914ac897a462aeb2 \
+    --hash=sha256:d2ba8339eecc02fa73a6b85c34654c49a7c78d732a1ac76478d11224e6cfa902 \
+    --hash=sha256:db4d318f640419037a0df29bb11b1022f2f8094c90b4aac8affc7177b8ce4641 \
+    --hash=sha256:f127b8cdd842e8398de5f2aef23c687ae75d4d964e1df2ea3a9ff03e92a370e7 \
+    --hash=sha256:f2ea4245a2adad25dedf98d343159579167e549ac8c4691cef5eff980e20c139
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   imageio
 importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   diffusers
     #   opentelemetry-api
 importlib-resources==7.1.0 \
     --hash=sha256:0722d4c6212489c530f2a145a34c0a7a3b4721bc96a15fada5930e2a0b760708 \
@@ -1995,6 +2157,12 @@ joblib==1.2.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   scikit-learn
+jsonlines==4.0.0 \
+    --hash=sha256:0c6d2c09117550c089995247f605ae4cf77dd1533041d366351f6f298822ea74 \
+    --hash=sha256:185b334ff2ca5a91362993f42e83588a360cf95ce4b71a73548502bda52a7c55
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 jsonschema==4.24.1 \
     --hash=sha256:6b916866aa0b61437785f1277aa2cbd63512e8d4b47151072ef13292049b4627 \
     --hash=sha256:fe45a130cc7f67cd0d67640b4e7e3e2e666919462ae355eda238296eafeb4b5d
@@ -2037,6 +2205,10 @@ lance-namespace-urllib3-client==0.6.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   lance-namespace
+lerobot==0.5.1 \
+    --hash=sha256:4a05a9d10f013bf8fc408c7bd9c32a261209250cb66987b796416911c96a6fd3 \
+    --hash=sha256:bbd11021023fde0947b6d1ff1c52fe91c86a28ab09a96359892f3ef7e8866862
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
@@ -2208,6 +2380,12 @@ memray==1.19.3 ; sys_platform != 'win32' \
     --hash=sha256:fbbe64058ea329e7ff4f2c8067e6400b7db7d44a3f897a36c21f1a54e9b0c1ee \
     --hash=sha256:fc9f873609cbbaef82a91f213a1877ab510e9a96d4e20516726a9d7a981c8117
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+mergedeep==1.3.4 \
+    --hash=sha256:0096d52e9dad9939c3d975a774666af186eda617e6ca84df4c94dec30004f2a8 \
+    --hash=sha256:70775750742b25c0d8f36c55aed03d24c3384d17c951b3175d898bd778ef0307
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   draccus
 ml-dtypes==0.5.4 \
     --hash=sha256:0d2ffd05a2575b1519dc928c0b93c06339eb67173ff53acb00724502cda231cf \
     --hash=sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d \
@@ -2593,6 +2771,29 @@ multidict==6.7.1 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiohttp
     #   yarl
+multiprocess==0.70.19 \
+    --hash=sha256:02e5c35d7d6cd2bdc89c1858867f7bde4012837411023a4696c148c1bdd7c80e \
+    --hash=sha256:0d4b4397ed669d371c81dcd1ef33fd384a44d6c3de1bd0ca7ac06d837720d3c5 \
+    --hash=sha256:1bbf1b69af1cf64cd05f65337d9215b88079ec819cd0ea7bac4dab84e162efe7 \
+    --hash=sha256:1c3dce098845a0db43b32a0b76a228ca059a668071cfeaa0f40c36c0b1585d45 \
+    --hash=sha256:3a56c0e85dd5025161bac5ce138dcac1e49174c7d8e74596537e729fd5c53c28 \
+    --hash=sha256:5be9ec7f0c1c49a4f4a6fd20d5dda4aeabc2d39a50f4ad53720f1cd02b3a7c2e \
+    --hash=sha256:79576c02d1207ec405b00cabf2c643c36070800cca433860e14539df7818b2aa \
+    --hash=sha256:8d5eb4ec5017ba2fab4e34a747c6d2c2b6fecfe9e7236e77988db91580ada952 \
+    --hash=sha256:928851ae7973aea4ce0eaf330bbdafb2e01398a91518d5c8818802845564f45c \
+    --hash=sha256:952021e0e6c55a4a9fe4cd787895b86e239a40e76802a789d6305398d3975897 \
+    --hash=sha256:97404393419dcb2a8385910864eedf47a3cadf82c66345b44f036420eb0b5d87 \
+    --hash=sha256:c6b6d78d43a03b68014ca1f0b7937d965393a670c5de7c29026beb2258f2f896 \
+    --hash=sha256:d6db91ca6391eebc139c352f34578cea382df6bfa03d3b4146ed12b18b01cc14 \
+    --hash=sha256:e5e7dc3e3e1732e88c07aaec17eeb9917f9ed1107d9e60d5ab985cdc14bac43a \
+    --hash=sha256:e6c0674d34b8adac22533f6786576b3de4e396aaeda9e0c15378af9b8ada2702 \
+    --hash=sha256:e8cc7fbdff15c0613f0a1f1f8744bef961b0a164c0ca29bdff53e9d2d93c5e5f
+    # via datasets
+mypy-extensions==1.0.0 \
+    --hash=sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   typing-inspect
 namex==0.1.0 \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
@@ -2696,23 +2897,30 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
+    #   accelerate
     #   bokeh
     #   contourpy
     #   cupy-cuda12x
+    #   datasets
     #   datasketches
     #   decord
+    #   diffusers
     #   dm-tree
     #   etils
     #   gymnasium
     #   h5py
+    #   imageio
     #   jax
     #   jaxlib
     #   keras
+    #   lerobot
     #   ml-dtypes
     #   modin
+    #   opencv-python-headless
     #   pandas
     #   pylance
     #   raydp
+    #   rerun-sdk
     #   scikit-learn
     #   scipy
     #   soundfile
@@ -2806,6 +3014,17 @@ opencensus-context==0.1.3 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   opencensus
+opencv-python-headless==4.10.0.84 \
+    --hash=sha256:377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295 \
+    --hash=sha256:46071015ff9ab40fccd8a163da0ee14ce9846349f06c6c8c0f2870856ffa45db \
+    --hash=sha256:5ae454ebac0eb0a0b932e3406370aaf4212e6a3fdb5038cc86c7aea15a6851da \
+    --hash=sha256:9092404b65458ed87ce932f613ffbb1106ed2c843577501e5768912360fc50ec \
+    --hash=sha256:a4f4bcb07d8f8a7704d9c8564c224c8b064c63f430e95b61ac0bffaa374d330e \
+    --hash=sha256:afcf28bd1209dd58810d33defb622b325d3cbe49dcd7a43a902982c33e5fad05 \
+    --hash=sha256:f2017c6101d7c2ef8d7bc3b414c37ff7f54d64413a1847d89970b6b7069b4e1a
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 opentelemetry-api==1.39.0 \
     --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
     --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
@@ -2943,6 +3162,12 @@ optree==0.19.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   keras
+orderly-set==5.5.0 \
+    --hash=sha256:46f0b801948e98f427b412fcabb831677194c05c3b699b80de260374baa0b1e7 \
+    --hash=sha256:e87185c8e4d8afa64e7f8160ee2c542a475b738bc891dc3f58102e654125e6ce
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   deepdiff
 ormsgpack==1.12.2 \
     --hash=sha256:0b39e629fd2e1c5b2f46f99778450b59454d1f901bc507963168985e79f09c5d \
     --hash=sha256:118576ea6006893aea811b17429bfc561b4778fad393f5f538c84af70b01260c \
@@ -2998,14 +3223,18 @@ packaging==26.1 \
     --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
     --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
     # via
+    #   --override python/requirements/ml/lerobot_overrides.txt
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   accelerate
     #   bokeh
     #   dask
+    #   datasets
     #   distributed
     #   google-cloud-bigquery
     #   huggingface-hub
     #   keras
     #   kombu
+    #   lerobot
     #   modin
     #   pytest
     #   ray
@@ -3015,6 +3244,7 @@ packaging==26.1 \
     #   tensorboardx
     #   tensorflow
     #   torchmetrics
+    #   wandb
     #   wheel
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
@@ -3075,6 +3305,7 @@ pandas==2.3.3 \
     # via
     #   -r python/requirements/data/pyarrow-latest.txt
     #   bokeh
+    #   datasets
     #   delta-sharing
     #   modin
     #   raydp
@@ -3194,6 +3425,9 @@ pillow==11.3.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   bokeh
+    #   diffusers
+    #   imageio
+    #   rerun-sdk
     #   tensorboard
     #   torchvision
 platformdirs==4.9.6 \
@@ -3205,6 +3439,7 @@ platformdirs==4.9.6 \
     #   snowflake-connector-python
     #   textual
     #   virtualenv
+    #   wandb
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
@@ -3388,6 +3623,7 @@ protobuf==6.33.6 \
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
+    #   wandb
 psutil==5.9.8 \
     --hash=sha256:02615ed8c5ea222323408ceba16c60e99c3f91639b07da6373fb7e6539abc56d \
     --hash=sha256:05806de88103b25903dff19bb6692bd2e714ccf9e668d050d144012055cbca73 \
@@ -3407,7 +3643,9 @@ psutil==5.9.8 \
     --hash=sha256:d16bbddf0693323b8c6123dd804100241da461e41d6e332fb0ba6058f630f8c8
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   accelerate
     #   distributed
+    #   imageio
     #   modin
     #   raydp
     #   tensorflow-datasets
@@ -3481,11 +3719,13 @@ pyarrow==23.0.1 \
     --hash=sha256:fed7020203e9ef273360b9e45be52a2a47d3103caf156a30ace5247ffb51bdbd
     # via
     #   -r python/requirements/data/pyarrow-latest.txt
+    #   datasets
     #   delta-sharing
     #   getdaft
     #   hudi
     #   pylance
     #   raydp
+    #   rerun-sdk
 pyarrow-hotfix==0.7 \
     --hash=sha256:3236f3b5f1260f0e2ac070a55c1a7b339c4bb7267839bd2015e283234e758100 \
     --hash=sha256:59399cd58bdd978b2e42816a4183a55c6472d4e33d183351b6069f11ed42661d
@@ -3743,6 +3983,7 @@ pydantic==2.12.3 \
     #   lance-namespace-urllib3-client
     #   pyiceberg
     #   taskiq
+    #   wandb
 pydantic-core==2.41.4 \
     --hash=sha256:025ba34a4cf4fb32f917d5d188ab5e702223d3ba603be4d8aca2f82bede432a4 \
     --hash=sha256:09c2a60e55b357284b5f31f5ab275ba9f7f70b7525e18a132ec1f9160b4f1f03 \
@@ -3915,6 +4156,12 @@ pylance==2.0.1 \
     --hash=sha256:bff6452cdb8c56e84102a52291b7a9b4c08c87248d620afef05793b97de32341 \
     --hash=sha256:d740d7a7ff9905e358a70d2adae2178ab9d6798cf3ef47729371223463c442e6
     # via -r python/requirements/data/pyarrow-latest.txt
+pynput==1.8.2 \
+    --hash=sha256:8cc38cf13a6ab2749cb375678be8a0fd705d7ce49c8001ff5db4007a723bbef1 \
+    --hash=sha256:f493c87157cd3861b4468f7f896857051762f44ed26f1b641e7cc5840a457087
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 pyopenssl==25.1.0 \
     --hash=sha256:2b11f239acc47ac2e5aca04fd7fa829800aeee22a2eb30d744572a157bd8a1ab \
     --hash=sha256:8d031884482e0c67ee92bf9a4d8cceb08d92aba7136432ffb0703c5280fc205b
@@ -4017,6 +4264,12 @@ pyroaring==1.0.4 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   pyiceberg
+pyserial==3.5 \
+    --hash=sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb \
+    --hash=sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 pyspark==3.4.1 \
     --hash=sha256:72cd66ab8cf61a75854e5a753f75bea35ee075c3a96f9de4e2a66d02ec7fc652
     # via
@@ -4064,6 +4317,12 @@ python-snappy==0.7.3 \
     --hash=sha256:074c0636cfcd97e7251330f428064050ac81a52c62ed884fc2ddebbb60ed7f50 \
     --hash=sha256:40216c1badfb2d38ac781ecb162a1d0ec40f8ee9747e610bcfefdfa79486cee3
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+python-xlib==0.33 ; 'linux' in sys_platform \
+    --hash=sha256:55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32 \
+    --hash=sha256:c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   pynput
 pytz==2022.7.1 \
     --hash=sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
@@ -4148,13 +4407,24 @@ pyyaml==6.0.3 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   accelerate
     #   bokeh
     #   dask
+    #   datasets
     #   distributed
+    #   draccus
     #   huggingface-hub
+    #   pyyaml-include
     #   ray
     #   responses
+    #   wandb
     #   webdataset
+pyyaml-include==1.4.1 \
+    --hash=sha256:1a96e33a99a3e56235f5221273832464025f02ff3d8539309a3bf00dec624471 \
+    --hash=sha256:323c7f3a19c82fbc4d73abbaab7ef4f793e146a13383866831631b26ccc7fb00
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   draccus
 raydp==1.7.0b20250423.dev0 \
     --hash=sha256:97798d0447af470bb6d9338abf6356a14a030038908fca8da57d3753c4463586
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
@@ -4165,13 +4435,134 @@ referencing==0.36.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   jsonschema
     #   jsonschema-specifications
+regex==2026.5.9 \
+    --hash=sha256:002205cafd2a9e78c6290c7d1df277bf3277b3b7a30e0b4bb0dac2e2e3f7cb2d \
+    --hash=sha256:01f0f5f55f4b64dacec85dc116d3c05fd23ad3ff037bbc73a2085775953c2611 \
+    --hash=sha256:01f28d868834624c934b8d2e0aa1c8341337e37831f4a012f18a5afcba4cbaf3 \
+    --hash=sha256:075160bf16658e16d35233300b8453aac25de4cbea808d22348b6979668e924d \
+    --hash=sha256:0de5cf193997384ed2ca6f1cd4f78055b255d93d82d5a8cd6ba0d11c10b167e4 \
+    --hash=sha256:0e1b1b4e496afbb24f4a62aba855ee4f88f25578927697b340702e48c9ee6bc2 \
+    --hash=sha256:0f03aa6898aaaac4592479821df16e68e8d0e29e903e65d8f2dfb2f19028a989 \
+    --hash=sha256:0f9eede6a5cbdc02d4978090186390936e1776a7d1359b21e41014c609880bcf \
+    --hash=sha256:1268eddd8486dc561d08eee1156e40aa3a8fe10f4bdec8fa653b455fcbffd12c \
+    --hash=sha256:15ee42209947f4ca045412eae98416317238163618ace2a8e54f99586a466733 \
+    --hash=sha256:164eba9b755ea6f244b0d881196fbc1fac09714e9782c9e2732b813142033c8e \
+    --hash=sha256:19c16ceb4a267a8789e25733e583983eeab9f0f8664e66b0bd1c5d21f14c2d4b \
+    --hash=sha256:1bd7587a2948b4085195d5a3374eaf4a425dc3e55784c038175355ecf3bbbf8a \
+    --hash=sha256:1e6da47d679b7010ef27556b6e0f99771b744936db1792a10ceac6547ae1503e \
+    --hash=sha256:205109e96b3cf5adf8f4cd62bedde9487feb282b9497a3535451e5a24cd706a0 \
+    --hash=sha256:2099f7e7ff7b6aa3192312650a56e91cc091e49d50b04e4f6f8b6e28b3b27f1c \
+    --hash=sha256:246de9d60aa3f8538b519834dd95cbf276ea263d6a7bd5a3666dc3fa0230505b \
+    --hash=sha256:24b2355ef5cc9aa5b8f07d17704face1c166fdcc2290fa7bd6e6c925655a8346 \
+    --hash=sha256:2a661a7d270a61f7cf460caee8b9fa2d5ef9e5c681234bcb9e0fe14f488e7dfc \
+    --hash=sha256:2acfb48634f64996b57f90f39afa692ff362162722581921fe92239a59960f3c \
+    --hash=sha256:2efa205e6d98b24d1f3ab395c11aa15cdf10935bca283d0285e0499c284fba21 \
+    --hash=sha256:31037c82eccb44b7ea2e9e221d7c01429430e989a1f4b91ea5a855f6017b509a \
+    --hash=sha256:3527bb4942d2c14552155406cdedd906567456821848aed1cb4933a391bf5eca \
+    --hash=sha256:39617fb0cde9c0e6306dc70e3bfc096f3da793219879f7ae7aa341a69fbdcf6d \
+    --hash=sha256:398c521292f4c7fb807001dcd54694d3a1fcafc179a36ad9cc56f98df85930b6 \
+    --hash=sha256:3b1e39888c5e0c7d92cea4fc777396c4a90363b05de75d02eb459a4752200808 \
+    --hash=sha256:3dd4a3ff360dfb836fecdb93a4598f9d6e2ac81e3e397125145c6221bf58cf4c \
+    --hash=sha256:3ddd90103f9e5c471c49c7852ecc1fe27c7e45eb99e977aefe7caa4e779f4f58 \
+    --hash=sha256:446ddd671e43ab535810c4b21cff7104945c701d4a14d1e6d1cd6f4e445a8bea \
+    --hash=sha256:45375819235558a4ff1c4971dc32881f022613abdb180128f5cb4768c1765a1c \
+    --hash=sha256:46f1326ca6e65b0879d23ca302c0f2415aad42ff0309b9c818e7949fe19a41d8 \
+    --hash=sha256:48036f6374aaa79eb3b754ec29c61d1c6b1606749d705a13f8854fa2539671f6 \
+    --hash=sha256:4ebe8f0b5ec5a5024dc4a4c59f444c4e9afc5f2abdbb8962065b75d27fb971f9 \
+    --hash=sha256:4eeb011098fcb77af513dcef521a3dbecbf8849b1e38940759d293b7a93f5026 \
+    --hash=sha256:508f56a89ba9cb26e4168cbc37dbd60a28d82430a9e18ad1d25fe0883c314ca2 \
+    --hash=sha256:5604dfd046dc37eca90250fc3be938b076c8059fa772ac0ed6f499b0f0fb0415 \
+    --hash=sha256:56a33f191f17d8c417f99945ebdc1e691d3af9605d86ec68c7e54a57e3e17af6 \
+    --hash=sha256:57e8915c7986aa33d25e4d3629cef711cd2863f2961b10409f0c04cb8b7d9020 \
+    --hash=sha256:57eeeb05db7979413dec5438f2db21d7ecbba787cde7a711df1a6f6df672aa06 \
+    --hash=sha256:5b73ab8afcf66c622db143d1c6fda4e58e4d537ee4f125229ad47b1ab80f34c0 \
+    --hash=sha256:5e41809d2683fcde7d5a8c87a6567ba1fb1ce0de9f31bff578de00a4b2d76daa \
+    --hash=sha256:6351571c8a42b505eb555c0dc47d740d0fb66977dc142919eea6f4325b7c56a0 \
+    --hash=sha256:6441cc660d76107934a09c22167200839a0e89604a6297f78a974e66e931d2c0 \
+    --hash=sha256:65c8c8c37377794bd5b2f3ebe51919042bf17aec802e23c833d89782ed0c78af \
+    --hash=sha256:6ba42b2e7e7f46cf68cc6a5ca36fa07959f9bbd9c6bdcc47b6ee76549a590248 \
+    --hash=sha256:71b61c5bfe1c806332defc42ad6c780b3c55f661986d7f40283a3a88274b4c00 \
+    --hash=sha256:728d8bfd28a8845c8b6bc5dc7ce010453d206396786c0765c2740cb65f37791e \
+    --hash=sha256:7b92817338591505f282cf3864c145244b1edcf5381d237038df955001091538 \
+    --hash=sha256:7e30b874d341fac767d7df5a0870540541c2c054b80cfaac116e8d367a8a7ff2 \
+    --hash=sha256:7e87577720152d2caae19fe2baaf1f8d5ca12091e9e229f03915c37d1e4b9178 \
+    --hash=sha256:83d0ee4a57d1c87cb549e195ec300b8f0ec3a82eba66d835e4e2ed8634fe4499 \
+    --hash=sha256:8676474c07469d6f33dd1085ca2cd45f65785f32518f2b20e36d9953ca07f994 \
+    --hash=sha256:86f40a5d6444db30a125c9c9177e6b25dad981cbc37451fd838f145e6edac92e \
+    --hash=sha256:872acc074bd29ffc9913ecdfedf6ea77502312ca44a4aa0d3779089c6069d8de \
+    --hash=sha256:8abd33fef90b2a9efac5557d6033ca82d1195ed3a15fea5af15ba7b463c6a63b \
+    --hash=sha256:8c6e4218fbdfbcd4f6c19efca40930d24a621bf4b48cb76bc6640543bd28ef20 \
+    --hash=sha256:8e76e8161ad00694cfce6767d5dea860c6391ac5b83e5c3a39661e696f11fc7e \
+    --hash=sha256:8f3af7a4903c5c04a11a196a5aa75cdd7dd3f8508132f9fb3259d9f5908e3b88 \
+    --hash=sha256:91328f1c23d47595ca3ef0a7557fa129c5a23404b775c770697d2f35b33e0107 \
+    --hash=sha256:916714069da19329ef7de197dcbc77bb3104145c7c2c864dbfbe318f46b88b14 \
+    --hash=sha256:93a7860539414dddaefba2b40f8771765ae17949d4c7182b876ce429e11a8309 \
+    --hash=sha256:954cc214c04663ee6d266fc61739cad83054683048de65c5bd1d640ad28098ac \
+    --hash=sha256:96f5f58b54a063d7ea9dca08e1cf57bfe10499c4d579ee672da284f57f5f0070 \
+    --hash=sha256:97cf3bc1b7d7d2306772ec07366c80d9df00ff79e79cea32898883a646d2fae2 \
+    --hash=sha256:98bd73080e8756255137e1bd3f3f00295bbc5aa383c0e0f973920e9134d7c4ad \
+    --hash=sha256:992604d02e6d9c6d786c24a706a71ecffe1020fc1ef264044474cd81fa2c3919 \
+    --hash=sha256:a24852d3c29ad9e47593593d8a247c44ccc3d0548ef12c822d6ed0810affe676 \
+    --hash=sha256:a6a563446a41adc451393dc6b8e6ad87979efaee3c8738690a8d1b08ebead1b4 \
+    --hash=sha256:a8234aa23ec39894bfe4a3f1b85616a7032481964a13ac6fc9f10de4f6fca270 \
+    --hash=sha256:a8820737949116ffff55fe18f9fc644530063ba6ebfcb8314239416e78f1347c \
+    --hash=sha256:a9e1328e17c84c1a5d22ec9f785ecef4a967fab9a42b6a8dc3bcbebd0a0c9e44 \
+    --hash=sha256:aa0fbdbac82cb3e4450d0ccde7d7a35607f4cb2dd9fba4b8b69bfaf8c9fa6aed \
+    --hash=sha256:b310768746dd314ea6e2ff4cc89ef215426813396ff4e94ee8e6f7096c8b6e03 \
+    --hash=sha256:b46b0f094dc1d3b90356c85a0bd2c9bafc4a6a190b9d6f8ddd5a033b6e088ed4 \
+    --hash=sha256:b4bb445ff3f725f59df8f6014edb547ee928ec7023a774f6a39a3f953038cbb2 \
+    --hash=sha256:b6d189041f15691cfa2b6c4290448ec221244d225b3f5fe9e7771b34ffcdf6e2 \
+    --hash=sha256:b96350aa424e79d4fd6b567b344dcbe2b2d6bfc48dfe7717587e1fa6d43da6ff \
+    --hash=sha256:be3372b9df6ddecff6486d37e19095a7b4973137caf5512407a89f4455361f41 \
+    --hash=sha256:bfe1ce50cbfb569d74e1e4337da6468961f31dbea55fd85aa5de59c0947a805a \
+    --hash=sha256:c010eb8caca74bdb40c07498d7ece26b4428fd3f04aa8a72c9ac6f79e8faaac6 \
+    --hash=sha256:c8b9b9d294cfea3cd19c718ade7cc93492b2c4991abd9a68d0b3477ae6d8e100 \
+    --hash=sha256:c9411dd64ca95477225734a93dfc8583b51916b8d5942f99d6cac21e09965451 \
+    --hash=sha256:ca518ed29c46eecba6010b15f1b9a479314d2de409536e71b6a13aa04e3b8a77 \
+    --hash=sha256:ccf5249114cc3e772ecdd88a98a86eca0fd74c61ce32a94743758c083fc05d48 \
+    --hash=sha256:cd2846168eb9ee3c513902bc8225409cb1caab31d04728b145171fa1625d9621 \
+    --hash=sha256:d29eebfc9525db68cad3c97eedd7f754fa265aa5cd0cf4f863b2421e1b48fc9f \
+    --hash=sha256:d3d7eb5c9a7f6df82ed3cfac9beb93882a5cbcb5b8b157b56cb2b3b276574ac1 \
+    --hash=sha256:d626b84406444b165fc0ba981604edea39f0588ff1f92baa23fe50799ea9afdb \
+    --hash=sha256:d641a8c9a61618047796d572a39a79b26167b0411d2c3031937b2fe2d081e2cf \
+    --hash=sha256:d659eee77986549c9ea45b861c7567e44d6287c3dc9a4565478853f7b9fe2ff6 \
+    --hash=sha256:d6b8a143aca6c39b446ea8092cde25cc8fe9304d4f5fecfbc1a9dbb0282703c2 \
+    --hash=sha256:d726ca3f0d76969bf1e8e477d160d3d666bbf999f6860bd314889e5345782046 \
+    --hash=sha256:d7bdc0ab8f3dd7e1b4f9ab88634e13374669db86bb3c72e8292f07ae313f539f \
+    --hash=sha256:daff2bdbaf1d23e52fdff7c0b7bc2048b68f978df6a4d107ac981f94caef2e66 \
+    --hash=sha256:dd2810d22146b6d838acc5ec15602cb6b47920aa4e33015df3868eedfd20bab8 \
+    --hash=sha256:ddda5340e6c01a293027dd46232fa79eaff1b48058ce7a98f572b6445b088041 \
+    --hash=sha256:dea2e88e1cce4522496cce630e11e67b98b7076620bc4336c3f674bc21a375f4 \
+    --hash=sha256:debb893095e944091c16e641a6e33c1b0f4cb61ab945ec5afbf53ce7068834d8 \
+    --hash=sha256:dfbe4579b9f08036aa7d101d1835437a20783574ac66327e6b29b4018a138081 \
+    --hash=sha256:e1d93bf647916292e8edcec150c07ddf3dc50179ccaf770c04a7f9e452155372 \
+    --hash=sha256:e82db382b44d0111b22601c509c89f64434816c9e0eef9d1989cda8cc6ff1c04 \
+    --hash=sha256:ea9c8ecfa1b73c73b626534d6626e5340d429630943672b8480724f44e84b962 \
+    --hash=sha256:ead4b163ac30a29574510cd4b3e2e985ac5290c05fc7095557d6a5f403fc31b5 \
+    --hash=sha256:ecd353045824e4477562a2ac718c25799cdaaa41f7aa925a806a8a3e6848a5b9 \
+    --hash=sha256:ed2c9e8068b614c574d8d30e543d617cf5379b0535d46f97ef00e904745a08b5 \
+    --hash=sha256:ed457d8e98ae812ed7732bef7bf78de78e834eae0372a74e23ca90ef21d910f9 \
+    --hash=sha256:ef31cbfe458e21c6122ba8150ff060e0c7789ed0d26eb423f25472584920b555 \
+    --hash=sha256:f079e50a0d3cc3cd5091fa9ff45869a2e6b2cd35895731edafb0327901a8d86d \
+    --hash=sha256:f3844f134e834076677dd369976e9f5068679fcb8e50102fdf6b7ac96a3ec127 \
+    --hash=sha256:f7a7c26137296beba7784de6eba69c6a93a63ccebc385e4962fe67e267a91225 \
+    --hash=sha256:fa411799ca8da32a8d38d020a88faa5b6f91657d284761352940ecf9f7c3bbdd \
+    --hash=sha256:fd03c4f0e33280d15cae17159b899245d6b7c53d21def19b263b39655061f5ce \
+    --hash=sha256:fd190e88a895a8901325fad284a3f74ea52b1da8525b76cc811fa9b1edf0ce2b \
+    --hash=sha256:ff8d372ac2acdc048d1c19916f27ee61bc5722728458ba6ca5052f2c72d51763
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   diffusers
 requests==2.33.1 \
     --hash=sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517 \
     --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   datasets
     #   delta-sharing
+    #   diffusers
     #   docker
+    #   fsspec
     #   google-api-core
     #   google-cloud-bigquery
     #   pyiceberg
@@ -4182,6 +4573,16 @@ requests==2.33.1 \
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
+    #   wandb
+rerun-sdk==0.26.2 \
+    --hash=sha256:03977d2aba4966d9a70b682eca196123fda11408fecd733441ede9916c6341e2 \
+    --hash=sha256:3d4151c9a3484e112b53d1df90c8fa07397dc7b8bfbb420f09e011eff20f1ef2 \
+    --hash=sha256:a493ad6c8357022cba2ca6f8954a81d0faf984b0b22154eb1d976bfc7649df63 \
+    --hash=sha256:a6f97b60aaa7d4e8c6124a3f6b97ce9dbd09520050955f0e0bdacb72b0eb106a \
+    --hash=sha256:b6128c3c4f014cae5be18e4d37657c5932d1bcdb2ce5e9d4b488a6eed47f7437
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 responses==0.26.0 \
     --hash=sha256:03ec4409088cd5c66b71ecbbbd27fe2c58ddfad801c66203457b3e6a04868c37 \
     --hash=sha256:c7f6923e6343ef3682816ba421c006626777893cb0d5e1434f674b649bac9eb4
@@ -4328,6 +4729,28 @@ s3transfer==0.8.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   boto3
+safetensors==0.8.0 \
+    --hash=sha256:040070828e36dc8e122178bbbd5830ff9e97920affb84cbe0f46442497bed358 \
+    --hash=sha256:096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f \
+    --hash=sha256:2ddf52eac562eda224f99acfa7889d02968c1fd59a5b011ae7d8137c37e9c02d \
+    --hash=sha256:3ae091f16662658bdc019a4ff6cb4c085bb7d725eb5978b183ffd265863b6d2d \
+    --hash=sha256:4124502b78f03534117c848f87a39b8f31e577b15eff423bf8bfb95f2a8c30d0 \
+    --hash=sha256:4a95ae2b05d7726d751da4ebf626a2ca782b706e101bd894c95bc2450b1cffcc \
+    --hash=sha256:7a46e5ff292c356d6991e60942ba7f79817682d3a2cef0702136448cb9c4d235 \
+    --hash=sha256:7bc0a787ba8a35be368ee3574edfa2b1ad389eebd0a72e482ae275490e3f6c98 \
+    --hash=sha256:87eec7ffed2b809f05a398a8becb7d013f19f7837cd15d9748580d6cf30dbaf4 \
+    --hash=sha256:8e080062fcde23be189565e1c3305d16751a218ecf9412c8601e64204eb6f846 \
+    --hash=sha256:8e9f537aa183a38ace122d27303dcd986b26bd2a7591f9181d7f0c396f4677ca \
+    --hash=sha256:c554f85858e05226d3c2828e32395e677434685d6d94594a41643361c5e837f0 \
+    --hash=sha256:c80201d22cbf405b80647a60ada77bba06c8fba2da2743ba1e89cdcc39a81f25 \
+    --hash=sha256:f7838e5135a406ad3e02efdcb8cf2e5397d368b0154537c4fec682dbc544d452 \
+    --hash=sha256:fabaf3e0f18a6618d9b36560682562157f77c2b71fcffc7b432be2baed9d753d \
+    --hash=sha256:fcdd41ec4628fee5799f807c73c353629130fbd942aa23d83c623dd6c9d52d78 \
+    --hash=sha256:fd6f3f93c9a0a7cc2788ee63fb763353d4bd2e89b0751bc78fcf7dda00bea774
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   accelerate
+    #   diffusers
 scikit-learn==1.7.2 \
     --hash=sha256:0486c8f827c2e7b64837c731c8feff72c0bd2b998067a8a9cbc10643c31f0fe1 \
     --hash=sha256:0b7dacaa05e5d76759fb071558a8b5130f4845166d88654a0f9bdf3eb57851b7 \
@@ -4433,6 +4856,12 @@ scipy==1.17.1 \
     #   torch-cluster
     #   torch-geometric
     #   torch-sparse
+sentry-sdk==2.58.0 \
+    --hash=sha256:688d1c704ddecf382ea3326f21a67453d4caa95592d722b7c780a36a9d23109e \
+    --hash=sha256:c1144d947352d54e5b7daa63596d9f848adf684989c06c4f5a659f0c85a18f6f
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   wandb
 shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
     --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
@@ -4448,13 +4877,21 @@ six==1.17.0 \
     #   google-pasta
     #   opencensus
     #   promise
+    #   pynput
     #   python-dateutil
+    #   python-xlib
     #   tensorflow
     #   tensorflow-probability
 smart-open==6.2.0 \
     --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
     --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+smmap==5.0.3 \
+    --hash=sha256:4d9debb8b99007ae47165abc08670bd74cb74b5227dda7f643eccc4e9eb5642c \
+    --hash=sha256:c106e05d5a61449cf6ba9a1e650227ecfb141590d2a98412103ff35d89fc7b2f
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   gitdb
 snowflake-connector-python==4.3.0 \
     --hash=sha256:08f5167a10d380fe66330d5b19d19bd8b4f4af27e9648e3b254e61da025646bf \
     --hash=sha256:120463ca391d9deda3bdb185104ba847e12f73c86ef411cfcf827ce49b64d1af \
@@ -4662,6 +5099,7 @@ termcolor==3.3.0 \
     --hash=sha256:cf642efadaf0a8ebbbf4bc7a31cec2f9b5f21a9f726f4ccbb08192c9c26f43a5
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
     #   tensorflow
     #   tensorflow-datasets
 testcontainers==4.14.2 \
@@ -4689,6 +5127,7 @@ toml==0.10.2 \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   draccus
     #   tensorflow-datasets
 tomlkit==0.13.3 \
     --hash=sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1 \
@@ -4731,6 +5170,8 @@ torch==2.9.0+cpu \
     --hash=sha256:fa0d1373d04b30ff8f12d542135d292f1a1ddb7c0d852a3d487a320360e5dab9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   accelerate
+    #   lerobot
     #   torchmetrics
     #   torchtext
     #   torchvision
@@ -4750,6 +5191,25 @@ torch-sparse==0.6.18+pt29cpu \
 torch-spline-conv==1.2.2+pt29cpu \
     --hash=sha256:2155b53ae8bf02d40522a4567eb8a7ba8e1c26d605323b3774fd7b0055ec3400
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+torchcodec==0.10.0 \
+    --hash=sha256:2e2be11c4468a58940572fcf5f8ed5e41187c1de214267f692e2fd5ac8731198 \
+    --hash=sha256:3dde1ebd9677ec1587f1e45486b3d59bd3e41a0bf4fc9b3dc6880e64c421ad56 \
+    --hash=sha256:4734eb82146516049e1070152eb3013d7b9689159ef35db7c0894d130d4e335d \
+    --hash=sha256:61f9b12fcd5b89d5e7e874c5feeb7c2c99821868a32f6ebbf6e8692409b2b6f7 \
+    --hash=sha256:6e43184d83ccced965b31cad5bb6200c779646fee2ec153a6d784b4def40c91b \
+    --hash=sha256:71f25caf9ab89a434ae2008b1374fd98557a6864b8313b103bae53af3e6fd17f \
+    --hash=sha256:9e077146e894f373b805972da96aee42ff8bb87b1a3f3fb64d26925cd9e64184 \
+    --hash=sha256:a2ecb3e38414a9326ffca56e49a05a9f513813aa118b7f540110d09ab725d1f7 \
+    --hash=sha256:a49e3ebab65e559a98af6f63371a837f69b8542059da8def30bd6e658c5e86d3 \
+    --hash=sha256:b35fa4061c5757f8d714187c040a90a11669de6470a644bb04e3cd335ff1c110 \
+    --hash=sha256:bb882c12ca07dcf6d82833db67e6b565693a4bccfeab6696697620e43e465556 \
+    --hash=sha256:be3ce7cc667effecd06da9d0d6c5e9e347c5f376b705934e7b82378a65cf6eef \
+    --hash=sha256:bec2b938ad4b294bd71d0b0ab4976037c740be0c80be79e67803ebed4eff270e \
+    --hash=sha256:e4f022fa53d91b414b4177fe87b0afc40a806092da4595d24de4b245d6fb0fba \
+    --hash=sha256:f51d9435d3c75c0b55f5dc64a22ce9cfb58ac19013cdd8ce572a523ef75e2b58
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
@@ -4781,7 +5241,9 @@ torchvision==0.24.0+cpu \
     --hash=sha256:baa37f80155a3b055911d5c2418be1e16b95bb69f671dbb0d07d67504093e23d \
     --hash=sha256:bb035ec26121238dbaa888e5efbf04c7d45f113a7c34d1cf849c4031e7cac4b8 \
     --hash=sha256:ef4a10f713f2a0de08c791abeb9e4ab1e9c6e0ce563c7e83da139c99e6d2712e
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 tornado==6.5.5 \
     --hash=sha256:192b8f3ea91bd7f1f50c06955416ed76c6b72f96779b962f07f911b91e8d30e9 \
     --hash=sha256:2c9a876e094109333f888539ddb2de4361743e5d21eece20688e3e351e4990a6 \
@@ -4802,6 +5264,7 @@ tqdm==4.67.1 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   datasets
     #   etils
     #   getdaft
     #   huggingface-hub
@@ -4837,6 +5300,7 @@ typing-extensions==4.15.0 \
     #   pydantic-core
     #   pyopenssl
     #   referencing
+    #   rerun-sdk
     #   snowflake-connector-python
     #   sqlalchemy
     #   starlette
@@ -4844,7 +5308,14 @@ typing-extensions==4.15.0 \
     #   testcontainers
     #   textual
     #   torch
+    #   typing-inspect
     #   typing-inspection
+    #   wandb
+typing-inspect==0.9.0 \
+    --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   draccus
 typing-inspection==0.4.2 \
     --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
@@ -4883,6 +5354,7 @@ urllib3==1.26.20 \
     #   lance-namespace-urllib3-client
     #   requests
     #   responses
+    #   sentry-sdk
     #   testcontainers
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
@@ -4951,6 +5423,21 @@ virtualenv==21.2.4 \
     --hash=sha256:29d21e941795206138d0f22f4e45ff7050e5da6c6472299fb7103318763861ac \
     --hash=sha256:b294ef68192638004d72524ce7ef303e9d0cf5a44c95ce2e54a7500a6381cada
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+wandb==0.27.2 \
+    --hash=sha256:32ed7456f40443c971e95dd63704d840fce66c24f88049a9bda8a09dfe85effe \
+    --hash=sha256:41158181fc5b691438b3d04fee0a8c061e3f1f407a3258096afbebfe1db24e72 \
+    --hash=sha256:55bfebf4d382116a8e9610848cadc0de50d406bacd3d0a390d12dabde196f009 \
+    --hash=sha256:566aa2fcd67d2a23c08713da75e9daf82f30f7136af76763ef1d7db3d901d940 \
+    --hash=sha256:5c55fad8c7be9d345dcebdc9dc10f7d2ac5af5bede62acbcd79a412ccaf48c87 \
+    --hash=sha256:87204d4fe40fbd9a1fe89a05927ce4ddb8be34d8210045457819fb4a35e0bcea \
+    --hash=sha256:978400b3c4b7d97e927c32264453da5e4a0040a3468d5b77a00d9c480613f370 \
+    --hash=sha256:c81ff93ab63f4dabc5a27b90ac3d12310fbfa6a14ca99201626921c99b2845be \
+    --hash=sha256:de8099f02f540c743069617db7d034511a64c193748783aa6d2d98310918d170 \
+    --hash=sha256:e0779592410215a2762063c3585d3dcad73c7dca9cb6d63c4dcc1588267c1392
+    # via
+    #   --override python/requirements/ml/lerobot_overrides.txt
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   lerobot
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
     --hash=sha256:09ea3397aecbc81c19ed7f025e051a7387feefdb789cf768ff994c1228182fda \
@@ -5301,7 +5788,9 @@ xxhash==3.6.0 \
     --hash=sha256:f7f99123f0e1194fa59cc69ad46dbae2e07becec5df50a0509a808f90a0f03f0 \
     --hash=sha256:fba27a198363a7ef87f8c0f6b171ec36b674fe9053742c58dd7e3201c1ab30ee \
     --hash=sha256:ffc578717a347baf25be8397cb10d2528802d24f94cfc005c0e44fef44b5cdd6
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   datasets
 xyzservices==2026.3.0 \
     --hash=sha256:503183d4b322bfebc3c50cdd21192aa3e81e36c5efbf9133d54ae82143e0576b \
     --hash=sha256:d226866a5d8e9fef337034d8da37a8298f0a1d9d1489b4018e69579eb321fea4
