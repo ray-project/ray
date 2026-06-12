@@ -8,8 +8,6 @@ xgboost==2.1.0
 lightgbm==4.6.0
 
 # Huggingface
-# Upgraded from transformers==4.36.2 / accelerate==0.28.0: hf-hub 1.x (needed
-# by datasets 4.x consumers) is only supported by transformers 5.x.
 transformers>=5.0,<6.0
 accelerate>=1.0
 
