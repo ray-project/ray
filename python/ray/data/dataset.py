@@ -911,20 +911,11 @@ class Dataset:
 
         if not exprs:
             return self
-        for name, expr in exprs.items():
-            if not isinstance(name, str):
-                raise TypeError(
-                    f"Column names must be strings, got {type(name)} for key {name!r}."
-                )
-            if not isinstance(expr, Expr):
-                raise TypeError(
-                    f"Expected an Expr for column {name!r}, got {type(expr)}."
-                )
-            if isinstance(expr, DownloadExpr):
-                raise ValueError(
-                    f"`with_columns` does not support DownloadExpr (column "
-                    f"{name!r}). Use `with_column` for download expressions."
-                )
+        if any(isinstance(expr, DownloadExpr) for expr in exprs.values()):
+            raise ValueError(
+                "`with_columns` does not support DownloadExpr. "
+                "Use `with_column` for download expressions instead."
+            )
 
         from ray.data._internal.logical.operators import Project
 

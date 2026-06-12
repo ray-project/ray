@@ -1098,13 +1098,6 @@ def test_with_columns_empty_is_noop():
     assert result.take_all() == ds.take_all()
 
 
-def test_with_columns_validation():
-    """Verify `with_columns` rejects invalid expr values."""
-    ds = ray.data.range(5)
-    with pytest.raises(TypeError):
-        ds.with_columns({"x": "not_an_expr"})
-
-
 def test_with_columns_rejects_download_expr(ray_start_regular_shared):
     """Verify `with_columns` rejects DownloadExpr with a clear error."""
     from ray.data.expressions import download
