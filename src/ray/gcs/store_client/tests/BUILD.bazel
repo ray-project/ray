@@ -84,6 +84,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/observability:fake_metric",
+        "//src/ray/util:clock",
     ],
 )
 

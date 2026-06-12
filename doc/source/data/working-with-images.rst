@@ -68,7 +68,7 @@ To view the full list of supported file formats, see the
             Column     Type
             ------     ----
             image_url  string
-            bytes      null
+            bytes      binary
 
     .. tab-item:: NumPy
 

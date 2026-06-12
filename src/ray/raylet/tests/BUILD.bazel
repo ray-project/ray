@@ -10,6 +10,7 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/raylet:worker_interface",
+        "//src/ray/util:clock",
         "//src/ray/util:compat",
         "//src/ray/util:fake_process",
         "@com_google_absl//absl/strings:str_format",
@@ -39,6 +40,7 @@ ray_cc_test(
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
+        "//src/ray/util:clock",
         "//src/ray/util:fake_process",
         "//src/ray/util:path_utils",
         "//src/ray/util:process",
@@ -68,6 +70,7 @@ ray_cc_test(
         "//src/ray/raylet:local_object_manager",
         "//src/ray/raylet:worker_pool",
         "//src/ray/rpc:grpc_client",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -97,6 +100,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet:runtime_env_agent_client",
+        "//src/ray/util:clock",
         "//src/ray/util:env",
         "@boost//:asio",
         "@boost//:beast",
@@ -190,6 +194,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/raylet:throttler",
-        "@com_google_absl//absl/time",
+        "//src/ray/util:clock",
     ],
 )

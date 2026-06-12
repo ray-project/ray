@@ -784,14 +784,14 @@ class TestClickHouseDatasink:
                 SinkMode.CREATE,
                 pa.schema([("id", pa.int32())]),
                 [("id", pa.int32()), ("extra_col", pa.int32())],
-                r"(ArrowInvalid|Could not convert|field names are not matching.*)",
+                r"(ArrowInvalid|Could not convert|field names are not matching|columns not in target schema.*)",
             ),
             (
                 True,
                 SinkMode.OVERWRITE,
                 pa.schema([("id", pa.timestamp("ns"))]),
                 [("id", pa.int32())],
-                r"(ArrowInvalid|Could not convert|field names are not matching|Unsupported cast.*)",
+                r"(ArrowInvalid|Could not convert|field names are not matching|columns not in target schema|Unsupported cast.*)",
             ),
         ],
     )

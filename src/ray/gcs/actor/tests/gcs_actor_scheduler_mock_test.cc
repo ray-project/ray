@@ -63,7 +63,8 @@ class GcsActorSchedulerMockTest : public Test {
                                          ClusterID::Nil(),
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
                                          /*session_name=*/"",
-                                         fake_observability_publisher_.get());
+                                         fake_observability_publisher_.get(),
+                                         clock_);
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         io_context,
@@ -86,7 +87,8 @@ class GcsActorSchedulerMockTest : public Test {
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         *client_pool,
         *worker_client_pool_,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        clock_);
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();

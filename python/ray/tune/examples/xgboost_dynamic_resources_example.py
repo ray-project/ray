@@ -115,6 +115,10 @@ def tune_xgboost():
             trial: The trial to allocate new resources to.
             result: The latest results of trial.
             scheduler: The scheduler calling the function.
+
+        Returns:
+            A new ``PlacementGroupFactory`` with the updated resource
+            requirements, or ``None`` to leave the trial's resources unchanged.
         """
 
         # Get base trial resources as defined in

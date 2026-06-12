@@ -26,6 +26,14 @@ class TrackedActor:
         on_stop: Optional[Callable[["TrackedActor"], None]] = None,
         on_error: Optional[Callable[["TrackedActor", Exception], None]] = None,
     ):
+        """Initialize the tracked actor.
+
+        Args:
+            actor_id: ID for identification of the actor within the actor manager.
+            on_start: Callback to invoke when the actor started.
+            on_stop: Callback to invoke when the actor stopped.
+            on_error: Callback to invoke when the actor failed.
+        """
         self.actor_id = actor_id
         self._on_start = on_start
         self._on_stop = on_stop

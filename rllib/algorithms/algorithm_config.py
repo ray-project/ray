@@ -368,6 +368,7 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = "auto"
+        self.custom_resources_per_learner = {}
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
@@ -520,6 +521,20 @@ class AlgorithmConfig(_Config):
         self.evaluation_auto_duration_min_env_steps_per_sample = 100
         self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
+        # How long to wait for at least one remote eval EnvRunner to recover
+        # when all *configured* remote eval EnvRunners are unhealthy at the
+        # start of an evaluation step. Default 0: don't wait.
+        self.evaluation_unhealthy_workers_timeout_s = 0.0
+        # Raise `RuntimeError` from `evaluate()` once this many consecutive
+        # evaluation iterations have been skipped because all configured
+        # remote eval EnvRunners are unhealthy. The N-th consecutive skip
+        # raises (so `1` raises on the first skip; `5` raises on the fifth,
+        # tolerating 4 prior skips). Tune escalates the error per the
+        # trial's `max_failures` setting. The counter resets to 0 whenever
+        # an evaluation step actually runs on the remote workers. `None`
+        # (default) tolerates an unbounded number of consecutive skips.
+        # Applies regardless of `evaluation_parallel_to_training`.
+        self.evaluation_error_after_n_consecutive_skips = None
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
@@ -2261,6 +2276,7 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_learner: Optional[Dict[str, float]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
@@ -2296,6 +2312,11 @@ class AlgorithmConfig(_Config):
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
                 the training on main process CPUs.
+            custom_resources_per_learner: Any custom Ray resources to allocate
+                per Learner worker. Useful for pinning Learners to specific
+                nodes via custom resource labels. Note: do NOT put ``"CPU"``
+                or ``"GPU"`` in here -- use ``num_cpus_per_learner`` and
+                ``num_gpus_per_learner`` instead.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -2351,6 +2372,18 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if custom_resources_per_learner is not NotProvided:
+            if (
+                "CPU" in custom_resources_per_learner
+                or "GPU" in custom_resources_per_learner
+            ):
+                raise ValueError(
+                    "Do not include 'CPU' or 'GPU' in "
+                    "`custom_resources_per_learner`. Use `num_cpus_per_learner` "
+                    "and `num_gpus_per_learner` instead. Got: "
+                    f"{custom_resources_per_learner}"
+                )
+            self.custom_resources_per_learner = custom_resources_per_learner
         if num_aggregator_actors_per_learner is not NotProvided:
             self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
         if max_requests_in_flight_per_aggregator_actor is not NotProvided:
@@ -2744,6 +2777,8 @@ class AlgorithmConfig(_Config):
         evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_unhealthy_workers_timeout_s: Optional[float] = NotProvided,
+        evaluation_error_after_n_consecutive_skips: Optional[int] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -2827,6 +2862,26 @@ class AlgorithmConfig(_Config):
                 reports a good evaluation `episode_return_mean`, be aware that these
                 results were achieved on the weights trained in iteration 41, so you
                 should probably pick the iteration 41 checkpoint instead.
+            evaluation_unhealthy_workers_timeout_s: How long (in seconds) to
+                wait for at least one remote eval EnvRunner to recover when
+                all *configured* remote eval EnvRunners are unhealthy at the
+                start of an evaluation step. Default 0: don't wait. Pair
+                with `evaluation_error_after_n_consecutive_skips` to escalate
+                if recovery never arrives. Applies regardless of
+                `evaluation_parallel_to_training`.
+            evaluation_error_after_n_consecutive_skips: Raise
+                `RuntimeError` from `evaluate()` once this many consecutive
+                evaluation iterations have been skipped because all
+                configured remote eval EnvRunners are unhealthy. The N-th
+                consecutive skip raises: `1` raises on the first skip
+                (strict); `5` raises on the fifth, tolerating 4 prior
+                skips. Tune escalates the error per the trial's
+                `max_failures` setting. The counter resets to 0 whenever
+                an evaluation step actually runs on the remote workers.
+                `None` (default) tolerates an unbounded number of
+                consecutive skips. Has no effect if
+                `evaluation_num_env_runners=0` (in which case local eval is
+                the user's intentional choice).
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
@@ -3000,6 +3055,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_unhealthy_workers_timeout_s is not NotProvided:
+            self.evaluation_unhealthy_workers_timeout_s = (
+                evaluation_unhealthy_workers_timeout_s
+            )
+        if evaluation_error_after_n_consecutive_skips is not NotProvided:
+            self.evaluation_error_after_n_consecutive_skips = (
+                evaluation_error_after_n_consecutive_skips
+            )
         if evaluation_force_reset_envs_before_iteration is not NotProvided:
             self.evaluation_force_reset_envs_before_iteration = (
                 evaluation_force_reset_envs_before_iteration

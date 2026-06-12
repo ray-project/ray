@@ -279,6 +279,8 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             # At this point, if a temporary directory was created, it will have
             # been deleted.
 
+        Yields:
+            str: The local path to the checkpoint directory.
         """
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
@@ -353,6 +355,14 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
 def _get_del_lock_path(path: str, suffix: str = None) -> str:
     """Get the path to the deletion lock file for a file/directory at `path`.
+
+    Args:
+        path: The path of the file or directory to generate a lock path for.
+        suffix: Suffix appended after ``.del_lock_``. Defaults to the current
+            process ID.
+
+    Returns:
+        The deletion lock file path.
 
     Example:
 

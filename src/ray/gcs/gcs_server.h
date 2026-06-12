@@ -234,33 +234,23 @@ class GcsServer {
 
   RedisClientOptions GetRedisClientOptions();
 
-  /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
-  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
-  Clock clock_;
 
-  /// NOTICE: The declaration order for data members should follow dependency.
-  ///
-  /// Gcs server configuration.
+  /// NOTE: the declaration order for data members must follow the dependency structure
+  /// between them.
+  Clock clock_;
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
   const GcsServerConfig config_;
-  // Type of storage to use.
   const StorageType storage_type_;
-  /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The `ClientCallManager` object that is shared by all `RayletClient`s.
+  /// Shared across all Raylet & Core Worker clients.
   rpc::ClientCallManager client_call_manager_;
-  /// Node manager client pool.
   rpc::RayletClientPool raylet_client_pool_;
-  // Core worker client pool.
   rpc::CoreWorkerClientPool worker_client_pool_;
-  /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
-  /// The gcs resource manager.
+  /// gcs_resource_manager_ depends on cluster_lease_manager_.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
-  /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -268,25 +258,16 @@ class GcsServer {
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
-  /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
-  /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
-  /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
-  /// The gcs placement group scheduler.
-  /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
+  /// gcs_placement_group_scheduler_ depends on raylet_client_pool_.
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
-  /// Function table manager.
   std::unique_ptr<GCSFunctionManager> function_manager_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
-  /// Global KV storage handler.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
-  /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
-  /// The Ray event recorder that is used to record events (e.g. job events, node events,
-  /// etc.).
   rpc::ClientCallManager event_aggregator_client_call_manager_;
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
@@ -295,14 +276,11 @@ class GcsServer {
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
-  /// The node id of GCS.
+  /// The local node ID where the GCS is running.
   const NodeID gcs_node_id_;
 
-  /// The usage stats client.
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
-  /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
-  /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   /// GCS PubSub handler (control-plane).
   std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
@@ -310,12 +288,12 @@ class GcsServer {
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
   /// GCS Task info manager for managing task states change events.
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
-  /// Grpc based pubsub's periodical runner.
+  /// gRPC based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   std::shared_ptr<PeriodicalRunner> observability_pubsub_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
-  /// Gcs service state flag, which is used for ut.
+  /// GCS service state flag, which is used for unit tests.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
   /// Flag to ensure InitMetricsExporter is only called once.

@@ -13,7 +13,7 @@ from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import (
     validate_actor_state_name,
 )
-from ray._raylet import GlobalStateAccessor
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import autoscaler_pb2, common_pb2, gcs_pb2
 from ray.util.annotations import DeveloperAPI
 
@@ -70,7 +70,7 @@ class GlobalState:
             if self._global_state_accessor is not None:
                 self._global_state_accessor = None
 
-    def _initialize_global_state(self, gcs_options):
+    def _initialize_global_state(self, gcs_options: GcsClientOptions):
         """Set args for lazily initialization of the GlobalState object.
 
         It's possible that certain keys in gcs kv may not have been fully
@@ -130,8 +130,11 @@ class GlobalState:
 
             return results
 
-    def _gen_actor_info(self, actor_table_data):
+    def _gen_actor_info(self, actor_table_data: gcs_pb2.ActorTableData):
         """Parse actor table data.
+
+        Args:
+            actor_table_data: The ``ActorTableData`` proto for a single actor.
 
         Returns:
             Information from actor table.
@@ -438,7 +441,7 @@ class GlobalState:
         "cq_build_attempt_failed",
     ]
 
-    def chrome_tracing_dump(self, filename=None):
+    def chrome_tracing_dump(self, filename: Optional[str] = None):
         """Return a list of profiling events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
@@ -524,7 +527,7 @@ class GlobalState:
         else:
             return all_events
 
-    def chrome_tracing_object_transfer_dump(self, filename=None):
+    def chrome_tracing_object_transfer_dump(self, filename: Optional[str] = None):
         """Return a list of transfer events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
@@ -649,7 +652,9 @@ class GlobalState:
                     )
         return workers_data
 
-    def add_worker(self, worker_id, worker_type, worker_info):
+    def add_worker(
+        self, worker_id: bytes, worker_type: int, worker_info: Dict[str, str]
+    ):
         """Add a worker to the cluster.
 
         Args:
@@ -671,7 +676,7 @@ class GlobalState:
             worker_data.worker_info[k] = bytes(v, encoding="utf-8")
         return accessor.add_worker_info(worker_data.SerializeToString())
 
-    def update_worker_debugger_port(self, worker_id, debugger_port):
+    def update_worker_debugger_port(self, worker_id: bytes, debugger_port: int):
         """Update the debugger port of a worker.
 
         Args:
@@ -690,7 +695,7 @@ class GlobalState:
 
         return accessor.update_worker_debugger_port(worker_id, debugger_port)
 
-    def get_worker_debugger_port(self, worker_id):
+    def get_worker_debugger_port(self, worker_id: bytes):
         """Get the debugger port of a worker.
 
         Args:
@@ -705,7 +710,9 @@ class GlobalState:
 
         return accessor.get_worker_debugger_port(worker_id)
 
-    def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
+    def update_worker_num_paused_threads(
+        self, worker_id: bytes, num_paused_threads_delta: int
+    ):
         """Updates the number of paused threads of a worker.
 
         Args:
@@ -1007,7 +1014,7 @@ def actors(
 
 @DeveloperAPI
 @client_mode_hook
-def timeline(filename=None):
+def timeline(filename: Optional[str] = None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
@@ -1035,7 +1042,7 @@ def timeline(filename=None):
     return state.chrome_tracing_dump(filename=filename)
 
 
-def object_transfer_timeline(filename=None):
+def object_transfer_timeline(filename: Optional[str] = None):
     """Return a list of transfer events that can viewed as a timeline.
 
     To view this information as a timeline, simply dump it as a json file by
@@ -1114,7 +1121,7 @@ def total_resources_per_node():
     return state.total_resources_per_node()
 
 
-def update_worker_debugger_port(worker_id, debugger_port):
+def update_worker_debugger_port(worker_id: bytes, debugger_port: int):
     """Update the debugger port of a worker.
 
     Args:
@@ -1127,7 +1134,7 @@ def update_worker_debugger_port(worker_id, debugger_port):
     return state.update_worker_debugger_port(worker_id, debugger_port)
 
 
-def update_worker_num_paused_threads(worker_id, num_paused_threads_delta):
+def update_worker_num_paused_threads(worker_id: bytes, num_paused_threads_delta: int):
     """Update the number of paused threads of a worker.
 
     Args:
@@ -1140,7 +1147,7 @@ def update_worker_num_paused_threads(worker_id, num_paused_threads_delta):
     return state.update_worker_num_paused_threads(worker_id, num_paused_threads_delta)
 
 
-def get_worker_debugger_port(worker_id):
+def get_worker_debugger_port(worker_id: bytes):
     """Get the debugger port of a worker.
 
     Args:

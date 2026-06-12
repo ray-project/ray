@@ -40,6 +40,7 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -57,6 +58,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
  protected:
   static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
+  Clock clock_;
   instrumented_io_context io_service_;
   std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
   std::shared_ptr<rpc::RayletClientPool> client_pool_;
@@ -128,7 +130,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       kv_manager_->GetInstance(),
                                       io_service_,
                                       /*gcs_publisher=*/nullptr,
-                                      fake_observability_publisher_.get()));
+                                      fake_observability_publisher_.get(),
+                                      clock_));
   }
 
  public:

@@ -49,6 +49,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::PublisherInterface *object_info_publisher,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
+      std::function<void(const ObjectID &object_id,
+                         const absl::flat_hash_set<NodeID> &locations)>
+          free_object_on_nodes_async,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
@@ -57,6 +60,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
+        free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -125,8 +129,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool AddBorrowedObject(const ObjectID &object_id,
                          const ObjectID &outer_id,
-                         const rpc::Address &owner_address,
-                         bool foreign_owner_already_monitoring = false) override
+                         const rpc::Address &owner_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool GetOwner(const ObjectID &object_id,
@@ -495,13 +498,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
 
-    /// Whether the object was created with a foreign owner (i.e., _owner set).
-    /// In this case, the owner is already monitoring this reference with a
-    /// WaitForRefRemoved() call, and it is an error to return borrower
-    /// metadata to the parent of the current task.
-    /// See https://github.com/ray-project/ray/pull/19910 for more context.
-    bool foreign_owner_already_monitoring = false;
-
     /// ObjectRefs nested in this object that are or were in use. These objects
     /// are not owned by us, and we need to report that we are borrowing them
     /// to their owner. Nesting is transitive, so this flag is set as long as
@@ -646,14 +642,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
-  ///
-  /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
-  ///            externally assigned owner is monitoring the lifetime of this
-  ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
   bool AddBorrowedObjectInternal(const ObjectID &object_id,
                                  const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 bool foreign_owner_already_monitoring)
+                                 const rpc::Address &owner_address)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
@@ -789,6 +780,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// the primary or spilled location of an object. If the node died, then
   /// the object will be added to the buffer objects to recover.
   const std::function<bool(const NodeID &node_id)> is_node_dead_;
+
+  /// Called to send free local object RPCs to all raylets that hold a copy of
+  /// the object.
+  const std::function<void(const ObjectID &object_id,
+                           const absl::flat_hash_set<NodeID> &locations)>
+      free_object_on_nodes_async_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost
   /// due to node failure. These objects are still in scope and need to be

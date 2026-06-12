@@ -4,6 +4,7 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
@@ -40,9 +41,11 @@ from ray.serve._private.request_router import (
     RunningReplica,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
+    CurrentLoopRouter,
     RouterMetricsManager,
     SingletonThreadRouter,
 )
@@ -519,6 +522,39 @@ class TestReplicaSlotReservation:
             ), "drain should still be running while a slot is reserved"
 
             replica.release_slot("slot-token-1")
+            await asyncio.wait_for(drain_task, timeout=1.0)
+        finally:
+            if not drain_task.done():
+                drain_task.cancel()
+
+    async def test_drain_honors_min_period_then_waits_for_ongoing(self):
+        # The minimum draining period keeps the replica alive (still serving) so
+        # external load balancers deregister it. The drain must not exit until the
+        # period has elapsed AND there are no ongoing requests -- so a request
+        # admitted during the period and still running keeps it alive, instead of
+        # being reset when the replica tears down.
+        replica = FakeServeReplicaForSlotReservation(graceful_shutdown_wait_loop_s=0.02)
+        min_period_s = 0.2
+
+        drain_task = asyncio.create_task(
+            replica._drain_ongoing_requests(min_draining_period_s=min_period_s)
+        )
+        try:
+            # Nothing in flight, but the minimum period has not elapsed yet.
+            await asyncio.sleep(0.1)
+            assert not drain_task.done(), "drain must honor the minimum period"
+
+            # A request becomes ongoing partway through the period.
+            replica._metrics_manager.num_ongoing_requests = 1
+
+            # The period elapses, but the request is still ongoing -> keep waiting.
+            await asyncio.sleep(0.2)
+            assert (
+                not drain_task.done()
+            ), "drain must not exit while a request is still ongoing"
+
+            # Request finishes; only now may the drain complete.
+            replica._metrics_manager.num_ongoing_requests = 0
             await asyncio.wait_for(drain_task, timeout=1.0)
         finally:
             if not drain_task.done():
@@ -1578,6 +1614,84 @@ class TestChooseReplica:
         [{"enable_queue_len_cache": True}],
         indirect=True,
     )
+    async def test_current_loop_dispatch_marks_selection_before_task_runs(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Wrapper dispatch should consume the selection before its task runs."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        current_loop_router = CurrentLoopRouter.__new__(CurrentLoopRouter)
+        current_loop_router._asyncio_loop = asyncio.get_running_loop()
+        current_loop_router._asyncio_router = router
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            dispatch_task = current_loop_router.dispatch(selection, request_metadata)
+            assert selection._dispatched
+            assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+        assert len(replica._requests_sent) == 0
+
+        replica_result = await dispatch_task
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+
+        replica_result.fire_done_callbacks()
+        await asyncio.sleep(0)
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_current_loop_dispatch_failure_releases_cache(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """If wrapper dispatch fails after consuming a selection, it owns cleanup."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        current_loop_router = CurrentLoopRouter.__new__(CurrentLoopRouter)
+        current_loop_router._asyncio_loop = asyncio.get_running_loop()
+        current_loop_router._asyncio_router = router
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            fake_request_router._replica_to_return = None
+            dispatch_task = current_loop_router.dispatch(selection, request_metadata)
+            assert selection._dispatched
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+
+        with pytest.raises(ReplicaUnavailableError):
+            await dispatch_task
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
     async def test_cache_decremented_on_choose_without_dispatch(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
@@ -1918,6 +2032,38 @@ class TestChooseReplica:
                 await router.dispatch(selection, request_metadata)
 
         assert len(replica._requests_sent) == 1
+
+    async def test_choose_replica_no_reserve_skips_slot_reservation(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """``_reserve=False`` yields a selection with no slot token, bypasses
+        ``reserve_slot`` on the replica, and ``dispatch`` on that selection
+        raises since there's no reservation to consume."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router._replicas_list = [replica]
+
+        async def fake_choose_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = fake_choose_replicas
+
+        request_metadata = dummy_request_metadata()
+
+        async with router.choose_replica(request_metadata, _reserve=False) as selection:
+            assert selection._replica is replica
+            assert selection._slot_token is None
+            assert replica._reserved_slots == set()
+
+            with pytest.raises(RuntimeError, match="_reserve=False"):
+                await router.dispatch(selection, request_metadata)
+
+        assert replica._reserved_slots == set()
+        assert replica._slot_counter == 0
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
@@ -2330,6 +2476,233 @@ class TestSingletonThreadRouter:
         future = thread_router.assign_request(request_metadata)
         assert isinstance(future, concurrent.futures.Future)
         assert future.result()._replica_id == r1_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_dispatch_marks_selection_before_scheduled_coroutine_runs(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        _, fake_request_router = setup_router
+        thread_router = setup_singleton_thread_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        pending_coros = []
+
+        def delay_asyncio_call(coro):
+            pending_coros.append(coro)
+            return concurrent.futures.Future()
+
+        monkeypatch.setattr(
+            thread_router, "_wrap_asyncio_call_in_future", delay_asyncio_call
+        )
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with thread_router.choose_replica(request_metadata) as selection:
+            dispatch_future = thread_router.dispatch(selection, request_metadata)
+            assert selection._dispatched
+
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
+        assert len(pending_coros) == 1
+
+        dispatch_future.cancel()
+        pending_coros[0].close()
+
+    @pytest.mark.asyncio
+    async def test_choose_replica_cancel_during_entry_releases_slot(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        """Cancelling the caller after __aenter__ reserved a slot on the router
+        loop, but before the bridge takes ownership of the selection, must
+        still release the slot via __aexit__.
+        """
+        fake_router, _ = setup_router
+        thread_router = setup_singleton_thread_router
+        outer_loop = asyncio.get_running_loop()
+
+        fake_selection = ReplicaSelection(
+            replica_id="fake-replica",
+            node_ip="127.0.0.1",
+            port=None,
+            node_id="fake-node",
+            availability_zone=None,
+            replica_metadata={},
+            _replica=None,
+            _deployment_id=None,
+            _request_metadata=None,
+            _method_name="",
+            _slot_token="",
+        )
+
+        reserved_slots = 0
+        reserved_lock = threading.Lock()
+        release_path: List[str] = []
+        released = threading.Event()
+        outer_task_holder: List[asyncio.Task] = []
+        # Pin every inner CM so GC can't finalize the parked generator and
+        # release the slot for us -- only an explicit __aexit__ should.
+        pinned_cms: List = []
+
+        @asynccontextmanager
+        async def fake_choose_replica(*args, **kwargs):
+            nonlocal reserved_slots
+            # __aenter__: reserve a slot.
+            with reserved_lock:
+                reserved_slots += 1
+
+            # Open the race window deterministically: cancel on the outer loop,
+            # then block the router thread until the cancel has propagated -- the
+            # caller observes CancelledError before __aexit__ runs.
+            cancel_propagated = threading.Event()
+
+            def cancel_and_chain_marker():
+                outer_task_holder[0].cancel()
+                outer_loop.call_soon(cancel_propagated.set)
+
+            outer_loop.call_soon_threadsafe(cancel_and_chain_marker)
+            cancel_propagated.wait()
+            try:
+                yield fake_selection
+            finally:
+                # GeneratorExit => released by GC/aclose; else by explicit __aexit__.
+                release_path.append(
+                    "gc" if isinstance(sys.exc_info()[1], GeneratorExit) else "aexit"
+                )
+                with reserved_lock:
+                    reserved_slots -= 1
+                released.set()
+
+        def pinning_factory(*args, **kwargs):
+            cm = fake_choose_replica(*args, **kwargs)
+            pinned_cms.append(cm)
+            return cm
+
+        monkeypatch.setattr(fake_router, "choose_replica", pinning_factory)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async def runner():
+            async with thread_router.choose_replica(request_metadata):
+                pass
+
+        task = asyncio.create_task(runner())
+        outer_task_holder.append(task)
+
+        # Cancellation is honored.
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Slot released via __aexit__, not GC.
+        assert released.wait(timeout=2.0)
+        assert release_path == ["aexit"]
+        with reserved_lock:
+            assert reserved_slots == 0
+
+    @pytest.mark.asyncio
+    async def test_finally_shields_cleanup_from_cancellation(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        """Cancellation during the bridge's finally must not abort cleanup on
+        the router loop. The cleanup await is shielded so __aexit__ runs to
+        completion even if a cancel arrives while we're awaiting it.
+        """
+        fake_router, _ = setup_router
+        thread_router = setup_singleton_thread_router
+        router_loop = thread_router._get_singleton_asyncio_loop(component="unknown")
+
+        fake_selection = ReplicaSelection(
+            replica_id="fake-replica",
+            node_ip="127.0.0.1",
+            port=None,
+            node_id="fake-node",
+            availability_zone=None,
+            replica_metadata={},
+            _replica=None,
+            _deployment_id=None,
+            _request_metadata=None,
+            _method_name="",
+            _slot_token="",
+        )
+
+        aexit_started = threading.Event()
+        exit_called = threading.Event()
+
+        async def make_event():
+            return asyncio.Event()
+
+        release_event = await asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(make_event(), router_loop)
+        )
+
+        @asynccontextmanager
+        async def fake_choose_replica(*args, **kwargs):
+            try:
+                yield fake_selection
+            finally:
+                # Signal that the bridge's finally is now awaiting cleanup.
+                aexit_started.set()
+                # Block until released. If a cancel propagates through to
+                # this loop the wait raises and exit_called is never set.
+                await release_event.wait()
+                exit_called.set()
+
+        monkeypatch.setattr(fake_router, "choose_replica", fake_choose_replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async def runner():
+            async with thread_router.choose_replica(request_metadata):
+                pass
+
+        task = asyncio.create_task(runner())
+
+        # Wait until the bridge's finally is awaiting cleanup.
+        await asyncio.to_thread(aexit_started.wait)
+
+        # Cancel mid-cleanup. Without shielding, the cancel propagates
+        # through wrap_future to the router-loop task and interrupts
+        # fake's __aexit__ before it can set exit_called.
+        task.cancel()
+        await asyncio.sleep(0)
+
+        # Release the gate. With shielding, fake's __aexit__ will now
+        # complete and set exit_called.
+        router_loop.call_soon_threadsafe(release_event.set)
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert exit_called.wait(timeout=2.0), (
+            "Cleanup was aborted by cancellation propagating to the router "
+            "loop; bridge's finally await must be shielded."
+        )
 
     @pytest.mark.asyncio
     async def test_cancellation_propagation(

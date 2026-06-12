@@ -50,6 +50,10 @@ class RayInternalKVStore(KVStoreBase):
         Args:
             key: The key to store.
             val: The value to store.
+
+        Returns:
+            True if the value was newly inserted, False if it overwrote an
+            existing value.
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
@@ -93,6 +97,9 @@ class RayInternalKVStore(KVStoreBase):
 
         Args:
             key: The key to delete.
+
+        Returns:
+            The number of keys deleted (0 if the key did not exist).
         """
 
         if not isinstance(key, str):
