@@ -4583,12 +4583,10 @@ class DeploymentState:
 
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             # When the replica tag is disabled, this is a single
-            # deployment/application series. Emit the aggregate count of
-            # healthy replicas so per-replica iteration order cannot decide
-            # the result.
-            healthy_replica_count = self._replicas.count(
-                states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
-            )
+            # deployment/application series. Emit the count of replicas that
+            # passed health checks in this iteration so newly promoted replicas
+            # are not counted before their first successful health check.
+            healthy_replica_count = len(healthy_replicas)
             self.health_check_gauge.set(healthy_replica_count)
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
