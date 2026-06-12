@@ -1455,5 +1455,62 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_CFunctionPointerOverload) {
   EXPECT_EQ(result.id, object_id);
 }
 
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_OnDropFiresWithCallback) {
+  // on_drop must fire on the normal path (after the callback is invoked and
+  // the internal lambda is destroyed).
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  struct Flags {
+    bool callback_fired = false;
+    bool drop_fired = false;
+  } flags;
+  ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id,
+      [](const ObjectID &, void *data) {
+        static_cast<Flags *>(data)->callback_fired = true;
+      },
+      &flags,
+      [](void *data) { static_cast<Flags *>(data)->drop_fired = true; }));
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  EXPECT_TRUE(flags.callback_fired);
+  EXPECT_TRUE(flags.drop_fired);
+}
+
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_OnDropFiresWhenNotRegistered) {
+  // on_drop must fire synchronously when registration fails (object already out
+  // of scope), so callers can unconditionally rely on on_drop to release user_data.
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+
+  bool drop_fired = false;
+  ASSERT_FALSE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id,
+      [](const ObjectID &, void *) {},
+      &drop_fired,
+      [](void *data) { *static_cast<bool *>(data) = true; }));
+  EXPECT_TRUE(drop_fired);
+}
+
 }  // namespace core
 }  // namespace ray

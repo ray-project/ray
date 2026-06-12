@@ -2762,8 +2762,9 @@ cdef class GcsClient:
         return getattr(self.inner, name)
 
 # Invoked by the dedicated object_freed_callback_service_ thread when an object
-# goes out of scope. Acquires the GIL, calls the Python callable stored as
-# user_data, then decrements the refcount taken in add_object_out_of_scope_callback.
+# goes out of scope. Acquires the GIL and calls the Python callable stored as
+# user_data. The matching Py_DECREF is handled by _drop_user_data when the C++
+# lambda is destroyed.
 cdef void _invoke_object_out_of_scope_callback(
         const CObjectID &c_object_id, void *user_data) noexcept nogil:
     with gil:
@@ -2777,8 +2778,14 @@ cdef void _invoke_object_out_of_scope_callback(
             (<object>user_data)(object_ref_id)
         except BaseException:
             logger.exception("Error in object out-of-scope callback")
-        finally:
-            cpython.Py_DECREF(<object>user_data)
+
+
+# Called by C++ when the out-of-scope lambda is destroyed, on both the normal
+# (callback fired) and the shutdown (lambda dropped) paths. Balances the
+# Py_INCREF taken in add_object_out_of_scope_callback.
+cdef void _drop_user_data(void *user_data) noexcept nogil:
+    with gil:
+        cpython.Py_DECREF(<object>user_data)
 
 
 cdef class CoreWorker:
@@ -4133,17 +4140,15 @@ cdef class CoreWorker:
                 f"callback must be callable, got {type(callback).__name__!r}"
             )
         cdef CObjectID c_object_id = object_ref.native()
-        # Keep the callable alive until the C++ callback fires (or never fires).
+        # Keep the callable alive; _drop_user_data balances this Py_INCREF when
+        # the C++ lambda is destroyed (fired or dropped at shutdown).
         cpython.Py_INCREF(callback)
-        registered = CCoreWorkerProcess.GetCoreWorker() \
+        return CCoreWorkerProcess.GetCoreWorker() \
             .AddObjectOutOfScopeOrFreedCallback(
                 c_object_id,
                 _invoke_object_out_of_scope_callback,
-                <void *>callback)
-        if not registered:
-            # Callback will never fire; balance the Py_INCREF we just took.
-            cpython.Py_DECREF(callback)
-        return registered
+                <void *>callback,
+                _drop_user_data)
 
     def get_owner_address(self, ObjectRef object_ref):
         cdef:

@@ -2494,10 +2494,16 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
 bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                                     void (*callback)(const ObjectID &,
                                                                      void *),
-                                                    void *user_data) {
+                                                    void *user_data,
+                                                    void (*on_drop)(void *)) {
   RAY_CHECK(callback != nullptr) << "callback must not be null";
+  // Wrap user_data in a shared_ptr so on_drop is called when the lambda is
+  // destroyed — whether the callback fired normally or was dropped at shutdown.
+  auto owned = std::shared_ptr<void>(user_data, [on_drop](void *p) {
+    if (on_drop) on_drop(p);
+  });
   return AddObjectOutOfScopeOrFreedCallback(
-      object_id, [callback, user_data](const ObjectID &id) { callback(id, user_data); });
+      object_id, [callback, owned](const ObjectID &id) { callback(id, owned.get()); });
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {

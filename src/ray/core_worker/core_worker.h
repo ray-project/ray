@@ -412,9 +412,21 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
 
   /// C function-pointer overload for use from Cython.
+  ///
+  /// \param object_id The object to watch.
+  /// \param callback Invoked with (object_id, user_data) when the object goes
+  ///        out of scope.
+  /// \param user_data Passed as the second argument to callback.
+  /// \param on_drop If non-null, called with user_data when the internal lambda
+  ///        is destroyed. Necessary because destroying a raw void* is a no-op,
+  ///        so on_drop is the only way to release resources (e.g. Py_DECREF)
+  ///        on both the normal and shutdown (RC teardown) paths.
+  /// \return true if registered; false if the object is already out of scope
+  ///         (callback will never fire).
   bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                           void (*callback)(const ObjectID &, void *),
-                                          void *user_data);
+                                          void *user_data,
+                                          void (*on_drop)(void *) = nullptr);
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
