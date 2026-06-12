@@ -38,7 +38,6 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               AsyncGetAll,
               (const std::optional<std::string> &job_or_submission_id,
                bool skip_submission_job_info_field,
-               bool skip_is_running_tasks_field,
                const rpc::MultiItemCallback<rpc::JobTableData> &callback,
                int64_t timeout_ms),
               (override));

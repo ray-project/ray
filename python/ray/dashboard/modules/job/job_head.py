@@ -710,7 +710,6 @@ class JobHead(SubprocessModule):
         try:
             reply = await self.gcs_client.async_get_all_job_info(
                 skip_submission_job_info_field=True,
-                skip_is_running_tasks_field=True,
                 timeout=timeout,
             )
 

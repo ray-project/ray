@@ -1769,59 +1769,6 @@ def test_core_state_api_usage_tags(shutdown_only):
     )
 
 
-# Tests fix for https://github.com/ray-project/ray/issues/44459
-def test_job_info_is_running_task(shutdown_only):
-    ray.init()
-
-    # To reliably know a job has a long running task, we need to wait a SignalActor
-    # to know the task has started.
-    signal = SignalActor.remote()
-
-    @ray.remote
-    def f(signal):
-        ray.get(signal.send.remote())
-        while True:
-            time.sleep(10000)
-
-    long_running = f.remote(signal)  # noqa: F841
-    ray.get(signal.wait.remote())
-
-    client = ray.worker.global_worker.gcs_client
-    job_id = ray.worker.global_worker.current_job_id
-    all_job_info = client.get_all_job_info()
-    assert len(all_job_info) == 1
-    assert job_id in all_job_info
-    assert all_job_info[job_id].is_running_tasks is True
-
-
-@pytest.mark.parametrize(
-    "event_routing_config", ["default", "aggregator"], indirect=True
-)
-@pytest.mark.usefixtures("event_routing_config")
-def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
-    """
-    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
-    CoreWorkerService.NumPendingTasks to all drivers for "is_running_task". Our driver
-    however has trouble serving such RPC, and GCS should timeout that RPC and unsest the
-    field.
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=10)
-    address = cluster.address
-
-    monkeypatch.setenv(
-        "RAY_testing_asio_delay_us",
-        "CoreWorkerService.grpc_server.NumPendingTasks=2000000:2000000",
-    )
-    ray.init(address=address)
-
-    client = ray.worker.global_worker.gcs_client
-    my_job_id = ray.worker.global_worker.current_job_id
-    all_job_info = client.get_all_job_info()
-    assert list(all_job_info.keys()) == [my_job_id]
-    assert not all_job_info[my_job_id].HasField("is_running_tasks")
-
-
 def test_normalize_filter_keys_accepts_case_insensitive_keys():
     filters = [("STATE", "=", "RUNNING")]
 

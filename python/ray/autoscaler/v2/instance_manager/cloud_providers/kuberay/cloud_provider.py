@@ -703,7 +703,6 @@ class KubeRayProvider(ICloudInstanceProvider):
         try:
             jobs = self._gcs_client.get_all_job_info(
                 skip_submission_job_info_field=True,
-                skip_is_running_tasks_field=True,
             )
         except Exception:
             logger.exception(

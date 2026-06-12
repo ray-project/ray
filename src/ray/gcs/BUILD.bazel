@@ -255,7 +255,6 @@ ray_cc_library(
         ":grpc_service_interfaces",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:runtime_env",
-        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/observability:metric_interface",
         "//src/ray/observability:ray_driver_job_definition_event",
         "//src/ray/observability:ray_driver_job_lifecycle_event",

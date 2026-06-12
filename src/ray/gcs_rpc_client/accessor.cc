@@ -82,7 +82,6 @@ void JobInfoAccessor::AsyncSubscribeAll(
     };
     AsyncGetAll(/*job_or_submission_id=*/std::nullopt,
                 /*skip_submission_job_info_field=*/true,
-                /*skip_is_running_tasks_field=*/true,
                 callback,
                 /*timeout_ms=*/-1);
   };
@@ -110,14 +109,12 @@ void JobInfoAccessor::AsyncResubscribe() {
 void JobInfoAccessor::AsyncGetAll(
     const std::optional<std::string> &job_or_submission_id,
     bool skip_submission_job_info_field,
-    bool skip_is_running_tasks_field,
     const rpc::MultiItemCallback<rpc::JobTableData> &callback,
     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
   request.set_skip_submission_job_info_field(skip_submission_job_info_field);
-  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
   if (job_or_submission_id.has_value()) {
     request.set_job_or_submission_id(job_or_submission_id.value());
   }
@@ -132,12 +129,10 @@ void JobInfoAccessor::AsyncGetAll(
 
 Status JobInfoAccessor::GetAll(const std::optional<std::string> &job_or_submission_id,
                                bool skip_submission_job_info_field,
-                               bool skip_is_running_tasks_field,
                                std::vector<rpc::JobTableData> &job_data_list,
                                int64_t timeout_ms) {
   rpc::GetAllJobInfoRequest request;
   request.set_skip_submission_job_info_field(skip_submission_job_info_field);
-  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
   if (job_or_submission_id.has_value()) {
     request.set_job_or_submission_id(job_or_submission_id.value());
   }

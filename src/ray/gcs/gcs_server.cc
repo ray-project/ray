@@ -489,7 +489,6 @@ void GcsServer::InitGcsJobManager(
                                       *function_manager_,
                                       kv_manager_->GetInstance(),
                                       io_context_provider_.GetDefaultIOContext(),
-                                      worker_client_pool_,
                                       *ray_event_recorder_,
                                       config_.session_name,
                                       running_job_gauge,

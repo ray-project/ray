@@ -475,14 +475,12 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         CRayStatus GetAll(
             const optional[c_string] &job_or_submission_id,
             c_bool skip_submission_job_info_field,
-            c_bool skip_is_running_tasks_field,
             c_vector[CJobTableData] &result,
             int64_t timeout_ms)
 
         void AsyncGetAll(
             const optional[c_string] &job_or_submission_id,
             c_bool skip_submission_job_info_field,
-            c_bool skip_is_running_tasks_field,
             const MultiItemPyCallback[CJobTableData] &callback,
             int64_t timeout_ms)
 

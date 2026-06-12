@@ -20,9 +20,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
@@ -51,14 +49,6 @@ class GcsJobManagerTest : public ::testing::Test {
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
 
-    // Mock client pool which abuses the "address" argument to return a
-    // CoreWorkerClient whose number of running tasks equal to the address port. This is
-    // just for testing purposes.
-    worker_client_pool_ =
-        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &address) {
-          return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
-              address.port());
-        });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     gcs_job_manager_ =
         std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
@@ -67,7 +57,6 @@ class GcsJobManagerTest : public ::testing::Test {
                                              *function_manager_,
                                              *fake_kv_,
                                              io_service_,
-                                             *worker_client_pool_,
                                              *fake_ray_event_recorder_,
                                              "test_session_name",
                                              fake_running_job_gauge_,
@@ -90,7 +79,6 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::unique_ptr<gcs::GcsJobManager> gcs_job_manager_;
@@ -174,13 +162,6 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
   all_job_info_promise.get_future().get();
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), num_jobs);
-
-  // Check that the is_running_tasks field is correct for each job.
-  for (int i = 0; i < num_jobs; ++i) {
-    auto job_info = all_job_info_reply.job_info_list(i);
-    int job_id = JobID::FromBinary(job_info.job_id()).ToInt();
-    ASSERT_EQ(job_info.is_running_tasks(), job_id % 2 != 0);
-  }
 
   gcs_job_manager_->RecordMetrics();
   auto running_tag_to_value = fake_running_job_gauge_.GetTagToValue();
@@ -636,7 +617,6 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
                                      fake_running_job_gauge_,

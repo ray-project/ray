@@ -30,7 +30,7 @@ cdef extern from "ray/gcs_rpc_client/global_state_accessor.h" nogil:
         c_bool Connect()
         void Disconnect()
         c_vector[c_string] GetAllJobInfo(
-          c_bool skip_submission_job_info_field, c_bool skip_is_running_tasks_field)
+          c_bool skip_submission_job_info_field)
         CJobID GetNextJobID()
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()

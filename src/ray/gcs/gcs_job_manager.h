@@ -22,7 +22,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
@@ -57,7 +56,6 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
       GCSFunctionManager &function_manager,
       InternalKVInterface &internal_kv,
       instrumented_io_context &io_context,
-      rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
       ray::observability::MetricInterface &running_job_gauge,
@@ -70,7 +68,6 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         function_manager_(function_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
-        worker_client_pool_(worker_client_pool),
         ray_event_recorder_(ray_event_recorder),
         session_name_(session_name),
         export_event_write_enabled_(IsExportAPIEnabledDriverJob()),
@@ -153,7 +150,6 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   GCSFunctionManager &function_manager_;
   InternalKVInterface &internal_kv_;
   instrumented_io_context &io_context_;
-  rpc::CoreWorkerClientPool &worker_client_pool_;
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
 
