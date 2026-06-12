@@ -14,10 +14,8 @@
 
 #pragma once
 
-#include <boost/asio/deadline_timer.hpp>
-#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <string>
 
 namespace ray {
@@ -31,18 +29,6 @@ class PeriodicalRunnerInterface {
   virtual void RunFnPeriodically(std::function<void()> fn,
                                  uint64_t period_ms,
                                  std::string name) = 0;
-
- protected:
-  virtual void DoRunFnPeriodically(
-      std::function<void()> fn,
-      boost::posix_time::milliseconds period,
-      std::shared_ptr<boost::asio::deadline_timer> timer) = 0;
-
-  virtual void DoRunFnPeriodicallyInstrumented(
-      std::function<void()> fn,
-      boost::posix_time::milliseconds period,
-      std::shared_ptr<boost::asio::deadline_timer> timer,
-      std::string name) = 0;
 };
 
 }  // namespace ray

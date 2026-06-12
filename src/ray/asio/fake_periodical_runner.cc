@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,16 +21,14 @@
 
 namespace ray {
 
-FakePeriodicalRunner::FakePeriodicalRunner(FakeClock &clock) : clock_(&clock) {
-  now_ = clock.Now();
-  callback_handle_ = clock.RegisterOnAdvanceCallback(
-      [this](absl::Time now) { OnTimeAdvanced(now); });
+FakePeriodicalRunner::FakePeriodicalRunner(FakeClock &clock) : clock_(clock) {
+  now_ = clock_.Now();
+  callback_handle_ =
+      clock_.RegisterOnAdvanceCallback([this](absl::Time now) { OnTimeAdvanced(now); });
 }
 
 FakePeriodicalRunner::~FakePeriodicalRunner() {
-  if (clock_ != nullptr) {
-    clock_->UnregisterOnAdvanceCallback(callback_handle_);
-  }
+  clock_.UnregisterOnAdvanceCallback(callback_handle_);
 }
 
 void FakePeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
@@ -67,11 +65,6 @@ void FakePeriodicalRunner::OnTimeAdvanced(absl::Time now) {
   for (const auto &fn : to_run) {
     fn();
   }
-}
-
-size_t FakePeriodicalRunner::NumRegistered() const {
-  absl::MutexLock lock(&mutex_);
-  return tasks_.size();
 }
 
 }  // namespace ray

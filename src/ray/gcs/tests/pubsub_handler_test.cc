@@ -25,6 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -33,8 +34,8 @@ namespace gcs {
 class PubSubHandlerTest : public ::testing::Test {
  public:
   PubSubHandlerTest() {
-    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
-    fake_obs_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
+    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>(fake_clock_);
+    fake_obs_periodical_runner_ = std::make_unique<FakePeriodicalRunner>(fake_clock_);
 
     // Create a publisher with specific channels (matching GCS server setup).
     auto inner_publisher = std::make_unique<pubsub::Publisher>(
@@ -78,6 +79,8 @@ class PubSubHandlerTest : public ::testing::Test {
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
 
  private:
+  // Declared first so it outlives the FakePeriodicalRunners that reference it.
+  FakeClock fake_clock_;
   instrumented_io_context io_service_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
   std::unique_ptr<FakePeriodicalRunner> fake_obs_periodical_runner_;

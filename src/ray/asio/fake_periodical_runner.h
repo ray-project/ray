@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,8 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
-#include <boost/asio/deadline_timer.hpp>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -31,19 +28,17 @@
 namespace ray {
 
 /// \class FakePeriodicalRunner
-/// A deterministic, test-only PeriodicalRunner driven by an external clock
-/// instead of a real event loop.
+/// A deterministic, test-only PeriodicalRunner driven by a FakeClock instead of
+/// a real event loop.
 ///
 /// Each registered function is scheduled to run every `period_ms`. The runner
-/// is purely time-driven: it only invokes functions when its OnTimeAdvanced()
-/// method is called with the current time. Whenever OnTimeAdvanced(now) is
-/// called, every function whose next scheduled run time has been reached is
-/// invoked. If more than one period has elapsed since the last call, the
-/// function is invoked once per elapsed period ("catch up").
-///
-/// When constructed with a FakeClock, the runner reads the clock's current time
-/// as its scheduling reference point and registers OnTimeAdvanced as an
-/// on-advance callback, so the clock drives it automatically:
+/// is purely time-driven: it reads the clock's current time at construction as
+/// its scheduling reference point and registers an on-advance callback with the
+/// clock. Whenever the clock's time is advanced (via AdvanceTime/SetTime), the
+/// clock calls back into the runner, which invokes every function whose next
+/// scheduled run time has been reached. If more than one period has elapsed
+/// since the last advance, the function is invoked once per elapsed period
+/// ("catch up").
 ///
 ///   FakeClock clock;
 ///   FakePeriodicalRunner runner(clock);
@@ -55,14 +50,8 @@ namespace ray {
 /// clock has no knowledge of the runner. The runner unregisters its callback
 /// from the clock on destruction, so it is safe to destroy the runner before
 /// the clock.
-///
-/// A default-constructed runner has no clock; it records registered functions
-/// but never invokes them. This preserves the original stub behavior for tests
-/// that don't care about periodic execution.
 class FakePeriodicalRunner : public PeriodicalRunnerInterface {
  public:
-  FakePeriodicalRunner() = default;
-
   /// Construct a runner driven by `clock`. Reads `clock.Now()` as the initial
   /// scheduling reference and registers an on-advance callback with the clock.
   /// `clock` must outlive this runner.
@@ -77,26 +66,6 @@ class FakePeriodicalRunner : public PeriodicalRunnerInterface {
                          uint64_t period_ms,
                          std::string name) override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Advance the runner to time `now`, invoking every registered function whose
-  /// next scheduled run time is at or before `now`. A function is invoked once
-  /// per elapsed period.
-  void OnTimeAdvanced(absl::Time now) ABSL_LOCKS_EXCLUDED(mutex_);
-
-  /// Number of functions currently registered.
-  size_t NumRegistered() const ABSL_LOCKS_EXCLUDED(mutex_);
-
- protected:
-  // Not used by the fake runner; periodic execution is driven by OnTimeAdvanced.
-  void DoRunFnPeriodically(std::function<void()> fn,
-                           boost::posix_time::milliseconds period,
-                           std::shared_ptr<boost::asio::deadline_timer> timer) override {}
-
-  void DoRunFnPeriodicallyInstrumented(
-      std::function<void()> fn,
-      boost::posix_time::milliseconds period,
-      std::shared_ptr<boost::asio::deadline_timer> timer,
-      std::string name) override {}
-
  private:
   struct PeriodicTask {
     std::function<void()> fn;
@@ -106,19 +75,21 @@ class FakePeriodicalRunner : public PeriodicalRunnerInterface {
     std::string name;
   };
 
-  // Non-null when this runner is driven by a clock. Used to unregister the
-  // on-advance callback on destruction.
-  FakeClock *const clock_ = nullptr;
-  // Handle for the callback registered with `clock_`; only meaningful when
-  // `clock_` is non-null.
-  uint64_t callback_handle_ = 0;
+  // Invoked by the clock whenever its time advances. Runs every task whose next
+  // scheduled run time is at or before `now`, once per elapsed period.
+  void OnTimeAdvanced(absl::Time now) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  FakeClock &clock_;
+  // Handle for the callback registered with `clock_`, used to unregister on
+  // destruction.
+  uint64_t callback_handle_;
 
   mutable absl::Mutex mutex_;
   std::vector<PeriodicTask> tasks_ ABSL_GUARDED_BY(mutex_);
-  // The most recent time observed via the clock (at construction) or
-  // OnTimeAdvanced, used as the reference point for scheduling newly registered
-  // tasks.
-  absl::Time now_ ABSL_GUARDED_BY(mutex_) = absl::UnixEpoch();
+  // The most recent time observed via the clock (at construction or
+  // OnTimeAdvanced), used as the reference point for scheduling newly
+  // registered tasks.
+  absl::Time now_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

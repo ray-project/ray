@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -139,26 +139,7 @@ TEST(FakePeriodicalRunnerTest, ZeroPeriodIsIgnored) {
   int count = 0;
   runner.RunFnPeriodically([&count] { count++; }, /*period_ms=*/0, "fn");
 
-  EXPECT_EQ(runner.NumRegistered(), 0u);
   clock.AdvanceTime(absl::Seconds(10));
-  EXPECT_EQ(count, 0);
-}
-
-TEST(FakePeriodicalRunnerTest, NumRegisteredCountsTasks) {
-  FakeClock clock;
-  FakePeriodicalRunner runner(clock);
-  EXPECT_EQ(runner.NumRegistered(), 0u);
-  runner.RunFnPeriodically([] {}, /*period_ms=*/100, "a");
-  runner.RunFnPeriodically([] {}, /*period_ms=*/200, "b");
-  EXPECT_EQ(runner.NumRegistered(), 2u);
-}
-
-TEST(FakePeriodicalRunnerTest, DefaultConstructedRunnerNeverFires) {
-  // A runner with no clock records functions but never invokes them.
-  FakePeriodicalRunner runner;
-  int count = 0;
-  runner.RunFnPeriodically([&count] { count++; }, /*period_ms=*/100, "fn");
-  EXPECT_EQ(runner.NumRegistered(), 1u);
   EXPECT_EQ(count, 0);
 }
 

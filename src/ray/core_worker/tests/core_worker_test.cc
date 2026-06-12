@@ -52,6 +52,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_ipc_client/fake_raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -130,7 +131,7 @@ class CoreWorkerTest : public ::testing::Test {
     rpc_address_.set_node_id(NodeID::FromRandom().Binary());
     rpc_address_.set_worker_id(worker_context->GetWorkerID().Binary());
 
-    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
+    fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>(fake_clock_);
 
     auto object_info_publisher = std::make_unique<pubsub::Publisher>(
         /*channels=*/
@@ -251,7 +252,7 @@ class CoreWorkerTest : public ::testing::Test {
     auto actor_manager = std::make_unique<ActorManager>(
         mock_gcs_client_, *actor_task_submitter, *reference_counter_);
 
-    auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
+    auto periodical_runner = std::make_unique<FakePeriodicalRunner>(fake_clock_);
 
     // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
     // create a real plasma_store_provider_ and mutable_object_provider_
@@ -289,6 +290,9 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
  protected:
+  // Declared first so it outlives every object that owns a FakePeriodicalRunner
+  // referencing it (e.g. core_worker_ and fake_periodical_runner_).
+  FakeClock fake_clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
