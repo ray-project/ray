@@ -1129,6 +1129,8 @@ ml-dtypes==0.5.4
     #   jax
     #   jaxlib
     #   keras
+    #   onnx-ir
+    #   onnxscript
     #   tensorflow
 mlflow==3.11.1
     # via
@@ -1323,7 +1325,9 @@ numpy==2.2.6
     #   numba
     #   numexpr
     #   onnx
+    #   onnx-ir
     #   onnxruntime
+    #   onnxscript
     #   open-spiel
     #   opencv-python-headless
     #   optuna
@@ -1376,9 +1380,16 @@ oauthlib==3.3.1
 obstore==0.10.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r python/requirements/ml/py313/rllib-requirements.txt
+    # via
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+    #   onnx-ir
+    #   onnxscript
+onnx-ir==0.2.1
+    # via onnxscript
 onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10"
-    # via -r python/requirements/ml/py313/rllib-requirements.txt
+    # via -r python/requirements/ml/py313/rllib-test-requirements.txt
+onnxscript==0.5.7 ; sys_platform != "darwin" or platform_machine != "arm64"
+    # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 open-spiel==1.4
     # via -r python/requirements/ml/py313/rllib-test-requirements.txt
 openapi-schema-validator==0.6.3
@@ -1507,6 +1518,7 @@ packaging==26.1
     #   modin
     #   nbconvert
     #   onnxruntime
+    #   onnxscript
     #   openlineage-python
     #   opentelemetry-instrumentation
     #   optuna
@@ -2287,6 +2299,7 @@ sympy==1.14.0
     # via
     #   ax-platform
     #   cfn-lint
+    #   onnx-ir
     #   onnxruntime
     #   torch
 tabulate==0.10.0
@@ -2558,6 +2571,8 @@ typing-extensions==4.15.0
     #   myst-nb
     #   nevergrad
     #   obstore
+    #   onnx-ir
+    #   onnxscript
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk

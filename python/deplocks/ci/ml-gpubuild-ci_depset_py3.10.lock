@@ -2751,6 +2751,8 @@ ml-dtypes==0.5.4 \
     #   jax
     #   jaxlib
     #   keras
+    #   onnx-ir
+    #   onnxscript
     #   tensorflow
 mmh3==5.2.1 \
     --hash=sha256:022aa1a528604e6c83d0a7705fdef0b5355d897a9e0fa3a8d26709ceaa06965d \
@@ -3484,7 +3486,9 @@ numpy==2.2.6 \
     #   numba
     #   numexpr
     #   onnx
+    #   onnx-ir
     #   onnxruntime
+    #   onnxscript
     #   open-spiel
     #   opencv-python-headless
     #   optuna
@@ -3632,7 +3636,15 @@ onnx==1.16.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:f51179d4af3372b4f3800c558d204b592c61e4b4a18b8f61e0eea7f46211221a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/rllib-requirements.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+    #   onnx-ir
+    #   onnxscript
+onnx-ir==0.2.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+    --hash=sha256:8b8b10a93f43e65962104de6070c43c5dacb0e3cdfefc7c8059dd83c9db64f35 \
+    --hash=sha256:c7285da889312f91882de2092e298a9eeeefbfc1d1951c49d983992967eb09a7
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   onnxscript
 onnxruntime==1.20.0 ; (python_full_version < '3.11' and platform_machine != 'arm64') or (python_full_version < '3.11' and sys_platform != 'darwin') \
     --hash=sha256:041fefe60af844ebd90f344c84f908201490555cd0a6d78dd0a7acdc27b59972 \
     --hash=sha256:0e259378ff2843321e0bf4552adcbee48822c91d77d42dde78b87dcdf10ad01f \
@@ -3655,7 +3667,13 @@ onnxruntime==1.20.0 ; (python_full_version < '3.11' and platform_machine != 'arm
     --hash=sha256:d5f23cbfeb546e16ffea81c28d2e796a53197fdc6c92540648e2aa53a7c7a637 \
     --hash=sha256:dc4e7c10c98c1f407835448c26a7e14ebff3234f131e1fbc53bd9500c828df89 \
     --hash=sha256:e1eb08c13f91f830eb8df4f4e17a2a2652d1165f50bbed4f28f2afbf425c55d7
-    # via -r python/requirements/ml/py313/rllib-requirements.txt
+    # via -r python/requirements/ml/py313/rllib-test-requirements.txt
+onnxscript==0.5.7 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+    --hash=sha256:480d572451bc233ed7f742b5005cb0c899594b2fdc28e15167dab26f7fd777ad \
+    --hash=sha256:f94a66059c56d13b44908e9b7fd9dae4b4faa6681c784f3fd4c29cfa863e454e
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 open-spiel==1.4 \
     --hash=sha256:044ee55b5bd4fdd6652616ed3c1d26146d89eb6a2a74391dd2e5788ea49e923c \
     --hash=sha256:102e7df7861b531d72ce024477f7b4e63adeed213100e2ff8e4d68626b5ef445 \
@@ -3931,6 +3949,7 @@ packaging==26.1 \
     #   matplotlib
     #   nbconvert
     #   onnxruntime
+    #   onnxscript
     #   optuna
     #   plotly
     #   pytest
@@ -5910,6 +5929,7 @@ sympy==1.14.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
+    #   onnx-ir
     #   onnxruntime
     #   torch
 taskiq==0.12.2 \
@@ -6383,6 +6403,8 @@ typing-extensions==4.15.0 \
     #   mistune
     #   multidict
     #   nevergrad
+    #   onnx-ir
+    #   onnxscript
     #   opentelemetry-api
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
