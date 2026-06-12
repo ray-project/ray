@@ -110,7 +110,7 @@ class Predictor:
 
 def validate_with_map_batches(checkpoint):
     validation_dataset.context.execution_options.label_selector = {
-        "subcluster": "validation"
+        "ray-subcluster": "validation"
     }
     start_time = time.time()
     eval_res = validation_dataset.map_batches(
@@ -177,7 +177,9 @@ def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
         ),
         dataset_config=ray.train.DataConfig(
             execution_options={
-                "test": ExecutionOptions(label_selector={"subcluster": "validation"}),
+                "test": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
             },
         ),
     )
@@ -410,8 +412,10 @@ def run_training_with_validation(
         dataset_config = ray.train.DataConfig(
             datasets_to_split=["train", "test"],
             execution_options={
-                "train": ExecutionOptions(label_selector={"subcluster": "train"}),
-                "test": ExecutionOptions(label_selector={"subcluster": "validation"}),
+                "train": ExecutionOptions(label_selector={"ray-subcluster": "train"}),
+                "test": ExecutionOptions(
+                    label_selector={"ray-subcluster": "validation"}
+                ),
             },
         )
     else:
@@ -421,7 +425,7 @@ def run_training_with_validation(
         dataset_config = ray.train.DataConfig(
             datasets_to_split=["train"],
             execution_options={
-                "train": ExecutionOptions(label_selector={"subcluster": "train"}),
+                "train": ExecutionOptions(label_selector={"ray-subcluster": "train"}),
             },
         )
 

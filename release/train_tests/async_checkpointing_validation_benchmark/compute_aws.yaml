@@ -17,11 +17,11 @@ worker_nodes:
       max_nodes: 2
       market_type: ON_DEMAND
       labels:
-        subcluster: train
+        ray-subcluster: train
     - name: validation-worker-node
       instance_type: g4dn.xlarge
       min_nodes: 0
       max_nodes: 2
       market_type: ON_DEMAND
       labels:
-        subcluster: validation
+        ray-subcluster: validation
