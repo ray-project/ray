@@ -1,4 +1,9 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+# Pin to zones that offer the g5 instance types.
+zones:
+    - us-west-2a
+    - us-west-2b
+    - us-west-2c
 
 head_node:
     instance_type: g5.16xlarge
