@@ -14,14 +14,14 @@
 
 #include "ray/gcs/store_client/rocksdb_store_client.h"
 
-#include <sys/stat.h>
-
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -114,21 +114,15 @@ RocksDbStoreClient::RocksDbStoreClient(
                                  "RAY_gcs_storage=rocksdb. (RAY_CONFIG env "
                                  "var names are case-sensitive lowercase.)";
 
-  // Ensure the directory exists. mkdir(2) is idempotent w.r.t. EEXIST.
-  // We call it on every component of the path so deep paths (e.g.
-  // /data/gcs/tables) work even when the intermediate dirs don't yet exist.
+  // Ensure the directory exists, creating any missing parents so deep
+  // paths (e.g. /data/gcs/tables) work. create_directories is idempotent:
+  // it returns false with no error when the directory already exists, so
+  // we only need to check the error_code.
   {
-    std::string path_buf = db_path;
-    for (std::size_t i = 1; i < path_buf.size(); ++i) {
-      if (path_buf[i] == '/') {
-        path_buf[i] = '\0';
-        ::mkdir(path_buf.c_str(), 0755);
-        path_buf[i] = '/';
-      }
-    }
-    int rc = ::mkdir(db_path.c_str(), 0755);
-    RAY_CHECK(rc == 0 || errno == EEXIST)
-        << "mkdir " << db_path << ": " << strerror(errno);
+    std::error_code ec;
+    std::filesystem::create_directories(db_path, ec);
+    RAY_CHECK(!ec) << "Failed to create RocksDB directory " << db_path << ": "
+                   << ec.message();
   }
 
   // List existing CFs so we can open them all. On a fresh DB this
