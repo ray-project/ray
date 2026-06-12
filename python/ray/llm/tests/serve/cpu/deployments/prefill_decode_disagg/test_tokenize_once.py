@@ -68,6 +68,22 @@ def test_install_returns_false_without_vllm(monkeypatch):
     assert install() is False
 
 
+def test_install_returns_false_when_method_missing(monkeypatch):
+    # A vLLM whose BaseRenderer lacks tokenize_prompts_async must fail safe
+    # (return False), not raise AttributeError and crash replica startup.
+    class RendererWithoutMethod:
+        pass
+
+    base = types.ModuleType("vllm.renderers.base")
+    base.BaseRenderer = RendererWithoutMethod
+    monkeypatch.setitem(sys.modules, "vllm", types.ModuleType("vllm"))
+    monkeypatch.setitem(
+        sys.modules, "vllm.renderers", types.ModuleType("vllm.renderers")
+    )
+    monkeypatch.setitem(sys.modules, "vllm.renderers.base", base)
+    assert install() is False
+
+
 def _tokenize(renderer_cls, prompts, ids):
     async def run():
         with reuse_prompt_token_ids(ids):

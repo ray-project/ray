@@ -57,40 +57,45 @@ def install() -> bool:
     """Wrap ``BaseRenderer.tokenize_prompts_async`` to honor the contextvar.
 
     Idempotent (guarded by an attribute on the wrapped method) and resilient: any
-    failure (e.g. a vLLM version whose renderer differs) leaves tokenization
-    untouched. Returns True if the wrap is active.
+    failure (missing module, or a vLLM version whose renderer differs) leaves
+    tokenization untouched and returns False, so it never crashes startup. Returns
+    True if the wrap is active.
     """
     try:
         from vllm.renderers.base import BaseRenderer
+
+        orig = getattr(BaseRenderer, "tokenize_prompts_async", None)
+        if orig is None:
+            logger.debug("pd-tokenize-once: BaseRenderer.tokenize_prompts_async absent")
+            return False
+        if getattr(orig, "_pd_tokonce_wrapped", False):
+            return True
+
+        @functools.wraps(orig)
+        async def tokenize_prompts_async(self, prompts, params, *args, **kwargs):
+            ids = _reused_token_ids.get()
+            # Inject the reused ids into the single rendered prompt and delegate to
+            # the real tokenizer: vLLM skips the encode when prompt_token_ids is
+            # already present but still preserves multi_modal_data and runs
+            # detokenization + truncation/validation. Anything else (batched, embeds,
+            # encoder-decoder, already tokenized) falls through. ``ids`` is a copy.
+            if (
+                ids
+                and len(prompts) == 1
+                and isinstance(prompts[0], dict)
+                and "prompt_token_ids" not in prompts[0]
+                and "prompt_embeds" not in prompts[0]
+                and "encoder_prompt" not in prompts[0]
+            ):
+                prompts = [{**prompts[0], "prompt_token_ids": ids}]
+            return await orig(self, prompts, params, *args, **kwargs)
+
+        tokenize_prompts_async._pd_tokonce_wrapped = True
+        BaseRenderer.tokenize_prompts_async = tokenize_prompts_async
     except Exception as e:  # pragma: no cover - defensive
-        logger.debug("pd-tokenize-once: vLLM renderer unavailable (%s)", e)
+        logger.debug("pd-tokenize-once: install failed (%s)", e)
         return False
 
-    orig = BaseRenderer.tokenize_prompts_async
-    if getattr(orig, "_pd_tokonce_wrapped", False):
-        return True
-
-    @functools.wraps(orig)
-    async def tokenize_prompts_async(self, prompts, params, *args, **kwargs):
-        ids = _reused_token_ids.get()
-        # Inject the reused ids into the single rendered prompt and delegate to the
-        # real tokenizer: vLLM skips the encode when prompt_token_ids is already
-        # present but still preserves multi_modal_data and runs detokenization +
-        # truncation/validation. Anything else (batched, embeds, encoder-decoder,
-        # or already tokenized) falls through untouched. ``ids`` is a private copy.
-        if (
-            ids
-            and len(prompts) == 1
-            and isinstance(prompts[0], dict)
-            and "prompt_token_ids" not in prompts[0]
-            and "prompt_embeds" not in prompts[0]
-            and "encoder_prompt" not in prompts[0]
-        ):
-            prompts = [{**prompts[0], "prompt_token_ids": ids}]
-        return await orig(self, prompts, params, *args, **kwargs)
-
-    tokenize_prompts_async._pd_tokonce_wrapped = True
-    BaseRenderer.tokenize_prompts_async = tokenize_prompts_async
     logger.info(
         "pd-tokenize-once: wrapped BaseRenderer.tokenize_prompts_async "
         "(decode stage will reuse prefill's prompt token ids)"
