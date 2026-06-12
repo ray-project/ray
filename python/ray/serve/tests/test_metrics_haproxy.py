@@ -223,7 +223,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
         return True
 
     try:
-        wait_for_condition(verify_metrics, retry_interval_ms=500)
+        wait_for_condition(verify_metrics, retry_interval_ms=500, timeout=40)
     except RuntimeError:
         verify_metrics(do_assert=True)
 

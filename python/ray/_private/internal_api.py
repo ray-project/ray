@@ -211,9 +211,12 @@ def free(object_refs: list, local_only: bool = False):
             free([obj_ref])  # unpin & delete object globally
 
     Args:
-        object_refs (List[ObjectRef]): List of object refs to delete.
+        object_refs: List of object refs to delete.
         local_only: Whether only deleting the list of objects in local
             object store or all object stores.
+
+    Returns:
+        None.
     """
     warnings.warn(
         "`free` is a deprecated API and will be removed in a future version of Ray. "

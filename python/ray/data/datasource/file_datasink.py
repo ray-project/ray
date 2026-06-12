@@ -56,6 +56,8 @@ class _FileDatasink(Datasink[None]):
                 included in the filename.
             file_format: The file extension. If specified, files are written with this
                 extension.
+            mode: The save mode controlling behavior when the destination already
+                exists (e.g., append, overwrite, error, ignore).
         """
         if open_stream_args is None:
             open_stream_args = {}
@@ -256,8 +258,21 @@ class BlockBasedFileDatasink(_FileDatasink):
     """  # noqa: E501
 
     def __init__(
-        self, path, *, min_rows_per_file: Optional[int] = None, **file_datasink_kwargs
+        self,
+        path: str,
+        *,
+        min_rows_per_file: Optional[int] = None,
+        **file_datasink_kwargs,
     ):
+        """Initialize this block-based file datasink.
+
+        Args:
+            path: The folder to write files to.
+            min_rows_per_file: The target minimum number of rows per file. When
+                ``None``, rows are not buffered before being written.
+            **file_datasink_kwargs: Additional keyword arguments forwarded to
+                :class:`_FileDatasink`.
+        """
         super().__init__(path, **file_datasink_kwargs)
 
         self._min_rows_per_file = min_rows_per_file

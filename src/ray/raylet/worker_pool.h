@@ -192,8 +192,8 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  /// Checks if any registered worker is available for scheduling.
-  virtual bool IsWorkerAvailableForScheduling() const = 0;
+  /// Returns true if this node's workers are solely actors.
+  virtual bool AllAliveWorkersAreActors() const = 0;
 
   /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
@@ -515,7 +515,7 @@ class WorkerPool : public WorkerPoolInterface {
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
 
-  bool IsWorkerAvailableForScheduling() const override;
+  bool AllAliveWorkersAreActors() const override;
 
   /// Get all the registered drivers.
   ///
