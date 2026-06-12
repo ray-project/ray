@@ -70,6 +70,7 @@ struct TaskOptions {
               std::unordered_map<std::string, double> &resources_p,
               std::string concurrency_group_name_p = "",
               int64_t generator_backpressure_num_objects_p = -1,
+              int64_t num_objects_per_yield_p = 1,
               std::string serialized_runtime_env_info_p = "{}",
               bool enable_task_events_p = kDefaultTaskEventEnabled,
               std::unordered_map<std::string, std::string> labels_p = {},
@@ -82,6 +83,7 @@ struct TaskOptions {
         concurrency_group_name(std::move(concurrency_group_name_p)),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
+        num_objects_per_yield(num_objects_per_yield_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
@@ -104,6 +106,9 @@ struct TaskOptions {
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.
   int64_t generator_backpressure_num_objects;
+  /// Only applicable when streaming generator is used.
+  /// The number of ObjectRefs produced by each generator yield.
+  int64_t num_objects_per_yield = 1;
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;

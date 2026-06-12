@@ -93,6 +93,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
+           int64_t num_objects_per_yield,
            const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
