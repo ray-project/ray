@@ -48,6 +48,7 @@ GcsTaskManager::GcsTaskManager(
       task_events_reported_gauge_(task_events_reported_gauge),
       task_events_dropped_gauge_(task_events_dropped_gauge),
       task_events_stored_gauge_(task_events_stored_gauge) {
+  RAY_CHECK(periodical_runner_ != nullptr);
   periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
                                         5 * 1000,
                                         "GcsTaskManager.GcJobSummary");

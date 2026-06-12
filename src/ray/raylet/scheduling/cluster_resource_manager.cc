@@ -29,6 +29,7 @@ ClusterResourceManager::ClusterResourceManager(
     : periodical_runner_(std::move(periodical_runner)),
       local_resource_view_node_count_gauge_(
           raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
+  RAY_CHECK(periodical_runner_ != nullptr);
   periodical_runner_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(

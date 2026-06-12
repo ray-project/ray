@@ -208,7 +208,7 @@ NodeManager::NodeManager(
       object_manager_(object_manager),
       store_client_(std::move(store_client)),
       mutable_object_provider_(std::move(mutable_object_provider)),
-      periodical_runner_(std::move(periodical_runner)),
+      periodical_runner_(periodical_runner),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
       lease_dependency_manager_(lease_dependency_manager),
@@ -242,7 +242,7 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, periodical_runner_, self_node_id_.Binary(), 1, 0),
+      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
