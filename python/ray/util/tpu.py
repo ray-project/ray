@@ -25,6 +25,8 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
+
 
 @PublicAPI(stability="alpha")
 def get_tpu_version_from_type(accelerator_type: str) -> str:
@@ -99,7 +101,7 @@ def get_tpu_num_slices_for_workers(
     accelerator_type: str,
     num_workers: int,
     resources_per_worker: Optional[Dict[str, float]] = None,
-    tpu_resource_per_chip: int = 1,
+    tpu_resource_per_chip: Optional[int] = None,
 ) -> int:
     """
     Calculates the number of slices needed to accommodate the specified number of workers.
@@ -116,6 +118,11 @@ def get_tpu_num_slices_for_workers(
     """
     if not topology or not accelerator_type:
         return 1
+
+    if tpu_resource_per_chip is None:
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
 
     try:
         # Calculate how many workers fit in a single slice (num_slices=1)
@@ -144,7 +151,7 @@ def get_tpu_worker_resources(
     resources_per_worker: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
     chips_per_vm: Optional[int] = None,
-    tpu_resource_per_chip: int = 1,
+    tpu_resource_per_chip: Optional[int] = None,
 ) -> Tuple[int, Dict[str, float]]:
     """
     Calculates the number of workers and the resources required for each worker
@@ -168,6 +175,11 @@ def get_tpu_worker_resources(
         - num_workers: Total workers required.
         - worker_resources: The resource dictionary for a single worker.
     """
+    if tpu_resource_per_chip is None:
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
+
     if tpu_resource_per_chip <= 0:
         raise ValueError("`tpu_resource_per_chip` must be a positive integer.")
 
@@ -372,7 +384,7 @@ def _get_intact_tpu_slices(
 def get_num_ready_tpu_slices(
     topology: str,
     accelerator_type: str,
-    tpu_resource_per_chip: int = 1,
+    tpu_resource_per_chip: Optional[int] = None,
 ) -> int:
     """
     Checks the cluster state to determine how many full TPU slices of the
@@ -387,6 +399,10 @@ def get_num_ready_tpu_slices(
     Returns:
         The integer count of fully ready and available TPU slices.
     """
+    if tpu_resource_per_chip is None:
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
     intact_slices = _get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip)
     if not intact_slices:
         return 0
@@ -425,7 +441,7 @@ def get_num_ready_tpu_slices(
 def get_num_tpu_slices(
     topology: str,
     accelerator_type: str,
-    tpu_resource_per_chip: int = 1,
+    tpu_resource_per_chip: Optional[int] = None,
 ) -> int:
     """
     Checks the cluster state to determine how many full TPU slices of the
@@ -445,6 +461,10 @@ def get_num_tpu_slices(
     Returns:
         The integer count of physically intact TPU slices.
     """
+    if tpu_resource_per_chip is None:
+        tpu_resource_per_chip = int(
+            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+        )
     return len(_get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip))
 
 
@@ -536,7 +556,7 @@ class SlicePlacementGroup:
         ),
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         pg_per_slice: bool = False,
-        tpu_resource_per_chip: int = 1,
+        tpu_resource_per_chip: Optional[int] = None,
     ):
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
@@ -551,6 +571,10 @@ class SlicePlacementGroup:
         self._resources_per_bundle = resources_per_bundle or {}
         self._num_slices = num_slices
         self._head_reservation_timeout_s = head_reservation_timeout_s
+        if tpu_resource_per_chip is None:
+            tpu_resource_per_chip = int(
+                os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
+            )
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
         # Calculate number of bundles and bundle resources for specified TPU topology.
@@ -563,19 +587,26 @@ class SlicePlacementGroup:
             tpu_resource_per_chip=self._tpu_resource_per_chip,
         )
 
-        self._logical_devices_per_host = (
+        if chips_per_vm is not None and chips_per_vm <= 0:
+            raise ValueError("chips_per_vm must be positive.")
+
+        self._chips_per_host = (
             chips_per_vm
             if chips_per_vm is not None
             else get_chips_per_host(self._topology, self._accelerator_version)
         )
-        if self._logical_devices_per_host <= 0:
-            raise ValueError("chips_per_vm must be positive.")
+        if self._chips_per_host <= 0:
+            raise ValueError(
+                f"Resolved chips per host must be positive, got {self._chips_per_host}"
+            )
 
         # Within Ray, a "host" corresponds to a user-visible compute VM.
         # This may differ from the physical hardware host definitions in GCP/GKE docs.
         total_chips = get_num_chips_from_topology(self._topology)
 
-        self._logical_devices_per_host *= self._tpu_resource_per_chip
+        self._logical_devices_per_host = (
+            self._chips_per_host * self._tpu_resource_per_chip
+        )
         total_chips *= self._tpu_resource_per_chip
 
         hosts_per_slice = max(1, total_chips // self._logical_devices_per_host)
@@ -758,13 +789,21 @@ class SlicePlacementGroup:
 
     @property
     def chips_per_host(self) -> int:
-        """The number of chips per host for this TPU slice.
+        """The number of physical chips per host for this TPU slice.
 
-        Note: If `tpu_resource_per_chip` is specified, this value represents the
-        logical TPU devices per host instead of the physical hardware chips.
+        This returns the physical chip count. If you need the logical resource
+        amount to request from Ray (which scales with `tpu_resource_per_chip`),
+        use `devices_per_host` instead.
+        """
+        return self._chips_per_host
 
-        When scheduling a Ray Task or Actor that requires an entire TPU host,
-        use this value for the "TPU" resource requirement.
+    @property
+    def devices_per_host(self) -> int:
+        """The number of logical TPU devices per host for this TPU slice.
+
+        This value is scaled by `tpu_resource_per_chip`. When scheduling a Ray
+        Task or Actor that needs to consume an entire TPU host, you should
+        request this value for the "TPU" resource requirement.
         """
         return self._logical_devices_per_host
 
@@ -883,11 +922,8 @@ def slice_placement_group(
     resources_per_bundle: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
     chips_per_vm: Optional[int] = None,
-<<<<<<< HEAD
     pg_per_slice: bool = False,
-=======
-    tpu_resource_per_chip: int = 1,
->>>>>>> 2f1774764d (fix resource accounting for tpu7x and multi-core chips)
+    tpu_resource_per_chip: Optional[int] = None,
     **kwargs,
 ) -> SlicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU slice.
@@ -907,13 +943,10 @@ def slice_placement_group(
         chips_per_vm: An optional override for the number of chips per TPU VM.
             Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
             as either 1 VM (8 chips) or 2 VMs (4 chips each).
-<<<<<<< HEAD
         pg_per_slice: If False, returns a SlicePlacementGroup that manages a single PlacementGroup.
             If True, returns a SlicePlacementGroup that manages a list of per-slice PlacementGroups.
-=======
         tpu_resource_per_chip: The number of logical TPU resources per physical chip. Defaults to 1.
             This scales the total logical resources reserved by each slice.
->>>>>>> 2f1774764d (fix resource accounting for tpu7x and multi-core chips)
         **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
     Returns:
@@ -926,11 +959,8 @@ def slice_placement_group(
         resources_per_bundle=resources_per_bundle,
         num_slices=num_slices,
         chips_per_vm=chips_per_vm,
-<<<<<<< HEAD
         pg_per_slice=pg_per_slice,
-=======
         tpu_resource_per_chip=tpu_resource_per_chip,
->>>>>>> 2f1774764d (fix resource accounting for tpu7x and multi-core chips)
         **kwargs,
     )
 
