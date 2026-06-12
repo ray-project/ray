@@ -524,12 +524,30 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Send task events to GCS.
   ///
   /// \param data The task event data to be sent.
-  void SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data);
+  /// \param may_chain If true, schedule a follow-up flush when the send completes
+  ///        successfully and the buffer still holds at least a full batch.
+  void SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data, bool may_chain);
 
   /// Send ray events to the event aggregator.
   ///
   /// \param data The ray event data to be sent.
-  void SendRayEventsToAggregator(std::unique_ptr<rpc::events::RayEventsData> data);
+  /// \param may_chain If true, schedule a follow-up flush when the send completes
+  ///        successfully and the buffer still holds at least a full batch.
+  void SendRayEventsToAggregator(std::unique_ptr<rpc::events::RayEventsData> data,
+                                 bool may_chain);
+
+  /// Whether the buffer holds at least one full batch of unsent data.
+  ///
+  /// A single flush sends at most one batch. If a worker generates events faster
+  /// than one batch per flush interval, the buffer grows until events get dropped.
+  /// This is used to chain another flush right after one completes so that the
+  /// drain rate is bounded by GCS/aggregator throughput instead of by
+  /// batch size per flush interval.
+  bool HasFullBatchBacklog();
+
+  /// Schedule a follow-up FlushEvents on the io service if there is still at
+  /// least a full batch of unsent data buffered.
+  void MaybeScheduleChainedFlush();
 
   /// Reset the task event counters during flushing data.
   void ResetTaskEventCountersForFlush();
@@ -646,6 +664,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
               TestStopWaitsForInflightThenFlushes);
   FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
               TestFlushSendsDroppedAttemptsWithoutEvents);
+  FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination,
+              TestChainedFlushDrainsBacklog);
+  FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination,
+              TestForcedFlushDoesNotChain);
+  FRIEND_TEST(TaskEventBufferTestLimitProfileEvents,
+              TestDroppedProfileEventDoesNotLeakMapEntry);
 };
 
 }  // namespace worker

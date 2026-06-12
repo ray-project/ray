@@ -753,6 +753,121 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
   EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
+TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestChainedFlushDrainsBacklog) {
+  const auto [to_gcs, to_aggregator] = GetParam();
+  if (!to_gcs && !to_aggregator) {
+    GTEST_SKIP();
+  }
+  size_t num_events = 100;
+  size_t batch_size = 10;  // Sync with constructor.
+  // Adding some events
+  for (size_t i = 0; i < num_events; ++i) {
+    task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(RandomTaskId(), 0));
+  }
+
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+  if (to_gcs) {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
+        .Times(num_events / batch_size)
+        .WillRepeatedly([batch_size](std::unique_ptr<rpc::TaskEventData> actual_data,
+                                     ray::rpc::StatusCallback callback) {
+          EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
+          callback(Status::OK());
+          return Status::OK();
+        });
+  } else {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(0);
+  }
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+  if (to_aggregator) {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+        .Times(num_events / batch_size)
+        .WillRepeatedly(
+            [batch_size](
+                const rpc::events::AddEventsRequest &request,
+                const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+              EXPECT_EQ(request.events_data().events_size(), batch_size);
+              callback(Status::OK(), rpc::events::AddEventsReply{});
+            });
+  } else {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+  }
+
+  // A single non-forced flush should drain the entire backlog: each completed
+  // send schedules a follow-up flush while at least a full batch remains
+  // buffered. Without chaining, only one batch is sent per flush call and the
+  // remaining 90 events would sit in the buffer indefinitely.
+  task_event_buffer_->FlushEvents(false);
+
+  ASSERT_TRUE(WaitForCondition(
+      [this]() { return task_event_buffer_->GetNumTaskEventsStored() == 0; },
+      /*timeout_ms=*/10000));
+}
+
+TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestForcedFlushDoesNotChain) {
+  const auto [to_gcs, to_aggregator] = GetParam();
+  if (!to_gcs && !to_aggregator) {
+    GTEST_SKIP();
+  }
+  size_t num_events = 30;
+  size_t batch_size = 10;  // Sync with constructor.
+  // Adding some events
+  for (size_t i = 0; i < num_events; ++i) {
+    task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(RandomTaskId(), 0));
+  }
+
+  // TearDown's Stop() performs a final flush, so count the sends manually
+  // instead of setting an exact cardinality on the mocks.
+  std::atomic<int> num_sends = 0;
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+  if (to_gcs) {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
+        .WillRepeatedly([&num_sends](std::unique_ptr<rpc::TaskEventData> actual_data,
+                                     ray::rpc::StatusCallback callback) {
+          num_sends++;
+          callback(Status::OK());
+          return Status::OK();
+        });
+  } else {
+    EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData).Times(0);
+  }
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+  if (to_aggregator) {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
+        .WillRepeatedly(
+            [&num_sends](
+                const rpc::events::AddEventsRequest &request,
+                const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+              num_sends++;
+              callback(Status::OK(), rpc::events::AddEventsReply{});
+            });
+  } else {
+    EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
+  }
+
+  // A forced flush is a one-shot (e.g. the final flush during shutdown): it
+  // must not schedule follow-up flushes even with a full batch backlogged.
+  task_event_buffer_->FlushEvents(true);
+
+  // Give any (incorrectly) scheduled chained flush a chance to run.
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  int expected_sends = (to_gcs ? 1 : 0) + (to_aggregator ? 1 : 0);
+  EXPECT_EQ(num_sends.load(), expected_sends);
+  EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events - batch_size);
+  // Reset expectations before TearDown's Stop() triggers the final flush, so
+  // the lambdas don't outlive `num_sends`.
+  ::testing::Mock::VerifyAndClearExpectations(task_gcs_accessor);
+  ::testing::Mock::VerifyAndClearExpectations(event_aggregator_client);
+}
+
 TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
        TestBufferSizeLimitStatusEvents) {
   const auto [to_gcs, to_aggregator] = GetParam();
@@ -919,6 +1034,36 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents) 
   ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
                 TaskEventBufferCounter::kTotalNumTaskStatusEventDropped),
             0);
+}
+
+TEST_F(TaskEventBufferTestLimitProfileEvents,
+       TestDroppedProfileEventDoesNotLeakMapEntry) {
+  size_t num_profile_events_per_task = 10;  // Sync with constructor.
+  size_t max_profile_events_stored = 20;    // Sync with constructor.
+
+  // Fill the global profile event buffer with two task attempts.
+  auto task_id_1 = RandomTaskId();
+  auto task_id_2 = RandomTaskId();
+  for (size_t i = 0; i < num_profile_events_per_task; ++i) {
+    task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_1, 0));
+    task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_2, 0));
+  }
+  ASSERT_EQ(task_event_buffer_->stats_counter_.Get(
+                TaskEventBufferCounter::kNumTaskProfileEventsStored),
+            max_profile_events_stored);
+
+  // Events for a new task attempt are dropped at the buffer limit. The drop
+  // must not leave behind an empty `profile_events_` entry for the attempt,
+  // otherwise a saturated worker leaks one map entry per new task attempt.
+  auto task_id_3 = RandomTaskId();
+  task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_3, 0));
+
+  {
+    absl::MutexLock lock(&task_event_buffer_->profile_mutex_);
+    ASSERT_EQ(task_event_buffer_->profile_events_.size(), 2);
+    ASSERT_FALSE(
+        task_event_buffer_->profile_events_.contains(std::make_pair(task_id_3, 0)));
+  }
 }
 
 TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {

@@ -871,7 +871,8 @@ void TaskEventBufferImpl::WriteExportData(
   }
 }
 
-void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data) {
+void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData> data,
+                                              bool may_chain) {
   gcs::TaskInfoAccessor *task_accessor = nullptr;
   {
     // Sending the protobuf to GCS.
@@ -888,7 +889,8 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
   auto on_complete = [this,
                       num_task_attempts_to_send,
                       num_dropped_task_attempts_to_send,
-                      num_bytes_to_send](const Status &status) {
+                      num_bytes_to_send,
+                      may_chain](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Failed to push task events of  " << num_task_attempts_to_send
                        << " tasks attempts, and report "
@@ -911,19 +913,22 @@ void TaskEventBufferImpl::SendTaskEventsToGCS(std::unique_ptr<rpc::TaskEventData
       RAY_CHECK_GT(previous, 0);
       grpc_completion_cv_.Signal();
     }
+    if (status.ok() && may_chain) {
+      MaybeScheduleChainedFlush();
+    }
   };
   task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
 }
 
 void TaskEventBufferImpl::SendRayEventsToAggregator(
-    std::unique_ptr<rpc::events::RayEventsData> data) {
+    std::unique_ptr<rpc::events::RayEventsData> data, bool may_chain) {
   event_aggregator_grpc_in_progress_.fetch_add(1);
   auto num_task_events_to_send = data->events_size();
   auto num_dropped_task_attempts_to_send =
       data->task_events_metadata().dropped_task_attempts_size();
 
   rpc::ClientCallback<rpc::events::AddEventsReply> on_complete =
-      [this, num_task_events_to_send, num_dropped_task_attempts_to_send](
+      [this, num_task_events_to_send, num_dropped_task_attempts_to_send, may_chain](
           const Status &status, const rpc::events::AddEventsReply &reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING) << "GRPC Error: Failed to send task events of "
@@ -951,11 +956,42 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
           RAY_CHECK_GT(previous, 0);
           grpc_completion_cv_.Signal();
         }
+        if (status.ok() && may_chain) {
+          MaybeScheduleChainedFlush();
+        }
       };
 
   rpc::events::AddEventsRequest request;
   *request.mutable_events_data() = std::move(*data);
   event_aggregator_client_->AddEvents(request, on_complete);
+}
+
+bool TaskEventBufferImpl::HasFullBatchBacklog() {
+  const auto batch_size =
+      static_cast<int64_t>(RayConfig::instance().task_events_send_batch_size());
+  const auto dropped_batch_size =
+      RayConfig::instance().task_events_dropped_task_attempt_batch_size();
+  return stats_counter_.Get(TaskEventBufferCounter::kNumTaskStatusEventsStored) >=
+             batch_size ||
+         stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventsStored) >=
+             batch_size ||
+         (dropped_batch_size >= 0 &&
+          stats_counter_.Get(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored) >=
+              dropped_batch_size);
+}
+
+void TaskEventBufferImpl::MaybeScheduleChainedFlush() {
+  if (!enabled_ || stopping_ || !HasFullBatchBacklog()) {
+    return;
+  }
+  // A single flush sends at most one batch per destination. A worker that
+  // generates events faster than one batch per flush interval would otherwise
+  // accumulate events in the buffer without bound (until the buffer caps are
+  // hit and data is dropped). Keep flushing while at least a full batch is
+  // buffered; the single in-flight gRPC limit in FlushEvents still applies, so
+  // the drain rate is bounded by what GCS/the aggregator can acknowledge.
+  io_service_.post([this] { FlushEvents(/*forced=*/false); },
+                   "CoreWorker.deadline_timer.flush_task_events.chained");
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
@@ -1015,7 +1051,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
                                data.task_event_data->dropped_task_attempts_size() > 0 ||
                                data.task_event_data->num_profile_events_dropped() > 0);
   if (send_task_events_to_gcs_enabled_ && has_gcs_payload) {
-    SendTaskEventsToGCS(std::move(data.task_event_data));
+    SendTaskEventsToGCS(std::move(data.task_event_data), /*may_chain=*/!forced);
   }
   // Only send to event aggregator if there's actual data or metadata to send.
   const bool has_aggregator_payload =
@@ -1023,7 +1059,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       (data.ray_events_data->events_size() > 0 ||
        data.ray_events_data->task_events_metadata().dropped_task_attempts_size() > 0);
   if (send_ray_events_to_aggregator_enabled_ && has_aggregator_payload) {
-    SendRayEventsToAggregator(std::move(data.ray_events_data));
+    SendRayEventsToAggregator(std::move(data.ray_events_data), /*may_chain=*/!forced);
   }
 }
 
@@ -1110,12 +1146,8 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
   std::shared_ptr<TaskEvent> profile_event_shared_ptr = std::move(profile_event);
   auto profile_events_itr =
       profile_events_.find(profile_event_shared_ptr->GetTaskAttempt());
-  if (profile_events_itr == profile_events_.end()) {
-    auto inserted = profile_events_.insert({profile_event_shared_ptr->GetTaskAttempt(),
-                                            std::vector<std::shared_ptr<TaskEvent>>()});
-    RAY_CHECK(inserted.second);
-    profile_events_itr = inserted.first;
-  }
+  const size_t num_events_for_attempt =
+      profile_events_itr == profile_events_.end() ? 0 : profile_events_itr->second.size();
 
   auto max_num_profile_event_per_task =
       RayConfig::instance().task_events_max_num_profile_events_per_task();
@@ -1125,9 +1157,10 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
       stats_counter_.Get(TaskEventBufferCounter::kNumTaskProfileEventsStored));
 
   // If we store too many per task or too many per kind of event, we drop the new event.
+  // This is checked before inserting a map entry for the task attempt so that a
+  // dropped event doesn't strand an empty entry in `profile_events_`.
   if ((max_num_profile_event_per_task >= 0 &&
-       profile_events_itr->second.size() >=
-           static_cast<size_t>(max_num_profile_event_per_task)) ||
+       num_events_for_attempt >= static_cast<size_t>(max_num_profile_event_per_task)) ||
       profile_event_stored >= max_profile_events_stored) {
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskProfileEventDroppedSinceLastFlush);
@@ -1143,6 +1176,13 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
         << "), or RAY_task_events_max_num_profile_events_buffer_on_worker ("
         << max_profile_events_stored << ") to avoid this.";
     return;
+  }
+
+  if (profile_events_itr == profile_events_.end()) {
+    auto inserted = profile_events_.insert({profile_event_shared_ptr->GetTaskAttempt(),
+                                            std::vector<std::shared_ptr<TaskEvent>>()});
+    RAY_CHECK(inserted.second);
+    profile_events_itr = inserted.first;
   }
 
   stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventsStored);
