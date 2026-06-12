@@ -32,7 +32,7 @@ class ProxyMetrics:
             node_id: Default tag value for the ongoing-requests gauge.
             node_ip_address: Default tag value for the ongoing-requests gauge.
         """
-        protocol_name = protocol.lower()
+        protocol_name = protocol.value.lower()
 
         self.request_counter = metrics.Counter(
             f"serve_num_{protocol_name}_requests",
