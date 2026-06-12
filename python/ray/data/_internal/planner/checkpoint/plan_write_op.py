@@ -132,14 +132,20 @@ def plan_write_op_with_checkpoint_writer(
         ):
             warnings.warn(
                 "FilenameProvider.get_filename_for_row() is not compatible with "
-                "2-phase-commit (2PC) checkpointing. 2PC is disabled for this "
-                "write — at-least-once semantics apply. On crash and retry, "
-                "duplicate files may be written.",
+                "2-phase-commit (2PC) checkpointing. Falling back to post-write "
+                "checkpointing (at-least-once semantics): completed task IDs are "
+                "persisted after each write, but if a task crashes after writing "
+                "files and before the checkpoint is saved, duplicate files may be "
+                "written on retry.",
                 UserWarning,
                 stacklevel=2,
             )
+            write_checkpoint_fn = _generate_non_atomic_write_checkpoint_transform(
+                data_context, checkpoint_writer
+            )
             pre_transformations = []
-            post_transformations = [collect_stats_fn]
+            post_transformations = [write_checkpoint_fn, collect_stats_fn]
+
         else:
             # Standard file-based datasink: use 2-phase commit for atomicity.
             # Pre-write transform: compute expected paths and write pending checkpoints
