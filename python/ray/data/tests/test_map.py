@@ -5,7 +5,7 @@ import os
 import random
 import threading
 import time
-from typing import Iterator, Literal
+from typing import Iterable, Iterator, List, Literal, Optional
 from unittest.mock import Mock
 
 import numpy as np
@@ -27,12 +27,15 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _MapActorContext,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datasource import Datasource, ReadTask
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import extract_values
 from ray.exceptions import RayTaskError
+from ray.runtime_env import RuntimeEnv
 from ray.tests.conftest import *  # noqa
 
 
@@ -668,12 +671,49 @@ def test_drop_columns(
         assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
         assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == []
         assert ds.drop_columns(["col1", "col2"]).take(1) == [{"col3": 3}]
-        # Test dropping non-existent column
-        with pytest.raises((UserCodeException, KeyError)):
-            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
     with pytest.raises(ValueError, match="drop_columns expects unique column names"):
         ds1.drop_columns(["col1", "col2", "col2"])
+
+
+@pytest.mark.parametrize(
+    "source,eager",
+    [
+        # Parquet source: input ``pa.Schema`` is known, so ``drop_columns``
+        # raises immediately at the call site.
+        ("parquet", True),
+        # ``from_pandas`` source: input schema is a ``PandasBlockSchema``,
+        # not a ``pa.Schema``, so the typed-chain reshape is skipped and
+        # the error surfaces inside ``materialize`` as a
+        # ``UserCodeException`` wrapping the PyArrow ``KeyError``.
+        ("pandas", False),
+        # UDF chain: input schema is opaque downstream of ``map_batches``,
+        # same fallback as ``pandas``.
+        ("udf", False),
+    ],
+)
+def test_drop_columns_missing_column_raises(
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    source,
+    eager,
+):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    if source == "parquet":
+        ray.data.from_pandas(df).write_parquet(str(tmp_path))
+        ds = ray.data.read_parquet(str(tmp_path))
+    elif source == "pandas":
+        ds = ray.data.from_pandas(df)
+    else:
+        ds = ray.data.from_pandas(df).map_batches(lambda b: b)
+
+    if eager:
+        with pytest.raises(KeyError, match="not found in dataset schema"):
+            ds.drop_columns(["dummy_col", "col1", "col2"])
+    else:
+        with pytest.raises((UserCodeException, KeyError)):
+            ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
 def test_select_rename_columns(
@@ -1459,6 +1499,101 @@ def test_map_with_max_calls():
             ray_remote_args_fn=lambda: {"max_calls": 1},
         )
         ds.take_all()
+
+
+def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
+    restore_data_context, shutdown_only
+):
+    """Test that downstream operators don't get scheduled on same workers as reads when
+    ``isolate_read_workers`` is ``True``.
+
+    The test works by setting an environment variable in the read worker and checking
+    that it isn't set in the map worker.
+    """
+    ray.data.DataContext.get_current().isolate_read_workers = True
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    # This test assumes that the number of Ray worker processes is equal to the number
+    # of logical CPUs. This is true at the time of writing, but it's an implementation
+    # detail that could change. I'm using this approach since it seems like the most
+    # pragmatic way to test this.
+    ray.init(num_cpus=1)
+
+    class SetMarkerDatasource(Datasource):
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            def read_fn() -> Iterable[Block]:
+                os.environ["MARKER"] = "1"
+                yield pa.Table.from_pydict({"id": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=4, input_files=None, exec_stats=None
+                    ),
+                )
+            ]
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+    def check_marker_not_set(row):
+        assert os.environ.get("MARKER") != "1", (
+            "Expected MARKER to not be set in the map worker. This means the map "
+            "worker was scheduled on the same worker as the read worker."
+        )
+        return row
+
+    ray.data.read_datasource(SetMarkerDatasource()).map(
+        check_marker_not_set
+    ).materialize()
+
+
+@pytest.mark.parametrize(
+    "runtime_env", [{"env_vars": {"MARKER": "1"}}, RuntimeEnv(env_vars={"MARKER": "1"})]
+)
+def test_isolate_read_workers_preserves_runtime_env(
+    runtime_env, ray_start_regular_shared, restore_data_context
+):
+    """The `isolate_read_workers` implementation uses runtime envs to isolate workers.
+    This test verifies that Ray Data preserves the user-specified runtime env when you
+    set the flag.
+    """
+    ray.data.DataContext.get_current().isolate_read_workers = True
+
+    class CheckEnvVarDatasource(Datasource):
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            def read_fn() -> Iterable[Block]:
+                assert os.environ.get("MARKER") == "1"
+                yield pa.Table.from_pydict({"id": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=4, input_files=None, exec_stats=None
+                    ),
+                )
+            ]
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+    ray.data.read_datasource(
+        CheckEnvVarDatasource(), ray_remote_args={"runtime_env": runtime_env}
+    ).materialize()
 
 
 if __name__ == "__main__":

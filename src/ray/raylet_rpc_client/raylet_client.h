@@ -101,10 +101,11 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
       override;
 
-  void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-      override;
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+      const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+          &callback) override;
 
   void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,
@@ -174,6 +175,8 @@ class RayletClient : public RayletClientInterface {
   void CancelLocalTask(
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
+
+  void FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) override;
 
  protected:
   /// gRPC client to the NodeManagerService.

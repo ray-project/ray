@@ -6,11 +6,11 @@ import os
 import random
 import time
 import traceback
-from collections import defaultdict
+from collections import defaultdict, deque
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -58,6 +58,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -778,6 +779,9 @@ class ActorReplicaWrapper:
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
+        # Static per-replica metadata captured once when the replica became
+        # ready (via the user's `record_replica_metadata` hook).
+        self._replica_metadata: Dict[str, Any] = {}
         self._ingress: bool = False
 
         # Outbound deployments polling state
@@ -832,6 +836,10 @@ class ActorReplicaWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        return self._replica_metadata
 
     @property
     def unrecoverable(self) -> bool:
@@ -1450,6 +1458,7 @@ class ActorReplicaWrapper:
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
                         self._gang_context,
+                        self._replica_metadata,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1797,6 +1806,7 @@ class DeploymentReplica:
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
+            replica_metadata=self.replica_metadata,
             port=self._actor._internal_grpc_port,
             backend_http_port=self._actor._http_port or None,
         )
@@ -1821,6 +1831,12 @@ class DeploymentReplica:
     @property
     def routing_stats(self) -> Dict[str, Any]:
         return self._routing_stats
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        # Captured by the actor wrapper from the ready handshake (and re-captured
+        # on a new replica incarnation), so no separate restore path is needed.
+        return getattr(self._actor, "replica_metadata", {})
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -2157,6 +2173,9 @@ class ReplicaStateContainer:
         Args:
             states: states to consider. If not specified, all replicas
                 are considered.
+
+        Returns:
+            The matching replicas, in the same order as ``states``.
         """
         if states is None:
             return list(self._replica_id_index.values())
@@ -2196,6 +2215,9 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
+
+        Returns:
+            The removed replicas, in the same order as ``states``.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -2239,6 +2261,9 @@ class ReplicaStateContainer:
                 all versions are considered.
             states: states to consider. If not specified, all replicas
                 are considered.
+
+        Returns:
+            The number of replicas matching the criteria.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -2835,6 +2860,9 @@ class DeploymentState:
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
+        self._recent_dead_replicas: Deque[ReplicaDetails] = deque(
+            maxlen=RAY_SERVE_RETAINED_DEAD_REPLICAS
+        )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
             DeploymentStatus.UPDATING,
@@ -3278,6 +3306,9 @@ class DeploymentState:
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
+    def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
+        return list(self._recent_dead_replicas)
+
     def broadcast_running_replicas_if_changed(self) -> None:
         """Broadcasts the set of running replicas over long poll if it has changed.
 
@@ -3391,7 +3422,6 @@ class DeploymentState:
             target_info: The info with which to set the target state.
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
-            status_trigger: The driver that triggered this change of state.
             updated_via_api: Whether the target state update was triggered via API.
         """
         new_target_state = DeploymentTargetState.create(
@@ -3426,6 +3456,9 @@ class DeploymentState:
         If the deployment already exists with the same version, config,
         target_capacity, and target_capacity_direction,
         this method returns False.
+
+        Args:
+            deployment_info: The target deployment info to apply.
 
         Returns:
             bool: Whether the target state has changed.
@@ -3602,7 +3635,9 @@ class DeploymentState:
             self._target_state.info, target_num_replicas, updated_via_api=True
         )
 
-    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
+    def _stop_or_update_outdated_version_replicas(
+        self, max_to_stop: float = math.inf
+    ) -> bool:
         """Stop or update replicas with outdated versions.
 
         Stop replicas with versions that require the actor to be restarted, and
@@ -3615,6 +3650,9 @@ class DeploymentState:
         Args:
             max_to_stop: max number of replicas to stop, by default,
                          it stops all replicas with an outdated version.
+
+        Returns:
+            Whether any replicas were stopped or reconfigured.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -4122,15 +4160,19 @@ class DeploymentState:
         return False, any_replicas_recovering
 
     def _check_startup_replicas(
-        self, original_state: ReplicaState, stop_on_slow=False
+        self, original_state: ReplicaState, stop_on_slow: bool = False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
         """
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
 
         Args:
+            original_state: The state replicas are transitioning out of.
             stop_on_slow: If we consider a replica failed upon observing it's
                 slow to reach running state.
+
+        Returns:
+            The list of replicas considered slow, along with their startup status.
         """
         slow_replicas = []
         failed_gang_ids: Set[str] = set()
@@ -4708,6 +4750,15 @@ class DeploymentState:
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
 
+                # Retain replicas that allocated a log file so the dashboard can
+                # still show their logs after the actor is gone.
+                if replica.actor_details.log_file_path is not None:
+                    self._recent_dead_replicas.append(
+                        replica.actor_details.model_copy(
+                            update={"state": ReplicaState.STOPPED}
+                        )
+                    )
+
                 # Record shutdown duration metric.
                 if replica.shutdown_start_time is not None:
                     shutdown_duration_ms = (
@@ -4805,6 +4856,9 @@ class DeploymentState:
             replicas: The current list of replicas pending migration.
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
+
+        Returns:
+            A tuple ``(replicas_to_stop, replicas_to_keep)``.
         """
         # Treat each replica as a group of one.
         groups = [[r] for r in replicas]
@@ -5360,6 +5414,13 @@ class DeploymentStateManager:
                     A: [A#zxc123, A#qwe234]
                     B: [B#xcv234]
                 }
+
+        Args:
+            all_current_actor_names: Actor names currently registered with Ray.
+
+        Returns:
+            A mapping from deployment ID to the list of replica actor names
+            associated with that deployment.
         """
         all_replica_names = [
             actor_name
@@ -5566,6 +5627,9 @@ class DeploymentStateManager:
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         """Gets detailed info on a deployment.
 
+        Args:
+            id: The ID of the deployment to look up.
+
         Returns:
             DeploymentDetails: if the deployment is live.
             None: if the deployment is deleted.
@@ -5587,6 +5651,7 @@ class DeploymentStateManager:
                 target_num_replicas=deployment_state._target_state.target_num_replicas,
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 replicas=deployment_state.list_replica_details(),
+                recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
             )
 
     def get_deployment_statuses(
@@ -5650,6 +5715,10 @@ class DeploymentStateManager:
 
         If the deployment already exists with the same version and config,
         this is a no-op and returns False.
+
+        Args:
+            deployment_id: The ID of the deployment to apply.
+            deployment_info: The target deployment info to apply.
 
         Returns:
             bool: Whether the target state has changed.

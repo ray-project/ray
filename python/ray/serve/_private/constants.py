@@ -638,6 +638,9 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 
+# Name of deployment static replica metadata method implemented by user.
+RECORD_REPLICA_METADATA_METHOD = "record_replica_metadata"
+
 # By default, we run user code in a separate event loop.
 # This flag can be set to 0 to run user code in the same event loop as the
 # replica's main event loop.
@@ -674,6 +677,11 @@ RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE = get_env_int(
 # Feature flag to fail the deployment if the rank is not set.
 # TODO (abrar): Remove this flag after the feature is stable.
 RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
+
+# Stopped replicas to retain per deployment for dashboard log access. 0 disables.
+RAY_SERVE_RETAINED_DEAD_REPLICAS = get_env_int_non_negative(
+    "RAY_SERVE_RETAINED_DEAD_REPLICAS", 10
+)
 
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
@@ -744,6 +752,17 @@ RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
 RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
+
+# Minimum spacing between HAProxy reloads. Broadcasts arriving inside
+# the window are batched into one apply; without it, autoscaling churn
+# can fire reloads tens of ms apart.
+RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S = get_env_float_non_negative(
+    "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0.1
+)
+
+# Histogram boundaries (seconds) for serve_haproxy_update_latency_s: the time
+# from the first coalesced controller broadcast to the HAProxy reload finishing.
+RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30]
 
 # HAProxy metrics export port
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
@@ -832,11 +851,20 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # Opt-in HAProxy retry knobs on the `-via-ingress-request-router` backend.
 # `retry-on` token reference:
 # https://docs.haproxy.org/2.8/configuration.html#4-retry-on
+# Retry policy for the HAProxy `defaults` block, inherited by every backend.
+# Defaults to `conn-failure` only: nothing was sent to the replica, so the
+# request is safe to replay for any method (we deliberately avoid empty-response
+# / 503, which can double-execute non-idempotent requests or retry deliberate
+# backpressure). Set RAY_SERVE_HAPROXY_RETRY_ON to override globally.
+RAY_SERVE_HAPROXY_RETRY_ON = get_env_str("RAY_SERVE_HAPROXY_RETRY_ON", "conn-failure")
+RAY_SERVE_HAPROXY_RETRIES = get_env_int_non_negative("RAY_SERVE_HAPROXY_RETRIES", None)
+# Same retry policy as above; defaults to the global value so the ingress
+# request router shares one policy unless explicitly overridden.
 RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", None
+    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", RAY_SERVE_HAPROXY_RETRY_ON
 )
 RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", None
+    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", RAY_SERVE_HAPROXY_RETRIES
 )
 RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
@@ -904,6 +932,19 @@ RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
 )
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
+)
+
+# Hold released replica ports out of the pool this long so proxies can
+# drop their stale slot before a new replica grabs the same port. 0 disables.
+# Defaults to hard-stop-after plus a margin: soft-stopped (reloaded-out)
+# HAProxy workers run no health checks and keep routing to their frozen
+# server list until hard-stop-after fires, so a freed port must stay out
+# of the pool at least that long or another app's replica can inherit the
+# old app's traffic. The margin covers the broadcast/reload lag before an
+# old worker's hard-stop clock starts.
+RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
+    "RAY_SERVE_PORT_QUARANTINE_S",
+    float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
