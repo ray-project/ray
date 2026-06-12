@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
@@ -195,6 +197,56 @@ def test_fix_grpc_metrics():
 
     fix_grpc_metric(metric)
     assert metric == expected_fixed_metric
+
+
+def test_export_histogram_data_normalizes_mixed_attribute_sets():
+    metric = OTelMetric(name="test_histogram", description="Test Histogram")
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([0, 1, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_a"))
+    )
+    data_point.attributes.append(
+        KeyValue(key="SessionName", value=AnyValue(string_value="session_1"))
+    )
+
+    data_point = metric.histogram.data_points.add()
+    data_point.count = 1
+    data_point.explicit_bounds.extend([1.0, 2.0])
+    data_point.bucket_counts.extend([1, 0, 0])
+    data_point.attributes.append(
+        KeyValue(key="Component", value=AnyValue(string_value="worker_b"))
+    )
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+
+    ReporterAgent._export_histogram_data(agent, metric)
+
+    agent._open_telemetry_metric_recorder.register_histogram_metric.assert_called_once_with(
+        "test_histogram", "Test Histogram", [1.0, 2.0]
+    )
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.assert_called_once()
+    (
+        _,
+        batch_data_points,
+    ) = (
+        agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.call_args.args
+    )
+
+    assert batch_data_points == [
+        {
+            "tags": {"Component": "worker_a", "SessionName": "session_1"},
+            "bucket_counts": [0, 1, 0],
+        },
+        {
+            "tags": {"Component": "worker_b", "SessionName": ""},
+            "bucket_counts": [1, 0, 0],
+        },
+    ]
 
 
 @pytest.fixture(autouse=True)
@@ -653,7 +705,7 @@ def test_get_tpu_usage(tmp_path):
 
             expected_utilizations = [
                 TpuUtilizationInfo(
-                    index="0",
+                    index=0,
                     name="1234-0",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -664,7 +716,7 @@ def test_get_tpu_usage(tmp_path):
                     memory_total=4000,
                 ),
                 TpuUtilizationInfo(
-                    index="1",
+                    index=1,
                     name="1234-1",
                     tpu_type="tpu-v6e-slice",
                     tpu_topology="2x2",
@@ -676,6 +728,57 @@ def test_get_tpu_usage(tmp_path):
                 ),
             ]
             assert tpu_utilizations == expected_utilizations
+
+
+def test_get_tpu_usage_idle_and_duplicates(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    # 4 TPUs, all idle (0.0 utilization)
+    # Utilization metrics use indices 0-3
+    # Other metrics use indices 10, 11, 14, 15
+    # Also includes duplicate samples for index 0 and 10 to test robustness.
+    fake_metrics_content = """
+    # Duplicate samples for duty_cycle index 10
+    duty_cycle{accelerator_id="1234-10",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    duty_cycle{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Duplicate samples for tensorcore_utilization index 0
+    tensorcore_utilization{accelerator_id="1234-0",container="ray-worker",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-0",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-1",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-2",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    tensorcore_utilization{accelerator_id="1234-3",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 0.0
+    # Memory metrics
+    memory_total{accelerator_id="1234-10",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-11",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-14",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    memory_total{accelerator_id="1234-15",make="cloud-tpu",model="v6e",tpu_topology="2x2"} 4000
+    """
+    with patch.multiple(
+        "ray.dashboard.modules.reporter.reporter_agent",
+        TPU_DEVICE_PLUGIN_ADDR="localhost:2112",
+    ):
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.content = fake_metrics_content.encode("utf-8")
+            mock_get.return_value = mock_response
+
+            tpu_utilizations = agent._get_tpu_usage()
+
+            # Should have 4 unique TPUs
+            assert len(tpu_utilizations) == 4
+            # Verify mapping (10 mapped to 0, 11 to 1, etc.)
+            assert tpu_utilizations[0]["index"] == 0
+            assert tpu_utilizations[0]["memory_total"] == 4000
+            assert tpu_utilizations[3]["index"] == 3
+            assert tpu_utilizations[3]["memory_total"] == 4000
 
 
 def test_report_stats_tpu(tmp_path):

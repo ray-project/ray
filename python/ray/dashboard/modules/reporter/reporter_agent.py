@@ -553,8 +553,11 @@ class ReporterAgent(
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
+        subprocesses = request.subprocesses
         p = CpuProfilingManager(self._log_dir)
-        success, output = await p.trace_dump(pid, native=native)
+        success, output = await p.trace_dump(
+            pid, native=native, subprocesses=subprocesses
+        )
         return reporter_pb2.GetTracebackReply(output=output, success=success)
 
     async def CpuProfiling(self, request, context):
@@ -562,9 +565,16 @@ class ReporterAgent(
         duration = request.duration
         format = request.format
         native = request.native
+        idle = request.idle
+        subprocesses = request.subprocesses
         p = CpuProfilingManager(self._log_dir)
         success, output = await p.cpu_profile(
-            pid, format=format, duration=duration, native=native
+            pid,
+            format=format,
+            duration=duration,
+            native=native,
+            idle=idle,
+            subprocesses=subprocesses,
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
@@ -673,6 +683,12 @@ class ReporterAgent(
             )
 
         if batch_data_points:
+            # Keep a single label schema for each histogram batch before
+            # recording the reconstructed data points.
+            all_keys = sorted({k for dp in batch_data_points for k in dp["tags"]})
+            for dp in batch_data_points:
+                tags = dp["tags"]
+                dp["tags"] = {k: tags.get(k, "") for k in all_keys}
             self._open_telemetry_metric_recorder.record_histogram_aggregated_batch(
                 metric.name,
                 batch_data_points,
@@ -767,10 +783,20 @@ class ReporterAgent(
             return []
 
         tpu_utilizations = []
-        # Sample should look like:
-        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
+        # TPU metrics have a quirk where tensor core and memory bandwidth
+        # metrics are host metrics and indexed by chip 0 to N-1, while the
+        # other metrics are runtime metrics and are indexed globally in the
+        # slice.
+        # To make these useful in the dashboard, we want to re-canonicalize the
+        # global indices onto the local host indices.
+        # We partition the metrics into two groups to perform this re-indexing.
+        tpu_utilizations_host = []
+        tpu_utilizations_other = []
+
         # See https://cloud.google.com/monitoring/api/metrics_gcp#gcp-tpu for
         # schema.
+        # Sample should look like:
+        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
         try:
             for family in text_string_to_metric_families(metrics):
                 for sample in family.samples:
@@ -781,80 +807,64 @@ class ReporterAgent(
                         continue
                     labels = sample.labels
                     accelerator_id = labels["accelerator_id"]
-                    index = accelerator_id.split("-")[1]
+                    index = int(accelerator_id.split("-")[1])
 
-                    if sample.name == "memory_bandwidth_utilization":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=sample.value,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
+                    info = TpuUtilizationInfo(
+                        index=index,
+                        name=accelerator_id,
+                        tpu_type=labels["model"],
+                        tpu_topology=labels["tpu_topology"],
+                        tensorcore_utilization=0.0,
+                        hbm_utilization=0.0,
+                        duty_cycle=0.0,
+                        memory_used=0,
+                        memory_total=0,
+                    )
 
-                    if sample.name == "tensorcore_utilization":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=sample.value,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
+                    known = True
+                    is_host_metric = False
+                    match sample.name:
+                        case "memory_bandwidth_utilization":
+                            info["hbm_utilization"] = sample.value
+                            is_host_metric = True
+                        case "tensorcore_utilization":
+                            info["tensorcore_utilization"] = sample.value
+                            is_host_metric = True
+                        case "duty_cycle":
+                            info["duty_cycle"] = sample.value
+                        case "memory_used":
+                            info["memory_used"] = sample.value
+                        case "memory_total":
+                            info["memory_total"] = sample.value
+                        case _:
+                            known = False
 
-                    if sample.name == "duty_cycle":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=sample.value,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
-
-                    if sample.name == "memory_used":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=sample.value,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
-
-                    if sample.name == "memory_total":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=sample.value,
-                        )
-                        tpu_utilizations.append(info)
+                    if known:
+                        if is_host_metric:
+                            tpu_utilizations_host.append(info)
+                        else:
+                            tpu_utilizations_other.append(info)
         except Exception as e:
             logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
             return []
+
+        desired_indices = sorted({i["index"] for i in tpu_utilizations_host})
+        rewrite_indices = sorted({i["index"] for i in tpu_utilizations_other})
+
+        # Some TPU types do not have runtime metrics reported from the device
+        # plugin and the rewrite_indices list will be empty.
+        if len(rewrite_indices) > 0:
+            if len(rewrite_indices) != len(desired_indices):
+                logger.warning(
+                    f"Failed to parse metrics from device plugin: two sets of metrics for different chip counts, {len(desired_indices)} vs {len(rewrite_indices)}"
+                )
+                return []
+
+            index_map = dict(zip(rewrite_indices, desired_indices))
+            for info in tpu_utilizations_other:
+                info["index"] = index_map[info["index"]]
+
+        tpu_utilizations = tpu_utilizations_host + tpu_utilizations_other
 
         # Each collected sample records only one metric (e.g. duty cycle) during
         # the metric interval for one TPU. So here we need to aggregate the
@@ -1397,6 +1407,11 @@ class ReporterAgent(
         Args:
             worker_stats: a list of stats dict generated by `psutil.as_dict`
                 for worker processes. Now with gpu usage information.
+
+        Returns:
+            A list of Record entries with per-process system and GPU stats,
+            including reset records for processes that no longer exist or no
+            longer report GPU usage.
         """
         # worker cmd name (ray::*) -> stats dict.
         proc_name_to_stats = defaultdict(list)

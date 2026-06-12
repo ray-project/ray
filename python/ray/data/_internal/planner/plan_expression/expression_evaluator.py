@@ -339,12 +339,16 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> ds.Expression:
         """Handle case where comparator is UnaryOP (e.g., a == -1).
+
         AST for this expression will be Compare(left=Name(id='a'), ops=[Eq()],
         comparators=[UnaryOp(op=USub(), operand=Constant(value=1))])
 
         Args:
-            node: The constant value."""
+            node: The constant value.
 
+        Returns:
+            A PyArrow scalar expression representing the unary operation result.
+        """
         op = node.op
         if isinstance(op, ast.USub):
             return pc.scalar(-node.operand.value)

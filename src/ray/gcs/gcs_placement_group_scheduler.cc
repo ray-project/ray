@@ -33,7 +33,6 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     ClusterResourceScheduler &cluster_resource_scheduler,
     rpc::RayletClientPool &raylet_client_pool)
     : io_context_(io_context),
-      return_timer_(io_context),
       gcs_table_storage_(gcs_table_storage),
       gcs_node_manager_(gcs_node_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -179,9 +178,9 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     // bundles at the same time.
     DestroyPlacementGroupPreparedBundleResources(placement_group_id);
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
-
-    // Return destroyed bundles resources to the cluster resource.
-    ReturnBundleResources(bundle_locations.value());
+    // GCS no longer locally restores the freed resources here; the next
+    // ray-syncer broadcast from each raylet whose bundles were cancelled will
+    // bring GCS's view back in line with the actual cluster state.
   }
 }
 
@@ -257,7 +256,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
-    int current_retry_cnt) {
+    int current_retry_count) {
   if (bundle_specs.empty()) {
     RAY_LOG(WARNING) << "RemovePlacementGroupBundles called on empty bundle list.";
     return;
@@ -270,7 +269,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
 
   auto node_id = NodeID::FromBinary(node.value()->node_id());
 
-  if (max_retry == current_retry_cnt) {
+  if (max_retry == current_retry_count) {
     RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
                    << " bundle(s) for placement group " << placement_group_id
                    << " at node " << node_id
@@ -292,8 +291,8 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
        node_id,
        node,
        max_retry,
-       current_retry_cnt](const Status &status,
-                          const rpc::RemovePlacementGroupBundlesReply &reply) {
+       current_retry_count](const Status &status,
+                            const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
                         << " bundle(s) for placement group " << placement_group_id
@@ -310,12 +309,12 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
                bundle_specs,
                node,
                max_retry,
-               current_retry_cnt] {
+               current_retry_count] {
                 RemovePlacementGroupBundles(placement_group_id,
                                             bundle_specs,
                                             node,
                                             max_retry,
-                                            current_retry_cnt + 1);
+                                            current_retry_count + 1);
               },
               std::chrono::milliseconds(1000) /* milliseconds */);
         }
@@ -346,7 +345,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(
         lease_status_tracker->GetPlacementGroup()->GetPlacementGroupID());
-    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    // The next ray-syncer broadcast from each raylet whose bundles were
+    // cancelled will reconcile GCS's view.
     schedule_failure_handler(lease_status_tracker->GetPlacementGroup(),
                              /*is_feasible=*/true);
     return;
@@ -384,8 +384,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
 
       if (status.ok()) {
         // Commit the bundle resources on the remote node to the cluster resources.
-        // If status is not OK, no need to call ReturnBundleResources because the
-        // OnAllBundleCommitRequestReturned function calls it.
+        // On Commit failure we leave the optimistic state alone; the next
+        // ray-syncer broadcast from the raylet will reconcile it.
         CommitBundleResources(commited_bundle_locations);
       }
 
@@ -426,7 +426,9 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
-    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    // The rejecting raylet (and any raylets we Cancel above for partially-
+    // prepared bundles) will broadcast their post-state via ray-syncer, which
+    // reconciles GCS's optimistic subtraction.
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
@@ -480,7 +482,8 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   // to destroy them separately.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
-    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    // Cancel RPCs above release the bundle resources on each raylet; their
+    // post-cancel ray-syncer broadcasts will reconcile GCS's view.
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
@@ -494,7 +497,8 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
       placement_group->GetMutableBundle(bundle.first.second)->clear_node_id();
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-    ReturnBundleResources(uncommitted_bundle_locations);
+    // Uncommitted bundles' resources stay subtracted in GCS's view until the
+    // next ray-syncer message from each raylet brings the actual state back.
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
   } else {
     schedule_success_handler(placement_group);
@@ -678,7 +682,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
                                   entry.second,
                                   gcs_node_manager_.GetAliveNode(entry.first),
                                   /*max_retry*/ 5,
-                                  /*current_retry_cnt*/ 0);
+                                  /*current_retry_count*/ 0);
     }
   }
 }
@@ -700,7 +704,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
                                   entry.second,
                                   gcs_node_manager_.GetAliveNode(entry.first),
                                   /*max_retry*/ 5,
-                                  /*current_retry_cnt*/ 0);
+                                  /*current_retry_count*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
     cluster_resource_scheduler_.GetClusterResourceManager()
@@ -773,81 +777,6 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
         cluster_resource_manager.UpdateResourceCapacity(
             node_id, resource_id, capacity.Double());
       }
-    }
-  }
-}
-
-void GcsPlacementGroupScheduler::ReturnBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Return bundle resources to gcs resources manager should contains the following steps.
-  // 1. Remove related bundle resources from nodes.
-  // 2. Add resources allocated for bundles back to nodes.
-  for (auto &bundle : *bundle_locations) {
-    if (!TryReleasingBundleResources(bundle.second)) {
-      waiting_removed_bundles_.push_back(bundle.second);
-    }
-  }
-}
-
-bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
-    const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle) {
-  auto &cluster_resource_manager =
-      cluster_resource_scheduler_.GetClusterResourceManager();
-  auto node_id = scheduling::NodeID(bundle.first.Binary());
-  const auto &bundle_spec = bundle.second;
-  std::vector<scheduling::ResourceID> bundle_resource_ids;
-  absl::flat_hash_map<std::string, FixedPoint> wildcard_resources;
-
-  if (!cluster_resource_manager.HasNode(node_id)) {
-    // If the node is dead, we do not need to release the bundle resources.
-    // The bundle resources will be released when the node is removed by
-    // the cluster resource manager.
-    return true;
-  }
-
-  // Subtract wildcard resources and delete bundle resources.
-  for (const auto &entry : bundle_spec->GetFormattedResources()) {
-    auto resource_id = scheduling::ResourceID(entry.first);
-    auto capacity =
-        cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
-    if (IsPlacementGroupWildcardResource(entry.first)) {
-      wildcard_resources[entry.first] = capacity - entry.second;
-    } else {
-      bundle_resource_ids.emplace_back(resource_id);
-    }
-  }
-
-  // This bundle is not ready for returning.
-  if (bundle_resource_ids.empty()) {
-    return false;
-  }
-
-  for (const auto &[resource_name, capacity] : wildcard_resources) {
-    if (capacity == 0) {
-      bundle_resource_ids.emplace_back(scheduling::ResourceID(resource_name));
-    } else {
-      cluster_resource_manager.UpdateResourceCapacity(
-          node_id, scheduling::ResourceID(resource_name), capacity.Double());
-    }
-  }
-
-  // It will affect nothing if the resource_id to be deleted does not exist in the
-  // cluster_resource_manager_.
-  cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
-  // Add reserved bundle resources back to the node.
-  cluster_resource_manager.AddNodeAvailableResources(
-      node_id, bundle_spec->GetRequiredResources().GetResourceSet());
-  return true;
-}
-
-void GcsPlacementGroupScheduler::HandleWaitingRemovedBundles() {
-  for (auto iter = waiting_removed_bundles_.begin();
-       iter != waiting_removed_bundles_.end();) {
-    auto current = iter++;
-    auto bundle = *current;
-    if (TryReleasingBundleResources(bundle)) {
-      // Release bundle successfully.
-      waiting_removed_bundles_.erase(current);
     }
   }
 }

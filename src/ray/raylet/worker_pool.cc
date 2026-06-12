@@ -1669,18 +1669,15 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorker
   return workers;
 }
 
-bool WorkerPool::IsWorkerAvailableForScheduling() const {
-  for (const auto &entry : states_by_lang_) {
-    for (const auto &worker : entry.second.registered_workers) {
-      if (!worker->IsRegistered()) {
-        continue;
-      }
-      if (worker->IsAvailableForScheduling()) {
-        return true;
-      }
-    }
+bool WorkerPool::AllAliveWorkersAreActors() const {
+  auto workers = GetAllRegisteredWorkers(/*filter_dead_workers=*/true,
+                                         /*filter_io_workers=*/true);
+  if (workers.empty()) {
+    return false;
   }
-  return false;
+  return std::all_of(workers.begin(), workers.end(), [](const auto &worker) {
+    return !worker->GetActorId().IsNil();
+  });
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDrivers(

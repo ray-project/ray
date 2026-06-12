@@ -34,9 +34,9 @@
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },
-    "python": ["3.10", "3.11"],
+    "python": ["3.10", "3.11", "3.12", "3.13"],
     "architectures": ["x86_64"],
-    "platforms": ["cpu", "cu12.1.1-cudnn8"]
+    "platforms": ["cpu", "cu12.1.1-cudnn8", "cu13.0.0-cudnn"]
   },
   "ray-llm": {
     "defaults": {

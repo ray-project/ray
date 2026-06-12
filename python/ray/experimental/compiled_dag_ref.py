@@ -53,21 +53,18 @@ class CompiledDAGRef:
         execution_index: int,
         channel_index: Optional[int] = None,
     ):
-        """
+        """Initialize a CompiledDAGRef.
+
         Args:
             dag: The compiled DAG that generated this CompiledDAGRef.
             execution_index: The index of the execution for the DAG.
                 A DAG can be executed multiple times, and execution index
                 indicates which execution this CompiledDAGRef corresponds to.
-            actor_execution_loop_refs: The actor execution loop refs that
-                are used to execute the DAG. This can be used internally to
-                check the task execution errors in case of exceptions.
             channel_index: The index of the DAG's output channel to fetch
                 the result from. A DAG can have multiple output channels, and
                 channel index indicates which channel this CompiledDAGRef
                 corresponds to. If channel index is not provided, this CompiledDAGRef
                 wraps the results from all output channels.
-
         """
         self._dag = dag
         self._execution_index = execution_index
