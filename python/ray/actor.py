@@ -2705,18 +2705,24 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When this API is called, an exception is raised and the actor
-    will exit immediately. For asyncio actors, there may be a short
-    delay before the actor exits if the API is called from a background
-    task.
-    For threaded actors (``max_concurrency > 1``), methods that have
-    already started executing on other threads run to completion and
-    deliver their results to the caller before the actor exits.
-    Any queued methods (submitted but not yet started executing) will fail.
-    Note that a threaded actor runs methods on a thread pool, so execution
-    start order is not guaranteed to match submission order: a method
-    submitted before the one calling this API is not guaranteed to have
-    started executing.
+    When this API is called, an exception is raised in the calling task and the
+    actor is scheduled to exit. The caller of the task that calls this API
+    observes the actor's death rather than a return value, and methods that have
+    not started executing fail with ``RayActorError``.
+
+    What happens to in-flight methods (those already executing) depends on the
+    actor's concurrency model:
+
+    - Single-threaded actor: methods run one at a time in submission order, so
+      every method submitted before the one calling this API has already
+      completed; the actor simply exits after the current method.
+    - Threaded actor (``max_concurrency > 1``): methods already running on other
+      threads run to completion and deliver their results to their callers
+      before the actor exits. Because methods run on a thread pool, execution
+      start order is not guaranteed to match submission order: a method
+      submitted before the one calling this API is not guaranteed to have
+      started (and would then fail with ``RayActorError``).
+
     Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:

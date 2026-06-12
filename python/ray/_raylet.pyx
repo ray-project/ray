@@ -276,7 +276,10 @@ current_task_id_lock = threading.Lock()
 # their results are discarded (the caller sees the actor death error) even
 # if user code swallows the resulting exception — while other tasks that complete
 # during the graceful exit still deliver their results.
+# Guarded by exit_actor_task_ids_lock since concurrent actors mutate it from
+# multiple worker threads.
 exit_actor_task_ids = set()
+exit_actor_task_ids_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
@@ -1952,12 +1955,15 @@ cdef void execute_task(
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
                         raise task_exception_instance
-                    if task_id in exit_actor_task_ids and core_worker.get_current_actor_should_exit():
+                    with exit_actor_task_ids_lock:
+                        this_task_called_exit_actor = task_id in exit_actor_task_ids
+                        exit_actor_task_ids.discard(task_id)
+                    if (this_task_called_exit_actor
+                            and core_worker.get_current_actor_should_exit()):
                         # This task called exit_actor(). Exit before storing
                         # its outputs even if user code swallowed the
                         # resulting exception, so the caller sees the actor
                         # death instead of a return value.
-                        exit_actor_task_ids.discard(task_id)
                         raise_sys_exit_with_custom_error_message(
                             "exit_actor() is called.")
 
@@ -4555,7 +4561,8 @@ cdef class CoreWorker:
                 .CurrentActorIsAsync())
 
     def set_current_actor_should_exit(self):
-        exit_actor_task_ids.add(self.get_current_task_id())
+        with exit_actor_task_ids_lock:
+            exit_actor_task_ids.add(self.get_current_task_id())
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
 
