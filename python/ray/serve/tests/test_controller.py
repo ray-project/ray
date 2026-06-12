@@ -196,7 +196,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
-                                "graceful_shutdown_timeout_s": 20.0,
+                                "graceful_shutdown_timeout_s": 45.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {

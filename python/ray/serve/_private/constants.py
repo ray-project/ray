@@ -260,7 +260,9 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
     "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
-DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
+# Kept above the 30s direct ingress drain floor so the post-drain graceful
+# server shutdown has nonzero budget at defaults.
+DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 45
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30

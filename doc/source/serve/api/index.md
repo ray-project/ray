@@ -317,7 +317,7 @@ Content-Type: application/json
                             "language": "german"
                         },
                         "graceful_shutdown_wait_loop_s": 2.0,
-                        "graceful_shutdown_timeout_s": 20.0,
+                        "graceful_shutdown_timeout_s": 45.0,
                         "health_check_period_s": 10.0,
                         "health_check_timeout_s": 30.0,
                         "ray_actor_options": {
@@ -353,7 +353,7 @@ Content-Type: application/json
                         "max_ongoing_requests": 100,
                         "user_config": null,
                         "graceful_shutdown_wait_loop_s": 2.0,
-                        "graceful_shutdown_timeout_s": 20.0,
+                        "graceful_shutdown_timeout_s": 45.0,
                         "health_check_period_s": 10.0,
                         "health_check_timeout_s": 30.0,
                         "ray_actor_options": {
