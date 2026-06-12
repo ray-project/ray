@@ -35,15 +35,20 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       root_cgroup_path_(root_cgroup_path),
       user_cgroup_path_(user_cgroup_path),
       system_cgroup_path_(system_cgroup_path),
-      io_service_(/*enable_metrics=*/false,
-                  /*running_on_single_thread=*/true,
-                  "MemoryMonitor.IOContext"),
-      work_guard_(boost::asio::make_work_guard(io_service_.get_executor())),
-      thread_([this] {
+      io_service_(std::make_unique<instrumented_io_context>(
+          /*enable_metrics=*/false,
+          /*running_on_single_thread=*/true,
+          "MemoryMonitor.IOContext")),
+      work_guard_(
+          std::make_unique<
+              boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+              boost::asio::make_work_guard(io_service_->get_executor()))),
+      thread_(std::make_unique<std::thread>([this] {
         SetThreadName("MemoryMonitor.IOContextThread");
-        io_service_.run();
-      }),
-      runner_(PeriodicalRunner::Create(io_service_)) {
+        io_service_->run();
+      })),
+      owned_runner_(PeriodicalRunner::Create(*io_service_)),
+      runner_(*owned_runner_) {
   int64_t total_memory_bytes =
       MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_).total_bytes;
   float computed_threshold_fraction = static_cast<float>(memory_usage_threshold_bytes_) /
@@ -60,7 +65,44 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
           ? ", resource isolation enabled, monitoring only user slice memory usage"
           : "");
 
-  runner_->RunFnPeriodically(
+  RegisterPeriodicCheck(monitor_interval_ms);
+}
+
+ThresholdMemoryMonitor::ThresholdMemoryMonitor(PeriodicalRunnerInterface &runner,
+                                               KillWorkersCallback kill_workers_callback,
+                                               int64_t memory_usage_threshold_bytes,
+                                               uint64_t monitor_interval_ms,
+                                               bool resource_isolation_enabled,
+                                               const std::string &root_cgroup_path,
+                                               const std::string &user_cgroup_path,
+                                               const std::string &system_cgroup_path)
+    : kill_workers_callback_(std::move(kill_workers_callback)),
+      worker_killing_in_progress_(false),
+      memory_usage_threshold_bytes_(memory_usage_threshold_bytes),
+      resource_isolation_enabled_(resource_isolation_enabled),
+      root_cgroup_path_(root_cgroup_path),
+      user_cgroup_path_(user_cgroup_path),
+      system_cgroup_path_(system_cgroup_path),
+      io_service_(nullptr),
+      work_guard_(nullptr),
+      thread_(nullptr),
+      owned_runner_(nullptr),
+      runner_(runner) {
+  RegisterPeriodicCheck(monitor_interval_ms);
+}
+
+ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
+  owned_runner_.reset();
+  if (io_service_ != nullptr) {
+    io_service_->stop();
+  }
+  if (thread_ != nullptr && thread_->joinable()) {
+    thread_->join();
+  }
+}
+
+void ThresholdMemoryMonitor::RegisterPeriodicCheck(uint64_t monitor_interval_ms) {
+  runner_.RunFnPeriodically(
       [this] {
         std::optional<MemoryUsageSnapshot> exceeded_snapshot;
         if (resource_isolation_enabled_) {
@@ -86,14 +128,6 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       },
       monitor_interval_ms,
       "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-}
-
-ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
-  runner_.reset();
-  io_service_.stop();
-  if (thread_.joinable()) {
-    thread_.join();
-  }
 }
 
 void ThresholdMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }

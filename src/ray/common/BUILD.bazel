@@ -163,6 +163,7 @@ ray_cc_library(
         ":memory_monitor_interface",
         ":memory_monitor_utils",
         "//src/ray/asio:periodical_runner",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",
         "@com_google_absl//absl/strings:str_format",

@@ -20,6 +20,7 @@
 #include <thread>
 
 #include "ray/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
@@ -61,6 +62,24 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
                          const std::string &user_cgroup_path = kDefaultCgroupPath,
                          const std::string &system_cgroup_path = kDefaultCgroupPath);
 
+  /**
+   * @brief Constructor that uses an externally-provided periodical runner instead
+   *        of spawning a dedicated IO thread. Intended for tests, where a
+   *        FakePeriodicalRunner driven by a FakeClock allows the periodic memory
+   *        check to be triggered deterministically. `runner` must outlive this
+   *        monitor.
+   *
+   * All other parameters behave as in the production constructor above.
+   */
+  ThresholdMemoryMonitor(PeriodicalRunnerInterface &runner,
+                         KillWorkersCallback kill_workers_callback,
+                         int64_t memory_usage_threshold_bytes,
+                         uint64_t monitor_interval_ms,
+                         bool resource_isolation_enabled,
+                         const std::string &root_cgroup_path = kDefaultCgroupPath,
+                         const std::string &user_cgroup_path = kDefaultCgroupPath,
+                         const std::string &system_cgroup_path = kDefaultCgroupPath);
+
   ~ThresholdMemoryMonitor() override;
 
   /**
@@ -79,6 +98,10 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   bool IsEnabled() const override;
 
  private:
+  /// Registers the periodic memory check on `runner_`. Shared by both
+  /// constructors.
+  void RegisterPeriodicCheck(uint64_t monitor_interval_ms);
+
   /**
    * @brief Checks if the memory usage on the host exceeds the threshold.
    *
@@ -122,18 +145,28 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   /// use to monitor the aggregate object store memory usage.
   std::string system_cgroup_path_;
 
-  /// IO service for running the memory monitoring event loop.
-  instrumented_io_context io_service_;
+  /// IO service for running the memory monitoring event loop. Only created by the
+  /// production constructor; null when an external runner is injected.
+  std::unique_ptr<instrumented_io_context> io_service_;
 
-  /// Work guard to prevent the io service from exiting when no work.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard_;
+  /// Work guard to prevent the io service from exiting when no work. Only created
+  /// by the production constructor.
+  std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
+      work_guard_;
 
   /// Thread executing the io service. Started before the runner so the io_service
-  /// is ready to process work. Explicitly joined in the destructor.
-  std::thread thread_;
+  /// is ready to process work. Explicitly joined in the destructor. Only created
+  /// by the production constructor.
+  std::unique_ptr<std::thread> thread_;
 
-  /// Periodical runner for memory monitoring.
-  std::shared_ptr<PeriodicalRunner> runner_;
+  /// Periodical runner owned by the production constructor (backed by io_service_).
+  /// Null when an external runner is injected.
+  std::shared_ptr<PeriodicalRunner> owned_runner_;
+
+  /// The runner used to schedule the periodic memory check. References either
+  /// owned_runner_ (production) or an externally-provided runner (tests).
+  PeriodicalRunnerInterface &runner_;
 };
 
 }  // namespace ray
