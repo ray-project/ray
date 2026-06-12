@@ -15,6 +15,10 @@ KV_EVENT_PLANE_ENV_DEFAULTS = {
 # subscriber its SUB socket to the XPUB side, with no discovery involved.
 DYN_ZMQ_BROKER_URL_ENV = "DYN_ZMQ_BROKER_URL"
 
+# Bucket of Dynamo endpoint discovery records inside a file KV store
+# directory. The router's recovery path resolves each worker's local-indexer
+# query endpoint from records in this bucket.
+DISCOVERY_INSTANCES_BUCKET = "v1/instances"
 
 # The deployment-scoped Dynamo component endpoint, forming the endpoint path
 # `<namespace>.backend.generate` on both sides. The component segment scopes
