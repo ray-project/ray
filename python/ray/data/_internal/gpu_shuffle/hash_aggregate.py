@@ -55,7 +55,9 @@ logger = logging.getLogger(__name__)
 _GLOBAL_AGGREGATE_KEY = "__hash_aggregate_global_key"
 
 
-def _resolve_aggregation_names(aggregation_fns: Sequence[AggregateFn]) -> List[str]:
+def _resolve_aggregation_names(
+    aggregation_fns: Sequence[Union[AggregateFn, "GPUAggregateFn"]],
+) -> List[str]:
     """Resolve duplicate aggregate names the same way TableBlockAccessor does."""
     counts: Dict[str, int] = defaultdict(int)
     resolved_names: List[str] = []
@@ -247,12 +249,27 @@ def _empty_dataframe(
     return df
 
 
-class GPUAggregateFn(AggregateFnV2):
+class GPUAggregateFn(abc.ABC):
     """Extension point for GPU-enabled aggregations.
 
-    This class adds methods to the standard ``AggregateFnV2`` contract for GPU-enabled
-    aggregations.
+    GPU aggregate implementations define cuDF partial and final aggregation methods.
     """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        on: Optional[str],
+        ignore_nulls: bool,
+    ) -> None:
+        if not name:
+            raise ValueError(
+                f"Non-empty string has to be provided as name (got {name})"
+            )
+
+        self.name = name
+        self.target_column = on
+        self.ignore_nulls = ignore_nulls
 
     @abc.abstractmethod
     def gpu_accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
@@ -313,7 +330,7 @@ class GPUAggregateFn(AggregateFnV2):
         """Return Arrow output type overrides for GPU final outputs."""
         return {}
 
-    def gpu_final_output_dtypes(
+    def gpu_final_cudf_types(
         self,
         df: Any,
         output_name: str,
@@ -325,10 +342,14 @@ class GPUAggregateFn(AggregateFnV2):
         return {}
 
 
-class _BuiltinGPUAggregateFn(GPUAggregateFn):
-    """GPU aggregation implementation for builtin aggregations.
+class BuiltinGPUAggregateFn(GPUAggregateFn):
+    """Base class for GPU implementations of builtin CPU aggregations.
 
-    Supported builtin aggregations: count, sum, min, max, mean.
+    Currently supports these built-in aggregations:
+     - Count
+     - Max
+     - Mean
+     - Sum
 
     Args:
         cpu_agg: Original built-in CPU aggregate instance from plan.
@@ -344,34 +365,13 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         *,
         source_dtype: Optional[DataType] = None,
     ) -> None:
-        self._wrapped = cpu_agg
+        # copy properties from CPU aggregate function instance
         self.source_dtype = source_dtype
         super().__init__(
             cpu_agg.name,
             on=cpu_agg.get_target_column(),
             ignore_nulls=cpu_agg._ignore_nulls,
-            zero_factory=self._zero_factory,
         )
-
-    def _zero_factory(self) -> Any:
-        return 0
-
-    def aggregate_block(self, block: Block) -> Any:
-        return self._wrapped.aggregate_block(block)
-
-    def combine(self, current_accumulator: Any, new: Any) -> Any:
-        return self._wrapped.combine(current_accumulator, new)
-
-    def finalize(self, accumulator: Any) -> Any:
-        return self._wrapped.finalize(accumulator)
-
-    @property
-    def target_column(self) -> Optional[str]:
-        return self.get_target_column()
-
-    @property
-    def ignore_nulls(self) -> bool:
-        return self._ignore_nulls
 
     def gpu_accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
         """Return the intermediate accumulator columns from partial aggregations.
@@ -626,7 +626,7 @@ class _BuiltinGPUAggregateFn(GPUAggregateFn):
         return result, count_dtype
 
 
-class GPUCount(_BuiltinGPUAggregateFn):
+class GPUCount(BuiltinGPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Count`."""
 
     _cudf_aggregate_name = "count"
@@ -712,7 +712,7 @@ class GPUCount(_BuiltinGPUAggregateFn):
         return {output_name: DataType.from_numpy("int64")}
 
 
-class GPUSum(_BuiltinGPUAggregateFn):
+class GPUSum(BuiltinGPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Sum`."""
 
     _cudf_aggregate_name = "sum"
@@ -727,16 +727,13 @@ class GPUSum(_BuiltinGPUAggregateFn):
         return {accumulator_columns[0]: None if self.ignore_nulls else 0}
 
 
-class GPUMin(_BuiltinGPUAggregateFn):
+class GPUMin(BuiltinGPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Min`."""
 
     _cudf_aggregate_name = "min"
 
     def __init__(self, agg: Min, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
-
-    def _zero_factory(self) -> Any:
-        return float("+inf")
 
     def gpu_empty_global_partial_values(
         self, accumulator_prefix: str
@@ -745,16 +742,13 @@ class GPUMin(_BuiltinGPUAggregateFn):
         return {accumulator_columns[0]: None if self.ignore_nulls else float("+inf")}
 
 
-class GPUMax(_BuiltinGPUAggregateFn):
+class GPUMax(BuiltinGPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Max`."""
 
     _cudf_aggregate_name = "max"
 
     def __init__(self, agg: Max, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
-
-    def _zero_factory(self) -> Any:
-        return float("-inf")
 
     def gpu_empty_global_partial_values(
         self, accumulator_prefix: str
@@ -763,16 +757,13 @@ class GPUMax(_BuiltinGPUAggregateFn):
         return {accumulator_columns[0]: None if self.ignore_nulls else float("-inf")}
 
 
-class GPUMean(_BuiltinGPUAggregateFn):
+class GPUMean(BuiltinGPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Mean`."""
 
     _cudf_aggregate_name = "mean"
 
     def __init__(self, agg: Mean, *, source_dtype: Optional[DataType] = None) -> None:
         super().__init__(agg, source_dtype=source_dtype)
-
-    def _zero_factory(self) -> Any:
-        return [0, 0]
 
     def gpu_accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
         return (
@@ -923,7 +914,7 @@ class GPUAggregationPlan:
         required_columns = {
             column
             for agg in gpu_aggregates
-            if (column := agg.get_target_column()) is not None
+            if (column := agg.target_column) is not None
         }
         while global_key in required_columns:
             global_key = f"_{global_key}"
@@ -946,7 +937,7 @@ class GPUAggregationPlan:
     def required_columns(self) -> Tuple[str, ...]:
         columns = list(self._key_columns)
         for agg in self._gpu_aggregates:
-            target_column = agg.get_target_column()
+            target_column = agg.target_column
             if target_column is not None and target_column not in columns:
                 columns.append(target_column)
         return tuple(columns)
@@ -1102,7 +1093,7 @@ class GPUAggregationPlan:
         for agg, output_name, accumulator_prefix in self._iter_aggregations():
             dtypes.update(
                 to_datatypes(
-                    agg.gpu_final_output_dtypes(
+                    agg.gpu_final_cudf_types(
                         df,
                         output_name,
                         accumulator_prefix,
@@ -1273,7 +1264,7 @@ def _get_builtin_gpu_aggregate_fn(
 
 def build_gpu_aggregation_plan(
     key_columns: Tuple[str, ...],
-    aggregation_fns: Tuple[AggregateFn, ...],
+    aggregation_fns: Tuple[Union[AggregateFn, GPUAggregateFn], ...],
     input_schema: Optional[Schema] = None,
 ) -> Union[GPUAggregationPlan, str]:
     """Build a GPU aggregation plan.
@@ -1309,10 +1300,10 @@ def build_gpu_aggregation_plan(
     for index, agg in enumerate(aggregation_fns):
         accumulator_prefix = f"__ray_gpu_agg_{index}"
         if isinstance(agg, GPUAggregateFn):
-            # handle subclasses of GPUAggregateFn (e.g. custom aggregations)
+            # handle subclasses of GPUAggregateFn as-is (i.e. custom GPU aggregations)
             gpu_aggregate = agg
         else:
-            # try to convert a built-in aggregation function to a GPU equivalent
+            # try to convert built-in aggregation function to GPU equivalent
             gpu_aggregate = _get_builtin_gpu_aggregate_fn(
                 agg, input_schema=input_schema
             )
