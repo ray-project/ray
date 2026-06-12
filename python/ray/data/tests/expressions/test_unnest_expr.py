@@ -10,7 +10,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -183,10 +182,8 @@ def test_existing_eval_projection_unchanged():
 
 def test_unnest_structurally_equals():
     """Two UnnestExpr wrapping structurally equal inners are structurally equal."""
-    from ray.data.expressions import UnnestExpr, col
-
     from ray.data.datatype import DataType
-    from ray.data.expressions import udf
+    from ray.data.expressions import UnnestExpr, col, udf
 
     @udf(return_dtype=DataType.struct([("x", DataType.int64())]))
     def f(a: pa.Array) -> pa.StructArray:
@@ -383,9 +380,9 @@ def test_eval_projection_multiple_unnests():
     assert "b" in schema_names
 
     # No duplicate column names.
-    assert len(schema_names) == len(set(schema_names)), (
-        f"Duplicate column names found: {schema_names}"
-    )
+    assert len(schema_names) == len(
+        set(schema_names)
+    ), f"Duplicate column names found: {schema_names}"
 
     # Correct values.
     assert result["sum_ab"].to_pylist() == [5, 9]
@@ -483,6 +480,7 @@ def test_eval_projection_zero_rows():
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

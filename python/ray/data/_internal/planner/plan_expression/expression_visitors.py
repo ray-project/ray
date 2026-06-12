@@ -14,8 +14,8 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
-    UUIDExpr,
     UnnestExpr,
+    UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
 )
