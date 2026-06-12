@@ -39,6 +39,10 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
+RUNTIME_ENV_AGENT_PIP_PACKAGES = [
+    "aiohttp==3.14.0",
+    "idna==3.15",
+]
 DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -254,7 +258,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.13.3",
+            "aiohttp >= 3.14.0",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -578,7 +582,6 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
 
         # runtime env agent dependenceis
-        runtime_env_agent_pip_packages = ["aiohttp"]
         subprocess.check_call(
             [
                 sys.executable,
@@ -589,7 +592,7 @@ def build(build_python, build_java, build_cpp, build_redis):
                 "--target="
                 + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
             ]
-            + runtime_env_agent_pip_packages
+            + RUNTIME_ENV_AGENT_PIP_PACKAGES
         )
 
     bazel_targets = []

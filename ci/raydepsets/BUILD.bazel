@@ -69,6 +69,22 @@ py_library(
 )
 
 py_test(
+    name = "test_bundled_dependency_versions",
+    srcs = ["tests/test_bundled_dependency_versions.py"],
+    data = [
+        "//:python/setup.py",
+        "//java:dependencies.bzl",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_workspace",
     srcs = ["tests/test_workspace.py"],
     data = [

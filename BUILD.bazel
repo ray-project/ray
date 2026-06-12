@@ -22,6 +22,7 @@ package(
 
 exports_files([
     ".rayciversion",
+    "python/setup.py",
     "ray-images.json",
 ])
 
