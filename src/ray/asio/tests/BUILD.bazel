@@ -22,3 +22,14 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
     ],
 )
+
+ray_cc_test(
+    name = "fake_periodical_runner_test",
+    size = "small",
+    srcs = ["fake_periodical_runner_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/asio:fake_periodical_runner",
+        "//src/ray/util:clock",
+    ],
+)

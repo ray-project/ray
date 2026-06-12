@@ -15,6 +15,10 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
+#include <functional>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
@@ -69,18 +73,73 @@ class FakeClock final : public ClockInterface {
   }
 
   void AdvanceTime(absl::Duration duration) {
-    absl::MutexLock lock(&mu_);
-    now_ += duration;
+    {
+      absl::MutexLock lock(&mu_);
+      now_ += duration;
+    }
+    NotifyTimeChanged();
   }
 
   void SetTime(absl::Time time) {
+    {
+      absl::MutexLock lock(&mu_);
+      now_ = time;
+    }
+    NotifyTimeChanged();
+  }
+
+  /// Register a callback that is invoked whenever the clock's time changes (via
+  /// AdvanceTime or SetTime). The callback is passed the new current time.
+  /// Returns a handle that can be passed to UnregisterOnAdvanceCallback to
+  /// remove the callback.
+  ///
+  /// This is intentionally generic: the clock has no knowledge of who registers
+  /// callbacks, which keeps it loosely coupled from its observers (e.g. a fake
+  /// periodical runner).
+  uint64_t RegisterOnAdvanceCallback(std::function<void(absl::Time)> callback) {
     absl::MutexLock lock(&mu_);
-    now_ = time;
+    uint64_t handle = next_callback_handle_++;
+    callbacks_.emplace_back(handle, std::move(callback));
+    return handle;
+  }
+
+  /// Remove a callback previously registered with RegisterOnAdvanceCallback.
+  /// No-op if the handle is not registered.
+  void UnregisterOnAdvanceCallback(uint64_t handle) {
+    absl::MutexLock lock(&mu_);
+    for (auto it = callbacks_.begin(); it != callbacks_.end(); ++it) {
+      if (it->first == handle) {
+        callbacks_.erase(it);
+        return;
+      }
+    }
   }
 
  private:
+  // Invoke all registered callbacks with the current time. The callbacks are
+  // copied out under the lock and invoked without it held, so they may safely
+  // call back into the clock (e.g. Now()) without deadlocking.
+  void NotifyTimeChanged() {
+    absl::Time now;
+    std::vector<std::function<void(absl::Time)>> callbacks;
+    {
+      absl::MutexLock lock(&mu_);
+      now = now_;
+      callbacks.reserve(callbacks_.size());
+      for (const auto &entry : callbacks_) {
+        callbacks.push_back(entry.second);
+      }
+    }
+    for (const auto &callback : callbacks) {
+      callback(now);
+    }
+  }
+
   mutable absl::Mutex mu_;
   absl::Time now_ ABSL_GUARDED_BY(mu_);
+  uint64_t next_callback_handle_ ABSL_GUARDED_BY(mu_) = 0;
+  std::vector<std::pair<uint64_t, std::function<void(absl::Time)>>> callbacks_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace ray
