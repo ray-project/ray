@@ -2868,6 +2868,7 @@ class DeploymentState:
         # changes or the cache entry is older than _HEALTH_GAUGE_REPORT_INTERVAL_S
         # (to ensure the metric is re-exported within each Prometheus scrape window).
         self._health_gauge_cache: Dict[str, Tuple[int, float]] = {}
+        self._last_health_check_healthy_replica_ids: Set[str] = set()
 
         # Maintain gang membership bookkeeping to avoid O(num_replicas) lookups when stopping gangs.
         # Updated on replica creation during upscaling and permanent removal during downscaling.
@@ -4406,7 +4407,15 @@ class DeploymentState:
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
-        self._set_health_gauge(replica.replica_id.unique_id, 0)
+        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            self._set_health_gauge(replica.replica_id.unique_id, 0)
+        else:
+            self._last_health_check_healthy_replica_ids.discard(
+                replica.replica_id.unique_id
+            )
+            self.health_check_gauge.set(
+                len(self._last_health_check_healthy_replica_ids)
+            )
 
     def _stop_replica_mark_unhealthy_if_target_version(
         self, replica: DeploymentReplica, graceful_stop: bool
@@ -4586,8 +4595,12 @@ class DeploymentState:
             # deployment/application series. Emit the count of replicas that
             # passed health checks in this iteration so newly promoted replicas
             # are not counted before their first successful health check.
-            healthy_replica_count = len(healthy_replicas)
-            self.health_check_gauge.set(healthy_replica_count)
+            self._last_health_check_healthy_replica_ids = {
+                replica.replica_id.unique_id for replica in healthy_replicas
+            }
+            self.health_check_gauge.set(
+                len(self._last_health_check_healthy_replica_ids)
+            )
 
         # After replica state updates, check rank consistency and perform minimal reassignment if needed
         # This ensures ranks are continuous after lifecycle events
