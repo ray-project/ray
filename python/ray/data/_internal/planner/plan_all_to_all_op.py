@@ -4,6 +4,18 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _SHUFFLE_MAP_RUNTIME_ENV,
+    _concat_reduce,
+    _make_hash_partition_fn,
+    _sort_reduce,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -53,18 +65,6 @@ def _plan_hash_shuffle_repartition(
     Returns the reduce op; the executor crawls upstream via its
     input_dependencies to find the map op.
     """
-    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-        _SHUFFLE_MAP_RUNTIME_ENV,
-        _concat_reduce,
-        _make_hash_partition_fn,
-        _sort_reduce,
-    )
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
-        ShuffleMapOp,
-    )
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
-        ShuffleReduceOp,
-    )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()

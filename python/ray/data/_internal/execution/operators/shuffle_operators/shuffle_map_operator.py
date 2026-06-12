@@ -408,6 +408,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         super()._do_shutdown(force)
         self._shuffle_map_tasks.clear()
         self._merge_buffer_refs_by_node.clear()
+        for bundles in self._merge_buffer_bundles_by_node.values():
+            for bundle in bundles:
+                bundle.destroy_if_owned()
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
         for queue in self._partition_staging.values():
