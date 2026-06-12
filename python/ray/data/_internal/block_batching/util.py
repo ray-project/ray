@@ -179,6 +179,9 @@ def resolve_block_refs(
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+
+    Yields:
+        Block: The resolved blocks for each block reference.
     """
     hits = 0
     misses = 0

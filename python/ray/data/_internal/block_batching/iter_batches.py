@@ -333,6 +333,9 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+
+    Returns:
+        An iterator over batches with formatting and collation applied.
     """
 
     def threadpool_computations_format_collate(

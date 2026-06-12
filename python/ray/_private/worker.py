@@ -1589,7 +1589,8 @@ def init(
             If you have a custom server to serve the dashboard requests,
             you can set this option to override the server url.
             Ex: proxy_server_url=http://historyserver:8080
-        **kwargs: Hidden / experimental options. Recognized keys include
+        **kwargs: Hidden / experimental options. These options are unstable and
+            may change without notice. Recognized keys include
             ``object_spilling_directory`` (path to spill objects to; defaults
             to the node's session dir),
             ``_enable_object_reconstruction`` (reconstruct lost objects by
@@ -1603,8 +1604,7 @@ def init(
             ``_metrics_export_port`` (Prometheus metrics port),
             ``_system_config`` (RayConfig override dict; testing only),
             ``_tracing_startup_hook`` (callable to set up tracing), and
-            ``_node_name`` (user-provided node identifier). These options
-            are unstable and may change without notice.
+            ``_node_name`` (user-provided node identifier).
 
     Returns:
         If the provided address includes a protocol, for example by prepending
@@ -2064,9 +2064,9 @@ _post_init_hooks = []
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(local_only_kwargs=("wait_for_processes",))
 @with_connect_or_shutdown_lock
-def shutdown(_exiting_interpreter: bool = False):
+def shutdown(*, wait_for_processes: bool = False, _exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -2097,6 +2097,10 @@ def shutdown(_exiting_interpreter: bool = False):
           continue running and can be connected to again.
 
     Args:
+        wait_for_processes: If True, block until the subprocesses started by
+            ``ray.init()`` (raylet, GCS, dashboard, etc.) have actually exited
+            before returning. Has no effect when connected as a Ray Client,
+            which owns no local subprocesses.
         _exiting_interpreter: True if this is called by the atexit hook
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
@@ -2135,7 +2139,9 @@ def shutdown(_exiting_interpreter: bool = False):
     if _global_node is not None:
         if _global_node.is_head():
             _global_node.destroy_external_storage()
-        _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
+        _global_node.kill_all_processes(
+            check_alive=False, allow_graceful=True, wait=wait_for_processes
+        )
         _global_node = None
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
@@ -2145,7 +2151,7 @@ def shutdown(_exiting_interpreter: bool = False):
     services.find_gcs_addresses.cache_clear()
 
 
-atexit.register(shutdown, True)
+atexit.register(shutdown, _exiting_interpreter=True)
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
