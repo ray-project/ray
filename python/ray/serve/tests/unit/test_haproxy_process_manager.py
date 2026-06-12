@@ -1,12 +1,9 @@
-"""Unit tests for HAProxyApi process takeover and reload signaling.
+"""Unit tests for HAProxyApi reload takeover verification and -sf signaling.
 
-Regression tests for the orphaned-worker incident: during a graceful reload
-the admin socket path keeps answering through its previous owner until the
-new process rebinds it, so a readiness check that only asks "did the socket
-answer?" passes for a spawn that dies before taking over. The manager then
-advances ``self._proc`` to a corpse and the worker that spawn was meant to
-stop is never signaled again — it keeps serving its stale config (with
-health checks still running) indefinitely.
+Regression coverage for the orphaned-worker incident: during a reload the
+admin socket answers through its previous owner, so a socket-only readiness
+check declares a dead spawn ready and strands the worker it was meant to
+stop — which keeps serving its stale config indefinitely.
 """
 import asyncio
 import sys
@@ -62,10 +59,8 @@ def _answer_show_info(api: HAProxyApi, response: str) -> None:
 
 class TestWaitForHapAvailability:
     def test_rejects_answer_from_previous_socket_owner(self, api, tmp_path):
-        """A spawn must not be declared ready just because the admin socket
-        answered: during a reload the socket is still owned by the previous
-        worker. Readiness requires the answering pid to be the spawn itself.
-        """
+        """Readiness requires the answering pid to be the spawn itself, not
+        whichever previous worker still owns the socket path."""
         stdout, stderr = _make_stream_files(tmp_path, "fd transfer failed")
         # The socket answers, but from the OLD worker (pid 111).
         _answer_show_info(api, "Name: HAProxy\nPid: 111\nUptime: 1d\n")
@@ -106,10 +101,8 @@ class TestGracefulReloadSignaling:
         api._wait_for_hap_availability = fake_wait
 
     def test_resignals_live_old_procs(self, api, tmp_path):
-        """Every reload re-targets still-alive displaced workers in -sf, so a
-        worker whose original stop signal was lost is healed on the next
-        reload instead of being stranded outside the chain forever.
-        """
+        """Reloads include still-alive displaced workers in -sf, healing any
+        worker whose original stop signal was lost."""
         stdout, stderr = _make_stream_files(tmp_path)
         current = FakeProc(pid=10)
         live_old = FakeProc(pid=20)

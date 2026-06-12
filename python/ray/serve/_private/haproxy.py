@@ -875,13 +875,9 @@ class HAProxyApi(ProxyApi):
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
-            # Also re-signal any previously displaced workers that are still
-            # alive: if a prior reload's -sf signal was lost (e.g. the spawn
-            # died before delivering it), the next reload re-targets them
-            # instead of stranding them outside the chain forever. Signaling
-            # an already-draining worker is a no-op. Prune first so only live
-            # pids are passed and the list and the log files on disk stay
-            # bounded across reloads.
+            # Also re-signal still-alive displaced workers: heals any worker
+            # whose earlier -sf signal was lost (re-signaling a draining one
+            # is a no-op). Prune first so only live pids are passed.
             self._prune_old_procs()
             live_old_pids = [str(p.pid) for p in self._old_procs]
             reload_args = ["-sf", str(old_proc.pid), *live_old_pids]
@@ -890,8 +886,7 @@ class HAProxyApi(ProxyApi):
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process for shutdown cleanup; pruned at the start of
-            # the next reload.
+            # Track for shutdown cleanup; pruned at the next reload.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
 
@@ -921,13 +916,10 @@ class HAProxyApi(ProxyApi):
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
                 )
 
-            # The admin socket path keeps answering through its previous owner
-            # until the new process rebinds it, so "the socket answered" does
-            # not mean `proc` is up. Require the answer to come from `proc`
-            # itself: otherwise a spawn that dies before taking over is
-            # declared ready, `self._proc` advances to a corpse, and the
-            # worker that spawn was meant to stop (its -sf target) is never
-            # signaled again — it keeps serving its stale config forever.
+            # The socket path answers through its previous owner until the
+            # new process rebinds it, so require the answer to come from
+            # `proc` itself — else a spawn that dies before taking over is
+            # declared ready and its -sf target is stranded forever.
             if await self._get_running_pid() == proc.pid:
                 return
 
@@ -1297,12 +1289,8 @@ class HAProxyApi(ProxyApi):
         )
 
     async def _get_running_pid(self) -> Optional[int]:
-        """Pid of the HAProxy process currently answering the admin socket.
-
-        Returns None if the socket is unavailable or the response is
-        unparseable. Used to verify that a specific (newly spawned) process
-        has taken over the socket: the socket path keeps answering through
-        its previous owner until the new process rebinds it.
+        """Pid of the HAProxy process currently answering the admin socket,
+        or None if the socket is unavailable or the response is unparseable.
         """
         try:
             info = await self._send_socket_command("show info")
