@@ -720,6 +720,26 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
         )
 
 
+@DeveloperAPI
+class ObjectFreedError(ObjectLostError):
+    """Indicates that an object was manually freed by the application.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object was manually freed using the internal `free` call. "
+                "Please ensure that `free` is only called once the object is no "
+                "longer needed."
+            )
+        )
+
+
 @PublicAPI
 class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
@@ -731,12 +751,19 @@ class OwnerDiedError(ObjectLostError):
 
     def __str__(self):
         log_loc = "`/tmp/ray/session_latest/logs`"
+        owner_location = None
         if self.owner_address:
             try:
                 addr = Address()
                 addr.ParseFromString(self.owner_address)
                 ip_addr = addr.ip_address
                 worker_id = WorkerID(addr.worker_id)
+                node_id = addr.node_id.hex() if addr.node_id else "unknown"
+                owner_location = (
+                    f"Owner worker ID: {worker_id.hex()}, "
+                    f"owner node ID: {node_id}, "
+                    f"owner address: {ip_addr}:{addr.port}."
+                )
                 log_loc = (
                     f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
                     f" at IP address {ip_addr}"
@@ -755,6 +782,7 @@ class OwnerDiedError(ObjectLostError):
                 "`ray.put()`. "
                 f"Check cluster logs ({log_loc}) for more "
                 "information about the Python worker failure."
+                + (f"\n\n{owner_location}" if owner_location else "")
             )
         )
 
