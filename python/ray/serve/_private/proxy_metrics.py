@@ -32,17 +32,17 @@ class ProxyMetrics:
             node_id: Default tag value for the ongoing-requests gauge.
             node_ip_address: Default tag value for the ongoing-requests gauge.
         """
-        protocol_name = protocol.value.lower()
+        protocol_name = protocol.lower()
 
         self.request_counter = metrics.Counter(
             f"serve_num_{protocol_name}_requests",
-            description=f"The number of {protocol} requests processed.",
+            description=f"The number of {protocol_name} requests processed.",
             tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
             f"serve_num_{protocol_name}_error_requests",
-            description=f"The number of errored {protocol} responses.",
+            description=f"The number of errored {protocol_name} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -54,7 +54,7 @@ class ProxyMetrics:
         self.deployment_request_error_counter = metrics.Counter(
             f"serve_num_deployment_{protocol_name}_error_requests",
             description=(
-                f"The number of errored {protocol} "
+                f"The number of errored {protocol_name} "
                 "responses returned by each deployment."
             ),
             tag_keys=(
@@ -69,8 +69,8 @@ class ProxyMetrics:
         self.processing_latency_tracker = metrics.Histogram(
             f"serve_{protocol_name}_request_latency_ms",
             description=(
-                f"The end-to-end latency of {protocol} requests "
-                f"(measured from the Serve {protocol} {source})."
+                f"The end-to-end latency of {protocol_name} requests "
+                f"(measured from the Serve {protocol_name} {source})."
             ),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=(
@@ -84,7 +84,7 @@ class ProxyMetrics:
         self.num_ongoing_requests_gauge = metrics.Gauge(
             name=f"serve_num_ongoing_{protocol_name}_requests",
             description=(
-                f"The number of ongoing requests in this {protocol} {source}."
+                f"The number of ongoing requests in this {protocol_name} {source}."
             ),
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
