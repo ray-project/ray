@@ -4,7 +4,6 @@ import os
 import signal
 import sys
 import tempfile
-import time
 import urllib.request
 from unittest.mock import patch
 from uuid import uuid4

@@ -20,7 +20,6 @@ import ray._private.ray_constants as ray_constants
 import ray._private.state as global_state
 from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
-    SignalActor,
     async_wait_for_condition,
     wait_for_condition,
 )
