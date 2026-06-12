@@ -95,11 +95,11 @@ class BuiltApplication:
             return
 
         # Imported lazily to avoid a circular import at module load time
-        from ray.serve.multiplex import callable_uses_multiplexing
+        from ray.serve.multiplex import _callable_uses_multiplexing
 
         for deployment in self.deployments:
             if deployment.name == self.ingress_deployment_name and (
-                callable_uses_multiplexing(deployment.func_or_class)
+                _callable_uses_multiplexing(deployment.func_or_class)
             ):
                 raise RayServeException(
                     f'Ingress deployment "{deployment.name}" in application '

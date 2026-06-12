@@ -25,7 +25,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 MULTIPLEXED_FUNCTION_MARKER_ATTR = "_serve_multiplexed_function"
 
 
-def callable_uses_multiplexing(callable_obj: Any) -> bool:
+def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     """Whether `callable_obj` is or defines an `@serve.multiplexed` function.
 
     Accepts a standalone function, a class, or a class instance, so it can be used
