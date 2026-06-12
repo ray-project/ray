@@ -114,7 +114,11 @@ def train_tf_ray_air(
     time_taken = time.monotonic() - start_time
 
     print(f"Last result: {result.metrics}, return values: {result.return_value}")
-    return time_taken, result.return_value["local_time_taken"], result.return_value["loss"]
+    return (
+        time_taken,
+        result.return_value["local_time_taken"],
+        result.return_value["loss"],
+    )
 
 
 def train_tf_vanilla_worker(
