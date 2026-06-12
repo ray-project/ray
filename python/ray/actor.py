@@ -2860,18 +2860,7 @@ def exit_actor():
     observes the actor's death rather than a return value, and methods that have
     not started executing fail with ``RayActorError``.
 
-    What happens to in-flight methods (those already executing) depends on the
-    actor's concurrency model:
-
-    - Single-threaded actor: methods run one at a time in submission order, so
-      every method submitted before the one calling this API has already
-      completed; the actor simply exits after the current method.
-    - Threaded actor (``max_concurrency > 1``): methods already running on other
-      threads run to completion and deliver their results to their callers
-      before the actor exits. Because methods run on a thread pool, execution
-      start order is not guaranteed to match submission order: a method
-      submitted before the one calling this API is not guaranteed to have
-      started (and would then fail with ``RayActorError``).
+    Tasks queued for execution will fail with ``RayActorError``. For concurrent actors, tasks currently executing will run to completion before the actor exits.
 
     Any ``atexit`` handlers installed in the actor will be run.
 
