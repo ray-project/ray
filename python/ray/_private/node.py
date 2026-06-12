@@ -458,11 +458,13 @@ class Node:
             self._record_stats()
 
     def check_persisted_session_name(self):
-        # When RAY_gcs_storage=rocksdb, read the session_name sidecar
+        # When RAY_gcs_storage=rocksdb, read the session_name marker
         # file written by the previous head process. GCS isn't up yet at
         # this point in startup, so we can't query the rocksdb-backed
-        # internal_kv directly; the sidecar bridges that gap. Falls
-        # through to the Redis path below for non-rocksdb deployments.
+        # internal_kv directly; the marker file bridges that gap. (This
+        # is a plain file on the GCS storage volume, not a Kubernetes
+        # sidecar container.) Falls through to the Redis path below for
+        # non-rocksdb deployments.
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
             if not rocksdb_storage_path:
@@ -1380,32 +1382,34 @@ class Node:
         ray_usage_lib.put_cluster_metadata(
             self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
         )
-        # Persist session_name to a sidecar file when using the RocksDB
+        # Persist session_name to a marker file when using the RocksDB
         # GCS backend, so check_persisted_session_name() can find it on
         # head process restart. The rocksdb-backed internal_kv requires
         # GCS to be up, but check_persisted_session_name() runs before
-        # GCS comes up on restart; the sidecar bridges that gap. Gated
-        # on RAY_gcs_storage=rocksdb so non-rocksdb deployments are
-        # unaffected.
+        # GCS comes up on restart; the marker file bridges that gap. (It
+        # is a plain file on the GCS storage volume, not a Kubernetes
+        # sidecar container.) Gated on RAY_gcs_storage=rocksdb so
+        # non-rocksdb deployments are unaffected.
         #
-        # Write the sidecar BEFORE internal_kv_put. If we crash between
-        # the two, the next restart adopts the sidecar's name and the
-        # internal_kv_put below inserts cleanly (overwrite=False sees no
-        # prior value). The reverse ordering would leave a persisted
-        # session_name in rocksdb with no sidecar, causing the next
-        # head to generate a fresh name and trip the assertion below.
+        # Write the marker file BEFORE internal_kv_put. If we crash
+        # between the two, the next restart adopts the marker file's name
+        # and the internal_kv_put below inserts cleanly (overwrite=False
+        # sees no prior value). The reverse ordering would leave a
+        # persisted session_name in rocksdb with no marker file, causing
+        # the next head to generate a fresh name and trip the assertion
+        # below.
         #
-        # A sidecar write failure here is fatal: skipping it and going
-        # on to internal_kv_put would persist the session_name in rocksdb
-        # with no companion sidecar, recreating the exact assertion-trip
-        # the ordering is meant to prevent. The storage path is also
-        # where rocksdb keeps its DB files, so an unwritable path means
-        # GCS can't function regardless.
+        # A marker-file write failure here is fatal: skipping it and
+        # going on to internal_kv_put would persist the session_name in
+        # rocksdb with no companion marker file, recreating the exact
+        # assertion-trip the ordering is meant to prevent. The storage
+        # path is also where rocksdb keeps its DB files, so an unwritable
+        # path means GCS can't function regardless.
         if os.environ.get("RAY_gcs_storage") == "rocksdb":
             rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
             if not rocksdb_storage_path:
                 # Symmetric with check_persisted_session_name(); see
-                # there for the rationale. Without the sidecar, the
+                # there for the rationale. Without the marker file, the
                 # internal_kv_put below would persist a session_name
                 # in rocksdb with no companion file, breaking restart
                 # recovery.
@@ -1417,10 +1421,10 @@ class Node:
             os.makedirs(rocksdb_storage_path, exist_ok=True)
             # Atomic, durable write: tmp + fsync + rename + dir fsync.
             # The internal_kv_put below fsyncs through rocksdb's WAL, so
-            # the sidecar must also be on disk before that call returns
-            # -- otherwise a power-loss crash with the page cache still
-            # dirty would leave the rocksdb state durable but no
-            # sidecar, tripping the assert on next restart. Mirrors the
+            # the marker file must also be on disk before that call
+            # returns -- otherwise a power-loss crash with the page cache
+            # still dirty would leave the rocksdb state durable but no
+            # marker file, tripping the assert on next restart. Mirrors the
             # write-fsync-rename-fsync_dir pattern rocksdb itself uses
             # for MANIFEST writes.
             tmp_fd, tmp_path = tempfile.mkstemp(

@@ -2,7 +2,7 @@
 # Embedded RocksDB backend for GCS fault tolerance
 
 The Global Control Service (GCS) supports an embedded RocksDB backend
-([REP-64](https://github.com/ray-project/enhancements/pull/64)) as an
+([REP-64](https://github.com/ray-project/enhancements/blob/main/reps/2026-02-23-gcs-embedded-storage.md)) as an
 alternative to external Redis for fault tolerance. Instead of writing state
 over the network to a Redis instance, GCS writes to a local RocksDB
 database on a persistent volume; on head pod restart, GCS reads the state
@@ -227,4 +227,4 @@ REP-64 follow-up; this knob is the contained, backend-local mitigation.
 
 * {ref}`fault-tolerance-gcs` — Ray Core overview of GCS fault tolerance.
 * {ref}`kuberay-gcs-ft` — the Redis-backed FT setup guide.
-* [REP-64: Embedded Storage Backend for GCS Fault Tolerance](https://github.com/ray-project/enhancements/pull/64) — full design and rationale.
+* [REP-64: Embedded Storage Backend for GCS Fault Tolerance](https://github.com/ray-project/enhancements/blob/main/reps/2026-02-23-gcs-embedded-storage.md) — full design and rationale.

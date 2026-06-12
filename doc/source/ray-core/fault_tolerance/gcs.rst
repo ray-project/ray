@@ -72,7 +72,7 @@ Embedded RocksDB backend
 As an alternative to external Redis, the GCS can persist state to an
 embedded RocksDB database on a local persistent volume. This is the
 backend introduced in
-`REP-64 <https://github.com/ray-project/enhancements/pull/64>`_;
+`REP-64 <https://github.com/ray-project/enhancements/blob/main/reps/2026-02-23-gcs-embedded-storage.md>`_;
 it removes the operational dependency on Redis at the cost of pinning
 GCS recovery to the availability of the head pod's volume.
 
@@ -83,11 +83,16 @@ differs.
 .. note::
 
    Because RocksDB persists each GCS write with a synchronous WAL ``fsync``,
-   individual writes are slightly slower than in-memory or (non-durable) Redis
-   GCS — typically single-digit to tens of milliseconds. This is negligible
-   relative to the seconds-scale failure-detection and recovery timeline and
-   does not affect the common fault-tolerance paths (GCS restart, actor
-   reconstruction).
+   individual writes take single-digit to tens of milliseconds. Whether that
+   is faster or slower than external Redis is deployment-dependent: a Redis
+   write is in-memory (Ray runs Redis without a per-write ``fsync``), so it
+   costs roughly the network round-trip plus an in-memory insert — often
+   sub-millisecond on a low-latency network, but higher across a slow link.
+   The local ``fsync`` to disk is usually the dominant term, so on a fast
+   network a RocksDB write can be slower per write than Redis. Either way the
+   per-write cost is negligible relative to the seconds-scale
+   failure-detection and recovery timeline and does not affect the common
+   fault-tolerance paths (GCS restart, actor reconstruction).
 
    GCS publishes death notifications (node down, actor dead) only after the
    death record is persisted, so a per-write ``fsync`` on those records would
