@@ -39,7 +39,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_LOG_TO_STDERR,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
@@ -123,6 +126,23 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
+
+
+def _get_aggregated_autoscaling_metrics_delay_ms(
+    delay_by_source: Dict[str, Tuple[float, float]],
+    source_id: str,
+    delay_ms: float,
+    timeout_s: float,
+) -> float:
+    """Return the max latest metrics delay for a deployment/application series."""
+
+    now = time.time()
+    delay_by_source[source_id] = (delay_ms, now)
+    for cached_source_id, (_, updated_at) in list(delay_by_source.items()):
+        if now - updated_at > timeout_s:
+            del delay_by_source[cached_source_id]
+
+    return max(cached_delay_ms for cached_delay_ms, _ in delay_by_source.values())
 
 
 class ServeController:
@@ -288,6 +308,12 @@ class ServeController:
         self._health_metrics_tracker = ControllerHealthMetricsTracker(
             controller_start_time=time.time()
         )
+        self._replica_metrics_delay_ms: Dict[
+            Tuple[str, str], Dict[str, Tuple[float, float]]
+        ] = {}
+        self._handle_metrics_delay_ms: Dict[
+            Tuple[str, str], Dict[str, Tuple[float, float]]
+        ] = {}
 
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
@@ -365,16 +391,29 @@ class ServeController:
             replica_metric_report = decompress_metric_report(replica_metric_report)
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
+        deployment = replica_metric_report.replica_id.deployment_id.name
+        application = replica_metric_report.replica_id.deployment_id.app_name
         tags = {
-            "deployment": replica_metric_report.replica_id.deployment_id.name,
-            "application": replica_metric_report.replica_id.deployment_id.app_name,
+            "deployment": deployment,
+            "application": application,
         }
         if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             tags["replica"] = replica_metric_report.replica_id.unique_id
 
+        metrics_delay_ms = latency_ms
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            metrics_delay_ms = _get_aggregated_autoscaling_metrics_delay_ms(
+                self._replica_metrics_delay_ms.setdefault(
+                    (deployment, application), {}
+                ),
+                replica_metric_report.replica_id.unique_id,
+                latency_ms,
+                2 * RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+            )
+
         # Record the metrics delay for observability
         self.replica_metrics_delay_gauge.set(
-            latency_ms,
+            metrics_delay_ms,
             tags=tags,
         )
         # Track in health metrics
@@ -390,16 +429,30 @@ class ServeController:
             handle_metric_report = decompress_metric_report(handle_metric_report)
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
+        deployment = handle_metric_report.deployment_id.name
+        application = handle_metric_report.deployment_id.app_name
         tags = {
-            "deployment": handle_metric_report.deployment_id.name,
-            "application": handle_metric_report.deployment_id.app_name,
+            "deployment": deployment,
+            "application": application,
         }
         if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             tags["handle"] = handle_metric_report.handle_id
 
+        metrics_delay_ms = latency_ms
+        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            metrics_delay_ms = _get_aggregated_autoscaling_metrics_delay_ms(
+                self._handle_metrics_delay_ms.setdefault((deployment, application), {}),
+                handle_metric_report.handle_id,
+                latency_ms,
+                max(
+                    2 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+                    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+                ),
+            )
+
         # Record the metrics delay for observability
         self.handle_metrics_delay_gauge.set(
-            latency_ms,
+            metrics_delay_ms,
             tags=tags,
         )
         # Track in health metrics
