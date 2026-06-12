@@ -13,7 +13,6 @@
 // limitations under the License.
 #pragma once
 
-#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -357,8 +356,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
           &group_to_bundles,
       const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
-  void HandleWaitingRemovedBundles();
-
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
@@ -384,19 +381,21 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       const rpc::StatusCallback callback);
 
-  /// Cacnel prepared or committed resources from a node.
-  /// Nodes will be in charge of tracking state of a bundle.
-  /// This method is supposed to be idempotent.
+  /// Remove a placement group's bundles from a node. All bundles in the batch
+  /// must belong to the placement group and be located on the same node; the
+  /// raylet handles them in a single RPC. This method is idempotent.
   ///
-  /// \param bundle A description of the bundle to return.
-  /// \param node The node that the worker will be returned for.
-  /// \param max_retry The maximum times cancel request can be retried.
-  /// \param retry_cnt The number of times the cancel request is retried.
-  void CancelResourceReserve(
-      const std::shared_ptr<const BundleSpecification> &bundle_spec,
+  /// \param placement_group_id The placement group whose bundles are being removed.
+  /// \param bundle_specs Bundles to remove on the node.
+  /// \param node The node that the bundles are being removed from.
+  /// \param max_retry The maximum times the remove request can be retried.
+  /// \param current_retry_count The number of times the remove request has been retried.
+  void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
-      int current_retry_cnt);
+      int current_retry_count);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
@@ -441,15 +440,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
-  /// Acquire the bundle resources from the cluster resources.
+  /// Acquire the bundle resources from the cluster resources. The matching
+  /// release is no longer mirrored here -- when bundles are cancelled or a
+  /// scheduling attempt fails, GCS waits for the raylet's next ray-syncer
+  /// broadcast to reconcile its view of the affected nodes' resources.
   void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Commit the bundle resources to the cluster resources.
   void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
-
-  /// Return the bundle resources to the cluster resources.
-  /// It will remove bundle resources AND also add original resources back.
-  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
@@ -459,23 +457,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
                                             rpc::PlacementStrategy strategy);
 
-  /// Try to release bundle resource to cluster resource manager.
-  ///
-  /// \param bundle The node to which the bundle is scheduled and the bundle's
-  /// specification.
-  /// \return True if the bundle is successfully released. False otherwise.
-  bool TryReleasingBundleResources(
-      const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
-
   /// Help function to check if the resource_name has the pattern
   /// {original_resource_name}_group_{placement_group_id}, which means
   /// wildcard resource.
   bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
   instrumented_io_context &io_context_;
-
-  /// A timer that ticks every cancel resource failure milliseconds.
-  boost::asio::deadline_timer return_timer_;
 
   /// Used to update placement group information upon creation, deletion, etc.
   gcs::GcsTableStorage &gcs_table_storage_;
@@ -499,14 +486,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 
-  /// The bundles that waiting to be destroyed and release resources.
-  std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
-      waiting_removed_bundles_;
-
   friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles);
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead);
 };
 
 }  // namespace gcs

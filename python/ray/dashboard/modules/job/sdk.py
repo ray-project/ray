@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
@@ -217,7 +218,7 @@ class JobSubmissionClient(SubmissionClient):
                 "running Ray 2.8 or higher.",
             )
 
-        runtime_env = runtime_env or {}
+        runtime_env = copy.deepcopy(runtime_env or {})
         metadata = metadata or {}
         metadata.update(self._default_metadata)
 
@@ -492,8 +493,9 @@ class JobSubmissionClient(SubmissionClient):
             job_id: The job ID or submission ID of the job whose logs are being
                 requested.
 
-        Returns:
-            The iterator.
+        Yields:
+            str: Successive chunks of the job's stdout/stderr as the driver
+            process produces them.
 
         Raises:
             RuntimeError: If the job does not exist, if the request to the

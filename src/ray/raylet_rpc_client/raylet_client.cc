@@ -273,13 +273,24 @@ void RayletClient::CommitBundleResources(
                   /*method_timeout_ms*/ -1);
 }
 
-void RayletClient::CancelResourceReserve(
-    const BundleSpecification &bundle_spec,
-    const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) {
-  rpc::CancelResourceReserveRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+void RayletClient::RemovePlacementGroupBundles(
+    const PlacementGroupID &placement_group_id,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+    const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+        &callback) {
+  RAY_CHECK(!bundle_specs.empty());
+  rpc::RemovePlacementGroupBundlesRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  const auto &expected_node_id = bundle_specs.front()->NodeId();
+  for (const auto &bundle_spec : bundle_specs) {
+    RAY_CHECK(bundle_spec->NodeId() == expected_node_id)
+        << "All bundles in a RemovePlacementGroupBundles batch must target the "
+           "same node.";
+    auto *message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
   INVOKE_RPC_CALL(NodeManagerService,
-                  CancelResourceReserve,
+                  RemovePlacementGroupBundles,
                   request,
                   callback,
                   grpc_client_,
@@ -546,6 +557,23 @@ void RayletClient::CancelLocalTask(
                             callback,
                             grpc_client_,
                             /*method_timeout_ms*/ -1);
+}
+
+void RayletClient::FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) {
+  INVOKE_RETRYABLE_RPC_CALL(
+      retryable_grpc_client_,
+      NodeManagerService,
+      FreeLocalObjects,
+      request,
+      [](const Status &status, rpc::FreeLocalObjectsReply &&reply /*unused*/) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error freeing local objects from raylet, the raylet may have died: "
+              << status;
+        }
+      },
+      grpc_client_,
+      /*method_timeout_ms*/ -1);
 }
 
 }  // namespace rpc

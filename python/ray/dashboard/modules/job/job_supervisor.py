@@ -166,6 +166,7 @@ class JobSupervisor:
         A jobObject is created to enable fate sharing for the entire process group.
 
         Args:
+            env: Environment variables passed through to the driver subprocess.
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
         Returns:

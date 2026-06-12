@@ -153,6 +153,11 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         # Resources don't match - cannot fuse
         return downstream_project
 
+    # Do not fuse if either op specifies a `ray_remote_args_fn`,
+    # since it is not known whether the generated args will be compatible.
+    if upstream_project.ray_remote_args_fn or downstream_project.ray_remote_args_fn:
+        return downstream_project
+
     # Check if compute strategies are compatible
     fused_compute = FuseOperators._fuse_compute_strategy(
         upstream_project.compute, downstream_project.compute
@@ -292,9 +297,65 @@ class ProjectionPushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        new_dag = dag._apply_transform(self._try_fuse_projects)
+        # Insert a pruning projection below consuming ops (e.g. ``Aggregate``)
+        # first, so the fuse/push steps can carry the narrowed columns into the
+        # read.
+        new_dag = dag._apply_transform(self._prune_aggregate_input)
+        new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @classmethod
+    def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
+        """Insert a ``Project`` below an ``Aggregate`` that keeps only the
+        columns it consumes (group keys + each aggregation's target column).
+
+        The aggregation drops every other column anyway, so pruning them before
+        the shuffle avoids dragging unused (often wide) columns through it --
+        which otherwise inflates both the aggregator's memory reservation and
+        the bytes shuffled. The inserted projection is fused/pushed toward the
+        read by the steps in ``apply``.
+        """
+        from dataclasses import replace
+
+        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+        from ray.data.aggregate import AggregateFnV2
+        from ray.data.expressions import col
+
+        if not isinstance(op, Aggregate):
+            return op
+
+        keys = op.key if isinstance(op.key, list) else ([op.key] if op.key else [])
+        required: List[str] = list(keys)
+        for agg in op.aggs:
+            # A generic ``AggregateFn`` may read arbitrary columns, so only
+            # prune when every aggregation declares the column it reads.
+            if not isinstance(agg, AggregateFnV2):
+                return op
+            target = agg.get_target_column()
+            if target is not None:
+                required.append(target)
+
+        # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
+        # global count reading no columns).
+        required = list(dict.fromkeys(required))
+        if not required:
+            return op
+
+        input_op = op.input_dependencies[0]
+        schema = input_op.infer_schema()
+        if schema is None or not hasattr(schema, "names"):
+            return op  # unknown schema: can't prove pruning helps
+
+        # Insert only when ``required`` is a strict subset of the input columns:
+        # this guarantees there's something to drop and keeps the rule
+        # idempotent (once the input yields exactly ``required`` nothing more is
+        # inserted, so the fixed-point optimizer terminates).
+        if not set(required) < set(schema.names):
+            return op
+
+        prune = Project(exprs=[col(c) for c in required], input_dependencies=[input_op])
+        return replace(op, input_dependencies=[prune])
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:

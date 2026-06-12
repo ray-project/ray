@@ -846,7 +846,7 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
-  int total_cnt = 0;
+  int total_count = 0;
   for (const auto &elem : pending_placement_groups_) {
     const auto pending_pg_spec = elem.second.second;
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
@@ -861,8 +861,8 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
 
-    total_cnt += 1;
-    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+    total_count += 1;
+    if (total_count >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }
@@ -881,8 +881,8 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
     auto placement_group_data = placement_group_load->add_placement_group_data();
     placement_group_data->Swap(&placement_group_table_data);
 
-    total_cnt += 1;
-    if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
+    total_count += 1;
+    if (total_count >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
     }
   }
