@@ -2363,6 +2363,32 @@ cdef CRayStatus task_execution_handler(
             msg = "Unexpected exception raised in task execution handler: {}".format(e)
             logger.error(msg)
             return CRayStatus.UnexpectedSystemExit(msg)
+        except BaseException as e:
+            # Safety net: any BaseException that is not Exception or SystemExit
+            # (e.g. KeyboardInterrupt, GeneratorExit) would otherwise escape this
+            # cdef function. Without this, Cython silently returns
+            # CRayStatus.OK() for unhandled non-Exception/non-SystemExit
+            # exceptions, causing a CHECK failure in HandleTaskExecutionResult
+            # when return objects are not populated.
+            # Convert to UnexpectedSystemExit so the C++ side
+            # treats this as a clean worker-exiting task failure.
+            #
+            # The motivating case is a rapid double `ray.cancel()`. The first
+            # cancel raises a KeyboardInterrupt that is caught by
+            # `execute_task_with_cancellation_handler`'s
+            # `except KeyboardInterrupt` clause, which calls
+            # `store_task_errors`. If a second cancel arrives while
+            # `store_task_errors` is running, it queues another SIGINT that
+            # fires inside the error-storage path. That KeyboardInterrupt
+            # cannot be re-caught (we are already inside `except
+            # KeyboardInterrupt`), so it escapes all the way out to this
+            # handler.
+            msg = (
+                "BaseException escaped task execution handlers: "
+                f"{type(e).__name__}: {e}"
+            )
+            logger.error(msg)
+            return CRayStatus.UnexpectedSystemExit(msg)
 
     return CRayStatus.OK()
 
