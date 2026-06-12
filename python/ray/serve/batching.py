@@ -244,7 +244,9 @@ class _BatchQueue:
         # thread (RAY_SERVE_RUN_SYNC_IN_THREADPOOL), so schedule on the loop thread-safely;
         # skip if the loop is already gone (e.g. shutdown before reconfigure).
         if self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(self._notify_concurrency_waiters(), self._loop)
+            asyncio.run_coroutine_threadsafe(
+                self._notify_concurrency_waiters(), self._loop
+            )
 
     async def _notify_concurrency_waiters(self) -> None:
         async with self._concurrency_condition:
