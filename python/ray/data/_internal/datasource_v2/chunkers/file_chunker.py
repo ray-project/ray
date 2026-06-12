@@ -21,7 +21,7 @@ from typing import (
     get_type_hints,
 )
 
-from ray.data._internal.util import MiB, infer_compression
+from ray.data._internal.util import GiB, MiB, infer_compression
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -72,6 +72,22 @@ class ParquetFileChunkMetadata(ChunkMetadata):
 
     row_group_start: int  # inclusive
     row_group_end: int  # exclusive
+
+
+class ByteEstimateParquetFileChunkMetadata(ChunkMetadata):
+    """Metadata for legacy byte-estimate Parquet chunks.
+
+    The chunker splits a file into ``total_num_chunks`` equal byte ranges
+    *without* reading the footer; ``chunk_idx`` identifies this chunk. The
+    reader reconciles the (possibly over-estimated) chunk index to a real
+    row-group range at read time. Produced by
+    :class:`ByteEstimateParquetFileChunker`, retained behind
+    ``DataContext.parquet_chunker_row_group_aware=False`` for A/B experiments
+    against the row-group-aware chunker.
+    """
+
+    chunk_idx: int
+    total_num_chunks: int
 
 
 @DeveloperAPI
@@ -279,3 +295,62 @@ class ParquetFileChunker(FileChunker):
             ),
             running_size,
         )
+
+
+@DeveloperAPI
+class ByteEstimateParquetFileChunker(FileChunker):
+    """Legacy byte-estimate Parquet chunker (pre-row-group-aware).
+
+    Splits a file into ``ceil(file_size / target_chunk_size)`` equal byte
+    ranges *without* reading the footer, so the chunk count is an estimate
+    that the reader reconciles to real row groups at read time (ignoring any
+    over-estimated chunks). Retained behind
+    ``DataContext.parquet_chunker_row_group_aware=False`` so experiments can
+    A/B it against :class:`ParquetFileChunker`. Emits
+    :class:`ByteEstimateParquetFileChunkMetadata`.
+    """
+
+    # Large default so a high compression ratio doesn't pack too many row
+    # groups into one read task and OOM. The row-group-aware chunker sizes
+    # precisely instead; this estimate stays coarse on purpose.
+    _DEFAULT_TARGET_CHUNK_SIZE = 1 * GiB
+
+    # Pure byte arithmetic — no footer read — so the indexer chunks inline.
+    reads_file_metadata: bool = False
+
+    def __init__(self, target_chunk_size: Optional[int] = None):
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
+        if target_chunk_size is not None:
+            self._target_chunk_size = target_chunk_size
+        elif ctx.parquet_chunker_target_chunk_size is not None:
+            self._target_chunk_size = ctx.parquet_chunker_target_chunk_size
+        else:
+            self._target_chunk_size = self._DEFAULT_TARGET_CHUNK_SIZE
+
+    def generate_chunk_metadatas(
+        self,
+        path: str,
+        file_size: int,
+        filesystem: Optional["FileSystem"] = None,
+    ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
+        if file_size <= self._target_chunk_size:
+            # Whole-file chunk: avoids read-time metadata fetching since the
+            # whole file is read anyway.
+            yield None, file_size
+            return
+
+        num_chunks = math.ceil(file_size / self._target_chunk_size)
+        for i in range(num_chunks):
+            chunk_start = self._target_chunk_size * i
+            chunk_end = min(self._target_chunk_size * (i + 1), file_size)
+            chunk_size = chunk_end - chunk_start
+            yield (
+                create_chunk_metadata(
+                    ByteEstimateParquetFileChunkMetadata,
+                    chunk_idx=i,
+                    total_num_chunks=num_chunks,
+                ),
+                chunk_size,
+            )

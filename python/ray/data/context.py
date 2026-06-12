@@ -83,6 +83,14 @@ DEFAULT_USE_DATASOURCE_V2 = False
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 
+# When True, V2 Parquet reads use the row-group-aware ``ParquetFileChunker``
+# (reads the footer at listing time and chunks on true row-group boundaries).
+# When False, they use the legacy ``ByteEstimateParquetFileChunker`` (no footer
+# read; chunk count estimated from file size and reconciled to row groups at
+# read time). Runtime-toggleable on ``DataContext`` for A/B experiments, the
+# same way as ``use_datasource_v2``.
+DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE = True
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -780,6 +788,10 @@ class DataContext:
     parquet_chunker_target_chunk_size: Optional[
         int
     ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
+    # When True, use the row-group-aware Parquet chunker; when False, the legacy
+    # byte-estimate chunker. Runtime toggle for A/B experiments (read at
+    # ``read_parquet`` time, like ``use_datasource_v2``).
+    parquet_chunker_row_group_aware: bool = DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

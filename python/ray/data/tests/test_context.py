@@ -36,6 +36,20 @@ def test_data_context_current_context_manager():
     assert DataContext.get_current() is original
 
 
+def test_parquet_chunker_row_group_aware_default_and_mutable():
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    # Defaults on (the row-group-aware chunker); runtime-toggleable for A/B.
+    assert ctx.parquet_chunker_row_group_aware is True
+    original = ctx.parquet_chunker_row_group_aware
+    try:
+        ctx.parquet_chunker_row_group_aware = False
+        assert DataContext.get_current().parquet_chunker_row_group_aware is False
+    finally:
+        ctx.parquet_chunker_row_group_aware = original
+
+
 if __name__ == "__main__":
     import sys
 

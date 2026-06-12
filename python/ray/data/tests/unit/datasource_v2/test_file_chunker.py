@@ -7,6 +7,8 @@ import pyarrow.parquet as pq
 import pytest
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ByteEstimateParquetFileChunker,
+    ByteEstimateParquetFileChunkMetadata,
     ChunkMetadata,
     LineDelimitedFileChunker,
     LineDelimitedFileChunkMetadata,
@@ -168,6 +170,60 @@ class TestParquetFileChunker:
         assert chunker._target_chunk_size == 2048
 
 
+class TestByteEstimateParquetFileChunker:
+    """Legacy byte-estimate chunker (toggled via the runtime flag)."""
+
+    def test_does_not_read_metadata(self):
+        assert ByteEstimateParquetFileChunker.reads_file_metadata is False
+
+    def test_whole_file_when_at_or_below_target(self):
+        chunker = ByteEstimateParquetFileChunker(target_chunk_size=1000)
+        # No footer read needed — the estimate works off ``file_size`` alone.
+        assert list(chunker.generate_chunk_metadatas("f.parquet", 1000)) == [
+            (None, 1000)
+        ]
+
+    def test_byte_estimate_splits_into_ceil_chunks(self):
+        # 1000 bytes / 300 target -> ceil = 4 chunks of 300,300,300,100.
+        chunker = ByteEstimateParquetFileChunker(target_chunk_size=300)
+        chunks = list(chunker.generate_chunk_metadatas("f.parquet", 1000))
+        assert len(chunks) == 4
+        idxs = [
+            (
+                cast(ByteEstimateParquetFileChunkMetadata, m)["chunk_idx"],
+                cast(ByteEstimateParquetFileChunkMetadata, m)["total_num_chunks"],
+            )
+            for m, _ in chunks
+        ]
+        assert idxs == [(0, 4), (1, 4), (2, 4), (3, 4)]
+        assert [sz for _, sz in chunks] == [300, 300, 300, 100]
+        assert sum(sz for _, sz in chunks) == 1000
+
+    def test_filesystem_arg_is_ignored(self):
+        # The byte-estimate chunker performs no I/O; the ``filesystem`` arg
+        # exists only for base-class signature compatibility.
+        chunker = ByteEstimateParquetFileChunker(target_chunk_size=300)
+        with_fs = list(chunker.generate_chunk_metadatas("f.parquet", 1000, object()))
+        without_fs = list(chunker.generate_chunk_metadatas("f.parquet", 1000))
+        assert with_fs == without_fs
+
+    def test_default_target_falls_back_to_1gib(self, restore_data_context):
+        from ray.data.context import DataContext
+
+        DataContext.get_current().parquet_chunker_target_chunk_size = None
+        assert ByteEstimateParquetFileChunker()._target_chunk_size == 1 * 1024**3
+
+    def test_ctx_knob_then_ctor_arg_take_precedence(self, restore_data_context):
+        from ray.data.context import DataContext
+
+        DataContext.get_current().parquet_chunker_target_chunk_size = 1024
+        assert ByteEstimateParquetFileChunker()._target_chunk_size == 1024
+        assert (
+            ByteEstimateParquetFileChunker(target_chunk_size=2048)._target_chunk_size
+            == 2048
+        )
+
+
 def test_chunk_metadata_subclasses_are_typeddicts():
     # Ensures the subclasses don't accidentally inherit unrelated keys.
     pmd: ChunkMetadata = create_chunk_metadata(
@@ -178,8 +234,12 @@ def test_chunk_metadata_subclasses_are_typeddicts():
         chunk_byte_start_idx=0,
         chunk_byte_end_idx=10,
     )
+    bmd: ChunkMetadata = create_chunk_metadata(
+        ByteEstimateParquetFileChunkMetadata, chunk_idx=0, total_num_chunks=4
+    )
     assert set(pmd.keys()) == {"row_group_start", "row_group_end"}
     assert set(lmd.keys()) == {"chunk_byte_start_idx", "chunk_byte_end_idx"}
+    assert set(bmd.keys()) == {"chunk_idx", "total_num_chunks"}
 
 
 if __name__ == "__main__":

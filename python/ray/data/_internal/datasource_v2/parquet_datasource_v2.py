@@ -19,6 +19,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     check_for_legacy_tensor_type,
 )
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+    ByteEstimateParquetFileChunker,
     FileChunker,
     ParquetFileChunker,
 )
@@ -111,14 +112,19 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # footers, and the scanner pins it on the pyarrow dataset so files
         # are cast to these types at scan time.
         self._user_schema = schema
-        # Chunker that splits each listed Parquet file into one or more
-        # row-group-aligned read units. Defaults to ``ParquetFileChunker``
-        # (1 GiB target chunk size, or whatever ``DataContext`` configures).
-        # Callers can inject an alternative for tests or shuffle-aware
-        # planning code that wants whole-file reads.
-        self._file_chunker: FileChunker = (
-            file_chunker if file_chunker is not None else ParquetFileChunker()
-        )
+        # Chunker that splits each listed Parquet file into parallel-read
+        # units. An explicitly injected ``file_chunker`` always wins (tests,
+        # shuffle-aware planning that wants whole-file reads). Otherwise the
+        # runtime ``DataContext.parquet_chunker_row_group_aware`` flag selects
+        # the row-group-aware ``ParquetFileChunker`` (default) or the legacy
+        # ``ByteEstimateParquetFileChunker`` — toggleable per read for A/B
+        # experiments, like ``use_datasource_v2``.
+        if file_chunker is not None:
+            self._file_chunker: FileChunker = file_chunker
+        elif DataContext.get_current().parquet_chunker_row_group_aware:
+            self._file_chunker = ParquetFileChunker()
+        else:
+            self._file_chunker = ByteEstimateParquetFileChunker()
 
     @property
     def paths(self) -> List[str]:
