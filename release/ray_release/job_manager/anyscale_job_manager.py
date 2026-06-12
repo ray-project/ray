@@ -3,11 +3,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 import anyscale
-from anyscale.job.models import JobState
-from anyscale.sdk.anyscale_client.models import (
-    CreateProductionJob,
-    CreateProductionJobConfig,
-)
+from anyscale.job.models import JobConfig, JobState
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -69,28 +65,8 @@ class AnyscaleJobManager:
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
         )
 
-        runtime_env = {
-            "env_vars": env_vars_for_job,
-        }
-        if working_dir:
-            runtime_env["working_dir"] = working_dir
-            if upload_path:
-                runtime_env["upload_path"] = upload_path
-
         try:
-            job_request = CreateProductionJob(
-                name=self.cluster_manager.cluster_name,
-                description=f"Smoke test: {self.cluster_manager.smoke_test}",
-                project_id=self.cluster_manager.project_id,
-                config=CreateProductionJobConfig(
-                    entrypoint=cmd_to_run,
-                    runtime_env=runtime_env,
-                    build_id=self.cluster_manager.cluster_env_build_id,
-                    compute_config_id=self.cluster_manager.cluster_compute_id,
-                    max_retries=0,
-                ),
-            )
-            job_response = self._sdk.create_job(job_request)
+            self._job_id = self._submit_job(cmd_to_run, env_vars_for_job, working_dir)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -98,12 +74,35 @@ class AnyscaleJobManager:
                 f"{e}"
             ) from e
 
-        self._job_id = job_response.result.id
         self._last_job_result = None
         self.start_time = time.time()
 
         logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
+
+    def _submit_job(
+        self,
+        cmd_to_run: str,
+        env_vars: Dict[str, str],
+        working_dir: Optional[str] = None,
+    ) -> str:
+        """Submit a job via anyscale.job.submit() and return the job ID.
+
+        The legacy AnyscaleSDK.create_job() is now a hard deprecation error, so
+        both the legacy and 2026-SDK paths go through anyscale.job.submit(). The
+        BYOD image is used as image_uri for both paths -- submit() registers it
+        idempotently, the same way the 2026 cluster-env path already does.
+        """
+        config = JobConfig(
+            name=self.cluster_manager.cluster_name,
+            entrypoint=cmd_to_run,
+            image_uri=self.cluster_manager.test.get_anyscale_byod_image(),
+            compute_config=self.cluster_manager.cluster_compute_id,
+            env_vars=env_vars,
+            working_dir=working_dir,
+            max_retries=0,
+        )
+        return anyscale.job.submit(config)
 
     def save_last_job_status(self, status):
         if status and hasattr(status, "id") and status.id != self._job_id:
@@ -143,7 +142,7 @@ class AnyscaleJobManager:
             return
         logger.info(f"Terminating job {self._job_id}...")
         try:
-            self._sdk.terminate_job(self._job_id)
+            anyscale.job.terminate(id=self._job_id)
             logger.info(f"Job {self._job_id} terminated!")
         except Exception:
             msg = f"Couldn't terminate job {self._job_id}!"
