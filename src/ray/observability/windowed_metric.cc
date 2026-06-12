@@ -19,7 +19,7 @@
 namespace ray {
 namespace observability {
 
-void WindowedMetric::Add(absl::Time now, double value) {
+std::optional<double> WindowedMetric::Observe(absl::Time now, double value) {
   samples_.push_back({now, value});
 
   // Evict samples that have fallen out of the window. Never evict the last remaining
@@ -37,19 +37,13 @@ void WindowedMetric::Add(absl::Time now, double value) {
     max = std::max(max, sample.value);
   }
 
+  // Only return the max when it changed, so callers re-export the metric only when
+  // it moves.
   if (!current_max_.has_value() || *current_max_ != max) {
     current_max_ = max;
-    current_max_changed_ = true;
+    return max;
   }
-}
-
-std::optional<double> WindowedMetric::WindowedMax() {
-  if (!current_max_changed_) {
-    return std::nullopt;
-  }
-  // Consume the change so the caller only re-exports the metric when it moves.
-  current_max_changed_ = false;
-  return current_max_;
+  return std::nullopt;
 }
 
 }  // namespace observability

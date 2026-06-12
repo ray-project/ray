@@ -24,14 +24,14 @@ namespace observability {
 
 /// Tracks the maximum value observed over a sliding time window.
 ///
-/// Samples are kept in a linked list ordered oldest-to-newest. Each call to Add()
+/// Samples are kept in a deque ordered oldest-to-newest. Each call to Observe()
 /// appends the new sample, evicts samples that have fallen outside the window (older
 /// than `now - window_duration`), and recomputes the maximum value over the
 /// remaining samples.
 ///
 /// This is meant to smooth a point-in-time metric: rather than exporting every
-/// sample, callers feed samples in and only re-export when the windowed max changes
-/// (Add() returns the new max only when it differs from the last reported value).
+/// sample, callers feed samples in via Observe() and only re-export when the value
+/// it returns is set (i.e. when the windowed max changed).
 ///
 /// Not thread-safe; callers must synchronize externally if shared across threads.
 class WindowedMetric {
@@ -42,14 +42,10 @@ class WindowedMetric {
   /// Record a new sample with value `value` observed at `now`.
   ///
   /// Appends the sample, evicts samples older than the window, and recomputes the
-  /// max over the window.
-  void Add(absl::Time now, double value);
-
-  /// The current max value over the window, returned only if it has changed since
-  /// the last call to WindowedMax(); otherwise std::nullopt. This lets callers
-  /// re-export the metric only when it changes. Returns std::nullopt before the
-  /// first Add().
-  std::optional<double> WindowedMax();
+  /// max over the window. Returns the windowed max iff it differs from the value
+  /// returned by the previous Observe() call (i.e. the metric should be re-exported);
+  /// otherwise std::nullopt.
+  std::optional<double> Observe(absl::Time now, double value);
 
  private:
   struct Sample {
@@ -61,10 +57,8 @@ class WindowedMetric {
   const absl::Duration window_duration_;
   // Samples ordered oldest (front) to newest (back).
   std::deque<Sample> samples_;
-  // The current max over the window. Maintained by Add(). Unset until the first Add().
+  // The windowed max as of the last Observe() call. Unset until the first Observe().
   std::optional<double> current_max_;
-  // Whether current_max_ has changed since the last call to WindowedMax().
-  bool current_max_changed_ = false;
 };
 
 }  // namespace observability
