@@ -9,7 +9,6 @@ import tensorflow as tf
 from typing import List, Tuple
 
 from ray._common.network_utils import build_address
-from ray.train import RunConfig
 
 CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
@@ -68,37 +67,24 @@ def train_func(use_ray: bool, config: dict):
             metrics=["accuracy"],
         )
 
-    if use_ray:
-        from ray.air.integrations.keras import ReportCheckpointCallback
-
-        class CustomReportCallback(ReportCheckpointCallback):
-            def _handle(self, logs: dict, when: str = None):
-                logs["local_time_taken"] = time.monotonic() - local_start_time
-                super()._handle(logs, when)
-
-        # NOTE: We shouldn't checkpoint to be identical to the vanilla TF run.
-        callbacks = [CustomReportCallback(checkpoint_on=[])]
-    else:
-        callbacks = []
-
     history = multi_worker_model.fit(
         multi_worker_dataset,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
-        callbacks=callbacks,
+        callbacks=[],
         verbose=2,  # Disables progress bar in remote actors.
     )
     results = history.history
     loss = results["loss"][-1]
+    local_time_taken = time.monotonic() - local_start_time
 
     if not use_ray:
-        local_time_taken = time.monotonic() - local_start_time
         print(f"Reporting loss: {loss:.4f}")
         if local_rank == 0:
             with open(VANILLA_RESULT_JSON, "w") as f:
                 json.dump({"loss": loss, "local_time_taken": local_time_taken}, f)
 
-    return results
+    return {"loss": loss, "local_time_taken": local_time_taken}
 
 
 def train_tf_ray_air(
@@ -112,7 +98,7 @@ def train_tf_ray_air(
     from ray.train import ScalingConfig
 
     def train_loop(config):
-        train_func(use_ray=True, config=config)
+        return train_func(use_ray=True, config=config)
 
     start_time = time.monotonic()
     trainer = TensorflowTrainer(
@@ -123,16 +109,12 @@ def train_tf_ray_air(
             resources_per_worker={"CPU": cpus_per_worker},
             use_gpu=use_gpu,
         ),
-        run_config=RunConfig(
-            name="tensorflow-benchmark",
-            storage_path=f"{os.environ.get('ANYSCALE_ARTIFACT_STORAGE', 'tmp')}/tensorflow_benchmark/",
-        ),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time
 
-    print(f"Last result: {result.metrics}")
-    return time_taken, result.metrics["local_time_taken"], result.metrics["loss"]
+    print(f"Last result: {result.metrics}, return values: {result.return_value}")
+    return time_taken, result.return_value["local_time_taken"], result.return_value["loss"]
 
 
 def train_tf_vanilla_worker(
