@@ -753,6 +753,13 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
 )
 
+# Timeout for a newly spawned HAProxy process to finish starting up and take
+# over the admin socket (verified by pid). Generous because a reload under
+# load must transfer listener FDs from a busy predecessor.
+RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S", "30")
+)
+
 # Minimum spacing between HAProxy reloads. Broadcasts arriving inside
 # the window are batched into one apply; without it, autoscaling churn
 # can fire reloads tens of ms apart.

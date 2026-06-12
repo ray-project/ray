@@ -59,6 +59,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     RAY_SERVE_HAPROXY_STATS_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
@@ -808,7 +809,9 @@ class HAProxyApi(ProxyApi):
         return self._proc is not None and self._proc.returncode is None
 
     async def _start_and_wait_for_haproxy(
-        self, *extra_args: str, timeout_s: int = 5
+        self,
+        *extra_args: str,
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> asyncio.subprocess.Process:
         # Build command args
         haproxy_bin = get_haproxy_binary()
@@ -872,7 +875,15 @@ class HAProxyApi(ProxyApi):
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
-            reload_args = ["-sf", str(old_proc.pid)]
+            # Also re-signal any previously displaced workers that are still
+            # alive: if a prior reload's -sf signal was lost (e.g. the spawn
+            # died before delivering it), the next reload re-targets them
+            # instead of stranding them outside the chain forever. Signaling
+            # an already-draining worker is a no-op.
+            live_old_pids = [
+                str(p.pid) for p in self._old_procs if p.returncode is None
+            ]
+            reload_args = ["-sf", str(old_proc.pid), *live_old_pids]
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
 
@@ -892,7 +903,9 @@ class HAProxyApi(ProxyApi):
             raise
 
     async def _wait_for_hap_availability(
-        self, proc: asyncio.subprocess.Process, timeout_s: int = 5
+        self,
+        proc: asyncio.subprocess.Process,
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> None:
         start_time = time.time()
 
@@ -908,13 +921,21 @@ class HAProxyApi(ProxyApi):
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
                 )
 
-            if await self.is_running():
+            # The admin socket path keeps answering through its previous owner
+            # until the new process rebinds it, so "the socket answered" does
+            # not mean `proc` is up. Require the answer to come from `proc`
+            # itself: otherwise a spawn that dies before taking over is
+            # declared ready, `self._proc` advances to a corpse, and the
+            # worker that spawn was meant to stop (its -sf target) is never
+            # signaled again — it keeps serving its stale config forever.
+            if await self._get_running_pid() == proc.pid:
                 return
 
             await asyncio.sleep(0.5)
 
         raise RuntimeError(
-            f"HAProxy did not enter running state within {timeout_s} seconds."
+            f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
+            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"
         )
 
     def _write_ingress_request_router_lua(
@@ -1274,6 +1295,26 @@ class HAProxyApi(ProxyApi):
         self.cfg.has_received_servers = self.cfg.has_received_servers or any(
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
+
+    async def _get_running_pid(self) -> Optional[int]:
+        """Pid of the HAProxy process currently answering the admin socket.
+
+        Returns None if the socket is unavailable or the response is
+        unparseable. Used to verify that a specific (newly spawned) process
+        has taken over the socket: the socket path keeps answering through
+        its previous owner until the new process rebinds it.
+        """
+        try:
+            info = await self._send_socket_command("show info")
+        except Exception:
+            return None
+        for line in info.splitlines():
+            if line.startswith("Pid:"):
+                try:
+                    return int(line.split(":", 1)[1])
+                except ValueError:
+                    return None
+        return None
 
     async def is_running(self) -> bool:
         try:
