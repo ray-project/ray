@@ -14,11 +14,14 @@ from .base_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from ray._common.utils import env_bool
+from ray.data._internal.execution.util import memory_string
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+_RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
+_RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 # Label key the cluster autoscaler uses to bucket nodes by subcluster.
 # Hardcoded so all components agree without per-Dataset configuration.
 SUBCLUSTER_LABEL_KEY = "__subcluster__"
@@ -30,6 +33,81 @@ DEFAULT_SUBCLUSTER: Optional[str] = None
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
     "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
 )
+
+
+def _format_resource_value_for_log(resource_name: str, value: float) -> str:
+    """Format a numerical resource value to a human-readable string.
+
+    Args:
+        resource_name: The resource name.
+        value: The resource value.
+
+    Returns:
+        A human-readable string.
+    """
+    if resource_name in _RESOURCE_LOG_MEMORY_KEYS:
+        return memory_string(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _format_resource_bundle_for_log(bundle: ResourceDict) -> str:
+    """Format a resource bundle to a human-readable string.
+
+    Drops custom resource keys (e.g. ``anyscale/...``, ``node:...``) and
+    zero-valued resources, keeping only the standard keys in ``_RESOURCE_LOG_KEYS``.
+
+    Args:
+        bundle: The resource bundle to format.
+
+    Returns:
+        A human-readable string, e.g. ``"{CPU: 8, memory: 32.0GiB}"``.
+
+    Example:
+        >>> from ray.data._internal.util import GiB
+        >>> _format_resource_bundle_for_log({"CPU": 8, "GPU": 0, "memory": 32 * GiB})
+        '{CPU: 8, memory: 32.0GiB}'
+    """
+    resources = []
+    for resource_name in _RESOURCE_LOG_KEYS:
+        value = bundle.get(resource_name, 0)
+        if value == 0:
+            continue
+        resources.append(
+            f"{resource_name}: {_format_resource_value_for_log(resource_name, value)}"
+        )
+    return "{" + ", ".join(resources) + "}"
+
+
+def _format_resources_for_log(resources: List[ResourceDict]) -> str:
+    """Format and aggregate resource bundles for logging.
+
+    Bundles that format to the same string (after dropping custom/zero-valued
+    resources) are collapsed into a single ``N x {...}`` entry.
+
+    Args:
+        resources: The resource bundles to format.
+
+    Returns:
+        A human-readable string, e.g. ``"[2 x {CPU: 1}, 1 x {GPU: 1}]"``.
+
+    Example:
+        >>> _format_resources_for_log([{"CPU": 1}, {"CPU": 1}, {"GPU": 1}])
+        '[2 x {CPU: 1}, 1 x {GPU: 1}]'
+    """
+    bundle_counts: Dict[str, int] = {}
+    for resource in resources:
+        bundle = _format_resource_bundle_for_log(resource)
+        if bundle == "{}":
+            continue
+        bundle_counts[bundle] = bundle_counts.get(bundle, 0) + 1
+
+    return (
+        "["
+        + ", ".join(f"{count} x {bundle}" for bundle, count in bundle_counts.items())
+        + "]"
+    )
 
 
 @dataclass
@@ -466,7 +544,10 @@ class _AutoscalingCoordinatorActor:
         if logger.isEnabledFor(logging.DEBUG):
             msg = "Allocated resources:\n"
             for requester_id, ongoing_req in self._ongoing_reqs.items():
-                msg += f"Requester {requester_id}: {ongoing_req.allocated_resources}\n"
+                allocated_resources_log_str = _format_resources_for_log(
+                    ongoing_req.allocated_resources
+                )
+                msg += f"Requester {requester_id}: {allocated_resources_log_str}\n"
             logger.debug(msg)
 
 
