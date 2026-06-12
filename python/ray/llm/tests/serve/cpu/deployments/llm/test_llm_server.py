@@ -14,6 +14,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.core.configs.openai_api_models import CompletionRequest
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.vllm_engine import (
@@ -729,6 +730,59 @@ class TestCanonicalizeRequestIdHeader:
             _canonicalize_request_id_header(SimpleNamespace(request_id=None), raw)
             is raw
         )
+
+
+class TestMaybeAddRequestId:
+    """``_maybe_add_request_id_to_request`` fills the Serve request id for a
+    defaulted request_id but never clobbers one the caller set explicitly."""
+
+    def _set_ctx(self, request_id):
+        serve.context._serve_request_context.set(
+            serve.context._RequestContext(request_id=request_id)
+        )
+
+    @pytest.mark.asyncio
+    async def test_defaulted_request_id_is_overwritten_with_serve_id(self):
+        server = LLMServer.__new__(LLMServer)
+        req = CompletionRequest(model="m", prompt="hi")  # request_id defaulted
+        assert "request_id" not in req.model_fields_set
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        assert req.request_id == "serve-ctx-id"
+
+    @pytest.mark.asyncio
+    async def test_explicit_request_id_is_preserved(self):
+        server = LLMServer.__new__(LLMServer)
+        req = CompletionRequest(model="m", prompt="hi", request_id="caller-set-id")
+        assert "request_id" in req.model_fields_set
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        # Caller's id wins; the Serve context id does not clobber it.
+        assert req.request_id == "caller-set-id"
+
+    @pytest.mark.asyncio
+    async def test_request_without_request_id_field_is_skipped(self):
+        """Request types without a request_id field (e.g. tokenize/detokenize)
+        must be handled gracefully, not raise."""
+        from pydantic import BaseModel
+
+        class _NoRequestId(BaseModel):
+            pass
+
+        server = LLMServer.__new__(LLMServer)
+        req = _NoRequestId()
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        assert not hasattr(req, "request_id")
 
 
 if __name__ == "__main__":
