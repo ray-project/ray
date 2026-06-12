@@ -593,31 +593,40 @@ async def test_batch_setters(use_class):
 async def test_set_max_concurrent_batches():
     """The concurrency limit is enforced, and raising it admits queued batches immediately."""
     loop = get_or_create_event_loop()
-    state = {"running": 0, "peak": 0, "gate": asyncio.Event()}
+    # `started` counts handlers that have entered (released once each); awaiting N acquires
+    # blocks deterministically until exactly N batches are running — no sleeps.
+    started = asyncio.Semaphore(0)
+    release = asyncio.Event()
+    state = {"running": 0, "peak": 0}
 
     @serve.batch(max_batch_size=1, batch_wait_timeout_s=0, max_concurrent_batches=1)
     async def func(numbers):
-        # Each request is its own batch (max_batch_size=1) and blocks on the gate,
+        # Each request is its own batch (max_batch_size=1) and blocks until released,
         # so state["peak"] tracks how many batches run concurrently.
         state["running"] += 1
         state["peak"] = max(state["peak"], state["running"])
-        await state["gate"].wait()
+        started.release()
+        await release.wait()
         state["running"] -= 1
         return list(numbers)
 
+    async def wait_until_running(n):
+        for _ in range(n):
+            await started.acquire()
+
     assert func._get_max_concurrent_batches() == 1
     tasks = [loop.create_task(func(i)) for i in range(4)]
-    await asyncio.sleep(0.2)
-    assert state["peak"] == 1  # only one of four batches runs under the limit
+    await wait_until_running(1)  # only one of four batches runs under the limit
+    assert state["peak"] == 1
 
     # Raise the limit while the first batch is still blocked: queued batches must be
     # admitted immediately, not only when an in-flight batch completes.
     func.set_max_concurrent_batches(3)
     assert func._get_max_concurrent_batches() == 3
-    await asyncio.sleep(0.2)
+    await wait_until_running(2)  # two more admitted now that the limit was raised
     assert state["peak"] == 3
 
-    state["gate"].set()
+    release.set()
     await asyncio.gather(*tasks)
 
 

@@ -241,8 +241,10 @@ class _BatchQueue:
         self.max_concurrent_batches = new_max_concurrent_batches
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
         # Wake waiters so a raised limit takes effect now. reconfigure may run on a worker
-        # thread (RAY_SERVE_RUN_SYNC_IN_THREADPOOL), so schedule on the loop thread-safely.
-        asyncio.run_coroutine_threadsafe(self._notify_concurrency_waiters(), self._loop)
+        # thread (RAY_SERVE_RUN_SYNC_IN_THREADPOOL), so schedule on the loop thread-safely;
+        # skip if the loop is already gone (e.g. shutdown before reconfigure).
+        if self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._notify_concurrency_waiters(), self._loop)
 
     async def _notify_concurrency_waiters(self) -> None:
         async with self._concurrency_condition:
