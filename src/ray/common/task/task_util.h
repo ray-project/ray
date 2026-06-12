@@ -160,7 +160,8 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
       const std::vector<FallbackOption> &fallback_strategy =
-          std::vector<FallbackOption>()) {
+          std::vector<FallbackOption>(),
+      uint64_t num_objects_per_yield = 1) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -179,6 +180,7 @@ class TaskSpecBuilder {
     message_->set_returns_dynamic(returns_dynamic);
     message_->set_streaming_generator(is_streaming_generator);
     message_->set_generator_backpressure_num_objects(generator_backpressure_num_objects);
+    message_->set_num_objects_per_yield(num_objects_per_yield);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(

@@ -315,7 +315,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         CRayStatus ReportGeneratorItemReturns(
-            const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
+            const c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] &dynamic_return_objects,
             const CObjectID &generator_id,
             const CAddress &caller_address,
             int64_t item_index,
@@ -407,6 +407,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool is_streaming_generator,
             c_bool should_retry_exceptions,
             int64_t generator_backpressure_num_objects,
+            int64_t num_objects_per_yield,
             optional[c_string] tensor_transport
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback

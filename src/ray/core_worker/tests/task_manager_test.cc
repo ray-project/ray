@@ -88,7 +88,7 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
   request.mutable_worker_addr()->CopyFrom(addr);
   request.set_item_index(idx);
   request.set_generator_id(generator_id.Binary());
-  rpc::ReturnObject *returned_object = request.mutable_returned_object();
+  rpc::ReturnObject *returned_object = request.add_returned_objects();
   returned_object->set_object_id(dynamic_return_id.Binary());
   returned_object->set_data(data->Data(), data->Size());
   returned_object->set_in_plasma(set_in_plasma);
