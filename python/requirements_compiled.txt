@@ -18,8 +18,6 @@ absl-py==1.4.0
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
-accelerate==0.28.0
-    # via -r python/requirements/ml/core-requirements.txt
 adagio==0.2.4
     # via
     #   fugue
@@ -432,11 +430,6 @@ dask==2023.6.1 ; python_version < "3.12"
     #   distributed
 databricks-sdk==0.52.0
     # via mlflow-skinny
-datasets==3.6.0
-    # via
-    #   -r python/requirements/ml/data-test-requirements.txt
-    #   -r python/requirements/ml/train-requirements.txt
-    #   evaluate
 datasketches==5.2.0
     # via -r python/requirements/ml/data-test-requirements.txt
 debugpy==1.8.0
@@ -463,11 +456,6 @@ deprecated==1.3.1
     # via
     #   deltalake
     #   pymoo
-dill==0.3.7
-    # via
-    #   datasets
-    #   evaluate
-    #   multiprocess
 distlib==0.3.7
     # via virtualenv
 distributed==2023.6.1 ; python_version < "3.12"
@@ -765,8 +753,6 @@ halo==0.0.31
     # via -r python/requirements/cloud-requirements.txt
 hf-gradio==0.4.1
     # via gradio
-hf-xet==1.5.0
-    # via huggingface-hub
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
@@ -798,17 +784,6 @@ httpx==0.28.1
     #   safehttpx
 hudi==0.4.0
     # via -r python/requirements/ml/data-test-requirements.txt
-huggingface-hub==0.36.2
-    # via
-    #   -r python/requirements/ml/train-requirements.txt
-    #   accelerate
-    #   datasets
-    #   evaluate
-    #   gradio
-    #   gradio-client
-    #   timm
-    #   tokenizers
-    #   transformers
 humanfriendly==10.0
     # via
     #   azure-cli-core
@@ -1182,10 +1157,6 @@ multidict==6.0.5
     #   yarl
 multipledispatch==1.0.0
     # via botorch
-multiprocess==0.70.15
-    # via
-    #   datasets
-    #   evaluate
 mypy==1.7.0
     # via
     #   -r python/requirements/lint-requirements.txt
@@ -1946,10 +1917,6 @@ referencing==0.36.2
     #   jsonschema
     #   jsonschema-path
     #   jsonschema-specifications
-regex==2024.5.15
-    # via
-    #   cfn-lint
-    #   transformers
 requests==2.32.5
     # via
     #   -r python/requirements.txt
@@ -2060,11 +2027,6 @@ s3transfer==0.8.0
     # via boto3
 safehttpx==0.1.7
     # via gradio
-safetensors==0.4.3
-    # via
-    #   accelerate
-    #   timm
-    #   transformers
 sarif-om==1.0.4
     # via cfn-lint
 scikit-learn==1.5.2
@@ -2336,8 +2298,6 @@ tinyscaler==1.2.8
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   supersuit
-tokenizers==0.15.2
-    # via transformers
 toml==0.10.2
     # via tensorflow-datasets
 tomli==2.0.1
@@ -2452,10 +2412,6 @@ traitlets==5.14.3
     #   nbclient
     #   nbconvert
     #   nbformat
-transformers==4.36.2
-    # via
-    #   -r python/requirements/ml/core-requirements.txt
-    #   -r python/requirements/serve/serve-test-requirements.txt
 triad==0.9.8
     # via
     #   adagio
