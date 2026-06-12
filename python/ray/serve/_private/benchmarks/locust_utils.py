@@ -75,9 +75,15 @@ class LocustClient:
                     if token
                     else None
                 )
+                start = time.perf_counter()
                 with self.client.get(
                     "", headers=headers, json=data, catch_response=True
                 ) as r:
+                    # locust<=2.18 FastHttp truncates response_time to whole ms;
+                    # re-measure so the 0.1ms buckets see sub-ms differences.
+                    r.request_meta["response_time"] = (
+                        time.perf_counter() - start
+                    ) * 1000
                     r.request_meta["context"]["request_id"] = request_id
 
             @events.request.add_listener
