@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 
 namespace ray {
 
@@ -38,7 +39,7 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   void SetUp() {
     ::testing::Test::SetUp();
     static instrumented_io_context io_context;
-    manager = std::make_unique<ClusterResourceManager>(io_context);
+    manager = std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
     manager->AddOrUpdateNode(node0,
                              CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1));
     manager->AddOrUpdateNode(node1,

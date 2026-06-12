@@ -31,6 +31,7 @@
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_init_data.h"
@@ -85,7 +86,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
+    cluster_resource_manager_ =
+        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_service_));
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
         std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),

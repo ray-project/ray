@@ -27,6 +27,7 @@
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/cgroup2/cgroup_manager_factory.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/constants.h"
@@ -698,6 +699,7 @@ int main(int argc, char *argv[]) {
 
     worker_pool = std::make_unique<ray::raylet::WorkerPool>(
         main_service,
+        ray::PeriodicalRunner::Create(main_service),
         raylet_node_id,
         node_manager_config.node_manager_address,
         [&]() {
@@ -897,7 +899,7 @@ int main(int argc, char *argv[]) {
         *object_manager, task_by_state_counter);
 
     cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
-        main_service,
+        ray::PeriodicalRunner::Create(main_service),
         ray::scheduling::NodeID(raylet_node_id.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
@@ -1019,6 +1021,7 @@ int main(int argc, char *argv[]) {
 
     node_manager = std::make_unique<ray::raylet::NodeManager>(
         main_service,
+        ray::PeriodicalRunner::Create(main_service),
         raylet_node_id,
         node_name,
         node_manager_config,

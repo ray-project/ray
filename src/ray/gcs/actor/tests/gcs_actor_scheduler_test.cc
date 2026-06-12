@@ -23,6 +23,7 @@
 
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/asio_util.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -113,7 +114,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_actor_table_ = std::make_shared<FakeGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
-        io_context_->GetIoService(),
+        PeriodicalRunner::Create(io_context_->GetIoService()),
         scheduling::NodeID(local_node_id_.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

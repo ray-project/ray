@@ -17,6 +17,7 @@
 #include "absl/strings/str_cat.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/observability/metrics.h"
@@ -150,7 +151,7 @@ PythonEventRecorder::PythonEventRecorder(int aggregator_port,
   RAY_CHECK(!node_id.IsNil()) << "Invalid node ID: " << node_id_hex;
 
   recorder_ = std::make_unique<RayEventRecorder>(*event_aggregator_client_,
-                                                 *io_context_,
+                                                 PeriodicalRunner::Create(*io_context_),
                                                  max_buffer_size,
                                                  metric_source_str_,
                                                  dropped_events_counter_,

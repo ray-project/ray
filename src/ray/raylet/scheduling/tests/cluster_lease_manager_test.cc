@@ -26,6 +26,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -270,7 +271,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       {kLabelKeyNodeID, NodeID::FromBinary(id).Hex()}};
   static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      io_context,
+      PeriodicalRunner::Create(io_context),
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/

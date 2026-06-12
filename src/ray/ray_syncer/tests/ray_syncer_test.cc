@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer.h"
@@ -94,7 +95,8 @@ class RaySyncerTest : public ::testing::Test {
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
-    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary(), 1, 0);
+    syncer_ = std::make_unique<RaySyncer>(
+        io_context_, PeriodicalRunner::Create(io_context_), local_id_.Binary(), 1, 0);
   }
 
   MockReporterInterface *GetReporter(MessageType cid) {
@@ -306,8 +308,12 @@ struct SyncerServerTest {
       v = 0;
     }
     // Setup syncer and grpc server
-    syncer = std::make_unique<RaySyncer>(
-        io_context, node_id.Binary(), 1, 0, std::move(ray_sync_observer));
+    syncer = std::make_unique<RaySyncer>(io_context,
+                                         PeriodicalRunner::Create(io_context),
+                                         node_id.Binary(),
+                                         1,
+                                         0,
+                                         std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
@@ -1104,7 +1110,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
         : server_port(port), work_guard(io_context.get_executor()) {
       // Setup syncer and grpc server
       syncer =
-          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
+          std::make_unique<RaySyncer>(io_context,
+                                      PeriodicalRunner::Create(io_context),
+                                      NodeID::FromRandom().Binary(),
+                                      1,
+                                      0);
       thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
       // Create service with authentication token
@@ -1146,7 +1156,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
         : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
           thread([this]() { io_context.run(); }) {
       syncer =
-          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
+          std::make_unique<RaySyncer>(io_context,
+                                      PeriodicalRunner::Create(io_context),
+                                      NodeID::FromRandom().Binary(),
+                                      1,
+                                      0);
       remote_node_id = NodeID::FromRandom().Binary();
     }
 

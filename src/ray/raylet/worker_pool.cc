@@ -85,6 +85,7 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 }  // namespace
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
+                       std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                        const NodeID &node_id,
                        std::string node_address,
                        std::function<int64_t()> get_num_cpus_available,
@@ -121,7 +122,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
-      periodical_runner_(PeriodicalRunner::Create(io_service)),
+      periodical_runner_(std::move(periodical_runner)),
       add_to_cgroup_hook_(std::move(add_to_cgroup_hook)),
       worker_pool_metrics_(worker_pool_metrics) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);

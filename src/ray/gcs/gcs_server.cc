@@ -140,7 +140,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
-          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          PeriodicalRunner::Create(
+              io_context_provider_.GetIOContext<observability::RayEventRecorder>()),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
           metrics_.event_recorder_dropped_events_counter,
@@ -466,7 +467,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      io_context_provider_.GetDefaultIOContext(),
+      PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -631,6 +632,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
+      PeriodicalRunner::Create(io_context_provider_.GetIOContext<syncer::RaySyncer>()),
       kGCSNodeID.Binary(),
       /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
       /* batch_delay_ms */
@@ -837,6 +839,7 @@ void GcsServer::InitGcsTaskManager(
     ray::observability::MetricInterface &task_events_stored_gauge) {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
   gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context,
+                                                       PeriodicalRunner::Create(io_context),
                                                        task_events_reported_gauge,
                                                        task_events_dropped_gauge,
                                                        task_events_stored_gauge);

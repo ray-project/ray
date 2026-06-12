@@ -35,6 +35,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/observability:fake_metric",
@@ -169,6 +170,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_task_manager",
@@ -188,6 +190,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
@@ -210,6 +213,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/gcs:gcs_node_manager",
@@ -306,6 +310,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_autoscaler_state_manager",
@@ -328,6 +333,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs:gcs_resource_manager",

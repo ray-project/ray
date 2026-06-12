@@ -24,8 +24,9 @@
 
 namespace ray {
 
-ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(PeriodicalRunner::Create(io_service)),
+ClusterResourceManager::ClusterResourceManager(
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner)
+    : timer_(std::move(periodical_runner)),
       local_resource_view_node_count_gauge_(
           raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
   timer_->RunFnPeriodically(

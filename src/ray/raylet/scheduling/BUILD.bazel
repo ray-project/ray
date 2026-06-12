@@ -47,6 +47,7 @@ ray_cc_library(
     hdrs = ["cluster_resource_manager.h"],
     deps = [
         ":local_resource_manager",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common:bundle_location_index",
         "//src/ray/common:grpc_util",
         "//src/ray/common:lease",
@@ -69,6 +70,7 @@ ray_cc_library(
         ":cluster_resource_manager",
         ":composite_scheduling_policy",
         ":scheduler_internal",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:clock",

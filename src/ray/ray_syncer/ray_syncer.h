@@ -26,7 +26,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "boost/functional/hash.hpp"
 #include "ray/asio/instrumented_io_context.h"
-#include "ray/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
 #include "ray/rpc/authentication/authentication_token.h"
@@ -99,6 +99,7 @@ class RaySyncer {
   /// \param max_batch_delay_ms The max delay in milliseconds to wait before sending a
   /// batch.
   RaySyncer(instrumented_io_context &io_context,
+            std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
             const std::string &node_id,
             size_t max_batch_size,
             uint64_t max_batch_delay_ms,
@@ -181,7 +182,7 @@ class RaySyncer {
   std::unique_ptr<NodeState> node_state_;
 
   /// Timer is used to do broadcasting.
-  std::shared_ptr<PeriodicalRunner> timer_;
+  std::shared_ptr<PeriodicalRunnerInterface> timer_;
 
   /// The max number of messages to be sent in a batch.
   const size_t max_batch_size_;

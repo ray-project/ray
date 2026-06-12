@@ -16,6 +16,7 @@ ray_cc_test(
     srcs = ["ray_event_recorder_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:python_event_interface",
         "//src/ray/observability:ray_actor_definition_event",

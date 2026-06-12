@@ -23,6 +23,7 @@
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
@@ -82,7 +83,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()),
-        cluster_resource_manager_(io_service_) {
+        cluster_resource_manager_(PeriodicalRunner::Create(io_service_)) {
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ =

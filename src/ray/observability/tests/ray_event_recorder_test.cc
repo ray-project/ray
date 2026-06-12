@@ -22,6 +22,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/metric_interface.h"
@@ -100,7 +101,7 @@ class RayEventRecorderTest : public ::testing::Test {
     fake_dropped_events_counter_ = std::make_unique<FakeCounter>();
     test_node_id_ = NodeID::FromRandom();
     recorder_ = std::make_unique<RayEventRecorder>(*fake_client_,
-                                                   io_service_,
+                                                   PeriodicalRunner::Create(io_service_),
                                                    max_buffer_size_,
                                                    "gcs",
                                                    *fake_dropped_events_counter_,

@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "ray/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -35,6 +35,7 @@ namespace gcs {
 
 GcsTaskManager::GcsTaskManager(
     instrumented_io_context &io_service,
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     ray::observability::MetricInterface &task_events_reported_gauge,
     ray::observability::MetricInterface &task_events_dropped_gauge,
     ray::observability::MetricInterface &task_events_stored_gauge)
@@ -43,7 +44,7 @@ GcsTaskManager::GcsTaskManager(
           RayConfig::instance().task_events_max_num_task_in_gcs(),
           stats_counter_,
           std::make_unique<FinishedTaskActorTaskGcPolicy>())),
-      periodical_runner_(PeriodicalRunner::Create(io_service_)),
+      periodical_runner_(std::move(periodical_runner)),
       task_events_reported_gauge_(task_events_reported_gauge),
       task_events_dropped_gauge_(task_events_dropped_gauge),
       task_events_stored_gauge_(task_events_stored_gauge) {
