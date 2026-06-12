@@ -24,7 +24,7 @@ from ray.data.checkpoint.interfaces import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
-from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datasource.file_datasink import RowBasedFileDatasink, _FileDatasink
 from ray.data.datasource.filename_provider import _split_base_and_ext
 
 
@@ -82,6 +82,13 @@ def plan_write_op_with_checkpoint_writer(
         2. Write: writes data files
         3. Post-write: commits checkpoints (renames pending -> committed)
 
+    Exception — RowBasedFileDatasink with row-level filenames:
+        When get_filename_for_row() is overridden, output paths are derived
+        from row data at write time and cannot be predicted beforehand, so 2PC
+        is incompatible. In this case, no pre/post checkpoint transforms are
+        added and at-least-once semantics apply. The warning is emitted once
+        here on the driver, not per-task on workers.
+
     Writing the pending checkpoint BEFORE the data file is critical: the
     pending checkpoint is the source of truth for recovery. If failure occurs
     after data write but before commit, recovery finds the pending checkpoint,
@@ -115,22 +122,36 @@ def plan_write_op_with_checkpoint_writer(
     collect_stats_fn = generate_collect_write_stats_fn()
 
     if isinstance(datasink, _FileDatasink):
-        # File-based datasink: use 2-phase commit for atomicity
-        # Pre-write transform: compute expected paths and write pending checkpoints
-        prepare_checkpoint_fn = _generate_prepare_checkpoint_transform(
-            data_context, datasink, checkpoint_writer
-        )
-
-        # Post-write transform: commit checkpoints
-        commit_checkpoint_fn = _generate_commit_checkpoint_transform(checkpoint_writer)
-
-        pre_transformations = [
-            prepare_checkpoint_fn,
-        ]
-        post_transformations = [
-            commit_checkpoint_fn,
-            collect_stats_fn,
-        ]
+        # Special case: RowBasedFileDatasink with a row-level filename provider.
+        # Output paths depend on row data and cannot be predicted before writing,
+        # so 2PC checkpointing is incompatible. Warn once on the driver and skip
+        # both the pre- and post-checkpoint transforms entirely.
+        if (
+            isinstance(datasink, RowBasedFileDatasink)
+            and datasink.filename_provider._uses_row_level_filenames()
+        ):
+            warnings.warn(
+                "FilenameProvider.get_filename_for_row() is not compatible with "
+                "2-phase-commit (2PC) checkpointing. 2PC is disabled for this "
+                "write — at-least-once semantics apply. On crash and retry, "
+                "duplicate files may be written.",
+                UserWarning,
+                stacklevel=2,
+            )
+            pre_transformations = []
+            post_transformations = [collect_stats_fn]
+        else:
+            # Standard file-based datasink: use 2-phase commit for atomicity.
+            # Pre-write transform: compute expected paths and write pending checkpoints
+            prepare_checkpoint_fn = _generate_prepare_checkpoint_transform(
+                data_context, datasink, checkpoint_writer
+            )
+            # Post-write transform: commit checkpoints
+            commit_checkpoint_fn = _generate_commit_checkpoint_transform(
+                checkpoint_writer
+            )
+            pre_transformations = [prepare_checkpoint_fn]
+            post_transformations = [commit_checkpoint_fn, collect_stats_fn]
     else:
         # Non-file datasink (SQL, Mongo, etc.): fall back to non-atomic checkpoint
         # No 2-phase commit - write checkpoint after data write

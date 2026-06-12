@@ -26,10 +26,16 @@ class FilenameProvider:
 
     Use this class to customize the filenames used when writing a Dataset.
 
-    Override :meth:`~FilenameProvider.get_filename_for_task` to customize filenames.
-    For row-based writes (e.g., :meth:`~ray.data.Dataset.write_images`), row filenames
-    are automatically derived by appending ``_{block_index:06}_{row_index:06}`` to the
-    task filename.
+    Override :meth:`~FilenameProvider.get_filename_for_task` to customize filenames
+    based on the write UUID and task index. For row-based writes (e.g.,
+    :meth:`~ray.data.Dataset.write_images`), row filenames are automatically derived
+    by appending ``_{block_index:06}_{row_index:06}`` to the task filename.
+
+    Alternatively, override :meth:`~FilenameProvider.get_filename_for_row` to produce
+    a fully custom per-row filename derived from row data. Note that overriding
+    :meth:`~FilenameProvider.get_filename_for_row` **disables 2-phase-commit (2PC)
+    checkpointing** for this datasink. At-least-once write semantics apply: if a
+    task crashes and is retried, duplicate files may be written.
 
     Example:
 
@@ -136,13 +142,6 @@ class FilenameProvider:
         """
         raise NotImplementedError
 
-    @Deprecated(
-        message="Implement get_filename_for_task() instead. Row filenames are "
-        "automatically derived by appending _{block_index:06}_{row_index:06} to the "
-        "task filename. All files from the same task must share the task filename as "
-        "a prefix so that uncommitted data files can be identified and cleaned up "
-        "during checkpoint recovery."
-    )
     def get_filename_for_row(
         self,
         row: Dict[str, Any],
@@ -153,10 +152,15 @@ class FilenameProvider:
     ) -> str:
         """Generate a filename for a row.
 
-        .. deprecated::
-            Implement :meth:`get_filename_for_task` instead. Row filenames are
-            automatically derived by appending ``_{block_index:06}_{row_index:06}``
-            to the task filename.
+        Override this method to produce a fully custom per-row filename derived from
+        row data (e.g., a UUID embedded in the row).
+
+        .. note::
+            When this method is overridden, **2-phase-commit (2PC) checkpointing is
+            automatically disabled** for this datasink.  At-least-once write semantics
+            apply: if a task crashes and is retried, duplicate output files may be
+            written.  Prefer :meth:`get_filename_for_task` when row-level naming is
+            not required, so that full 2PC protection is retained.
 
         Args:
             row: The row that will be written to a file.
@@ -169,3 +173,14 @@ class FilenameProvider:
             The filename to use for the row.
         """
         raise NotImplementedError
+
+    def _uses_row_level_filenames(self) -> bool:
+        """Return ``True`` if the subclass has overridden :meth:`get_filename_for_row`.
+
+        Used internally to decide whether to disable 2PC checkpointing and route each
+        row through :meth:`get_filename_for_row` instead of deriving filenames from the
+        task filename.
+        """
+        return (
+            type(self).get_filename_for_row is not FilenameProvider.get_filename_for_row
+        )

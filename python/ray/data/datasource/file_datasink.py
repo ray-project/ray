@@ -217,13 +217,29 @@ class RowBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
-        task_filename = self.filename_provider.get_filename_for_task(
-            ctx.kwargs[WRITE_UUID_KWARG_NAME],
-            ctx.task_idx,
-        )
-        base, ext = _split_base_and_ext(task_filename)
+        write_uuid = ctx.kwargs[WRITE_UUID_KWARG_NAME]
+        task_index = ctx.task_idx
+        uses_row_level = self.filename_provider._uses_row_level_filenames()
+
+        if uses_row_level:
+            # Row filenames are derived from row data at write time.
+            # 2PC is disabled for this provider (handled on the driver side);
+            # no warning here to avoid per-task/per-block spam.
+            pass
+        else:
+            task_filename = self.filename_provider.get_filename_for_task(
+                write_uuid, task_index
+            )
+            base, ext = _split_base_and_ext(task_filename)
+
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
-            filename = f"{base}_{block_index:06}_{row_index:06}{ext}"
+            if uses_row_level:
+                filename = self.filename_provider.get_filename_for_row(
+                    row, write_uuid, task_index, block_index, row_index
+                )
+            else:
+                filename = f"{base}_{block_index:06}_{row_index:06}{ext}"
+
             write_path = posixpath.join(self.path, filename)
             logger.debug(f"Writing {write_path} file.")
 
