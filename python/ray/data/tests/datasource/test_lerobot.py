@@ -20,13 +20,17 @@ import ray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# Skip all tests if av is not available
+# lerobot >=0.5 requires Python >=3.12, so the whole stack (lerobot, its
+# torchcodec decoder, and the av writer these tests use) is only installed on
+# py3.12+. Skip cleanly elsewhere rather than failing on the lerobot import.
 AV_AVAILABLE = importlib.util.find_spec("av") is not None
 FSSPEC_AVAILABLE = importlib.util.find_spec("fsspec") is not None
+LEROBOT_AVAILABLE = importlib.util.find_spec("lerobot") is not None
 
 pytestmark = pytest.mark.skipif(
-    not (AV_AVAILABLE and FSSPEC_AVAILABLE),
-    reason="av or fsspec not available. Install with: pip install av fsspec",
+    not (AV_AVAILABLE and FSSPEC_AVAILABLE and LEROBOT_AVAILABLE),
+    reason="lerobot[dataset] (Python >=3.12), av, or fsspec not available. "
+    "Install with: pip install 'lerobot[dataset]>=0.5.0' av fsspec",
 )
 
 

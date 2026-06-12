@@ -27,5 +27,9 @@ hudi==0.4.0
 datasketches
 testcontainers[kafka]
 obstore
-lerobot[dataset]>=0.5.0
-torchcodec
+# lerobot v3 datasource (ray.data.read_lerobot). lerobot >=0.5 requires
+# Python >=3.12, so gate the whole stack — including its torchcodec video
+# decoder and the av writer the tests use — behind that marker.
+lerobot[dataset]>=0.5.0; python_version >= "3.12"
+torchcodec; python_version >= "3.12"
+av; python_version >= "3.12"

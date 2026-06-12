@@ -37,5 +37,10 @@ tensorflow-metadata>=1.17.0
 tf-keras
 torchvision==0.24.0
 confluent-kafka
-lerobot[dataset]>=0.5.0
-torchcodec
+# lerobot v3 datasource (ray.data.read_lerobot). lerobot >=0.5 requires
+# Python >=3.12, so gate the whole stack — including its torchcodec video
+# decoder and the av writer the tests use — behind that marker. The data
+# locks compile for py3.10/3.11/3.12; only the 3.12 lock picks these up.
+lerobot[dataset]>=0.5.0; python_version >= "3.12"
+torchcodec; python_version >= "3.12"
+av; python_version >= "3.12"
