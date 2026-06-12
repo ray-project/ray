@@ -917,6 +917,13 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
         if isinstance(expr, UnnestExpr):
             result = eval_expr(expr.inner, block)
 
+            if not isinstance(result, (pa.Array, pa.ChunkedArray)):
+                raise TypeError(
+                    f"unnest() requires a PyArrow Array or ChunkedArray of structs, "
+                    f"but expression returned {type(result).__name__}. "
+                    f"If returning from a UDF, ensure it returns a PyArrow struct array."
+                )
+
             # ChunkedArray → StructArray: flatten() only works on StructArray.
             if isinstance(result, pa.ChunkedArray):
                 result = result.combine_chunks()
