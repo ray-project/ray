@@ -509,7 +509,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: torch-cu128
+      type: gpu
       post_build_script: byod_pythia_test.sh
     cluster_compute: pythia_fsdp_compute_aws.yaml
 
