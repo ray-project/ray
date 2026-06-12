@@ -2617,7 +2617,7 @@ def read_lerobot(
             All roots must share the same ``video_keys``, ``fps``, and
             non-video feature names.
         partitioning: How to partition the dataset into read tasks.
-            Accepts a :class:`~ray.data.datasource.LeRobotPartitioning` member
+            Accepts a ``LeRobotPartitioning`` member
             or its string value. Options:
 
             - ``FILE_GROUP`` (default): one task per unique video-file set.
@@ -2633,8 +2633,7 @@ def read_lerobot(
         override_num_blocks: Override the number of output blocks from all read
             tasks. By default, the number is dynamically decided based on input
             data size and available resources.
-        **kwargs: Additional arguments forwarded to
-            :class:`~ray.data.datasource.LeRobotDatasource`.
+        **kwargs: Additional arguments forwarded to the ``LeRobotDatasource``.
             ``block_size`` is required when ``partitioning`` is ``ROW_BLOCK``.
 
     Returns:
