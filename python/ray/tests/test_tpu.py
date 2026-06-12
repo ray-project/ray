@@ -849,7 +849,8 @@ def test_slice_placement_group_ray_tpu_resource_per_chip(ray_v6e_tpu_cluster):
     override_pg = SlicePlacementGroup(
         topology="2x4", accelerator_version="v6e", tpu_resource_per_chip=2
     )
-    assert override_pg.chips_per_host == 16
+    assert override_pg.devices_per_host == 16
+    assert override_pg.chips_per_host == 8
     assert override_pg.num_hosts == 1
     assert override_pg.num_bundles == 1
     assert override_pg.bundle_resources["TPU"] == 16
@@ -892,6 +893,7 @@ def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
 
     # Default behavior (1 VM with 8 chips)
     default_pg = SlicePlacementGroup(topology="2x4", accelerator_version="v6e")
+    assert default_pg.devices_per_host == 8
     assert default_pg.chips_per_host == 8
     assert default_pg.num_hosts == 1
     assert default_pg.num_bundles == 1
@@ -901,6 +903,7 @@ def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
     override_pg = SlicePlacementGroup(
         topology="2x4", accelerator_version="v6e", chips_per_vm=4
     )
+    assert override_pg.devices_per_host == 4
     assert override_pg.chips_per_host == 4
     assert override_pg.num_hosts == 2
     assert override_pg.num_bundles == 2
