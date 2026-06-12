@@ -1,15 +1,22 @@
 import sys
+import uuid
 
 import pytest
 from vllm.distributed.kv_events import ZmqEventPublisher
 
+import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
+    derive_kv_event_block_size,
+    kv_event_namespace,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     assign_replica_kv_events_endpoint,
     configure_kv_events_for_kv_routing,
     resolve_kv_event_source_endpoint,
 )
+from ray.serve._private.common import DeploymentID
 from ray.serve.llm.request_router import KVAwareRouter
 
 
@@ -67,8 +74,7 @@ class TestConfigureKvEvents:
         )
 
     def test_block_hash_seed_pinned(self):
-        """Replicas must hash identical content identically: the router's
-        global indexer chains blocks by the engines' block hashes."""
+        """Engine block hashes must be content-deterministic across replicas."""
         llm_config = make_kv_aware_llm_config()
         build_llm_deployment(llm_config)
 
@@ -102,7 +108,8 @@ class TestReplicaEndpoints:
         assert resolve_kv_event_source_endpoint(llm_config) is None
 
     def test_replica_rank_offsets_port(self, replica_rank):
-        """Colocated replicas must bind distinct KV-events ports."""
+        """Colocated replicas must bind distinct KV-events ports; the
+        publisher consumes the rank-offset engine endpoint."""
         replica_rank(2)
         llm_config = make_kv_aware_llm_config()
         configure_kv_events_for_kv_routing(llm_config)
@@ -114,9 +121,8 @@ class TestReplicaEndpoints:
         assert resolve_kv_event_source_endpoint(llm_config) == "tcp://127.0.0.1:5559"
 
     def test_data_parallel_rank_is_offset_by_vllm(self, replica_rank):
-        """With data_parallel_rank, vLLM offsets the bind port internally, so
-        the configured endpoint stays at the base and only the subscriber
-        endpoint is offset."""
+        """vLLM offsets the bind port by dp rank itself, so the configured
+        endpoint stays at the base."""
         replica_rank(5)
         llm_config = make_kv_aware_llm_config(
             engine_kwargs={"data_parallel_rank": 3},
@@ -126,9 +132,28 @@ class TestReplicaEndpoints:
 
         endpoint = llm_config.engine_kwargs["kv_events_config"]["endpoint"]
         assert endpoint == "tcp://*:5557"
-        assert resolve_kv_event_source_endpoint(llm_config) == "tcp://127.0.0.1:5560"
         offset_by_vllm = ZmqEventPublisher.offset_endpoint_port(endpoint, 3)
         assert offset_by_vllm == "tcp://*:5560"
+        # The publisher consumes the dp-offset engine endpoint.
+        assert resolve_kv_event_source_endpoint(llm_config) == "tcp://127.0.0.1:5560"
+
+
+class TestKvEventPlaneConfig:
+    def test_namespace_is_deployment_scoped_and_sanitized(self):
+        deployment_id = DeploymentID(name="LLMServer:qwen-0.5b", app_name="my.app")
+        assert kv_event_namespace(deployment_id) == "ray_llm_my_app_LLMServer_qwen-0_5b"
+
+    def test_derive_kv_event_block_size_at_build_time(self):
+        """vLLM's own config resolution, including its default."""
+        assert derive_kv_event_block_size({}) == 16
+        assert derive_kv_event_block_size({"block_size": 32}) == 32
+
+
+@pytest.fixture(scope="module")
+def ray_instance():
+    if not ray.is_initialized():
+        ray.init(address="auto")
+    yield
 
 
 if __name__ == "__main__":
