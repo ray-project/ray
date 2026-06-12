@@ -12,6 +12,8 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
+    _DECODE_ZMQ_RE,
+    _PREFILL_ZMQ_RE,
     DEFAULT_HANDSHAKE_PORT_BASE,
     DEFAULT_NOTIFY_PORT_BASE,
     MoRIIOConnectorBackend,
@@ -20,10 +22,6 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
 )
 from ray.serve.llm import LLMConfig
 from ray.serve.schema import ReplicaRank
-
-# Copies of the regexes vLLM's MoRIIO connector uses to recover peer addresses.
-_PREFILL_ZMQ_RE = re.compile(r"___prefill_addr_(.+?)___decode_addr_")
-_DECODE_ZMQ_RE = re.compile(r"___decode_addr_(.+)_[0-9a-f]{32}(?:-.*)?$")
 
 _TEST_HOST = "10.0.0.5"
 
@@ -34,20 +32,33 @@ def _replica_context(global_rank: int) -> SimpleNamespace:
     )
 
 
-def _make_backend(read_mode: bool = False, extra_exp: dict = None):
+def _make_backend(
+    read_mode: bool = False,
+    extra_exp: dict = None,
+    dp_rank: int = None,
+    dp_size: int = None,
+    tp_size: int = None,
+):
     extra_config = {}
     if read_mode:
         extra_config["read_mode"] = "true"
+    engine_kwargs = dict(
+        kv_transfer_config=dict(
+            kv_connector="MoRIIOConnector",
+            kv_role="kv_both",
+            kv_connector_extra_config=extra_config,
+        )
+    )
+    if dp_rank is not None:
+        engine_kwargs["data_parallel_rank"] = dp_rank
+    if dp_size is not None:
+        engine_kwargs["data_parallel_size"] = dp_size
+    if tp_size is not None:
+        engine_kwargs["tensor_parallel_size"] = tp_size
     return MoRIIOConnectorBackend(
         llm_config=LLMConfig(
             model_loading_config=dict(model_id="Qwen/Qwen3-0.6B"),
-            engine_kwargs=dict(
-                kv_transfer_config=dict(
-                    kv_connector="MoRIIOConnector",
-                    kv_role="kv_both",
-                    kv_connector_extra_config=extra_config,
-                )
-            ),
+            engine_kwargs=engine_kwargs,
             experimental_configs=extra_exp or {},
         ),
     )
@@ -144,6 +155,16 @@ class TestMoRIIOConnectorBackendSetup:
         _setup(backend, rank=0)
         meta = backend.replica_metadata()
         assert meta["mori_zmq_address"] == backend._zmq_address
+        # Parallelism is published so the orchestrator can address remote workers.
+        assert meta["dp_rank"] == 0 and meta["dp_size"] == 1 and meta["tp_size"] == 1
+
+    def test_replica_metadata_publishes_dp_tp(self):
+        backend = _make_backend(dp_rank=2, dp_size=4, tp_size=8)
+        _setup(backend, rank=0)
+        meta = backend.replica_metadata()
+        assert meta["dp_rank"] == 2
+        assert meta["dp_size"] == 4
+        assert meta["tp_size"] == 8
 
     def test_replica_metadata_default_empty(self):
         # The default backend publishes nothing (concrete default on the base).
@@ -231,6 +252,11 @@ class TestMoRIIORequestId:
         assert prefill.kv_transfer_params["do_remote_prefill"] is False
         assert prefill.max_tokens == 1
         assert prefill.stream is False
+        # vLLM reads "tp_size" (not "remote_tp_size"); DP defaults at dp_size=1.
+        assert "remote_tp_size" not in prefill.kv_transfer_params
+        assert prefill.kv_transfer_params["tp_size"] == 1
+        assert prefill.kv_transfer_params["remote_dp_rank"] == 0
+        assert prefill.kv_transfer_params["remote_dp_size"] == 1
 
     def test_decode_kv_params_write(self):
         backend = _make_backend(read_mode=False)
@@ -244,6 +270,40 @@ class TestMoRIIORequestId:
         assert decode.kv_transfer_params["do_remote_prefill"] is True
         assert decode.kv_transfer_params["do_remote_decode"] is False
         assert decode.kv_transfer_params["remote_block_ids"] is None
+        assert "remote_tp_size" not in decode.kv_transfer_params
+        assert decode.kv_transfer_params["tp_size"] == 1
+        assert decode.kv_transfer_params["remote_dp_rank"] == 0
+        assert decode.kv_transfer_params["remote_dp_size"] == 1
+
+    def test_dp_routing_targets_correct_ranks(self):
+        """With DP>1, the prefill request addresses the decode (this
+        orchestrator) rank; the decode request addresses the selected prefill
+        peer's rank (read from peer metadata)."""
+        # This orchestrator is decode dp_rank=1 of a 2-way DP decode group.
+        backend = _make_backend(read_mode=False, dp_rank=1, dp_size=2, tp_size=4)
+        _setup(backend, rank=0)
+        # The selected prefill peer is dp_rank=3 of a 4-way DP prefill group.
+        peer = {
+            "mori_zmq_address": "host:10.0.0.9,handshake:6301,notify:61005",
+            "dp_rank": 3,
+            "dp_size": 4,
+            "tp_size": 4,
+        }
+        prefill = backend.prepare_prefill_request(
+            request=self._request_with_copy(), peer=peer
+        )
+        decode = backend.prepare_decode_request(
+            request=self._request_with_copy(),
+            peer=peer,
+            prefill_response=SimpleNamespace(kv_transfer_params=None),
+        )
+        # Prefill engine's remote == this decode orchestrator (rank 1 of 2).
+        assert prefill.kv_transfer_params["remote_dp_rank"] == 1
+        assert prefill.kv_transfer_params["remote_dp_size"] == 2
+        # Decode engine's remote == the selected prefill peer (rank 3 of 4).
+        assert decode.kv_transfer_params["remote_dp_rank"] == 3
+        assert decode.kv_transfer_params["remote_dp_size"] == 4
+        assert decode.kv_transfer_params["tp_size"] == 4
 
     def test_decode_kv_params_read_forwards_prefill_params(self):
         backend = _make_backend(read_mode=True)
@@ -262,6 +322,10 @@ class TestMoRIIORequestId:
         assert decode.kv_transfer_params["remote_block_ids"] == [1, 2, 3]
         assert decode.kv_transfer_params["remote_engine_id"] == "eng-7"
         assert "transfer_id" in decode.kv_transfer_params
+        # READ also stamps the remote (prefill peer) routing.
+        assert decode.kv_transfer_params["remote_dp_rank"] == 0
+        assert decode.kv_transfer_params["remote_dp_size"] == 1
+        assert decode.kv_transfer_params["tp_size"] == 1
 
     def test_decode_read_fallback_when_no_remote_params(self):
         backend = _make_backend(read_mode=True)

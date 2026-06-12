@@ -18,6 +18,30 @@ if TYPE_CHECKING:
     RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 
+def base_prefill_kv_transfer_params() -> Dict[str, Any]:
+    """The ``kv_transfer_params`` common to a prefill (producer) request.
+
+    Tells the prefill engine to produce KV for a remote decode. Connectors layer
+    their own keys (e.g. a transfer id, DP/TP routing) on top of these.
+    """
+    return {
+        "do_remote_decode": True,
+        "do_remote_prefill": False,
+        "remote_engine_id": None,
+        "remote_block_ids": None,
+    }
+
+
+def clamp_request_to_single_token(request: "RequestType") -> None:
+    """Clamp a prefill request to a single, non-streaming token (in place)."""
+    request.max_tokens = 1
+    if hasattr(request, "max_completion_tokens"):
+        request.max_completion_tokens = 1
+    request.stream = False
+    if hasattr(request, "stream_options"):
+        request.stream_options = None
+
+
 class BaseConnectorBackend(abc.ABC):
     # ---- P/D coordination protocol ----
     #
@@ -200,19 +224,11 @@ class DefaultPDProtocolMixin:
         ), "kv_transfer_params should be empty before orchestrator"
         prefill_request = request.model_copy(deep=True)
         prefill_request.kv_transfer_params = {
-            "do_remote_decode": True,
-            "do_remote_prefill": False,
-            "remote_engine_id": None,
-            "remote_block_ids": None,
+            **base_prefill_kv_transfer_params(),
             "remote_host": None,
             "remote_port": None,
         }
-        prefill_request.max_tokens = 1
-        if hasattr(prefill_request, "max_completion_tokens"):
-            prefill_request.max_completion_tokens = 1
-        prefill_request.stream = False
-        if hasattr(prefill_request, "stream_options"):
-            prefill_request.stream_options = None
+        clamp_request_to_single_token(prefill_request)
         return prefill_request
 
     def prepare_decode_request(

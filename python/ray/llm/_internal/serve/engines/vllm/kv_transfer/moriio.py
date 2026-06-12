@@ -36,9 +36,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 import ray
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
-)
-from ray.llm._internal.serve.utils.server_utils import (
-    get_serve_request_id,
+    base_prefill_kv_transfer_params,
+    clamp_request_to_single_token,
 )
 
 if TYPE_CHECKING:
@@ -179,21 +178,65 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         # Stash so replica_metadata() can publish it; the decode
         # orchestrator reads the selected prefill replica's copy off the peer.
         self._zmq_address = zmq_address
-        # TODO: cross-node correctness additionally needs MoRIIO's worker to
-        # advertise the node INTERNAL IP (VLLM_HOST_IP inside every worker
-        # process). That fix must live in the worker process (a vLLM general
-        # plugin) -- see the follow-up worker host-IP PR.
+        # NOTE: cross-node correctness additionally needs each worker to
+        # advertise the node INTERNAL IP (set VLLM_HOST_IP inside every worker
+        # process). VLLM_HOST_IP is excluded from vLLM's driver->worker env copy,
+        # so it can only be set in-process -- handled by a vLLM general-plugin
+        # shipped separately. Single-node deployments work without it.
 
-    # ---- replica metadata (published via the PR1 hook) ----
+    # ---- parallelism (data/tensor) ----
+
+    def _dp_rank(self) -> int:
+        rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
+        return rank if isinstance(rank, int) and rank >= 0 else 0
+
+    def _dp_size(self) -> int:
+        return int(self.llm_config.engine_kwargs.get("data_parallel_size") or 1)
+
+    def _tp_size(self) -> int:
+        return int(self.llm_config.engine_kwargs.get("tensor_parallel_size") or 1)
+
+    # ---- replica metadata (published via the replica-metadata hook) ----
 
     def replica_metadata(self) -> dict:
         """Static per-replica coordination data published to the orchestrator.
 
-        The prefill replica publishes its MORI zmq address; the decode
-        orchestrator reads it off the selected prefill replica's
-        ``ReplicaSelection.replica_metadata``.
+        The prefill replica publishes its MORI zmq address and its parallelism
+        (DP rank/size, TP size); the decode orchestrator reads them off the
+        selected prefill replica's ``ReplicaSelection.replica_metadata`` and uses
+        them to address the right remote (dp_rank, tp) workers.
         """
-        return {"mori_zmq_address": self._zmq_address}
+        return {
+            "mori_zmq_address": self._zmq_address,
+            "dp_rank": self._dp_rank(),
+            "dp_size": self._dp_size(),
+            "tp_size": self._tp_size(),
+        }
+
+    def _remote_routing(self, remote: Dict[str, Any]) -> Dict[str, Any]:
+        """``kv_transfer_params`` keys telling vLLM which remote workers to reach.
+
+        ``remote`` is the metadata of the *other* side of the transfer: the
+        decode (this orchestrator) for a prefill request, the selected prefill
+        peer for a decode request. vLLM addresses a remote worker at
+        ``advertised_base + get_port_offset(remote_dp_rank, tp_index)`` and
+        handshakes all ``remote_dp_size`` ranks, so both must match the target
+        replica. ``tp_size`` is the remote's TP (symmetric across P/D).
+        """
+        return {
+            "remote_dp_rank": int(remote.get("dp_rank", 0)),
+            "remote_dp_size": int(remote.get("dp_size", 1)),
+            "tp_size": int(remote.get("tp_size", self._tp_size())),
+        }
+
+    def _own_routing(self) -> Dict[str, Any]:
+        """``_remote_routing`` input describing this (decode orchestrator) replica
+        -- the remote side for a prefill request."""
+        return {
+            "dp_rank": self._dp_rank(),
+            "dp_size": self._dp_size(),
+            "tp_size": self._tp_size(),
+        }
 
     # ---- request shaping (PD connector protocol) ----
 
@@ -220,15 +263,10 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
                 "MoRIIO decode zmq address is not set: setup() must run on this "
                 "engine before requests are shaped."
             )
-        # Seed precedence: an explicitly-set request id, else the serve-context
-        # id (stable across both prepare_* calls of one orchestration). The
-        # id(request) last resort only applies outside a Serve request context
-        # (e.g. unit tests); both calls shape the same request object.
-        seed = str(
-            getattr(request, "request_id", None)
-            or get_serve_request_id()
-            or f"mori-fallback-{id(request)}"
-        )
+        # The incoming request_id (always populated -- OpenAI models default it
+        # to a uuid) is the seed. Both prepare_* calls run on the same request
+        # object, so they agree; uniqueness per request is inherited from it.
+        seed = str(request.request_id)
         # 32 hex chars (the trailing uid _PREFILL_ZMQ_RE / _DECODE_ZMQ_RE
         # anchor on); a hash of the seed, so both prepare_* calls agree.
         uid = hashlib.sha256(seed.encode()).hexdigest()[:32]
@@ -248,20 +286,12 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         # X-Request-Id header that vLLM's MoRIIO connector parses.
         prefill_request.request_id = request_id
         prefill_request.kv_transfer_params = {
-            "do_remote_decode": True,
-            "do_remote_prefill": False,
-            "remote_engine_id": None,
-            "remote_block_ids": None,
+            **base_prefill_kv_transfer_params(),
             "transfer_id": transfer_id,
-            "remote_dp_size": 1,
-            "remote_tp_size": 1,
+            # The prefill engine's remote is the decode (this orchestrator).
+            **self._remote_routing(self._own_routing()),
         }
-        prefill_request.max_tokens = 1
-        if hasattr(prefill_request, "max_completion_tokens"):
-            prefill_request.max_completion_tokens = 1
-        prefill_request.stream = False
-        if hasattr(prefill_request, "stream_options"):
-            prefill_request.stream_options = None
+        clamp_request_to_single_token(prefill_request)
         return prefill_request
 
     def prepare_decode_request(
@@ -274,6 +304,8 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         request_id, transfer_id = self._dual_ids(request, peer)
         decode_request = request.model_copy(deep=True)
         decode_request.request_id = request_id
+        # The decode engine's remote is the selected prefill peer.
+        remote_routing = self._remote_routing(peer or {})
 
         if not self._read_mode:
             # WRITE: prefill pushes KV; decode just needs do_remote_prefill + the
@@ -284,8 +316,7 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
                 "remote_engine_id": None,
                 "remote_block_ids": None,
                 "transfer_id": transfer_id,
-                "remote_dp_size": 1,
-                "remote_tp_size": 1,
+                **remote_routing,
             }
             return decode_request
 
@@ -298,6 +329,8 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
             params.setdefault("transfer_id", transfer_id)
             params["do_remote_prefill"] = True
             params["do_remote_decode"] = False
+            # Address the prefill peer's (dp_rank, dp_size, tp) workers.
+            params.update(remote_routing)
             decode_request.kv_transfer_params = params
         else:
             logger.warning(
