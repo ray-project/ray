@@ -97,7 +97,10 @@ class AnyscaleJobManager:
             name=self.cluster_manager.cluster_name,
             entrypoint=cmd_to_run,
             image_uri=self.cluster_manager.test.get_anyscale_byod_image(),
-            compute_config=self.cluster_manager.cluster_compute_id,
+            # anyscale.job.submit() resolves a compute_config string as a
+            # NAME ("<name>[:<version>]"), not an ID, so pass the registered
+            # name -- passing cluster_compute_id ("cpt_...") fails name lookup.
+            compute_config=self.cluster_manager.cluster_compute_name,
             env_vars=env_vars,
             working_dir=working_dir,
             max_retries=0,

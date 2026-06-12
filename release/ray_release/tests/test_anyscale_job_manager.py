@@ -72,7 +72,7 @@ def test_run_job_submits_job_config(mock_job):
     assert config.name == "cluster_name"
     assert config.entrypoint == "echo hi"
     assert config.image_uri == "anyscale/ray:nightly-py310-cpu"
-    assert config.compute_config == "compute_id"
+    assert config.compute_config == "compute_name"
     assert config.max_retries == 0
     # Cluster env/compute names are exported to the job's environment.
     assert config.env_vars["USER_ENV"] == "1"
