@@ -23,6 +23,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     KVAwareRouter,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+    configure_kv_events_for_kv_routing,
+)
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 
@@ -43,12 +46,12 @@ def _get_deployment_name(llm_config: LLMConfig) -> str:
     return llm_config.model_id.replace("/", "--").replace(".", "_")
 
 
-def _maybe_setup_kv_aware_routing(deployment_options: dict) -> None:
+def _maybe_setup_kv_aware_routing(
+    deployment_options: dict, llm_config: LLMConfig
+) -> None:
     """Set up KV-aware routing when the deployment's request router is a
-    KVAwareRouter.
-
-    Currently attaches the KVRouterActor, which owns the deployment's global KV
-    radix tree for KV-aware request scoring.
+    KVAwareRouter: attach the KVRouterActor which maintains the global KV
+    radix tree, and enable the engine KV events that feed it.
     """
     request_router_config = deployment_options.get("request_router_config")
     if isinstance(request_router_config, dict):
@@ -67,6 +70,8 @@ def _maybe_setup_kv_aware_routing(deployment_options: dict) -> None:
             actor_options={"num_cpus": 0},
         ),
     ]
+
+    configure_kv_events_for_kv_routing(llm_config)
 
 
 def build_llm_deployment(
@@ -110,7 +115,7 @@ def build_llm_deployment(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
 
-    _maybe_setup_kv_aware_routing(deployment_options)
+    _maybe_setup_kv_aware_routing(deployment_options, llm_config)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))

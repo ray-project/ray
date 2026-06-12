@@ -52,6 +52,9 @@ from ray.llm._internal.serve.engines.vllm.vllm_models import (
     VLLMEngineConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
+    assign_replica_kv_events_endpoint,
+)
 from ray.llm._internal.serve.utils.node_initialization_utils import (
     initialize_node,
 )
@@ -253,6 +256,7 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
+        assign_replica_kv_events_endpoint(self.llm_config)
         self.llm_config.setup_engine_backend()
 
         self._running = False
