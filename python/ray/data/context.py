@@ -638,7 +638,6 @@ class DataContext:
             intermediate shards: "none", "lz4", or "zstd" (default "zstd").
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
-            Larger batches reduce per-call overhead but raise peak memory.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash

@@ -66,7 +66,7 @@ def test_same_key_lands_in_same_block(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """All rows sharing a key end up in one block."""
+    """All rows sharing a key should end up in one block."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
@@ -103,7 +103,6 @@ def test_repartition_empty_dataset(
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """Repartitioning an all-empty must not crash; it exercises the zero-row map path and preserves the empty count."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 

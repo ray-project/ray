@@ -70,9 +70,6 @@ def _plan_hash_shuffle_repartition(
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
     key_list = list(normalized_key_columns)
 
-    # Resolve target_num_partitions with the same fallback chain as the
-    # previous monolithic operator: explicit → upstream estimate → context
-    # default.
     input_logical_op = input_physical_op._logical_operators[0]
     estimated_input_blocks = input_logical_op.estimated_num_outputs()
     target_num_partitions = (
@@ -100,8 +97,6 @@ def _plan_hash_shuffle_repartition(
         data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
-        # Partition = block contract: each partition becomes one output
-        # block.  Requires blocking reduce + no BlockOutputBuffer reshaping.
         streaming_reduce=False,
         disallow_block_splitting=True,
         name=(
