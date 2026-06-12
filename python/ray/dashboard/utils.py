@@ -61,20 +61,23 @@ class FrontendNotFoundError(OSError):
 
 
 class DashboardAgentModule(abc.ABC):
-    def __init__(self, dashboard_agent):
-        """
-        Initialize current module when DashboardAgent loading modules.
-        :param dashboard_agent: The DashboardAgent instance.
+    def __init__(self, dashboard_agent: Any):
+        """Initialize current module when DashboardAgent loading modules.
+
+        Args:
+            dashboard_agent: The DashboardAgent instance.
         """
         self._dashboard_agent = dashboard_agent
         self.session_name = dashboard_agent.session_name
 
     @abc.abstractmethod
-    async def run(self, server):
-        """
-        Run the module in an asyncio loop. An agent module can provide
-        servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
+    async def run(self, server: Any):
+        """Run the module in an asyncio loop.
+
+        An agent module can provide servicers to the server.
+
+        Args:
+            server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -107,9 +110,10 @@ class DashboardHeadModuleConfig:
 
 class DashboardHeadModule(abc.ABC):
     def __init__(self, config: DashboardHeadModuleConfig):
-        """
-        Initialize current module when DashboardHead loading modules.
-        :param config: The DashboardHeadModuleConfig instance.
+        """Initialize current module when DashboardHead loading modules.
+
+        Args:
+            config: The DashboardHeadModuleConfig instance.
         """
         self._config = config
         self._gcs_client = None
@@ -243,13 +247,14 @@ class RateLimitedModule(abc.ABC):
     """
 
     def __init__(self, max_num_call: int, logger: Optional[logging.Logger] = None):
-        """
+        """Initialize the rate limiter.
+
         Args:
             max_num_call: Maximal number of concurrent invocations of all decorated
                 functions in the instance.
                 Setting to -1 will disable rate limiting.
-
-            logger: Logger
+            logger: Optional logger used to emit a warning when the rate limit
+                is hit.
         """
         self.max_num_call_ = max_num_call
         self.num_call_ = 0
@@ -752,6 +757,9 @@ def compose_state_message(
             This is a string representation of `gcs_pb2.NodeDeathInfo.Reason`.
         death_reason_message: The message of node death.
             This corresponds to `gcs_pb2.NodeDeathInfo.ReasonMessage`.
+
+    Returns:
+        The composed state message, or None when no information is available.
     """
     if death_reason == "EXPECTED_TERMINATION":
         state_message = "Expected termination"

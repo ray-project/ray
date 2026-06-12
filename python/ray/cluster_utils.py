@@ -41,6 +41,10 @@ class AutoscalingCluster:
         Args:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
+            autoscaler_v2: If True, enable autoscaler v2 features in the
+                generated config.
+            **config_kwargs: Additional configuration values merged into the
+                generated cluster config.
         """
         self._head_resources = head_resources
         self._config = self._generate_config(
@@ -211,7 +215,7 @@ class Cluster:
 
         Args:
             wait: Whether to wait until the node is alive.
-            node_args: Keyword arguments used in `start_ray_head` and
+            **node_args: Keyword arguments used in `start_ray_head` and
                 `start_ray_node`. Overrides defaults.
 
         Returns:
@@ -285,12 +289,14 @@ class Cluster:
 
         return node
 
-    def remove_node(self, node, allow_graceful=True):
+    def remove_node(self, node: "ray._private.node.Node", allow_graceful: bool = True):
         """Kills all processes associated with worker node.
 
         Args:
             node: Worker node of which all associated processes
                 will be removed.
+            allow_graceful: Whether to allow the node's processes to shut down
+                gracefully before forcefully killing them.
         """
         global_node = ray._private.worker.global_worker.node
         if global_node is not None:
@@ -324,11 +330,11 @@ class Cluster:
             not node.any_processes_alive()
         ), "There are zombie processes left over after killing."
 
-    def _wait_for_node(self, node, timeout: float = 30):
+    def _wait_for_node(self, node: "ray._private.node.Node", timeout: float = 30):
         """Wait until this node has appeared in the client table.
 
         Args:
-            node (ray._private.node.Node): The node to wait for.
+            node: The node to wait for.
             timeout: The amount of time in seconds to wait before raising an
                 exception.
 
@@ -354,6 +360,10 @@ class Cluster:
         Args:
             timeout: The number of seconds to wait for nodes to join
                 before failing.
+
+        Returns:
+            None when the expected number of live nodes is observed before
+            ``timeout`` is reached.
 
         Raises:
             TimeoutError: An exception is raised if we time out while waiting

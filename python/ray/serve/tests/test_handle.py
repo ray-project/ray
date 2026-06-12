@@ -136,6 +136,7 @@ def test_dispatch_rejects_selection_from_different_deployment():
         port=None,
         node_id="node-1",
         availability_zone=None,
+        replica_metadata={},
         _replica=object(),
         _deployment_id=DeploymentID(name="deployment-b", app_name="app"),
         _request_metadata=RequestMetadata(
