@@ -483,22 +483,22 @@
     timeout: 4500
     script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
-- name: air_example_dolly_v2_lightning_fsdp_finetuning
+- name: air_example_pythia_lightning_fsdp_finetuning
   python: "3.14"
   group: AIR examples
-  working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
+  working_dir: air_examples/pythia_lightning_fsdp_finetuning
   frequency: manual
   team: ml
   cluster:
     anyscale_sdk_2026: true
     byod:
       type: torch-cu128
-      post_build_script: byod_dolly_test.sh
-    cluster_compute: dolly_v2_fsdp_compute_aws.yaml
+      post_build_script: byod_pythia_test.sh
+    cluster_compute: pythia_fsdp_compute_aws.yaml
 
   run:
     timeout: 4700
-    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
+    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path pythia_lightning_fsdp_finetuning.ipynb
 
   # variations: TODO(jungong): add GCP variation.
 
