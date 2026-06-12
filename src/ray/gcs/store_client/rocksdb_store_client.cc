@@ -406,30 +406,53 @@ void RocksDbStoreClient::AsyncMultiGet(
     return;
   }
 
-  RunIoUnordered([this, table_name, keys, callback = std::move(callback)]() mutable {
+  // Fan the read out into per-key point lookups dispatched through the
+  // per-key strands (RunIoForKey) instead of a single unordered
+  // db_->MultiGet. This keeps each key's read ordered against any
+  // concurrent single-key Put/Delete on that same key on the offload
+  // path, which a single RunIoUnordered MultiGet would not: it would run
+  // on an arbitrary pool thread and could observe a stale value relative
+  // to an in-flight strand write. The in-memory backend is synchronous
+  // and RedisStoreClient serializes multi-key commands per key
+  // (SendRedisCmdWithKeys), so this restores the per-key consistency
+  // contract those backends provide. The last read to complete posts the
+  // aggregated result.
+  struct MultiGetState {
+    MultiGetState(size_t num_keys,
+                  Postable<void(absl::flat_hash_map<std::string, std::string>)> cb)
+        : remaining(num_keys), callback(std::move(cb)) {}
+    absl::Mutex mu;
     absl::flat_hash_map<std::string, std::string> result;
-    auto *cf = GetOrCreateColumnFamily(table_name);
-    std::vector<rocksdb::ColumnFamilyHandle *> cfs(keys.size(), cf);
-    std::vector<rocksdb::Slice> key_slices;
-    key_slices.reserve(keys.size());
-    for (const auto &k : keys) key_slices.emplace_back(k);
+    size_t remaining;
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback;
+  };
+  auto state = std::make_shared<MultiGetState>(keys.size(), std::move(callback));
 
-    std::vector<std::string> values;
-    std::vector<rocksdb::Status> statuses =
-        db_->MultiGet(rocksdb::ReadOptions(), cfs, key_slices, &values);
-    RAY_CHECK_EQ(statuses.size(), keys.size());
-
-    for (size_t i = 0; i < keys.size(); ++i) {
-      if (statuses[i].ok()) {
-        result.emplace(keys[i], std::move(values[i]));
-      } else if (!statuses[i].IsNotFound()) {
-        RAY_LOG(FATAL) << "RocksDB MultiGet failed for key=" << keys[i] << ": "
-                       << statuses[i].ToString();
+  for (const auto &key : keys) {
+    RunIoForKey(table_name, key, [this, table_name, key, state]() mutable {
+      auto *cf = GetOrCreateColumnFamily(table_name);
+      std::string value;
+      auto status = db_->Get(rocksdb::ReadOptions(), cf, key, &value);
+      if (!status.ok() && !status.IsNotFound()) {
+        RAY_LOG(FATAL) << "RocksDB Get during MultiGet failed for key=" << key << ": "
+                       << status.ToString();
       }
-    }
 
-    std::move(callback).Post("GcsRocksDb.MultiGet", std::move(result));
-  });
+      bool last = false;
+      {
+        absl::MutexLock lock(&state->mu);
+        if (status.ok()) {
+          state->result.emplace(key, std::move(value));
+        }
+        last = (--state->remaining == 0);
+      }
+      // Only the final read reaches here, so no other thread can still
+      // touch `state`; it is safe to move out result/callback unlocked.
+      if (last) {
+        std::move(state->callback).Post("GcsRocksDb.MultiGet", std::move(state->result));
+      }
+    });
+  }
 }
 
 void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
@@ -470,44 +493,60 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
     return;
   }
 
-  RunIoUnordered([this, table_name, keys, callback = std::move(callback)]() mutable {
-    auto *cf = GetOrCreateColumnFamily(table_name);
-
-    // Batch the existence probe via MultiGet so we issue one I/O round
-    // instead of N sequential Gets. Mirrors AsyncMultiGet's structure.
-    // Skip the WriteBatch entry for keys the probe found absent so we
-    // do not write needless tombstones — matches AsyncDelete's
-    // "no fsync for no-op" optimization.
-    std::vector<rocksdb::ColumnFamilyHandle *> cfs(keys.size(), cf);
-    std::vector<rocksdb::Slice> key_slices;
-    key_slices.reserve(keys.size());
-    for (const auto &k : keys) key_slices.emplace_back(k);
-
-    std::vector<std::string> values;
-    std::vector<rocksdb::Status> statuses =
-        db_->MultiGet(rocksdb::ReadOptions(), cfs, key_slices, &values);
-    RAY_CHECK_EQ(statuses.size(), keys.size());
-
-    rocksdb::WriteBatch batch;
+  // Fan the delete out into per-key deletes dispatched through the
+  // per-key strands (RunIoForKey) instead of a single unordered
+  // WriteBatch. As with AsyncMultiGet, this keeps each key ordered
+  // against any concurrent single-key Put/Delete on that same key on the
+  // offload path, matching the in-memory backend and RedisStoreClient
+  // (which serializes multi-key commands per key). Each per-key delete
+  // mirrors AsyncDelete: probe first and skip the tombstone + fsync when
+  // the key is already absent. Trade-off vs. the previous WriteBatch: we
+  // issue one fsync per deleted key instead of one batched fsync, but the
+  // GCS metadata batches are small and per-key ordering correctness wins.
+  // The last delete to complete posts the aggregated count.
+  struct BatchDeleteState {
+    BatchDeleteState(size_t num_keys, Postable<void(int64_t)> cb)
+        : remaining(num_keys), callback(std::move(cb)) {}
+    absl::Mutex mu;
     int64_t deleted_count = 0;
-    for (size_t i = 0; i < keys.size(); ++i) {
-      if (statuses[i].ok()) {
-        ++deleted_count;
-        auto bs = batch.Delete(cf, keys[i]);
-        RAY_CHECK(bs.ok()) << "WriteBatch Delete failed: " << bs.ToString();
-      } else if (!statuses[i].IsNotFound()) {
-        RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key=" << keys[i]
-                       << ": " << statuses[i].ToString();
-      }
-    }
-    if (deleted_count > 0) {
-      auto write_status = db_->Write(SyncWriteOptions(table_name), &batch);
-      RAY_CHECK(write_status.ok())
-          << "RocksDB BatchDelete write failed: " << write_status.ToString();
-    }
+    size_t remaining;
+    Postable<void(int64_t)> callback;
+  };
+  auto state = std::make_shared<BatchDeleteState>(keys.size(), std::move(callback));
 
-    std::move(callback).Post("GcsRocksDb.BatchDelete", deleted_count);
-  });
+  for (const auto &key : keys) {
+    RunIoForKey(table_name, key, [this, table_name, key, state]() mutable {
+      auto *cf = GetOrCreateColumnFamily(table_name);
+
+      std::string existing;
+      auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
+      bool existed = get_status.ok();
+      if (!existed && !get_status.IsNotFound()) {
+        RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key=" << key << ": "
+                       << get_status.ToString();
+      }
+      if (existed) {
+        auto del_status = db_->Delete(SyncWriteOptions(table_name), cf, key);
+        RAY_CHECK(del_status.ok())
+            << "RocksDB Delete during BatchDelete failed for table=" << table_name
+            << " key=" << key << ": " << del_status.ToString();
+      }
+
+      bool last = false;
+      {
+        absl::MutexLock lock(&state->mu);
+        if (existed) {
+          ++state->deleted_count;
+        }
+        last = (--state->remaining == 0);
+      }
+      // Only the final delete reaches here, so `state` is no longer
+      // shared; reading deleted_count/callback unlocked is safe.
+      if (last) {
+        std::move(state->callback).Post("GcsRocksDb.BatchDelete", state->deleted_count);
+      }
+    });
+  }
 }
 
 void RocksDbStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
