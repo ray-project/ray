@@ -3,10 +3,9 @@ import functools
 import logging
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
-from ray import ObjectRef
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
     FIFOBundleQueue,
@@ -31,8 +30,9 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     _shuffle_map_task,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data.block import BlockMetadata, BlockStats
+from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 _PARTITION_ID_SENTINEL = "__partition__"
 
 
-def make_partition_sentinel(partition_id: int) -> List[str]:
-    return [f"{_PARTITION_ID_SENTINEL}{partition_id}"]
+def make_partition_sentinel(partition_id: int) -> Tuple[str, ...]:
+    return (f"{_PARTITION_ID_SENTINEL}{partition_id}",)
 
 
 def extract_partition_id(bundle: RefBundle) -> int:
@@ -57,11 +57,7 @@ def extract_partition_id(bundle: RefBundle) -> int:
         for f in files:
             if f.startswith(_PARTITION_ID_SENTINEL):
                 return int(f[len(_PARTITION_ID_SENTINEL) :])
-    raise ValueError(
-        "ShuffleMapOp bundle is missing a partition_id sentinel in "
-        "BlockMetadata.input_files; this should never happen in the planner-"
-        "wired ShuffleMapOp → ShuffleReduceOp pipeline."
-    )
+    raise ValueError("ShuffleMapOp bundle is missing a partition_id sentinel.")
 
 
 class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
@@ -119,7 +115,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         # -- Pre-map merge ---------------------------------------------------
         self._pre_map_merge_threshold: int = pre_map_merge_threshold
-        self._merge_buffer_refs_by_node: Dict[str, List[ObjectRef]] = defaultdict(list)
+        self._merge_buffer_refs_by_node: Dict[
+            str, List[ObjectRef[Block]]
+        ] = defaultdict(list)
         self._merge_buffer_bytes_by_node: Dict[str, int] = defaultdict(int)
         self._merge_buffer_bundles_by_node: Dict[str, List[RefBundle]] = defaultdict(
             list
@@ -156,31 +154,31 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     @property
     def _output_queues(self) -> List[BaseBundleQueue]:
-        return list(self._partition_staging.values()) + [self._output_queue]
+        queues: List[BaseBundleQueue] = list(self._partition_staging.values())
+        queues.append(self._output_queue)
+        return queues
 
-    def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if not input_bundle.block_refs:
-            input_bundle.destroy_if_owned()
+        if not refs.block_refs:
+            refs.destroy_if_owned()
             return
 
         if self._pre_map_merge_threshold > 0:
-            preferred_locs = input_bundle.get_preferred_object_locations()
+            preferred_locs = refs.get_preferred_object_locations()
             node_id = (
-                max(preferred_locs, key=preferred_locs.get)
+                max(preferred_locs, key=lambda n: preferred_locs[n])
                 if preferred_locs
                 else "unknown"
             )
 
-            for block_ref, block_metadata in zip(
-                input_bundle.block_refs, input_bundle.metadata
-            ):
+            for block_ref, block_metadata in zip(refs.block_refs, refs.metadata):
                 self._merge_buffer_refs_by_node[node_id].append(block_ref)
                 self._merge_buffer_bytes_by_node[node_id] += (
                     block_metadata.size_bytes or 0
                 )
-            self._merge_buffer_bundles_by_node[node_id].append(input_bundle)
+            self._merge_buffer_bundles_by_node[node_id].append(refs)
 
             if (
                 self._merge_buffer_bytes_by_node[node_id]
@@ -189,9 +187,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
-                list(input_bundle.block_refs),
-                [input_bundle],
-                estimated_bytes=sum((m.size_bytes or 0) for m in input_bundle.metadata),
+                list(refs.block_refs),
+                [refs],
+                estimated_bytes=sum((m.size_bytes or 0) for m in refs.metadata),
             )
 
     def all_inputs_done(self) -> None:
@@ -217,7 +215,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     def _submit_shuffle_map_task(
         self,
-        block_refs: List[ObjectRef],
+        block_refs: List[ObjectRef[Block]],
         input_bundles: List[RefBundle],
         estimated_bytes: int = 0,
         target_node_id: Optional[str] = None,
@@ -257,15 +255,15 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             task_resource_bundle=ExecutionResources.from_resource_dict(resources),
         )
         self._shuffle_map_tasks[cur_task_idx] = task
-        self._map_resource_usage = self._map_resource_usage.add(
-            task.get_requested_resource_bundle()
-        )
+        requested = task.get_requested_resource_bundle()
+        assert requested is not None
+        self._map_resource_usage = self._map_resource_usage.add(requested)
 
-        all_blocks_meta = [
+        all_blocks_meta = tuple(
             BlockEntry(ref=ref, metadata=meta)
             for bundle in input_bundles
             for ref, meta in zip(bundle.block_refs, bundle.metadata)
-        ]
+        )
         self._metrics.on_task_submitted(
             cur_task_idx,
             RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
@@ -284,13 +282,13 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     def _handle_map_done(
         self,
         task_idx: int,
-        partition_refs: List[ObjectRef],
+        partition_refs: List[ObjectRef[Block]],
         input_bundles: List[RefBundle],
     ) -> None:
         task = self._shuffle_map_tasks.pop(task_idx)
-        self._map_resource_usage = self._map_resource_usage.subtract(
-            task.get_requested_resource_bundle()
-        )
+        requested = task.get_requested_resource_bundle()
+        assert requested is not None
+        self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
         # `task_done_callback` fires only after the metadata ref is ready,
         # so this is just local deserialization.
@@ -307,7 +305,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 input_files=None,
             )
             shard_bundle = RefBundle(
-                [BlockEntry(ref=ref, metadata=shard_meta)],
+                (BlockEntry(ref=ref, metadata=shard_meta),),
                 schema=None,
                 owns_blocks=True,
             )
@@ -365,7 +363,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                     )
                 stamped_blocks.append(BlockEntry(ref=entry.ref, metadata=meta))
             stamped = RefBundle(
-                stamped_blocks,
+                tuple(stamped_blocks),
                 schema=merged.schema,
                 owns_blocks=merged.owns_blocks,
             )
@@ -419,9 +417,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         return {self._name: self._map_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
-        # Shuffle preserves row count: total output rows = total input rows.
-        # Returns None until at least one map task has finished so we have
-        # a meaningful count to report.
         return self._total_input_rows if self._total_input_rows > 0 else None
 
     def current_logical_usage(self) -> ExecutionResources:

@@ -9,7 +9,9 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._raylet import StreamingGeneratorStats
+from ray._raylet import (
+    StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
+)
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
@@ -83,7 +85,7 @@ def _encode_partition_ipc(
     return sink.getvalue()
 
 
-@ray.remote
+@ray.remote  # pyrefly: ignore[no-matching-overload]
 def _shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
@@ -155,7 +157,7 @@ def _shuffle_reduce_task(
     partition_id: int,
     reduce_fn: ReduceFn,
     target_max_block_size: Optional[int],
-    streaming: bool = True,
+    streaming: bool,
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch one partition's shards and run reduce_fn over them.
 

@@ -279,6 +279,7 @@ python/ray/data/tests/test_filter.py
 python/ray/data/tests/test_groupby_e2e.py
 python/ray/data/tests/test_hash_shuffle.py
 python/ray/data/tests/test_hash_shuffle_aggregator.py
+python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
 python/ray/data/tests/test_issue_detection_manager.py
 python/ray/data/tests/test_iterator.py
@@ -355,7 +356,3 @@ python/ray/data/tests/datasource/test_kafka.py
 python/ray/data/_internal/gpu_shuffle/rapidsmpf_backend.py
 python/ray/data/_internal/gpu_shuffle/hash_shuffle.py
 python/ray/data/_internal/execution/bundle_queue/base.py
-python/ray/data/_internal/execution/operators/shuffle_operators/shuffle_tasks.py
-python/ray/data/_internal/execution/operators/shuffle_operators/shuffle_map_operator.py
-python/ray/data/_internal/execution/operators/shuffle_operators/shuffle_reduce_operator.py
-python/ray/data/tests/test_hash_shuffle_v2.py
