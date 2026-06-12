@@ -503,15 +503,11 @@ class gRPCReplicaResult(ReplicaResult):
                         num_ongoing_requests=int(num_ongoing_requests),
                     )
 
-            # CANCELLED is what the replica's gRPC server returns for a
-            # stream that lands in its `server.stop()` window during
-            # graceful shutdown: the server cancels the stream before the
-            # handler runs. Since no `accepted` initial metadata was
-            # received (checked above), the request was never accepted, so
-            # it is safe to retry on another replica via the same path as
-            # UNAVAILABLE. A locally-cancelled call surfaces as
-            # `asyncio.CancelledError` (handled above), not `AioRpcError`,
-            # so this branch only sees peer-originated cancellation.
+            # Peer-sent CANCELLED means the replica's gRPC server cancelled
+            # the call before the handler ran (graceful-shutdown window).
+            # Without `accepted` metadata (checked above) the request never
+            # executed, so it is safe to retry, same as UNAVAILABLE. A local
+            # cancellation raises asyncio.CancelledError, not AioRpcError.
             if e.code() in (
                 grpc.StatusCode.UNAVAILABLE,
                 grpc.StatusCode.CANCELLED,
