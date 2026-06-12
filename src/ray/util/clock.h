@@ -61,32 +61,15 @@ class Clock final : public ClockInterface {
 /// Thread-safe.
 class FakeClock final : public ClockInterface {
  public:
-  explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000)) : now_(start) {}
+  explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000));
 
-  absl::Time Now() const override {
-    absl::MutexLock lock(&mu_);
-    return now_;
-  }
+  absl::Time Now() const override;
 
-  SteadyTimePoint SteadyNow() const override {
-    return SteadyTimePoint(std::chrono::nanoseconds(absl::ToUnixNanos(Now())));
-  }
+  SteadyTimePoint SteadyNow() const override;
 
-  void AdvanceTime(absl::Duration duration) {
-    {
-      absl::MutexLock lock(&mu_);
-      now_ += duration;
-    }
-    NotifyTimeChanged();
-  }
+  void AdvanceTime(absl::Duration duration);
 
-  void SetTime(absl::Time time) {
-    {
-      absl::MutexLock lock(&mu_);
-      now_ = time;
-    }
-    NotifyTimeChanged();
-  }
+  void SetTime(absl::Time time);
 
   /// Register a callback that is invoked whenever the clock's time changes (via
   /// AdvanceTime or SetTime). The callback is passed the new current time.
@@ -96,44 +79,25 @@ class FakeClock final : public ClockInterface {
   /// This is intentionally generic: the clock has no knowledge of who registers
   /// callbacks, which keeps it loosely coupled from its observers (e.g. a fake
   /// periodical runner).
-  uint64_t RegisterOnAdvanceCallback(std::function<void(absl::Time)> callback) {
-    absl::MutexLock lock(&mu_);
-    uint64_t handle = next_callback_handle_++;
-    callbacks_.emplace_back(handle, std::move(callback));
-    return handle;
-  }
+  uint64_t RegisterOnAdvanceCallback(std::function<void(absl::Time)> callback);
 
   /// Remove a callback previously registered with RegisterOnAdvanceCallback.
   /// No-op if the handle is not registered.
-  void UnregisterOnAdvanceCallback(uint64_t handle) {
-    absl::MutexLock lock(&mu_);
-    for (auto it = callbacks_.begin(); it != callbacks_.end(); ++it) {
-      if (it->first == handle) {
-        callbacks_.erase(it);
-        return;
-      }
-    }
-  }
+  void UnregisterOnAdvanceCallback(uint64_t handle);
 
  private:
-  // Invoke all registered callbacks with the current time. The callbacks are
-  // copied out under the lock and invoked without it held, so they may safely
-  // call back into the clock (e.g. Now()) without deadlocking.
-  void NotifyTimeChanged() {
-    absl::Time now;
-    std::vector<std::function<void(absl::Time)>> callbacks;
-    {
-      absl::MutexLock lock(&mu_);
-      now = now_;
-      callbacks.reserve(callbacks_.size());
-      for (const auto &entry : callbacks_) {
-        callbacks.push_back(entry.second);
-      }
-    }
-    for (const auto &callback : callbacks) {
-      callback(now);
-    }
-  }
+  // Invoke all registered callbacks with the current time. Callbacks are invoked
+  // without the lock held, so they may safely call back into the clock (e.g.
+  // Now()) without deadlocking.
+  //
+  // We snapshot the callback *handles* up front, then re-look-up each handle
+  // under the lock immediately before invoking it. This guards against a
+  // use-after-free: one callback may destroy another observer, whose destructor
+  // calls UnregisterOnAdvanceCallback() to remove its (now-dangling) callback.
+  // Re-checking the handle ensures we never invoke a callback that was
+  // unregistered during this notification. Newly registered callbacks are not
+  // picked up until the next notification, which matches the snapshot semantics.
+  void NotifyTimeChanged();
 
   mutable absl::Mutex mu_;
   absl::Time now_ ABSL_GUARDED_BY(mu_);

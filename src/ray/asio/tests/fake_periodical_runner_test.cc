@@ -183,5 +183,33 @@ TEST(FakePeriodicalRunnerTest, CallbackRegisteredDuringCallbackRunsNextAdvance) 
   EXPECT_EQ(inner, 1);
 }
 
+TEST(FakePeriodicalRunnerTest, CallbackDestroyingAnotherRunnerDoesNotUseAfterFree) {
+  // A callback on one runner destroys a second runner during the same time
+  // advance. The destroyed runner unregisters its callback from the clock; the
+  // clock must not invoke that (now-dangling) callback. Without the re-check in
+  // NotifyTimeChanged this is a use-after-free (caught under ASAN).
+  FakeClock clock;
+  FakePeriodicalRunner first(clock);
+
+  auto second = std::make_unique<FakePeriodicalRunner>(clock);
+  int second_count = 0;
+  second->RunFnPeriodically([&second_count] { second_count++; }, /*period_ms=*/100, "b");
+
+  int first_count = 0;
+  first.RunFnPeriodically(
+      [&] {
+        first_count++;
+        // Destroy the other observer from within this callback.
+        second.reset();
+      },
+      /*period_ms=*/100,
+      "a");
+
+  clock.AdvanceTime(absl::Milliseconds(100));
+  EXPECT_EQ(first_count, 1);
+  // `second` was destroyed before its callback would have run; it must not fire.
+  EXPECT_EQ(second_count, 0);
+}
+
 }  // namespace
 }  // namespace ray
