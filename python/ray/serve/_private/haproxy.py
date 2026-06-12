@@ -879,21 +879,21 @@ class HAProxyApi(ProxyApi):
             # alive: if a prior reload's -sf signal was lost (e.g. the spawn
             # died before delivering it), the next reload re-targets them
             # instead of stranding them outside the chain forever. Signaling
-            # an already-draining worker is a no-op.
-            live_old_pids = [
-                str(p.pid) for p in self._old_procs if p.returncode is None
-            ]
+            # an already-draining worker is a no-op. Prune first so only live
+            # pids are passed and the list and the log files on disk stay
+            # bounded across reloads.
+            self._prune_old_procs()
+            live_old_pids = [str(p.pid) for p in self._old_procs]
             reload_args = ["-sf", str(old_proc.pid), *live_old_pids]
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process for shutdown cleanup, then prune exited ones so
-            # the list and the log files on disk stay bounded across reloads.
+            # Track old process for shutdown cleanup; pruned at the start of
+            # the next reload.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
-            self._prune_old_procs()
 
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
