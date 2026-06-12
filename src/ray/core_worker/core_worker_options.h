@@ -78,6 +78,8 @@ struct CoreWorkerOptions {
       // The max number of unconsumed objects where a generator
       // can run without a pause.
       int64_t generator_backpressure_num_objects,
+      // The number of ObjectRefs produced by each streaming generator yield.
+      int64_t num_objects_per_yield,
       const std::optional<std::string> &tensor_transport)>;
 
   CoreWorkerOptions()

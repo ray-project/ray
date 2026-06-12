@@ -249,6 +249,11 @@ int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
   return result;
 }
 
+int64_t TaskSpecification::NumObjectsPerYield() const {
+  auto result = message_->num_objects_per_yield();
+  return result == 0 ? 1 : result;
+}
+
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;
