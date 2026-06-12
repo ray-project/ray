@@ -35,15 +35,10 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
-        # FIX: Check if GPU is available before creating ModelConfig
-        try:
-            import torch
-            has_gpu = torch.cuda.is_available()
-        except ImportError:
-            has_gpu = False
-
-        # On CPU-only nodes, disable GPU memory utilization to avoid GPU detection crash
-        if not has_gpu and "gpu_memory_utilization" not in model_config_kwargs:
+        # On CPU-only nodes or CPU-only stages, disable GPU memory utilization to avoid GPU detection crash.
+        # Since this stage only prepares multimodal data and does not run the engine on GPU, we can safely
+        # default gpu_memory_utilization to 0.0 if not specified.
+        if "gpu_memory_utilization" not in model_config_kwargs:
             model_config_kwargs = {
                 **model_config_kwargs,
                 "gpu_memory_utilization": 0.0,
