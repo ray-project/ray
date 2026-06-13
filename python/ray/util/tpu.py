@@ -299,9 +299,9 @@ def _get_intact_tpu_slices(
     slice_to_nodes = {}
     for node in ray.nodes():
         if node.get("Alive"):
-            labels = node.get("Labels", {})
+            labels = node.get("Labels") or {}
             if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
-                is_single_host = total_chips_expected <= node.get("Resources", {}).get(
+                is_single_host = total_chips_expected <= (node.get("Resources") or {}).get(
                     "TPU", 0
                 )
                 if is_single_host:
