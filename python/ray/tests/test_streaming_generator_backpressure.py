@@ -248,6 +248,19 @@ def test_backpressure_invalid(shutdown_only):
         def f():
             pass
 
+    with pytest.raises(ValueError, match="_num_objects_per_yield"):
+
+        @ray.remote(_num_objects_per_yield=0)
+        def g():
+            pass
+
+    with pytest.raises(ValueError, match="_num_objects_per_yield"):
+
+        class Actor:
+            @ray.method(_num_objects_per_yield=0)
+            def g(self):
+                pass
+
 
 def test_threaded_actor_generator_backpressure(shutdown_only):
     ray.init()
