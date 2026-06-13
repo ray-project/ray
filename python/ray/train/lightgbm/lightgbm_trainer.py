@@ -7,7 +7,10 @@ import lightgbm
 import ray
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightgbm._lightgbm_utils import RayTrainReportCallback
+from ray.train.lightgbm._lightgbm_utils import (
+    RayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
+)
 from ray.train.lightgbm.config import LightGBMConfig
 from ray.train.lightgbm.v2 import LightGBMTrainer as SimpleLightGBMTrainer
 from ray.train.trainer import GenDataset
@@ -49,14 +52,17 @@ def _lightgbm_train_fn_per_worker(
         )
 
     train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-    train_df = train_ds_iter.materialize().to_pandas()
+    train_df = normalize_pandas_for_lightgbm(train_ds_iter.materialize().to_pandas())
 
     eval_ds_iters = {
         k: ray.train.get_dataset_shard(k)
         for k in dataset_keys
         if k != TRAIN_DATASET_KEY
     }
-    eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+    eval_dfs = {
+        k: normalize_pandas_for_lightgbm(d.materialize().to_pandas())
+        for k, d in eval_ds_iters.items()
+    }
 
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lightgbm.Dataset(train_X, label=train_y)
@@ -101,7 +107,11 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
+        from ray.train.lightgbm import (
+            LightGBMTrainer,
+            RayTrainReportCallback,
+            normalize_pandas_for_lightgbm,
+        )
 
         def train_fn_per_worker(config: dict):
             # (Optional) Add logic to resume training state from a checkpoint.
@@ -113,7 +123,8 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 ray.train.get_dataset_shard("validation"),
             )
             train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
+            train_df = normalize_pandas_for_lightgbm(train_ds.to_pandas())
+            eval_df = normalize_pandas_for_lightgbm(eval_ds.to_pandas())
             train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
             eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
             dtrain = lightgbm.Dataset(train_X, label=train_y)
@@ -164,16 +175,16 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         lightgbm_config: The configuration for setting up the distributed lightgbm
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Datasets are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
+        datasets: The Ray Datasets to use for training and validation.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.

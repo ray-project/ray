@@ -26,6 +26,7 @@
 //python/ray/serve/tests:test_handle_streaming
 //python/ray/serve/tests:test_haproxy
 //python/ray/serve/tests:test_haproxy_api
+//python/ray/serve/tests:test_haproxy_metrics
 //python/ray/serve/tests:test_healthcheck
 //python/ray/serve/tests:test_http_cancellation
 //python/ray/serve/tests:test_http_headers

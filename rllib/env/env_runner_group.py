@@ -548,6 +548,16 @@ class EnvRunnerGroup:
             if self.local_env_runner is not None and broadcast:
                 self.local_env_runner.set_state(env_runner_states)
 
+            # Move the RLModule weights into the object store exactly once
+            # This avoids having one copy of the weights dict for each worker.
+            if rl_module_state and COMPONENT_RL_MODULE in rl_module_state:
+                module_state = rl_module_state[COMPONENT_RL_MODULE]
+                if not isinstance(module_state, ray.ObjectRef):
+                    rl_module_state = {
+                        **rl_module_state,
+                        COMPONENT_RL_MODULE: ray.put(module_state),
+                    }
+
             # Send the model weights only to remote EnvRunners.
             # In case the local EnvRunner is ever needed for evaluation,
             # RLlib updates its weight right before such an eval step.

@@ -1898,6 +1898,16 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_ppo_value_bootstrapping",
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_value_bootstrapping.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
 # SAC
 py_test(
     name = "test_sac",
@@ -3475,18 +3485,6 @@ py_test(
     size = "small",
     srcs = ["examples/catalogs/custom_action_distribution.py"],
     main = "examples/catalogs/custom_action_distribution.py",
-    tags = [
-        "examples",
-        "no_main",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
-    size = "small",
-    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",

@@ -1286,6 +1286,9 @@ class TuneController:
         Args:
             trial: Trial to act on.
             decision: Scheduling decision to undertake.
+            after_save: True if this action is being executed immediately
+                after a trial save; suppresses an additional checkpoint when
+                pausing.
         """
         if decision == TrialScheduler.CONTINUE:
             self._schedule_trial_train(trial)
@@ -1740,6 +1743,8 @@ class TuneController:
 
         Args:
             trial: Trial being saved.
+            checkpoint_value: The training result containing the checkpoint
+                that was produced by the trial save.
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 

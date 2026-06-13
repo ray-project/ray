@@ -84,22 +84,22 @@ class XGBoostTrainer(DataParallelTrainer):
         xgboost_config: The configuration for setting up the distributed xgboost
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Datasets are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
+        datasets: The Ray Datasets to use for training and validation.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: A checkpoint to resume training from.
+            This checkpoint can be accessed from within ``train_loop_per_worker``
+            by calling ``ray.train.get_checkpoint()``.
     """
 
     def __init__(

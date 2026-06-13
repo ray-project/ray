@@ -1,13 +1,17 @@
 import enum
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorUnifiesInputSchemas,
     PredicatePassThroughBehavior,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 __all__ = [
     "Mix",
@@ -67,9 +71,11 @@ class NAry(LogicalOperator):
         *input_ops: LogicalOperator,
         num_outputs: Optional[int] = None,
     ):
-        """
+        """Initialize the n-ary operator.
+
         Args:
-            input_ops: The input operators.
+            *input_ops: The input operators.
+            num_outputs: The estimated number of output bundles, or ``None`` if unknown.
         """
         super().__init__(
             _num_outputs=num_outputs,
@@ -111,9 +117,30 @@ class Zip(NAry):
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
 
+    def infer_schema(self) -> Optional["Schema"]:
+        # Reuse the runtime ``BlockAccessor.zip`` so plan-time and
+        # execution-time schemas agree by construction (same column
+        # suffixing rules, etc.).
+        import pyarrow as pa
+
+        from ray.data.block import BlockAccessor
+
+        input_schemas = [op.infer_schema() for op in self.input_dependencies]
+        if not input_schemas or not all(
+            isinstance(s, pa.Schema) for s in input_schemas
+        ):
+            return None
+        try:
+            combined = input_schemas[0].empty_table()
+            for s in input_schemas[1:]:
+                combined = BlockAccessor.for_block(combined).zip(s.empty_table())
+        except (pa.ArrowTypeError, pa.ArrowInvalid):
+            return None
+        return combined.schema
+
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
-class Mix(NAry):
+class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
     """Logical operator for weighted dataset mixing."""
 
     _name: str = field(init=False, repr=False)
@@ -165,7 +192,11 @@ class Mix(NAry):
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
-class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
+class Union(
+    NAry,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorUnifiesInputSchemas,
+):
     """Logical operator for union."""
 
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)

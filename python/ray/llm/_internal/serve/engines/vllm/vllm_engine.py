@@ -64,15 +64,43 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
     from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
     from vllm.entrypoints.openai.models.serving import OpenAIServingModels
-    from vllm.entrypoints.openai.speech_to_text.serving import (
-        OpenAIServingTranscription,
-    )
     from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
     from vllm.entrypoints.pooling.scoring.serving import ServingScores
     from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
+    from vllm.entrypoints.speech_to_text.transcription.serving import (
+        OpenAIServingTranscription,
+    )
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+def _canonicalize_request_id_header(
+    request: Any, raw_request_info: Optional[RawRequestInfo]
+) -> Optional[RawRequestInfo]:
+    """Ensure raw_request_info carries X-Request-Id == request.request_id so vLLM's
+    OpenAI layer (which prefers the header) sees the authoritative request id.
+
+    Returns a RawRequestInfo (new or mutated) with a single, correctly-cased header.
+    If the request has no request_id, this is a no-op and returns raw_request_info
+    unchanged (so embeddings/score/transcription requests are unaffected).
+    """
+    rid = getattr(request, "request_id", None)
+    if not rid:
+        return raw_request_info
+    headers = dict(raw_request_info.headers) if raw_request_info is not None else {}
+    # Drop any existing variant of the header (case- and separator-insensitive,
+    # e.g. "X-Request-Id" or "x_request_id") before setting the canonical one.
+    headers = {
+        k: v
+        for k, v in headers.items()
+        if k.replace("_", "-").lower() != "x-request-id"
+    }
+    headers["x-request-id"] = str(rid)
+    if raw_request_info is None:
+        return RawRequestInfo(headers=headers)
+    # Preserve any non-header fields RawRequestInfo carries (now or in the future).
+    return dataclasses.replace(raw_request_info, headers=headers)
 
 
 def _convert_config_dicts(merged: dict) -> dict:
@@ -556,6 +584,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -590,6 +619,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -626,6 +656,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -654,6 +685,7 @@ class VLLMEngine(LLMEngine):
         # Extract audio data from the request file
         audio_data = await request.file.read()
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -691,6 +723,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -716,6 +749,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
@@ -742,6 +776,7 @@ class VLLMEngine(LLMEngine):
             yield error
             return
 
+        raw_request_info = _canonicalize_request_id_header(request, raw_request_info)
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )

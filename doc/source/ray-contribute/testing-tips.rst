@@ -1,3 +1,6 @@
+.. meta::
+    :description: Practical tips for testing Ray programs, such as fixing the resource quantity with ray.init(num_cpus=...) to avoid flaky, parallelism-dependent tests. Read this when writing reliable tests for code that uses Ray.
+
 Tips for testing Ray programs
 =============================
 

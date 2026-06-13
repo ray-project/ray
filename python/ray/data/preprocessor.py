@@ -403,6 +403,15 @@ class Preprocessor(abc.ABC):
         Checks if the columns are explicitly set, otherwise defaulting to
         the input columns.
 
+        Args:
+            columns: The input column names.
+            output_columns: Optional explicit output column names. Must match the
+                length of ``columns`` when provided.
+
+        Returns:
+            The validated output column names. Falls back to ``columns`` when
+            ``output_columns`` is not provided.
+
         Raises:
             ValueError: If the length of the output columns does not match the
                 length of the input columns.

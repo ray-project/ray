@@ -207,7 +207,11 @@ class TestDirectStreamingLLMRouter:
             handle=handle, request_body=body, body_truncated=True
         )
 
-        assert captured_kwargs == {"request_body": body, "body_truncated": True}
+        assert captured_kwargs == {
+            "request_body": body,
+            "body_truncated": True,
+            "_reserve": False,
+        }
 
     @pytest.mark.asyncio
     async def test_pick_replica_raises_when_endpoint_missing(self):

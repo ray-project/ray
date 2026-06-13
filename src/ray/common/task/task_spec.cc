@@ -249,6 +249,11 @@ int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
   return result;
 }
 
+int64_t TaskSpecification::NumObjectsPerYield() const {
+  auto result = message_->num_objects_per_yield();
+  return result == 0 ? 1 : result;
+}
+
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;
@@ -513,7 +518,13 @@ bool TaskSpecification::IsAsyncioActor() const {
 }
 
 bool TaskSpecification::IsDetachedActor() const {
-  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
+  if (IsActorCreationTask()) {
+    return message_->actor_creation_task_spec().is_detached();
+  }
+  if (IsActorTask()) {
+    return message_->actor_task_spec().is_detached_actor();
+  }
+  return false;
 }
 
 std::string TaskSpecification::DebugString() const {

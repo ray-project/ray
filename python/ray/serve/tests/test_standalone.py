@@ -28,7 +28,6 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
-    DeploymentMode,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
@@ -644,13 +643,13 @@ def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
         {
             "proxy_location": None,
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": HTTPOptions(location=ProxyLocation.EveryNode),
         },
         {
             "proxy_location": None,
             "http_options": {"test": "test"},  # location is not specified
             "expected": HTTPOptions(
-                location=DeploymentMode.EveryNode
+                location=ProxyLocation.EveryNode
             ),  # using default proxy_location (to align with the case when `http_options` are None)
         },
         {
@@ -659,58 +658,58 @@ def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
                 "location": "NoServer"
             },  # `location` is specified, but `proxy_location` is not
             "expected": HTTPOptions(
-                location=DeploymentMode.NoServer
+                location=ProxyLocation.Disabled
             ),  # using `location` value
         },
         {
             "proxy_location": None,
             "http_options": HTTPOptions(location=None),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.HeadOnly),
         },  # using default location from HTTPOptions
         {
             "proxy_location": None,
             "http_options": HTTPOptions(location="NoServer"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": None,
             "http_options": {"location": "NoServer"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": None,
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": "Disabled",
             "http_options": HTTPOptions(host="foobar"),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
         {
             "proxy_location": ProxyLocation.Disabled,
-            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
-            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+            "http_options": HTTPOptions(location=ProxyLocation.HeadOnly),
+            "expected": HTTPOptions(location=ProxyLocation.Disabled),
         },
     ],
 )

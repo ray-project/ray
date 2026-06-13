@@ -267,6 +267,9 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
     definition_event_data.set_task_type(task_spec_->GetMessage().type());
     definition_event_data.set_task_name(task_spec_->GetName());
   }
+  if (task_spec_->IsDetachedActor()) {
+    definition_event_data.set_is_detached_actor(true);
+  }
 }
 
 void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(

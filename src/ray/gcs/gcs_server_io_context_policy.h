@@ -24,11 +24,18 @@
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
-#include "ray/util/array.h"
 #include "ray/util/type_traits.h"
 
 namespace ray {
 namespace gcs {
+
+/// Static metadata describing a single dedicated io_context.
+struct IOContextMetadata {
+  /// Name of the io_context (and its thread). Must be unique and non-empty.
+  std::string_view name;
+  /// Whether to enable the asio lag probe on this io_context.
+  bool enable_lag_probe;
+};
 
 struct GcsServerIOContextPolicy {
   GcsServerIOContextPolicy() = delete;
@@ -58,22 +65,30 @@ struct GcsServerIOContextPolicy {
     }
   }
 
-  // This list must be unique and complete set of names returned from
-  // GetDedicatedIOContextIndex. Or you can get runtime crashes when accessing a missing
-  // name, or get leaks by creating unused threads.
-  constexpr static std::array<std::string_view, 7> kAllDedicatedIOContextNames{
-      "task_io_context",
-      "pubsub_io_context",
-      "observability_pubsub_io_context",
-      "ray_syncer_io_context",
-      "ray_event_io_context",
-      "internal_kv_io_context",
-      "node_manager_io_context"};
-  constexpr static std::array<bool, 7> kAllDedicatedIOContextEnableLagProbe{
-      true, true, true, true, true, true, true};
+  // The complete set of dedicated io_contexts. Names must be unique, non-empty,
+  // and a complete set of those returned from GetDedicatedIOContextIndex. Or you
+  // can get runtime crashes when accessing a missing name, or get leaks by
+  // creating unused threads.
+  constexpr static std::array<IOContextMetadata, 7> kAllDedicatedIOContexts{{
+      {"task_io_context", /*enable_lag_probe=*/true},
+      {"pubsub_io_context", /*enable_lag_probe=*/true},
+      {"observability_pubsub_io_context", /*enable_lag_probe=*/true},
+      {"ray_syncer_io_context", /*enable_lag_probe=*/true},
+      {"ray_event_io_context", /*enable_lag_probe=*/true},
+      {"internal_kv_io_context", /*enable_lag_probe=*/true},
+      {"node_manager_io_context", /*enable_lag_probe=*/true},
+  }};
 
-  constexpr static size_t IndexOf(std::string_view name) {
-    return ray::IndexOf(kAllDedicatedIOContextNames, name);
+  // Returns int (not size_t) to match GetDedicatedIOContextIndex's return type and
+  // avoid a narrowing conversion at its call sites.
+  constexpr static int IndexOf(std::string_view name) {
+    for (size_t i = 0; i < kAllDedicatedIOContexts.size(); ++i) {
+      if (kAllDedicatedIOContexts[i].name == name) {
+        return static_cast<int>(i);
+      }
+    }
+    // Throwing in constexpr context leads to a compile error.
+    throw "Value not found in kAllDedicatedIOContexts";
   }
 };
 

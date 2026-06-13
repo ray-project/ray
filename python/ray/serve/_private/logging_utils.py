@@ -170,8 +170,9 @@ class ServeFormatter(TextFormatter):
 
         Args:
             record: The log record to be formatted.
-            Returns:
-                The formatted log record in string format.
+
+        Returns:
+            The formatted log record in string format.
         """
         # Use pre-computed formatters for better performance
         if SERVE_LOG_REQUEST_ID in record.__dict__:

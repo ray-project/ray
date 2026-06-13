@@ -264,8 +264,7 @@ class ReferenceCounterInterface {
   /// \param[in] owner_address The owner's address.
   virtual bool AddBorrowedObject(const ObjectID &object_id,
                                  const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 bool foreign_owner_already_monitoring = false) = 0;
+                                 const rpc::Address &owner_address) = 0;
 
   /// Get the owner address of the given object.
   ///

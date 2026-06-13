@@ -147,7 +147,6 @@ class ServeHead(SubprocessModule):
     async def put_all_applications(self, req: Request) -> Response:
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
-        from ray.serve.config import ProxyLocation
         from ray.serve.schema import ServeDeploySchema
 
         try:
@@ -161,8 +160,9 @@ class ServeHead(SubprocessModule):
             )
 
         config_http_options = config.http_options.model_dump()
-        location = ProxyLocation._to_deployment_mode(config.proxy_location)
-        full_http_options = dict({"location": location}, **config_http_options)
+        full_http_options = dict(
+            {"location": config.proxy_location.value}, **config_http_options
+        )
         grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:

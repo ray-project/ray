@@ -14,36 +14,47 @@
 
 #pragma once
 
+#include <chrono>
+
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 
 namespace ray {
 
+using SteadyTimePoint = std::chrono::steady_clock::time_point;
+
 /// Interface for a clock that returns the current time.
 class ClockInterface {
  public:
   virtual ~ClockInterface() = default;
+
+  /// Wall clock time (may jump due to NTP). Use for timestamps and deadlines.
   virtual absl::Time Now() const = 0;
 
-  /// Convenience: current time as Unix microseconds.
-  int64_t NowUnixMicros() const { return absl::ToUnixMicros(Now()); }
+  /// Monotonic time (never goes backwards). Use for duration measurements.
+  virtual SteadyTimePoint SteadyNow() const = 0;
 
   /// Convenience: current time as Unix milliseconds.
   int64_t NowUnixMillis() const { return absl::ToUnixMillis(Now()); }
+
+  /// Convenience: current time as Unix microseconds.
+  int64_t NowUnixMicros() const { return absl::ToUnixMicros(Now()); }
 
   /// Convenience: current time as Unix nanoseconds.
   int64_t NowUnixNanos() const { return absl::ToUnixNanos(Now()); }
 };
 
-/// Real clock that delegates to absl::Now(). Thread-safe.
+/// Real clock that delegates to absl::Now() and steady_clock::now(). Thread-safe.
 class Clock final : public ClockInterface {
  public:
   absl::Time Now() const override { return absl::Now(); }
+  SteadyTimePoint SteadyNow() const override { return std::chrono::steady_clock::now(); }
 };
 
 /// Fake clock for deterministic testing. Time only advances when you call
-/// AdvanceTime(). Thread-safe.
+/// AdvanceTime(). SteadyNow() is derived from Now() so they always agree.
+/// Thread-safe.
 class FakeClock final : public ClockInterface {
  public:
   explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000)) : now_(start) {}
@@ -51,6 +62,10 @@ class FakeClock final : public ClockInterface {
   absl::Time Now() const override {
     absl::MutexLock lock(&mu_);
     return now_;
+  }
+
+  SteadyTimePoint SteadyNow() const override {
+    return SteadyTimePoint(std::chrono::nanoseconds(absl::ToUnixNanos(Now())));
   }
 
   void AdvanceTime(absl::Duration duration) {

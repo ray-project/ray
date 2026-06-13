@@ -3,7 +3,7 @@ import inspect
 import json
 import logging
 from functools import wraps
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 import grpc
@@ -75,9 +75,13 @@ def handle_grpc_network_errors(func):
     assert inspect.iscoroutinefunction(func)
 
     @wraps(func)
-    async def api_with_network_error_handler(*args, **kwargs):
+    async def api_with_network_error_handler(*args: Any, **kwargs: Any):
         """Apply the network error handling logic to each APIs,
         such as retry or exception policies.
+
+        Args:
+            *args: Positional arguments forwarded to the wrapped coroutine.
+            **kwargs: Keyword arguments forwarded to the wrapped coroutine.
 
         Returns:
             If RPC succeeds, it returns what the original function returns.

@@ -21,6 +21,21 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+    build_dp_openai_app,
+)
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
+    DPServer,
+)
+from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
+    build_pd_openai_app,
+)
+from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    DPPDDecodeServer,
+    DPPDPrefillServer,
+    PDDecodeServer,
+    PDPrefillServer,
+)
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.experimental.consistent_hash_router import ConsistentHashRouter
@@ -472,6 +487,191 @@ class TestBuildOpenaiApp:
 
         with pytest.raises(ValueError, match=match):
             build_openai_app(LLMServingArgs(llm_configs=[llm_config], **builder_kwargs))
+
+
+class TestDirectStreamingDP:
+    """Direct-streaming wiring tests for the data-parallel builder.
+
+    Mirrors the ``test_direct_streaming_*`` tests on ``TestBuildOpenaiApp``
+    but exercises ``build_dp_openai_app`` so that regressions in the DP
+    wiring (deployment class, default request router) are caught at CPU
+    unit-test speed instead of in GPU integration / release tests.
+    """
+
+    @pytest.fixture
+    def llm_config(self):
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+
+    def _enable_direct_streaming(self, monkeypatch):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.serving_patterns.data_parallel.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+    def test_dp_builds_dpserver_ingress_with_router_attached(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+
+        app = build_dp_openai_app({"llm_config": llm_config})
+        ingress_request_router = app._ingress_request_router
+
+        assert app._bound_deployment.name == "DPServer:test-model"
+        assert issubclass(app._bound_deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert issubclass(app._bound_deployment.func_or_class, DPServer)
+        assert ingress_request_router is not None
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
+        )
+
+    def test_dp_user_request_router_config_wins(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        """A user-supplied ``request_router_config`` on ``LLMConfig`` must
+        survive DP direct-streaming wiring rather than being overwritten with
+        the default ``RoundRobinRouter``.
+        """
+        self._enable_direct_streaming(monkeypatch)
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_dp_openai_app({"llm_config": llm_config})
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
+        )
+
+
+class TestDirectStreamingPD:
+    """Direct-streaming wiring tests for the prefill/decode builder.
+
+    Covers the decode-class selection (``PDDecodeServer`` vs
+    ``DPPDDecodeServer`` based on ``decode_dp_size``), the prefill binding
+    into decode's init kwargs, and the ``LLMRouter`` ingress-request-router
+    hookup.
+    """
+
+    @pytest.fixture
+    def pd_configs(self):
+        """Prefill and decode configs with required kv_transfer_config."""
+        base_config = {
+            "model_loading_config": {
+                "model_id": "test-model",
+                "model_source": "test-source",
+            },
+            "engine_kwargs": {
+                "kv_transfer_config": {
+                    "kv_connector": "NixlConnector",
+                    "kv_role": "kv_both",
+                },
+            },
+        }
+        prefill = LLMConfig.model_validate(base_config)
+        decode = LLMConfig.model_validate(base_config)
+        return prefill, decode
+
+    def _enable_direct_streaming(self, monkeypatch):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.serving_patterns.prefill_decode.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+    @staticmethod
+    def _set_dp_size(llm_config, size):
+        llm_config.engine_kwargs["data_parallel_size"] = size
+
+    @pytest.mark.parametrize(
+        ("prefill_dp", "decode_dp", "expected_prefill_cls", "expected_decode_cls"),
+        [
+            (1, 1, PDPrefillServer, PDDecodeServer),
+            (1, 4, PDPrefillServer, DPPDDecodeServer),
+            (4, 1, DPPDPrefillServer, PDDecodeServer),
+            (4, 4, DPPDPrefillServer, DPPDDecodeServer),
+        ],
+    )
+    def test_pd_decode_class_selection(
+        self,
+        pd_configs,
+        disable_placement_bundles,
+        monkeypatch,
+        prefill_dp,
+        decode_dp,
+        expected_prefill_cls,
+        expected_decode_cls,
+    ):
+        """Verify the DP-vs-non-DP variants are picked based on
+        ``data_parallel_size`` for both prefill and decode legs.
+        """
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        self._set_dp_size(prefill, prefill_dp)
+        self._set_dp_size(decode, decode_dp)
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+
+        decode_deployment = app._bound_deployment
+        assert issubclass(decode_deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert issubclass(decode_deployment.func_or_class, expected_decode_cls)
+
+        prefill_app = decode_deployment.init_kwargs["prefill_server"]
+        prefill_deployment = prefill_app._bound_deployment
+        assert prefill_deployment.func_or_class is expected_prefill_cls
+
+    def test_pd_ingress_request_router_is_llmrouter(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+        ingress_request_router = app._ingress_request_router
+
+        assert ingress_request_router is not None
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
+        )
+
+    def test_pd_user_request_router_config_wins(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        """A user-supplied ``request_router_config`` on the decode
+        ``LLMConfig`` must survive PD direct-streaming wiring rather than
+        being overwritten with the default ``RoundRobinRouter``.
+        """
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        decode.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
+        )
 
 
 class TestIngressScaleToZero:

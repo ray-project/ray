@@ -28,7 +28,6 @@ from ray.serve.config import (
     AutoscalingConfig,
     ControllerOptions,
     DeploymentActorConfig,
-    DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
@@ -1165,69 +1164,68 @@ def test_http_options():
     # Test configs ignoring unknown keys (required for forward-compatibility)
     HTTPOptions(new_version_config_key="this config is from newer version of Ray")
 
-    assert HTTPOptions(host=None).location == "NoServer"
-    assert HTTPOptions(location=None).location == "NoServer"
-    assert HTTPOptions(location=DeploymentMode.EveryNode).location == "EveryNode"
+    assert HTTPOptions(host=None).location == ProxyLocation.Disabled
+    assert HTTPOptions(location=None).location == ProxyLocation.Disabled
+    assert HTTPOptions(location=ProxyLocation.EveryNode).location == "EveryNode"
 
 
 def test_prepare_imperative_http_options():
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=None,
-    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+    ) == HTTPOptions(location=ProxyLocation.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={},
-    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+    ) == HTTPOptions(location=ProxyLocation.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(**{}),
     ) == HTTPOptions(
-        location=DeploymentMode.HeadOnly
+        location=ProxyLocation.HeadOnly
     )  # in this case we can't know whether location was provided or not
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options=HTTPOptions(),
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"test": "test"},
-    ) == HTTPOptions(location=DeploymentMode.EveryNode)
+    ) == HTTPOptions(location=ProxyLocation.EveryNode)
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=DeploymentMode.EveryNode, host="0.0.0.0")
+    ) == HTTPOptions(location=ProxyLocation.EveryNode, host="0.0.0.0")
 
     assert prepare_imperative_http_options(
         proxy_location=None,
         http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=DeploymentMode.NoServer)
+    ) == HTTPOptions(location=ProxyLocation.Disabled)
 
     assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.Disabled,
         http_options=None,
-    ) == HTTPOptions(location=DeploymentMode.NoServer)
+    ) == HTTPOptions(location=ProxyLocation.Disabled)
 
     assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.HeadOnly,
         http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly, host="0.0.0.0")
+    ) == HTTPOptions(location=ProxyLocation.HeadOnly, host="0.0.0.0")
 
     assert prepare_imperative_http_options(
         proxy_location=ProxyLocation.HeadOnly,
         http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=DeploymentMode.HeadOnly)
+    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
 
     with pytest.raises(ValueError, match="not a valid ProxyLocation"):
         prepare_imperative_http_options(proxy_location="wrong", http_options=None)
 
-    # Pydantic v2 uses different error format for invalid enum values
-    with pytest.raises(ValidationError, match="Input should be"):
+    with pytest.raises(ValidationError, match="not a valid ProxyLocation"):
         prepare_imperative_http_options(
             proxy_location=None, http_options={"location": "123"}
         )
@@ -1444,56 +1442,22 @@ class TestControllerOptions:
         assert "pip" in str(exc.value)
 
 
-def test_proxy_location_to_deployment_mode():
-    assert (
-        ProxyLocation._to_deployment_mode(ProxyLocation.Disabled)
-        == DeploymentMode.NoServer
-    )
-    assert (
-        ProxyLocation._to_deployment_mode(ProxyLocation.HeadOnly)
-        == DeploymentMode.HeadOnly
-    )
-    assert (
-        ProxyLocation._to_deployment_mode(ProxyLocation.EveryNode)
-        == DeploymentMode.EveryNode
-    )
+def test_proxy_location_normalize():
+    assert ProxyLocation._normalize(None) is None
+    assert ProxyLocation._normalize(ProxyLocation.Disabled) == ProxyLocation.Disabled
+    assert ProxyLocation._normalize(ProxyLocation.HeadOnly) == ProxyLocation.HeadOnly
+    assert ProxyLocation._normalize(ProxyLocation.EveryNode) == ProxyLocation.EveryNode
 
-    assert ProxyLocation._to_deployment_mode("Disabled") == DeploymentMode.NoServer
-    assert ProxyLocation._to_deployment_mode("HeadOnly") == DeploymentMode.HeadOnly
-    assert ProxyLocation._to_deployment_mode("EveryNode") == DeploymentMode.EveryNode
+    assert ProxyLocation._normalize("Disabled") == ProxyLocation.Disabled
+    assert ProxyLocation._normalize("HeadOnly") == ProxyLocation.HeadOnly
+    assert ProxyLocation._normalize("EveryNode") == ProxyLocation.EveryNode
+    assert ProxyLocation._normalize("NoServer") == ProxyLocation.Disabled
 
     with pytest.raises(ValueError):
-        ProxyLocation._to_deployment_mode("Unknown")
+        ProxyLocation._normalize("Unknown")
 
     with pytest.raises(TypeError):
-        ProxyLocation._to_deployment_mode({"some_other_obj"})
-
-
-def test_deployment_mode_to_proxy_location():
-    assert ProxyLocation._from_deployment_mode(None) is None
-
-    assert (
-        ProxyLocation._from_deployment_mode(DeploymentMode.NoServer)
-        == ProxyLocation.Disabled
-    )
-    assert (
-        ProxyLocation._from_deployment_mode(DeploymentMode.HeadOnly)
-        == ProxyLocation.HeadOnly
-    )
-    assert (
-        ProxyLocation._from_deployment_mode(DeploymentMode.EveryNode)
-        == ProxyLocation.EveryNode
-    )
-
-    assert ProxyLocation._from_deployment_mode("NoServer") == ProxyLocation.Disabled
-    assert ProxyLocation._from_deployment_mode("HeadOnly") == ProxyLocation.HeadOnly
-    assert ProxyLocation._from_deployment_mode("EveryNode") == ProxyLocation.EveryNode
-
-    with pytest.raises(ValueError):
-        ProxyLocation._from_deployment_mode("Unknown")
-
-    with pytest.raises(TypeError):
-        ProxyLocation._from_deployment_mode({"some_other_obj"})
+        ProxyLocation._normalize({"some_other_obj"})
 
 
 @pytest.mark.parametrize(

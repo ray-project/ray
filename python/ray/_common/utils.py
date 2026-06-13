@@ -103,6 +103,10 @@ def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
         MyClass = import_attr("module.submodule.MyClass")
         from module.submodule import MyClass
 
+    Args:
+        full_path: The full import path to the module and attr.
+        reload_module: Whether to reload the module.
+
     Returns:
         Imported attr
     """

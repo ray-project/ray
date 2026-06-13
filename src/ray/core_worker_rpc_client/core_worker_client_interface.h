@@ -116,10 +116,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void Exit(const ExitRequest &request,
                     const ClientCallback<ExitReply> &callback) = 0;
 
-  virtual void AssignObjectOwner(
-      const AssignObjectOwnerRequest &request,
-      const ClientCallback<AssignObjectOwnerReply> &callback) = 0;
-
   virtual std::string DebugString() const = 0;
 };
 
