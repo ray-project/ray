@@ -14,10 +14,38 @@
 
 #include "ray/stats/percentile_metric.h"
 
+#include <chrono>
 #include <cmath>
 
 namespace ray {
 namespace stats {
+
+PercentileMetric::~PercentileMetric() {
+  if (auto_flush_thread_.joinable()) {
+    {
+      std::lock_guard<std::mutex> lock(auto_flush_mutex_);
+      auto_flush_stop_ = true;
+    }
+    auto_flush_cv_.notify_one();
+    auto_flush_thread_.join();
+  }
+}
+
+void PercentileMetric::StartAutoFlush(int64_t interval_ms) {
+  auto_flush_thread_ = std::thread([this, interval_ms]() {
+    while (true) {
+      std::unique_lock<std::mutex> lock(auto_flush_mutex_);
+      bool stop = auto_flush_cv_.wait_for(lock,
+                                          std::chrono::milliseconds(interval_ms),
+                                          [this] { return auto_flush_stop_; });
+      if (stop) {
+        break;
+      }
+      lock.unlock();
+      Flush();
+    }
+  });
+}
 
 void PercentileMetric::Record(double value) {
   absl::MutexLock lock(&mutex_);
