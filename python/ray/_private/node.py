@@ -457,16 +457,33 @@ class Node:
         if not connect_only:
             self._record_stats()
 
+    def _resolve_ray_config(self, name, default):
+        """Resolve a RAY_CONFIG value the same way the C++ GCS does.
+
+        ``RayConfig::initialize`` (src/ray/common/ray_config.cc) first
+        reads the ``RAY_<name>`` env var, then overrides it from the
+        ``--config_list`` JSON, which Python passes as ``_system_config``.
+        So ``_system_config`` wins over the env var, which wins over the
+        default. Checking only ``os.environ`` here would miss a backend
+        selected purely via ``_system_config`` and desync the Python-side
+        rocksdb startup logic (marker file, GCS port wait) from the
+        backend the GCS process actually picks.
+        """
+        return self._config.get(name, os.environ.get("RAY_" + name, default))
+
+    def _is_rocksdb_gcs(self):
+        return self._resolve_ray_config("gcs_storage", "memory") == "rocksdb"
+
     def check_persisted_session_name(self):
-        # When RAY_gcs_storage=rocksdb, read the session_name marker
+        # When the GCS backend is rocksdb, read the session_name marker
         # file written by the previous head process. GCS isn't up yet at
         # this point in startup, so we can't query the rocksdb-backed
         # internal_kv directly; the marker file bridges that gap. (This
         # is a plain file on the GCS storage volume, not a Kubernetes
         # sidecar container.) Falls through to the Redis path below for
         # non-rocksdb deployments.
-        if os.environ.get("RAY_gcs_storage") == "rocksdb":
-            rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
+        if self._is_rocksdb_gcs():
+            rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
             if not rocksdb_storage_path:
                 # Mirrors the C++ RAY_CHECK in
                 # gcs_server.cc::GetStorageType(); fail loudly rather
@@ -1180,11 +1197,9 @@ class Node:
             # port file lives on ephemeral /tmp, so a restarted head
             # re-enters this path over an existing store). The default
             # 30s wait can elapse before the port is bound, so bump it to
-            # 120s when RAY_gcs_storage=rocksdb; operator override via
+            # 120s when the GCS backend is rocksdb; operator override via
             # RAY_gcs_server_port_wait_time_s.
-            default_wait = (
-                "120" if os.environ.get("RAY_gcs_storage") == "rocksdb" else "30"
-            )
+            default_wait = "120" if self._is_rocksdb_gcs() else "30"
             gcs_port_wait_s = int(
                 os.environ.get("RAY_gcs_server_port_wait_time_s", default_wait)
             )
@@ -1388,7 +1403,7 @@ class Node:
         # GCS to be up, but check_persisted_session_name() runs before
         # GCS comes up on restart; the marker file bridges that gap. (It
         # is a plain file on the GCS storage volume, not a Kubernetes
-        # sidecar container.) Gated on RAY_gcs_storage=rocksdb so
+        # sidecar container.) Gated on the rocksdb GCS backend so
         # non-rocksdb deployments are unaffected.
         #
         # Write the marker file BEFORE internal_kv_put. If we crash
@@ -1405,8 +1420,8 @@ class Node:
         # assertion-trip the ordering is meant to prevent. The storage
         # path is also where rocksdb keeps its DB files, so an unwritable
         # path means GCS can't function regardless.
-        if os.environ.get("RAY_gcs_storage") == "rocksdb":
-            rocksdb_storage_path = os.environ.get("RAY_gcs_storage_path")
+        if self._is_rocksdb_gcs():
+            rocksdb_storage_path = self._resolve_ray_config("gcs_storage_path", "")
             if not rocksdb_storage_path:
                 # Symmetric with check_persisted_session_name(); see
                 # there for the rationale. Without the marker file, the
@@ -2040,7 +2055,7 @@ class Node:
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
-            if os.environ.get("RAY_gcs_storage") == "rocksdb":
+            if self._is_rocksdb_gcs():
                 gcs_storage_type = "rocksdb"
             elif os.environ.get("RAY_REDIS_ADDRESS") is not None:
                 gcs_storage_type = "redis"
