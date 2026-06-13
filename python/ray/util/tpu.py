@@ -592,7 +592,7 @@ class SlicePlacementGroup:
                             self._user_bundle_label_selector[global_bundle_idx]
                             if global_bundle_idx < len(self._user_bundle_label_selector)
                             else {}
-                        )
+                        ) or {}
                         if ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY in user_labels:
                             user_slice_name = user_labels[
                                 ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY
