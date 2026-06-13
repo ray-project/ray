@@ -81,13 +81,10 @@ def _encode_partition_ipc(
     """Encode one partition's shard as a single Arrow IPC stream."""
     if table.num_columns > 0:
         table = table.combine_chunks()
-    batches = table.to_batches()
-    if not batches:
-        return pa.py_buffer(b"")
 
     sink = pa.BufferOutputStream()
-    writer = pa.ipc.new_stream(sink, batches[0].schema, options=ipc_write_options)
-    for batch in batches:
+    writer = pa.ipc.new_stream(sink, table.schema, options=ipc_write_options)
+    for batch in table.to_batches():
         writer.write_batch(batch)
     writer.close()
     return sink.getvalue()
@@ -108,27 +105,28 @@ def _shuffle_map_task(
     total_rows = sum(a.num_rows() for a in accessors)
     total_bytes = sum((a.size_bytes() or 0) for a in accessors)
 
-    if total_rows == 0:
-        empty_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
-            block_exec_stats=stats.build(block_ser_time_s=0),
-        )
-        return (empty_meta, {}), *([None] * num_partitions)
-
-    # Step 1: partition each input block into partition_id -> [shard_table, ...].
-    partition_accumulators = _partition_blocks_to_shards(blocks, partition_fn)
-
-    # Step 2: merge each partition's shards and encode them into one IPC stream.
     ipc_write_options = _ipc_write_options(compression)
+    output_schema = TableBlockAccessor.try_convert_block_type(
+        blocks[0], block_type=BlockType.ARROW
+    ).schema
+    empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
+
+    partition_accumulators = (
+        {} if total_rows == 0 else _partition_blocks_to_shards(blocks, partition_fn)
+    )
+
     shard_sizes: Dict[int, Tuple[int, int]] = {}
-    partition_bufs: List[Optional[pa.Buffer]] = [None] * num_partitions
-    for partition_id in sorted(partition_accumulators.keys()):
-        tables = partition_accumulators.pop(partition_id)
+    partition_bufs: List[pa.Buffer] = []
+    for partition_id in range(num_partitions):
+        tables = partition_accumulators.pop(partition_id, None)
+        if not tables:
+            partition_bufs.append(empty_shard)
+            continue
         merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
-        partition_bufs[partition_id] = _encode_partition_ipc(merged, ipc_write_options)
+        partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
 
-    # Step 3: build aggregate input metadata and return.
     input_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
         block_exec_stats=stats.build(block_ser_time_s=0),
     )
@@ -137,7 +135,7 @@ def _shuffle_map_task(
 
 
 def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
-    """Decompress one partition shard.  Returns None for empty buffers."""
+    """Decompress one partition shard."""
     if len(buf) == 0:
         return None
     reader = pa.ipc.open_stream(buf)
@@ -150,8 +148,6 @@ def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
             break
         if batch.num_rows > 0:
             batches.append(batch)
-    if not batches:
-        return None
     return pa.Table.from_batches(batches, schema=schema)
 
 

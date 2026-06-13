@@ -40,9 +40,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         input_op: Upstream `ShuffleMapOp`.
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.  Must match the
-            value used by the paired `ShuffleMapOp`.  Empty
-            partitions are skipped on the map side and produce no reducer
-            task here.
+            value used by the paired `ShuffleMapOp`.
         reduce_fn: Function called once per partition (in blocking mode)
             or incrementally (in streaming mode) to combine input shards
             into output blocks.

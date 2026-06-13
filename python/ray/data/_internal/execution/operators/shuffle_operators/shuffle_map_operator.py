@@ -71,11 +71,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     Args:
         input_op: Upstream physical operator.
         data_context: Runtime configuration.
-        num_partitions: Total number of output partitions.  Each map task
-            returns `num_partitions + 1` objects: the metadata bundle
-            plus one ZSTD-compressed Arrow IPC stream per partition (or
-            `None` for partitions that received no rows from this
-            mapper).
+        num_partitions: Total number of output partitions.
         partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
         pre_map_merge_threshold: Byte threshold per node at which buffered
             blocks are merged into a single map task.  Set to 0 to disable.
@@ -295,10 +291,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         # so this is just local deserialization.
         input_meta, shard_sizes = ray.get(task.get_waitable())
 
-        for partition_id, (rows, nbytes) in shard_sizes.items():
-            ref = partition_refs[partition_id]
-            if ref is None:
-                continue
+        for partition_id, ref in enumerate(partition_refs):
+            rows, nbytes = shard_sizes.get(partition_id, (0, 0))
             shard_meta = BlockMetadata(
                 num_rows=rows,
                 size_bytes=nbytes,
@@ -333,7 +327,11 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         self._maybe_emit_partition_bundles()
 
     def _maybe_emit_partition_bundles(self) -> None:
-        """Drain each non-empty staging queue into one output bundle."""
+        """Drain each partition's staging queue into one output bundle.
+
+        Every partition is staged (empty partitions carry a schema-only shard),
+        so this emits exactly num_partitions bundles.
+        """
         if self._partition_bundles_emitted:
             return
         if self._shuffle_map_tasks or self._merge_buffer_refs_by_node:

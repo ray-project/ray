@@ -98,7 +98,7 @@ def test_multi_column_keys(
     assert out.count() == 500
 
 
-def test_repartition_empty_dataset(
+def test_skew_and_empty_partitions(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -106,9 +106,30 @@ def test_repartition_empty_dataset(
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
+    # 3 distinct keys, asking for 50 partitions => most partitions are empty.
+    ds = ray.data.range(600, override_num_blocks=10).map(
+        lambda row: {"k": row["id"] % 3, "v": row["id"]}
+    )
+    out = ds.repartition(50, keys=["k"]).materialize()
+
+    assert out.count() == 600
+    assert out.num_blocks() == 50
+    _assert_keys_colocated(_keys_per_block(out, ["k"]))
+
+
+def test_repartition_empty_dataset(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    disable_fallback_to_object_extension,
+):
+    """Empty dataset should still output N blocks"""
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
     ds = ray.data.range(100, override_num_blocks=4).filter(lambda row: False)
     out = ds.repartition(4, keys=["id"]).materialize()
     assert out.count() == 0
+    assert out.num_blocks() == 4
 
 
 def test_repartition_with_sort_produces_sorted_partitions(
