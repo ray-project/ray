@@ -854,7 +854,6 @@ if __name__ == "__main__":
             "ray": [
                 "includes/*.pxd",
                 "*.pxd",
-                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
                 "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },
