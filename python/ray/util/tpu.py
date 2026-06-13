@@ -324,7 +324,7 @@ def _get_intact_tpu_slices(
         # TPU slices must have a head worker (rank 0).
         # Single-host TPUs are inherently their own head.
         has_head = any(
-            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            (n.get("Labels") or {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
             for n in nodes
         )
         if not has_head and len(nodes) == 1:
