@@ -506,12 +506,53 @@ class GenericProxy(ABC):
                 yield message
 
             assert status is not None and isinstance(status, ResponseStatus)
+        except GeneratorExit:
+            # The downstream consumer (the ASGI server driving this generator)
+            # stopped iterating before the response finished -- e.g. a WebSocket
+            # client whose connection dropped mid-stream, so a `send` on the
+            # proxy side raised and this generator is now being finalized. The
+            # request still happened and must be recorded; otherwise it is
+            # silently dropped from the access log and the request/error
+            # counters (`ray_serve_num_http_requests_total` et al.), which
+            # under-counts real traffic (observed: WebSocket clients that close
+            # without the close handshake completing through the proxy never get
+            # counted at all). Record with a disconnect status if none was
+            # received yet, then re-raise so finalization completes cleanly (an
+            # async generator must not yield while handling GeneratorExit, per
+            # PEP 525).
+            if status is None:
+                disconnect_code = (
+                    "1006" if proxy_request.request_type == "websocket" else "499"
+                )
+                status = ResponseStatus(code=disconnect_code, is_error=True)
+            self._record_request_completion_metrics(
+                proxy_request, response_handler_info, status, start_time
+            )
+            raise
         finally:
             # If anything during the request failed, we still want to ensure the ongoing
             # request counter is decremented.
             if response_handler_info.should_increment_ongoing_requests:
                 self._ongoing_requests_end()
 
+        self._record_request_completion_metrics(
+            proxy_request, response_handler_info, status, start_time
+        )
+
+    def _record_request_completion_metrics(
+        self,
+        proxy_request: ProxyRequest,
+        response_handler_info: ResponseHandlerInfo,
+        status: ResponseStatus,
+        start_time: float,
+    ) -> None:
+        """Emit the access log and request / latency / error metrics for a
+        finished request.
+
+        Factored out of `proxy_request` so it runs both on normal completion
+        and when the generator is finalized early by a client disconnect
+        (`GeneratorExit`), keeping request accounting accurate in both cases.
+        """
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
             request_context = ray.serve.context._get_serve_request_context()
@@ -1426,6 +1467,17 @@ class HTTPProxy(GenericProxy):
 
                     yield asgi_message
                     response_started = True
+        except GeneratorExit:
+            # The consumer stopped iterating because the client connection went
+            # away (e.g. a WebSocket client that dropped mid-stream). Re-raise
+            # so this generator is finalized cleanly: an async generator must
+            # not yield while handling GeneratorExit (PEP 525). Without this the
+            # broad `except BaseException` below catches the GeneratorExit, logs
+            # a spurious "Request failed due to unexpected error", and then the
+            # trailing `yield status` raises "async generator ignored
+            # GeneratorExit". Request accounting for this case is handled by the
+            # caller (`proxy_request`).
+            raise
         except BaseException as e:
             error_status = get_http_response_status(e, request_timeout_s, request_id)
             if status is None:

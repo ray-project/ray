@@ -2,7 +2,7 @@ import asyncio
 import pickle
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import grpc
 import pytest
@@ -756,6 +756,51 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
+
+    @pytest.mark.asyncio
+    async def test_proxy_request_counts_request_on_client_disconnect(self):
+        """A request whose consumer (the ASGI server / client connection) goes
+        away mid-stream must still be counted in the request metrics.
+
+        Regression test: previously the access log + request counter emission
+        ran only after `proxy_request` completed normally, so a client that
+        disconnected mid-stream (the generator being finalized with
+        GeneratorExit) was silently dropped from `request_counter`. A WebSocket
+        client that closes without the close handshake completing through the
+        proxy is the common trigger.
+        """
+        http_proxy = self.create_http_proxy()
+        http_proxy.request_counter = MagicMock()
+        http_proxy.processing_latency_tracker = MagicMock()
+        http_proxy.request_error_counter = MagicMock()
+        http_proxy.deployment_request_error_counter = MagicMock()
+        http_proxy.proxy_router.route = "route"
+        http_proxy.proxy_router.handle = FakeHTTPHandle(
+            messages=[
+                {"type": "websocket.accept"},
+                {"type": "websocket.send"},
+                {"type": "websocket.send"},
+            ]
+        )
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        scope = {
+            "type": "websocket",
+            "headers": [(b"x-request-id", b"fake_request_id")],
+        }
+        gen = http_proxy.proxy_request(
+            ASGIProxyRequest(
+                scope=scope, receive=FakeHttpReceive(), send=FakeHttpSend()
+            )
+        )
+        # Consume the first forwarded message, then finalize the generator to
+        # model the consumer abandoning iteration mid-stream (client gone).
+        await gen.__anext__()
+        await gen.aclose()
+
+        # The request must be counted exactly once even though it was torn down
+        # before completing.
+        http_proxy.request_counter.inc.assert_called_once()
 
     @pytest.mark.parametrize(
         "header_key",
