@@ -42,6 +42,7 @@
 #include <string>
 #include <thread>
 
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 
@@ -506,6 +507,131 @@ TEST(RocksDbStoreClientTest, OffloadStrandPreservesCrossKeyParallelism) {
   }
   ASSERT_TRUE(WaitFor([&] { return reads_done.load() == kKeys; }, 30s));
   EXPECT_EQ(matches.load(), kKeys);
+  fs::remove_all(db);
+}
+
+TEST(RocksDbStoreClientTest, OffloadStrandOrdersBatchDeleteAfterSameKeyPut) {
+  // AsyncBatchDelete must order against a same-key write. Submission
+  // order: Put(K, "new"), BatchDelete([K]); both target K, so the per-key
+  // strand runs them in that order — the Put commits, BatchDelete then
+  // sees K present, deletes it (count 1), and K ends up absent. If
+  // BatchDelete were dispatched on the unordered pool (the pre-fix
+  // behaviour), it could run before the Put committed: the Put would then
+  // resurrect K and the final read would see "new". Seeding "old" first
+  // makes the delete real in either ordering, so the discriminating
+  // signal is purely the final state. Repeat across trials to amplify any
+  // reordering. Guards the fix for
+  // https://github.com/ray-project/ray/pull/63657#discussion_r3405306127.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("strand-put-batchdel");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4,
+                            /*strand_buckets=*/64);
+
+  constexpr int kTrials = 64;
+  for (int trial = 0; trial < kTrials; ++trial) {
+    const std::string key = "k_" + std::to_string(trial);
+
+    // Seed an existing value so the delete is a real delete, not a no-op.
+    std::atomic<bool> seeded{false};
+    client.AsyncPut("pbd_t",
+                    key,
+                    "old",
+                    /*overwrite=*/true,
+                    {[&seeded](bool) { seeded.store(true); }, io.io()});
+    ASSERT_TRUE(WaitFor([&] { return seeded.load(); }));
+
+    std::atomic<int> ops_done{0};
+    std::atomic<int64_t> batch_deleted{-1};
+    client.AsyncPut("pbd_t",
+                    key,
+                    "new",
+                    /*overwrite=*/true,
+                    {[&ops_done](bool) { ops_done.fetch_add(1); }, io.io()});
+    client.AsyncBatchDelete("pbd_t",
+                            {key},
+                            {[&ops_done, &batch_deleted](int64_t n) {
+                               batch_deleted.store(n);
+                               ops_done.fetch_add(1);
+                             },
+                             io.io()});
+    ASSERT_TRUE(WaitFor([&] { return ops_done.load() == 2; }));
+
+    std::atomic<bool> read_done{false};
+    std::optional<std::string> got;
+    client.AsyncGet("pbd_t",
+                    key,
+                    {[&got, &read_done](Status, std::optional<std::string> v) {
+                       got = std::move(v);
+                       read_done.store(true);
+                     },
+                     io.io()});
+    ASSERT_TRUE(WaitFor([&] { return read_done.load(); }));
+
+    EXPECT_FALSE(got.has_value())
+        << "trial " << trial << ": BatchDelete ran before the same-key Put committed";
+    EXPECT_EQ(batch_deleted.load(), 1)
+        << "trial " << trial << ": BatchDelete did not observe the committed Put";
+  }
+  fs::remove_all(db);
+}
+
+TEST(RocksDbStoreClientTest, OffloadStrandOrdersMultiGetAfterSameKeyPut) {
+  // AsyncMultiGet must order against same-key writes. Burst N back-to-back
+  // overwrites of K from the single-threaded io_service (FIFO submission),
+  // then MultiGet([K]) without waiting for the writes to drain; the per-key
+  // strand runs the read after all the writes, so it must return the last
+  // value submitted. If MultiGet were dispatched on the unordered pool (the
+  // pre-fix behaviour), it could run before the final writes committed and
+  // return an earlier value — or miss K entirely. Repeat across trials.
+  // Guards the fix for
+  // https://github.com/ray-project/ray/pull/63657#discussion_r3405306127.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("strand-put-multiget");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4,
+                            /*strand_buckets=*/64);
+
+  constexpr int kTrials = 32;
+  constexpr int kPutsPerTrial = 16;
+  for (int trial = 0; trial < kTrials; ++trial) {
+    const std::string key = "k_" + std::to_string(trial);
+    std::atomic<int> writes_done{0};
+    for (int i = 0; i < kPutsPerTrial; ++i) {
+      client.AsyncPut("pmg_t",
+                      key,
+                      "v" + std::to_string(i),
+                      /*overwrite=*/true,
+                      {[&writes_done](bool) { writes_done.fetch_add(1); }, io.io()});
+    }
+
+    // Issue the read immediately, before draining the writes: only the
+    // per-key strand ordering can make it observe the final value.
+    std::atomic<bool> read_done{false};
+    absl::flat_hash_map<std::string, std::string> got;
+    client.AsyncMultiGet(
+        "pmg_t",
+        {key},
+        {[&got, &read_done](absl::flat_hash_map<std::string, std::string> result) {
+           got = std::move(result);
+           read_done.store(true);
+         },
+         io.io()});
+    ASSERT_TRUE(WaitFor([&] { return read_done.load(); }));
+    ASSERT_TRUE(WaitFor([&] { return writes_done.load() == kPutsPerTrial; }));
+
+    auto it = got.find(key);
+    ASSERT_TRUE(it != got.end()) << "trial " << trial << ": MultiGet missed the key";
+    EXPECT_EQ(it->second, "v" + std::to_string(kPutsPerTrial - 1))
+        << "trial " << trial
+        << ": MultiGet observed a stale value (ran before the same-key writes committed)";
+  }
   fs::remove_all(db);
 }
 
