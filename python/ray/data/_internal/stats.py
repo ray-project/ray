@@ -53,6 +53,9 @@ logger = logging.getLogger(__name__)
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+# Max number of opaque-payload groups retained in the stats actor at once
+# (FIFO eviction). Used by the generic ``record_payload``/``pop_payload`` store.
+_MAX_PAYLOAD_GROUPS_TO_TRACK = 100
 UNKNOWN = "unknown"
 UNKNOWN_UUID = "unknown_uuid"
 
@@ -342,6 +345,17 @@ class _StatsActor:
 
         # Cache of calls to ray.nodes() to prevent unnecessary network calls
         self._ray_nodes_cache: Dict[str, str] = {}
+
+        # Generic opaque-payload store, keyed group -> {key -> value}. A
+        # general worker->driver side channel for telemetry that doesn't fit
+        # the structured metrics paths: producers push picklable values under a
+        # group, the driver pops them. Values are stored unmerged; keys are
+        # caller-defined and stable across retries so a retried report
+        # overwrites rather than double-counts. Bounded in FIFO order by group.
+        self._payloads: "collections.OrderedDict[str, Dict[str, Any]]" = (
+            collections.OrderedDict()
+        )
+        self._max_payload_groups = _MAX_PAYLOAD_GROUPS_TO_TRACK
 
         # Initialize the metadata exporter
         self._metadata_exporter = get_dataset_metadata_exporter()
@@ -637,6 +651,31 @@ class _StatsActor:
         dataset_id = str(self.next_dataset_id)
         self.next_dataset_id += 1
         return dataset_id
+
+    def record_payload(self, group: str, key: str, value: Any) -> None:
+        """Record one opaque payload ``value`` under ``(group, key)``.
+
+        A report with the same ``key`` overwrites the prior one, so retried
+        producers don't double-count. Groups are evicted FIFO once the bound
+        is reached.
+        """
+        per_key = self._payloads.get(group)
+        if per_key is None:
+            if len(self._payloads) >= self._max_payload_groups:
+                self._payloads.popitem(last=False)
+            per_key = {}
+            self._payloads[group] = per_key
+        per_key[key] = value
+
+    def pop_payload(self, group: str) -> List[Any]:
+        """Return and evict all payload values recorded under ``group``.
+
+        Returns an empty list if nothing was recorded.
+        """
+        per_key = self._payloads.pop(group, None)
+        if not per_key:
+            return []
+        return list(per_key.values())
 
     def update_execution_metrics(
         self,
@@ -1084,6 +1123,27 @@ class _StatsManager:
             # Getting dataset id from _StatsActor may fail, in this case
             # fall back to uuid4
             return uuid4().hex
+
+    @staticmethod
+    def record_payload(group: str, key: str, value: Any):
+        """Report one opaque payload to the stats actor's generic store.
+
+        A general worker->driver side channel; the driver retrieves values via
+        the actor's ``pop_payload(group)``.
+
+        Args:
+            group: Namespace for the payload (e.g. scoped by dataset tag).
+            key: Unique-per-producer key, stable across retries so re-reports
+                overwrite rather than double-count.
+            value: A picklable value to store.
+        """
+        try:
+            get_or_create_stats_actor().record_payload.remote(group, key, value)
+        except Exception as e:
+            logger.warning(
+                f"Error occurred during record_payload.remote call to _StatsActor: {e}",
+                exc_info=True,
+            )
 
 
 class DatasetStats:
