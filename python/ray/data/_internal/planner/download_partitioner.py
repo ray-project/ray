@@ -12,7 +12,14 @@ URI_PARTITION_NUM_BUCKETS = max(
     1, env_integer("RAY_DATA_DOWNLOAD_PARTITION_NUM_BUCKETS", 2)
 )
 
-SizeAnnotator = Callable[[pa.Table, Dict[str, List[int]]], pa.Table]
+UriColumnName = str
+RowIndex = int
+FileSizeBytes = int
+
+SizesByColumn = Dict[UriColumnName, List[FileSizeBytes]]
+SizesByRowIndex = Dict[RowIndex, Dict[UriColumnName, FileSizeBytes]]
+
+SizeAnnotator = Callable[[pa.Table, SizesByColumn], pa.Table]
 MetadataPredicate = Callable[[pa.Table], bool]
 
 
@@ -72,7 +79,7 @@ class _ExactDownloadPartitioner:
             num_buckets=self._num_buckets,
             emit_before_overflow=True,
         )
-        sizes_by_row_index: Dict[int, Dict[str, int]] = {}
+        sizes_by_row_index: SizesByRowIndex = {}
 
         for chunk_start in range(0, block.num_rows, self._metadata_chunk_size):
             chunk_end = min(chunk_start + self._metadata_chunk_size, block.num_rows)
@@ -112,7 +119,7 @@ class _ExactDownloadPartitioner:
         self,
         block: pa.Table,
         row_partitioner: WeightedRoundRobinPartitioner[int],
-        sizes_by_row_index: Dict[int, Dict[str, int]],
+        sizes_by_row_index: SizesByRowIndex,
     ) -> Iterator[pa.Table]:
         while row_partitioner.has_partition():
             row_indices = row_partitioner.next_partition()
@@ -132,7 +139,7 @@ class _ExactDownloadPartitioner:
             return False
         return self._fetch_metadata_without_target(block)
 
-    def _get_block_sizes_by_column(self, block: pa.Table) -> Dict[str, List[int]]:
+    def _get_block_sizes_by_column(self, block: pa.Table) -> SizesByColumn:
         sizes_by_column = {
             uri_column_name: [] for uri_column_name in self._uri_column_names
         }
@@ -146,7 +153,7 @@ class _ExactDownloadPartitioner:
                 )
         return sizes_by_column
 
-    def _get_chunk_sizes_by_column(self, chunk: pa.Table) -> Dict[str, List[int]]:
+    def _get_chunk_sizes_by_column(self, chunk: pa.Table) -> SizesByColumn:
         sizes_by_column = {}
         for uri_column_name in self._uri_column_names:
             uris = chunk.column(uri_column_name).to_pylist()
@@ -158,8 +165,8 @@ class _ExactDownloadPartitioner:
     def _build_partition(
         self,
         block: pa.Table,
-        row_indices: List[int],
-        sizes_by_column: Dict[str, List[int]],
+        row_indices: List[RowIndex],
+        sizes_by_column: SizesByColumn,
     ) -> pa.Table:
         partition = block.take(pa.array(row_indices, type=pa.int64()))
         return self._annotate_partition(partition, sizes_by_column)
@@ -167,14 +174,16 @@ class _ExactDownloadPartitioner:
     def _annotate_partition(
         self,
         partition: pa.Table,
-        sizes_by_column: Dict[str, List[int]],
+        sizes_by_column: SizesByColumn,
     ) -> pa.Table:
         if self._annotate_sizes is not None:
             partition = self._annotate_sizes(partition, sizes_by_column)
         return partition
 
     @staticmethod
-    def _normalize_sizes(sizes: List[Optional[int]], expected_len: int) -> List[int]:
+    def _normalize_sizes(
+        sizes: List[Optional[FileSizeBytes]], expected_len: int
+    ) -> List[FileSizeBytes]:
         normalized = [
             size if size is not None and size > 0 else 0
             for size in sizes[:expected_len]

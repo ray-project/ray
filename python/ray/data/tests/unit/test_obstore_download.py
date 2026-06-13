@@ -298,16 +298,13 @@ class TestResolveSizeRewrite:
             return {"size": 4096}
 
         provider = _ObstoreFileSizeProvider(registry, MagicMock())
-        try:
-            with patch(
-                "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
-                return_value="us-west-2",
-            ), patch("obstore.head_async", side_effect=fake_head_async):
-                sizes = provider.get_file_sizes(
-                    ["https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin"]
-                )
-        finally:
-            provider.close()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ), patch("obstore.head_async", side_effect=fake_head_async):
+            sizes = provider.get_file_sizes(
+                ["https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin"]
+            )
 
         # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
         assert sizes == [4096]
