@@ -653,6 +653,37 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+
+    def _record_errored_block(e: BaseException, op_name: str) -> None:
+        """Apply ``max_errored_blocks`` accounting to a block-level error from
+        either ``on_data_ready`` or a deferred metadata fetch. Raises to abort
+        once the budget is exhausted."""
+        nonlocal num_errored_blocks
+        num_errored_blocks += 1
+        should_ignore = (
+            max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
+        )
+        error_message = f'An exception was raised from a task of operator "{op_name}".'
+        if should_ignore:
+            remaining = (
+                max_errored_blocks - num_errored_blocks
+                if max_errored_blocks >= 0
+                else "unlimited"
+            )
+            error_message += (
+                f" Ignoring this exception with remaining"
+                f" max_errored_blocks={remaining}."
+            )
+            logger.error(error_message, exc_info=e)
+        else:
+            error_message += (
+                " Dataset execution will now abort."
+                " To ignore this exception and continue, set"
+                " DataContext.max_errored_blocks."
+            )
+            logger.exception(error_message)
+            raise e from None
+
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -706,34 +737,7 @@ def process_completed_tasks(
                                 remaining_output_budget[state] - bytes_read, 0
                             )
                     except Exception as e:
-                        num_errored_blocks += 1
-                        should_ignore = (
-                            max_errored_blocks < 0
-                            or max_errored_blocks >= num_errored_blocks
-                        )
-                        error_message = (
-                            "An exception was raised from a task of "
-                            f'operator "{state.op.name}".'
-                        )
-                        if should_ignore:
-                            remaining = (
-                                max_errored_blocks - num_errored_blocks
-                                if max_errored_blocks >= 0
-                                else "unlimited"
-                            )
-                            error_message += (
-                                " Ignoring this exception with remaining"
-                                f" max_errored_blocks={remaining}."
-                            )
-                            logger.error(error_message, exc_info=e)
-                        else:
-                            error_message += (
-                                " Dataset execution will now abort."
-                                " To ignore this exception and continue, set"
-                                " DataContext.max_errored_blocks."
-                            )
-                            logger.exception(error_message)
-                            raise e from None
+                        _record_errored_block(e, state.op.name)
                 else:
                     assert isinstance(task, MetadataOpTask)
                     task.on_task_finished()
@@ -742,9 +746,14 @@ def process_completed_tasks(
             # per-op order in `drain()` once their metadata is ready.
             metadata_prefetcher.submit(state, op_deferred, op_data_tasks)
 
-        # Emit whatever's ready (including pairs deferred in prior
-        # iterations whose metadata has since arrived), in per-op order.
-        metadata_prefetcher.drain()
+    # Emit whatever's ready, in per-op order — UNCONDITIONALLY, even when there
+    # are no active tasks this iteration. Pairs deferred in earlier iterations
+    # (their tasks may already be gone) can still have metadata land later;
+    # gating this on `active_tasks` would strand them and stall output forever.
+    # Deferred metadata-fetch failures go through the same `max_errored_blocks`
+    # accounting as inline `on_data_ready` errors.
+    for failed_op_name, fetch_exc in metadata_prefetcher.drain():
+        _record_errored_block(fetch_exc, failed_op_name)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

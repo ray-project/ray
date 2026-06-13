@@ -1652,6 +1652,57 @@ class TestDataOpTask:
         ]
         assert task.has_finished
 
+    def test_prefetcher_fetch_failure_is_returned_not_raised(
+        self, ray_start_regular_shared
+    ):
+        """A metadata-fetch error is returned from drain() (so the caller can
+        apply max_errored_blocks) rather than raised; the bad block is dropped,
+        the other pair still emits, and the task still completes."""
+        from ray.data._internal.execution.metadata_prefetcher import (
+            MetadataPrefetcher,
+        )
+
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            output_ready_callback=lambda b: outputs.append(b),
+            task_done_callback=lambda *a: done.append(1),
+            operator_name="Map(fn)",
+        )
+
+        ray.wait([gen], fetch_local=False)
+        deferred: list[DeferredEmit] = []
+        deadline = time.time() + 30
+        while not task.is_done_pending() and time.time() < deadline:
+            task.on_data_ready(None, deferred)
+            time.sleep(0.01)
+        assert len(deferred) == 2
+        first, second = deferred
+
+        prefetcher = MetadataPrefetcher()
+        prefetcher.submit("op", deferred, [task])
+        good_bytes = ray.get(first.meta_ref)
+        boom = ValueError("metadata fetch boom")
+        # First pair fetches fine; the second resolves to an exception.
+        with prefetcher._results_lock:
+            prefetcher._results[first.meta_ref] = good_bytes
+            prefetcher._results[second.meta_ref] = boom
+
+        failures = prefetcher.drain()
+
+        # The error is surfaced (not raised), tagged with the operator name.
+        assert failures == [("Map(fn)", boom)]
+        # The good block still emitted; the failed one was dropped.
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == pytest.approx(100, abs=64)
+        # The task completed despite the dropped block (done callback fired).
+        assert done == [1]
+        assert task.has_finished
+        assert not prefetcher.has_pending_work()
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )

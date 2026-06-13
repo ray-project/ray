@@ -400,6 +400,11 @@ class DataOpTask(OpTask):
     def has_finished(self) -> bool:
         return self._has_finished
 
+    @property
+    def operator_name(self) -> str:
+        """Name of the physical operator that created this task."""
+        return self._operator_name
+
     def is_done_pending(self) -> bool:
         """Whether this task hit end-of-stream and is waiting for its
         deferred pairs to finish emitting before its ``task_done_callback``

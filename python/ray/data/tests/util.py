@@ -154,7 +154,11 @@ def drain_prefetcher(prefetcher, timeout_s: float = 30.0) -> None:
     """
     deadline = time.monotonic() + timeout_s
     while prefetcher.has_pending_work():
-        prefetcher.drain()
+        failures = prefetcher.drain()
+        if failures:
+            # Tests using this helper don't expect metadata-fetch errors;
+            # surface the first one rather than swallowing it.
+            raise failures[0][1]
         if time.monotonic() >= deadline:
             raise TimeoutError(f"prefetcher did not drain within {timeout_s} seconds.")
         time.sleep(_PREFETCHER_POLL_INTERVAL_S)

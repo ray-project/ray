@@ -29,7 +29,7 @@ import logging
 import queue as queue_module
 import threading
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
@@ -119,12 +119,21 @@ class MetadataPrefetcher:
                 # must not be registered (or later fired) twice.
                 self._done_pending.add(task)
 
-    def drain(self) -> None:
+    def drain(self) -> List[Tuple[str, BaseException]]:
         """Emit every pair whose metadata is now available, in per-op append
         order, then fire postponed done callbacks for fully-drained tasks.
 
+        Returns ``(operator_name, exception)`` for each pair whose metadata
+        fetch failed. Those pairs are accounted as emitted (so the task can
+        still complete) but their block is dropped; the caller applies the
+        executor's ``max_errored_blocks`` accounting — matching the inline
+        path, where a metadata-fetch error propagated out of ``on_data_ready``
+        and was counted (and optionally ignored) there. Surfacing the error
+        as a return value rather than raising keeps that tolerance intact.
+
         Must be called on the executor thread.
         """
+        failures: List[Tuple[str, BaseException]] = []
         for fifo in self._fifos.values():
             while fifo:
                 d = fifo[0]
@@ -136,12 +145,8 @@ class MetadataPrefetcher:
                 fifo.popleft()
                 d.mark_emitted()
                 if isinstance(result, BaseException):
-                    # The metadata object resolved to a task error. Surface it
-                    # on the executor thread instead of dropping the block —
-                    # the inline path likewise let a metadata-fetch error
-                    # propagate out of ``on_data_ready`` to the executor's
-                    # error handling (``max_errored_blocks``).
-                    raise result
+                    failures.append((d.task.operator_name, result))
+                    continue
                 _emit_deferred_entry(d, result)
 
         if self._done_pending:
@@ -149,6 +154,8 @@ class MetadataPrefetcher:
             for task in fired:
                 _fire_task_done(task)
             self._done_pending.difference_update(fired)
+
+        return failures
 
     def has_pending_work(self) -> bool:
         """Whether any submitted pair has yet to be emitted, or any postponed
