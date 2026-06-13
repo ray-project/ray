@@ -17,7 +17,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
     create_kv_event_plane_runtime,
     kv_event_namespace,
     kv_events_endpoint_path,
-    read_worker_discovery_records,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     resolve_kv_event_source_endpoint,
@@ -61,6 +60,9 @@ class KvEventPublisher:
         return self._worker_id
 
     async def start(self) -> None:
+        # Registering returns this deployment's broker URL and adds the worker
+        # to the KvRouter, so its events are indexed from the first one (the
+        # router applies them directly, with no discovery-based recovery).
         broker_url = await self._kv_router_actor.register_kv_event_worker.remote(
             self._worker_id, self._replica_id, self._kv_block_size
         )
@@ -76,27 +78,10 @@ class KvEventPublisher:
             kv_block_size=self._kv_block_size,
             zmq_endpoint=self._zmq_endpoint,
             zmq_topic="",
-            # Required for the publisher to publish through the event plane;
-            # it also maintains the worker-local indexer.
+            # Required for the publisher to publish through the event plane.
             enable_local_indexer=True,
             dp_rank=self._dp_rank,
         )
-        # Hand this worker's discovery records (its worker-query endpoint)
-        # straight to the actor.
-        # NOTE (jeffreywang): Now necessary because the KvRouter goes through
-        # discovery before consuming a worker's events. It buffers them behind
-        # a restore that resolves the worker-query endpoint, so until these
-        # records reach the router's store the events are never indexed.
-        # TODO (jeffreywang): drop this once the KvRouter exposes a direct API
-        # to register a worker's query endpoint, bypassing discovery.
-        await self._kv_router_actor.activate_kv_event_worker.remote(
-            self._worker_id, await read_worker_discovery_records()
-        )
-        # TODO (jeffreywang): Dynamo's restore reports last_event_id=0 when a
-        # worker has applied nothing yet, indistinguishable from having applied
-        # event id 0. The router drops the worker's first event as stale, and
-        # stores chained on its blocks are skipped until evicted and re-stored.
-        # Fix upstream by making "nothing applied" representable.
         logger.info(
             "KvEventPublisher started for worker %d (replica %s), "
             "consuming KV events from %s.",

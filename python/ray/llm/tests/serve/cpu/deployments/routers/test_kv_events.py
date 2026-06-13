@@ -1,4 +1,3 @@
-import asyncio
 import sys
 import uuid
 
@@ -461,8 +460,8 @@ class TestDynamoKvEventPipeline:
     async def test_worker_registration_purged_with_replica(
         self, ray_instance, namespace
     ):
-        """Removal of a tracked replica purges its KV-event registration and
-        the materialized discovery records the keep-alive held against expiry."""
+        """Removal of a tracked replica purges its KV-event registration; each
+        registration adds the worker directly to the KvRouter."""
         actor = LocalKVRouterActor.remote(namespace)
         replicas = {
             get_worker_id(f"u{i}"): ReplicaID(
@@ -472,22 +471,14 @@ class TestDynamoKvEventPipeline:
         }
         (keep_worker, keep_replica), (drop_worker, drop_replica) = replicas.items()
         try:
-            # Replicas register, then hand their discovery records straight to
-            # the actor, before the controller reports them running.
+            # Registration adds the worker directly to the KvRouter (no discovery
+            # records) before the controller reports the replica running.
             for worker_id, replica_id in replicas.items():
                 await actor.register_kv_event_worker.remote(
                     worker_id, replica_id, BLOCK_SIZE
                 )
-                await actor.activate_kv_event_worker.remote(
-                    worker_id, {f"record-{worker_id}": b"endpoint"}
-                )
             await actor.apply_running_replicas.remote(list(replicas.values()))
             assert await actor.get_kv_event_worker_replicas.remote() == replicas
-
-            # Outlive Dynamo's 10s file-store TTL: the actor's keep-alive must
-            # hold the materialized records, or the purge's record removal below
-            # would raise on an already-expired file.
-            await asyncio.sleep(12)
 
             await actor.apply_running_replicas.remote([keep_replica])
             assert await actor.get_kv_event_worker_replicas.remote() == {

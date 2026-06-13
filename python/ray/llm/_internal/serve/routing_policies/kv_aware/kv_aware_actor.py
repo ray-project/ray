@@ -15,9 +15,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
     create_kv_event_plane_runtime,
     kv_event_namespace,
     kv_events_endpoint_path,
-    materialize_worker_discovery_records,
-    remove_worker_discovery_records,
-    touch_worker_discovery_records,
 )
 from ray.serve._private.common import DeploymentTargetInfo, ReplicaID
 from ray.serve._private.constants import (
@@ -30,10 +27,6 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 KV_ROUTER_ACTOR_NAME = "serve_llm_kv_router"
-
-# Refresh period for materialized discovery records, against Dynamo's
-# 10-second file store TTL.
-_RECORD_KEEPALIVE_INTERVAL_S = 3
 
 
 def get_worker_id(replica_unique_id: str) -> int:
@@ -67,15 +60,6 @@ class KVRouterActor:
         self._replica_id_by_worker: Dict[int, str] = {}
         self._long_poll_client: Optional[LongPollClient] = None
         self._dyn_worker_id_to_replica_id: Dict[int, str] = {}
-        # The KvRouter recovers a worker's cache view by querying that worker's
-        # local indexer, resolved through Dynamo's file-KV discovery store. This
-        # actor and each replica run in separate processes with private discovery
-        # stores, so a replica's worker-query endpoint is invisible here. The
-        # replica hands us its discovery records (via activate_kv_event_worker)
-        # and we materialize them into this process's store, holding the
-        # filenames per worker to keep them alive against Dynamo's TTL and to
-        # purge them when the worker leaves.
-        self._records_by_kv_event_worker: Dict[int, List[str]] = {}
 
         namespace = self._kv_event_plane_namespace()
         configure_kv_event_plane_env(namespace)
@@ -87,28 +71,6 @@ class KVRouterActor:
         configure_kv_event_broker_env(self._kv_event_broker.broker_url)
         self._create_kv_router(namespace, block_size)
         self._start_replica_tracking()
-        self._record_keepalive_task = asyncio.get_running_loop().create_task(
-            self._keep_worker_records_alive()
-        )
-
-    async def _keep_worker_records_alive(self) -> None:
-        """Refresh the materialized worker records' mtimes forever.
-
-        Dynamo's file store expires records 10s after their last mtime and
-        only keep-alives records written through its own API; without this,
-        the router would silently lose every worker-query recovery target.
-        Touching and purging both run on this actor's event loop, so a
-        record is never touched after its worker is purged.
-        """
-        while True:
-            touch_worker_discovery_records(
-                [
-                    filename
-                    for filenames in self._records_by_kv_event_worker.values()
-                    for filename in filenames
-                ]
-            )
-            await asyncio.sleep(_RECORD_KEEPALIVE_INTERVAL_S)
 
     def _create_kv_router(self, namespace: str, block_size: int) -> None:
         """Create the Dynamo ``KvRouter`` consuming this deployment's KV events.
@@ -177,10 +139,8 @@ class KVRouterActor:
             # by worker id, not the running set: replicas register while
             # still STARTING, before they appear in this snapshot.
             self._dyn_worker_id_to_replica_id.pop(worker_id, None)
-            self._purge_kv_event_worker_records(worker_id)
         for worker_id in added:
             self._replica_id_by_worker[worker_id] = new[worker_id]
-            self.add_worker(worker_id)
 
         if added or removed:
             logger.info(
@@ -204,13 +164,16 @@ class KVRouterActor:
         """Return the currently tracked worker ids, sorted ascending."""
         return sorted(self._replica_id_by_worker)
 
-    def add_worker(self, worker_id: int) -> None:
-        """Register a worker with the KV router when a replica is added."""
-        pass
-
     def remove_worker(self, worker_id: int) -> None:
-        """Deregister a worker from the KV router when a replica is removed."""
-        pass
+        """Evict a removed replica's worker from the KvRouter's indexer.
+
+        Scheduled on the actor's event loop rather than awaited: the LongPoll
+        listener that calls this is synchronous, while ``KvRouter.remove_worker``
+        is async. Workers are added in :meth:`register_kv_event_worker` (awaited,
+        before the replica publishes); removal is the only KvRouter membership
+        change driven from replica-departure tracking.
+        """
+        asyncio.ensure_future(self._kv_router.remove_worker(worker_id))
 
     async def register_kv_event_worker(
         self, worker_id: int, replica_id: str, kv_block_size: int
@@ -218,10 +181,10 @@ class KVRouterActor:
         """Register a replica's KV-event identity before it publishes.
 
         Called by each replica's ``KvEventPublisher`` on startup with the
-        Ray-derived worker id its events are keyed by; returns this actor's
-        event broker URL for the publisher to connect to. The ``KvRouter``
-        consumer exists since this actor's construction, so the start of the
-        replica's event stream is observable.
+        Ray-derived worker id its events are keyed by. Registers the worker
+        directly with the ``KvRouter`` so its live KV events are indexed from
+        the start with no discovery-based recovery, and returns this actor's
+        event broker URL for the publisher to connect to.
         """
         if kv_block_size != self._block_size:
             raise ValueError(
@@ -231,6 +194,10 @@ class KVRouterActor:
                 "never match overlap queries."
             )
         self._dyn_worker_id_to_replica_id[worker_id] = replica_id
+        # Add to the router before returning: the publisher only starts emitting
+        # events after this RPC resolves, so the worker is always known to the
+        # router before its first event arrives.
+        await self._kv_router.add_worker(worker_id)
         logger.info(
             "Registered KV event worker %d for replica %s (%d registered).",
             worker_id,
@@ -238,37 +205,6 @@ class KVRouterActor:
             len(self._dyn_worker_id_to_replica_id),
         )
         return self._kv_event_broker.broker_url
-
-    async def activate_kv_event_worker(
-        self, worker_id: int, records: Dict[str, bytes]
-    ) -> None:
-        """Feed a worker's discovery records to the router's recovery path.
-
-        Called by the replica once its publisher (and the worker-query
-        endpoint serving its local indexer) is up, passing the worker's
-        discovery records directly. Materializing them into this process's
-        private discovery store lets the router restore the worker's view:
-        live events buffer behind a restore until the query endpoint resolves.
-        """
-        self._records_by_kv_event_worker[
-            worker_id
-        ] = materialize_worker_discovery_records(records)
-        logger.info(
-            "Activated KV event worker %d (%d discovery records).",
-            worker_id,
-            len(records),
-        )
-
-    def _purge_kv_event_worker_records(self, worker_id: int) -> None:
-        """Drop a removed worker's materialized discovery records.
-
-        A removed replica may have registered without reaching activation, in
-        which case there is nothing to purge.
-        """
-        filenames = self._records_by_kv_event_worker.pop(worker_id, None)
-        if filenames is None:
-            return
-        remove_worker_discovery_records(filenames)
 
     def _kv_event_plane_namespace(self) -> str:
         """The Dynamo namespace scoping this deployment's KV events."""
