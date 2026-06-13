@@ -121,6 +121,7 @@ class TaskReceiver {
 
   instrumented_io_context &io_service_;
 
+  /// The event loop for running tasks on.
   instrumented_io_context &task_execution_service_;
 
   worker::TaskEventBuffer &task_event_buffer_;

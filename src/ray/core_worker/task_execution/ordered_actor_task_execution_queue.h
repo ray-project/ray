@@ -39,12 +39,8 @@ namespace core {
 class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
   /// \param io_service The io_context this queue's bookkeeping runs on.
-  ///   Used for: timer binding, re-posts of bookkeeping work, and the thread enforced by
-  ///   `RAY_CHECK(this_thread == main_thread_id_)`. Constructed-on-this-thread.
   /// \param task_execution_service The io_context that user task bodies
-  ///   (`request.Execute()`) are posted to when no concurrency-group thread pool
-  ///   is available. Decoupled from `io_service` so a long-running user task
-  ///   never blocks bookkeeping / arg-fetch IPCs on `io_service`.
+  /// run on (when no concurrency-group thread pool is available).
   OrderedActorTaskExecutionQueue(
       instrumented_io_context &io_service,
       instrumented_io_context &task_execution_service,
@@ -72,10 +68,8 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Executes as many queued tasks as are ready to execute.
   void ExecuteQueuedTasks();
 
-  /// Accept the given TaskToExecute or reject it if the task id is canceled via
-  /// CancelTaskIfFound. Runs on `io_service_`. Only `request.Execute()`
-  /// (the user task body) is posted off `io_service_` — to `pool` if non-null,
-  /// otherwise to `task_execution_service_`.
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id,
                                        TaskToExecute request,
                                        std::shared_ptr<BoundedExecutor> pool);
@@ -100,12 +94,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
     boost::asio::deadline_timer wait_timer_;
   };
 
-  /// io_context the queue's bookkeeping runs on (timer, EnqueueTask /
-  /// ExecuteQueuedTasks, waiter callbacks).
   instrumented_io_context &io_service_;
-
-  /// io_context user task bodies are posted to when no concurrency-group pool
-  /// is available.
   instrumented_io_context &task_execution_service_;
 
   /// Max time in seconds to wait for an earlier seq no to arrive.

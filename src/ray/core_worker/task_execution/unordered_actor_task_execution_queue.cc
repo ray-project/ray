@@ -148,9 +148,9 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
 
-  // AcceptRequestOrRejectIfCanceled runs inline on io_service_; we package the
-  // "post user task body off io_service_" decision into a PostExecuteFn that
-  // captures the correct target (fiber / pool / task_execution_service_).
+  // Package the "post user task body off io_service_" decision into a
+  // PostExecuteFn that captures the correct target (fiber / pool /
+  // task_execution_service_).
   PostExecuteFn post_execute;
   if (is_asyncio_) {
     auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
@@ -227,9 +227,6 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     }
   }
 
-  // Helper: run the post-task-completion bookkeeping .
-  // Called either inline (cancel branch) or from the execute_handler (post
-  // branch). Always uses mu_, so thread-safe regardless of caller.
   auto post_task_cleanup = [this, task_id]() {
     std::optional<TaskToExecute> request_to_run;
     {
@@ -243,7 +240,6 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
       }
     }
     if (request_to_run.has_value()) {
-      // Re-run on io_service_ where the queue's bookkeeping lives.
       io_service_.post(
           [this, request = std::move(*request_to_run)]() mutable {
             RunRequest(std::move(request));
@@ -253,15 +249,13 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   };
 
   if (is_canceled) {
-    // Note that cancel is now called on io_service_
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
     post_task_cleanup();
     return;
   }
 
-  // Post just the user task body. The post handler also runs post-task cleanup
-  // after Execute returns.
+  // Execute can be very long, and we shouldn't hold a lock.
   auto execute_handler = [request = std::move(request), post_task_cleanup]() mutable {
     request.Execute();
     post_task_cleanup();

@@ -40,12 +40,9 @@ namespace core {
 class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
  public:
   /// \param io_service The io_context this queue's bookkeeping runs on.
-  ///   Used for: timer binding, re-posts of bookkeeping work, and the thread enforced by
-  ///   `RAY_CHECK(this_thread == main_thread_id_)`. Constructed-on-this-thread.
   /// \param task_execution_service The io_context that user task bodies
   ///   (`request.Execute()`) are posted to when no concurrency-group thread pool
-  ///   is available. Decoupled from `io_service` so a long-running user task
-  ///   never blocks bookkeeping / arg-fetch IPCs on `io_service`.
+  ///   is available.
   UnorderedActorTaskExecutionQueue(
       instrumented_io_context &io_service,
       instrumented_io_context &task_execution_service,
@@ -76,19 +73,15 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void RunRequestWithResolvedDependencies(TaskToExecute request);
 
-  /// How to dispatch the user task body off io_service_. Captures the choice
-  /// of asyncio fiber, concurrency-group thread pool, or task_execution_service_.
   using PostExecuteFn = std::function<void(std::function<void()>)>;
 
-  /// Accept the given TaskToExecute or reject it if the task id is canceled via
-  /// CancelTaskIfFound. Runs on `io_service_`. Only the user
-  /// task body is posted off `io_service_`, via `post_execute`.
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id,
                                        TaskToExecute request,
                                        PostExecuteFn post_execute);
 
   instrumented_io_context &io_service_;
-
   instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;

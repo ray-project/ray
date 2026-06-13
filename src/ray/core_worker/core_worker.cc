@@ -3354,10 +3354,10 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   std::string func_name = request.task_spec().name();
   task_counter_.IncPending(func_name, request.task_spec().attempt_number() > 0);
 
-  // Invoke the task queueing (and arg fetching, which takes place in further flow in
-  // task_receiver_->QueueTaskForExecution) on io_service_. Only queue task execution on
-  // task_execution_service_.
+  // For actor tasks, we just need to enqueue them onto the actor queue.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    // We have posted an exit task onto the main event loop,
+    // so shouldn't bother executing any further work.
     if (IsExiting()) {
       RAY_LOG(INFO) << "Queued task " << func_name
                     << " won't be executed because the worker already exited.";
@@ -3392,10 +3392,6 @@ void CoreWorker::HandleActorCallArgWaitComplete(
     return;
   }
 
-  // Waiter state lives on io_service_ (AsyncWait is invoked from the actor
-  // queue's EnqueueTask, which runs on io_service_). Therefore, call MarkReady
-  // from io_service_ too. The task execution triggered as part of MarkReady is
-  // then queued on task_execution_service_.
   RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << request.tag();
   actor_task_execution_arg_waiter_->MarkReady(request.tag());
 
@@ -3993,7 +3989,6 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     on_canceled(success, is_running);
   };
 
-  // cancel runs on io_service_ for both asyncio actors and regular actors.
   cancel();
 
   if (recursive) {

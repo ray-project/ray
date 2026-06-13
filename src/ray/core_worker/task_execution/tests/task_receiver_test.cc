@@ -139,8 +139,7 @@ class TaskReceiverTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
     receiver_ = std::make_unique<TaskReceiver>(
-        // Tests share one io_context; in production io_service_ and
-        // task_execution_service_ are distinct.
+        // Test uses one io_context for both io_service and task_execution_service.
         task_execution_service_,
         task_execution_service_,
         task_event_buffer_,
@@ -189,11 +188,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
 
   int callback_count = 0;
 
-  // Replies are passed by pointer into QueueTaskForExecution and accessed by
-  // the actor queue's posted Execute() handler (which runs on
-  // task_execution_service_ — via the no-pool post path). They must therefore
-  // outlive StartIOService() below. Declare them at function scope so they're
-  // alive through the whole test (in production, gRPC manages reply lifetime).
+  // Replies must outlive StartIOService() below since posted handlers reference them.
   rpc::PushTaskReply reply0;
   rpc::PushTaskReply reply1;
   rpc::PushTaskReply reply2;
