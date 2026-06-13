@@ -315,7 +315,7 @@ def _get_intact_tpu_slices(
 
     intact_slices = {}
     for slice_name, nodes in slice_to_nodes.items():
-        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
+        slice_tpu_chips = sum((node.get("Resources") or {}).get("TPU", 0) for node in nodes)
 
         # Validate the slice has all its physical chips.
         if slice_tpu_chips != total_chips_expected:
