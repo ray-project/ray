@@ -8,9 +8,14 @@
 Flow (executor thread): each scheduling iteration calls :meth:`submit` (enqueue
 the new pairs' meta_refs for fetching and append them to per-operator FIFOs)
 then :meth:`drain` (emit the pairs whose metadata is now available, in per-op
-append order). The background thread gates on ``ray.wait(fetch_local=True)``
-with a short timeout and only ``ray.get``s the refs reported ready, so a ref
-stuck on a bad node can't wedge the thread; it publishes the fetched bytes.
+append order). The two threads communicate through one thread-safe queue
+(``_request_q``); fetched bytes come back via ``_results``.
+
+The background thread harvests every locally-ready ref each pass
+(``ray.wait(fetch_local=True, timeout=0)``) and only blocks — briefly, for a
+single ref — when nothing is ready, so a long-tail straggler never holds up
+refs that are already available, and a ref stuck on a bad node merely stays
+pending instead of wedging the thread.
 
 Ordering: per-operator FIFOs are emitted front-first and stop at the first pair
 whose metadata isn't back yet — so each operator's ``RefBundle`` emission order
@@ -23,9 +28,8 @@ on metadata never blocks another.
 import logging
 import queue as queue_module
 import threading
-import time
-from collections import OrderedDict, deque
-from typing import Any, Dict, List
+from collections import defaultdict, deque
+from typing import Any, Dict, List, Set
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
@@ -37,16 +41,16 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 
 logger = logging.getLogger(__name__)
 
-# Result-store sentinels.
-_FETCH_FAILED = object()  # ``ray.get`` failed for this ref
-_NOT_READY = object()  # ref not yet fetched
+# Sentinel for "ref not yet fetched" in the result store. A fetched result is
+# either the metadata bytes or an ``Exception`` captured during fetch.
+_NOT_READY = object()
 
 # How long ``stop`` waits for the fetch thread to exit.
 _FETCH_THREAD_JOIN_TIMEOUT_S = 5.0
 
-# Poll interval for ``ray.wait`` on in-flight meta_refs in the fetch thread.
-# The wait is the only blocking call in the loop, so a ref stuck on a bad
-# node merely stays in the pending set instead of wedging the whole thread.
+# How long the fetch thread blocks waiting for the next ref to become ready
+# when nothing is ready yet (bounds the busy-wait without holding up refs
+# that are already local).
 _FETCH_WAIT_TIMEOUT_S = 0.1
 
 
@@ -58,17 +62,20 @@ class MetadataPrefetcher:
         # executor -> fetch thread: each item is a list[ObjectRef] (or None
         # sentinel to stop). thread-safe.
         self._request_q: "queue_module.Queue" = queue_module.Queue()
-        # fetch thread -> executor: meta_ref -> bytes (or _FETCH_FAILED).
+        # fetch thread -> executor: meta_ref -> bytes (or captured Exception).
         self._results: Dict["ray.ObjectRef", Any] = {}
         self._results_lock = threading.Lock()
 
         # Executor-thread-only state below.
         # Per-operator (keyed by the caller's op key) FIFO of pairs awaiting
-        # metadata, in append (= emission) order.
-        self._fifos: "OrderedDict[Any, deque]" = OrderedDict()
+        # metadata, in append (= emission) order. ``defaultdict`` preserves
+        # insertion order (py3.7+), so ops are drained in submit order.
+        self._fifos: "defaultdict[Any, deque]" = defaultdict(deque)
         # Tasks whose end-of-stream callback is postponed until all of their
-        # deferred pairs have been emitted (``_pending_emit_count == 0``).
-        self._done_pending: List[DataOpTask] = []
+        # deferred pairs have been emitted. A set so a task that is re-seen on
+        # a later iteration (still pending) isn't registered — or fired —
+        # twice.
+        self._done_pending: Set[DataOpTask] = set()
 
         self._thread = threading.Thread(
             target=self._run, name="ray-data-metadata-prefetch", daemon=True
@@ -101,17 +108,16 @@ class MetadataPrefetcher:
         Must be called on the executor thread.
         """
         if deferred:
-            fifo = self._fifos.get(op_key)
-            if fifo is None:
-                fifo = deque()
-                self._fifos[op_key] = fifo
+            fifo = self._fifos[op_key]
             for d in deferred:
-                d.task._pending_emit_count += 1
+                d.mark_pending()
                 fifo.append(d)
             self._request_q.put([d.meta_ref for d in deferred])
         for task in ready_tasks:
-            if task._task_done_pending and task not in self._done_pending:
-                self._done_pending.append(task)
+            if task.is_done_pending():
+                # ``set`` dedupes: a still-pending task re-seen next iteration
+                # must not be registered (or later fired) twice.
+                self._done_pending.add(task)
 
     def drain(self) -> None:
         """Emit every pair whose metadata is now available, in per-op append
@@ -122,52 +128,35 @@ class MetadataPrefetcher:
         for fifo in self._fifos.values():
             while fifo:
                 d = fifo[0]
-                meta_bytes = self._pop_result(d.meta_ref)
-                if meta_bytes is _NOT_READY:
+                result = self._pop_result(d.meta_ref)
+                if result is _NOT_READY:
                     # Preserve order: stop at the first pair still in flight;
                     # this operator is retried next drain.
                     break
                 fifo.popleft()
-                d.task._pending_emit_count -= 1
-                if meta_bytes is _FETCH_FAILED:
-                    logger.warning(
-                        "Metadata fetch failed for a block from operator "
-                        "'%s'; skipping its RefBundle.",
-                        d.task._operator_name,
-                    )
-                    continue
-                _emit_deferred_entry(d, meta_bytes)
+                d.mark_emitted()
+                if isinstance(result, BaseException):
+                    # The metadata object resolved to a task error. Surface it
+                    # on the executor thread instead of dropping the block —
+                    # the inline path likewise let a metadata-fetch error
+                    # propagate out of ``on_data_ready`` to the executor's
+                    # error handling (``max_errored_blocks``).
+                    raise result
+                _emit_deferred_entry(d, result)
 
         if self._done_pending:
-            still_pending: List[DataOpTask] = []
-            for task in self._done_pending:
-                if task._pending_emit_count <= 0:
-                    _fire_task_done(task)
-                else:
-                    still_pending.append(task)
-            self._done_pending = still_pending
+            fired = [t for t in self._done_pending if not t.has_pending_emits()]
+            for task in fired:
+                _fire_task_done(task)
+            self._done_pending.difference_update(fired)
 
-    def flush(self, timeout_s: float = 30.0) -> None:
-        """Drain repeatedly until every submitted pair has been emitted and
-        all postponed done callbacks have fired.
-
-        Blocks the calling thread, so this is for tests (and other one-shot
-        callers) that need the deferred emits to have landed before
-        asserting; the executor itself just calls :meth:`drain` once per
-        scheduling iteration.
+    def has_pending_work(self) -> bool:
+        """Whether any submitted pair has yet to be emitted, or any postponed
+        done callback has yet to fire. Lets callers poll to completion.
 
         Must be called on the executor thread.
         """
-        deadline = time.monotonic() + timeout_s
-        while True:
-            self.drain()
-            if not any(self._fifos.values()) and not self._done_pending:
-                return
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    "MetadataPrefetcher.flush timed out after " f"{timeout_s} seconds."
-                )
-            time.sleep(0.001)
+        return any(self._fifos.values()) or bool(self._done_pending)
 
     def _pop_result(self, ref: "ray.ObjectRef") -> Any:
         with self._results_lock:
@@ -175,19 +164,16 @@ class MetadataPrefetcher:
 
     def _run(self) -> None:
         """Fetch-thread loop: accumulate requested meta_refs into a pending
-        set, ``ray.wait`` (with a short timeout) for the ones that are
-        locally available, and ``ray.get`` + publish only those.
+        set, fetch the ones that are locally available, and publish them.
 
-        ``ray.get`` is never issued on a ref that hasn't been reported ready
-        by ``ray.wait(fetch_local=True)``: a ref stuck on a bad/dead node
-        would otherwise block the whole thread forever and starve every
-        other operator's metadata. A stuck ref just stays in ``pending``
-        until Ray resolves or fails it.
+        ``ray.get`` is only issued on refs that ``ray.wait(fetch_local=True)``
+        reports ready, so a ref stuck on a bad/dead node never blocks the
+        thread — it just stays pending until Ray resolves or fails it.
         """
         pending: List["ray.ObjectRef"] = []
         while True:
-            # Block on the request queue only when there's nothing in
-            # flight; otherwise poll it so pending refs keep making progress.
+            # Pull new requests. Block only when nothing is in flight;
+            # otherwise poll so pending refs keep making progress.
             if pending:
                 try:
                     item = self._request_q.get_nowait()
@@ -210,9 +196,21 @@ class MetadataPrefetcher:
 
             if not pending:
                 continue
+
+            # Harvest everything ready right now, without waiting for the
+            # slowest ref (a long-tail straggler must not hold up refs that
+            # are already local).
+            ready, pending = ray.wait(
+                pending, num_returns=len(pending), timeout=0, fetch_local=True
+            )
+            if ready:
+                self._fetch(ready)
+                continue
+            # Nothing ready yet: block briefly for a SINGLE ref so we don't
+            # busy-spin, then loop to harvest whatever else has landed.
             ready, pending = ray.wait(
                 pending,
-                num_returns=len(pending),
+                num_returns=1,
                 timeout=_FETCH_WAIT_TIMEOUT_S,
                 fetch_local=True,
             )
@@ -223,20 +221,21 @@ class MetadataPrefetcher:
         """Fetch refs that ``ray.wait`` reported ready and publish them.
 
         The refs are locally available, so ``ray.get`` returns without
-        blocking on data transfer; it can still raise for refs that resolved
-        to a task error.
+        blocking on data transfer; it can still raise if a ref resolved to a
+        task error. Capture that exception per-ref so ``drain`` can surface it
+        on the executor thread rather than silently dropping the block.
         """
         try:
             values = ray.get(batch)
             results: Dict["ray.ObjectRef", Any] = dict(zip(batch, values))
         except Exception:
-            # Batched fetch failed; retry per-ref so one bad ref doesn't drop
-            # the rest. Refs that still fail are marked so drain can skip them.
+            # A batched get raises on the first error and hides which ref
+            # failed; retry per-ref to isolate it and keep the rest.
             results = {}
             for ref in batch:
                 try:
                     results[ref] = ray.get(ref)
-                except Exception:
-                    results[ref] = _FETCH_FAILED
+                except Exception as e:
+                    results[ref] = e
         with self._results_lock:
             self._results.update(results)

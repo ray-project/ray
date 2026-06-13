@@ -132,11 +132,13 @@ TaskDoneCallbackType = Callable[
 @dataclass
 class DeferredEmit:
     """A pulled (block_ref, meta_ref) pair whose ``RefBundle`` emit is
-    deferred until the batched metadata fetch completes.
+    deferred until its metadata has been fetched.
 
     Populated by :meth:`DataOpTask.on_data_ready`; consumed by the
-    ``MetadataPrefetcher``, which fills ``meta_bytes`` from its batched
-    ``ray.get`` and emits the pair in per-op append order.
+    ``MetadataPrefetcher``, which fetches ``meta_ref`` on a background
+    thread and emits the pair (in per-op append order) once the bytes
+    are available. The fetched bytes are carried by the prefetcher, not
+    on this object.
 
     The budget size used inside ``on_data_ready`` comes from the block's
     local ``object_size`` (a local-only lookup, no RPC; pairs whose size
@@ -146,7 +148,14 @@ class DeferredEmit:
     task: "DataOpTask"
     block_ref: "ray.ObjectRef[Block]"
     meta_ref: "ray.ObjectRef[BlockMetadata]"
-    meta_bytes: Optional[bytes] = None
+
+    def mark_pending(self) -> None:
+        """Account this pair as awaiting emission on its task."""
+        self.task._pending_emit_count += 1
+
+    def mark_emitted(self) -> None:
+        """Account this pair as emitted (or dropped) on its task."""
+        self.task._pending_emit_count -= 1
 
 
 class DataOpTask(OpTask):
@@ -243,9 +252,8 @@ class DataOpTask(OpTask):
         nothing: the producer must not get arbitrarily far ahead of
         unfetched metadata.
 
-        Every pair is appended with ``meta_bytes=None`` so all metadata is
-        fetched in ONE batched ``ray.get(meta_refs)`` by the caller — a single
-        metadata-fetch path, no per-ref ``ray.get`` here.
+        Each pair is appended to ``deferred_emits`` without any ``ray.get``
+        here; the ``MetadataPrefetcher`` fetches the metadata off-thread.
 
         No ``RefBundle`` is emitted and ``_last_block_meta`` is not
         updated inside this call — both happen when the
@@ -362,7 +370,6 @@ class DataOpTask(OpTask):
                     task=self,
                     block_ref=self._pending_block_ref,
                     meta_ref=self._pending_meta_ref,
-                    meta_bytes=None,
                 )
             )
             bytes_read += object_size
@@ -392,6 +399,16 @@ class DataOpTask(OpTask):
     @property
     def has_finished(self) -> bool:
         return self._has_finished
+
+    def is_done_pending(self) -> bool:
+        """Whether this task hit end-of-stream and is waiting for its
+        deferred pairs to finish emitting before its ``task_done_callback``
+        fires."""
+        return self._task_done_pending
+
+    def has_pending_emits(self) -> bool:
+        """Whether this task still has deferred pairs not yet emitted."""
+        return self._pending_emit_count > 0
 
 
 def _emit_deferred_entry(d: DeferredEmit, meta_bytes: bytes) -> None:

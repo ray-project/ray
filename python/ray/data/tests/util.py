@@ -1,6 +1,7 @@
 import functools
 import os
 import tempfile
+import time
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, List, Optional
 
@@ -133,9 +134,30 @@ def drain_and_emit(
         while deferred and deferred[0].meta_ref in ready_set:
             d = deferred.pop(0)
             _emit_deferred_entry(d, ray.get(d.meta_ref))
-    if task._task_done_pending and not any(d.task is task for d in deferred):
+    if task.is_done_pending() and not any(d.task is task for d in deferred):
         _fire_task_done(task)
     return bytes_read
+
+
+# Poll interval for ``drain_prefetcher`` while waiting on background fetches.
+_PREFETCHER_POLL_INTERVAL_S = 0.001
+
+
+def drain_prefetcher(prefetcher, timeout_s: float = 30.0) -> None:
+    """Test helper: pump ``prefetcher.drain()`` until every submitted pair has
+    been emitted and all postponed done callbacks have fired.
+
+    Production code calls ``drain()`` once per scheduling iteration and lets
+    emits land across iterations; tests want the post-conditions to hold
+    immediately, so they poll to completion here. Must run on the executor
+    (test) thread.
+    """
+    deadline = time.monotonic() + timeout_s
+    while prefetcher.has_pending_work():
+        prefetcher.drain()
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"prefetcher did not drain within {timeout_s} seconds.")
+        time.sleep(_PREFETCHER_POLL_INTERVAL_S)
 
 
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):

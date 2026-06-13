@@ -72,7 +72,7 @@ from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import drain_and_emit
+from ray.data.tests.util import drain_and_emit, drain_prefetcher
 
 
 def mock_resource_manager(
@@ -185,7 +185,7 @@ def _process_completed_tasks_sync(
             output_backpressure_guard,
             metadata_prefetcher=prefetcher,
         )
-        prefetcher.flush()
+        drain_prefetcher(prefetcher)
         return result
     finally:
         prefetcher.stop()
@@ -1528,10 +1528,10 @@ class TestDataOpTask:
         # a single on_data_ready call would pull nothing from it.
         deadline = time.time() + 30
         for task in (task_a, task_b):
-            while not task._task_done_pending and time.time() < deadline:
+            while not task.is_done_pending() and time.time() < deadline:
                 task.on_data_ready(None, deferred)
                 time.sleep(0.01)
-        assert task_a._task_done_pending and task_b._task_done_pending
+        assert task_a.is_done_pending() and task_b.is_done_pending()
         for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
             _emit_deferred_entry(d, meta_bytes)
 
@@ -1580,10 +1580,10 @@ class TestDataOpTask:
             deferred_b: list = []
             deadline = time.time() + 30
             for task, deferred in ((task_a, deferred_a), (task_b, deferred_b)):
-                while not task._task_done_pending and time.time() < deadline:
+                while not task.is_done_pending() and time.time() < deadline:
                     task.on_data_ready(None, deferred)
                     time.sleep(0.01)
-            assert task_a._task_done_pending and task_b._task_done_pending
+            assert task_a.is_done_pending() and task_b.is_done_pending()
 
             prefetcher.submit("a", deferred_a, [task_a])
             prefetcher.submit("b", deferred_b, [task_b])
@@ -1623,7 +1623,7 @@ class TestDataOpTask:
         ray.wait([gen], fetch_local=False)
         deferred: list[DeferredEmit] = []
         deadline = time.time() + 30
-        while not task._task_done_pending and time.time() < deadline:
+        while not task.is_done_pending() and time.time() < deadline:
             task.on_data_ready(None, deferred)
             time.sleep(0.01)
         assert len(deferred) == 2
