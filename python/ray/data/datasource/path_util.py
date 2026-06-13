@@ -123,6 +123,10 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         path: The path to check.
         extensions: A list of extensions to check against. If `None`, any extension is
             considered valid.
+
+    Returns:
+        ``True`` if ``path`` ends with one of the provided extensions (or
+        ``extensions`` is ``None``), otherwise ``False``.
     """
     assert extensions is None or isinstance(extensions, list), type(extensions)
 

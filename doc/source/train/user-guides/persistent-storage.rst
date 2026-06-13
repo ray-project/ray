@@ -297,13 +297,13 @@ You can use any of these implementations by wrapping the ``fsspec`` filesystem w
 
 
 
-MinIO and other S3-compatible storage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+S3-compatible storage (Backblaze B2, MinIO, etc.)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can follow the :ref:`examples shown above <custom-storage-filesystem>` to configure
-a custom S3 filesystem to work with MinIO.
-
-Note that including these as query parameters in the ``storage_path`` URI directly is another option:
+For S3-compatible stores like `Backblaze B2 <https://www.backblaze.com/cloud-storage>`_
+or `MinIO <https://min.io/>`_, follow the
+:ref:`custom-filesystem examples above <custom-storage-filesystem>`, or pass
+the endpoint as a query parameter in the ``storage_path`` URI:
 
 .. testcode::
     :skipif: True
@@ -314,10 +314,22 @@ Note that including these as query parameters in the ``storage_path`` URI direct
     trainer = TorchTrainer(
         ...,
         run_config=train.RunConfig(
-            storage_path="s3://bucket-name/sub-path?endpoint_override=http://localhost:9000",
+            # Backblaze B2 (substitute your bucket's region):
+            storage_path="s3://bucket-name/sub-path?endpoint_override=https://s3.us-west-001.backblazeb2.com",
+            # MinIO running locally:
+            # storage_path="s3://bucket-name/sub-path?endpoint_override=http://localhost:9000",
             name="unique-run-id",
         )
     )
+
+Alternatively, configure the endpoint and credentials through the environment
+variables Arrow reads (see
+`Arrow's S3 environment variables <https://arrow.apache.org/docs/cpp/env_vars.html>`_)
+and use a plain ``storage_path="s3://bucket/path"``. For Backblaze B2, set
+``AWS_ENDPOINT_URL_S3`` to your bucket's endpoint, and ``AWS_ACCESS_KEY_ID`` /
+``AWS_SECRET_ACCESS_KEY`` to your B2 application key ID and key.
+
+See `this end-to-end notebook <https://github.com/backblaze-b2-samples/notebooks/tree/main/ray-train-tune-checkpoints>`_ for a worked Backblaze B2 example.
 
 
 Overview of Ray Train outputs

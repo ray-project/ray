@@ -339,11 +339,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                              rpc::FreeLocalObjectsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                rpc::IsLocalWorkerDeadReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  /// Release pinned bookkeeping and delete plasma copies for `object_ids`.
+  void FreeLocalObjects(const std::vector<ObjectID> &object_ids);
+
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
   /// Handle an accepted client connection.
@@ -712,9 +719,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// before detecing an EOF on the socket.
   void CheckForUnexpectedWorkerDisconnects();
 
-  /// Push an error to the driver if this node is full of actors and so we are
+  /// Warn and trigger a cluster wide GC if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
-  void WarnResourceDeadlock();
+  void WarnAndGCStuckActors();
 
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();

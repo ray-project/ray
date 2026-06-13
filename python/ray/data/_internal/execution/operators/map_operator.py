@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import functools
 import logging
+import math
 import pickle
 import time
 from abc import ABC, abstractmethod
@@ -12,12 +13,19 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Final,
     Iterable,
     Iterator,
     List,
     Optional,
     Union,
 )
+
+from ray._private.ray_constants import (
+    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION,
+)
+from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -153,6 +161,35 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     Warn if the size of the map UDF exceeds this threshold.
     """
 
+    DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
+        4
+        * GiB
+        * (
+            1
+            - DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
+            - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
+    )
+    """Default logical memory to request for map tasks and actors per logical CPU.
+
+    Ray Data aims to guarantee that if you set each UDF's logical memory to at least
+    the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
+
+    The problem is that if you set logical memory for some UDFs but not others, the
+    unspecified ones fall back to 0 and the system oversubscribes anyway.
+
+    To avoid that, we default to ~2.57 GiB per CPU core. Here's where that magic number
+    comes from: We want to pick the largest logical memory (so it's safe) that won't
+    decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
+    have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
+    30% for the object store and 10% for system-reserved memory. So, in the typical
+    case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
+    that's the highest you can go before you start decreasing concurrency.
+
+    We use this heuristic over more sophisticated alternatives because a constant
+    default is easy to reason about.
+    """
+
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -167,6 +204,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        default_logical_memory_enabled: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -174,10 +212,24 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         if map_task_kwargs is None:
             map_task_kwargs = {}
 
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args)
+
+        # Configure a default logical memory to improve memory safety when the user has
+        # specified memory for some UDFs but not others.
+        if default_logical_memory_enabled:
+            self._set_default_logical_memory(ray_remote_args)
+            logger.debug(
+                f"Operator {name!r} set default logical memory to "
+                f"{ray_remote_args.get('memory')}"
+            )
+
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
         self._map_task_kwargs = map_task_kwargs
-        self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
+        self._ray_remote_args = ray_remote_args
         self._ray_remote_args_fn = ray_remote_args_fn
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
@@ -212,6 +264,19 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
+
+    def _set_default_logical_memory(self, ray_remote_args: Dict[str, Any]) -> None:
+        num_cpus = ray_remote_args.get("num_cpus")
+        if not num_cpus:
+            # If the map tasks or actors don't require logical CPUs, just assume it
+            # requires one logical CPU for the purpose of computing a default value.
+            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU)
+        else:
+            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
+
+        assert isinstance(default_memory, int), default_memory
+        assert default_memory > 0, default_memory
+        ray_remote_args.setdefault("memory", default_memory)
 
     @functools.cached_property
     def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:
@@ -309,12 +374,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             - If ActorPoolStrategy -> ActorPoolMapOperator
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
-            init_fn: The callable class to instantiate if using ActorPoolMapOperator.
+            data_context: The :class:`DataContext` to use for this operator.
+            target_max_block_size_override: Override for target max-block-size.
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
-            target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -339,6 +405,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+
+        Returns:
+            A ``MapOperator`` instance whose concrete subclass depends on the
+            requested compute strategy.
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -376,6 +446,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 isolate_workers=isolate_workers,
+                default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
@@ -403,6 +474,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
+                default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -703,14 +775,19 @@ def _map_task(
     """Remote function for a single operator task.
 
     Args:
-        fn: The callable that takes Iterator[Block] as input and returns
-            Iterator[Block] as output.
-        blocks: The concrete block values from the task ref bundle.
+        map_transformer: The :class:`MapTransformer` to apply, taking
+            ``Iterator[Block]`` as input and yielding ``Iterator[Block]``.
+        data_context: The :class:`DataContext` to install for this task.
+        ctx: The :class:`TaskContext` for the task, used to look up
+            per-task settings and propagate context to the UDF.
+        *blocks: The concrete block values from the task ref bundle.
         slices: List of block slices for this task to process.
+        **kwargs: Additional keyword arguments stored on ``ctx.kwargs`` and
+            forwarded to the map transformer.
 
-    Returns:
-        A generator of blocks, followed by the list of BlockMetadata for the blocks
-        as the last generator return.
+    Yields:
+        Union[Block, BlockMetadataWithSchema]: A generator of blocks, followed by the
+        list of BlockMetadata for the blocks as the last generator return.
     """
     task_start_s = time.perf_counter()
 
