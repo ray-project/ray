@@ -7,7 +7,7 @@ Start with the overview, then read the pages relevant to your use case:
 - {doc}`Architecture overview <overview>`: the components of a deployment (engine, server, ingress) and how a request flows through them. Read this first.
 - {doc}`Core components <core>`: the key abstractions and extension points, including the engine protocol, `LLMConfig`, the builder functions, and custom server classes.
 - {doc}`Serving patterns <serving-patterns/index>`: distributed patterns (data parallel attention, prefill-decode disaggregation) and how they compose.
-- {doc}`Request routing <routing-policies>`: how the ingress picks a replica, the built-in policies, and how to write a custom router.
+- {doc}`Request routing <routing-policies>`: how a replica is selected for each request, the built-in policies, and how to write a custom router.
 
 ```{toctree}
 :hidden:

@@ -32,7 +32,7 @@ Ray Serve LLM ships with Ray. Install it together with the serve and llm extras:
 pip install "ray[serve,llm]"
 ```
 
-This pulls in vLLM and the OpenAI-compatible server stack. You need a GPU to run most models; the quickstart below uses a small model that fits on a single A10G or L4. To serve gated models from the Hugging Face Hub (for example, Llama), set `HF_TOKEN` in the deployment's runtime environment. See {doc}`Deployment initialization <user-guides/deployment-initialization>`.
+This pulls in vLLM and the OpenAI-compatible server stack. You need a GPU to run most models. The {doc}`Quickstart <quick-start>` covers prerequisites, supported hardware, and gated-model setup.
 
 ## Deploy your first model
 

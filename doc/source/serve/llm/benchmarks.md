@@ -7,11 +7,11 @@ Performance in LLM serving depends heavily on your specific workload characteris
 When you benchmark a deployment, track the metrics that map to your service objectives:
 
 - **Time to first token (TTFT)**: latency from request arrival to the first streamed token. Dominated by queueing and the prefill phase.
-- **Inter-token latency (ITL)**: time between successive tokens during generation. Determines perceived streaming speed.
-- **Throughput**: tokens per second and requests per second at a target latency. Driven by batching, parallelism, and replica count.
+- **Time per output token (TPOT)**: average latency per generated token during decode. Determines perceived streaming speed.
+- **Throughput**: tokens per second and requests per second the deployment sustains. Driven by batching, parallelism, and replica count.
 - **Replica startup latency**: time for a new replica to become ready. Determines how quickly autoscaling responds to load. See below.
 
-Ray Serve LLM exposes these as built-in metrics. See {doc}`Observability and monitoring <user-guides/observability>` to collect them, and the serving-pattern guides ({doc}`prefill/decode <user-guides/prefill-decode>`, {doc}`data parallel attention <user-guides/data-parallel-attention>`) for the levers that move them.
+Ray Serve LLM exposes TTFT, TPOT, and throughput as built-in metrics. See {doc}`Observability and monitoring <user-guides/observability>` to collect them, and the serving-pattern guides ({doc}`prefill/decode <user-guides/prefill-decode>`, {doc}`data parallel attention <user-guides/data-parallel-attention>`) for the levers that move them.
 
 ## Replica startup latency
 

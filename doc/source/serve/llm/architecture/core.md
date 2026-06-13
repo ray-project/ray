@@ -84,7 +84,7 @@ Ray Serve LLM deeply integrates with vLLM since it has end-to-end Ray support in
 
 ### LLMConfig
 
-`LLMConfig` is the central configuration object that specifies everything needed to deploy an LLM:
+`LLMConfig` is the central configuration object that specifies everything needed to deploy an LLM. The fields below are the most important ones. For a complete field-by-field reference with defaults, see the {doc}`Configuration reference <../user-guides/configuration>`.
 
 ```python
 @dataclass
@@ -146,7 +146,7 @@ class LoraConfig:
     dynamic_lora_loading_path: Optional[str] = None
     
     # Maximum number of adapters per replica
-    max_num_adapters_per_replica: int = 1
+    max_num_adapters_per_replica: int = 16
 ```
 
 Ray Serve's multiplexing feature automatically routes requests to replicas that have the requested LoRA adapter loaded, using an LRU cache for adapter management.

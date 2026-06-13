@@ -8,7 +8,7 @@ This page documents every field. For the design behind these abstractions, see {
 
 ## Minimal configuration
 
-Only `model_loading_config` is required. Everything else has a default:
+Only `model_loading_config` is required. Every other field has a default. The example also sets `accelerator_type` so replicas schedule onto the right GPU:
 
 ```python
 from ray.serve.llm import LLMConfig
@@ -29,7 +29,7 @@ llm_config = LLMConfig(
 | `model_loading_config` | dict or `ModelLoadingConfig` | required | Which model to serve and where to load it from. See [Model loading](#model-loading). |
 | `engine_kwargs` | dict | `{}` | Arguments forwarded to the inference engine (vLLM). See [Engine arguments](#engine-arguments). |
 | `accelerator_type` | str | `None` | The accelerator the model runs on, for example `"A10G"`. See [Accelerators](#accelerators-and-placement). |
-| `accelerator_config` | dict | inferred | Hardware-specific config (GPU, TPU, CPU). Inferred from `accelerator_type` or `placement_group_config` when omitted. |
+| `accelerator_config` | dict | `None` | Hardware-specific config (GPU, TPU, CPU). Inferred from `accelerator_type` or `placement_group_config` when omitted. |
 | `placement_group_config` | dict | `None` | Resource bundles and placement strategy for engine workers. See [Accelerators and placement](#accelerators-and-placement). |
 | `deployment_config` | dict | `{}` | Ray Serve deployment options such as autoscaling and replicas. See [Deployment options](#deployment-options). |
 | `lora_config` | dict or `LoraConfig` | `None` | LoRA adapter settings. See [LoRA](#lora). |
@@ -47,8 +47,8 @@ llm_config = LLMConfig(
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `model_id` | str | required | The ID end users pass as `model` in API requests. |
-| `model_source` | str or `CloudMirrorConfig` | `model_id` | Where to load weights from. When omitted, defaults to `model_id` as a Hugging Face ID. |
-| `tokenizer_source` | str | `None` | Where to load the tokenizer from. Defaults to the model source. Hugging Face IDs only. |
+| `model_source` | str or `CloudMirrorConfig` | `None` | Where to load weights from. When unset, defaults to `model_id` as a Hugging Face ID. |
+| `tokenizer_source` | str | `None` | Where to load the tokenizer from. When unset, the tokenizer is loaded from the model source. Hugging Face IDs only. |
 
 `model_source` accepts several forms:
 
@@ -85,7 +85,7 @@ For the full list, see the [vLLM engine arguments](https://docs.vllm.ai/en/lates
 
 ## Accelerators and placement
 
-Set `accelerator_type` to the accelerator each replica should be scheduled on. Common GPU values include `A10G`, `A100`, `H100`, `H200`, `L4`, `L40S`, and `T4`; TPUs such as `TPU-V4` and `TPU-V5P` are also supported. `A10` is normalized to `A10G`. An unsupported value raises a validation error.
+Set `accelerator_type` to the accelerator each replica should be scheduled on. Common GPU values include `A10G`, `A100`, `H100`, `H200`, `L4`, `L40S`, and `T4`. TPUs such as `TPU-V4` and `TPU-V5P` are also supported. `A10` is normalized to `A10G`. An unsupported value raises a validation error.
 
 `accelerator_config` is inferred from `accelerator_type` (or from `placement_group_config` bundles) and rarely needs to be set explicitly.
 
@@ -131,8 +131,8 @@ When `lora_config` is set, the deployment serves LoRA adapters on top of the bas
 |-------|------|---------|-------------|
 | `dynamic_lora_loading_path` | str | `None` | Cloud storage path (`s3://`, `gs://`, `abfss://`, or `azure://`) holding adapter weights. |
 | `max_num_adapters_per_replica` | int | `16` | Maximum adapters loaded on each replica, evicted LRU. |
-| `download_timeout_s` | float | set by default | Per-adapter download timeout. `None` disables the timeout. |
-| `max_download_tries` | int | set by default | Maximum adapter download retries. |
+| `download_timeout_s` | float | `30` | Per-adapter download timeout in seconds. A value `<= 0` disables the timeout. |
+| `max_download_tries` | int | `3` | Maximum adapter download retries. |
 
 See {doc}`Multi-LoRA deployment <multi-lora>` for the full workflow.
 
@@ -142,12 +142,12 @@ See {doc}`Multi-LoRA deployment <multi-lora>` for the full workflow.
 
 | Key | Description |
 |-----|-------------|
-| `stream_batching_interval_ms` | How long to batch streaming responses before flushing them. |
-| `num_ingress_replicas` | Number of ingress (router) replicas. Defaults to roughly two per model replica. |
+| `stream_batching_interval_ms` | How long to batch streaming responses before flushing them. Defaults to `50`. |
+| `num_ingress_replicas` | Number of ingress (router) replicas. |
 
 ## YAML equivalent
 
-The same configuration in a Serve config file. `LLMConfig` fields map one to one onto YAML keys:
+A config-file (YAML) deployment. `LLMConfig` fields map one to one onto YAML keys:
 
 ```yaml
 applications:
@@ -174,5 +174,4 @@ Deploy it with `serve run config.yaml`.
 ## See also
 
 - {doc}`Quickstart <../quick-start>`: deploy and query a model.
-- {doc}`Core components <../architecture/core>`: the abstractions behind these fields.
 - {class}`LLMConfig API reference <ray.serve.llm.LLMConfig>`: the generated API docs.

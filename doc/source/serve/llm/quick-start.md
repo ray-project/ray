@@ -1,5 +1,5 @@
 (quick-start)=
-# Quickstart examples
+# Quickstart
 
 ## Prerequisites
 
@@ -288,7 +288,7 @@ For monitoring and observability, see {doc}`Observability <user-guides/observabi
 Once you can deploy and query a model, the {doc}`User guides <user-guides/index>` cover the next steps:
 
 - **Configure the deployment**: every field is documented in the {doc}`Configuration reference <user-guides/configuration>`.
-- **Scale across GPUs and nodes**: {doc}`Cross-node parallelism <user-guides/cross-node-parallelism>` distributes a model with tensor and pipeline parallelism; {doc}`Data parallel attention <user-guides/data-parallel-attention>` raises throughput by replicating the model.
+- **Scale across GPUs and nodes**: {doc}`Cross-node parallelism <user-guides/cross-node-parallelism>` distributes a model with tensor and pipeline parallelism. {doc}`Data parallel attention <user-guides/data-parallel-attention>` raises throughput by replicating the model.
 - **Tune latency and throughput**: {doc}`Prefill/decode disaggregation <user-guides/prefill-decode>`, {doc}`KV cache offloading <user-guides/kv-cache-offloading>`, and {doc}`Prefix-aware routing <user-guides/prefix-aware-routing>`.
 - **Serve LoRA adapters**: {doc}`Multi-LoRA deployment <user-guides/multi-lora>`.
 - **Monitor in production**: {doc}`Observability and monitoring <user-guides/observability>`.
