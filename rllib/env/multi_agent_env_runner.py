@@ -822,16 +822,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
-            entry_point = partial(
-                _global_registry.get(ENV_CREATOR, self.config.env),
-                env_ctx,
-            )
+            env_creator = _global_registry.get(ENV_CREATOR, self.config.env)
         else:
-            entry_point = partial(
-                _gym_env_creator,
-                env_descriptor=self.config.env,
-                env_context=env_ctx,
-            )
+            env_creator = partial(_gym_env_creator, env_descriptor=self.config.env)
+
+        def entry_point(vector_index: int = 0):
+            # `make_vec` passes the sub-environment's index within the vector
+            # env into this entry point (through `gym.make`). Provide each
+            # sub-environment with its own `EnvContext` copy, in which
+            # `vector_index` is set correctly.
+            return env_creator(env_ctx.copy_with_overrides(vector_index=vector_index))
+
         gym.register(
             "rllib-multi-agent-env-v0",
             entry_point=entry_point,
