@@ -24,11 +24,36 @@ Ray Serve LLM excels at highly distributed multi-node inference workloads:
 - 📊 Built-in metrics and Grafana dashboards
 - 🎯 Advanced serving patterns (PD disaggregation, data parallel attention)
 
-## Requirements
+## Install
+
+Ray Serve LLM ships with Ray. Install it together with the serve and llm extras:
 
 ```bash
-pip install ray[serve,llm]
+pip install "ray[serve,llm]"
 ```
+
+This pulls in vLLM and the OpenAI-compatible server stack. You need a GPU to run most models; the quickstart below uses a small model that fits on a single A10G or L4. To serve gated models from the Hugging Face Hub (for example, Llama), set `HF_TOKEN` in the deployment's runtime environment. See {doc}`Deployment initialization <user-guides/deployment-initialization>`.
+
+## Deploy your first model
+
+Define an {class}`~ray.serve.llm.LLMConfig`, build an OpenAI-compatible app, and run it:
+
+```{literalinclude} ../../llm/doc_code/serve/qwen/qwen_example.py
+:language: python
+:start-after: __qwen_example_start__
+:end-before: __qwen_example_end__
+```
+
+Once it is running, query it with any OpenAI client at `http://localhost:8000/v1`. See the {doc}`Quickstart <quick-start>` for client snippets, multi-model apps, and config-driven (YAML) deployments.
+
+## Find your path
+
+- **New here?** Start with the {doc}`Quickstart <quick-start>` to deploy and query a model.
+- **Configuring a deployment?** The {doc}`Configuration reference <user-guides/configuration>` explains every `LLMConfig` field.
+- **Scaling up?** The {doc}`User guides <user-guides/index>` cover parallelism, routing, caching, LoRA, and observability.
+- **Want the internals?** The {doc}`Architecture <architecture/index>` docs explain components, request flow, and serving patterns.
+- **Deploying a specific model?** The {doc}`Examples <examples>` walk through small, medium, large, vision, and reasoning models end to end.
+- **Hitting an issue?** Check {doc}`Troubleshooting <troubleshooting>` and {doc}`Benchmarks <benchmarks>`.
 
 ```{toctree}
 :hidden:
@@ -40,11 +65,3 @@ Architecture <architecture/index>
 Benchmarks <benchmarks>
 Troubleshooting <troubleshooting>
 ```
-
-## Next steps
-
-- {doc}`Quickstart <quick-start>` - Deploy your first LLM with Ray Serve
-- {doc}`Examples <examples>` - Production-ready deployment tutorials
-- {doc}`User Guides <user-guides/index>` - Practical guides for advanced features
-- {doc}`Architecture <architecture/index>` - Technical design and implementation details
-- {doc}`Troubleshooting <troubleshooting>` - Common issues and solutions

@@ -18,3 +18,5 @@ Ray Serve LLM supports several serving patterns that can be combined for complex
 
 These patterns are composable and can be mixed to meet specific requirements for throughput, latency, and cost optimization.
 
+These pages describe how each pattern works. For step-by-step configuration, see the matching how-to guides: {doc}`Data parallel attention <../../user-guides/data-parallel-attention>` and {doc}`Prefill/decode disaggregation <../../user-guides/prefill-decode>`.
+
