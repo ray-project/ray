@@ -301,9 +301,9 @@ def _get_intact_tpu_slices(
         if node.get("Alive"):
             labels = node.get("Labels") or {}
             if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
-                is_single_host = total_chips_expected <= (node.get("Resources") or {}).get(
-                    "TPU", 0
-                )
+                is_single_host = total_chips_expected <= (
+                    node.get("Resources") or {}
+                ).get("TPU", 0)
                 if is_single_host:
                     # Single-host TPUs run on a single Ray node.
                     slice_name = node.get("NodeID")
@@ -315,7 +315,9 @@ def _get_intact_tpu_slices(
 
     intact_slices = {}
     for slice_name, nodes in slice_to_nodes.items():
-        slice_tpu_chips = sum((node.get("Resources") or {}).get("TPU", 0) for node in nodes)
+        slice_tpu_chips = sum(
+            (node.get("Resources") or {}).get("TPU", 0) for node in nodes
+        )
 
         # Validate the slice has all its physical chips.
         if slice_tpu_chips != total_chips_expected:
@@ -633,8 +635,8 @@ class SlicePlacementGroup:
                         if global_bundle_idx < len(self._user_bundle_label_selector)
                         else {}
                     )
-                    # User labels take precedence (though we already extracted the slice name).
-                    merged_labels = {**tpu_slice_name_label, **user_labels}
+                    # TPU slice name label takes precedence; user labels fill in the rest.
+                    merged_labels = {**user_labels, **tpu_slice_name_label}
                     self._bundle_label_selector.append(merged_labels)
 
                 bundles += [
