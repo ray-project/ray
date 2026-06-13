@@ -45,7 +45,7 @@ def train_func(config):
 
     # Hugging Face Trainer
     training_args = TrainingArguments(
-        output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+        output_dir="test_trainer", eval_strategy="epoch", report_to="none"
     )
 
     trainer = Trainer(
