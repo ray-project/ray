@@ -353,6 +353,42 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
     ]
 
 
+def test_per_slice_pgs(ray_tpu_cluster):
+    """Test that per_slice_pgs=True returns a list of per-slice PlacementGroups."""
+    multi_slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        per_slice_pgs=True,
+    )
+    assert len(multi_slice_placement_group.per_slice_placement_groups) == 2
+    for pg in multi_slice_placement_group.per_slice_placement_groups:
+        assert pg.bundle_count == 2
+        assert pg.bundle_specs == [
+            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 1.0},
+        ]
+    with pytest.raises(
+        ValueError,
+        match="per_slice_pgs=True, use `per_slice_placement_groups` instead.",
+    ):
+        _ = multi_slice_placement_group.placement_group
+
+
+def test_per_slice_pgs_false_raises(ray_tpu_cluster):
+    """Test that per_slice_pgs=False raises an error when accessing per_slice_placement_groups."""
+    multi_slice_placement_group = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        num_slices=2,
+        per_slice_pgs=False,
+    )
+    with pytest.raises(
+        ValueError, match="per_slice_pgs=False, use `placement_group` instead."
+    ):
+        _ = multi_slice_placement_group.per_slice_placement_groups
+
+
 @patch("ray.util.tpu.placement_group")
 @patch("ray.util.tpu.remove_placement_group")
 @patch("ray.util.tpu.reserve_tpu_slice")
