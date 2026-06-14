@@ -5,7 +5,7 @@ import time
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
@@ -86,6 +86,110 @@ class JobErrorType(str, Enum):
     JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
 
 
+# The exit code reported for a process killed by SIGKILL (128 + 9). The Linux
+# OOM killer uses SIGKILL, so this is used as a best-effort heuristic to detect
+# driver OOMs. NOTE: this is indistinguishable from a process that was killed
+# with SIGKILL for any other reason (e.g. an external `kill -9`).
+OOM_EXIT_CODE = 137
+
+
+@PublicAPI(stability="alpha")
+class JobRetryCondition(str, Enum):
+    """Conditions under which a job's driver should be retried in place.
+
+    Used by ``RetryPolicy.retry_on``.
+    """
+
+    #: Retry on any non-zero driver exit code (subject to
+    #: ``RetryPolicy.no_retry_on_exit_codes``).
+    NON_ZERO_EXIT = "NON_ZERO_EXIT"
+    #: Retry when the driver appears to have been OOM-killed (exit code 137).
+    DRIVER_OOM = "DRIVER_OOM"
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class RetryPolicy:
+    """Policy controlling in-place retries of a job's driver.
+
+    When set on a job, a retryable driver failure causes the job to be retried
+    using the *same* ``submission_id`` (and the same RayCluster) instead of
+    failing immediately. The driver subprocess is re-executed after an
+    exponential backoff, up to ``max_retries`` times.
+
+    The fields are stored in a flattened form. The public REST/SDK wire format
+    accepts a nested ``backoff`` object which is flattened by
+    ``JobSubmitRequest``.
+    """
+
+    #: Maximum number of retries after the initial attempt. 0 disables retries.
+    max_retries: int = 0
+    #: Delay before the first retry, in seconds.
+    backoff_initial_delay_seconds: float = 30.0
+    #: Maximum delay between retries, in seconds.
+    backoff_max_delay_seconds: float = 600.0
+    #: Multiplier applied to the delay after each retry.
+    backoff_multiplier: float = 2.0
+    #: List of ``JobRetryCondition`` values. Defaults to ``["NON_ZERO_EXIT"]``.
+    retry_on: Optional[List[str]] = None
+    #: Driver exit codes that should never be retried (takes precedence over
+    #: ``retry_on``).
+    no_retry_on_exit_codes: Optional[List[int]] = None
+
+    def __post_init__(self):
+        if not isinstance(self.max_retries, int) or isinstance(self.max_retries, bool):
+            raise TypeError(
+                f"max_retries must be an integer, got {type(self.max_retries)}"
+            )
+        if self.max_retries < 0:
+            raise ValueError(
+                f"max_retries must be non-negative, got {self.max_retries}"
+            )
+
+        for name in ("backoff_initial_delay_seconds", "backoff_max_delay_seconds"):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise TypeError(f"{name} must be a number, got {type(value)}")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative, got {value}")
+
+        if self.backoff_max_delay_seconds < self.backoff_initial_delay_seconds:
+            raise ValueError(
+                "backoff_max_delay_seconds must be >= backoff_initial_delay_seconds, "
+                f"got {self.backoff_max_delay_seconds} < "
+                f"{self.backoff_initial_delay_seconds}"
+            )
+
+        if not isinstance(self.backoff_multiplier, (int, float)) or isinstance(
+            self.backoff_multiplier, bool
+        ):
+            raise TypeError(
+                f"backoff_multiplier must be a number, got {type(self.backoff_multiplier)}"
+            )
+        if self.backoff_multiplier < 1:
+            raise ValueError(
+                f"backoff_multiplier must be >= 1, got {self.backoff_multiplier}"
+            )
+
+        if self.retry_on is not None:
+            if not isinstance(self.retry_on, list):
+                raise TypeError(f"retry_on must be a list, got {type(self.retry_on)}")
+            valid_conditions = {c.value for c in JobRetryCondition}
+            for condition in self.retry_on:
+                if condition not in valid_conditions:
+                    raise ValueError(
+                        f"Invalid retry_on condition {condition!r}. "
+                        f"Valid conditions are {sorted(valid_conditions)}."
+                    )
+
+        if self.no_retry_on_exit_codes is not None:
+            if not isinstance(self.no_retry_on_exit_codes, list):
+                raise TypeError("no_retry_on_exit_codes must be a list of integers")
+            for code in self.no_retry_on_exit_codes:
+                if not isinstance(code, int) or isinstance(code, bool):
+                    raise TypeError(f"Exit code must be an integer, got {type(code)}")
+
+
 # TODO(aguo): Convert to pydantic model
 @PublicAPI(stability="stable")
 @dataclass
@@ -127,6 +231,11 @@ class JobInfo:
     #: The driver process exit code after the driver executed. Return None if driver
     #: doesn't finish executing
     driver_exit_code: Optional[int] = None
+    #: The in-place retry policy for this job (flattened RetryPolicy dict), or
+    #: None if retries are not configured.
+    retry_policy: Optional[Dict[str, Any]] = None
+    #: The current driver attempt number (0 = original run, 1 = first retry, ...).
+    attempt_number: int = 0
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -468,6 +577,10 @@ class JobSubmitRequest:
     entrypoint_resources: Optional[Dict[str, float]] = None
     # Label selector for the entrypoint command.
     entrypoint_label_selector: Optional[Dict[str, str]] = None
+    # In-place retry policy for the job. Accepts a nested ``backoff`` object,
+    # e.g. {"max_retries": 3, "backoff": {"initial_delay_seconds": 30, ...},
+    # "retry_on": ["NON_ZERO_EXIT"], "no_retry_on_exit_codes": [130]}.
+    retry_policy: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
@@ -571,6 +684,39 @@ class JobSubmitRequest:
                             "entrypoint_label_selector values must be strings, "
                             f"got {type(v)}"
                         )
+
+        if self.retry_policy is not None:
+            self.retry_policy = self._normalize_and_validate_retry_policy(
+                self.retry_policy
+            )
+
+    @staticmethod
+    def _normalize_and_validate_retry_policy(
+        retry_policy: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Flatten the nested ``backoff`` wire format and validate.
+
+        The public wire format nests backoff parameters under a ``backoff``
+        key; internally we store a flattened dict matching ``RetryPolicy``.
+        Returns the flattened, validated dict. Raises TypeError/ValueError on
+        invalid input (surfaced to clients as HTTP 400).
+        """
+        if not isinstance(retry_policy, dict):
+            raise TypeError(f"retry_policy must be a dict, got {type(retry_policy)}")
+        flat = dict(retry_policy)
+        backoff = flat.pop("backoff", {}) or {}
+        if not isinstance(backoff, dict):
+            raise TypeError(
+                f"retry_policy['backoff'] must be a dict, got {type(backoff)}"
+            )
+        flat["backoff_initial_delay_seconds"] = backoff.get(
+            "initial_delay_seconds", 30.0
+        )
+        flat["backoff_max_delay_seconds"] = backoff.get("max_delay_seconds", 600.0)
+        flat["backoff_multiplier"] = backoff.get("multiplier", 2.0)
+        # This will raise TypeError if there are unknown keys or if the types/values are invalid.
+        RetryPolicy(**flat)
+        return flat
 
 
 @dataclass

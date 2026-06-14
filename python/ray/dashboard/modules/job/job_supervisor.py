@@ -23,7 +23,10 @@ from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    OOM_EXIT_CODE,
     JobInfoStorageClient,
+    JobRetryCondition,
+    RetryPolicy,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobErrorType, JobStatus
@@ -76,12 +79,15 @@ class JobSupervisor:
         gcs_address: str,
         cluster_id_hex: str,
         logs_dir: Optional[str] = None,
+        retry_policy: Optional[Dict[str, Any]] = None,
     ):
         self._job_id = job_id
         gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
+        # In-place retry policy (parsed from the flattened dict), or None.
+        self._retry_policy = RetryPolicy(**retry_policy) if retry_policy else None
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -306,6 +312,63 @@ class JobSupervisor:
             except ProcessLookupError:
                 # Process is already dead
                 pass
+
+    def _should_retry(self, return_code: int, attempt: int) -> bool:
+        """Return whether the driver should be retried after a non-zero exit.
+
+        ``attempt`` is the index of the attempt that just finished (0 = the
+        original run). ``return_code`` is its non-zero driver exit code.
+        """
+        if self._retry_policy is None or self._retry_policy.max_retries <= 0:
+            return False
+        if attempt >= self._retry_policy.max_retries:
+            return False
+        if (
+            self._retry_policy.no_retry_on_exit_codes
+            and return_code in self._retry_policy.no_retry_on_exit_codes
+        ):
+            return False
+        retry_conditions = self._retry_policy.retry_on or [
+            JobRetryCondition.NON_ZERO_EXIT.value
+        ]
+        for condition in retry_conditions:
+            if condition == JobRetryCondition.NON_ZERO_EXIT.value and return_code != 0:
+                return True
+            if (
+                condition == JobRetryCondition.DRIVER_OOM.value
+                and return_code == OOM_EXIT_CODE
+            ):
+                return True
+        return False
+
+    def _compute_backoff(self, attempt: int) -> float:
+        """Compute the (capped) exponential backoff delay before ``attempt``.
+
+        delay = initial_delay * multiplier ** attempt, capped at max_delay.
+        """
+
+        delay = self._retry_policy.backoff_initial_delay_seconds * (
+            self._retry_policy.backoff_multiplier**attempt
+        )
+        return min(delay, self._retry_policy.backoff_max_delay_seconds)
+
+    async def _interruptible_backoff(self, delay: float) -> bool:
+        """Sleep for ``delay`` seconds, returning early if a stop is requested.
+
+        Returns True if the stop event fired during the wait (caller should
+        abort and mark the job STOPPED), False if the full delay elapsed.
+
+        Use ``self._stop_event`` rather than ``asyncio.sleep`` so that a
+        ``stop_job`` call takes effect immediately instead of waiting out the
+        whole backoff window.
+        """
+        if delay <= 0:
+            return self._stop_event.is_set()
+        try:
+            await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     async def run(
         self,
