@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/protobuf_utils.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
 #include "ray/util/time.h"
 
@@ -336,6 +337,7 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
       DisconnectRpcClient(queue->second);
       inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks_);
       queue->second.inflight_task_callbacks_.clear();
+      queue->second.inflight_task_metadata_.clear();
     }
 
     queue->second.state_ = rpc::ActorTableData::ALIVE;
@@ -409,6 +411,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     DisconnectRpcClient(queue->second);
     inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks_);
     queue->second.inflight_task_callbacks_.clear();
+    queue->second.inflight_task_metadata_.clear();
 
     if (dead) {
       queue->second.state_ = rpc::ActorTableData::DEAD;
@@ -511,7 +514,17 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
   // FailPendingTask requires the opposite. So we copy the tasks out from the queue
   // within the lock. This requires putting the data into shared_ptr.
   std::vector<std::shared_ptr<PendingTaskWaitingForDeathInfo>> timeout_tasks;
+  struct InflightPushTaskTimeout {
+    TaskAttempt task_attempt;
+    ActorID actor_id;
+    ActorTaskSubmitter::ClientQueue::InflightTaskMetadata metadata;
+    int64_t age_ms;
+    rpc::ClientCallback<rpc::PushTaskReply> callback;
+  };
+  std::vector<InflightPushTaskTimeout> inflight_push_timeouts;
   int64_t now = current_time_ms();
+  const auto inflight_push_timeout_ms =
+      RayConfig::instance().task_actor_push_task_inflight_timeout_ms();
   {
     absl::MutexLock lock(&mu_);
     for (auto &[actor_id, client_queue] : client_queues_) {
@@ -524,11 +537,63 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
         timeout_tasks.push_back(*deque_itr);
         deque_itr = deque.erase(deque_itr);
       }
+      if (inflight_push_timeout_ms <= 0) {
+        continue;
+      }
+
+      std::vector<TaskAttempt> timed_out_task_attempts;
+      for (const auto &[task_attempt, metadata] : client_queue.inflight_task_metadata_) {
+        if (now - metadata.send_time_ms > inflight_push_timeout_ms) {
+          timed_out_task_attempts.push_back(task_attempt);
+        }
+      }
+      for (const auto &task_attempt : timed_out_task_attempts) {
+        auto callback_it = client_queue.inflight_task_callbacks_.find(task_attempt);
+        auto metadata_it = client_queue.inflight_task_metadata_.find(task_attempt);
+        if (callback_it == client_queue.inflight_task_callbacks_.end() ||
+            metadata_it == client_queue.inflight_task_metadata_.end()) {
+          client_queue.inflight_task_callbacks_.erase(task_attempt);
+          client_queue.inflight_task_metadata_.erase(task_attempt);
+          continue;
+        }
+        inflight_push_timeouts.push_back(
+            {task_attempt,
+             actor_id,
+             metadata_it->second,
+             now - metadata_it->second.send_time_ms,
+             std::move(callback_it->second)});
+        client_queue.inflight_task_callbacks_.erase(callback_it);
+        client_queue.inflight_task_metadata_.erase(metadata_it);
+      }
     }
   }
   // Note: mu_ released.
   for (auto &task : timeout_tasks) {
     FailTaskWithError(*task);
+  }
+  for (auto &timeout : inflight_push_timeouts) {
+    const auto target_worker =
+        WorkerID::FromBinary(timeout.metadata.rpc_address.worker_id());
+    const auto refresh_client =
+        RayConfig::instance().task_actor_push_task_refresh_client_on_timeout();
+    if (refresh_client) {
+      core_worker_client_pool_.Disconnect(target_worker);
+    }
+    RAY_LOG(WARNING).WithField(timeout.task_attempt.first).WithField(timeout.actor_id)
+        << "Actor PushTask RPC did not receive a reply before timeout. "
+        << "task_name=" << timeout.metadata.task_name
+        << ", task_depth=" << timeout.metadata.task_depth
+        << ", sequence_number=" << timeout.metadata.sequence_number
+        << ", attempt_number=" << timeout.task_attempt.second
+        << ", age_ms=" << timeout.age_ms
+        << ", timeout_ms=" << inflight_push_timeout_ms
+        << ", target_worker=" << target_worker
+        << ", target_addr=" << timeout.metadata.rpc_address.ip_address() << ":"
+        << timeout.metadata.rpc_address.port()
+        << ", refreshed_client=" << refresh_client;
+    timeout.callback(
+        Status::IOError("Actor PushTask RPC timed out before receiving a reply"),
+        rpc::PushTaskReply());
   }
 }
 
@@ -605,7 +670,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
     next_queueing_warn_threshold_ *= 2;
   }
 
-  auto &addr = queue.client_address_.value();
+  const auto addr = queue.client_address_.value();
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
         HandlePushTaskReply(status, reply, addr, task_spec);
@@ -613,6 +678,16 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
   const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
   queue.inflight_task_callbacks_.emplace(task_attempt, std::move(reply_callback));
+  if (RayConfig::instance().task_actor_push_task_inflight_timeout_ms() > 0) {
+    queue.inflight_task_metadata_.emplace(
+        task_attempt,
+        ActorTaskSubmitter::ClientQueue::InflightTaskMetadata{
+            /*send_time_ms=*/current_time_ms(),
+            /*task_name=*/task_spec.GetName(),
+            /*task_depth=*/task_spec.GetDepth(),
+            /*sequence_number=*/request->sequence_number(),
+            /*rpc_address=*/addr});
+  }
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> push_task_reply_callback;
@@ -629,6 +704,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           }
           push_task_reply_callback = std::move(callback_it->second);
           client_queue.inflight_task_callbacks_.erase(callback_it);
+          client_queue.inflight_task_metadata_.erase(task_attempt);
         }
         push_task_reply_callback(status, std::move(reply));
       };
