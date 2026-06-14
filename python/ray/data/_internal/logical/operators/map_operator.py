@@ -8,6 +8,7 @@ from typing import (
     Callable,
     Dict,
     Iterable,
+    List,
     Literal,
     Optional,
     Union,
@@ -65,6 +66,8 @@ class AbstractMap(AbstractOneToOne):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         compute: Optional[ComputeStrategy] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
     ):
         """Initialize an ``AbstractMap`` logical operator that will later
         be converted into a physical ``MapOperator``.
@@ -90,6 +93,12 @@ class AbstractMap(AbstractOneToOne):
             compute: The compute strategy, either ``TaskPoolStrategy`` (default)
                 to use Ray tasks, or ``ActorPoolStrategy`` to use an
                 autoscaling actor pool.
+            placement_group_bundles: If specified, the bundles of the placement
+                group created for each map worker actor. Only valid with
+                ``ActorPoolStrategy``.
+            placement_group_strategy: The strategy of the placement group
+                created for each map worker actor. Only valid together with
+                ``placement_group_bundles``.
         """
         super().__init__(
             input_op=input_op,
@@ -104,6 +113,8 @@ class AbstractMap(AbstractOneToOne):
         object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
         object.__setattr__(self, "compute", compute or TaskPoolStrategy())
         object.__setattr__(self, "per_block_limit", None)
+        object.__setattr__(self, "placement_group_bundles", placement_group_bundles)
+        object.__setattr__(self, "placement_group_strategy", placement_group_strategy)
 
     def set_per_block_limit(self, per_block_limit: int):
         object.__setattr__(self, "per_block_limit", per_block_limit)
@@ -117,8 +128,12 @@ class AbstractMap(AbstractOneToOne):
             "ray_remote_args_fn",
             "compute",
             "per_block_limit",
+            "placement_group_bundles",
+            "placement_group_strategy",
         ]:
-            args[f"_{key}"] = getattr(self, key)
+            # Only `MapBatches` carry the placement group fields, so default to `None`
+            # for other subclasses.
+            args[f"_{key}"] = getattr(self, key, None)
         return args
 
 
@@ -150,6 +165,8 @@ class AbstractUDFMap(AbstractMap):
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
     ):
         """Initialize AbstractUDFMap.
 
@@ -178,6 +195,12 @@ class AbstractUDFMap(AbstractMap):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Args to provide to :func:`ray.remote`.
+            placement_group_bundles: If specified, the bundles of the placement
+                group created for each map worker actor. Only valid with
+                ``ActorPoolStrategy``.
+            placement_group_strategy: The strategy of the placement group
+                created for each map worker actor. Only valid together with
+                ``placement_group_bundles``.
         """
         name = self._get_operator_name(name, fn)
         super().__init__(
@@ -187,6 +210,8 @@ class AbstractUDFMap(AbstractMap):
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
             compute=compute,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
         )
         object.__setattr__(self, "fn", fn)
         object.__setattr__(self, "fn_args", fn_args)
@@ -244,6 +269,8 @@ class MapBatches(AbstractUDFMap):
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     per_block_limit: Optional[int] = None
+    placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    placement_group_strategy: Optional[str] = None
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):

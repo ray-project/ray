@@ -490,6 +490,15 @@ class FuseOperators(Rule):
         ray_remote_args_fn = (
             up_logical_op.ray_remote_args_fn or down_logical_op.ray_remote_args_fn
         )
+        # Only actor-pool ops can carry a placement group config, and only the
+        # downstream op can be actor-based (the upstream op is always a task
+        # pool), so propagate the downstream op's placement group config.
+        placement_group_bundles = getattr(
+            down_logical_op, "placement_group_bundles", None
+        )
+        placement_group_strategy = getattr(
+            down_logical_op, "placement_group_strategy", None
+        )
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
@@ -544,6 +553,8 @@ class FuseOperators(Rule):
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
             isolate_workers=isolate_workers,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -577,6 +588,8 @@ class FuseOperators(Rule):
                 can_modify_num_rows=can_modify_num_rows,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                placement_group_bundles=placement_group_bundles,
+                placement_group_strategy=placement_group_strategy,
             )
         else:
             # The downstream op is AbstractMap instead of AbstractUDFMap.
@@ -587,6 +600,8 @@ class FuseOperators(Rule):
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                placement_group_bundles=placement_group_bundles,
+                placement_group_strategy=placement_group_strategy,
             )
         self._op_map[op] = logical_op
         # Return the fused physical operator.

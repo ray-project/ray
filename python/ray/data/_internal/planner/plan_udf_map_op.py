@@ -338,6 +338,9 @@ def plan_udf_map_op(
         ray_remote_args_fn=op.ray_remote_args_fn,
         ray_remote_args=op.ray_remote_args,
         per_block_limit=op.per_block_limit,
+        # NOTE: Only `MapBatches` carries the placement group fields.
+        placement_group_bundles=getattr(op, "placement_group_bundles", None),
+        placement_group_strategy=getattr(op, "placement_group_strategy", None),
     )
 
 

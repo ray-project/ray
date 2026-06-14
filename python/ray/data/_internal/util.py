@@ -38,7 +38,12 @@ import pyarrow.fs
 
 import ray
 from ray._common.retry import call_with_retry, format_exception, matches_error
-from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+from ray.data.context import (
+    DEFAULT_PLACEMENT_GROUP_STRATEGY,
+    DEFAULT_READ_OP_MIN_NUM_BLOCKS,
+    WARN_PREFIX,
+    DataContext,
+)
 from ray.util.annotations import DeveloperAPI
 
 import psutil
@@ -697,6 +702,94 @@ def get_compute_strategy(
             return ActorPoolStrategy(min_size=1, max_size=None)
         else:
             return TaskPoolStrategy()
+
+
+def validate_actor_placement_group_config(
+    placement_group_bundles: Optional[List[Dict[str, float]]],
+    placement_group_strategy: Optional[str],
+    compute: "ComputeStrategy",
+    ray_remote_args: Dict[str, Any],
+) -> None:
+    """Validate the per-actor placement group configuration for a map operation.
+
+    Raises ValueError if the configuration is invalid.
+    """
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import ActorPoolStrategy
+    from ray.util.placement_group import validate_placement_group
+
+    if placement_group_strategy is not None and placement_group_bundles is None:
+        raise ValueError(
+            "If `placement_group_strategy` is provided, "
+            "`placement_group_bundles` must also be provided."
+        )
+
+    if placement_group_bundles is None:
+        return
+
+    if not isinstance(compute, ActorPoolStrategy):
+        raise ValueError(
+            "`placement_group_bundles` is only supported for actor-based "
+            "transforms. To fix this error, provide a callable class UDF and "
+            "pass an `ActorPoolStrategy` to `compute`."
+        )
+
+    if "scheduling_strategy" in ray_remote_args:
+        raise ValueError(
+            "Manually setting `scheduling_strategy` is not supported when "
+            "`placement_group_bundles` is provided."
+        )
+
+    validate_placement_group(
+        bundles=placement_group_bundles,
+        strategy=placement_group_strategy or DEFAULT_PLACEMENT_GROUP_STRATEGY,
+    )
+
+    resource_error_prefix = (
+        "When using `placement_group_bundles`, the map worker actor will be "
+        "placed in the first bundle, so the resource requirements for the "
+        "actor must be a subset of the first bundle."
+    )
+    first_bundle = placement_group_bundles[0]
+
+    num_cpus = ray_remote_args.get("num_cpus")
+    if num_cpus is None:
+        # Map workers default to 1 CPU when neither CPU nor GPU is specified.
+        # See `_canonicalize_ray_remote_args`.
+        num_cpus = 1 if "num_gpus" not in ray_remote_args else 0
+    bundle_cpu = first_bundle.get("CPU", 0)
+
+    if bundle_cpu < num_cpus:
+        raise ValueError(
+            f"{resource_error_prefix} `num_cpus` for the actor is "
+            f"{num_cpus}, but the bundle only has {bundle_cpu} `CPU` specified."
+        )
+
+    num_gpus = ray_remote_args.get("num_gpus", 0)
+    bundle_gpu = first_bundle.get("GPU", 0)
+    if bundle_gpu < num_gpus:
+        raise ValueError(
+            f"{resource_error_prefix} `num_gpus` for the actor is "
+            f"{num_gpus}, but the bundle only has {bundle_gpu} `GPU` specified."
+        )
+
+    memory = ray_remote_args.get("memory", 0)
+    bundle_memory = first_bundle.get("memory", 0)
+    if bundle_memory < memory:
+        raise ValueError(
+            f"{resource_error_prefix} `memory` for the actor is "
+            f"{memory}, but the bundle only has {bundle_memory} `memory` "
+            "specified."
+        )
+
+    for resource, value in (ray_remote_args.get("resources") or {}).items():
+        bundle_value = first_bundle.get(resource, 0)
+        if bundle_value < value:
+            raise ValueError(
+                f"{resource_error_prefix} `{resource}` requirement for the "
+                f"actor is {value}, but the bundle only has {bundle_value} "
+                f"`{resource}` specified."
+            )
 
 
 def get_compute_strategy_for_read_api(
