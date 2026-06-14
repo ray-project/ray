@@ -15,7 +15,9 @@
 #pragma once
 
 #include <boost/range/adaptor/map.hpp>
+#include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -24,6 +26,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_instance_set.h"
@@ -304,14 +307,11 @@ class TaskResourceInstances {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
 };
 
-/// Total and available capacities of each resource of a node.
-class NodeResources {
+/// Temporary Abstract base class for node resource.
+/// Provides the common interface shared by NodeResources and NodeResourcesV2.
+class NodeResourcesBase {
  public:
-  NodeResources() {}
-  explicit NodeResources(const NodeResourceSet &resources)
-      : total(resources), available(resources) {}
   NodeResourceSet total;
-  NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
 
@@ -335,26 +335,179 @@ class NodeResources {
 
   bool object_pulls_queued = false;
 
+  NodeResourcesBase() = default;
+  virtual ~NodeResourcesBase() = default;
+  NodeResourcesBase(const NodeResourcesBase &) = default;
+  NodeResourcesBase &operator=(const NodeResourcesBase &) = default;
+  NodeResourcesBase(NodeResourcesBase &&) = default;
+  NodeResourcesBase &operator=(NodeResourcesBase &&) = default;
+
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.
-  float CalculateCriticalResourceUtilization() const;
+  virtual float CalculateCriticalResourceUtilization() const = 0;
+  /// Returns true if the node has the available resources to run the task.
+  /// Note: This doesn't account for the binpacking of unit resources.
+  virtual bool IsAvailable(const ResourceRequest &resource_request,
+                           bool ignore_at_capacity = false) const = 0;
+  /// Returns true if the node's total resources are enough to run the task.
+  /// Note: This doesn't account for the binpacking of unit resources.
+  virtual bool IsFeasible(const ResourceRequest &resource_request) const = 0;
+  // Returns true if the node's labels satisfy the label selector requirement.
+  virtual bool HasRequiredLabels(const LabelSelector &label_selector) const = 0;
+  virtual bool NodeLabelMatchesConstraint(const LabelConstraint &constraint) const = 0;
+  /// Returns if this equals another node resources.
+  virtual bool operator==(const NodeResourcesBase &other) const = 0;
+  virtual bool operator!=(const NodeResourcesBase &other) const = 0;
+
+  /// Returns human-readable string for these resources.
+  virtual std::string DebugString() const = 0;
+  /// Returns compact dict-like string.
+  virtual std::string DictString() const = 0;
+
+  /// Get the scalar available amount for a resource.
+  virtual FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const = 0;
+
+  /// Get the set of resource IDs that have explicit available entries.
+  virtual std::set<scheduling::ResourceID> GetAvailableResourceIds() const = 0;
+
+  /// Returns true if the resource has an explicit available entry.
+  virtual bool HasAvailableResource(scheduling::ResourceID resource_id) const = 0;
+};
+
+/// Total and available capacities of each resource of a node.
+class NodeResources : public NodeResourcesBase {
+ public:
+  NodeResources() {}
+  explicit NodeResources(const NodeResourceSet &resources) : available(resources) {
+    total = resources;
+  }
+
+  /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
+  /// of each resource and return the highest.
+  float CalculateCriticalResourceUtilization() const override;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsAvailable(const ResourceRequest &resource_request,
-                   bool ignore_at_capacity = false) const;
+                   bool ignore_at_capacity = false) const override;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsFeasible(const ResourceRequest &resource_request) const;
+  bool IsFeasible(const ResourceRequest &resource_request) const override;
   // Returns true if the node's labels satisfy the label selector requirement.
-  bool HasRequiredLabels(const LabelSelector &label_selector) const;
-  bool NodeLabelMatchesConstraint(const LabelConstraint &constraint) const;
+  bool HasRequiredLabels(const LabelSelector &label_selector) const override;
+  bool NodeLabelMatchesConstraint(const LabelConstraint &constraint) const override;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other) const;
-  bool operator!=(const NodeResources &other) const;
+  bool operator==(const NodeResourcesBase &other) const override;
+  bool operator!=(const NodeResourcesBase &other) const override;
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  std::string DebugString() const override;
   /// Returns compact dict-like string.
-  std::string DictString() const;
+  std::string DictString() const override;
+
+  /// Get the scalar available amount for a resource.
+  FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const override;
+
+  /// Get the set of resource IDs that have explicit available entries.
+  std::set<scheduling::ResourceID> GetAvailableResourceIds() const override;
+
+  /// Subtract resources from available, clamping each entry to 0.
+  void SubtractAvailable(const ResourceSet &resource_set);
+
+  /// Set a single resource's available to a scalar value.
+  void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
+
+  /// Replace the entire available field.
+  void SetAvailable(NodeResourceSet resource_set);
+
+  /// Return available resources as a name->value map.
+  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
+
+  /// Returns true if the resource has an explicit available entry.
+  bool HasAvailableResource(scheduling::ResourceID resource_id) const override;
+
+  /// Read-only access to the entire available
+  const NodeResourceSet &GetAvailable() const;
+
+  /// Transfer ownership of the available resource set (leaves available in a moved-from
+  /// state).
+  NodeResourceSet TakeAvailable();
+
+ private:
+  NodeResourceSet available;
+};
+
+/// NodeResourcesV2 stores available resources as a per-instance vector
+/// NodeResourceInstanceSet rather than an aggregated scalar NodeResourceSet, enabling
+/// GPU-fraction scheduling.
+class NodeResourcesV2 : public NodeResourcesBase {
+ public:
+  NodeResourcesV2() {}
+  explicit NodeResourcesV2(const NodeResourceSet &resources)
+      : available(NodeResourceInstanceSet(resources)) {
+    total = resources;
+  }
+
+  /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
+  /// of each resource and return the highest.
+  float CalculateCriticalResourceUtilization() const override;
+  /// Returns true if the node has the available resources to run the task.
+  bool IsAvailable(const ResourceRequest &resource_request,
+                   bool ignore_at_capacity = false) const override;
+  /// Returns true if the node's total resources are enough to run the task.
+  bool IsFeasible(const ResourceRequest &resource_request) const override;
+  // Returns true if the node's labels satisfy the label selector requirement.
+  bool HasRequiredLabels(const LabelSelector &label_selector) const override;
+  bool NodeLabelMatchesConstraint(const LabelConstraint &constraint) const override;
+  /// Returns if this equals another node resources.
+  bool operator==(const NodeResourcesBase &other) const override;
+  bool operator!=(const NodeResourcesBase &other) const override;
+  /// Returns human-readable string for these resources.
+  std::string DebugString() const override;
+  /// Returns compact dict-like string.
+  std::string DictString() const override;
+
+  /// Get the scalar available amount for a resource (sum across instances).
+  FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const override;
+
+  /// Get the set of resource IDs that have explicit available entries.
+  std::set<scheduling::ResourceID> GetAvailableResourceIds() const override;
+
+  /// Set a single resource's available to a per-instance vector.
+  void SetAvailableResource(scheduling::ResourceID resource_id,
+                            std::vector<FixedPoint> instances);
+
+  /// Replace the entire available field from a per-instance vector.
+  void SetAvailable(NodeResourceInstanceSet instances);
+
+  /// Returns true if the resource has an explicit available entry.
+  bool HasAvailableResource(scheduling::ResourceID resource_id) const override;
+
+  /// Return available resources as a name->per-instance-values map.
+  /// \param non_negative If true, clamp all instance values to be >= 0.
+  absl::flat_hash_map<std::string, std::vector<double>> GetAvailableResourceMap(
+      bool non_negative = false) const;
+
+  /// Read-only access to the entire available
+  const NodeResourceInstanceSet &GetAvailable() const;
+
+  /// Transfer ownership of the available resource set (leaves available in a moved-from
+  /// state).
+  NodeResourceInstanceSet TakeAvailable();
+
+  /// Decrease the capacities of the instances of a given resource from the available
+  ///
+  /// \param resource_id The id of the resource to be subtracted.
+  /// \param instances A list of capacities for resource's instances to be subtracted.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
+  ///
+  /// \return Underflow of resource capacities after subtracting instance
+  /// capacities in "instances", i.e.,.
+  /// max(instances - Get(resource_id), 0)
+  std::vector<FixedPoint> Subtract(scheduling::ResourceID resource_id,
+                                   const std::vector<FixedPoint> &instances,
+                                   bool allow_going_negative);
+
+ private:
+  NodeResourceInstanceSet available;
 };
 
 /// Total and available capacities of each resource instance.
@@ -376,16 +529,71 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  explicit Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(const NodeResources &resources)
+      : local_view_(std::make_unique<NodeResources>(resources)) {}
 
-  NodeResources *GetMutableLocalView() {
+  explicit Node(std::unique_ptr<NodeResourcesBase> resources)
+      : local_view_(std::move(resources)) {}
+
+  Node(const Node &other) : local_view_modified_ts_(other.local_view_modified_ts_) {
+    if (RayConfig::instance().enable_per_instance_resource_scheduling()) {
+      local_view_ = std::make_unique<NodeResourcesV2>(
+          dynamic_cast<const NodeResourcesV2 &>(*other.local_view_));
+    } else {
+      local_view_ = std::make_unique<NodeResources>(
+          dynamic_cast<const NodeResources &>(*other.local_view_));
+    }
+  }
+
+  Node &operator=(const Node &other) {
+    if (this != &other) {
+      if (RayConfig::instance().enable_per_instance_resource_scheduling()) {
+        local_view_ = std::make_unique<NodeResourcesV2>(
+            dynamic_cast<const NodeResourcesV2 &>(*other.local_view_));
+      } else {
+        local_view_ = std::make_unique<NodeResources>(
+            dynamic_cast<const NodeResources &>(*other.local_view_));
+      }
+      local_view_modified_ts_ = other.local_view_modified_ts_;
+    }
+    return *this;
+  }
+
+  Node(Node &&) = default;
+  Node &operator=(Node &&) = default;
+
+  /// Update the local view in-place when the type matches, or replace the
+  /// pointer when the type changes. This preserves existing references to
+  /// *local_view_ when the type is unchanged.
+  void UpdateView(const NodeResourcesBase &resources) {
+    const bool is_v2 = RayConfig::instance().enable_per_instance_resource_scheduling();
+    if (local_view_) {
+      if (is_v2) {
+        dynamic_cast<NodeResourcesV2 &>(*local_view_) =
+            dynamic_cast<const NodeResourcesV2 &>(resources);
+      } else {
+        dynamic_cast<NodeResources &>(*local_view_) =
+            dynamic_cast<const NodeResources &>(resources);
+      }
+    } else {
+      if (is_v2) {
+        local_view_ = std::make_unique<NodeResourcesV2>(
+            dynamic_cast<const NodeResourcesV2 &>(resources));
+      } else {
+        local_view_ = std::make_unique<NodeResources>(
+            dynamic_cast<const NodeResources &>(resources));
+      }
+    }
+  }
+
+  NodeResourcesBase *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();
-    return &local_view_;
+    return local_view_.get();
   }
 
   std::optional<absl::Time> GetViewModifiedTs() const { return local_view_modified_ts_; }
 
-  const NodeResources &GetLocalView() const { return local_view_; }
+  const NodeResourcesBase &GetLocalView() const { return *local_view_; }
 
  private:
   /// Our local view of the remote node's resources. This may be dirty
@@ -394,7 +602,7 @@ struct Node {
   /// get overwritten by the last reported view on each heartbeat tick, to
   /// make sure that our local view does not skew too much from the actual
   /// resources when light heartbeats are enabled.
-  NodeResources local_view_;
+  std::unique_ptr<NodeResourcesBase> local_view_;
   /// The timestamp this node got updated.
   std::optional<absl::Time> local_view_modified_ts_;
 };
@@ -407,6 +615,18 @@ struct Node {
 ///
 /// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
+    const absl::flat_hash_map<std::string, double> &resource_map_total,
+    const absl::flat_hash_map<std::string, double> &resource_map_available,
+    const absl::flat_hash_map<std::string, std::string> &node_labels = {});
+
+/// Convert a map of resources to a NodeResourcesV2 data structure.
+///
+/// \param string_to_int_map: Map between names and ids maintained by the
+/// \param resource_map_total: Total capacities of resources we want to convert.
+/// \param resource_map_available: Available capacities of resources we want to convert.
+///
+/// \request Conversion result to a NodeResourcesV2 data structure.
+NodeResourcesV2 ResourceMapToNodeResourcesV2(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,
     const absl::flat_hash_map<std::string, std::string> &node_labels = {});

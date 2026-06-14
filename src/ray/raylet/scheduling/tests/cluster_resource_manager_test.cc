@@ -26,9 +26,10 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double total_custom_resource = 0,
                                   bool object_pulls_queued = false) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu);
+  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
   resources.total.Set(ResourceID::CPU(), total_cpu);
-  resources.available.Set(scheduling::ResourceID("CUSTOM"), available_custom_resource);
+  resources.SetAvailableResource(scheduling::ResourceID("CUSTOM"),
+                                 available_custom_resource);
   resources.total.Set(scheduling::ResourceID("CUSTOM"), total_custom_resource);
   resources.object_pulls_queued = object_pulls_queued;
   return resources;
@@ -76,7 +77,7 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
 
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")), 10);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")), 5);
+  ASSERT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")), 5);
   ASSERT_EQ(node_resources.labels.at("zone"), "us-east-1a");
   ASSERT_TRUE(node_resources.object_pulls_queued);
   ASSERT_EQ(node_resources.idle_resource_duration_ms, 42);
@@ -163,26 +164,26 @@ TEST_F(ClusterResourceManagerTest, HasAvailableResourcesTest) {
 
 TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
 
   manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
   // Subtract again and make sure the available == 0.
   manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 0);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
 
   // Add resources back.
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
   // Add again and make sure the available == 1 (<= total).
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
 }
 
 }  // namespace ray

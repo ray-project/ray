@@ -32,7 +32,7 @@ class NodeScorer {
   /// resources.
   /// \return Score of the node.
   virtual double Score(const ResourceRequest &required_resources,
-                       const NodeResources &node_resources) = 0;
+                       const NodeResourcesBase &node_resources) = 0;
 };
 
 /// LeastResourceScorer is a score plugin that favors nodes with fewer allocation
@@ -40,7 +40,7 @@ class NodeScorer {
 class LeastResourceScorer : public NodeScorer {
  public:
   double Score(const ResourceRequest &required_resources,
-               const NodeResources &node_resources) override;
+               const NodeResourcesBase &node_resources) override;
 
  private:
   /// \brief Calculate one of the resource scores.

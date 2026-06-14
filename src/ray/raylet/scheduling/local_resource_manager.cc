@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/util/logging.h"
@@ -30,11 +31,11 @@ namespace ray {
 
 LocalResourceManager::LocalResourceManager(
     scheduling::NodeID local_node_id,
-    const NodeResources &node_resources,
+    const NodeResourcesBase &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    std::function<void(const NodeResources &)> resource_change_subscriber,
+    std::function<void(const NodeResourcesBase &)> resource_change_subscriber,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock)
     : local_node_id_(local_node_id),
@@ -44,7 +45,10 @@ LocalResourceManager::LocalResourceManager(
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber),
       resource_usage_gauge_(resource_usage_gauge) {
-  RAY_CHECK(node_resources.total == node_resources.available);
+  if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+    const auto &v1 = dynamic_cast<const NodeResources &>(node_resources);
+    RAY_CHECK(v1.total == v1.GetAvailable());
+  }
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
@@ -310,7 +314,7 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToNodeResourceSet();
+  node_resources.SetAvailable(local_resources_.available.ToNodeResourceSet());
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = IsLocalNodeDraining();
@@ -367,7 +371,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
 
-  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
+  for (const auto &[resource_name, available] : resources.GetAvailableResourceMap()) {
     // Resource availability can be negative locally but treat it as 0
     // when we broadcast to others since other parts of the
     // system assume resource availability cannot be negative and

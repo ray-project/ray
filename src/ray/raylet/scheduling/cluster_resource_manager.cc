@@ -35,7 +35,7 @@ ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_servi
         for (auto &[node_id, resource] : received_node_resources_) {
           auto modified_ts = GetNodeResourceModifiedTs(node_id);
           if (modified_ts && *modified_ts + syncer_delay < absl::Now()) {
-            AddOrUpdateNode(node_id, resource);
+            AddOrUpdateNode(node_id, *resource);
           }
         }
       },
@@ -62,14 +62,19 @@ void ClusterResourceManager::AddOrUpdateNode(
 }
 
 void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
-                                             const NodeResources &node_resources) {
+                                             const NodeResourcesBase &node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
-    nodes_.emplace(node_id, node_resources);
+    std::unique_ptr<NodeResourcesBase> copy;
+    if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+      copy = std::make_unique<NodeResources>(
+          dynamic_cast<const NodeResources &>(node_resources));
+    }
+    nodes_.emplace(node_id, Node(std::move(copy)));
   } else {
     // This node exists, so update its resources.
-    it->second = Node(node_resources);
+    it->second.UpdateView(node_resources);
   }
 }
 
@@ -91,7 +96,7 @@ bool ClusterResourceManager::UpdateNode(
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
   local_view.total = std::move(node_resources.total);
-  local_view.available = std::move(node_resources.available);
+  local_view.SetAvailable(node_resources.TakeAvailable());
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
@@ -108,7 +113,8 @@ bool ClusterResourceManager::UpdateNode(
   }
 
   AddOrUpdateNode(node_id, local_view);
-  received_node_resources_[node_id] = std::move(local_view);
+  received_node_resources_[node_id] =
+      std::make_unique<NodeResources>(std::move(local_view));
   return true;
 }
 
@@ -130,25 +136,32 @@ bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
   local_view->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
   auto rnr_it = received_node_resources_.find(node_id);
   if (rnr_it != received_node_resources_.end()) {
-    rnr_it->second.is_draining = is_draining;
-    rnr_it->second.draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+    rnr_it->second->is_draining = is_draining;
+    rnr_it->second->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
   }
 
   return true;
 }
 
 bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
-                                              NodeResources *ret_resources) const {
+                                              NodeResourcesBase *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
-    *ret_resources = it->second.GetLocalView();
+    const auto &node_resources = it->second.GetLocalView();
+    if (RayConfig::instance().enable_per_instance_resource_scheduling()) {
+      dynamic_cast<NodeResourcesV2 &>(*ret_resources) =
+          dynamic_cast<const NodeResourcesV2 &>(node_resources);
+    } else {
+      dynamic_cast<NodeResources &>(*ret_resources) =
+          dynamic_cast<const NodeResources &>(node_resources);
+    }
     return true;
   } else {
     return false;
   }
 }
 
-const NodeResources &ClusterResourceManager::GetNodeResources(
+const NodeResourcesBase &ClusterResourceManager::GetNodeResources(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);
   return node.GetLocalView();
@@ -168,7 +181,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   auto local_view = it->second.GetMutableLocalView();
   FixedPoint resource_total_fp(resource_total);
   auto local_total = local_view->total.Get(resource_id);
-  auto local_available = local_view->available.Get(resource_id);
+  auto local_available = local_view->GetAvailableSum(resource_id);
   auto diff_capacity = resource_total_fp - local_total;
   auto total = local_total + diff_capacity;
   auto available = local_available + diff_capacity;
@@ -179,7 +192,10 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
     available = 0;
   }
   local_view->total.Set(resource_id, total);
-  local_view->available.Set(resource_id, available);
+  if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+    dynamic_cast<NodeResources &>(*local_view)
+        .SetAvailableResource(resource_id, available);
+  }
 }
 
 bool ClusterResourceManager::DeleteResources(
@@ -192,7 +208,9 @@ bool ClusterResourceManager::DeleteResources(
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
     local_view->total.Set(resource_id, 0);
-    local_view->available.Set(resource_id, 0);
+    if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+      dynamic_cast<NodeResources &>(*local_view).SetAvailableResource(resource_id, 0);
+    }
   }
   return true;
 }
@@ -215,10 +233,12 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
     return false;
   }
 
-  NodeResources *resources = it->second.GetMutableLocalView();
+  NodeResourcesBase *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request.GetResourceSet();
-  resources->available.RemoveNegative();
+  if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+    dynamic_cast<NodeResources &>(*resources)
+        .SubtractAvailable(resource_request.GetResourceSet());
+  }
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
@@ -260,13 +280,16 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
   auto node_resources = it->second.GetMutableLocalView();
   for (auto &resource_id : resource_set.ResourceIds()) {
     if (node_resources->total.Has(resource_id)) {
-      auto available = node_resources->available.Get(resource_id);
+      auto available = node_resources->GetAvailableSum(resource_id);
       auto total = node_resources->total.Get(resource_id);
       auto new_available = available + resource_set.Get(resource_id);
       if (new_available > total) {
         new_available = total;
       }
-      node_resources->available.Set(resource_id, new_available);
+      if (!RayConfig::instance().enable_per_instance_resource_scheduling()) {
+        dynamic_cast<NodeResources &>(*node_resources)
+            .SetAvailableResource(resource_id, new_available);
+      }
     }
   }
   return true;
