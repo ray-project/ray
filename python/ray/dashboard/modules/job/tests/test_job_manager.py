@@ -1654,5 +1654,121 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
         assert "JobSupervisor" not in t.name
 
 
+def _counter_script(count_file: str, fail_times: int, exit_code: int = 1) -> str:
+    """A shell entrypoint that fails its first ``fail_times`` runs, then succeeds.
+
+    A counter is persisted in ``count_file`` across in-place retries (the file
+    survives because the driver is re-execed within the same supervisor).
+    """
+    return (
+        f'n=$(cat "{count_file}" 2>/dev/null || echo 0); '
+        f'n=$((n + 1)); echo "$n" > "{count_file}"; '
+        f'if [ "$n" -le {fail_times} ]; then exit {exit_code}; fi'
+    )
+
+
+# A backoff that is effectively instant, to keep retry tests fast.
+_FAST_BACKOFF = {
+    "backoff_initial_delay_seconds": 0.1,
+    "backoff_max_delay_seconds": 0.1,
+    "backoff_multiplier": 1.0,
+}
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_retries_to_success(job_manager, tmp_path):
+    """A driver that fails once is retried in place and eventually succeeds."""
+    count_file = os.path.join(tmp_path, "count")
+    job_id = await job_manager.submit_job(
+        entrypoint=_counter_script(count_file, fail_times=1),
+        retry_policy={"max_retries": 3, **_FAST_BACKOFF},
+    )
+
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    info = await job_manager.get_job_info(job_id)
+    assert info.attempt_number == 1  # one retry happened
+    assert info.driver_exit_code == 0
+    with open(count_file) as f:
+        assert f.read().strip() == "2"  # ran twice total
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_exhausts_retries(job_manager, tmp_path):
+    """A driver that always fails is retried up to max_retries, then FAILS."""
+    count_file = os.path.join(tmp_path, "count")
+    job_id = await job_manager.submit_job(
+        entrypoint=_counter_script(count_file, fail_times=999),
+        retry_policy={"max_retries": 2, **_FAST_BACKOFF},
+    )
+
+    await async_wait_for_condition(
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR,
+    )
+
+    info = await job_manager.get_job_info(job_id)
+    assert info.attempt_number == 2  # original + 2 retries
+    assert info.driver_exit_code == 1
+    with open(count_file) as f:
+        assert f.read().strip() == "3"  # ran three times total
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_no_retry_on_exit_codes(job_manager, tmp_path):
+    """An exit code in no_retry_on_exit_codes fails immediately without retry."""
+    count_file = os.path.join(tmp_path, "count")
+    job_id = await job_manager.submit_job(
+        entrypoint=_counter_script(count_file, fail_times=999, exit_code=42),
+        retry_policy={
+            "max_retries": 3,
+            "no_retry_on_exit_codes": [42],
+            **_FAST_BACKOFF,
+        },
+    )
+
+    await async_wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    info = await job_manager.get_job_info(job_id)
+    assert info.attempt_number == 0  # never retried
+    assert info.driver_exit_code == 42
+    with open(count_file) as f:
+        assert f.read().strip() == "1"  # ran only once
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_stop_during_backoff(job_manager):
+    """Stopping a job while it is waiting in the retry backoff yields STOPPED."""
+    job_id = await job_manager.submit_job(
+        entrypoint="exit 1",
+        # Long backoff so the job stays in the RUNNING backoff window.
+        retry_policy={
+            "max_retries": 5,
+            "backoff_initial_delay_seconds": 100.0,
+            "backoff_max_delay_seconds": 100.0,
+            "backoff_multiplier": 1.0,
+        },
+    )
+
+    # Wait until the first attempt has failed and the job is backing off:
+    # status stays RUNNING and attempt_number has been bumped to 1.
+    async def _backing_off():
+        info = await job_manager.get_job_info(job_id)
+        return info.status == JobStatus.RUNNING and info.attempt_number == 1
+
+    await async_wait_for_condition(_backing_off)
+
+    assert job_manager.stop_job(job_id)
+    await async_wait_for_condition(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

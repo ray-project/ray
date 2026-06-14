@@ -13,6 +13,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
     JobStatus,
     JobSubmitRequest,
+    RetryPolicy,
     http_uri_components_to_uri,
     uri_to_http_components,
     validate_request_type,
@@ -127,6 +128,125 @@ class TestJobSubmitRequestValidation:
                 {"entrypoint": "abc", "entrypoint_resources": {"Custom": "1"}},
                 JobSubmitRequest,
             )
+
+    def test_retry_policy_flattens_nested_backoff(self):
+        r = validate_request_type(
+            {
+                "entrypoint": "abc",
+                "retry_policy": {
+                    "max_retries": 3,
+                    "backoff": {
+                        "initial_delay_seconds": 5,
+                        "max_delay_seconds": 50,
+                        "multiplier": 3,
+                    },
+                    "retry_on": ["NON_ZERO_EXIT"],
+                    "no_retry_on_exit_codes": [130],
+                },
+            },
+            JobSubmitRequest,
+        )
+        # The nested ``backoff`` object is flattened into the internal form.
+        assert r.retry_policy == {
+            "max_retries": 3,
+            "backoff_initial_delay_seconds": 5,
+            "backoff_max_delay_seconds": 50,
+            "backoff_multiplier": 3,
+            "retry_on": ["NON_ZERO_EXIT"],
+            "no_retry_on_exit_codes": [130],
+        }
+
+    def test_retry_policy_minimal(self):
+        r = validate_request_type(
+            {"entrypoint": "abc", "retry_policy": {"max_retries": 1}},
+            JobSubmitRequest,
+        )
+        # The normalizer always fills in the backoff defaults.
+        assert r.retry_policy == {
+            "max_retries": 1,
+            "backoff_initial_delay_seconds": 30.0,
+            "backoff_max_delay_seconds": 600.0,
+            "backoff_multiplier": 2.0,
+        }
+
+    def test_retry_policy_none(self):
+        r = validate_request_type({"entrypoint": "abc"}, JobSubmitRequest)
+        assert r.retry_policy is None
+
+    def test_retry_policy_invalid(self):
+        # Only cover the cases specific to the request/flatten layer here;
+        # field-level validation is covered by TestRetryPolicyValidation.
+        with pytest.raises(TypeError, match="retry_policy must be a dict"):
+            validate_request_type(
+                {"entrypoint": "abc", "retry_policy": "bad"}, JobSubmitRequest
+            )
+        with pytest.raises(TypeError, match="backoff.* must be a dict"):
+            validate_request_type(
+                {"entrypoint": "abc", "retry_policy": {"backoff": 1}},
+                JobSubmitRequest,
+            )
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            validate_request_type(
+                {"entrypoint": "abc", "retry_policy": {"bogus_key": 1}},
+                JobSubmitRequest,
+            )
+
+
+class TestRetryPolicyValidation:
+    def test_valid(self):
+        # Defaults.
+        RetryPolicy()
+        # Fully specified.
+        RetryPolicy(
+            max_retries=3,
+            backoff_initial_delay_seconds=5,
+            backoff_max_delay_seconds=50,
+            backoff_multiplier=2,
+            retry_on=["NON_ZERO_EXIT", "DRIVER_OOM"],
+            no_retry_on_exit_codes=[130],
+        )
+
+    @pytest.mark.parametrize(
+        "kwargs,exc,match",
+        [
+            ({"max_retries": -1}, ValueError, "max_retries must be non-negative"),
+            ({"max_retries": True}, TypeError, "max_retries must be an integer"),
+            ({"max_retries": 1.5}, TypeError, "max_retries must be an integer"),
+            (
+                {"backoff_initial_delay_seconds": -1},
+                ValueError,
+                "backoff_initial_delay_seconds must be non-negative",
+            ),
+            (
+                {"backoff_multiplier": 0.5},
+                ValueError,
+                "backoff_multiplier must be >= 1",
+            ),
+            (
+                {
+                    "backoff_initial_delay_seconds": 100,
+                    "backoff_max_delay_seconds": 10,
+                },
+                ValueError,
+                "backoff_max_delay_seconds must be >=",
+            ),
+            ({"retry_on": "NON_ZERO_EXIT"}, TypeError, "retry_on must be a list"),
+            ({"retry_on": ["NOPE"]}, ValueError, "Invalid retry_on condition"),
+            (
+                {"no_retry_on_exit_codes": 130},
+                TypeError,
+                "no_retry_on_exit_codes must be a list",
+            ),
+            (
+                {"no_retry_on_exit_codes": [1.5]},
+                TypeError,
+                "Exit code must be an integer",
+            ),
+        ],
+    )
+    def test_invalid(self, kwargs, exc, match):
+        with pytest.raises(exc, match=match):
+            RetryPolicy(**kwargs)
 
 
 def test_uri_to_http_and_back():
@@ -265,8 +385,35 @@ def test_job_info_json_to_proto():
         "error_type",
         "driver_agent_http_address",
         "driver_node_id",
+        "retry_policy",
     ]:
         assert not minimal_info_proto.HasField(unset_optional_field)
+
+
+def test_job_info_retry_policy_to_proto():
+    """retry_policy + attempt_number should round-trip into JobsAPIInfo."""
+    info = JobInfo(
+        status=JobStatus.RUNNING,
+        entrypoint="echo hi",
+        retry_policy={
+            "max_retries": 3,
+            "backoff_initial_delay_seconds": 5.0,
+            "backoff_max_delay_seconds": 50.0,
+            "backoff_multiplier": 2.0,
+            "retry_on": ["NON_ZERO_EXIT"],
+            "no_retry_on_exit_codes": [130],
+        },
+        attempt_number=2,
+    )
+    info_proto = Parse(json.dumps(info.to_json()), JobsAPIInfo())
+    assert info_proto.attempt_number == 2
+    assert info_proto.HasField("retry_policy")
+    assert info_proto.retry_policy.max_retries == 3
+    assert info_proto.retry_policy.backoff_initial_delay_seconds == 5.0
+    assert info_proto.retry_policy.backoff_max_delay_seconds == 50.0
+    assert info_proto.retry_policy.backoff_multiplier == 2.0
+    assert list(info_proto.retry_policy.retry_on) == ["NON_ZERO_EXIT"]
+    assert list(info_proto.retry_policy.no_retry_on_exit_codes) == [130]
 
 
 def test_get_all_jobs_filters_out_none_job_info():
