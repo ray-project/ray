@@ -2035,18 +2035,16 @@ class TestPlacementGroup:
     def test_removed_after_execution(self, shutdown_only):
         """End-to-end: Ray Data spawns the map worker actor into its placement
         group, captures the actor's child tasks into it, and removes the group
-        once execution finishes instead of leaking until the driver exits."""
+        once execution finishes."""
         num_actors = 1
         ray.shutdown()
         # One CPU per actor (its placement group's single bundle) plus one for
         # the upstream read tasks, which run outside the placement groups.
         ray.init(num_cpus=num_actors + 1)
 
-        # NOTE: Defined inside the test so that cloudpickle serializes the class
-        # by value (map workers can't import the test module).
         class PlacementGroupProbe:
             """Records the placement group of the map worker actor and of a child
-            task it spawns (which should be captured into the same group)."""
+            task it spawns which should be captured into the same group."""
 
             def __init__(self):
                 pg = ray.util.get_current_placement_group()

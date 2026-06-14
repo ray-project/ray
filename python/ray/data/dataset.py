@@ -814,27 +814,69 @@ class Dataset:
         placement_group_strategy: Optional[str] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """:meth:`map_batches` with additional low-level options exposed for power
-        users and library developers.
+        """:meth:`~Dataset.map_batches` with additional low-level options, namely placement group
+        bundles and strategy.
 
-        Accepts all arguments of :meth:`map_batches`, plus the following:
+        Args:
+            fn: The function or generator to apply to a record batch, or a class type
+                that can be instantiated to create such a callable. Note ``fn`` must be
+                pickle-able.
+            batch_size: The desired number of rows in each batch. Use ``"auto"`` to
+                dynamically determine batch size based on the per-row size of the data.
+                Use ``None`` to pass entire blocks as batches (blocks may contain
+                different numbers of rows). When ``num_gpus`` is set, ``batch_size``
+                must be an explicit integer value, not ``"auto"`` or ``None``.
+            compute: The compute strategy to use for the map operation, either
+                ``ray.data.TaskPoolStrategy`` (default) to use Ray tasks, or
+                ``ray.data.ActorPoolStrategy`` to use an autoscaling actor pool.
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are ``pyarrow.Table``.
+                If ``None``, the input block format is used.
+            zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
+                batches. If ``True`` and no copy is required for the ``batch_format``
+                conversion, the batch is a zero-copy, read-only view on data in Ray's
+                object store. If ``False``, a copy of the *whole* batch is made,
+                allowing ``fn`` to modify the underlying data buffers in place.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify ``num_gpus=1`` to request 1 GPU for each parallel map
+                worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            concurrency: This argument is deprecated. Use ``compute`` argument.
+            udf_modifying_row_count: If your UDF produces the same number of output rows
+                as it receives, set this parameter to False. It allows Ray Data to
+                perform more optimizations like limit pushdown.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
+            placement_group_bundles: If specified, Ray Data creates one placement group
+                per map worker actor from these bundles and schedules the actor into
+                the first bundle. Child tasks and actors spawned by the worker are
+                captured into the same placement group. Only supported for actor-based
+                transforms (``compute=ray.data.ActorPoolStrategy(...)``). This option overrides
+                any ``scheduling_strategy`` returned by ``ray_remote_args_fn``.
+            placement_group_strategy: The placement strategy for the placement groups
+                created from ``placement_group_bundles``. Requires ``placement_group_bundles``.
+                Defaults to ``"PACK"``.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray for each map worker. See :func:`ray.remote` for details.
 
-        ``placement_group_bundles``: If specified, Ray Data creates one placement
-        group *per map worker actor* from these bundles and schedules the actor
-        into the first bundle. Child tasks and actors spawned by the worker are
-        captured into the same placement group, so this can be used to
-        gang-schedule a group of processes alongside each map worker. Ray Data
-        owns the placement group lifecycle: it's created when the actor starts
-        and removed when the actor is released from the pool (on downscaling,
-        failure, or operator shutdown), so reserved resources don't outlive the
-        actor. The worker's resource requirements (``num_cpus``, ``num_gpus``,
-        ``memory``, ``resources``) must fit in the first bundle. Only supported
-        with actor-based transforms (``compute=ray.data.ActorPoolStrategy(...)``).
-        This option overrides any ``scheduling_strategy`` returned by
-        ``ray_remote_args_fn``.
-
-        ``placement_group_strategy``: The placement strategy for the placement
-        groups created from ``placement_group_bundles``. Defaults to ``"PACK"``.
+        Returns:
+            A new :class:`Dataset` with the transformation applied to each batch.
         """
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "auto"):
