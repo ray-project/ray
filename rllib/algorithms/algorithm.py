@@ -50,7 +50,9 @@ from ray.rllib.algorithms.utils import (
     _get_offline_eval_runner_bundles,
 )
 from ray.rllib.callbacks.utils import make_callback
-from ray.rllib.connectors.agent.mean_std_filter import MeanStdObservationFilterAgentConnector
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+)
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
