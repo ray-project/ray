@@ -559,6 +559,9 @@ steps:
         --python-version 3.10
         --only-tags multi_gpu
         --install-mask all-ray-libraries
+        --test-env NCCL_DEBUG=INFO
+        --test-env NCCL_DEBUG_SUBSYS=INIT,GRAPH,ENV,TUNING,NET
+        --test-env CUDA_LAUNCH_BLOCKING=1
     depends_on:
       - block-core-gpu-tests
       - coregpubuild-multipy(python=3.10)
