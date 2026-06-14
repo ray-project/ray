@@ -488,5 +488,63 @@ class TestDynamoKvEventPipeline:
             ray.kill(actor, no_restart=True)
 
 
+class TestSelectWorker:
+    """KV-aware scoring: the KVRouterActor's query-only select_worker ranks a
+    caller-provided candidate set by KV overlap (Dynamo KvRouter.select_worker)."""
+
+    @pytest.fixture
+    def namespace(self):
+        return f"test_kv_scoring_{uuid.uuid4().hex[:8]}"
+
+    @pytest.mark.asyncio
+    async def test_select_worker_returns_allowed_candidate(
+        self, ray_instance, namespace
+    ):
+        """select_worker returns a worker from the allowed candidate set."""
+        actor = LocalKVRouterActor.remote(namespace)
+        a = ReplicaStandIn.remote(actor, "replica-A", 7001, namespace, 22101)
+        b = ReplicaStandIn.remote(actor, "replica-B", 7002, namespace, 22102)
+        try:
+            worker_a = await a.start.remote()
+            worker_b = await b.start.remote()
+            token_ids = list(range(2 * BLOCK_SIZE))
+            selection = await actor.select_worker.remote(
+                "req-1", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] in (worker_a, worker_b)
+        finally:
+            for replica in (a, b):
+                await replica.close.remote()
+                ray.kill(replica, no_restart=True)
+            ray.kill(actor, no_restart=True)
+
+    @pytest.mark.asyncio
+    async def test_select_worker_prefers_overlap(self, ray_instance, namespace):
+        """The candidate whose cached blocks overlap the prompt is selected."""
+        actor = LocalKVRouterActor.remote(namespace)
+        a = ReplicaStandIn.remote(actor, "replica-A", 7001, namespace, 22103)
+        b = ReplicaStandIn.remote(actor, "replica-B", 7002, namespace, 22104)
+        try:
+            worker_a = await a.start.remote()
+            worker_b = await b.start.remote()
+            token_ids = list(range(2 * BLOCK_SIZE))
+            # Worker A caches the prompt's blocks; B caches nothing.
+            await wait_for_indexer(
+                actor,
+                lambda events: stored_block_hashes(events, worker_a) == {301, 302},
+                publish=lambda: a.publish_stored.remote([301, 302], token_ids),
+            )
+            selection = await actor.select_worker.remote(
+                "req-2", token_ids, [worker_a, worker_b]
+            )
+            assert selection["worker_id"] == worker_a
+            assert selection["overlap_blocks"] >= 1
+        finally:
+            for replica in (a, b):
+                await replica.close.remote()
+                ray.kill(replica, no_restart=True)
+            ray.kill(actor, no_restart=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

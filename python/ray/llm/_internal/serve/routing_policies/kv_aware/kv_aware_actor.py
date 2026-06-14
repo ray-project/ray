@@ -246,8 +246,12 @@ class KVRouterActor:
         token_ids: List[int],
         allowed_worker_ids: List[int],
     ) -> Dict[str, Any]:
-        """Score the allowed workers for a request based on KV-cache overlap and
-        load and pick the best one.
+        """Score the allowed workers for a request by KV-cache overlap and load
+        and pick the best one, without admitting active load.
+
+        Delegates to the Dynamo ``KvRouter``'s query-only ``select_worker``: it
+        ranks only ``allowed_worker_ids`` (Ray's currently-routable replicas) and
+        does not book active load (booked later via ``on_request_added``).
 
         Args:
             request_id: Unique identifier for the request being routed.
@@ -255,13 +259,12 @@ class KVRouterActor:
             allowed_worker_ids: Candidate worker ids the router may select from.
 
         Returns:
-            A dict describing the selected worker:
-            ``worker_id`` (int): the chosen worker.
-            ``dp_rank`` (int): data-parallel rank within the worker.
-            ``overlap_blocks`` (int): KV blocks already cached on that worker.
-            ``score`` (float): the worker's routing score (higher is better).
+            A dict describing the selected worker: ``worker_id``, ``dp_rank``,
+            ``overlap_blocks``, ``effective_overlap_blocks``, ``cached_tokens``.
         """
-        raise NotImplementedError("KVRouterActor.select_worker is not implemented")
+        return await self._kv_router.select_worker(
+            request_id, token_ids, allowed_worker_ids
+        )
 
     async def on_request_added(
         self,
