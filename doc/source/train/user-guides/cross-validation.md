@@ -94,4 +94,4 @@ folds = splitter.split(dataset)
 - Each fold launches an independent Trainer run.
 - Dataset materialization:
   - StratifiedKFoldSplitter materializes the dataset at an intermediate step to avoid recomputing groupby + map_groups for every train/val split per fold.
-  - TimeSeriesSplitter materializes after sorting by time_column when one is provided, to establish temporal order. Without this, re-executing the sort on a dataset with identical timestamps could produce a different ordering.
+  - TimeSeriesSplitter always materializes the dataset before splitting. This ensures all `split_at_indices` calls see the same row order. Without it, re-executing a lazy multi-block pipeline with `preserve_order=False` can yield blocks in a different order each time. When `time_column` is provided, the dataset is sorted first and then materialized.

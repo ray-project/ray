@@ -114,3 +114,9 @@ def test_cross_validate_raises_on_empty_splitter():
             cross_validate(DummyTrainer, dataset=ds, splitter=splitter)
     finally:
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

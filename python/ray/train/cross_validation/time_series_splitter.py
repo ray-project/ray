@@ -103,11 +103,13 @@ class TimeSeriesSplitter(Splitter):
                     f"time_column '{self._time_column}' not found in dataset. "
                     f"Available columns: {sorted(schema_cols)}"
                 )
-            # Materialize after sorting so that all split_at_indices calls below
-            # see the same row order. Without this, re-executing the sort on a
-            # dataset with identical timestamps could produce a different ordering
-            # each time, causing splits to select the wrong rows.
-            dataset = dataset.sort(self._time_column).materialize()
+            dataset = dataset.sort(self._time_column)
+
+        # Materialize so that all split_at_indices calls below see the same
+        # row order. Without this, re-executing a lazy multi-block pipeline
+        # with preserve_order=False can yield blocks in a different order each
+        # time, causing splits to select the wrong rows.
+        dataset = dataset.materialize()
 
         n_samples = dataset.count()
 

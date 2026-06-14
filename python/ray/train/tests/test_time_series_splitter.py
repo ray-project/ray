@@ -81,3 +81,9 @@ def test_time_series_respects_max_train_size():
             assert len(tdf) <= 2
     finally:
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

@@ -43,3 +43,9 @@ def test_stratified_kfold_raises_on_small_class_counts():
 
     with pytest.raises(ValueError):
         StratifiedKFoldSplitter(n_splits=3, stratify_column="label").split(ds)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

@@ -48,3 +48,9 @@ def test_compute_fold_ids_deterministic():
     assert ids1.tolist() == ids2.tolist()
     assert ids1.dtypes == "int32"
     assert all(0 <= v < 3 for v in ids1.tolist())
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

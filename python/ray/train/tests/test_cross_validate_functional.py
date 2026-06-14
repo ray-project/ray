@@ -1,6 +1,7 @@
 import statistics
 
 import pandas as pd
+import pytest
 
 import ray
 from ray.train.cross_validation import cross_validate
@@ -56,3 +57,9 @@ def test_cross_validate_runs_and_aggregates_metrics():
         assert result.std_metrics["val_count"] == expected_std_val
     finally:
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 import ray
 from ray.train.cross_validation import KFoldSplitter
@@ -35,3 +36,9 @@ def test_kfold_splitter_basic():
         assert all_val_ids == set(df["id"].tolist())
     finally:
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

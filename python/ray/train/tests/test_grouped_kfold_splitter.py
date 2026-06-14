@@ -46,3 +46,9 @@ def test_grouped_kfold_raises_if_group_column_missing():
     splitter = GroupedKFoldSplitter(n_splits=2, group_columns=["group"])
     with pytest.raises(ValueError):
         splitter.split(ds)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
