@@ -380,6 +380,16 @@ components:
           title: Driver Node Id
           description: Driver node id.
           type: string
+        retry_policy:
+          title: Retry Policy
+          description: The in-place retry policy configured for this job, if any.
+          type: object
+        attempt_number:
+          title: Attempt Number
+          description: >-
+            The current driver attempt number (0 = original run, 1 = first
+            retry, ...).
+          type: integer
       required:
         - type
         - entrypoint
@@ -419,8 +429,46 @@ components:
           description: "The quantity of various custom resources to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."
           additionalProperties:
             type: number
+        retry_policy:
+          description: "Optional policy to retry the job's driver in place (using the same submission_id and Ray cluster) on failure, instead of failing immediately."
+          allOf:
+            - $ref: '#/components/schemas/RetryPolicy'
       required:
         - entrypoint
+
+    RetryPolicy:
+      type: object
+      description: "In-place retry policy for a submitted job."
+      properties:
+        max_retries:
+          type: integer
+          description: "Maximum number of retries after the initial attempt. 0 disables retries."
+        backoff:
+          type: object
+          description: "Exponential backoff applied between retries."
+          properties:
+            initial_delay_seconds:
+              type: number
+              description: "Delay before the first retry, in seconds."
+            max_delay_seconds:
+              type: number
+              description: "Maximum delay between retries, in seconds."
+            multiplier:
+              type: number
+              description: "Multiplier applied to the delay after each retry (must be >= 1)."
+        retry_on:
+          type: array
+          description: "Conditions under which to retry. Defaults to ['NON_ZERO_EXIT']."
+          items:
+            type: string
+            enum:
+              - NON_ZERO_EXIT
+              - DRIVER_OOM
+        no_retry_on_exit_codes:
+          type: array
+          description: "Driver exit codes that should never be retried (takes precedence over retry_on)."
+          items:
+            type: integer
 
     JobSubmitResponse:
       type: object

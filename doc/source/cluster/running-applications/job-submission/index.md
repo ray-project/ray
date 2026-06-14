@@ -28,6 +28,44 @@ To get started with the Ray Jobs API, check out the [quickstart](jobs-quickstart
 This is suitable for any client that can communicate over HTTP to the Ray Cluster.
 If needed, the Ray Jobs API also provides APIs for [programmatic job submission](ray-job-sdk) and [job submission using REST](ray-job-rest-api).
 
+## Retrying failed jobs in place
+
+By default, a submitted job runs once to completion or failure (see the note above). You can instead ask Ray to retry a job's driver *in place* on failure by passing an optional `retry_policy`. An in-place retry re-runs the driver using the **same** `submission_id` and the **same** Ray cluster, after an exponential backoff, instead of failing immediately. This is useful for recovering from transient failures (for example, a driver out-of-memory caused by another process, or a preempted worker) without recreating the cluster.
+
+The `retry_policy` accepts the following fields:
+
+- `max_retries`: Maximum number of retries after the initial attempt. `0` (the default) disables retries.
+- `backoff`: Exponential backoff between retries, with `initial_delay_seconds`, `max_delay_seconds`, and `multiplier` (which must be `>= 1`).
+- `retry_on`: Conditions under which to retry. One or more of `"NON_ZERO_EXIT"` (any non-zero driver exit code) and `"DRIVER_OOM"` (a driver that appears to have been OOM-killed). Defaults to `["NON_ZERO_EXIT"]`.
+- `no_retry_on_exit_codes`: Driver exit codes that should never be retried. Takes precedence over `retry_on`.
+
+For example, using the Python SDK:
+
+```python
+from ray.job_submission import JobSubmissionClient
+
+client = JobSubmissionClient("http://127.0.0.1:8265")
+submission_id = client.submit_job(
+    entrypoint="python my_script.py",
+    retry_policy={
+        "max_retries": 3,
+        "backoff": {
+            "initial_delay_seconds": 30,
+            "max_delay_seconds": 600,
+            "multiplier": 2.0,
+        },
+        "retry_on": ["NON_ZERO_EXIT", "DRIVER_OOM"],
+        "no_retry_on_exit_codes": [130],
+    },
+)
+```
+
+While retrying, the job stays in the `RUNNING` state and its `attempt_number` is incremented (observable through the status APIs). Only a terminal `SUCCEEDED` or `FAILED` state is written once retries are exhausted or the job succeeds.
+
+```{note}
+In-place retries recover from driver and worker failures on the existing cluster. A head node failure still requires the cluster to be restarted, which is outside the scope of `retry_policy`.
+```
+
 ## Running Jobs Interactively
 
 If you would like to run an application *interactively* and see the output in real time (for example, during development or debugging), you can:
