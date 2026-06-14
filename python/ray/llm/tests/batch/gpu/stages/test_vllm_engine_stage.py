@@ -16,7 +16,6 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineWrapper,
     vLLMOutputData,
 )
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @pytest.fixture
@@ -99,27 +98,26 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
             "distributed_executor_backend": "ray",
         },
     }
-    ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
     compute = stage.map_batches_kwargs.pop("compute")
     assert isinstance(compute, ActorPoolStrategy)
     assert compute.min_size == 1
     assert compute.max_size == 1
 
+    # The Ray executor path emits declarative placement group bundles that Ray
+    # Data's actor pool owns, instead of a PG-creating ray_remote_args_fn.
+    bundles = stage.map_batches_kwargs.pop("placement_group_bundles")
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
         "num_gpus": 0,
+        "placement_group_strategy": "PACK",
     }
-    scheduling_strategy = ray_remote_args_fn()["scheduling_strategy"]
-    assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
-
-    bundle_specs = scheduling_strategy.placement_group.bundle_specs
-    assert len(bundle_specs) == 4
-    for bundle_spec in bundle_specs:
-        assert bundle_spec[f"accelerator_type:{gpu_type}"] == 0.001
-        assert bundle_spec["CPU"] == 1.0
-        assert bundle_spec["GPU"] == 1.0
+    assert len(bundles) == 4
+    for bundle in bundles:
+        assert bundle[f"accelerator_type:{gpu_type}"] == 0.001
+        assert bundle["CPU"] == 1.0
+        assert bundle["GPU"] == 1.0
 
 
 @pytest.mark.asyncio
