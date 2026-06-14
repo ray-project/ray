@@ -40,7 +40,8 @@ class GcsTaskManagerTest : public ::testing::Test {
         R"(
 {
   "task_events_max_num_task_in_gcs": 1000,
-  "gcs_mark_task_failed_on_job_done_delay_ms": 100
+  "gcs_mark_task_failed_on_job_done_delay_ms": 100,
+  "gcs_mark_task_failed_on_worker_dead_delay_ms": 100
 }
   )");
   }
@@ -295,13 +296,15 @@ class GcsTaskManagerTest : public ::testing::Test {
       TaskID parent_task_id = TaskID::Nil(),
       rpc::TaskType task_type = rpc::TaskType::NORMAL_TASK,
       const ActorID actor_id = ActorID::Nil(),
-      const std::string name = "") {
+      const std::string name = "",
+      bool is_detached_actor = false) {
     rpc::TaskInfoEntry task_info;
     task_info.set_job_id(job_id.Binary());
     task_info.set_parent_task_id(parent_task_id.Binary());
     task_info.set_type(task_type);
     task_info.set_actor_id(actor_id.Binary());
     task_info.set_name(name);
+    task_info.set_is_detached_actor(is_detached_actor);
     return task_info;
   }
 
@@ -1812,6 +1815,575 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {
     EXPECT_EQ(reply.events_by_task_size(), num_limit);
     EXPECT_EQ(reply.num_status_task_events_dropped(), 3);
   }
+}
+
+// Helper to build WorkerTableData for OnWorkerDead tests.
+static std::shared_ptr<rpc::WorkerTableData> GenWorkerFailureData(
+    rpc::WorkerExitType exit_type,
+    int64_t end_time_ms = 10,
+    const std::string &exit_detail = "test worker death") {
+  std::shared_ptr<rpc::WorkerTableData> data = std::make_shared<rpc::WorkerTableData>();
+  data->set_exit_type(exit_type);
+  data->set_end_time_ms(end_time_ms);
+  data->set_exit_detail(exit_detail);
+  return data;
+}
+
+// Helper: block this thread until the OnWorkerDead delay timer fires.
+static void WaitForWorkerDeadDelay() {
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+}
+
+// Test that when a worker dies ungracefully, the entire tree of child tasks owned by that
+// worker is marked FAILED.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadMarksChildTaskTreeFailed) {
+  // Setup: owner_worker runs parent_task, which spawned child_task_1 and child_task_2.
+  // child_task_1 in turn spawned grandchild_task.
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID parent_task = GenTaskIDs(1)[0];
+  std::vector<TaskID> child_tasks = GenTaskIDs(2);
+  TaskID grandchild_task = GenTaskIDs(1)[0];
+
+  // Add parent task (running on owner_worker).
+  std::vector<rpc::TaskEvents> parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child tasks (parent_task_id = parent_task).
+  std::vector<rpc::TaskEvents> child_events =
+      GenTaskEvents(child_tasks,
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(child_events));
+
+  // Add grandchild task (parent_task_id = child_tasks[0]).
+  std::vector<rpc::TaskEvents> grandchild_events =
+      GenTaskEvents({grandchild_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 3}}),
+                    GenTaskInfo(JobID::FromInt(0), child_tasks[0]));
+  SyncAddTaskEventData(GenTaskEventsData(grandchild_events));
+
+  // Owner worker dies ungracefully.
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Parent task should NOT be marked failed (its own owner is responsible).
+  rpc::GetTaskEventsReply parent_reply = SyncGetTaskEvents({parent_task});
+  ASSERT_EQ(parent_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(parent_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+
+  // Child tasks should be marked FAILED with OWNER_DIED error.
+  for (const TaskID &child_id : child_tasks) {
+    rpc::GetTaskEventsReply child_reply = SyncGetTaskEvents({child_id});
+    ASSERT_EQ(child_reply.events_by_task_size(), 1);
+    const rpc::TaskEvents &task_event = child_reply.events_by_task(0);
+    EXPECT_TRUE(
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+    EXPECT_EQ(task_event.state_updates().error_info().error_type(),
+              rpc::ErrorType::OWNER_DIED);
+  }
+
+  // Grandchild task should also be marked FAILED (DFS walks the full tree).
+  rpc::GetTaskEventsReply grandchild_reply = SyncGetTaskEvents({grandchild_task});
+  ASSERT_EQ(grandchild_reply.events_by_task_size(), 1);
+  const rpc::TaskEvents &grandchild_event = grandchild_reply.events_by_task(0);
+  EXPECT_TRUE(
+      grandchild_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+  EXPECT_EQ(grandchild_event.state_updates().error_info().error_type(),
+            rpc::ErrorType::OWNER_DIED);
+}
+
+// Test that graceful worker death (INTENDED_USER_EXIT) does NOT mark child tasks as
+// failed.
+TEST_F(GcsTaskManagerTest, TestGracefulWorkerDeadDoesNotMarkChildTasksFailed) {
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID parent_task = GenTaskIDs(1)[0];
+  TaskID child_task = GenTaskIDs(1)[0];
+
+  // Add parent task running on owner_worker.
+  std::vector<rpc::TaskEvents> parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child task.
+  std::vector<rpc::TaskEvents> child_events =
+      GenTaskEvents({child_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(child_events));
+
+  // Owner worker dies gracefully via INTENDED_USER_EXIT.
+  task_manager->OnWorkerDead(
+      owner_worker, GenWorkerFailureData(rpc::WorkerExitType::INTENDED_USER_EXIT, 10));
+  WaitForWorkerDeadDelay();
+
+  // Child task should NOT be marked failed.
+  rpc::GetTaskEventsReply reply = SyncGetTaskEvents({child_task});
+  ASSERT_EQ(reply.events_by_task_size(), 1);
+  EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+}
+
+// Test that already-terminated child tasks are not overwritten when owner dies.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadDoesNotOverrideTerminatedChildTasks) {
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID parent_task = GenTaskIDs(1)[0];
+  TaskID child_finished = GenTaskIDs(1)[0];
+  TaskID child_failed = GenTaskIDs(1)[0];
+  TaskID child_running = GenTaskIDs(1)[0];
+
+  // Add parent task running on owner_worker.
+  std::vector<rpc::TaskEvents> parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child that already finished.
+  std::vector<rpc::TaskEvents> finished_events =
+      GenTaskEvents({child_finished},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::FINISHED, 2}}),
+                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(finished_events));
+
+  // Add child that already failed.
+  std::vector<rpc::TaskEvents> failed_events =
+      GenTaskEvents({child_failed},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::FAILED, 3}}),
+                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(failed_events));
+
+  // Add child that is still running.
+  std::vector<rpc::TaskEvents> running_events =
+      GenTaskEvents({child_running},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 4}}),
+                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(running_events));
+
+  // Owner dies ungracefully.
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Finished child should not be marked FAILED; its FINISHED timestamp is preserved.
+  rpc::GetTaskEventsReply finished_reply = SyncGetTaskEvents({child_finished});
+  ASSERT_EQ(finished_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(finished_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+  EXPECT_EQ(finished_reply.events_by_task(0).state_updates().state_ts_ns().at(
+                rpc::TaskStatus::FINISHED),
+            2);
+
+  // Already failed child should keep its original failure timestamp.
+  rpc::GetTaskEventsReply failed_reply = SyncGetTaskEvents({child_failed});
+  ASSERT_EQ(failed_reply.events_by_task_size(), 1);
+  EXPECT_EQ(failed_reply.events_by_task(0).state_updates().state_ts_ns().at(
+                rpc::TaskStatus::FAILED),
+            3);
+
+  // Running child should now be marked FAILED.
+  rpc::GetTaskEventsReply running_reply = SyncGetTaskEvents({child_running});
+  ASSERT_EQ(running_reply.events_by_task_size(), 1);
+  EXPECT_TRUE(running_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+}
+
+// Test that OnWorkerDead with no tasks for the worker doesn't crash.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadNoTasks) {
+  WorkerID unknown_worker = WorkerID::FromRandom();
+  task_manager->OnWorkerDead(unknown_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Should not crash, no events to check.
+  rpc::GetTaskEventsReply reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+}
+
+// Test that when a worker dies ungracefully but has no child tasks (leaf executor),
+// nothing extra is marked failed.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadWithNoChildTask) {
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID leaf_task = GenTaskIDs(1)[0];
+
+  // Add a leaf task running on owner_worker (no children).
+  std::vector<rpc::TaskEvents> events =
+      GenTaskEvents({leaf_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(events));
+
+  // Worker dies ungracefully.
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Leaf task itself should NOT be marked failed (no children to mark, and the task
+  // itself is the responsibility of its own owner).
+  rpc::GetTaskEventsReply reply = SyncGetTaskEvents({leaf_task});
+  ASSERT_EQ(reply.events_by_task_size(), 1);
+  EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+}
+
+// Test that a non-detached ACTOR_CREATION_TASK child is marked FAILED on owner death
+TEST_F(GcsTaskManagerTest, TestWorkerDeadMarksNonDetachedActorChild) {
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID parent_task = GenTaskIDs(1)[0];
+  TaskID actor_creation_task = GenTaskIDs(1)[0];
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), parent_task, 1);
+  TaskID grandchild_task = GenTaskIDs(1)[0];
+
+  // Parent task running on owner_worker.
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)))));
+
+  // Non-detached ACTOR_CREATION_TASK as a child of parent_task.
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({actor_creation_task},
+                                      0,
+                                      0,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                      GenTaskInfo(JobID::FromInt(0),
+                                                  parent_task,
+                                                  rpc::TaskType::ACTOR_CREATION_TASK,
+                                                  actor_id,
+                                                  /*name=*/"",
+                                                  /*is_detached_actor=*/false))));
+
+  // Grandchild task spawned by the actor (parent = actor_creation_task).
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({grandchild_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 3}}),
+                    GenTaskInfo(JobID::FromInt(0), actor_creation_task))));
+
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Non-detached actor creation task should be marked FAILED with OWNER_DIED.
+  rpc::GetTaskEventsReply creation_reply = SyncGetTaskEvents({actor_creation_task});
+  ASSERT_EQ(creation_reply.events_by_task_size(), 1);
+  EXPECT_TRUE(creation_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+  EXPECT_EQ(creation_reply.events_by_task(0).state_updates().error_info().error_type(),
+            rpc::ErrorType::OWNER_DIED);
+
+  // DFS should have recursed into the non-detached actor's subtree.
+  rpc::GetTaskEventsReply grandchild_reply = SyncGetTaskEvents({grandchild_task});
+  ASSERT_EQ(grandchild_reply.events_by_task_size(), 1);
+  EXPECT_TRUE(grandchild_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+  EXPECT_EQ(grandchild_reply.events_by_task(0).state_updates().error_info().error_type(),
+            rpc::ErrorType::OWNER_DIED);
+}
+
+// Test that a detached ACTOR_CREATION_TASK child (and its subtree) is skipped on
+// owner death.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadSkipsDetachedActorChild) {
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID parent_task = GenTaskIDs(1)[0];
+  TaskID detached_creation_task = GenTaskIDs(1)[0];
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), parent_task, 1);
+  TaskID descendant_task = GenTaskIDs(1)[0];
+
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)))));
+
+  // Detached ACTOR_CREATION_TASK as a child of parent_task.
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({detached_creation_task},
+                                      0,
+                                      0,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                      GenTaskInfo(JobID::FromInt(0),
+                                                  parent_task,
+                                                  rpc::TaskType::ACTOR_CREATION_TASK,
+                                                  actor_id,
+                                                  /*name=*/"",
+                                                  /*is_detached_actor=*/true))));
+
+  // Descendant task spawned by the detached actor.
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({descendant_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 3}}),
+                    GenTaskInfo(JobID::FromInt(0), detached_creation_task))));
+
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Detached actor creation task should NOT be marked FAILED.
+  rpc::GetTaskEventsReply creation_reply = SyncGetTaskEvents({detached_creation_task});
+  ASSERT_EQ(creation_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(creation_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+
+  // Descendant under detached actor should also not be marked (subtree skipped).
+  rpc::GetTaskEventsReply descendant_reply = SyncGetTaskEvents({descendant_task});
+  ASSERT_EQ(descendant_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(descendant_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+}
+
+// Test that a detached ACTOR_TASK child (and its subtree) is skipped on owner death.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadSkipsDetachedActorTaskChild) {
+  WorkerID owner_worker = WorkerID::FromRandom();
+  TaskID parent_task = GenTaskIDs(1)[0];
+  TaskID detached_actor_task = GenTaskIDs(1)[0];
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), parent_task, 1);
+  TaskID descendant_task = GenTaskIDs(1)[0];
+
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)))));
+
+  // Detached ACTOR_TASK as a child of parent_task.
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({detached_actor_task},
+                                      0,
+                                      0,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                      GenTaskInfo(JobID::FromInt(0),
+                                                  parent_task,
+                                                  rpc::TaskType::ACTOR_TASK,
+                                                  actor_id,
+                                                  /*name=*/"",
+                                                  /*is_detached_actor=*/true))));
+
+  // Descendant task spawned by the detached actor task.
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({descendant_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 3}}),
+                    GenTaskInfo(JobID::FromInt(0), detached_actor_task))));
+
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  rpc::GetTaskEventsReply actor_task_reply = SyncGetTaskEvents({detached_actor_task});
+  ASSERT_EQ(actor_task_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(actor_task_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+
+  rpc::GetTaskEventsReply descendant_reply = SyncGetTaskEvents({descendant_task});
+  ASSERT_EQ(descendant_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(descendant_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+}
+
+// Test that an ungraceful death of a detached actor worker marks both the root tasks
+// (with WORKER_DIED) and descendants of those roots (with OWNER_DIED).
+TEST_F(GcsTaskManagerTest, TestDetachedActorWorkerUngracefulMarksRootsAndChildren) {
+  WorkerID detached_actor_worker = WorkerID::FromRandom();
+  TaskID detached_creation_task = GenTaskIDs(1)[0];
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), detached_creation_task, 1);
+  TaskID child_task = GenTaskIDs(1)[0];
+
+  // Detached ACTOR_CREATION_TASK running on detached_actor_worker.
+  SyncAddTaskEventData(GenTaskEventsData(GenTaskEvents(
+      {detached_creation_task},
+      0,
+      0,
+      absl::nullopt,
+      GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, detached_actor_worker),
+      GenTaskInfo(JobID::FromInt(0),
+                  /*parent_task_id=*/TaskID::Nil(),
+                  rpc::TaskType::ACTOR_CREATION_TASK,
+                  actor_id,
+                  /*name=*/"",
+                  /*is_detached_actor=*/true))));
+
+  // Child task spawned by the detached actor (parent = creation task).
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({child_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                    GenTaskInfo(JobID::FromInt(0), detached_creation_task))));
+
+  task_manager->OnWorkerDead(detached_actor_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+  WaitForWorkerDeadDelay();
+
+  // Root (detached creation task) should be marked WORKER_DIED.
+  rpc::GetTaskEventsReply creation_reply = SyncGetTaskEvents({detached_creation_task});
+  ASSERT_EQ(creation_reply.events_by_task_size(), 1);
+  EXPECT_TRUE(creation_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+  EXPECT_EQ(creation_reply.events_by_task(0).state_updates().error_info().error_type(),
+            rpc::ErrorType::WORKER_DIED);
+
+  // Child of the detached actor should be marked OWNER_DIED via the DFS.
+  rpc::GetTaskEventsReply child_reply = SyncGetTaskEvents({child_task});
+  ASSERT_EQ(child_reply.events_by_task_size(), 1);
+  EXPECT_TRUE(child_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+  EXPECT_EQ(child_reply.events_by_task(0).state_updates().error_info().error_type(),
+            rpc::ErrorType::OWNER_DIED);
+}
+
+// Test that a graceful death of a detached actor worker marks the root tasks
+// (with WORKER_DIED) but does NOT mark children — buffer flush handles them.
+TEST_F(GcsTaskManagerTest, TestDetachedActorWorkerGracefulMarksRootsOnly) {
+  WorkerID detached_actor_worker = WorkerID::FromRandom();
+  TaskID detached_creation_task = GenTaskIDs(1)[0];
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), detached_creation_task, 1);
+  TaskID child_task = GenTaskIDs(1)[0];
+
+  SyncAddTaskEventData(GenTaskEventsData(GenTaskEvents(
+      {detached_creation_task},
+      0,
+      0,
+      absl::nullopt,
+      GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, detached_actor_worker),
+      GenTaskInfo(JobID::FromInt(0),
+                  /*parent_task_id=*/TaskID::Nil(),
+                  rpc::TaskType::ACTOR_CREATION_TASK,
+                  actor_id,
+                  /*name=*/"",
+                  /*is_detached_actor=*/true))));
+
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({child_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                    GenTaskInfo(JobID::FromInt(0), detached_creation_task))));
+
+  task_manager->OnWorkerDead(
+      detached_actor_worker,
+      GenWorkerFailureData(rpc::WorkerExitType::INTENDED_USER_EXIT, 10));
+  WaitForWorkerDeadDelay();
+
+  // Root should be marked WORKER_DIED.
+  rpc::GetTaskEventsReply creation_reply = SyncGetTaskEvents({detached_creation_task});
+  ASSERT_EQ(creation_reply.events_by_task_size(), 1);
+  EXPECT_TRUE(creation_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+  EXPECT_EQ(creation_reply.events_by_task(0).state_updates().error_info().error_type(),
+            rpc::ErrorType::WORKER_DIED);
+
+  // Child should NOT be marked FAILED — graceful exit means no DFS.
+  rpc::GetTaskEventsReply child_reply = SyncGetTaskEvents({child_task});
+  ASSERT_EQ(child_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(child_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+}
+
+// Test that a graceful death of a non-detached actor worker is a no-op (the actor's
+// owner is responsible for reporting status).
+TEST_F(GcsTaskManagerTest, TestNonDetachedActorWorkerGracefulIsNoOp) {
+  WorkerID actor_worker = WorkerID::FromRandom();
+  TaskID creation_task = GenTaskIDs(1)[0];
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), creation_task, 1);
+  TaskID child_task = GenTaskIDs(1)[0];
+
+  // Non-detached ACTOR_CREATION_TASK running on actor_worker.
+  SyncAddTaskEventData(GenTaskEventsData(
+      GenTaskEvents({creation_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, actor_worker),
+                    GenTaskInfo(JobID::FromInt(0),
+                                /*parent_task_id=*/TaskID::Nil(),
+                                rpc::TaskType::ACTOR_CREATION_TASK,
+                                actor_id,
+                                /*name=*/"",
+                                /*is_detached_actor=*/false))));
+
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({child_task},
+                                      0,
+                                      0,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                      GenTaskInfo(JobID::FromInt(0), creation_task))));
+
+  task_manager->OnWorkerDead(
+      actor_worker, GenWorkerFailureData(rpc::WorkerExitType::INTENDED_USER_EXIT, 10));
+  WaitForWorkerDeadDelay();
+
+  // Neither the root nor the child should be marked FAILED.
+  rpc::GetTaskEventsReply creation_reply = SyncGetTaskEvents({creation_task});
+  ASSERT_EQ(creation_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(creation_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
+
+  rpc::GetTaskEventsReply child_reply = SyncGetTaskEvents({child_task});
+  ASSERT_EQ(child_reply.events_by_task_size(), 1);
+  EXPECT_FALSE(child_reply.events_by_task(0).state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::FAILED));
 }
 
 }  // namespace gcs
