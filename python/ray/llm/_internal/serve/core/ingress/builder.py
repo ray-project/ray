@@ -22,6 +22,9 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -76,6 +79,21 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
+def is_kv_aware_routing(server: Application) -> bool:
+    """Whether ``server``'s configured request router is a KVAwareRouter.
+
+    KV-aware routing is the only policy that consumes prompt token IDs, so it
+    is what gates the extra pre-routing /tokenize call on the ingress request
+    router. Any other (or unset) router routes without token IDs.
+    """
+    request_router_config = (
+        server._bound_deployment._deployment_config.request_router_config
+    )
+    if request_router_config is None:
+        return False
+    return issubclass(request_router_config.get_request_router_class(), KVAwareRouter)
+
+
 def _build_openai_ingress_request_router(*, server: Application) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -86,14 +104,16 @@ def _build_openai_ingress_request_router(*, server: Application) -> Application:
     backend currently expects a single endpoint. TODO(eicherseiji): expose
     these as a user-overridable IngressRequestRouterConfig once HAProxy
     supports multiple router replicas.
+
+    Pre-routing tokenization is wired on only when ``server`` uses a
+    KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-    return serve.deployment(
-        LLMRouter,
-        num_replicas=1,
-        max_ongoing_requests=1000,
-    ).bind(server=server)
+    return serve.deployment(LLMRouter, num_replicas=1, max_ongoing_requests=1000,).bind(
+        server=server,
+        pre_routing_tokenization=is_kv_aware_routing(server),
+    )
 
 
 class IngressClsConfig(BaseModelExtended):
