@@ -11,11 +11,11 @@ then :meth:`drain` (emit the pairs whose metadata is now available, in per-op
 append order). The two threads communicate through one thread-safe queue
 (``_request_q``); fetched bytes come back via ``_results``.
 
-The background thread harvests every locally-ready ref each pass
-(``ray.wait(fetch_local=True, timeout=0)``) and only blocks — briefly, for a
-single ref — when nothing is ready, so a long-tail straggler never holds up
-refs that are already available, and a ref stuck on a bad node merely stays
-pending instead of wedging the thread.
+The background thread fetches the refs ``ray.wait(fetch_local=True)`` reports
+ready; a ref stuck on a bad node merely stays pending instead of wedging the
+thread. The wait may block up to its timeout when a straggler is in flight,
+but this runs off the scheduling thread, so it only delays when fetched
+metadata lands in ``_results`` — never the scheduling loop itself.
 
 Ordering: per-operator FIFOs are emitted front-first and stop at the first pair
 whose metadata isn't back yet — so each operator's ``RefBundle`` emission order
@@ -175,7 +175,10 @@ class MetadataPrefetcher:
 
         ``ray.get`` is only issued on refs that ``ray.wait(fetch_local=True)``
         reports ready, so a ref stuck on a bad/dead node never blocks the
-        thread — it just stays pending until Ray resolves or fails it.
+        thread — it just stays pending until Ray resolves or fails it. The
+        wait itself blocks up to ``_FETCH_WAIT_TIMEOUT_S`` (also serving to
+        avoid busy-spin); a straggler can delay a batch by up to that timeout,
+        but only here on the background thread, never on the scheduling loop.
         """
         pending: List["ray.ObjectRef"] = []
         while True:
@@ -204,25 +207,14 @@ class MetadataPrefetcher:
             if not pending:
                 continue
 
-            # Harvest everything ready right now and fetch it in ONE batch,
-            # without waiting for the slowest ref (a long-tail straggler must
-            # not hold up refs that are already local).
             ready, pending = ray.wait(
-                pending, num_returns=len(pending), timeout=0, fetch_local=True
-            )
-            if ready:
-                self._fetch(ready)
-                continue
-            # Nothing ready yet: park until at least one ref lands (so we don't
-            # busy-spin), then loop. We don't fetch the woken ref here — the
-            # harvest above re-runs and batches everything now ready into one
-            # ``ray.get``, instead of fetching just the single ref that woke us.
-            ray.wait(
                 pending,
-                num_returns=1,
+                num_returns=len(pending),
                 timeout=_FETCH_WAIT_TIMEOUT_S,
                 fetch_local=True,
             )
+            if ready:
+                self._fetch(ready)
 
     def _fetch(self, batch: List["ray.ObjectRef"]) -> None:
         """Fetch refs that ``ray.wait`` reported ready and publish them.
