@@ -2327,11 +2327,14 @@ cdef CRayStatus task_execution_handler(
                         "An unexpected internal error "
                         "occurred while the worker "
                         "was executing a task.")
-                    ray._private.utils.push_error_to_driver(
-                        ray._private.worker.global_worker,
-                        "worker_crash",
-                        traceback_str,
-                        job_id=None)
+                    try:
+                        ray._private.utils.push_error_to_driver(
+                            ray._private.worker.global_worker,
+                            "worker_crash",
+                            traceback_str,
+                            job_id=None)
+                    except Exception:
+                        logger.exception("Failed to push worker_crash error to driver.")
                     sys_exit.unexpected_error_traceback = traceback_str
                 raise sys_exit
         except SystemExit as e:
