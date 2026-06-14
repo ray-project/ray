@@ -390,6 +390,23 @@ message GcsNodeAddressAndLiveness {
   NodeDeathInfo death_info = 6;
 }
 
+// In-place retry policy for a submitted job. Mirrors the flattened
+// RetryPolicy dataclass in dashboard/modules/job/common.py.
+message RetryPolicy {
+  // Maximum number of retries after the initial attempt. 0 disables retries.
+  optional int32 max_retries = 1;
+  // Delay before the first retry, in seconds.
+  optional double backoff_initial_delay_seconds = 2;
+  // Maximum delay between retries, in seconds.
+  optional double backoff_max_delay_seconds = 3;
+  // Multiplier applied to the delay after each retry.
+  optional double backoff_multiplier = 4;
+  // Conditions under which to retry (e.g. "NON_ZERO_EXIT", "DRIVER_OOM").
+  repeated string retry_on = 5;
+  // Driver exit codes that should never be retried.
+  repeated int32 no_retry_on_exit_codes = 6;
+}
+
 // Please keep this in sync with the definition of JobInfo in
 // dashboard/modules/job/common.py
 message JobsAPIInfo {
@@ -426,6 +443,10 @@ message JobsAPIInfo {
   optional int32 driver_exit_code = 14;
   // The amount of reservable memory resource in bytes for the entrypoint command.
   optional uint64 entrypoint_memory = 15;
+    // The in-place retry policy for the job, if configured.
+  optional RetryPolicy retry_policy = 16;
+  // The current driver attempt number (0 = original run, 1 = first retry, ...).
+  optional int32 attempt_number = 17;
 }
 
 message WorkerTableData {

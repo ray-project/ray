@@ -474,6 +474,7 @@ class JobManager:
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         entrypoint_label_selector: Optional[Dict[str, str]] = None,
+        retry_policy: Optional[Dict[str, Any]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
@@ -511,6 +512,9 @@ class JobManager:
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
             entrypoint_label_selector: Label selector for the entrypoint command.
+            retry_policy: Optional in-place retry policy (flattened RetryPolicy
+                dict). When set, a retryable driver failure re-runs the driver
+                using the same submission_id and RayCluster instead of failing.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -547,6 +551,7 @@ class JobManager:
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
+            retry_policy=retry_policy,
         )
         new_key_added = await self._job_info_client.put_info(
             submission_id, job_info, overwrite=False
@@ -606,6 +611,7 @@ class JobManager:
                 self._gcs_address,
                 self._cluster_id_hex,
                 self._logs_dir,
+                retry_policy,
             )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,

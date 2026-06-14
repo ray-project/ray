@@ -143,6 +143,7 @@ class JobSubmissionClient(SubmissionClient):
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
         entrypoint_label_selector: Optional[Dict[str, str]] = None,
+        retry_policy: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -182,6 +183,24 @@ class JobSubmissionClient(SubmissionClient):
                 execution of the entrypoint command, separately from any tasks or
                 actors launched by it.
             entrypoint_label_selector: Label selector for the entrypoint command.
+            retry_policy: Optional policy to retry the job's driver in place using
+                the same submission_id (and the same Ray cluster) on failure,
+                instead of failing immediately. Accepts a dict with keys
+                ``max_retries`` (int), ``backoff`` (dict with
+                ``initial_delay_seconds``, ``max_delay_seconds``, ``multiplier``),
+                ``retry_on`` (list of "NON_ZERO_EXIT"/"DRIVER_OOM"), and
+                ``no_retry_on_exit_codes`` (list of ints). For example::
+
+                    {
+                        "max_retries": 3,
+                        "backoff": {
+                            "initial_delay_seconds": 30,
+                            "max_delay_seconds": 600,
+                            "multiplier": 2.0,
+                        },
+                        "retry_on": ["NON_ZERO_EXIT"],
+                        "no_retry_on_exit_codes": [130],
+                    }
 
         Returns:
             The submission ID of the submitted job.  If not specified,
@@ -216,6 +235,13 @@ class JobSubmissionClient(SubmissionClient):
                 version_error_message="`entrypoint_memory` kwarg "
                 "is not supported on the Ray cluster. Please ensure the cluster is "
                 "running Ray 2.8 or higher.",
+            )
+        if retry_policy:
+            self._check_connection_and_version(
+                min_version="3.0",
+                version_error_message="`retry_policy` kwarg "
+                "is not supported on the Ray cluster. Please ensure the cluster is "
+                "running Ray 3.0 or higher.",
             )
 
         runtime_env = copy.deepcopy(runtime_env or {})
@@ -252,6 +278,7 @@ class JobSubmissionClient(SubmissionClient):
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
             entrypoint_label_selector=entrypoint_label_selector,
+            retry_policy=retry_policy,
         )
 
         # Remove keys with value None so that new clients with new optional fields

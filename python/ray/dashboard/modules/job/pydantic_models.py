@@ -103,6 +103,15 @@ if PYDANTIC_INSTALLED:
             description="The driver process exit code after the driver executed. "
             "Return None if driver doesn't finish executing.",
         )
+        retry_policy: Optional[Dict[str, Any]] = Field(
+            None,
+            description="The in-place retry policy configured for this job, if any.",
+        )
+        attempt_number: int = Field(
+            0,
+            description="The current driver attempt number "
+            "(0 = original run, 1 = first retry, ...).",
+        )
 
 else:
     DriverInfo = None

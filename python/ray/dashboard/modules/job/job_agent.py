@@ -52,6 +52,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 entrypoint_memory=submit_request.entrypoint_memory,
                 entrypoint_resources=submit_request.entrypoint_resources,
                 entrypoint_label_selector=submit_request.entrypoint_label_selector,
+                retry_policy=submit_request.retry_policy,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
