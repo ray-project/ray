@@ -204,25 +204,25 @@ class MetadataPrefetcher:
             if not pending:
                 continue
 
-            # Harvest everything ready right now, without waiting for the
-            # slowest ref (a long-tail straggler must not hold up refs that
-            # are already local).
+            # Harvest everything ready right now and fetch it in ONE batch,
+            # without waiting for the slowest ref (a long-tail straggler must
+            # not hold up refs that are already local).
             ready, pending = ray.wait(
                 pending, num_returns=len(pending), timeout=0, fetch_local=True
             )
             if ready:
                 self._fetch(ready)
                 continue
-            # Nothing ready yet: block briefly for a SINGLE ref so we don't
-            # busy-spin, then loop to harvest whatever else has landed.
-            ready, pending = ray.wait(
+            # Nothing ready yet: park until at least one ref lands (so we don't
+            # busy-spin), then loop. We don't fetch the woken ref here — the
+            # harvest above re-runs and batches everything now ready into one
+            # ``ray.get``, instead of fetching just the single ref that woke us.
+            ray.wait(
                 pending,
                 num_returns=1,
                 timeout=_FETCH_WAIT_TIMEOUT_S,
                 fetch_local=True,
             )
-            if ready:
-                self._fetch(ready)
 
     def _fetch(self, batch: List["ray.ObjectRef"]) -> None:
         """Fetch refs that ``ray.wait`` reported ready and publish them.
