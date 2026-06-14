@@ -779,6 +779,9 @@ class ActorReplicaWrapper:
         self._record_routing_stats_ref: Optional[ObjectRef] = None
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
+        # Static per-replica metadata captured once when the replica became
+        # ready (via the user's `record_replica_metadata` hook).
+        self._replica_metadata: Dict[str, Any] = {}
         self._ingress: bool = False
 
         # Outbound deployments polling state
@@ -833,6 +836,10 @@ class ActorReplicaWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        return self._replica_metadata
 
     @property
     def unrecoverable(self) -> bool:
@@ -1451,6 +1458,7 @@ class ActorReplicaWrapper:
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
                         self._gang_context,
+                        self._replica_metadata,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -1798,6 +1806,7 @@ class DeploymentReplica:
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
+            replica_metadata=self.replica_metadata,
             port=self._actor._internal_grpc_port,
             backend_http_port=self._actor._http_port or None,
         )
@@ -1822,6 +1831,12 @@ class DeploymentReplica:
     @property
     def routing_stats(self) -> Dict[str, Any]:
         return self._routing_stats
+
+    @property
+    def replica_metadata(self) -> Dict[str, Any]:
+        # Captured by the actor wrapper from the ready handshake (and re-captured
+        # on a new replica incarnation), so no separate restore path is needed.
+        return getattr(self._actor, "replica_metadata", {})
 
     @property
     def actor_details(self) -> ReplicaDetails:

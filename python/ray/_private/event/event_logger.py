@@ -100,8 +100,12 @@ class EventLoggerAdapter:
             )
         )
 
-        # Force flush so that we won't lose events
-        self.logger.handlers[0].flush()
+        # Force flush all handlers so that we won't lose events.
+        for handler in self.logger.handlers[:]:
+            try:
+                handler.flush()
+            except Exception:
+                global_logger.exception("Failed to flush event logger handler.")
 
 
 def _build_event_file_logger(source: Event.SourceType, sink_dir: str):
