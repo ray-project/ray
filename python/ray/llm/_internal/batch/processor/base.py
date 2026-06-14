@@ -386,9 +386,6 @@ class Processor:
                 batch_size=self.config.batch_size,
                 data_column=self.DATA_COLUMN,
             )
-            # `map_batches_internal` exposes `placement_group_bundles`/`_strategy`,
-            # which stages (e.g. vLLM with a Ray executor) use to request a
-            # Ray Data-owned per-actor placement group.
             dataset = dataset.map_batches_internal(stage.fn, **kwargs)
 
         if self.postprocess is not None:
