@@ -1,9 +1,7 @@
 from typing import List, Optional, Tuple
 
-import ray.data
 from ray.data import Dataset
-from ray.data.expressions import col
-from ray.train.cross_validation.splitter import Splitter, _get_noncolliding_column
+from ray.train.cross_validation.splitter import Splitter
 from ray.util.annotations import PublicAPI
 
 
@@ -58,8 +56,9 @@ class TimeSeriesSplitter(Splitter):
     If ``time_column`` is provided the dataset is sorted by that column before
     splitting. Otherwise the dataset is assumed to already be in temporal order.
 
-    WARNING: When sorting by ``time_column``, rows with identical timestamps have no
-    guaranteed tie-breaker.
+    .. warning::
+        When sorting by ``time_column``, rows with identical timestamps have no
+        guaranteed tie-breaker.
     """
 
     def __init__(
@@ -104,10 +103,10 @@ class TimeSeriesSplitter(Splitter):
                     f"time_column '{self._time_column}' not found in dataset. "
                     f"Available columns: {sorted(schema_cols)}"
                 )
-            # Materialize after sorting to fix a stable row order before the zip.
-            # Without this, re-executing the sort on a dataset with identical
-            # timestamps could produce a different ordering, causing row indices
-            # assigned by the zip to misalign with the intended temporal order.
+            # Materialize after sorting so that all split_at_indices calls below
+            # see the same row order. Without this, re-executing the sort on a
+            # dataset with identical timestamps could produce a different ordering
+            # each time, causing splits to select the wrong rows.
             dataset = dataset.sort(self._time_column).materialize()
 
         n_samples = dataset.count()
@@ -120,27 +119,18 @@ class TimeSeriesSplitter(Splitter):
             self._max_train_size,
         )
 
-        # Use a collision-free column name in case the dataset already has a "row_index" column.
-        existing_cols = set(dataset.schema().names)
-        row_index_col = _get_noncolliding_column(existing_cols, "row_index")
-
-        # We intentionally skip materializing here. Materializing after the
-        # zip would avoid re-running it during the 2*n_splits filter passes
-        # performed by _build_folds_from_column, but the zip is cheap enough
-        # that recomputation is preferable to the extra storage cost.
-        dataset = dataset.zip(
-            ray.data.range(n_samples).rename_columns({"id": row_index_col})
-        )
-
-        idx = col(row_index_col)
         folds = []
         for train_start, train_end, val_start, val_end in fold_boundaries:
-            train = dataset.filter(
-                expr=(idx >= train_start) & (idx < train_end)
-            ).drop_columns([row_index_col])
-            val = dataset.filter(
-                expr=(idx >= val_start) & (idx < val_end)
-            ).drop_columns([row_index_col])
+            if train_start > 0:
+                train = dataset.split_at_indices([train_start, train_end])[1]
+            else:
+                train = dataset.split_at_indices([train_end])[0]
+
+            if val_end < n_samples:
+                val = dataset.split_at_indices([val_start, val_end])[1]
+            else:
+                val = dataset.split_at_indices([val_start])[1]
+
             folds.append((train, val))
 
         return folds

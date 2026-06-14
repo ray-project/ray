@@ -52,6 +52,21 @@ class _HashBasedKFoldSplitter(Splitter, ABC):
     Implements a stateless fold assignment strategy using hashing.
 
     Subclasses define the input columns used to compute the hash.
+
+    Notes:
+        This base class implements a stateless fold assignment using a hash
+        of a key frame (provided by subclasses via ``_get_key_frame``). By
+        default, the splitter keeps the pipeline streaming (it does not
+        materialize the dataset after adding the fold column) to avoid
+        unbounded memory/disk pressure on large datasets. Callers that prefer
+        to avoid recomputation and can afford materialization should
+        materialize externally before calling ``split()``.
+
+        This splitter may produce empty folds if the dataset is small or if
+        the key frame has low cardinality. This condition is not validated at
+        runtime because detecting it would require executing and materializing
+        the dataset pipeline up to the point of fold assignment, which scans
+        the full dataset.
     """
 
     def __init__(self, n_splits: int, seed: Optional[int] = None):
@@ -61,16 +76,6 @@ class _HashBasedKFoldSplitter(Splitter, ABC):
             n_splits: Number of folds to create.
             seed: Optional seed incorporated into the hash for reproducible
                 but varying fold assignments across runs.
-
-        Notes:
-            This base class implements a stateless fold assignment using a
-            hash of a key frame (provided by subclasses via
-            ``_get_key_frame``). By default the splitter keeps the pipeline
-            streaming (it does not materialize the dataset after adding the
-            fold column) to avoid unbounded memory/disk pressure on large
-            datasets. Callers that prefer to avoid recomputation and can
-            afford materialization should materialize externally before
-            calling ``split()``.
         """
 
         super().__init__(n_splits)

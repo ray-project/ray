@@ -44,12 +44,33 @@ def test_time_series_raises_when_time_column_missing():
         ray.shutdown()
 
 
+def test_time_series_non_uniform_partitions():
+    ray.init(num_cpus=2)
+    try:
+        # 5 blocks of unequal sizes [1, 2, 3, 4, 5]; no time_column so the
+        # layout is preserved. Verifies splitting is layout-agnostic.
+        df = _make_df(15)
+        ds = ray.data.from_pandas(
+            [df.iloc[:1], df.iloc[1:3], df.iloc[3:6], df.iloc[6:10], df.iloc[10:]]
+        )
+
+        splitter = TimeSeriesSplitter(n_splits=3)
+        folds = splitter.split(ds)
+        assert len(folds) == 3
+
+        for train_ds, val_ds in folds:
+            tdf = train_ds.to_pandas()
+            vdf = val_ds.to_pandas()
+            assert tdf["ts"].max() < vdf["ts"].min()
+    finally:
+        ray.shutdown()
+
+
 def test_time_series_respects_max_train_size():
     ray.init(num_cpus=2)
     try:
         df = _make_df(10)
         ds = ray.data.from_pandas(df)
-        # Use n_splits=2 => default val_size = 10 // 3 = 3
         splitter = TimeSeriesSplitter(n_splits=2, max_train_size=2)
         folds = splitter.split(ds)
         assert len(folds) == 2

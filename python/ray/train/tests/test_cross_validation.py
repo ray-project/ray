@@ -19,10 +19,10 @@ def test_compute_fold_boundaries_basic():
     folds = _compute_fold_boundaries(
         n_samples=20, n_splits=3, val_size=None, gap=0, max_train_size=None
     )
-    # default val_size = n_samples // (n_splits + 1) -> 20 // 4 = 5
     assert len(folds) == 3
     # first fold boundaries
-    t0, t1, v0, v1 = folds[0]
+    _, t1, v0, v1 = folds[0]
+    # default val_size = n_samples // (n_splits + 1) -> 20 // 4 = 5
     assert v1 - v0 == 5
     assert t1 <= v0
 

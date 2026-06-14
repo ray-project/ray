@@ -2,6 +2,7 @@ import logging
 from typing import List, Tuple
 
 import pandas as pd
+import pyarrow as pa
 
 from ray.data import Dataset
 from ray.train.cross_validation.kfold._hashbased import (
@@ -22,11 +23,12 @@ class GroupedKFoldSplitter(_HashBasedKFoldSplitter):
     is not split across training and validation sets. The hash is combined with
     an optional seed to allow for deterministic but different fold assignments across runs.
 
-    WARNING: using floating-point columns as grouping keys can lead to non-deterministic
-    fold assignments across platforms due to differences in float formatting and precision.
-    To ensure deterministic splits, it is recommended to convert float columns to stable
-    keys (e.g. by rounding, casting to integers, or normalizing/formatting as strings)
-    before using them as grouping columns.
+    .. warning::
+        Using floating-point columns as grouping keys can lead to non-deterministic
+        fold assignments across platforms due to differences in float formatting and precision.
+        To ensure deterministic splits, it is recommended to convert float columns to stable
+        keys (e.g. by rounding, casting to integers, or normalizing/formatting as strings)
+        before using them as grouping columns.
     """
 
     def __init__(
@@ -55,27 +57,35 @@ class GroupedKFoldSplitter(_HashBasedKFoldSplitter):
         self._group_columns = group_columns
 
     def _get_key_frame(self, batch: pd.DataFrame) -> pd.DataFrame:
-        float_cols = [c for c in self._group_columns if batch[c].dtype.kind == "f"]
+        return batch[self._group_columns]
+
+    def split(self, dataset: Dataset) -> List[Tuple[Dataset, Dataset]]:
+        schema = dataset.schema()
+
+        # Validate that the configured group columns exist in the dataset schema
+        schema_cols = set(schema.names)
+        missing = set(self._group_columns) - schema_cols
+        if missing:
+            raise ValueError(
+                f"group_columns not found in dataset: {missing}. "
+                f"Available columns: {sorted(schema_cols)}"
+            )
+
+        # Warn if any of the group columns are floating-point types
+        float_cols = [
+            c
+            for c in self._group_columns
+            if pa.types.is_floating(schema.types[schema.names.index(c)])
+        ]
         if float_cols:
             logger.warning(
-                "GroupedKFoldSplitter: group_columns %s contain floating-point types. "
+                "GroupedKFoldSplitter: group_columns %s are floating-point columns (detected via dataset schema). "
                 "Using floats as grouping keys can produce non-deterministic fold "
                 "assignments across platforms due to "
                 "differences in float formatting and precision. To ensure "
                 "deterministic splits, convert these columns to stable keys (e.g. "
                 "round the floats, cast to integers, or normalize/format strings) ",
                 float_cols,
-            )
-        return batch[self._group_columns]
-
-    def split(self, dataset: Dataset) -> List[Tuple[Dataset, Dataset]]:
-        # Validate that the configured group columns exist in the dataset schema
-        schema_cols = set(dataset.schema().names)
-        missing = set(self._group_columns) - schema_cols
-        if missing:
-            raise ValueError(
-                f"group_columns not found in dataset: {missing}. "
-                f"Available columns: {sorted(schema_cols)}"
             )
 
         return super().split(dataset)

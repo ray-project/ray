@@ -72,6 +72,12 @@ class StratifiedKFoldSplitter(Splitter):
     Unlike :class:`KFoldSplitter` and :class:`GroupedKFoldSplitter`, this
     splitter **materializes** the fold-assignment result once before filtering.
     This avoids recomputing the groupby and rank assignment 2 × n_splits times.
+
+    .. warning::
+        This splitter uses ``groupby().map_groups()`` internally, which loads all rows
+        of each class/stratum into memory on a single worker. If any class in your
+        dataset is extremely large (e.g., millions of rows), this can lead to
+        Out-Of-Memory (OOM) errors.
     """
 
     def __init__(

@@ -420,6 +420,30 @@ py_test(
 )
 
 py_test(
+    name = "test_cross_validate_functional",
+    size = "small",
+    srcs = ["tests/test_cross_validate_functional.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "test_cross_validate_smoke",
+    size = "small",
+    srcs = ["tests/test_cross_validate_smoke.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "test_cross_validation",
+    size = "small",
+    srcs = ["tests/test_cross_validation.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
@@ -548,6 +572,14 @@ py_test(
 )
 
 py_test(
+    name = "test_grouped_kfold_splitter",
+    size = "small",
+    srcs = ["tests/test_grouped_kfold_splitter.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
@@ -570,6 +602,14 @@ py_test(
         "manual",
         "team:ml",
     ],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "test_kfold_splitter",
+    size = "small",
+    srcs = ["tests/test_kfold_splitter.py"],
+    tags = ["team:ml"],
     deps = [":train_lib"],
 )
 
@@ -743,6 +783,14 @@ py_test(
 )
 
 py_test(
+    name = "test_stratified_kfold_splitter",
+    size = "small",
+    srcs = ["tests/test_stratified_kfold_splitter.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "test_state",
     size = "medium",
     srcs = ["tests/test_state.py"],
@@ -800,6 +848,14 @@ py_test(
         "exclusive",
         "team:ml",
     ],
+    deps = [":train_lib"],
+)
+
+py_test(
+    name = "test_time_series_splitter",
+    size = "small",
+    srcs = ["tests/test_time_series_splitter.py"],
+    tags = ["team:ml"],
     deps = [":train_lib"],
 )
 

@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 import ray
 from ray.train.cross_validation import cross_validate
@@ -29,13 +30,6 @@ class DummyTrainer:
                 }
             },
         )()
-
-
-def _run_and_assert_cv(splitter):
-    ds = ray.data.from_pandas(pd.DataFrame({"id": list(range(12))}))
-    result = cross_validate(DummyTrainer, dataset=ds, splitter=splitter)
-    assert isinstance(result, CVResult)
-    assert len(result.fold_results) == splitter._n_splits
 
 
 def test_grouped_kfold_smoke():
@@ -94,13 +88,10 @@ def test_cross_validate_raises_on_datasets_kwarg():
         df = pd.DataFrame({"id": list(range(4))})
         ds = ray.data.from_pandas(df)
         splitter = GroupedKFoldSplitter(n_splits=2, group_columns=["id"], seed=1)
-        try:
+        with pytest.raises(ValueError):
             cross_validate(
                 DummyTrainer, dataset=ds, splitter=splitter, datasets={"a": ds}
             )
-            raise AssertionError("Expected ValueError when passing `datasets` kwarg")
-        except ValueError:
-            pass
     finally:
         ray.shutdown()
 
@@ -119,10 +110,7 @@ def test_cross_validate_raises_on_empty_splitter():
         df = pd.DataFrame({"id": list(range(4))})
         ds = ray.data.from_pandas(df)
         splitter = EmptySplitter()
-        try:
+        with pytest.raises(ValueError):
             cross_validate(DummyTrainer, dataset=ds, splitter=splitter)
-            raise AssertionError("Expected ValueError when splitter produces no folds")
-        except ValueError:
-            pass
     finally:
         ray.shutdown()

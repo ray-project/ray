@@ -2,6 +2,8 @@ import statistics
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple, Type
 
+import numpy as np
+
 from ray.data import Dataset
 from ray.train import Result
 from ray.train.cross_validation.splitter import Splitter
@@ -117,7 +119,9 @@ def _aggregate_metrics(
         if result.metrics is None:
             continue
         for key, value in result.metrics.items():
-            if not isinstance(value, (int, float)):
+            if isinstance(value, bool) or not isinstance(
+                value, (int, float, np.integer, np.floating)
+            ):
                 continue
             all_metrics.setdefault(key, []).append(float(value))
 

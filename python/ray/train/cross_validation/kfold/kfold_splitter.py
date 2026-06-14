@@ -12,10 +12,6 @@ from ray.util.annotations import PublicAPI
 class KFoldSplitter(_HashBasedKFoldSplitter):
     """KFold splitter that assigns folds based on a hash of the full row content.
 
-    WARNING: the default implementation intentionally excludes floating-point
-    columns from the key frame to avoid non-deterministic hashing caused by
-    platform/representation differences when converting floats to strings.
-
     If your intended key includes floating-point columns (and you accept the
     potential instability), subclass and override ``_get_key_frame`` to return
     the exact set of columns to include in the hash (for example, after
@@ -28,12 +24,16 @@ class KFoldSplitter(_HashBasedKFoldSplitter):
     - Precompute a lightweight ``fold_id`` column outside of Ray and use
       filters to split by that column.
 
-    - Use ``GroupedKFoldSplitter`` with a small key column that uniquely
+    - Use :class:`GroupedKFoldSplitter` with a small key column that uniquely
       identifies grouping keys.
 
-    - Subclass ``KFoldSplitter`` and override ``_get_key_frame`` to return
+    - Subclass :class:`KFoldSplitter` and override ``_get_key_frame`` to return
       a smaller set of ``key_columns`` to hash.
 
+    .. warning::
+        The default implementation intentionally excludes floating-point
+        columns from the key frame to avoid non-deterministic hashing caused by
+        platform/representation differences when converting floats to strings.
     """
 
     def __init__(self, n_splits: int, seed: Optional[int] = None) -> None:
