@@ -4680,10 +4680,15 @@ class Algorithm(Checkpointable, Trainable):
                     f"np.ndarray."
                 )
 
-        for pp_type in [ObsPreprocessorConnector, MeanStdObservationFilterAgentConnector]:
+        for pp_type in [
+            ObsPreprocessorConnector,
+            MeanStdObservationFilterAgentConnector,
+        ]:
             pp = policy.agent_connectors[pp_type]
             if pp:
-                assert len(pp) == 1, f"Only one preprocessor of type {pp_type} is allowed per policy!"
+                assert (
+                    len(pp) == 1
+                ), f"Only one preprocessor of type {pp_type} is allowed per policy!"
                 pp = pp[0]
 
                 if not hasattr(pp, "is_identity") or not pp.is_identity():
