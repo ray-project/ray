@@ -5,6 +5,7 @@ import pytest
 from opentelemetry.metrics import NoOpHistogram
 
 from ray._private.metrics_agent import Gauge, Record
+from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
@@ -300,6 +301,66 @@ def test_record_histogram_aggregated_batch(
 
     # No warnings should be logged for registered histogram
     mock_logger_warning.assert_not_called()
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+@pytest.mark.parametrize(
+    "register_metric,metric_type",
+    [
+        (
+            lambda recorder: recorder.register_gauge_metric(
+                name="test_metric", description="Test Gauge"
+            ),
+            MetricType.GAUGE,
+        ),
+        (
+            lambda recorder: recorder.register_counter_metric(
+                name="test_metric", description="Test Counter"
+            ),
+            MetricType.COUNTER,
+        ),
+        (
+            lambda recorder: recorder.register_sum_metric(
+                name="test_metric", description="Test Sum"
+            ),
+            MetricType.SUM,
+        ),
+    ],
+)
+def test_observable_callback_normalizes_mixed_attribute_sets(
+    mock_get_meter, mock_set_meter_provider, register_metric, metric_type
+):
+    mock_get_meter.return_value = MagicMock()
+    recorder = OpenTelemetryMetricRecorder()
+    register_metric(recorder)
+
+    recorder.set_metric_value(
+        name="test_metric",
+        tags={"Component": "worker_a", "SessionName": "s1", "dataset": "train"},
+        value=1.0,
+    )
+    recorder.set_metric_value(
+        name="test_metric",
+        tags={"Component": "worker_b", "dataset": "test"},
+        value=2.0,
+    )
+
+    callback = recorder._create_observable_callback("test_metric", metric_type)
+    observations = callback(options=None)
+
+    assert len(observations) == 2
+    expected_keys = {"Component", "SessionName", "dataset"}
+    assert [set(obs.attributes) for obs in observations] == [
+        expected_keys,
+        expected_keys,
+    ]
+
+    obs_b = next(o for o in observations if o.attributes["Component"] == "worker_b")
+    assert obs_b.attributes["SessionName"] == ""
+
+    obs_a = next(o for o in observations if o.attributes["Component"] == "worker_a")
+    assert obs_a.attributes["SessionName"] == "s1"
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.MeterProvider")

@@ -1,3 +1,4 @@
+(routing-policies-guide)=
 # Request routing
 
 Ray Serve LLM provides customizable request routing to optimize request distribution across replicas for different workload patterns. Request routing operates at the **replica selection level**, distinct from ingress-level model routing.
@@ -19,6 +20,10 @@ This document focuses on **request routing** (replica selection).
 ```
 HTTP Request → Ingress (model routing) → Request Router (replica selection) → Server Replica
 ```
+
+:::{note}
+Direct streaming uses these same routing policies and the same `request_router_config`, so nothing in this document changes. The only difference is where replica selection runs: at the HTTP ingress instead of inside `OpenAiIngress`. See the {ref}`direct streaming guide <direct-streaming-guide>` for details and caveats.
+:::
 
 ## Request routing architecture
 

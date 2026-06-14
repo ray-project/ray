@@ -114,21 +114,27 @@ class ClientBuilder:
         self._deprecation_warn_enabled = True
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
-        """
-        Set an environment for the session.
+        """Set an environment for the session.
+
         Args:
-            env (Dict[st, Any]): A runtime environment to use for this
+            env: A runtime environment to use for this
                 connection. See :ref:`runtime-environments` for what values are
                 accepted in this dict.
+
+        Returns:
+            This ``ClientBuilder`` instance for chaining.
         """
         self._job_config.set_runtime_env(env)
         return self
 
     def namespace(self, namespace: str) -> "ClientBuilder":
-        """
-        Sets the namespace for the session.
+        """Sets the namespace for the session.
+
         Args:
             namespace: Namespace to use.
+
+        Returns:
+            This ``ClientBuilder`` instance for chaining.
         """
         self._job_config.set_ray_namespace(namespace)
         return self

@@ -39,6 +39,13 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
     "RAY_DATA_DEBUG_RESOURCE_MANAGER", None
 )
 
+# Only warn that the cluster can't run any task once the operator has been starved of
+# its minimum resources for this long. This avoids spurious warnings while the cluster
+# is still scaling up or waiting for a response from the autoscaling coordinator.
+#
+# I arbitrarily chose the default delay.
+STARVATION_WARNING_DELAY_S = env_float("RAY_DATA_STARVATION_WARNING_DELAY_S", 60)
+
 
 # Following list is a list of *blocking* materializing operators, that prevent
 # operators downstream from them from starting execution until these operators
@@ -173,34 +180,9 @@ class ResourceManager:
                 return self._external_consumer_bytes
             return 0
 
-        # Operator's internal Object Store usage
-        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
-
-        # Operator's outputs' Object Store usage
-        op_outputs_bytes = (
-            # Internal output queue
-            op.metrics.obj_store_mem_internal_outqueue
-            +
-            # External output queue
-            state.output_queue_bytes()
-        )
-
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
-        #
-        # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(op)
-                )
-                + downstream_op.metrics.obj_store_mem_pending_task_inputs
-            )
-            for downstream_op in op.output_dependencies
-        )
-
-        self._mem_op_internal[op] = mem_op_internal
-        self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
+        usage = op.estimate_object_store_usage(state)
+        self._mem_op_internal[op] = usage.internal
+        self._mem_op_outputs[op] = usage.outputs
 
         # Attribute iterator / streaming_split prefetch to the executor sink only.
         if op is self._output_operator:
@@ -455,9 +437,6 @@ class ResourceManager:
             and not op.has_execution_finished()
         )
 
-    def get_eligible_ops(self) -> List[PhysicalOperator]:
-        return [op for op in self._topology if self.is_op_eligible(op)]
-
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
@@ -705,9 +684,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # enough to run one task of each op.
         # See `test_no_deadlock_on_small_cluster_resources` as an example.
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
+        # `time.monotonic()` timestamp at which each operator most recently became
+        # starved of its minimum resources, or None if it currently has them.
+        self._op_starved_since: Dict[PhysicalOperator, Optional[float]] = {}
 
     def _update_reservation(self, limits: ExecutionResources):
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self._get_eligible_ops()
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
@@ -746,7 +728,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 remaining, ignore_object_store_memory=True
             ):
                 self._reserved_min_resources[op] = True
+                self._op_starved_since[op] = None
             else:
+                self._reserved_min_resources[op] = False
+                if self._op_starved_since.get(op) is None:
+                    self._op_starved_since[op] = time.monotonic()
+
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
                 # store memory, but not the CPU and GPU resources.
@@ -754,19 +741,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # NOTE: we prioritize upstream operators for minimum resource reservation.
                 # ops. It's fine that downstream ops don't get the minimum reservation,
                 # because they can wait for upstream ops to finish and release resources.
-                self._reserved_min_resources[op] = False
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
-                # Add `id(self)` to the log_once key so that it will be logged once
-                # per execution.
-                if index == 0 and log_once(f"low_resource_warning_{id(self)}"):
-                    # Log a warning if even the first operator cannot reserve
-                    # the minimum resources.
-                    logger.warning(
-                        f"Cluster resources are not enough to run any task from {op}."
-                        " The job may hang forever unless the cluster scales up."
-                    )
+
+            # Log a warning if even the first operator cannot reserve the minimum
+            # resources.
+            if index == 0:
+                self._warn_if_op_starved_too_long(op)
 
             self._op_reserved[op] = reserved_for_tasks
             self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
@@ -776,6 +758,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             remaining = remaining.max(ExecutionResources.zero())
 
         self._total_shared = remaining
+
+    def _warn_if_op_starved_too_long(self, op: PhysicalOperator) -> None:
+        # The operator isn't starved. Return early.
+        if self._op_starved_since.get(op) is None:
+            return
+
+        op_starved_duration = time.monotonic() - self._op_starved_since[op]
+        if (
+            op_starved_duration >= STARVATION_WARNING_DELAY_S
+            # Add `id(self)` to the log_once key so that it will be logged once per
+            # execution.
+            and log_once(f"starvation_warning_{id(self)}")
+        ):
+            logger.warning(
+                f"Cluster resources are not enough to run any task from {op}."
+                " The job may hang forever unless the cluster scales up."
+            )
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Return whether the given operator can submit a new task based on budget."""
@@ -842,7 +841,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._update_reservation(limits)
 
         self._op_budgets.clear()
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 

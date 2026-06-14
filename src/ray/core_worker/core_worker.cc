@@ -41,6 +41,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
@@ -1834,7 +1835,8 @@ void CoreWorker::BuildCommonTaskSpec(
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     const LabelSelector &label_selector,
-    const std::vector<FallbackOption> &fallback_strategy) {
+    const std::vector<FallbackOption> &fallback_strategy,
+    int64_t num_objects_per_yield) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1884,7 +1886,8 @@ void CoreWorker::BuildCommonTaskSpec(
       enable_task_events,
       labels,
       label_selector,
-      fallback_strategy);
+      fallback_strategy,
+      num_objects_per_yield);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1965,7 +1968,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
                       task_options.label_selector,
-                      task_options.fallback_strategy);
+                      task_options.fallback_strategy,
+                      task_options.num_objects_per_yield);
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
@@ -2403,7 +2407,8 @@ Status CoreWorker::SubmitActorTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       /*labels=*/task_options.labels,
                       /*label_selector=*/{},
-                      /*fallback_strategy=*/{});
+                      /*fallback_strategy=*/{},
+                      task_options.num_objects_per_yield);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2880,6 +2885,7 @@ Status CoreWorker::ExecuteTask(
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
+      /*num_objects_per_yield=*/task_spec.NumObjectsPerYield(),
       /*tensor_transport=*/task_spec.TensorTransport());
 
   // Get the reference counts for any IDs that we borrowed during this task,
@@ -3112,7 +3118,8 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
 }
 
 Status CoreWorker::ReportGeneratorItemReturns(
-    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+        &dynamic_return_objects,
     const ObjectID &generator_id,
     const rpc::Address &owner_address,
     int64_t item_index,
@@ -3125,26 +3132,33 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(owner_address);
 
-  // This means it is the last report when the task has finished executing.
-  if (!dynamic_return_object.first.IsNil()) {
+  std::vector<ObjectID> return_ids;
+  return_ids.reserve(dynamic_return_objects.size());
+  for (const auto &dynamic_return_object : dynamic_return_objects) {
+    if (dynamic_return_object.first.IsNil()) {
+      continue;
+    }
     SerializeReturnObject(dynamic_return_object.first,
                           dynamic_return_object.second,
-                          request.mutable_returned_object());
-    std::vector<ObjectID> deleted;
+                          request.add_returned_objects());
+    return_ids.push_back(dynamic_return_object.first);
+  }
+  if (!return_ids.empty()) {
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
-    // we borrow the object. When the object value is allocatd, the
+    // we borrow the object. When the object value is allocated, the
     // memory store is updated. We should clear borrowers and memory store
     // here.
+    std::vector<ObjectID> deleted;
     ReferenceCounterInterface::ReferenceTableProto borrowed_refs;
-    reference_counter_->PopAndClearLocalBorrowers(
-        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    reference_counter_->PopAndClearLocalBorrowers(return_ids, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
   }
-  const auto return_id = dynamic_return_object.first;
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << return_id;
 
-  waiter->IncrementObjectGenerated();
+  const auto return_id = return_ids.empty() ? ObjectID::Nil() : return_ids.front();
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << ", id: " << return_id << ", count: " << return_ids.size();
+
+  waiter->IncrementObjectGenerated(return_ids.size());
 
   client->ReportGeneratorItemReturns(
       std::move(request),
@@ -4547,6 +4561,35 @@ void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));
+}
+
+std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
+    const NodeID &node_id) {
+  if (node_id == GetCurrentNodeId()) {
+    return local_raylet_rpc_client_;
+  }
+  auto node_info =
+      gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
+  if (!node_info) {
+    return nullptr;
+  }
+  auto address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node_info->node_manager_address(), node_info->node_manager_port());
+  return raylet_client_pool_->GetOrConnectByAddress(address);
+}
+
+void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
+                                        const absl::flat_hash_set<NodeID> &locations) {
+  rpc::FreeLocalObjectsRequest request;
+  request.add_object_ids(object_id.Binary());
+
+  for (const auto &node_id : locations) {
+    auto client = GetRayletRpcClient(node_id);
+    if (client == nullptr) {
+      continue;
+    }
+    client->FreeLocalObjects(request);
+  }
 }
 
 }  // namespace ray::core

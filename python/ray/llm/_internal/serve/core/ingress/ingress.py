@@ -453,7 +453,11 @@ class OpenAiIngress(DeploymentProtocol):
     async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
 
-        :param model: The model ID (e.g. "amazon/LightGPT")
+        Args:
+            model: The model ID (e.g. "amazon/LightGPT").
+
+        Returns:
+            The ``ModelCard`` for ``model``.
         """
         model = replace_prefix(model)
         model_data = await self.model(model)
