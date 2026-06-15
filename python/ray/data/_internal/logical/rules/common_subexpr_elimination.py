@@ -116,7 +116,7 @@ def _find_candidates(exprs: List[Expr]) -> List[_Candidate]:
     return candidates
 
 
-def _assign_temp_names(project: Project, candidates: List[_Candidate]) -> None:
+def _assign_temp_names(candidates: List[_Candidate]) -> None:
     project_token = uuid.uuid4().hex[:6]
 
     for i, candidate in enumerate(candidates):
@@ -291,7 +291,7 @@ class CommonSubExprElimination(Rule):
         if not candidates:
             return op
 
-        _assign_temp_names(op, candidates)
+        _assign_temp_names(candidates)
         common_exprs = _build_cse_materialization_plan(candidates)
         rewritten_exprs = _rewrite_visible_exprs(op.exprs, candidates)
 
