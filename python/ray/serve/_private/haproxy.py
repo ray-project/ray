@@ -1488,6 +1488,7 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
+        self._received_target_groups_broadcast = False
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1659,8 +1660,10 @@ class HAProxyManager(ProxyActorInterface):
             if self._is_draining():
                 return
 
-            # We have not received an update from the controller yet.
-            if len(self._target_groups) == 0:
+            # We have not received an update from the controller yet. We always
+            # get at least one broadcast even if target groups is empty (e.g.
+            # when the user sets route_prefix=None).
+            if not self._received_target_groups_broadcast:
                 await asyncio.sleep(0.2)
                 continue
 
@@ -1885,6 +1888,7 @@ class HAProxyManager(ProxyActorInterface):
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups
+        self._received_target_groups_broadcast = True
         self._schedule_haproxy_update()
 
     def update_fallback_targets(
