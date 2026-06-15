@@ -29,12 +29,12 @@ The Python file, called `model.py`, uses the `Translator` class to translate Eng
   a translated string.
 
 Copy and paste the script and run it locally. It translates `"Hello world!"`
-into French.
+into `"Bonjour Monde!"`.
 
 ```console
 $ python model.py
 
-Bonjour monde!
+Bonjour Monde!
 ```
 
 Converting this model into a Ray Serve application with FastAPI requires three changes:

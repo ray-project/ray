@@ -19,9 +19,11 @@ class Translator:
             f"translate English to German: {text}", return_tensors="pt"
         ).input_ids
         output_ids = self.model.generate(
-            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+            input_ids, num_beams=4, early_stopping=True, max_length=300
         )
-        return self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        return self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
     async def __call__(self, req: starlette.requests.Request):
         req = await req.json()

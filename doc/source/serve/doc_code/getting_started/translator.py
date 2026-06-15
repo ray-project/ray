@@ -24,11 +24,13 @@ class Translator:
             f"translate English to French: {text}", return_tensors="pt"
         ).input_ids
         output_ids = self.model.generate(
-            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+            input_ids, num_beams=4, early_stopping=True, max_length=300
         )
 
         # Post-process output to return only the translation text
-        translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        translation = self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
         return translation
 
@@ -38,7 +40,7 @@ class Summarizer:
     def __init__(self, translator: DeploymentHandle):
         self.translator = translator
 
-        # Load model
+        # Load model.
         self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
         self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
@@ -49,12 +51,16 @@ class Summarizer:
             input_ids,
             num_beams=4,
             early_stopping=True,
-            min_new_tokens=5,
-            max_new_tokens=20,
+            length_penalty=2.0,
+            no_repeat_ngram_size=3,
+            min_length=5,
+            max_length=15,
         )
 
         # Post-process output to return only the summary text
-        summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        summary = self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
         return summary
 
@@ -85,11 +91,7 @@ french_text = response.text
 print(french_text)
 # __end_client__
 
-expected_french = (
-    "C’était le meilleur des temps, c’était le pire des temps, "
-    "c’était l’ère de la sagesse"
-)
-assert french_text == expected_french
+assert french_text == "c'était le meilleur des temps, c'était le pire des temps ."
 
 serve.shutdown()
 ray.shutdown()

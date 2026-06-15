@@ -33,9 +33,6 @@ example_input = (
 
 
 def gradio_summarizer_builder():
-    # t5-small is a text-to-text model that summarizes when the input is
-    # prefixed with the task. (transformers 5 removed the "summarization"
-    # pipeline task, so we call the model directly.)
     tokenizer = AutoTokenizer.from_pretrained("t5-small")
     summarizer_model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
@@ -45,10 +42,14 @@ def gradio_summarizer_builder():
             input_ids,
             num_beams=4,
             early_stopping=True,
-            min_new_tokens=5,
-            max_new_tokens=40,
+            length_penalty=2.0,
+            no_repeat_ngram_size=3,
+            min_length=30,
+            max_length=200,
         )
-        return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        return tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
     return gr.Interface(
         fn=model,

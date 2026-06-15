@@ -10,19 +10,12 @@ from ray.serve.handle import DeploymentHandle
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-# Map a language to the task prefix that t5-small expects.
-LANGUAGE_TO_PREFIX = {
-    "french": "translate English to French: ",
-    "german": "translate English to German: ",
-    "romanian": "translate English to Romanian: ",
-}
-
 
 @serve.deployment
 class Translator:
     def __init__(self):
         self.language = "french"
-        self.prefix = LANGUAGE_TO_PREFIX[self.language]
+        self.prefix = "translate English to French: "
         self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
         self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
@@ -31,19 +24,26 @@ class Translator:
             f"{self.prefix}{text}", return_tensors="pt"
         ).input_ids
         output_ids = self.model.generate(
-            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+            input_ids, num_beams=4, early_stopping=True, max_length=300
         )
 
-        translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        translation = self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
         return translation
 
     def reconfigure(self, config: Dict):
         self.language = config.get("language", "french")
 
-        self.prefix = LANGUAGE_TO_PREFIX.get(self.language.lower())
-        if self.prefix is None:
-            self.prefix = LANGUAGE_TO_PREFIX["french"]
+        if self.language.lower() == "french":
+            self.prefix = "translate English to French: "
+        elif self.language.lower() == "german":
+            self.prefix = "translate English to German: "
+        elif self.language.lower() == "romanian":
+            self.prefix = "translate English to Romanian: "
+        else:
+            pass
 
 
 @serve.deployment
@@ -54,7 +54,7 @@ class Summarizer:
         self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
         self.translator = translator
         self.min_length = 5
-        self.max_length = 20
+        self.max_length = 15
 
     def summarize(self, text: str) -> str:
         # Run inference
@@ -63,12 +63,16 @@ class Summarizer:
             input_ids,
             num_beams=4,
             early_stopping=True,
-            min_new_tokens=self.min_length,
-            max_new_tokens=self.max_length,
+            length_penalty=2.0,
+            no_repeat_ngram_size=3,
+            min_length=self.min_length,
+            max_length=self.max_length,
         )
 
         # Post-process output to return only the summary text
-        summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        summary = self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
         return summary
 
@@ -80,7 +84,7 @@ class Summarizer:
 
     def reconfigure(self, config: Dict):
         self.min_length = config.get("min_length", 5)
-        self.max_length = config.get("max_length", 20)
+        self.max_length = config.get("max_length", 15)
 
 
 app = Summarizer.bind(Translator.bind())
@@ -99,14 +103,10 @@ response = requests.post("http://127.0.0.1:8000/", json=english_text)
 french_text = response.text
 
 print(french_text)
-# 'C’était le meilleur des temps, c’était le pire des temps, c’était l’ère de la sagesse'
+# 'c'était le meilleur des temps, c'était le pire des temps .'
 # __end_client__
 
-expected_french = (
-    "C’était le meilleur des temps, c’était le pire des temps, "
-    "c’était l’ère de la sagesse"
-)
-assert french_text == expected_french
+assert french_text == "c'était le meilleur des temps, c'était le pire des temps ."
 
 serve.run(
     Summarizer.bind(Translator.options(user_config={"language": "german"}).bind())
@@ -124,14 +124,10 @@ response = requests.post("http://127.0.0.1:8000/", json=english_text)
 german_text = response.text
 
 print(german_text)
-# 'es war die beste Zeit, es war die schlimmste Zeit, es war das Zeitalter der Weisheit'
+# 'Es war die beste Zeit, es war die schlimmste Zeit .'
 # __end_second_client__
 
-expected_german = (
-    "es war die beste Zeit, es war die schlimmste Zeit, "
-    "es war das Zeitalter der Weisheit"
-)
-assert german_text == expected_german
+assert german_text == "Es war die beste Zeit, es war die schlimmste Zeit ."
 
 serve.shutdown()
 ray.shutdown()
