@@ -30,6 +30,7 @@ LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_t
       local_mode_ray_tuntime_(local_mode_ray_tuntime) {
   memory_store_ =
       std::make_unique<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                              clock_,
                                               /*reference_counting_enabled=*/false);
 }
 
