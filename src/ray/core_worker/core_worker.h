@@ -402,30 +402,37 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   }
 
   /// Register a callback to fire when an object goes out of scope or is freed.
+  /// Can only be called for objects owned by this worker. The callback is posted
+  /// to the dedicated object_freed_callback_service_ thread so it never blocks
+  /// the main IO thread.
   ///
-  /// The callback is posted to the dedicated object_freed_callback_service_ thread
-  /// so it never blocks the main IO thread.
-  ///
-  /// \return true if the callback was registered; false if the object is already
-  ///         out of scope or was explicitly freed (callback will never fire).
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Invoked with the object_id when the object goes out of scope.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
   bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
 
-  /// C function-pointer overload for use from Cython.
+  /// C function-pointer overload of AddObjectOutOfScopeOrFreedCallback for use
+  /// from Cython. Can only be called for objects owned by this worker.
   ///
-  /// \param object_id The object to watch.
-  /// \param callback Invoked with (object_id, user_data) when the object goes
-  ///        out of scope.
-  /// \param user_data Passed as the second argument to callback.
-  /// \param on_drop If non-null, called with user_data when the internal lambda
-  ///        is destroyed. Necessary because destroying a raw void* is a no-op,
-  ///        so on_drop is the only way to release resources (e.g. Py_DECREF)
-  ///        on both the normal and shutdown (RC teardown) paths.
-  /// \return true if registered; false if the object is already out of scope
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Function to invoke when the object goes out of scope. Called
+  ///            with (object_id, callback_context). Must remain valid until `on_drop`
+  ///            fires.
+  /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback` and
+  ///            `on_drop`. In the Cython overload, this is a pointer to a Python `bytes`
+  ///            object containing the object ID binary, used as the key into the callback
+  ///            registry.
+  /// \param[in] on_drop Destructor for `callback_context`. If non-null, called when the
+  ///            internal lambda is destroyed, on both the normal (callback invoked) and
+  ///            shutdown (lambda dropped without firing) paths. Pass a function that
+  ///            releases any resources held by `callback_context`.
+  /// \return true if registered; false if the object is already out of scope or freed
   ///         (callback will never fire).
   bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                           void (*callback)(const ObjectID &, void *),
-                                          void *user_data,
+                                          void *callback_context,
                                           void (*on_drop)(void *) = nullptr);
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }

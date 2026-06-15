@@ -25,20 +25,21 @@ class TestAddObjectOutOfScopeCallback:
     """Integration tests against a live Ray cluster."""
 
     def test_callback_fires_when_ref_dropped(self, ray_instance):
-        """Callback fires with the correct ObjectRef once the last reference is dropped."""
+        """Callback fires with the correct object ID bytes once the last reference is
+        dropped."""
         received_id = []
         done = threading.Event()
 
         ref = ray.put(42)
         expected_binary = ref.binary()
         registered = _core_worker().add_object_out_of_scope_callback(
-            ref, lambda r: (received_id.append(r), done.set())
+            ref, lambda id_bytes: (received_id.append(id_bytes), done.set())
         )
         assert registered, "Expected registration to succeed"
 
         del ref  # drops the last Python reference — callback must now fire
         assert done.wait(timeout=5), "Callback did not fire within 5 s"
-        assert received_id[0].binary() == expected_binary
+        assert received_id[0] == expected_binary
 
     def test_returns_false_for_already_out_of_scope(self, ray_instance):
         """Returns False when the object is already out of scope; callback never fires."""
@@ -76,49 +77,6 @@ class TestAddObjectOutOfScopeCallback:
         assert sentinel_done.wait(timeout=5)
         assert not fired.is_set(), "Callback must not fire for an already-freed object"
 
-    def test_callback_runs_on_non_driver_thread(self, ray_instance):
-        """Callback must run on the dedicated callback thread, not the driver thread."""
-        driver_thread_id = threading.get_ident()
-        callback_thread_ids = []
-        done = threading.Event()
-
-        ref = ray.put("thread_check")
-
-        def cb(_):
-            callback_thread_ids.append(threading.get_ident())
-            done.set()
-
-        _core_worker().add_object_out_of_scope_callback(ref, cb)
-        del ref
-        assert done.wait(timeout=5)
-        assert (
-            callback_thread_ids[0] != driver_thread_id
-        ), "Callback must not run on the driver thread"
-
-    def test_multiple_callbacks_all_fire(self, ray_instance):
-        """Multiple independent callbacks on the same object all fire."""
-        n = 3
-        counter = [0]
-        lock = threading.Lock()
-        done = threading.Event()
-
-        ref = ray.put("multi")
-
-        def make_cb():
-            def cb(_):
-                with lock:
-                    counter[0] += 1
-                    if counter[0] == n:
-                        done.set()
-
-            return cb
-
-        for _ in range(n):
-            _core_worker().add_object_out_of_scope_callback(ref, make_cb())
-
-        del ref
-        assert done.wait(timeout=5), f"Only {counter[0]}/{n} callbacks fired"
-
     def test_ray_internal_free_triggers_callback(self, ray_instance):
         """`ray.internal.free` should trigger the callback."""
         fired = threading.Event()
@@ -150,34 +108,6 @@ class TestAddObjectOutOfScopeCallback:
         assert second_fired.wait(
             timeout=5
         ), "Exception in one callback must not prevent subsequent callbacks"
-
-    def test_callback_fires_exactly_once(self, ray_instance):
-        """The callback fires exactly once."""
-        count = [0]
-        lock = threading.Lock()
-        done = threading.Event()
-
-        ref = ray.put("once")
-
-        def cb(_):
-            with lock:
-                count[0] += 1
-            done.set()
-
-        _core_worker().add_object_out_of_scope_callback(ref, cb)
-        del ref
-        assert done.wait(timeout=5)
-
-        # Drain the callback thread via a sentinel: any spurious second fire would
-        # arrive before the sentinel, so if count is still 1 after this, we're clean.
-        sentinel_done = threading.Event()
-        sentinel = ray.put("sentinel")
-        _core_worker().add_object_out_of_scope_callback(
-            sentinel, lambda _: sentinel_done.set()
-        )
-        del sentinel
-        assert sentinel_done.wait(timeout=5)
-        assert count[0] == 1, f"Expected exactly 1 callback, got {count[0]}"
 
 
 if __name__ == "__main__":

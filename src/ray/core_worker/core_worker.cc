@@ -2481,12 +2481,14 @@ bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
 
 bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
-  // Wrap so the actual callback runs on the dedicated thread.
-  // The wrapper itself is quick (just a post) and safe to call under the
-  // ReferenceCounter mutex. Capture the service by reference (not `this`) so
-  // the lambda remains safe if CoreWorker is destroyed before the RC calls it.
-  auto wrapped = [&svc = object_freed_callback_service_, callback](const ObjectID &id) {
-    svc.post([callback, id]() { callback(id); }, "CoreWorker.ObjFreedCb");
+  RAY_CHECK(HasOwner(object_id))
+      << "AddObjectOutOfScopeOrFreedCallback can only be called for objects owned by "
+         "this worker. Object: "
+      << object_id;
+  auto wrapped = [&object_freed_callback_service = object_freed_callback_service_,
+                  callback](const ObjectID &id) {
+    object_freed_callback_service.post([callback, id]() { callback(id); },
+                                       "CoreWorker.ObjFreedCb");
   };
   return reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, wrapped);
 }
@@ -2494,12 +2496,12 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
 bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                                     void (*callback)(const ObjectID &,
                                                                      void *),
-                                                    void *user_data,
+                                                    void *callback_context,
                                                     void (*on_drop)(void *)) {
   RAY_CHECK(callback != nullptr) << "callback must not be null";
-  // Wrap user_data in a shared_ptr so on_drop is called when the lambda is
+  // Wrap callback_context in a shared_ptr so on_drop is called when the lambda is
   // destroyed — whether the callback fired normally or was dropped at shutdown.
-  auto owned = std::shared_ptr<void>(user_data, [on_drop](void *p) {
+  auto owned = std::shared_ptr<void>(callback_context, [on_drop](void *p) {
     if (on_drop) on_drop(p);
   });
   return AddObjectOutOfScopeOrFreedCallback(

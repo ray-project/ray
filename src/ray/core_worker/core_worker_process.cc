@@ -204,7 +204,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     sigaddset(&mask, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 #endif
-    SetThreadName("worker.obj_freed_cb");
+    SetThreadName("worker.user_obj_freed_callback");
     object_freed_callback_service_.run();
     RAY_LOG(INFO) << "Object-freed callback service stopped.";
   });

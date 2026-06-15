@@ -2761,31 +2761,46 @@ cdef class GcsClient:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
 
-# Invoked by the dedicated object_freed_callback_service_ thread when an object
-# goes out of scope. Acquires the GIL and calls the Python callable stored as
-# user_data. The matching Py_DECREF is handled by _drop_user_data when the C++
-# lambda is destroyed.
+# Module-level dict: object_id_binary (bytes) -> Python callable.
+# Keeps each registered callback alive while its C++ lambda is pending.
+# There is one CoreWorker per process, so module scope is sufficient.
+_object_out_of_scope_callbacks: dict = {}
+
+
 cdef void _invoke_object_out_of_scope_callback(
-        const CObjectID &c_object_id, void *user_data) noexcept nogil:
+        const CObjectID &c_object_id, void *callback_context) noexcept nogil:
+    """Invoked on the object_freed_callback_service_ thread when an object goes
+    out of scope. Looks up and calls the registered Python callback for the
+    object. The callback receives the object ID as ``bytes``.
+
+    Args:
+        c_object_id: The C++ ObjectID of the object that went out of scope.
+        callback_context: A ``bytes`` object (the object ID binary) used as the
+            key into ``_object_out_of_scope_callbacks``. Its lifetime is
+            managed by ``_release_callback_context``.
+    """
     with gil:
         try:
-            object_ref_id = ObjectRef(c_object_id.Binary(), skip_adding_local_ref=True)
-            # skip_adding_local_ref suppresses add_object_ref_reference, but
-            # __init__ still sets in_core_worker=True so __dealloc__ would call
-            # remove_object_ref_reference without a matching add. Clear it so
-            # the temporary ref is truly no-op on the refcount.
-            object_ref_id.in_core_worker = False
-            (<object>user_data)(object_ref_id)
+            id_binary = <bytes>callback_context
+            callback = _object_out_of_scope_callbacks.get(id_binary)
+            if callback is not None:
+                callback(id_binary)
         except BaseException:
             logger.exception("Error in object out-of-scope callback")
 
 
-# Called by C++ when the out-of-scope lambda is destroyed, on both the normal
-# (callback fired) and the shutdown (lambda dropped) paths. Balances the
-# Py_INCREF taken in add_object_out_of_scope_callback.
-cdef void _drop_user_data(void *user_data) noexcept nogil:
+cdef void _release_callback_context(void *callback_context) noexcept nogil:
+    """Called by C++ when the out-of-scope lambda is destroyed.
+
+    Fires on both the normal (callback invoked) and shutdown (lambda dropped)
+    paths. Removes the callback from ``_object_out_of_scope_callbacks`` and
+    releases the Py_INCREF taken on the ``bytes`` key in
+    ``add_object_out_of_scope_callback``.
+    """
     with gil:
-        cpython.Py_DECREF(<object>user_data)
+        id_binary = <bytes>callback_context
+        _object_out_of_scope_callbacks.pop(id_binary, None)
+        cpython.Py_DECREF(<object>callback_context)
 
 
 cdef class CoreWorker:
@@ -4132,23 +4147,49 @@ cdef class CoreWorker:
     def add_object_out_of_scope_callback(self, ObjectRef object_ref, callback):
         """Register a Python callable to fire when object_ref goes out of scope.
 
-        Returns True if registered; False if the object is already out of scope
-        (the callback will never fire and should be discarded).
+        .. warning::
+            This is an internal Ray API. Do not use it outside of Ray libraries.
+
+        Can only be called on the worker that owns object_ref. Raises
+        ValueError if object_ref is not owned by this worker.
+
+        Args:
+            object_ref: The owned object to watch.
+            callback: Called with the object ID as ``bytes`` when the last
+                reference is released. Must be callable.
+
+        Returns:
+            True if registered; False if the object is already out of scope
+            (the callback will never fire).
         """
         if not callable(callback):
             raise TypeError(
                 f"callback must be callable, got {type(callback).__name__!r}"
             )
-        cdef CObjectID c_object_id = object_ref.native()
-        # Keep the callable alive; _drop_user_data balances this Py_INCREF when
-        # the C++ lambda is destroyed (fired or dropped at shutdown).
-        cpython.Py_INCREF(callback)
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+            CAddress c_owner_address
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+            c_object_id, &c_owner_address)
+        check_status(op_status)
+        this_worker_id = CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary()
+        if c_owner_address.worker_id() != this_worker_id:
+            raise ValueError(
+                f"add_object_out_of_scope_callback can only be called for objects "
+                f"owned by this worker. Object {object_ref.hex()} is owned by worker "
+                f"{c_owner_address.worker_id().hex()}."
+            )
+        id_binary = object_ref.binary()
+        _object_out_of_scope_callbacks[id_binary] = callback
+        # id_binary is passed to C++ as a raw void*, so Py_INCREF is required to
+        # prevent GC from collecting it while C++ holds the pointer.
+        cpython.Py_INCREF(id_binary)
         return CCoreWorkerProcess.GetCoreWorker() \
             .AddObjectOutOfScopeOrFreedCallback(
                 c_object_id,
                 _invoke_object_out_of_scope_callback,
-                <void *>callback,
-                _drop_user_data)
+                <void *>id_binary,
+                _release_callback_context)
 
     def get_owner_address(self, ObjectRef object_ref):
         cdef:

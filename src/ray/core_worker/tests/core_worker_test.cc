@@ -1512,5 +1512,52 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_OnDropFiresWhenNotRegistered)
   EXPECT_TRUE(drop_fired);
 }
 
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_MultipleCallbacksAllFire) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  int fire_count = 0;
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+        object_id, [&fire_count](const ObjectID &) { ++fire_count; }));
+  }
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+
+  EXPECT_EQ(fire_count, 3);
+}
+
+TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+
+  int fire_count = 0;
+  ASSERT_TRUE(core_worker_->AddObjectOutOfScopeOrFreedCallback(
+      object_id, [&fire_count](const ObjectID &) { ++fire_count; }));
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  FlushObjectFreedCallbacks();
+  FlushObjectFreedCallbacks();  // second flush must not re-fire
+
+  EXPECT_EQ(fire_count, 1);
+}
+
 }  // namespace core
 }  // namespace ray
