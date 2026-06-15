@@ -98,6 +98,10 @@ PY
     git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
 )
 
+# Sanity check: the ai-dynamo-runtime wheel must be importable, including the
+# symbols the KV-aware router relies on.
+python -c "import dynamo._core; from dynamo.llm import KvRouter; from dynamo.runtime import DistributedRuntime"
+
 EOF
 
 

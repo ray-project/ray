@@ -88,6 +88,10 @@ curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
 # Install DeepGEMM
 curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
 
+# Sanity check: the ai-dynamo-runtime wheel must be importable, including the
+# symbols the KV-aware router relies on.
+python -c "import dynamo._core; from dynamo.llm import KvRouter; from dynamo.runtime import DistributedRuntime"
+
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
