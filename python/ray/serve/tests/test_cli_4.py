@@ -19,7 +19,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_streaming,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.test_cli_2 import ping_endpoint
+from ray.serve.tests.test_cli_2 import check_app_running, ping_endpoint
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -98,12 +98,13 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     app1 = "app1"
     app_names = [app1]
 
+    # Wait for the application to be RUNNING before sending requests.
+    wait_for_condition(check_app_running, app_name=app1)
+
     channel = grpc.insecure_channel(get_application_url("gRPC", app_name=app1))
 
     # Ensures ListApplications method succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications, channel=channel, app_names=app_names
-    )
+    ping_grpc_list_applications(channel, app_names)
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
@@ -140,12 +141,13 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     app = "app1"
     app_names = [app]
 
+    # Wait for the application to be RUNNING before sending requests.
+    wait_for_condition(check_app_running, app_name=app)
+
     channel = grpc.insecure_channel(get_application_url("gRPC", app_name=app))
 
     # Ensures ListApplications method succeeding.
-    wait_for_condition(
-        ping_grpc_list_applications, channel=channel, app_names=app_names
-    )
+    ping_grpc_list_applications(channel, app_names)
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)

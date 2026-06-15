@@ -1667,6 +1667,16 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
+            # When gRPC is used, haproxy relies on the fallback serve proxy to
+            # handle ListApplications requests, so we block until the fallback
+            # grpc proxy is known.
+            if (
+                is_grpc_enabled(self._grpc_options)
+                and self._haproxy.grpc_fallback_backend is None
+            ):
+                await asyncio.sleep(0.2)
+                continue
+
             desired_backend_servers = {
                 self._generate_backend_name(tg): {
                     self._generate_server_name(target) for target in tg.targets
