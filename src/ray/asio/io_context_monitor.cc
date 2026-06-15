@@ -80,13 +80,13 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   if (probe->last_probe_completed) {
     // Record latency and health status from the completed probe, then post a new one.
     if (has_active_probe) {
-      // Feed the completed probe's latency into the sliding window. Observe() only
-      // returns a value when the windowed max changes, so we avoid redundant metric
-      // updates.
-      if (auto windowed_max_ms =
-              probe->latency_window.Observe(now, absl::ToDoubleMilliseconds(elapsed))) {
-        latency_gauge_.Record(*windowed_max_ms, {{"Name", probe->name}});
-      }
+      // Feed the completed probe's latency into the sliding window and export the
+      // windowed max. We re-export every cycle (rather than only when the max moves)
+      // because the gauge value is cleared after each export/scrape, so a value that
+      // is not re-recorded disappears from subsequent scrapes.
+      double windowed_max_ms =
+          probe->latency_window.Observe(now, absl::ToDoubleMilliseconds(elapsed));
+      latency_gauge_.Record(windowed_max_ms, {{"Name", probe->name}});
 
       // Only mark healthy if the probe's actual lag was within the deadline.
       if (elapsed < healthy_deadline_) {

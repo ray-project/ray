@@ -15,7 +15,6 @@
 #pragma once
 
 #include <deque>
-#include <optional>
 
 #include "absl/time/time.h"
 
@@ -29,9 +28,11 @@ namespace observability {
 /// than `now - window_duration`), and recomputes the maximum value over the
 /// remaining samples.
 ///
-/// This is meant to smooth a point-in-time metric: rather than exporting every
-/// sample, callers feed samples in via Observe() and only re-export when the value
-/// it returns is set (i.e. when the windowed max changed).
+/// This is meant to smooth a point-in-time metric: callers feed samples in via
+/// Observe() and export the windowed max it returns. The max is returned on every
+/// call (not just when it changes) so callers re-export each cycle, which the metric
+/// pipeline requires -- gauge values are cleared after each export/scrape, so a value
+/// that is not re-recorded disappears from subsequent scrapes.
 ///
 /// Not thread-safe; callers must synchronize externally if shared across threads.
 class WindowedMetric {
@@ -41,11 +42,9 @@ class WindowedMetric {
 
   /// Record a new sample with value `value` observed at `now`.
   ///
-  /// Appends the sample, evicts samples older than the window, and recomputes the
-  /// max over the window. Returns the windowed max iff it differs from the value
-  /// returned by the previous Observe() call (i.e. the metric should be re-exported);
-  /// otherwise std::nullopt.
-  std::optional<double> Observe(absl::Time now, double value);
+  /// Appends the sample, evicts samples older than the window, and returns the max
+  /// over the remaining window.
+  double Observe(absl::Time now, double value);
 
  private:
   struct Sample {
@@ -57,8 +56,6 @@ class WindowedMetric {
   const absl::Duration window_duration_;
   // Samples ordered oldest (front) to newest (back).
   std::deque<Sample> samples_;
-  // The windowed max as of the last Observe() call. Unset until the first Observe().
-  std::optional<double> current_max_;
 };
 
 }  // namespace observability
