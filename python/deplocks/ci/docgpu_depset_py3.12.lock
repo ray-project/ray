@@ -1629,9 +1629,9 @@ etils==1.14.0 \
     --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
     --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
     # via mujoco
-evaluate==0.4.3 \
-    --hash=sha256:3a5700cf83aabee9549264e1e5666f116367c61dbd4d38352015e859a5e2098d \
-    --hash=sha256:47d8770bdea76e2c2ed0d40189273027d1a41ccea861bcc7ba12d30ec5d1e517
+evaluate==0.4.6 \
+    --hash=sha256:bca85bc294f338377b7ac2f861e21c308b11b2a285f510d7d5394d5df437db29 \
+    --hash=sha256:e07036ca12b3c24331f83ab787f21cc2dbf3631813a1631e63e40897c69a3f21
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/train-test-requirements.txt
