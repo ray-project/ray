@@ -31,6 +31,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/pubsub/posting_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
@@ -305,16 +306,18 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 addr));
       });
 
-  auto object_info_publisher = std::make_unique<pubsub::Publisher>(
-      /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-      /*periodical_runner=*/*periodical_runner,
-      /*clock=*/clock_,
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      worker_context->GetWorkerID());
+  auto object_info_publisher = std::make_unique<pubsub::PostingPublisher>(
+      std::make_shared<pubsub::Publisher>(
+          /*channels=*/
+          std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+          /*periodical_runner=*/*periodical_runner,
+          /*clock=*/clock_,
+          /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+          /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+          worker_context->GetWorkerID()),
+      io_service_);
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
