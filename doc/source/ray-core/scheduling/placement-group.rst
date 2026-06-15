@@ -801,6 +801,27 @@ label-domain scheduling. Ray:
 
     ray start --labels="ray.io/gpu-domain=rack-1"
 
+  **Using with Kubernetes**
+
+  Many GB300 clusters use Kubernetes as their scheduler. The NVIDIA GPU Operator
+  exposes an identifier for each NVLink domain with the node label
+  ``nvidia.com/gpu.clique`` from GPU Feature Discovery.
+
+  If your Ray workers are running within Pods, you can use the Kubernetes Downward
+  API to set an environment variable such as ``NVIDIA_GPU_CLIQUE`` to the value of
+  the ``nvidia.com/gpu.clique`` node label, which enables the NVLink domain-aware
+  placement groups feature.
+
+  For example, a Ray worker's start command might look like this:
+
+  .. code-block:: bash
+
+    # Inside each Ray pod, start the worker using the label value
+    ray start \
+      --address="${RAY_HEAD_ADDRESS}" \
+      --num-gpus=4 \
+      --labels="ray.io/accelerator-type=GB300,ray.io/gpu-domain=${NVIDIA_GPU_CLIQUE}"
+
 Fault tolerance
 ~~~~~~~~~~~~~~~
 
