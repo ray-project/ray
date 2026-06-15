@@ -289,7 +289,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         # `task_done_callback` fires only after the metadata ref is ready,
         # so this is just local deserialization.
-        input_meta, shard_sizes = ray.get(task.get_waitable())
+        input_meta, shard_sizes, output_schema = ray.get(task.get_waitable())
 
         for partition_id, ref in enumerate(partition_refs):
             rows, nbytes = shard_sizes.get(partition_id, (0, 0))
@@ -301,7 +301,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             )
             shard_bundle = RefBundle(
                 (BlockEntry(ref=ref, metadata=shard_meta),),
-                schema=None,
+                schema=output_schema,
                 owns_blocks=True,
             )
             self._partition_staging[partition_id].add(shard_bundle)

@@ -131,7 +131,7 @@ def _shuffle_map_task(
         block_exec_stats=stats.build(block_ser_time_s=0),
     )
     input_meta = replace(input_meta, num_rows=total_rows, size_bytes=total_bytes)
-    return (input_meta, shard_sizes), *partition_bufs
+    return (input_meta, shard_sizes, output_schema), *partition_bufs
 
 
 def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:

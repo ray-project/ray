@@ -98,15 +98,17 @@ def test_multi_column_keys(
     assert out.count() == 500
 
 
-def test_skew_and_empty_partitions(
+def test_more_partitions_than_keys_emits_empty_blocks(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
+    """Requesting more partitions than there are distinct keys emits the extra
+    partitions as empty (0-row) blocks that still carry the dataset schema."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
-    # 3 distinct keys, asking for 50 partitions => most partitions are empty.
+    # 3 distinct keys into 50 partitions => at most 3 non-empty, >=47 empty.
     ds = ray.data.range(600, override_num_blocks=10).map(
         lambda row: {"k": row["id"] % 3, "v": row["id"]}
     )
@@ -114,6 +116,18 @@ def test_skew_and_empty_partitions(
 
     assert out.count() == 600
     assert out.num_blocks() == 50
+
+    rows_per_block = []
+    schemas = []
+    for ref_bundle in out.iter_internal_ref_bundles():
+        for block_ref in ref_bundle.block_refs:
+            block = ray.get(block_ref)
+            rows_per_block.append(block.num_rows)
+            schemas.append(block.schema)
+
+    assert rows_per_block.count(0) >= 47
+    assert all(schema.equals(schemas[0]) for schema in schemas)
+
     _assert_keys_colocated(_keys_per_block(out, ["k"]))
 
 
@@ -130,6 +144,12 @@ def test_repartition_empty_dataset(
     out = ds.repartition(4, keys=["id"]).materialize()
     assert out.count() == 0
     assert out.num_blocks() == 4
+    rows_per_block = [
+        ray.get(block_ref).num_rows
+        for ref_bundle in out.iter_internal_ref_bundles()
+        for block_ref in ref_bundle.block_refs
+    ]
+    assert rows_per_block == [0, 0, 0, 0]
 
 
 def test_repartition_with_sort_produces_sorted_partitions(

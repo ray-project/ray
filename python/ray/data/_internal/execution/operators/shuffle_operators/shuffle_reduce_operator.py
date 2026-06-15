@@ -4,7 +4,11 @@ import typing
 from collections import deque
 from typing import Any, Dict, List, Optional
 
+import pyarrow as pa
+
+import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -24,7 +28,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     _shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data.block import BlockStats, TaskExecWorkerStats, to_stats
+from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -117,6 +121,14 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             return
 
         partition_id = extract_partition_id(refs)
+
+        schema = refs.schema
+        if isinstance(schema, pa.Schema) and not any(
+            (m.num_rows or 0) for m in refs.metadata
+        ):
+            self._emit_empty_partition(refs, schema)
+            return
+
         shard_refs = list(refs.block_refs)
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
 
@@ -169,6 +181,41 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._metrics.on_task_submitted(
             partition_id, refs, task_id=data_task.get_task_id()
         )
+
+    def _emit_empty_partition(self, refs: RefBundle, schema: pa.Schema) -> None:
+        """Emit one empty output block for an empty partition.
+
+        The partition contributed no rows, so there is nothing to reduce; we
+        build the empty block from the schema the map stage propagated onto
+        the bundle and queue it as this partition's single output block.
+        """
+        empty_block = schema.empty_table()
+        block_meta = BlockAccessor.for_block(empty_block).get_metadata()
+        out_bundle = RefBundle(
+            (
+                BlockEntry(
+                    ref=ray.put(empty_block),  # pyrefly: ignore[bad-argument-type]
+                    metadata=block_meta,
+                ),
+            ),
+            schema=schema,
+            owns_blocks=True,
+        )
+        refs.destroy_if_owned()
+
+        self._num_reduce_tasks_submitted += 1
+        self._output_queue.append(out_bundle)
+        self._metrics.on_output_queued(out_bundle)
+        _, num_outputs, num_rows = estimate_total_num_of_blocks(
+            self._num_reduce_tasks_submitted,
+            self.upstream_op_num_outputs(),
+            self._metrics,
+            total_num_tasks=self._num_partitions,
+        )
+        self._estimated_num_output_bundles = num_outputs
+        self._estimated_output_num_rows = num_rows
+        if self._reduce_bar is not None:
+            self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
