@@ -340,6 +340,7 @@ python/ray/data/tests/unit/test_data_batch_conversion.py
 python/ray/data/tests/unit/test_datatype.py
 python/ray/data/tests/unit/test_deduping_schema.py
 python/ray/data/tests/unit/test_expression_evaluator.py
+python/ray/data/tests/unit/test_expression_visitor.py
 python/ray/data/tests/unit/test_fifo_bundle_queue.py
 python/ray/data/tests/unit/test_object_extension.py
 python/ray/data/tests/unit/test_path_util.py
