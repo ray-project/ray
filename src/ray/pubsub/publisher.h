@@ -245,7 +245,7 @@ class SubscriberState {
         clock_(clock),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(clock_.NowUnixMillis()),
+        last_connection_update_time_ms_(clock_.SteadyNowMillis()),
         publisher_id_binary_(publisher_id.Binary()) {}
 
   ~SubscriberState() {
