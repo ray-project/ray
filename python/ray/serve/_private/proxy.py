@@ -535,14 +535,21 @@ class GenericProxy(ABC):
             # was seen in the stream) so it isn't dropped from the access log and
             # request counters, then re-raise: an async generator must not yield
             # while handling GeneratorExit (PEP 525).
-            if status is None:
-                disconnect_code = (
-                    "1006" if proxy_request.request_type == "websocket" else "499"
+            #
+            # Scoped to http/websocket; gRPC keeps its existing behavior (a
+            # disconnect is not recorded here) and uses grpc.StatusCode rather
+            # than these HTTP-style codes.
+            if proxy_request.request_type in ("http", "websocket"):
+                if status is None:
+                    disconnect_code = (
+                        "1006"
+                        if proxy_request.request_type == "websocket"
+                        else "499"
+                    )
+                    status = ResponseStatus(code=disconnect_code, is_error=True)
+                self._record_request_completion_metrics(
+                    proxy_request, response_handler_info, status, start_time
                 )
-                status = ResponseStatus(code=disconnect_code, is_error=True)
-            self._record_request_completion_metrics(
-                proxy_request, response_handler_info, status, start_time
-            )
             raise
         finally:
             # If anything during the request failed, we still want to ensure the ongoing
