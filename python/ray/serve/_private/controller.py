@@ -145,6 +145,19 @@ def _get_aggregated_autoscaling_metrics_delay_ms(
     return max(cached_delay_ms for cached_delay_ms, _ in delay_by_source.values())
 
 
+def _get_autoscaling_metrics_delay_cache_timeout_s(
+    metrics_interval_s: float,
+    *,
+    for_handle: bool = False,
+) -> float:
+    """Return cache TTL aligned with per-deployment metrics push interval."""
+
+    timeout_s = 2 * metrics_interval_s
+    if for_handle:
+        timeout_s = max(timeout_s, RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S)
+    return timeout_s
+
+
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -384,6 +397,24 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
+    def _get_deployment_metrics_interval_s(
+        self, deployment: str, application: str, *, for_handle: bool
+    ) -> float:
+        deployment_config = self.get_deployment_config(
+            DeploymentID(name=deployment, app_name=application)
+        )
+        if (
+            deployment_config is not None
+            and deployment_config.autoscaling_config is not None
+        ):
+            return deployment_config.autoscaling_config.metrics_interval_s
+
+        return (
+            RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+            if for_handle
+            else RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        )
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
@@ -402,13 +433,18 @@ class ServeController:
 
         metrics_delay_ms = latency_ms
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            metrics_interval_s = self._get_deployment_metrics_interval_s(
+                deployment, application, for_handle=False
+            )
             metrics_delay_ms = _get_aggregated_autoscaling_metrics_delay_ms(
                 self._replica_metrics_delay_ms.setdefault(
                     (deployment, application), {}
                 ),
                 replica_metric_report.replica_id.unique_id,
                 latency_ms,
-                2 * RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+                _get_autoscaling_metrics_delay_cache_timeout_s(
+                    metrics_interval_s, for_handle=False
+                ),
             )
 
         # Record the metrics delay for observability
@@ -440,13 +476,15 @@ class ServeController:
 
         metrics_delay_ms = latency_ms
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            metrics_interval_s = self._get_deployment_metrics_interval_s(
+                deployment, application, for_handle=True
+            )
             metrics_delay_ms = _get_aggregated_autoscaling_metrics_delay_ms(
                 self._handle_metrics_delay_ms.setdefault((deployment, application), {}),
                 handle_metric_report.handle_id,
                 latency_ms,
-                max(
-                    2 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
-                    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+                _get_autoscaling_metrics_delay_cache_timeout_s(
+                    metrics_interval_s, for_handle=True
                 ),
             )
 

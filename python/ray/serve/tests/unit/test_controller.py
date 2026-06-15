@@ -1,12 +1,22 @@
 from copy import deepcopy
+from unittest.mock import MagicMock
 
 import pytest
 
 from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.constants import (
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+)
 from ray.serve._private.controller import (
+    ServeController,
+    _get_aggregated_autoscaling_metrics_delay_ms,
+    _get_autoscaling_metrics_delay_cache_timeout_s,
     applications_match,
     calculate_target_capacity_direction,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
@@ -712,6 +722,81 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+class TestAggregatedAutoscalingMetricsDelay:
+    def test_returns_max_delay_across_sources(self):
+        delay_by_source = {}
+        assert (
+            _get_aggregated_autoscaling_metrics_delay_ms(
+                delay_by_source, "source1", 100.0, timeout_s=10.0
+            )
+            == 100.0
+        )
+        assert (
+            _get_aggregated_autoscaling_metrics_delay_ms(
+                delay_by_source, "source2", 50.0, timeout_s=10.0
+            )
+            == 100.0
+        )
+
+    def test_expires_stale_sources_using_timeout(self):
+        delay_by_source = {}
+        now = 1000.0
+
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                "ray.serve._private.controller.time.time", lambda: now
+            )
+            _get_aggregated_autoscaling_metrics_delay_ms(
+                delay_by_source, "slow_source", 200.0, timeout_s=1.0
+            )
+
+            monkeypatch.setattr(
+                "ray.serve._private.controller.time.time", lambda: now + 0.5
+            )
+            assert (
+                _get_aggregated_autoscaling_metrics_delay_ms(
+                    delay_by_source, "fast_source", 50.0, timeout_s=1.0
+                )
+                == 200.0
+            )
+
+            monkeypatch.setattr(
+                "ray.serve._private.controller.time.time", lambda: now + 1.5
+            )
+            assert (
+                _get_aggregated_autoscaling_metrics_delay_ms(
+                    delay_by_source, "fast_source", 50.0, timeout_s=1.0
+                )
+                == 50.0
+            )
+
+    def test_cache_timeout_uses_deployment_metrics_interval(self):
+        assert _get_autoscaling_metrics_delay_cache_timeout_s(30.0) == 60.0
+        assert _get_autoscaling_metrics_delay_cache_timeout_s(
+            30.0, for_handle=True
+        ) == max(60.0, RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S)
+
+    def test_deployment_metrics_interval_lookup(self):
+        controller = ServeController.__new__(ServeController)
+        deployment_config = MagicMock()
+        deployment_config.autoscaling_config = AutoscalingConfig(
+            metrics_interval_s=30.0
+        )
+        controller.get_deployment_config = MagicMock(return_value=deployment_config)
+
+        assert controller._get_deployment_metrics_interval_s(
+            "dep", "app", for_handle=False
+        ) == 30.0
+
+        controller.get_deployment_config = MagicMock(return_value=None)
+        assert controller._get_deployment_metrics_interval_s(
+            "dep", "app", for_handle=False
+        ) == RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        assert controller._get_deployment_metrics_interval_s(
+            "dep", "app", for_handle=True
+        ) == RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
 
 
 if __name__ == "__main__":
