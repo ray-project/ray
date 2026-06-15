@@ -18,6 +18,7 @@ import ray
 from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     EndpointInfo,
     NodeId,
@@ -31,7 +32,10 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_PROXY_USE_GRPC,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
@@ -43,7 +47,6 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import get_proxy_handle
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import (
     get_grpc_response_status,
@@ -101,6 +104,7 @@ from ray.serve._private.utils import (
     is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig
@@ -1715,7 +1719,7 @@ class ProxyActor(ProxyActorInterface):
             }
 
         is_head = self._node_id == get_head_node_id()
-        self.proxy_router = ProxyRouter(get_proxy_handle)
+        self.proxy_router = ProxyRouter(self.get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,
             node_ip_address=self._node_ip_address,
@@ -1781,6 +1785,28 @@ class ProxyActor(ProxyActorInterface):
             actor_id=ray.get_runtime_context().get_actor_id(),
         )
         self._event_loop_monitor.start(event_loop)
+    
+    def get_proxy_handle(self, endpoint: DeploymentID, info: EndpointInfo):
+        client = _get_global_client()
+        handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
+
+        # NOTE(zcin): It's possible that a handle is already initialized
+        # if a deployment with the same name and application name was
+        # deleted, then redeployed later. However this is not an issue since
+        # we initialize all handles with the same init options.
+        if not handle.is_initialized:
+            # NOTE(zcin): since the router is eagerly initialized here, the
+            # proxy will receive the replica set from the controller early.
+            handle._init(
+                _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+                _source=DeploymentHandleSource.PROXY,
+                _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
+            )
+
+        return handle.options(
+            stream=not info.app_is_cross_language,
+            _by_reference=not RAY_SERVE_PROXY_USE_GRPC,
+        )
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
