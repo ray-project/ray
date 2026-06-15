@@ -1655,9 +1655,7 @@ class HAProxyManager(ProxyActorInterface):
             return
 
         ready_to_serve = False
-        while not (
-            ready_to_serve
-        ):
+        while not ready_to_serve:
             if self._is_draining():
                 return
 
