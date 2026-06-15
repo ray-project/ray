@@ -54,6 +54,10 @@ class RolloutSupervisor:
         atleast_one_deploying = False
         atleast_one_unhealthy = False
         for app_name in self._current_config.config_dict:
+            # In this case we move to deploy failed since this requires a
+            # fresh config
+            if app_name not in app_statuses:
+                return ApplicationStatus.DEPLOY_FAILED
             status = app_statuses[app_name].status
             if status == ApplicationStatus.DEPLOY_FAILED:
                 return ApplicationStatus.DEPLOY_FAILED

@@ -317,5 +317,21 @@ def test_rollback_disabled_success_becomes_rollback_target():
     check_supervisor_state(rs, config, config, RolloutState.ROLLING_BACK)
 
 
+def test_missing_app_in_statuses_triggers_rollback(deployed_all_running):
+    """Test that an app missing from app_statuses is treated as DEPLOY_FAILED.
+    If apply_app_configs didn't create state for an app in the config,
+    the supervisor should treat it as a config failure and trigger rollback.
+    """
+    apps = ["app1", "app2"]
+    asm, rs, config = deployed_all_running(apps)
+
+    new_config = make_config(["app3", "app4"], auto_rollback=True)
+    rs.on_new_config(new_config)
+    # Only register app3. app4 is deliberately missing from app_statuses.
+    asm.set_app_status("app3", ApplicationStatus.RUNNING)
+    assert rs.update()
+    check_supervisor_state(rs, config, config, RolloutState.ROLLING_BACK)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
