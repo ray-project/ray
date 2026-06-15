@@ -1,5 +1,5 @@
-from dataclasses import replace
-from typing import Any, Dict, Hashable, List, TypeVar
+from dataclasses import dataclass, replace
+from typing import Dict, Hashable, List, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -10,7 +10,6 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
-    PyArrowComputeUDFExpr,
     RandomExpr,
     StarExpr,
     UDFExpr,
@@ -18,6 +17,19 @@ from ray.data.expressions import (
     UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
+)
+from ray.data.util.expression_utils import (
+    _alias_fingerprint_key,
+    _binary_fingerprint_key,
+    _column_fingerprint_key,
+    _download_fingerprint_key,
+    _literal_fingerprint_key,
+    _monotonically_increasing_id_fingerprint_key,
+    _random_fingerprint_key,
+    _star_fingerprint_key,
+    _udf_fingerprint_key,
+    _unary_fingerprint_key,
+    _uuid_fingerprint_key,
 )
 
 T = TypeVar("T")
@@ -580,40 +592,6 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         return "uuid()"
 
 
-def _make_hashable(value: Any) -> Hashable:
-    try:
-        hash(value)
-        return value
-    except TypeError:
-        pass
-
-    if isinstance(value, list):
-        return tuple(_make_hashable(v) for v in value)
-    if isinstance(value, tuple):
-        return tuple(_make_hashable(v) for v in value)
-    if isinstance(value, dict):
-        return tuple(
-            sorted(
-                ((k, _make_hashable(v)) for k, v in value.items()),
-                key=lambda item: repr(item[0]),
-            )
-        )
-    if isinstance(value, set):
-        return frozenset(_make_hashable(v) for v in value)
-
-    return repr(value)
-
-
-def _data_type_key(expr: Expr) -> Hashable:
-    return repr(getattr(expr, "data_type", None))
-
-
-def _udf_function_key(fn: Any) -> Hashable:
-    if isinstance(fn, _CallableClassUDF):
-        return ("callable_class", fn.callable_class_spec.make_key())
-    return ("function", _make_hashable(fn))
-
-
 class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
     """Visitor that computes a hashable structural fingerprint for an expression.
 
@@ -624,78 +602,143 @@ class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
     """
 
     def visit_column(self, expr: ColumnExpr) -> Hashable:
-        return ("column", expr.name)
+        return _column_fingerprint_key(expr)
 
     def visit_literal(self, expr: LiteralExpr) -> Hashable:
-        return ("literal", type(expr.value), _make_hashable(expr.value))
+        return _literal_fingerprint_key(expr)
 
     def visit_binary(self, expr: BinaryExpr) -> Hashable:
-        return (
-            "binary",
-            expr.op,
+        return _binary_fingerprint_key(
+            expr,
             self.visit(expr.left),
             self.visit(expr.right),
         )
 
     def visit_unary(self, expr: UnaryExpr) -> Hashable:
-        return ("unary", expr.op, self.visit(expr.operand))
+        return _unary_fingerprint_key(expr, self.visit(expr.operand))
 
     def visit_udf(self, expr: UDFExpr) -> Hashable:
-        if isinstance(expr, PyArrowComputeUDFExpr):
-            return (
-                "pyarrow_compute_udf",
-                _make_hashable(expr.pc_func),
-                _make_hashable(expr.pc_positional),
-                _make_hashable(expr.pc_kwargs),
-                tuple(self.visit(arg) for arg in expr.args),
-                tuple(
-                    (k, self.visit(v))
-                    for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
-                ),
-                _data_type_key(expr),
-            )
-
-        return (
-            "udf",
-            _udf_function_key(expr.fn),
+        return _udf_fingerprint_key(
+            expr,
             tuple(self.visit(arg) for arg in expr.args),
             tuple(
                 (k, self.visit(v))
                 for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
             ),
-            _data_type_key(expr),
         )
 
     def visit_alias(self, expr: AliasExpr) -> Hashable:
-        return (
-            "alias",
-            expr.name,
-            expr._is_rename,
-            self.visit(expr.expr),
-            _data_type_key(expr),
-        )
+        return _alias_fingerprint_key(expr, self.visit(expr.expr))
 
     def visit_download(self, expr: DownloadExpr) -> Hashable:
-        return ("download", expr.uri_column_name)
+        return _download_fingerprint_key(expr)
 
     def visit_star(self, expr: StarExpr) -> Hashable:
-        return ("star",)
+        return _star_fingerprint_key()
 
     def visit_monotonically_increasing_id(
         self, expr: MonotonicallyIncreasingIdExpr
     ) -> Hashable:
-        return ("monotonically_increasing_id", expr._instance_id)
+        return _monotonically_increasing_id_fingerprint_key(expr)
 
     def visit_random(self, expr: RandomExpr) -> Hashable:
-        return (
-            "random",
-            expr.seed,
-            expr.reseed_after_execution,
-            _data_type_key(expr),
-        )
+        return _random_fingerprint_key(expr)
 
     def visit_uuid(self, expr: UUIDExpr) -> Hashable:
-        return ("uuid", _data_type_key(expr))
+        return _uuid_fingerprint_key(expr)
+
+
+@dataclass(frozen=True)
+class _ExpressionOccurrence:
+    expr: Expr
+    key: Hashable
+    depth: int
+
+
+class _StructuralFingerprintOccurrenceCollector(_ExprVisitor[Hashable]):
+    """Collect expression occurrences while computing structural keys bottom-up."""
+
+    def __init__(self):
+        self._occurrences: List[_ExpressionOccurrence] = []
+        self._depth = 0
+
+    def get_occurrences(self) -> List[_ExpressionOccurrence]:
+        return self._occurrences
+
+    def _visit_child(self, expr: Expr) -> Hashable:
+        self._depth += 1
+        try:
+            return self.visit(expr)
+        finally:
+            self._depth -= 1
+
+    def _record(self, expr: Expr, key: Hashable) -> Hashable:
+        self._occurrences.append(
+            _ExpressionOccurrence(
+                expr=expr,
+                key=key,
+                depth=self._depth,
+            )
+        )
+        return key
+
+    def visit_column(self, expr: ColumnExpr) -> Hashable:
+        return self._record(expr, _column_fingerprint_key(expr))
+
+    def visit_literal(self, expr: LiteralExpr) -> Hashable:
+        return self._record(expr, _literal_fingerprint_key(expr))
+
+    def visit_binary(self, expr: BinaryExpr) -> Hashable:
+        return self._record(
+            expr,
+            _binary_fingerprint_key(
+                expr,
+                self._visit_child(expr.left),
+                self._visit_child(expr.right),
+            ),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Hashable:
+        return self._record(
+            expr,
+            _unary_fingerprint_key(expr, self._visit_child(expr.operand)),
+        )
+
+    def visit_udf(self, expr: UDFExpr) -> Hashable:
+        return self._record(
+            expr,
+            _udf_fingerprint_key(
+                expr,
+                tuple(self._visit_child(arg) for arg in expr.args),
+                tuple(
+                    (k, self._visit_child(v))
+                    for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+                ),
+            ),
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Hashable:
+        return self._record(
+            expr,
+            _alias_fingerprint_key(expr, self._visit_child(expr.expr)),
+        )
+
+    def visit_download(self, expr: DownloadExpr) -> Hashable:
+        return self._record(expr, _download_fingerprint_key(expr))
+
+    def visit_star(self, expr: StarExpr) -> Hashable:
+        return self._record(expr, _star_fingerprint_key())
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Hashable:
+        return self._record(expr, _monotonically_increasing_id_fingerprint_key(expr))
+
+    def visit_random(self, expr: RandomExpr) -> Hashable:
+        return self._record(expr, _random_fingerprint_key(expr))
+
+    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
+        return self._record(expr, _uuid_fingerprint_key(expr))
 
 
 def get_column_references(expr: Expr) -> List[str]:

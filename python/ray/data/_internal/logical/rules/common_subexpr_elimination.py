@@ -10,6 +10,8 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX, Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _ExpressionOccurrence,
+    _StructuralFingerprintOccurrenceCollector,
     _StructuralFingerprintVisitor,
 )
 from ray.data.expressions import (
@@ -26,24 +28,15 @@ from ray.data.expressions import (
     UnaryExpr,
     UUIDExpr,
 )
-from ray.data.util.expression_utils import _iter_children
 
 __all__ = ["CommonSubExprElimination"]
-
-
-@dataclass(frozen=True)
-class _Occurrence:
-    expr: Expr
-    key: Hashable
-    depth: int
-    is_ignored_root: bool
 
 
 @dataclass
 class _Candidate:
     expr: Expr
     key: Hashable
-    occurrences: List[_Occurrence]
+    occurrences: List[_ExpressionOccurrence]
     temp_name: Optional[str] = None
 
     @property
@@ -58,31 +51,16 @@ def _is_ignored_cse_root(expr: Expr) -> bool:
     return isinstance(expr, _IGNORED_CSE_ROOT_TYPES)
 
 
-def _collect_occurrences(exprs: List[Expr]) -> List[_Occurrence]:
-    fingerprint = _StructuralFingerprintVisitor()
-    occurrences: List[_Occurrence] = []
-
-    def visit(expr: Expr, *, depth: int) -> None:
-        key = fingerprint.visit(expr)
-        occurrences.append(
-            _Occurrence(
-                expr=expr,
-                key=key,
-                depth=depth,
-                is_ignored_root=_is_ignored_cse_root(expr),
-            )
-        )
-        for child in _iter_children(expr):
-            visit(child, depth=depth + 1)
-
+def _collect_occurrences(exprs: List[Expr]) -> List[_ExpressionOccurrence]:
+    collector = _StructuralFingerprintOccurrenceCollector()
     for expr in exprs:
-        visit(expr, depth=0)
+        collector.visit(expr)
 
-    return occurrences
+    return collector.get_occurrences()
 
 
 def _add_to_structural_group(
-    groups: List[List[_Occurrence]], occurrence: _Occurrence
+    groups: List[List[_ExpressionOccurrence]], occurrence: _ExpressionOccurrence
 ) -> None:
     for group in groups:
         if occurrence.expr.structurally_equals(group[0].expr):
@@ -94,9 +72,9 @@ def _add_to_structural_group(
 def _find_candidates(exprs: List[Expr]) -> List[_Candidate]:
     occurrences = _collect_occurrences(exprs)
 
-    buckets: Dict[Hashable, List[List[_Occurrence]]] = defaultdict(list)
+    buckets: Dict[Hashable, List[List[_ExpressionOccurrence]]] = defaultdict(list)
     for occurrence in occurrences:
-        if not occurrence.is_ignored_root:
+        if not _is_ignored_cse_root(occurrence.expr):
             _add_to_structural_group(buckets[occurrence.key], occurrence)
 
     candidates: List[_Candidate] = []
