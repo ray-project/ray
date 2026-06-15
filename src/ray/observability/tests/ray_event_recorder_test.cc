@@ -21,8 +21,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/asio/instrumented_io_context.h"
-#include "ray/asio/periodical_runner.h"
+#include "ray/asio/fake_periodical_runner.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/metric_interface.h"
@@ -31,6 +30,7 @@
 #include "ray/observability/ray_actor_lifecycle_event.h"
 #include "ray/observability/ray_driver_job_definition_event.h"
 #include "ray/observability/ray_driver_job_lifecycle_event.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 #include "src/ray/protobuf/public/events_driver_job_lifecycle_event.pb.h"
@@ -100,15 +100,25 @@ class RayEventRecorderTest : public ::testing::Test {
     fake_client_ = std::make_unique<FakeEventAggregatorClient>();
     fake_dropped_events_counter_ = std::make_unique<FakeCounter>();
     test_node_id_ = NodeID::FromRandom();
-    recorder_ = std::make_unique<RayEventRecorder>(*fake_client_,
-                                                   PeriodicalRunner::Create(io_service_),
-                                                   max_buffer_size_,
-                                                   "gcs",
-                                                   *fake_dropped_events_counter_,
-                                                   test_node_id_);
+    recorder_ = std::make_unique<RayEventRecorder>(
+        *fake_client_,
+        std::make_shared<FakePeriodicalRunner>(fake_clock_),
+        max_buffer_size_,
+        "gcs",
+        *fake_dropped_events_counter_,
+        test_node_id_);
   }
 
-  instrumented_io_context io_service_;
+  // Advances the fake clock by one export interval, which deterministically fires
+  // the periodic RayEventRecorder.ExportEvents callback exactly once.
+  void TriggerExport() {
+    fake_clock_.AdvanceTime(
+        absl::Milliseconds(RayConfig::instance().ray_events_report_interval_ms()));
+  }
+
+  // Declared before recorder_ so it outlives the FakePeriodicalRunner the recorder
+  // holds (members are destructed in reverse declaration order).
+  FakeClock fake_clock_;
   std::unique_ptr<FakeEventAggregatorClient> fake_client_;
   std::unique_ptr<FakeCounter> fake_dropped_events_counter_;
   std::unique_ptr<RayEventRecorder> recorder_;
@@ -133,7 +143,7 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
   events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
       data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name"));
   recorder_->AddEvents(std::move(events));
-  io_service_.run_one();
+  TriggerExport();
 
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
   // Only one event should be recorded because the two events are merged into one.
@@ -199,7 +209,7 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   events.push_back(std::make_unique<RayActorLifecycleEvent>(
       actor_life_data, rpc::events::ActorLifecycleEvent::ALIVE, "test_session_name_4"));
   recorder_->AddEvents(std::move(events));
-  io_service_.run_one();
+  TriggerExport();
 
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
   std::sort(recorded_events.begin(),
@@ -283,7 +293,7 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
         std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session"));
   }
   recorder_->AddEvents(std::move(events_02));
-  io_service_.run_one();
+  TriggerExport();
 
   auto tag_to_value = fake_dropped_events_counter_->GetTagToValue();
   size_t num_dropped_events = 0;
@@ -314,7 +324,7 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
   events.push_back(
       std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session_name"));
   recorder_->AddEvents(std::move(events));
-  io_service_.run_one();
+  TriggerExport();
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
   ASSERT_EQ(recorded_events.size(), 0);
 }
@@ -351,7 +361,7 @@ TEST_F(RayEventRecorderTest, TestStopFlushesEvents) {
   recorder_->StopExportingEvents();
 
   // Run the io_service to process the flush
-  io_service_.run_one();
+  TriggerExport();
 
   // Verify that events were flushed
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
@@ -379,7 +389,7 @@ TEST_F(RayEventRecorderTest, TestStopWaitsForInflightThenFlushes) {
   events_1.push_back(
       std::make_unique<RayDriverJobDefinitionEvent>(data_1, "test_session_name"));
   recorder_->AddEvents(std::move(events_1));
-  io_service_.run_one();
+  TriggerExport();
 
   // Add a second event that should be flushed after the in-flight gRPC completes.
   rpc::JobTableData data_2;
@@ -426,7 +436,7 @@ TEST_F(RayEventRecorderTest, TestExportSkipsWhenGrpcInProgress) {
   events_1.push_back(
       std::make_unique<RayDriverJobDefinitionEvent>(data_1, "test_session_name"));
   recorder_->AddEvents(std::move(events_1));
-  io_service_.run_one();  // This triggers the export
+  TriggerExport();  // Fires the periodic export callback.
 
   ASSERT_TRUE(fake_client_->HasPendingCallback());
 
@@ -439,13 +449,13 @@ TEST_F(RayEventRecorderTest, TestExportSkipsWhenGrpcInProgress) {
   recorder_->AddEvents(std::move(events_2));
 
   // Try to trigger another export - this should be skipped because gRPC is in progress
-  io_service_.run_one();
+  TriggerExport();
 
   // Release the first callback
   fake_client_->ReleaseCallbacks();
 
   // Now trigger export again - this should send the second event
-  io_service_.run_one();
+  TriggerExport();
 
   // Verify both events were eventually sent (first before skip, second after)
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
@@ -496,7 +506,7 @@ TEST_F(RayEventRecorderTest, TestSkipMergeForNonMergeableEvents) {
       def_event_2.SerializeAsString(),
       rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber));
   recorder_->AddEvents(std::move(events));
-  io_service_.run_one();
+  TriggerExport();
 
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
   // Both events should be exported individually (not merged).
