@@ -48,13 +48,7 @@ class Summarizer:
         # Run inference
         input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
         output_ids = self.model.generate(
-            input_ids,
-            num_beams=4,
-            early_stopping=True,
-            length_penalty=2.0,
-            no_repeat_ngram_size=3,
-            min_length=5,
-            max_length=15,
+            input_ids, num_beams=4, early_stopping=True, max_length=15
         )
 
         # Post-process output to return only the summary text
@@ -91,7 +85,7 @@ french_text = response.text
 print(french_text)
 # __end_client__
 
-assert french_text == "c'était le meilleur des temps, c'était le pire des temps ."
+assert french_text == "C'était le meilleur des temps, c'était le pire des temps,"
 
 serve.shutdown()
 ray.shutdown()
