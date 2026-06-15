@@ -281,9 +281,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       if (sched_cls_cap_enabled_ &&
           sched_cls_info.granted_leases.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << clock_.NowUnixMillis()
+        RAY_LOG(DEBUG) << "Hit cap! time=" << clock_.SteadyNowMillis()
                        << " next update time=" << sched_cls_info.next_update_time;
-        if (clock_.NowUnixMillis() < sched_cls_info.next_update_time) {
+        if (clock_.SteadyNowMillis() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to grant a new lease yet.
           // Calculate the next time we should grant a new lease.
           int64_t current_capacity = sched_cls_info.granted_leases.size();
@@ -300,7 +300,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                    "RAY_worker_cap_enabled=false for faster worker startup.";
           }
 
-          int64_t target_time = clock_.NowUnixMillis() + wait_time;
+          int64_t target_time = clock_.SteadyNowMillis() + wait_time;
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
 
