@@ -2,6 +2,8 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 
 import ray
@@ -38,6 +40,29 @@ def get_worker_id(replica_unique_id: str) -> int:
     )
 
 
+#: Hooks a replica may invoke through ``KVRouterActor.on_lifecycle_events``.
+LIFECYCLE_HOOKS = frozenset(
+    {
+        "on_request_added",
+        "on_prefill_complete",
+        "on_decode_progress",
+        "on_request_completed",
+    }
+)
+
+
+@dataclass
+class RequestLifecycle:
+    """In-flight request load state while the request is served by a replica."""
+
+    worker_id: int
+    prompt_tokens: int = 0
+    prefill_completed: bool = False
+    output_tokens: int = 0
+    output_blocks: int = 0
+    total_blocks: int = 0
+
+
 @ray.remote
 class KVRouterActor:
     """Deployment-scoped Ray actor hosting the KV-aware router.
@@ -60,6 +85,7 @@ class KVRouterActor:
         self._replica_id_by_worker: Dict[int, str] = {}
         self._long_poll_client: Optional[LongPollClient] = None
         self._dyn_worker_id_to_replica_id: Dict[int, str] = {}
+        self._requests: Dict[str, RequestLifecycle] = {}
 
         namespace = self._kv_event_plane_namespace()
         configure_kv_event_plane_env(namespace)
@@ -266,46 +292,69 @@ class KVRouterActor:
             request_id, token_ids, allowed_worker_ids
         )
 
+    async def on_lifecycle_events(self, events: List[tuple]) -> None:
+        """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
+
+        Replicas deliver events through their reporter's ordered pump (one
+        awaited batch in flight per replica) because plain fire-and-forget
+        calls to an async actor are not executed in submission order, and the
+        lifecycle hooks are order-sensitive (e.g. a completion overtaking the
+        admission would resurrect an evicted request).
+        """
+        for hook_name, args in events:
+            if hook_name in LIFECYCLE_HOOKS:
+                await getattr(self, hook_name)(*args)
+            else:
+                logger.debug("Ignoring unknown lifecycle hook %s", hook_name)
+
     async def on_request_added(
         self,
         request_id: str,
-        expected_output_tokens: Optional[int] = None,
+        worker_id: int,
+        prompt_token_count: int = 0,
     ) -> None:
-        """Commit a routed request to the worker chosen by ``select_worker``.
-
-        Args:
-            request_id: Unique identifier for the request.
-            expected_output_tokens: Predicted number of output tokens.
-        """
-        raise NotImplementedError("KVRouterActor.on_request_added is not implemented")
+        """Record a newly admitted request as active load on ``worker_id``."""
+        self._requests[request_id] = RequestLifecycle(
+            worker_id=worker_id,
+            prompt_tokens=prompt_token_count,
+            total_blocks=math.ceil(prompt_token_count / self._block_size),
+        )
 
     async def on_prefill_complete(self, request_id: str) -> None:
-        """Record a request's transition from prefill to decode.
-
-        Args:
-            request_id: Unique identifier for the request.
-        """
-        raise NotImplementedError(
-            "KVRouterActor.on_prefill_complete is not implemented"
-        )
+        """Mark that ``request_id`` completed prefill and is now decoding."""
+        state = self._requests.get(request_id)
+        if state is not None:
+            state.prefill_completed = True
 
     async def on_decode_progress(
         self, request_id: str, cumulative_output_tokens: int
     ) -> None:
-        """Adds any newly crossed decode blocks to the request's accounted load.
-
-        Args:
-            request_id: Unique identifier for the request.
-            cumulative_output_tokens: Total output tokens generated so far.
-        """
-        raise NotImplementedError("KVRouterActor.on_decode_progress is not implemented")
+        """Advance ``request_id`` to an exact cumulative output-token count,
+        crossing one decode block at a time."""
+        state = self._requests.get(request_id)
+        if state is None:
+            return
+        state.output_tokens = cumulative_output_tokens
+        new_total_blocks = math.ceil(
+            (state.prompt_tokens + cumulative_output_tokens) / self._block_size
+        )
+        while new_total_blocks > state.total_blocks:
+            state.output_blocks += 1
+            state.total_blocks += 1
 
     async def on_request_completed(self, request_id: str) -> None:
-        """Release the KV-cache accounting for a finished request.
+        """Evict ``request_id``; it no longer counts as active load."""
+        self._requests.pop(request_id, None)
 
-        Args:
-            request_id: Unique identifier for the request.
-        """
-        raise NotImplementedError(
-            "KVRouterActor.on_request_completed is not implemented"
-        )
+    async def get_request_lifecycle(self, request_id: str) -> Optional[Dict[str, Any]]:
+        """Return a snapshot of an in-flight request's state, or ``None``."""
+        state = self._requests.get(request_id)
+        return None if state is None else asdict(state)
+
+    async def get_active_request_ids(self) -> List[str]:
+        """Return ids of the in-flight requests."""
+        return list(self._requests)
+
+    async def get_worker_active_load(self, worker_id: int) -> int:
+        """Return the number of in-flight requests attributed to ``worker_id``."""
+        return sum(1 for s in self._requests.values() if s.worker_id == worker_id)
