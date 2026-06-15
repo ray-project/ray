@@ -86,6 +86,7 @@ ray_cc_library(
         ],
     ),
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/pubsub:fake_publisher",
