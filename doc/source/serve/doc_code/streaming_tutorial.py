@@ -88,8 +88,7 @@ for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
     # __stream_client_end__
     chunks.append(chunk)
 
-# Check that streaming is happening (the response arrives in multiple chunks).
-assert len(chunks) > 1
+assert len(chunks) > 1 and "".join(chunks).strip()
 
 
 # __chatbot_setup_start__
@@ -200,8 +199,7 @@ with connect("ws://localhost:8000") as websocket:
     print("\n")
 # __ws_client_end__
 
-# Check that streaming is happening (the response arrives in multiple chunks).
-assert len(chunks) > 1
+assert len(chunks) > 1 and "".join(chunks).strip()
 
 print = original_print
 
@@ -329,4 +327,6 @@ with ThreadPoolExecutor() as pool:
         for prompt in ["Introduce yourself to me!", "Tell me a story about dogs."]
     ]
     responses = [fut.result() for fut in futs]
-    assert len(responses) == 2 and all(len(chunks) > 1 for chunks in responses)
+    assert len(responses) == 2 and all(
+        len(chunks) > 1 and "".join(chunks).strip() for chunks in responses
+    )
