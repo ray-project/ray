@@ -89,7 +89,7 @@ expected_french = (
     "C’était le meilleur des temps, c’était le pire des temps, "
     "c’était l’ère de la sagesse"
 )
-assert french_text == expected_french, f"got {french_text!r}"
+assert french_text == expected_french
 
 serve.shutdown()
 ray.shutdown()

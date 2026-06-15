@@ -35,7 +35,7 @@ print(translation)
 # __end_translation_model__
 
 # Test model behavior
-assert translation == "Bonjour monde!", f"got {translation!r}"
+assert translation == "Bonjour monde!"
 
 
 # __start_summarization_model__
@@ -81,4 +81,4 @@ print(summary)
 expected_summary = (
     "it was the best of times, it was the worst of times, it was the age of wisdom"
 )
-assert summary == expected_summary, f"got {summary!r}"
+assert summary == expected_summary

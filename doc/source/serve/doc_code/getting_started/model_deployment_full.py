@@ -45,7 +45,7 @@ serve.run(translator_app)
 import requests
 
 response = requests.post("http://127.0.0.1:8000/", json="Hello world!").text
-assert response == "Bonjour monde!", f"got {response!r}"
+assert response == "Bonjour monde!"
 
 serve.shutdown()
 ray.shutdown()

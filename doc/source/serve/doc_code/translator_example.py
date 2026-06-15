@@ -42,4 +42,4 @@ print(resp.text)
 # 'Hallo, das Wetter ist heute ziemlich gut!'
 # __request_end__
 
-assert resp.text == "Hallo, das Wetter ist heute ziemlich gut!", f"got {resp.text!r}"
+assert resp.text == "Hallo, das Wetter ist heute ziemlich gut!"

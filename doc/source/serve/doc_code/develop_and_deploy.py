@@ -50,7 +50,7 @@ french_text = response.json()
 print(french_text)
 # __client_function_end__
 
-assert french_text == "Bonjour monde!", f"got {french_text!r}"
+assert french_text == "Bonjour monde!"
 
 serve.shutdown()
 ray.shutdown()

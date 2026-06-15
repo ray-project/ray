@@ -106,7 +106,7 @@ expected_french = (
     "C’était le meilleur des temps, c’était le pire des temps, "
     "c’était l’ère de la sagesse"
 )
-assert french_text == expected_french, f"got {french_text!r}"
+assert french_text == expected_french
 
 serve.run(
     Summarizer.bind(Translator.options(user_config={"language": "german"}).bind())
@@ -131,7 +131,7 @@ expected_german = (
     "es war die beste Zeit, es war die schlimmste Zeit, "
     "es war das Zeitalter der Weisheit"
 )
-assert german_text == expected_german, f"got {german_text!r}"
+assert german_text == expected_german
 
 serve.shutdown()
 ray.shutdown()
