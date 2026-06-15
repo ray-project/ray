@@ -5,8 +5,10 @@ Out-of-memory errors (OOMs) are one of the most common issues Ray Data users enc
 This guide describes what OOMs look like and provides practical guidance for mitigating 
 them.
 
-For a lower-level explanation of how Ray treats memory, read 
-{doc}`Ray Core resource isolation </ray-core/resource-isolation-with-cgroupv2>`. 
+For a lower-level explanation of how Ray Data treats memory, read 
+{ref}`Ray Data Memory Management <data_memory_management>` and  
+{doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
+
 
 ## What OOMs look like
 
@@ -22,7 +24,8 @@ this:
 (raylet) Task _map_task failed due to oom. There are infinite oom retries remaining, so the task will be retried. Error: 1 worker(s) were killed due to the node running low on memory. Memory on the node (IP: 10.0.50.112, ID: 4cb25bc084aeb5a31ca5402ad589ae042a71165a8e2dd8418fecee26) was 28.62GB / 30.00GB (0.954017), which exceeds the memory usage threshold of 0.950000; Object store memory usage: [- objects spillable: 0; - bytes spillable: 0; - objects unsealed: 0; - bytes unsealed: 0; - objects in use: 10; - bytes in use: 42199; - objects evictable: 13; - bytes evictable: 51792; ; - objects created by worker: 0; - bytes created by worker: 0; - objects restored: 0; - bytes restored: 0; - objects received: 23; - bytes received: 93991; - objects errored: 0; - bytes errored: 0; ; Eviction Stats:; (global lru) capacity: 9614230732; (global lru) used: 0.000538701%; (global lru) num objects: 13; (global lru) num evictions: 0; (global lru) bytes evicted: 0]; Ray killed 1 worker(s) based on the killing policy: [(Task: job ID=05000000, lease ID=2f00000005000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=ReadRange->MapBatches(uses_lots_of_memory), required resources={memory: 8, CPU: 1}, pid=3471, actual memory used=2.85GB, worker ID=8150a4b5316a164c2932ec1389b38be165bf0e29465ff65328fa0162)]; To see more information about memory usage on this node, use `ray logs raylet.out -ip 10.0.50.112`; Top 10 memory users: PID        MEM(GB) COMMAND, 2936   4.10    , 2938  4.02    ray::ReadRange->MapBatches(uses_lots_of_memory), 2943  3.99    ray::ReadRange->MapBatches(uses_lots_of_memory), 2939   3.97    ray::ReadRange->MapBatches(uses_lots_of_memory), 2942   3.83    ray::ReadRange->MapBatches(uses_lots_of_memory), 3468  3.18    ray::ReadRange->MapBatches(uses_lots_of_memory), 3471   2.85    ray::ReadRange->MapBatches(uses_lots_of_memory), 3815   2.46    ray::ReadRange->MapBatches(uses_lots_of_memory), 2419  0.09    ray::DashboardAgent, 2421       0.05    ray::RuntimeEnvAgent, Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 ```
 
-You can see the number of Ray OOM kills in the "..." chart in the Ray Core dashboard:
+You can see the number of Ray OOM kills in the "Ray OOM Kills (Tasks and Actors)" chart 
+in the Ray Core dashboard:
 
 ![Ray OOM kills chart](ray-oom-kills-chart.png)
 
@@ -36,8 +39,9 @@ an error like this:
 (raylet) A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. Lease ID: 2100000005000000ffffffffffffffffffffffffffffffffffffffffffffffff Worker ID: 863d8a6a594d60f8d143462b96cd3bf4270eafe617aaf2d2ca7266cb Node ID: 4cb25bc084aeb5a31ca5402ad589ae042a71165a8e2dd8418fecee26 Worker IP address: 10.0.50.112 Worker port: 10015 Worker PID: 2938 Worker exit type: SYSTEM_ERROR Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. Some common causes include: (1) the process was killed by the OOM killer due to high memory usage, (2) ray stop --force was called, or (3) the worker crashed unexpectedly due to SIGSEGV or another unexpected error.
 ```
 
-You can see the number of unexpected worker deaths in the "..." chart in the Ray Core 
-dashboard. Kernel OOM kills often cause unexpected worker death.
+You can see the number of unexpected worker deaths in the "Unexpected System Level 
+Worker Failures" chart in the Ray Core  dashboard. Kernel OOM kills often cause 
+unexpected worker death.
 
 ![Unexpected system-level worker deaths chart](unexpected-system-level-chart.png)
 
@@ -176,4 +180,5 @@ If you want to experiment with oversubscription at the risk of potential OOMs, d
 ## Further reading
 
 For a deeper understanding of how Ray handles memory, read 
-{doc}`Ray Core resource isolation </ray-core/resource-isolation-with-cgroupv2>`.
+{ref}`Ray Data Memory Management <data_memory_management>` and
+{doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.

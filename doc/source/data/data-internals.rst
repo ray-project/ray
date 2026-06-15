@@ -298,6 +298,8 @@ To ensure CPU resources are always available for Ray Data execution, limit the n
   :start-after: __resource_allocation_1_begin__
   :end-before: __resource_allocation_1_end__
 
+.. _data_memory_management:
+
 Memory Management
 =================
 
