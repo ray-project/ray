@@ -455,6 +455,9 @@ steps:
         --build-name coregpubuild-py3.10
         --python-version 3.10
         --only-tags multi_gpu
+        --test-env NCCL_DEBUG=INFO
+        --test-env NCCL_DEBUG_SUBSYS=INIT,GRAPH,ENV,TUNING,NET
+        --test-env CUDA_LAUNCH_BLOCKING=1
     depends_on: coregpubuild-multipy(python=3.10)
 
   - label: ":ray: core: cpp worker tests"
