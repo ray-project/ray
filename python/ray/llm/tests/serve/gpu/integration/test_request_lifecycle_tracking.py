@@ -44,7 +44,7 @@ from ray.serve._private.constants import (  # noqa: E402
 from ray.serve.config import DeploymentActorConfig  # noqa: E402
 from ray.serve.llm import LLMConfig, ModelLoadingConfig  # noqa: E402
 
-MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "Qwen/Qwen3-0.6B"
 APP_NAME = "lifecycle_tracking_gpu_test"
 REQUEST_ID = "gpu-req-1"
 MAX_TOKENS = 32
@@ -55,22 +55,33 @@ ENGINE_REQUEST_ID = f"chatcmpl-{REQUEST_ID}"
 
 @ray.remote(num_cpus=0)
 class RecordingKVRouterActor(KVRouterActor.__ray_actor_class__):
-    """The real KVRouterActor, additionally recording every event it applies.
+    """The real KVRouterActor, additionally recording every event it applies
+    and any error raised while booking it into the real Dynamo ``KvRouter``.
 
     Eviction on completion makes the hook calls unobservable from state alone;
-    the event log preserves them for assertion.
+    the event log preserves them for assertion. The error log proves each hook's
+    Dynamo call (add_request/mark_prefill_complete/add_output_block/free)
+    actually succeeded against the live router rather than being swallowed.
     """
 
     def __init__(self, block_size):
         super().__init__(block_size=block_size)
         self._event_log = []
+        self._errors = []
 
     async def on_lifecycle_events(self, events):
         self._event_log.extend(events)
-        await super().on_lifecycle_events(events)
+        for event in events:
+            try:
+                await super().on_lifecycle_events([event])
+            except Exception as e:  # noqa: BLE001
+                self._errors.append((event[0], repr(e)))
 
     def get_event_log(self):
         return self._event_log
+
+    def get_errors(self):
+        return self._errors
 
 
 def discover_deployment_actor(app_name, deployment_name, actor_name):
@@ -239,6 +250,9 @@ class TestLifecycleTrackingGPU:
         assert lifecycle is None, "completed request was not evicted"
         assert await actor.get_active_request_ids.remote() == []
 
+        # Every hook's call into the live Dynamo KvRouter succeeded.
+        assert await actor.get_errors.remote() == []
+
         events = [
             (name, args)
             for name, args in await actor.get_event_log.remote()
@@ -252,7 +266,7 @@ class TestLifecycleTrackingGPU:
 
         added_args = events[0][1]
         assert added_args[1] == worker_id
-        assert added_args[2] == usage["prompt_tokens"]
+        assert len(added_args[2]) == usage["prompt_tokens"]  # token ids booked
         decode_counts = [
             args[1] for name, args in events if name == "on_decode_progress"
         ]

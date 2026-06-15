@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Mapping, Optional, Type
+from typing import Any, List, Mapping, Optional, Type
 
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import RequestOutputKind
@@ -16,18 +16,19 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 logger = get_logger(__name__)
 
 
-def _prompt_token_count(prompt: Any) -> int:
-    """Token count of a pre-tokenized engine prompt, or ``0`` if unknown.
+def _prompt_token_ids(prompt: Any) -> List[int]:
+    """Pre-tokenized engine prompt's token ids, or ``[]`` if unknown.
 
     vLLM's OpenAI serving layer always tokenizes before calling ``generate``,
     passing a ``TokensPrompt``-style mapping with ``prompt_token_ids``; only
-    out-of-band engine calls (e.g. a raw text prompt) report an unknown count.
+    out-of-band engine calls (e.g. a raw text prompt) carry no ids. The router
+    actor needs the ids, not just the count, to book the request into Dynamo.
     """
     if isinstance(prompt, Mapping):
         token_ids = prompt.get("prompt_token_ids")
         if token_ids is not None:
-            return len(token_ids)
-    return 0
+            return list(token_ids)
+    return []
 
 
 class KVRouterReporter:
@@ -79,7 +80,7 @@ class RequestTokenTracker:
         self,
         reporter: KVRouterReporter,
         request_id: str,
-        prompt_token_count: int,
+        prompt_token_ids: List[int],
         emits_deltas: bool,
     ):
         self._reporter = reporter
@@ -89,7 +90,7 @@ class RequestTokenTracker:
         self._prefill_marked = False
         self._finished = False
         reporter.report(
-            "on_request_added", request_id, reporter.worker_id, prompt_token_count
+            "on_request_added", request_id, reporter.worker_id, prompt_token_ids
         )
 
     def on_output(self, output: RequestOutput) -> None:
@@ -148,7 +149,7 @@ def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
             tracker = RequestTokenTracker(
                 reporter,
                 request_id,
-                _prompt_token_count(prompt),
+                _prompt_token_ids(prompt),
                 emits_deltas=sampling_params.output_kind == RequestOutputKind.DELTA,
             )
             try:

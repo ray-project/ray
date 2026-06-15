@@ -78,16 +78,78 @@ class MockAsyncLLM:
             yield output
 
 
-@ray.remote(num_cpus=0)
-class RecordingKVRouterActor(KVRouterActor.__ray_actor_class__):
-    """The real KVRouterActor, additionally recording every event it applies."""
+class FakeKvRouter:
+    """Records the Dynamo ``KvRouter`` lifecycle calls the actor makes.
 
-    def __init__(self, block_size):
-        super().__init__(block_size=block_size)
-        self._event_log = []
+    Stands in for the real pyo3 ``KvRouter`` so CPU tests can assert the actor
+    books load into the right Dynamo hooks; ``overlap`` seeds a per-worker KV
+    cache hit (in blocks) for the admission-time ``get_overlap_scores`` query.
+    """
+
+    def __init__(self, overlap=None):
+        self.calls = []
+        self._overlap = overlap or {}
+
+    async def get_overlap_scores(self, token_ids):
+        return {
+            "workers": [
+                {"worker_id": w, "device_blocks": b} for w, b in self._overlap.items()
+            ]
+        }
+
+    async def add_request(
+        self,
+        request_id,
+        token_ids,
+        worker_id,
+        dp_rank=0,
+        cached_tokens=0,
+        expected_output_tokens=None,
+        **kwargs,
+    ):
+        self.calls.append(
+            (
+                "add_request",
+                request_id,
+                worker_id,
+                len(token_ids),
+                cached_tokens,
+                expected_output_tokens,
+            )
+        )
+
+    async def mark_prefill_complete(self, request_id):
+        self.calls.append(("mark_prefill_complete", request_id))
+
+    async def add_output_block(self, request_id, decay_fraction=None):
+        self.calls.append(("add_output_block", request_id, decay_fraction))
+
+    async def free(self, request_id):
+        self.calls.append(("free", request_id))
+
+
+class LifecycleActor(KVRouterActor.__ray_actor_class__):
+    """In-process KVRouterActor with the event plane + Serve LongPoll stripped
+    and a FakeKvRouter recording the Dynamo calls its lifecycle hooks make."""
+
+    def __init__(self, block_size, overlap=None):
+        self._block_size = block_size
+        self._replica_id_by_worker = {}
+        self._dyn_worker_id_to_replica_id = {}
+        self._requests = {}
+        self._kv_router = FakeKvRouter(overlap=overlap)
 
     def _start_replica_tracking(self):
         pass
+
+
+@ray.remote(num_cpus=0)
+class RecordingKVRouterActor(LifecycleActor):
+    """``LifecycleActor`` as a Ray actor that also logs the reported events."""
+
+    def __init__(self, block_size, overlap=None):
+        super().__init__(block_size, overlap=overlap)
+        self._event_log = []
 
     async def on_lifecycle_events(self, events):
         self._event_log.extend(events)
@@ -95,6 +157,9 @@ class RecordingKVRouterActor(KVRouterActor.__ray_actor_class__):
 
     def get_event_log(self):
         return self._event_log
+
+    def get_dynamo_calls(self):
+        return self._kv_router.calls
 
 
 @ray.remote(num_cpus=0)
@@ -104,13 +169,6 @@ class RaisingActor:
 
     async def on_lifecycle_events(self, events):
         raise RuntimeError("actor down")
-
-
-class LocalKVRouterActor(KVRouterActor.__ray_actor_class__):
-    """In-process KVRouterActor with LongPoll disabled."""
-
-    def _start_replica_tracking(self):
-        pass
 
 
 @pytest.fixture
@@ -148,54 +206,78 @@ async def drain(engine):
     await engine._kv_reporter.flush()
 
 
-def decode_counts(events):
-    return [args[1] for name, args in events if name == "on_decode_progress"]
+def op_names(calls):
+    return [c[0] for c in calls]
 
 
 @pytest.mark.asyncio
-async def test_basic_lifecycle(build_token_tracking_engine):
-    """A streamed request reports add -> prefill -> exact decode counts -> done."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(3, prompt_len=10), actor)
+async def test_lifecycle_books_dynamo_load(build_token_tracking_engine):
+    """A streamed request books add_request -> mark_prefill_complete ->
+    one add_output_block per crossed decode block -> free, in that order."""
+    actor = RecordingKVRouterActor.remote(block_size=8)
+    # prompt 12 (2 blocks); cumulative output crosses into block 3 at 5 tokens
+    # and block 4 at 13 tokens -> exactly two output blocks over 20 tokens.
+    engine = build_token_tracking_engine(delta_steps(20, prompt_len=12), actor)
 
-    prompt = {"prompt_token_ids": list(range(10))}
-    outputs = await consume(
+    prompt = {"prompt_token_ids": list(range(12))}
+    await consume(
         engine.generate(
             prompt, SamplingParams(output_kind=RequestOutputKind.DELTA), "req-1"
         )
     )
     await drain(engine)
 
-    assert ray.get(actor.get_event_log.remote()) == [
-        ("on_request_added", ("req-1", WORKER_ID, 10)),
-        ("on_prefill_complete", ("req-1",)),
-        ("on_decode_progress", ("req-1", 1)),
-        ("on_decode_progress", ("req-1", 2)),
-        ("on_decode_progress", ("req-1", 3)),
-        ("on_request_completed", ("req-1",)),
-    ]
-    assert outputs == engine.script
+    calls = ray.get(actor.get_dynamo_calls.remote())
+    assert op_names(calls) == (
+        ["add_request", "mark_prefill_complete"] + ["add_output_block"] * 2 + ["free"]
+    )
+    # No KV overlap configured -> the whole prompt counts as prefill work.
+    assert calls[0] == ("add_request", "req-1", WORKER_ID, 12, 0, None)
+    assert calls[-1] == ("free", "req-1")
 
 
 @pytest.mark.asyncio
-async def test_in_order_reports(build_token_tracking_engine):
-    """Back-to-back reports reach the actor in submission order.
+async def test_decode_block_crossings_drive_add_output_block():
+    """Each ceil((prompt+output)/block_size) increase books one output block."""
+    actor = LifecycleActor(block_size=16)
+    await actor.on_request_added("r", WORKER_ID, list(range(10)))  # ceil(10/16)=1
+    await actor.on_decode_progress("r", 6)  # 16 -> still 1 block
+    await actor.on_decode_progress("r", 7)  # 17 -> crosses into block 2
+    await actor.on_decode_progress("r", 39)  # 49 -> ceil=4, crosses two more
 
-    Plain fire-and-forget calls to an async actor would be executed out of order under load.
-    """
-    actor = RecordingKVRouterActor.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(200), actor)
-
-    await consume(
-        engine.generate("p", SamplingParams(output_kind=RequestOutputKind.DELTA), "r")
+    snapshot = await actor.get_request_lifecycle("r")
+    assert snapshot["output_blocks"] == 3
+    assert snapshot["total_blocks"] == 4
+    # Three crossings -> three add_output_block calls, after one add_request.
+    assert (
+        op_names(actor._kv_router.calls) == ["add_request"] + ["add_output_block"] * 3
     )
-    await drain(engine)
 
-    events = ray.get(actor.get_event_log.remote())
-    assert events[0][0] == "on_request_added"
-    assert events[1][0] == "on_prefill_complete"
-    assert events[-1] == ("on_request_completed", ("r",))
-    assert decode_counts(events) == list(range(1, 201))
+
+@pytest.mark.asyncio
+async def test_add_request_subtracts_cached_overlap():
+    """Admission books only the prefill work past the worker's cached prefix."""
+    # The chosen worker already caches one 16-token block of the prompt.
+    actor = LifecycleActor(block_size=16, overlap={WORKER_ID: 1})
+    await actor.on_request_added("r", WORKER_ID, list(range(32)))
+
+    name, rid, worker_id, n_tokens, cached_tokens, expected = actor._kv_router.calls[0]
+    assert (name, rid, worker_id, n_tokens) == ("add_request", "r", WORKER_ID, 32)
+    assert cached_tokens == 16  # one cached block * block_size
+
+
+@pytest.mark.asyncio
+async def test_expected_output_tokens_set_decay_fraction():
+    """With an output-length estimate, each decode block decays by remaining
+    fraction; without one the block carries no decay."""
+    actor = LifecycleActor(block_size=8)
+    await actor.on_request_added(
+        "r", WORKER_ID, list(range(8)), expected_output_tokens=40
+    )
+    await actor.on_decode_progress("r", 8)  # total 16 -> crosses into block 2
+
+    block_calls = [c for c in actor._kv_router.calls if c[0] == "add_output_block"]
+    assert block_calls == [("add_output_block", "r", pytest.approx(1.0 - 8 / 40))]
 
 
 @pytest.mark.asyncio
@@ -203,88 +285,59 @@ async def test_in_order_reports(build_token_tracking_engine):
     "kind", [RequestOutputKind.DELTA, RequestOutputKind.CUMULATIVE]
 )
 async def test_token_count_normalization(kind, build_token_tracking_engine):
-    """DELTA and CUMULATIVE streams yield identical cumulative progress."""
+    """DELTA and CUMULATIVE streams book identical decode progress."""
     if kind is RequestOutputKind.DELTA:
-        # Steps carry only new tokens: 1, then 2, then 1 -> 1, 3, 4.
-        script = [request_output([n]) for n in (1, 2, 1)]
+        # New tokens per step: 1, 2, 1 -> cumulative 1, 3, 4.
+        script = [request_output([n], prompt_len=4) for n in (1, 2, 1)]
     else:
-        # Steps carry the full output so far: 1, 3, 4 -> 1, 3, 4.
-        script = [request_output([n]) for n in (1, 3, 4)]
-    actor = RecordingKVRouterActor.remote(block_size=16)
+        # Full output so far per step: 1, 3, 4.
+        script = [request_output([n], prompt_len=4) for n in (1, 3, 4)]
+    actor = RecordingKVRouterActor.remote(block_size=2)
     engine = build_token_tracking_engine(script, actor)
 
-    await consume(engine.generate("p", SamplingParams(output_kind=kind), "r"))
+    prompt = {"prompt_token_ids": list(range(4))}
+    await consume(engine.generate(prompt, SamplingParams(output_kind=kind), "r"))
     await drain(engine)
 
-    assert decode_counts(ray.get(actor.get_event_log.remote())) == [1, 3, 4]
+    # prompt 4 (2 blocks) at block_size 2; cumulative output 1,3,4 -> totals
+    # 5,7,8 -> blocks 3,4,4: two crossings regardless of stream kind.
+    calls = ray.get(actor.get_dynamo_calls.remote())
+    assert op_names(calls) == [
+        "add_request",
+        "mark_prefill_complete",
+        "add_output_block",
+        "add_output_block",
+        "free",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_multi_candidate_sum(build_token_tracking_engine):
-    """With n>1, progress sums the new tokens across all candidate outputs."""
+async def test_in_order_reports(build_token_tracking_engine):
+    """Back-to-back reports reach the actor in submission order.
+
+    Plain fire-and-forget calls to an async actor would run out of order, which
+    would book a completion before the admission and resurrect a freed request.
+    """
     actor = RecordingKVRouterActor.remote(block_size=16)
-    script = [request_output([1, 1]), request_output([1, 0], finished=True)]
-    engine = build_token_tracking_engine(script, actor)
+    engine = build_token_tracking_engine(delta_steps(200, prompt_len=8), actor)
 
     await consume(
         engine.generate("p", SamplingParams(output_kind=RequestOutputKind.DELTA), "r")
     )
     await drain(engine)
 
-    assert decode_counts(ray.get(actor.get_event_log.remote())) == [2, 3]
-
-
-@pytest.mark.asyncio
-async def test_empty_steps_ignored(build_token_tracking_engine):
-    """Token-less outputs (e.g. a finish-only chunk) emit no progress hooks."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
-    script = [
-        request_output([1]),
-        request_output([0]),  # structural chunk: no new tokens
-        request_output([1], finished=True),
-    ]
-    engine = build_token_tracking_engine(script, actor)
-
-    await consume(
-        engine.generate("p", SamplingParams(output_kind=RequestOutputKind.DELTA), "r")
-    )
-    await drain(engine)
-
-    events = ray.get(actor.get_event_log.remote())
-    assert decode_counts(events) == [1, 2]
-    assert [e for e in events if e[0] == "on_prefill_complete"] == [
-        ("on_prefill_complete", ("r",))
-    ]
-
-
-@pytest.mark.asyncio
-async def test_non_pretokenized_prompt(
-    build_token_tracking_engine,
-):
-    """A non-pretokenized prompt (out-of-band engine call) reports no prompt
-    tokens; the OpenAI serving layer always passes pre-tokenized prompts."""
-    actor = RecordingKVRouterActor.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(1, prompt_len=6), actor)
-
-    await consume(
-        engine.generate(
-            "plain text prompt",
-            SamplingParams(output_kind=RequestOutputKind.DELTA),
-            "r",
-        )
-    )
-    await drain(engine)
-
-    events = ray.get(actor.get_event_log.remote())
-    assert events[0] == ("on_request_added", ("r", WORKER_ID, 0))
+    names = op_names(ray.get(actor.get_dynamo_calls.remote()))
+    assert names[0] == "add_request"
+    assert names[1] == "mark_prefill_complete"
+    assert names[-1] == "free"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("early_drop", [False, True])
-async def test_completed_exactly_once(early_drop, build_token_tracking_engine):
-    """Completion fires exactly once on normal end and on early stream close."""
+async def test_freed_exactly_once(early_drop, build_token_tracking_engine):
+    """free fires exactly once on normal end and on early stream close."""
     actor = RecordingKVRouterActor.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(3), actor)
+    engine = build_token_tracking_engine(delta_steps(3, prompt_len=8), actor)
 
     stream = engine.generate(
         "p", SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
@@ -292,17 +345,17 @@ async def test_completed_exactly_once(early_drop, build_token_tracking_engine):
     await consume(stream, limit=1 if early_drop else None)
     await drain(engine)
 
-    events = ray.get(actor.get_event_log.remote())
-    assert [e for e in events if e[0] == "on_request_completed"] == [
-        ("on_request_completed", ("r",))
-    ]
+    calls = ray.get(actor.get_dynamo_calls.remote())
+    assert op_names(calls).count("free") == 1
 
 
 @pytest.mark.asyncio
-async def test_engine_error_still_completes(build_token_tracking_engine):
+async def test_engine_error_still_frees(build_token_tracking_engine):
     """A mid-stream engine error propagates but still frees the request."""
     actor = RecordingKVRouterActor.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(3), actor, error_after=1)
+    engine = build_token_tracking_engine(
+        delta_steps(3, prompt_len=8), actor, error_after=1
+    )
 
     with pytest.raises(RuntimeError, match="engine failure"):
         await consume(
@@ -312,15 +365,16 @@ async def test_engine_error_still_completes(build_token_tracking_engine):
         )
     await drain(engine)
 
-    events = ray.get(actor.get_event_log.remote())
-    assert events[-1] == ("on_request_completed", ("r",))
+    assert op_names(ray.get(actor.get_dynamo_calls.remote()))[-1] == "free"
 
 
 @pytest.mark.asyncio
-async def test_zero_token_request(build_token_tracking_engine):
-    """An output-less request (e.g. validation abort) is added and freed only."""
+async def test_zero_output_request_added_then_freed(build_token_tracking_engine):
+    """An output-less request (e.g. validation abort) is admitted and freed."""
     actor = RecordingKVRouterActor.remote(block_size=16)
-    engine = build_token_tracking_engine([request_output([0], finished=True)], actor)
+    engine = build_token_tracking_engine(
+        [request_output([0], prompt_len=3, finished=True)], actor
+    )
 
     prompt = {"prompt_token_ids": [1, 2, 3]}
     await consume(
@@ -330,10 +384,36 @@ async def test_zero_token_request(build_token_tracking_engine):
     )
     await drain(engine)
 
-    assert ray.get(actor.get_event_log.remote()) == [
-        ("on_request_added", ("r", WORKER_ID, 3)),
-        ("on_request_completed", ("r",)),
-    ]
+    assert op_names(ray.get(actor.get_dynamo_calls.remote())) == ["add_request", "free"]
+
+
+@pytest.mark.asyncio
+async def test_hooks_for_unknown_request_book_nothing():
+    """Hooks for a never-admitted request id touch neither state nor Dynamo."""
+    actor = LifecycleActor(block_size=16)
+    await actor.on_prefill_complete("missing")
+    await actor.on_decode_progress("missing", 3)
+    await actor.on_request_completed("missing")
+
+    assert await actor.get_request_lifecycle("missing") is None
+    assert actor._kv_router.calls == []
+
+
+@pytest.mark.asyncio
+async def test_active_load_views():
+    """Active load is per-worker; completion evicts the request and frees it."""
+    actor = LifecycleActor(block_size=16)
+    await actor.on_request_added("a", 1, list(range(8)))
+    await actor.on_request_added("b", 1, [])
+    await actor.on_request_added("c", 2, [])
+    assert await actor.get_worker_active_load(1) == 2
+    assert await actor.get_worker_active_load(2) == 1
+
+    await actor.on_request_completed("a")
+    assert await actor.get_worker_active_load(1) == 1
+    assert set(await actor.get_active_request_ids()) == {"b", "c"}
+    assert await actor.get_request_lifecycle("a") is None
+    assert ("free", "a") in actor._kv_router.calls
 
 
 @pytest.mark.asyncio
@@ -375,98 +455,6 @@ async def test_passthrough_without_actor(monkeypatch):
 def test_derive_kv_event_block_size():
     assert derive_kv_event_block_size({"block_size": 32}) == 32
     assert derive_kv_event_block_size({}) == CacheConfig.DEFAULT_BLOCK_SIZE
-
-
-@pytest.mark.asyncio
-async def test_block_boundary_crossings():
-    """Each ceil((prompt+output)/block_size) increase counts one output block."""
-    actor = LocalKVRouterActor(block_size=16)
-    await actor.on_request_added("r", 1, prompt_token_count=10)
-    assert (await actor.get_request_lifecycle("r"))["total_blocks"] == 1  # ceil(10/16)
-
-    await actor.on_decode_progress("r", 6)  # 10+6=16 -> still 1 block
-    assert (await actor.get_request_lifecycle("r"))["output_blocks"] == 0
-
-    await actor.on_decode_progress("r", 7)  # 17 -> crosses into block 2
-    assert (await actor.get_request_lifecycle("r"))["output_blocks"] == 1
-
-    await actor.on_decode_progress("r", 39)  # 49 -> ceil=4, crosses two more at once
-    snapshot = await actor.get_request_lifecycle("r")
-    assert snapshot["output_blocks"] == 3
-    assert snapshot["total_blocks"] == 4
-    assert snapshot["output_tokens"] == 39
-
-
-@pytest.mark.asyncio
-async def test_active_load_tracking():
-    """Active load is per-worker; completion evicts the request entirely."""
-    actor = LocalKVRouterActor(block_size=16)
-    await actor.on_request_added("a", 1, prompt_token_count=8)
-    await actor.on_request_added("b", 1)
-    await actor.on_request_added("c", 2)
-    assert await actor.get_worker_active_load(1) == 2
-    assert await actor.get_worker_active_load(2) == 1
-
-    await actor.on_prefill_complete("a")
-    await actor.on_decode_progress("a", 5)
-    assert await actor.get_worker_active_load(1) == 2  # still active while decoding
-    assert await actor.get_request_lifecycle("a") == {
-        "worker_id": 1,
-        "prompt_tokens": 8,
-        "prefill_completed": True,
-        "output_tokens": 5,
-        "output_blocks": 0,
-        "total_blocks": 1,
-    }
-
-    # Completion evicts (bounding memory to in-flight requests).
-    await actor.on_request_completed("a")
-    assert await actor.get_worker_active_load(1) == 1
-    assert set(await actor.get_active_request_ids()) == {"b", "c"}
-    assert await actor.get_request_lifecycle("a") is None
-
-    # Hooks for an unknown request id are ignored.
-    await actor.on_prefill_complete("missing")
-    await actor.on_decode_progress("missing", 3)
-    await actor.on_request_completed("missing")
-    assert await actor.get_request_lifecycle("missing") is None
-
-
-@pytest.mark.asyncio
-async def test_end_to_end_actor_state(build_token_tracking_engine):
-    """End-to-end: exact token counts land as actor block state over ``.remote``."""
-    actor = RecordingKVRouterActor.remote(block_size=8)
-    # prompt 12, block_size 8: baseline ceil(12/8)=2; boundaries at cumulative
-    # output 5 and 13 -> 9 generated tokens cross only the first.
-    engine = build_token_tracking_engine(delta_steps(9, prompt_len=12), actor)
-
-    prompt = {"prompt_token_ids": list(range(12))}
-    stream = engine.generate(
-        prompt, SamplingParams(output_kind=RequestOutputKind.DELTA), "req-e2e"
-    )
-    for _ in range(9):
-        await stream.__anext__()
-    await drain(engine)
-
-    # All outputs consumed but the stream is still open: the request is
-    # tracked with its exact final counts.
-    assert await actor.get_request_lifecycle.remote("req-e2e") == {
-        "worker_id": WORKER_ID,
-        "prompt_tokens": 12,
-        "prefill_completed": True,
-        "output_tokens": 9,
-        "output_blocks": 1,
-        "total_blocks": 3,
-    }
-    assert await actor.get_worker_active_load.remote(WORKER_ID) == 1
-
-    # Stream end fires completion, which evicts the request.
-    with pytest.raises(StopAsyncIteration):
-        await stream.__anext__()
-    await drain(engine)
-    assert await actor.get_request_lifecycle.remote("req-e2e") is None
-    assert await actor.get_active_request_ids.remote() == []
-    assert await actor.get_worker_active_load.remote(WORKER_ID) == 0
 
 
 if __name__ == "__main__":

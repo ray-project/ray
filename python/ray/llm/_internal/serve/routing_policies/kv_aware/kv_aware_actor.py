@@ -53,10 +53,16 @@ LIFECYCLE_HOOKS = frozenset(
 
 @dataclass
 class RequestLifecycle:
-    """In-flight request load state while the request is served by a replica."""
+    """In-flight request load state while the request is served by a replica.
+
+    Mirrors what the Dynamo ``KvRouter`` tracks for the request so the actor can
+    compute decode-block boundary crossings (one ``add_output_block`` per block)
+    and serve the active-load views without round-tripping to Dynamo.
+    """
 
     worker_id: int
     prompt_tokens: int = 0
+    expected_output_tokens: Optional[int] = None
     prefill_completed: bool = False
     output_tokens: int = 0
     output_blocks: int = 0
@@ -75,9 +81,10 @@ class KVRouterActor:
     rendezvous with the broker through ``register_kv_event_worker``). It exposes
     the KV-aware routing interfaces:
     - Replica membership tracking
-    - KV-aware scoring
-
-    TODO (jeffreywang): Scoring routes to Dynamo once ``rank_workers`` lands.
+    - KV-aware scoring (query-only ``select_worker``)
+    - Request lifecycle tracking that books active prefill/decode load into the
+      ``KvRouter`` (``on_request_added`` -> ``on_prefill_complete`` ->
+      ``on_decode_progress`` -> ``on_request_completed``)
     """
 
     def __init__(self, block_size: int):
@@ -97,6 +104,10 @@ class KVRouterActor:
         configure_kv_event_broker_env(self._kv_event_broker.broker_url)
         self._create_kv_router(namespace, block_size)
         self._start_replica_tracking()
+
+    def get_block_size(self) -> int:
+        """Return the KV-cache block size used for decode-block accounting."""
+        return self._block_size
 
     def _create_kv_router(self, namespace: str, block_size: int) -> None:
         """Create the Dynamo ``KvRouter`` consuming this deployment's KV events.
@@ -311,26 +322,45 @@ class KVRouterActor:
         self,
         request_id: str,
         worker_id: int,
-        prompt_token_count: int = 0,
+        token_ids: List[int],
+        expected_output_tokens: Optional[int] = None,
     ) -> None:
-        """Record a newly admitted request as active load on ``worker_id``."""
+        """Admit a routed request into ``worker_id``'s active load.
+
+        Books the request into the Dynamo ``KvRouter`` with the worker's current
+        KV overlap, so the request's counted prefill work excludes the prompt
+        prefix already cached there. Pairs 1:1 with :meth:`on_request_completed`.
+        """
+        prompt_tokens = len(token_ids)
         self._requests[request_id] = RequestLifecycle(
             worker_id=worker_id,
-            prompt_tokens=prompt_token_count,
-            total_blocks=math.ceil(prompt_token_count / self._block_size),
+            prompt_tokens=prompt_tokens,
+            expected_output_tokens=expected_output_tokens,
+            total_blocks=math.ceil(prompt_tokens / self._block_size),
+        )
+        cached_tokens = await self._cached_tokens(token_ids, worker_id)
+        await self._kv_router.add_request(
+            request_id,
+            token_ids,
+            worker_id,
+            cached_tokens=cached_tokens,
+            expected_output_tokens=expected_output_tokens,
         )
 
     async def on_prefill_complete(self, request_id: str) -> None:
-        """Mark that ``request_id`` completed prefill and is now decoding."""
+        """Record a request's prefill->decode transition in Dynamo, dropping its
+        prompt-side prefill load."""
         state = self._requests.get(request_id)
-        if state is not None:
-            state.prefill_completed = True
+        if state is None:
+            return
+        state.prefill_completed = True
+        await self._kv_router.mark_prefill_complete(request_id)
 
     async def on_decode_progress(
         self, request_id: str, cumulative_output_tokens: int
     ) -> None:
         """Advance ``request_id`` to an exact cumulative output-token count,
-        crossing one decode block at a time."""
+        booking one decode block in Dynamo per crossed block boundary."""
         state = self._requests.get(request_id)
         if state is None:
             return
@@ -338,13 +368,38 @@ class KVRouterActor:
         new_total_blocks = math.ceil(
             (state.prompt_tokens + cumulative_output_tokens) / self._block_size
         )
+        decay_fraction = self._decay_fraction(state)
         while new_total_blocks > state.total_blocks:
             state.output_blocks += 1
             state.total_blocks += 1
+            await self._kv_router.add_output_block(request_id, decay_fraction)
 
     async def on_request_completed(self, request_id: str) -> None:
-        """Evict ``request_id``; it no longer counts as active load."""
-        self._requests.pop(request_id, None)
+        """Free ``request_id`` from Dynamo's active load and the local view."""
+        if self._requests.pop(request_id, None) is not None:
+            await self._kv_router.free(request_id)
+
+    async def _cached_tokens(self, token_ids: List[int], worker_id: int) -> int:
+        """Tokens of ``token_ids`` already cached on ``worker_id`` (whole blocks).
+
+        The admission-time KV overlap for the chosen worker; subtracted from the
+        prompt to count only the prefill work this request actually adds.
+        """
+        scores = await self._kv_router.get_overlap_scores(token_ids)
+        for worker in scores["workers"]:
+            if worker["worker_id"] == worker_id:
+                return worker["device_blocks"] * self._block_size
+        return 0
+
+    def _decay_fraction(self, state: RequestLifecycle) -> Optional[float]:
+        """Fraction of output still expected, or ``None`` without an estimate.
+
+        Weights a decode block by how much generation remains, so blocks of a
+        nearly-finished request count for less (Dynamo's decay model).
+        """
+        if not state.expected_output_tokens:
+            return None
+        return max(0.0, 1.0 - state.output_tokens / state.expected_output_tokens)
 
     async def get_request_lifecycle(self, request_id: str) -> Optional[Dict[str, Any]]:
         """Return a snapshot of an in-flight request's state, or ``None``."""
