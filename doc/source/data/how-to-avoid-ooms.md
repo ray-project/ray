@@ -6,14 +6,14 @@ This guide describes what OOMs look like and provides practical guidance for mit
 them.
 
 For a lower-level explanation of how Ray treats memory, read 
-{doc}`Ray Core resource  isolation </ray-core/resource-isolation-with-cgroupv2>`. 
+{doc}`Ray Core resource isolation </ray-core/resource-isolation-with-cgroupv2>`. 
 
 ## What OOMs look like
 
 OOMs show up in several ways. If you see one or more of these error messages, your
 job might be using too much memory.
 
-### Ray OOM kils
+### Ray OOM kills
 
 When the Ray OOM killer proactively kills a task or actor, you might see an error like
 this:
@@ -81,11 +81,11 @@ regular heap OOMs because Ray Data builds the batch in heap memory first.
 
 ### Configure ``memory`` for reads and high-memory UDFs
 
-If a task or actors uses more than a few GiB of memory, set ``memory``. This tells Ray 
+If a task or actor uses more than a few GiB of memory, set ``memory``. This tells Ray 
 Data how much memory each task or actor needs so it doesn't launch too many at once.
 
 To pick a value for ``memory``, read the Ray Data log file and look for the 
-`max_uss_bytes` field. Ray typicaly writes the log file to
+`max_uss_bytes` field. Ray typically writes the log file to
 `/tmp/ray/session-latest/ray-data/ray-data.log`. 
 
 ```
@@ -138,8 +138,8 @@ workers as reads. It can improve memory safety at the cost of some performance.
 
 Older versions of Ray Data emit a warning that suggests you increase 
 `RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION`. While this can improve performance for 
-some workloads like shuffle, it can also increase the risk of OOMs because it decrease
-the amount of  memory available for your UDFs.
+some workloads like shuffle, it can also increase the risk of OOMs because it decreases
+the amount of memory available for your UDFs.
 
 To improve memory safety, don't configure the knob.
 
