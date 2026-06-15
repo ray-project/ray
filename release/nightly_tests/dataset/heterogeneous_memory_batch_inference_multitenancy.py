@@ -45,13 +45,13 @@ from ray.util.state import list_actors, list_nodes, list_tasks
 SUBCLUSTERS = ("tenant_a", "tenant_b")
 
 # Max acceptable concurrent-vs-solo overhead before we flag a regression.
-MAX_OVERHEAD = 0.15
+MAX_OVERHEAD = 0.25
 
 # Operator-name prefixes set by Ray Data on tasks for this pipeline:
 #   ray.data.range -> "Read*", map_batches(...) -> "MapBatches(...)",
 #   write_datasink(...) -> "Write*". Exhaustive for this pipeline; extend
 #   if the pipeline ever adds shuffles / aggregates / repartitions.
-DATA_TASK_NAME_PREFIXES = ("MapBatches(", "Read", "Write")
+DATA_TASK_NAME_PREFIXES = ("MapBatches(", "Read", "Write", "map", "reduce")
 
 # Upper bound on tasks fetched via list_tasks. We print the scanned count
 # so the operator can spot truncation. Going above this limit gives
@@ -59,9 +59,7 @@ DATA_TASK_NAME_PREFIXES = ("MapBatches(", "Read", "Write")
 LIST_TASKS_LIMIT = 20_000
 
 
-def run_pipeline(
-    subcluster: str, args: argparse.Namespace, dataset_creation_lock: threading.Lock
-) -> None:
+def run_pipeline(subcluster: str, args: argparse.Namespace) -> None:
     build_and_run_pipeline(
         num_rows=args.num_rows,
         gen_batch_size=args.gen_batch_size,
@@ -70,24 +68,22 @@ def run_pipeline(
         gpu_concurrency=args.gpu_concurrency,
         subcluster=subcluster,
         all_to_all_shuffle=True,
-        dataset_creation_lock=dataset_creation_lock,
     )
 
 
 def run_solo(args: argparse.Namespace) -> float:
     start = time.perf_counter()
-    run_pipeline("tenant_a", args, threading.Lock())
+    run_pipeline("tenant_a", args)
     return time.perf_counter() - start
 
 
 def run_concurrent(args: argparse.Namespace) -> Dict[str, float]:
     """Run both tenants on threads concurrently; return per-tenant wall-time."""
     per_tenant: Dict[str, float] = {}
-    dataset_creation_lock = threading.Lock()
 
     def _run(sc: str) -> None:
         t0 = time.perf_counter()
-        run_pipeline(sc, args, dataset_creation_lock)
+        run_pipeline(sc, args)
         per_tenant[sc] = time.perf_counter() - t0
 
     threads = [

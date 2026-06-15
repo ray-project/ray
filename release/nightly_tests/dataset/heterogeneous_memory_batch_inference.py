@@ -38,6 +38,9 @@ import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.datasource import Datasink
 
+# Use lock when creating dataset because dataset creation uses process-global DataContext.
+_DATASET_CREATION_LOCK = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # UDFs
 # ---------------------------------------------------------------------------
@@ -95,14 +98,10 @@ def build_and_run_pipeline(
     gpu_concurrency: int,
     subcluster: Optional[str] = None,
     all_to_all_shuffle: bool = False,
-    dataset_creation_lock: Optional[threading.Lock] = threading.Lock(),
 ):
-    with dataset_creation_lock:
+    with _DATASET_CREATION_LOCK:
         if subcluster is not None:
-            # Set on the process-global DataContext first: some operator paths
-            # read via DataContext.get_current() at task-submission time, which
-            # is thread-local in places, so the per-Dataset setting alone isn't
-            # sufficient when callers run on a non-driver thread.
+            # Set label_selector here so that dataset creation time tasks use it.
             ray.data.DataContext.get_current().execution_options.label_selector = {
                 "ray-subcluster": subcluster
             }
