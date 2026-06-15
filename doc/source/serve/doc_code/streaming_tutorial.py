@@ -330,6 +330,6 @@ with ThreadPoolExecutor() as pool:
     ]
     responses = [fut.result() for fut in futs]
     assert [[c for c in r if c] for r in responses] == [
-        ["interstitial", " error"],
+        ["I", "'m", " not", " a", " fan", " of", " the", " new", " look", " ."],
         ["D", "ogs", " are", " the", " best", " ."],
     ]
