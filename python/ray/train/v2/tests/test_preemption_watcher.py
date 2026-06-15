@@ -1,12 +1,17 @@
 """Unit tests for the preemption watcher."""
-from typing import Dict
+from types import SimpleNamespace
+from typing import Dict, Optional
 from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray.train.v2._internal.callbacks.preemption_callback import PreemptionCallback
-from ray.train.v2._internal.execution.preemption import PreemptionWatcher
+from ray.train.v2._internal.execution.preemption import (
+    PreemptionContext,
+    PreemptionInfo,
+    PreemptionWatcher,
+)
 
 _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 
@@ -14,6 +19,7 @@ _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 def _make_watcher(
     node_to_ranks: Dict[str, list],
     fd_map: Dict[str, list],
+    worker_actors_by_rank: Optional[Dict[int, object]] = None,
 ) -> PreemptionWatcher:
     """Construct a watcher with a fixed failure-domain map, then halt its loop.
 
@@ -24,7 +30,10 @@ def _make_watcher(
     with patch.object(
         PreemptionWatcher, "_build_failure_domain_map", return_value=fd
     ), patch(f"{_PREEMPTION_MOD}._get_draining_nodes", return_value={}):
-        watcher = PreemptionWatcher(node_to_ranks=node_to_ranks)
+        watcher = PreemptionWatcher(
+            node_to_ranks=node_to_ranks,
+            worker_actors_by_rank=worker_actors_by_rank,
+        )
         watcher._stop_event.set()
         watcher._monitor_thread.join(timeout=5)
     return watcher
@@ -105,6 +114,62 @@ class TestPreemptionWatcher:
         watcher = _make_watcher(node_to_ranks={"node-a": [0]}, fd_map={"node-a": [0]})
         _poll_once_with(watcher, return_value=None)  # must not raise
         assert watcher.get_latest_preemption_info() is None
+
+    def test_fans_out_mark_preempt_to_all_workers(self):
+        """On a preemption, mark_preempt is sent to every worker (preempted or not)."""
+        actor0, actor1 = Mock(), Mock()
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0], "node-b": [1]},
+            fd_map={"node-a": [0], "node-b": [1]},
+            worker_actors_by_rank={0: actor0, 1: actor1},
+        )
+        # Only node-a is preempted, but both workers must be notified.
+        _poll_once_with(watcher, return_value={"node-a": 30_000})
+
+        for actor in (actor0, actor1):
+            actor.mark_preempt.remote.assert_called_once()
+            (sent_info,) = actor.mark_preempt.remote.call_args.args
+            assert sent_info.preempted_node_ids == ["node-a"]
+            assert sent_info.preempted_ranks == [0]
+
+    def test_no_fan_out_without_preemption(self):
+        actor0 = Mock()
+        watcher = _make_watcher(
+            node_to_ranks={"node-a": [0]},
+            fd_map={"node-a": [0]},
+            worker_actors_by_rank={0: actor0},
+        )
+        _poll_once_with(watcher, return_value={})
+        actor0.mark_preempt.remote.assert_not_called()
+
+
+class TestPreemptionContext:
+    def test_get_returns_none_before_set(self):
+        assert PreemptionContext().get() is None
+
+    def test_set_then_get(self):
+        ctx = PreemptionContext()
+        info = PreemptionInfo(
+            deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]}
+        )
+        ctx.set(info)
+        assert ctx.get() is info
+
+
+class TestMarkPreempt:
+    def test_mark_preempt_stores_info(self):
+        from ray.train.v2._internal.execution.worker_group import worker as worker_mod
+
+        ctx = PreemptionContext()
+        stub_context = SimpleNamespace(preemption_context=ctx, get_world_rank=lambda: 0)
+        worker = worker_mod.RayTrainWorker.__new__(worker_mod.RayTrainWorker)
+        info = PreemptionInfo(
+            deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]}
+        )
+        with patch.object(worker_mod, "get_train_context", return_value=stub_context):
+            worker.mark_preempt(info)
+
+        assert ctx.get() is info
 
 
 class TestBuildFailureDomainMap:

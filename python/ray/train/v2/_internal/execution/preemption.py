@@ -1,9 +1,10 @@
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
 import ray
+from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
 from ray.util.tpu import get_tpu_slice_name_from_node
 
@@ -37,6 +38,27 @@ class PreemptionInfo:
         )
 
 
+@dataclass
+class PreemptionContext:
+    """Thread-shared preemption signal for one worker actor.
+
+    Written by the actor's main thread (the ``mark_preempt`` RPC handler) and
+    read by the UDF thread; all access goes through the lock-guarded methods.
+    """
+
+    _preemption_info: Optional[PreemptionInfo] = None
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def set(self, info: PreemptionInfo) -> None:
+        with self._lock:
+            self._info = info
+
+    def get(self) -> Optional[PreemptionInfo]:
+        """Return the current preemption signal, or ``None`` if none received."""
+        with self._lock:
+            return self._info
+
+
 def _get_draining_nodes() -> Dict[str, int]:
     """Ray Core's draining nodes as ``{node_id_hex: deadline_ms}`` (0 = no deadline)."""
     return ray._private.state.state.get_draining_nodes()
@@ -59,17 +81,23 @@ class PreemptionWatcher:
             as the set of nodes we care about (drains elsewhere are ignored)
             and as the seed for failure-domain expansion.
         poll_interval_s: Seconds between drain-state polls.
+        worker_actors_by_rank: Map ``world_rank -> worker actor handle``. On a
+            detected preemption, ``mark_preempt`` is called on every worker.
     """
 
     def __init__(
         self,
         node_to_ranks: Dict[str, List[int]],
         poll_interval_s: float = DEFAULT_PREEMPTION_POLL_INTERVAL_S,
+        worker_actors_by_rank: Optional[Dict[int, ActorHandle]] = None,
     ):
         self._node_to_ranks: Dict[str, List[int]] = {
             nid: sorted(ranks) for nid, ranks in node_to_ranks.items()
         }
         self._poll_interval_s = poll_interval_s
+        self._worker_actors_by_rank: Dict[int, ActorHandle] = (
+            worker_actors_by_rank or {}
+        )
         self._failure_domain_map: Dict[str, List[int]] = self._build_failure_domain_map(
             self._node_to_ranks
         )
@@ -206,8 +234,16 @@ class PreemptionWatcher:
             info.preempted_ranks,
             deadline_ms,
         )
-        # TODO(lehui): forward the detected preemption to the workers so the
-        # training loop can react to it.
+
+        for rank, actor in self._worker_actors_by_rank.items():
+            try:
+                actor.mark_preempt.remote(info)
+            except Exception:
+                logger.warning(
+                    "Failed to send preemption signal to rank %d.",
+                    rank,
+                    exc_info=True,
+                )
         # TODO(lehui): coalesce preemptions seen within one window into a single
         # worker-group restart, so a staggered drain (node A at t, node B at
         # t+60s) doesn't cause back-to-back restarts.

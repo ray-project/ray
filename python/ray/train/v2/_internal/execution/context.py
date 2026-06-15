@@ -21,6 +21,7 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import (
     SynchronizationActor,
     SynchronizationBarrierResetError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionContext
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
@@ -134,6 +135,7 @@ class TrainContext:
     current_report_index: int = 0
     report_call_index: int = 0
     report_order_condition: threading.Condition = threading.Condition()
+    preemption_context: PreemptionContext = field(default_factory=PreemptionContext)
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
