@@ -37,7 +37,14 @@ bool AppendFileSection(const std::string &path,
   // them); std::string::resize would needlessly zero-fill first.
   absl::strings_internal::STLStringResizeUninitialized(&output, old_size + size);
   file.read(&output[old_size], static_cast<std::streamsize>(size));
-  return static_cast<uint64_t>(file.gcount()) == size;
+  
+  uint64_t bytes_read = static_cast<uint64_t>(file.gcount());
+  if (bytes_read != size) {
+    // Shrink the string back to its original state to drop the uninitialized garbage
+    output.resize(old_size);
+    return false;
+  }
+  return true;
 }
 }  // namespace
 
