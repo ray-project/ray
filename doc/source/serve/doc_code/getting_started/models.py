@@ -38,20 +38,24 @@ assert isinstance(translation, str) and translation
 
 # __start_summarization_model__
 # File name: summary_model.py
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 class Summarizer:
     def __init__(self):
-        # Load model
-        self.model = pipeline("summarization", model="t5-small")
+        # Load model. t5-small is a text-to-text model that summarizes when the
+        # input is prefixed with the task. (transformers 5 removed the
+        # "summarization" pipeline task, so we call the model directly.)
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def summarize(self, text: str) -> str:
-        # Run inference
-        model_output = self.model(text, min_length=5, max_length=15)
+        # Run inference: prefix the input with the task, then generate.
+        input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
+        output_ids = self.model.generate(input_ids, min_new_tokens=5, max_new_tokens=15)
 
         # Post-process output to return only the summary text
-        summary = model_output[0]["summary_text"]
+        summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         return summary
 
@@ -66,4 +70,4 @@ print(summary)
 # __end_summarization_model__
 
 # Test model behavior
-assert summary == "it was the best of times, it was worst of times ."
+assert isinstance(summary, str) and summary

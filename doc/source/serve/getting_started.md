@@ -11,7 +11,7 @@ This tutorial will walk you through the process of writing and testing a Ray Ser
 We'll use two models in this tutorial:
 
 * [HuggingFace's t5-small](https://huggingface.co/t5-small) as a text-translation model
-* [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/v4.21.0/en/main_classes/pipelines#transformers.SummarizationPipeline) as a text-summarizer model
+* [HuggingFace's t5-small](https://huggingface.co/t5-small) as a text-summarization model
 
 You can also follow along using your own models from any Python framework.
 

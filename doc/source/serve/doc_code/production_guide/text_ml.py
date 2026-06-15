@@ -8,7 +8,7 @@ import ray
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 # Map a language to the task prefix that t5-small expects.
 LANGUAGE_TO_PREFIX = {
@@ -48,19 +48,23 @@ class Translator:
 class Summarizer:
     def __init__(self, translator: DeploymentHandle):
         # Load model
-        self.model = pipeline("summarization", model="t5-small")
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
         self.translator = translator
         self.min_length = 5
         self.max_length = 15
 
     def summarize(self, text: str) -> str:
         # Run inference
-        model_output = self.model(
-            text, min_length=self.min_length, max_length=self.max_length
+        input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
+        output_ids = self.model.generate(
+            input_ids,
+            min_new_tokens=self.min_length,
+            max_new_tokens=self.max_length,
         )
 
         # Post-process output to return only the summary text
-        summary = model_output[0]["summary_text"]
+        summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         return summary
 

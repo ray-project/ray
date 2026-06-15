@@ -8,7 +8,7 @@ import ray
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 @serve.deployment
@@ -36,15 +36,17 @@ class Summarizer:
     def __init__(self, translator: DeploymentHandle):
         self.translator = translator
 
-        # Load model.
-        self.model = pipeline("summarization", model="t5-small")
+        # Load model
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def summarize(self, text: str) -> str:
         # Run inference
-        model_output = self.model(text, min_length=5, max_length=15)
+        input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
+        output_ids = self.model.generate(input_ids, min_new_tokens=5, max_new_tokens=15)
 
         # Post-process output to return only the summary text
-        summary = model_output[0]["summary_text"]
+        summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         return summary
 
