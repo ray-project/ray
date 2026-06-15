@@ -2,17 +2,11 @@
 KV_EVENTS_PORT_BASE_KEY = "KV_EVENTS_PORT_BASE"
 DEFAULT_KV_EVENTS_PORT_BASE = 5557
 
-# Root directory of Dynamo's file discovery store; private per process. Set
-# on both the replica (KvEventPublisher) and the router actor (KvRouter)
-# before the DistributedRuntime is created.
-DYN_FILE_KV_ENV = "DYN_FILE_KV"
 KV_EVENT_PLANE_ENV_DEFAULTS = {
     "DYN_EVENT_PLANE": "zmq",
 }
 
-# With a broker URL set, Dynamo's event plane runs in ZMQ broker mode: every
-# publisher connects its PUB socket to the broker's XSUB side and every
-# subscriber its SUB socket to the XPUB side, with no discovery involved.
+# With a broker URL set, Dynamo's event plane runs in ZMQ broker mode.
 DYN_ZMQ_BROKER_URL_ENV = "DYN_ZMQ_BROKER_URL"
 
 # The deployment-scoped Dynamo component endpoint, forming the endpoint path

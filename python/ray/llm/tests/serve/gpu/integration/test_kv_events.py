@@ -1,18 +1,5 @@
-"""GPU end-to-end test for the Dynamo KV event pipeline.
-
-Deploys two real vLLM replicas with KV-cache events enabled, runs inference
-against each replica's backend HTTP server, and asserts the engines' events
-reach the ``KVRouterActor``-hosted ``KvRouter``: its global indexer must
-attribute each prompt's exact block chain to the right worker and score
-per-worker overlap.
-
-``KVAwareRouter`` replica selection lands in a later branch, so the actor
-and the engine KV-events configuration are attached directly.
-"""
-
 import asyncio
 import sys
-import tempfile
 
 import pytest
 import requests
@@ -38,33 +25,38 @@ from ray.serve._private.constants import (
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
-# RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING and RAY_SERVE_ENABLE_DIRECT_INGRESS are
-# read as module-level constants at import time, so they must already be set in
-# the environment before this module is imported. The bazel target sets them;
-# to run this file directly, export both as "1" first.
-
-MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "qwen3-0.6b"
+MODEL_SOURCE = "Qwen/Qwen3-0.6B"
 APP_NAME = "kv_events_gpu_test"
 NUM_REPLICAS = 2
 BLOCK_SIZE = 16
 MAX_TOKENS = 50
+# MESSAGES and FLUSH_MESSAGES share a long prefix (two full 16-token blocks) so
+# the reset test asserts a *partial* overlap fallback: after one replica's prefix
+# cache is cleared and re-warmed with FLUSH_MESSAGES, its overlap for MESSAGES
+# drops to just the shared prefix blocks while the untouched replica keeps the
+# full prompt.
+_SHARED_PREFIX = (
+    "Repeat the following sentence exactly five times in a row, word for word, "
+    "without adding anything else at all: the quick brown fox jumps over the lazy dog"
+)
 MESSAGES = [
     {
         "role": "user",
         "content": (
-            "Repeat the following sentence five times: the quick brown fox "
-            "jumps over the lazy dog while the cat watches from the fence."
+            _SHARED_PREFIX
+            + " near the calm river bank today under a wide clear evening sky "
+            "over the hills."
         ),
     }
+]
+FLUSH_MESSAGES = [
+    {"role": "user", "content": _SHARED_PREFIX + " beside the tall fence."}
 ]
 
 
 def discover_deployment_actor(app_name, deployment_name, actor_name):
-    """Resolve a deployment-scoped actor by its registered name.
-
-    The driver isn't a replica (no ``get_deployment_actor``); the name's
-    middle embeds an opaque code_version, so match prefix and suffix.
-    """
+    """Resolve a deployment-scoped actor by its registered name."""
     prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::{deployment_name}::"
     suffix = f"::{actor_name}"
     for entry in ray.util.list_named_actors(all_namespaces=True):
@@ -107,33 +99,6 @@ def tokenize_prompt(endpoint, messages=MESSAGES):
     return response.json()["tokens"]
 
 
-def post_completions(endpoint, prompt, max_tokens=2):
-    host, port = endpoint
-    response = requests.post(
-        f"http://{host}:{port}/v1/completions",
-        json={
-            "model": MODEL_ID,
-            "prompt": prompt,
-            "max_tokens": max_tokens,
-            "temperature": 0.0,
-        },
-        timeout=120,
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
-def tokenize_text(endpoint, prompt):
-    host, port = endpoint
-    response = requests.post(
-        f"http://{host}:{port}/tokenize",
-        json={"model": MODEL_ID, "prompt": prompt},
-        timeout=60,
-    )
-    assert response.status_code == 200, response.text
-    return response.json()["tokens"]
-
-
 def prompt_block_hashes(token_ids):
     """Dynamo's content hashes for the full blocks of a token sequence."""
     return compute_block_hash_for_seq(list(token_ids), BLOCK_SIZE)
@@ -149,23 +114,18 @@ def stored_tokens_hashes(indexer_events, worker_id):
     }
 
 
-class TestKvEventsGPU:
+class TestKvEvents:
     @pytest.fixture(scope="class")
     def deployed_handle(self):
         """Deploy two direct-streaming LLMServer replicas with KV events on."""
         if not ray.is_initialized():
-            # An empty working_dir keeps the runtime-env package tiny; the
-            # repo root would exceed the upload size limit.
-            ray.init(
-                address="auto",
-                runtime_env={"working_dir": tempfile.mkdtemp(prefix="kv_ev_wd_")},
-            )
-        serve.shutdown()  # ensure no prior app is holding GPU memory
+            ray.init(address="auto")
+        serve.shutdown()
 
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(
                 model_id=MODEL_ID,
-                model_source=MODEL_ID,
+                model_source=MODEL_SOURCE,
             ),
             deployment_config=dict(
                 autoscaling_config=dict(
@@ -181,19 +141,13 @@ class TestKvEventsGPU:
                 ],
             ),
             engine_kwargs=dict(
-                block_size=BLOCK_SIZE,
-                enable_prefix_caching=True,
                 max_model_len=2048,
                 enforce_eager=True,
-                gpu_memory_utilization=0.4,
-                use_tqdm_on_load=False,
+                gpu_memory_utilization=0.4,  # small model on a shared GPU
             ),
             experimental_configs={"KV_EVENTS_PORT_BASE": 21557},
-            placement_group_config={"bundles": [{"GPU": 1}]},
-            # The replica worker process reads these constants at import time.
             runtime_env=dict(
                 env_vars={
-                    "VLLM_DISABLE_COMPILE_CACHE": "1",
                     "RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
                     "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
                     # /reset_prefix_cache is a vLLM dev-mode endpoint.
@@ -212,7 +166,7 @@ class TestKvEventsGPU:
     async def _discover_replicas(self, handle):
         """Map each replica's full id to its backend HTTP endpoint."""
         endpoints = {}
-        for _ in range(120):
+        for _ in range(100):
             async with handle.choose_replica() as selection:
                 replica = selection._replica
                 if replica.backend_http_endpoint is not None:
@@ -247,14 +201,6 @@ class TestKvEventsGPU:
         # The Ray-supplied worker ids agree with LongPoll replica tracking.
         assert await actor.get_candidate_worker_ids.remote() == worker_ids
 
-        # Dynamo drops each worker's first event as stale (see the TODO in
-        # KvEventPublisher.start). Burn it with a sacrificial raw-completions
-        # request whose chain shares no prefix with the chat prompts below,
-        # so the swallowed event carries nothing the measured chains need.
-        burn_prompt = "one two three four five six seven eight nine ten " * 2
-        for worker_id in worker_ids:
-            post_completions(endpoints[worker_id], burn_prompt)
-
         # The same prompt on each replica caches the same content.
         usages = {}
         for worker_id in worker_ids:
@@ -276,24 +222,18 @@ class TestKvEventsGPU:
             }.keys() == set(worker_ids)
 
         await async_wait_for_condition(both_workers_fully_overlap, timeout=30)
-        assert await actor.get_kv_event_worker_ids.remote() == worker_ids
+        events = await actor.get_kv_indexer_events.remote()
+        assert sorted({e["worker_id"] for e in events}) == worker_ids
 
         # Each worker's chain holds the prompt's exact hashes plus decode
         # blocks. The block filling on the last step may not commit, and
-        # decode events trail the response, so wait for total - 1. Burn
-        # blocks whose store events survive (any beyond the first) are not
-        # part of the measured chains, so they are excluded.
+        # decode events trail the response, so wait for total - 1.
         total_blocks = (len(prompt_token_ids) + MAX_TOKENS) // BLOCK_SIZE
-        burn_token_ids = tokenize_text(endpoints[worker_ids[0]], burn_prompt)
-        stray_burn_hashes = set(prompt_block_hashes(burn_token_ids))
-
-        def measured_hashes(events, worker_id):
-            return stored_tokens_hashes(events, worker_id) - stray_burn_hashes
 
         async def all_blocks_indexed():
             events = await actor.get_kv_indexer_events.remote()
             return all(
-                len(measured_hashes(events, worker_id)) >= total_blocks - 1
+                len(stored_tokens_hashes(events, worker_id)) >= total_blocks - 1
                 for worker_id in worker_ids
             )
 
@@ -304,7 +244,7 @@ class TestKvEventsGPU:
             assert usage["prompt_tokens"] == len(prompt_token_ids)
             assert usage["completion_tokens"] == MAX_TOKENS
 
-            hashes = measured_hashes(events, worker_id)
+            hashes = stored_tokens_hashes(events, worker_id)
             assert set(expected_hashes) <= hashes
             assert len(hashes) in (total_blocks, total_blocks - 1)
 
@@ -315,7 +255,7 @@ class TestKvEventsGPU:
         host, port = endpoints[reset_worker]
         response = requests.post(f"http://{host}:{port}/reset_prefix_cache", timeout=60)
         assert response.status_code == 200, response.text
-        flush_messages = [{"role": "user", "content": "Hi."}]
+        flush_messages = FLUSH_MESSAGES
         post_chat(endpoints[reset_worker], messages=flush_messages, max_tokens=2)
 
         # The reset worker's overlap falls back to the chat-template prefix
@@ -333,7 +273,8 @@ class TestKvEventsGPU:
 
         async def reset_worker_cleared():
             overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
-            return overlaps.get(reset_worker) == shared_blocks
+            # A fully-cleared worker has no overlap, so it is absent from the dict.
+            return overlaps.get(reset_worker, 0) == shared_blocks
 
         await async_wait_for_condition(reset_worker_cleared, timeout=30)
         overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)

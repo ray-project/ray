@@ -50,8 +50,8 @@ BLOCK_SIZE = 16
 def make_llm_config(**kwargs) -> LLMConfig:
     return LLMConfig(
         model_loading_config={
-            "model_id": "qwen-0.5b",
-            "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+            "model_id": "qwen3-0.6b",
+            "model_source": "Qwen/Qwen3-0.6B",
         },
         accelerator_type=None,
         **kwargs,
@@ -93,7 +93,7 @@ class TestConfigureKvEvents:
         (actor_config,) = deployment_options["deployment_actors"]
         assert actor_config.init_kwargs == {"block_size": 32}
 
-    def test_build_without_kv_aware_router_is_untouched(self):
+    def test_build_without_kv_aware_router_skips_kv_events(self):
         llm_config = make_llm_config(
             deployment_config={
                 "autoscaling_config": {"min_replicas": 1, "max_replicas": 1}
@@ -103,7 +103,7 @@ class TestConfigureKvEvents:
 
         assert "kv_events_config" not in llm_config.engine_kwargs
 
-    def test_port_base_override(self):
+    def test_experimental_config_overrides_port_base(self):
         llm_config = make_kv_aware_llm_config(
             experimental_configs={"KV_EVENTS_PORT_BASE": 21000},
         )
@@ -121,16 +121,16 @@ class TestConfigureKvEvents:
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
 
         user_config = make_kv_aware_llm_config(
-            runtime_env={"env_vars": {"PYTHONHASHSEED": "7"}},
+            runtime_env={"env_vars": {"PYTHONHASHSEED": "42"}},
         )
         configure_kv_events_for_kv_routing(user_config)
 
-        assert user_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "7"
+        assert user_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "42"
 
 
 class TestReplicaEndpoints:
     @pytest.fixture
-    def replica_rank(self, monkeypatch):
+    def set_replica_rank(self, monkeypatch):
         def set_rank(rank):
             monkeypatch.setattr(
                 "ray.llm._internal.serve.routing_policies.kv_aware.kv_events."
@@ -140,17 +140,17 @@ class TestReplicaEndpoints:
 
         return set_rank
 
-    def test_no_kv_events_is_noop(self):
+    def test_assign_endpoint_noop_without_kv_events(self):
         llm_config = make_llm_config()
         assign_replica_kv_events_endpoint(llm_config)
 
         assert "kv_events_config" not in llm_config.engine_kwargs
         assert resolve_kv_event_source_endpoint(llm_config) is None
 
-    def test_replica_rank_offsets_port(self, replica_rank):
+    def test_replica_rank_offsets_port(self, set_replica_rank):
         """Colocated replicas must bind distinct KV-events ports; the
         publisher consumes the rank-offset engine endpoint."""
-        replica_rank(2)
+        set_replica_rank(2)
         llm_config = make_kv_aware_llm_config()
         configure_kv_events_for_kv_routing(llm_config)
         assign_replica_kv_events_endpoint(llm_config)
@@ -160,30 +160,30 @@ class TestReplicaEndpoints:
         )
         assert resolve_kv_event_source_endpoint(llm_config) == "tcp://127.0.0.1:5559"
 
-    def test_data_parallel_rank_is_offset_by_vllm(self, replica_rank):
+    def test_data_parallel_rank_offset_by_vllm(self, set_replica_rank):
         """vLLM offsets the bind port by dp rank itself, so the configured
         endpoint stays at the base."""
-        replica_rank(5)
+        set_replica_rank(5)
         llm_config = make_kv_aware_llm_config(
-            engine_kwargs={"data_parallel_rank": 3},
+            engine_kwargs={"data_parallel_rank": 4},
         )
         configure_kv_events_for_kv_routing(llm_config)
         assign_replica_kv_events_endpoint(llm_config)
 
         endpoint = llm_config.engine_kwargs["kv_events_config"]["endpoint"]
         assert endpoint == "tcp://*:5557"
-        offset_by_vllm = ZmqEventPublisher.offset_endpoint_port(endpoint, 3)
-        assert offset_by_vllm == "tcp://*:5560"
+        offset_by_vllm = ZmqEventPublisher.offset_endpoint_port(endpoint, 4)
+        assert offset_by_vllm == "tcp://*:5561"
         # The publisher consumes the dp-offset engine endpoint.
-        assert resolve_kv_event_source_endpoint(llm_config) == "tcp://127.0.0.1:5560"
+        assert resolve_kv_event_source_endpoint(llm_config) == "tcp://127.0.0.1:5561"
 
 
 class TestKvEventPlaneConfig:
-    def test_namespace_is_deployment_scoped_and_sanitized(self):
-        deployment_id = DeploymentID(name="LLMServer:qwen-0.5b", app_name="my.app")
-        assert kv_event_namespace(deployment_id) == "ray_llm_my_app_LLMServer_qwen-0_5b"
+    def test_namespace_deployment_scoped_and_sanitized(self):
+        deployment_id = DeploymentID(name="LLMServer:qwen3-0.6b", app_name="my.app")
+        assert kv_event_namespace(deployment_id) == "ray_llm_my_app_LLMServer_qwen3-0_6b"
 
-    def test_derive_kv_event_block_size_at_build_time(self):
+    def test_derive_block_size_via_vllm_config(self):
         """vLLM's own config resolution, including its default."""
         assert derive_kv_event_block_size({}) == 16
         assert derive_kv_event_block_size({"block_size": 32}) == 32
@@ -375,10 +375,10 @@ class TestDynamoKvEventPipeline:
                 lambda events: stored_block_hashes(events, worker_id) == {11, 22},
                 publish=lambda: replica.publish_stored.remote([11, 22], token_ids),
             )
-            assert await actor.get_kv_event_worker_ids.remote() == [worker_id]
+            events = await actor.get_kv_indexer_events.remote()
+            assert sorted({e["worker_id"] for e in events}) == [worker_id]
 
             # Per-block content hashes match hashing the engine's tokens.
-            events = await actor.get_kv_indexer_events.remote()
             assert stored_tokens_hashes(events, worker_id) == set(
                 compute_block_hash_for_seq(token_ids, BLOCK_SIZE)
             )
@@ -402,7 +402,7 @@ class TestDynamoKvEventPipeline:
                 ray.kill(a, no_restart=True)
 
     @pytest.mark.asyncio
-    async def test_per_worker_isolation(self, ray_instance, namespace):
+    async def test_per_worker_event_isolation(self, ray_instance, namespace):
         """Two replicas' events land in the same indexer keyed by worker."""
         actor = LocalKVRouterActor.remote(namespace)
         worker_ids = {"replica-A": 7001, "replica-B": 7002}
@@ -440,7 +440,8 @@ class TestDynamoKvEventPipeline:
                         )
                     ),
                 )
-            assert await actor.get_kv_event_worker_ids.remote() == sorted(
+            events = await actor.get_kv_indexer_events.remote()
+            assert sorted({e["worker_id"] for e in events}) == sorted(
                 worker_ids.values()
             )
 

@@ -17,10 +17,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
     KVRouterActor,
     get_worker_id,
 )
-from ray.serve._private.common import (
-    REPLICA_ID_FULL_ID_STR_PREFIX,
-    ReplicaID,
-)
+from ray.serve._private.common import REPLICA_ID_FULL_ID_STR_PREFIX
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm.request_router import KVAwareRouter
@@ -163,13 +160,10 @@ class TestReplicaTrackingIntegration:
             wait_for_condition(
                 lambda: len(get_candidate_ids(app_name)) == 4, timeout=10
             )
-            handle = discover_deployment_actor(app_name, "Driver", KV_ROUTER_ACTOR_NAME)
-            for worker_id in ray.get(handle.get_candidate_worker_ids.remote()):
-                full_id = ray.get(handle.get_replica_id.remote(worker_id))
-                assert ReplicaID.is_full_id_str(full_id)
-                assert (
-                    ray.get(handle.get_tracked_worker_id.remote(full_id)) == worker_id
-                )
+            # The tracked workers are exactly those of the live replica actors.
+            assert set(get_candidate_ids(app_name)) == get_live_replica_worker_ids(
+                app_name
+            )
         finally:
             serve.delete(app_name, _blocking=True)
 
