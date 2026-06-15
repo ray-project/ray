@@ -132,15 +132,17 @@ DRAINING_MESSAGE = "This node is being drained."
 
 
 def _terminal_status_from_asgi_message(message: Any) -> Optional["ResponseStatus"]:
-    """Derive a `ResponseStatus` from a terminal ASGI message, else `None`.
+    """Derive a `ResponseStatus` from a terminal WebSocket ASGI message, else
+    `None`.
 
-    Error rules mirror `HTTPProxy.send_request_to_replica`.
+    Only WebSocket close/disconnect is captured: a mid-stream HTTP disconnect
+    should be recorded as a client disconnect (handled by the synthetic "499"
+    fallback in the caller), matching the CancelledError path elsewhere -- not
+    as the response's start status. Error rule mirrors
+    `HTTPProxy.send_request_to_replica`.
     """
     if not isinstance(message, dict):
         return None
-    if message.get("type") == "http.response.start":
-        code = str(message["status"])
-        return ResponseStatus(code=code, is_error=code.startswith(("4", "5")))
     if message.get("type") in ("websocket.close", "websocket.disconnect"):
         code = str(message["code"])
         return ResponseStatus(code=code, is_error=code not in ["1000", "1001"])
