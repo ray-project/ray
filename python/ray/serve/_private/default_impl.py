@@ -12,13 +12,16 @@ from ray.serve._private.common import (
     CreatePlacementGroupRequest,
     DeploymentHandleSource,
     DeploymentID,
+    EndpointInfo,
     RequestMetadata,
     RequestProtocol,
 )
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_PROXY_USE_GRPC,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
@@ -29,8 +32,6 @@ from ray.serve._private.deployment_scheduler import (
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.grpc_util import gRPCGenericServer
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
-from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.router import CurrentLoopRouter, Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     asyncio_grpc_exception_handler,
@@ -214,6 +215,33 @@ def add_grpc_address(grpc_server: gRPCGenericServer, server_address: str):
     grpc_server.add_insecure_port(server_address)
 
 
+def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
+    # NOTE(zcin): needs to be lazy import due to a circular dependency.
+    # We should not be importing from application_state in context.
+    from ray.serve.context import _get_global_client
+
+    client = _get_global_client()
+    handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
+
+    # NOTE(zcin): It's possible that a handle is already initialized
+    # if a deployment with the same name and application name was
+    # deleted, then redeployed later. However this is not an issue since
+    # we initialize all handles with the same init options.
+    if not handle.is_initialized:
+        # NOTE(zcin): since the router is eagerly initialized here, the
+        # proxy will receive the replica set from the controller early.
+        handle._init(
+            _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+            _source=DeploymentHandleSource.PROXY,
+            _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
+        )
+
+    return handle.options(
+        stream=not info.app_is_cross_language,
+        _by_reference=not RAY_SERVE_PROXY_USE_GRPC,
+    )
+
+
 def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
     """Build the Ray actor class for the Serve controller.
 
@@ -241,10 +269,3 @@ def get_controller_impl(controller_options: Optional[ControllerOptions] = None):
         actor_options["runtime_env"] = controller_options.runtime_env
 
     return ray.remote(**actor_options)(ServeController)
-
-
-def get_proxy_actor_class():
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        return HAProxyManager
-
-    return ProxyActor
