@@ -165,6 +165,7 @@ class DeepSpeedAdapter(FrameworkAdapter):
             peak_flops_per_gpu=peak_flops,
             gpu_index=self.ctx.local_rank,
             monitor_gpu=torch.cuda.is_available(),
+            device=device if torch.cuda.is_available() else None,
         )
 
         dataloader = build_text_dataloader(
@@ -220,6 +221,29 @@ class DeepSpeedAdapter(FrameworkAdapter):
         metrics = collector.summary()
         metrics["loss"] = loss.item()
         metrics["num_params"] = self._num_params
+
+        # Self-describing config echo so results JSON renders into a table
+        # (collect.py) and archives without needing the source YAML.
+        metrics["config/model"] = self.cfg.model.name
+        metrics["config/adapter"] = self.cfg.model.adapter
+        metrics["config/precision"] = self.cfg.model.precision
+        metrics["config/zero_stage"] = (self.cfg.model.parallelism or {}).get(
+            "zero_stage"
+        )
+        metrics["config/gradient_checkpointing"] = self.cfg.model.gradient_checkpointing
+        metrics["config/seq_len"] = seq_len
+        metrics["config/micro_batch_size"] = batch_size
+        metrics[
+            "config/grad_accum_steps"
+        ] = self.cfg.training.gradient_accumulation_steps
+        metrics["config/global_batch_size"] = (
+            batch_size
+            * self.ctx.world_size
+            * self.cfg.training.gradient_accumulation_steps
+        )
+        if torch.cuda.is_available():
+            metrics["config/gpu"] = torch.cuda.get_device_name(device)
+
         self.ctx.report(metrics)
         if self.ctx.world_rank == 0:
             logger.info(f"Final metrics: {metrics}")

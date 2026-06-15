@@ -107,6 +107,10 @@ class ExperimentConfig:
     num_workers: int = 1
     use_gpu: bool = True
     max_failures: int = 0
+    # Extra env vars propagated to every training worker's process at launch
+    # (before CUDA/torch init). Merged on top of the launcher's defaults, so an
+    # experiment can pin allocator/NCCL/HF settings reproducibly.
+    env_vars: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

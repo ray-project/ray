@@ -61,6 +61,12 @@ def main() -> None:
         dest="overrides",
         help="Inline overrides, e.g. training.num_steps=20 data.dataset=synthetic",
     )
+    parser.add_argument(
+        "--prepare-data",
+        action="store_true",
+        help="Prefetch the model + dataset into a shared HF cache, then exit. "
+        "Run once before the distributed run so workers hit a warm cache.",
+    )
     args = parser.parse_args()
 
     cfg = load_experiment(args.experiment, overrides=args.overrides)
@@ -69,11 +75,22 @@ def main() -> None:
 
     logger.info("Experiment config:\n" + pprint.pformat(cfg.to_dict()))
 
+    if args.prepare_data:
+        from core.prepare import prepare_experiment
+
+        prepare_experiment(cfg)
+        logger.info("Prepare complete. Re-run without --prepare-data to train.")
+        return
+
     metrics = run_experiment(cfg)
 
     logger.info(
-        "\n" + "-" * 80 + f"\nFinal metrics for {cfg.name}:\n"
-        + pprint.pformat(metrics) + "\n" + "-" * 80
+        "\n"
+        + "-" * 80
+        + f"\nFinal metrics for {cfg.name}:\n"
+        + pprint.pformat(metrics)
+        + "\n"
+        + "-" * 80
     )
 
     # Under torchrun, only rank 0 returns metrics; non-zero ranks skip writing.

@@ -26,7 +26,10 @@ data:
   dataloader: framework_default
   dataset: wikitext             # use `synthetic` to isolate compute from data ingest
   dataset_path: ""
-  batch_size: 4                 # per-GPU micro batch; global = 4 x 8 = 32 seqs/step
+  # Qwen3's ~152k vocab makes the logits/loss head (batch x seq x vocab, upcast
+  # to fp32 in cross-entropy) the memory bottleneck on 24GB, not the model body.
+  # batch=2 keeps the logits-grad allocation small enough to fit. Raise on A100.
+  batch_size: 2                 # per-GPU micro batch; global = 2 x 8 = 16 seqs/step
   seq_len: 2048
   limit_training_rows: 8000
 training:
