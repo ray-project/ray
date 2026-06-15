@@ -41,6 +41,7 @@ from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
     InitializingState,
+    PreemptingState,
     ReschedulingState,
     ResizingState,
     RestartingState,
@@ -68,8 +69,10 @@ from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    PreemptionError,
     TrainingFailedError,
 )
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
 from ray.train.v2.api.validation_config import ValidationConfig
@@ -190,31 +193,23 @@ class TrainController:
             else False
         )
 
-        # Register the preemption-observability callback when not in TorchFT
-        # mode (replica groups handle peer loss via their own quorum).
-        enable_preemption_watcher = ray_constants.env_bool(
-            ENABLE_PREEMPTION_WATCHER_ENV_VAR,
-            DEFAULT_ENABLE_PREEMPTION_WATCHER,
-        )
-        if self._manages_replica_groups:
-            if enable_preemption_watcher and ray_constants.env_set_by_user(
-                ENABLE_PREEMPTION_WATCHER_ENV_VAR
-            ):
-                logger.info(
-                    "The preemption watcher is not compatible with replica "
-                    "groups (e.g. TorchFT), which handle peer loss via their "
-                    "own quorum; skipping it."
-                )
-        elif enable_preemption_watcher:
-            from ray.train.v2._internal.callbacks.preemption_callback import (
-                PreemptionCallback,
-            )
-
-            self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
+        # Register the PreemptionCallback so the worker group polls
+        # ``get_draining_nodes()`` and routes a PreemptionInfo back to this
+        # controller's ``notify_preempting`` method when drains arrive.
+        # We get the current actor handle so the callback can call back.
+        self._preemption_callback = self._build_preemption_callback()
+        if self._preemption_callback is not None:
+            self._worker_group_callbacks_to_propagate.append(self._preemption_callback)
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
         self._return_value: Optional[Any] = None
+
+        # Preemption: latest PreemptionInfo received from the
+        # PreemptionCallback. Mutated only via ``notify_preempting`` so the
+        # callback can update the deadline / preempted_ranks set as drains
+        # arrive in staggered fashion.
+        self._latest_preemption_info: Optional[PreemptionInfo] = None
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
@@ -342,7 +337,7 @@ class TrainController:
         controller_state: TrainControllerState,
         training_failed_error: TrainingFailedError,
     ) -> TrainControllerState:
-        if isinstance(controller_state, RunningState):
+        if isinstance(controller_state, (RunningState, PreemptingState)):
             return RestartingState(training_failed_error=training_failed_error)
         elif isinstance(controller_state, SchedulingState):
             return ReschedulingState(training_failed_error=training_failed_error)
@@ -356,6 +351,164 @@ class TrainController:
             return ShuttingDownState(
                 next_state=ErroredState(training_failed_error=training_failed_error)
             )
+
+    # ─── Preemption hooks ──────────────────────────────────────────────────
+
+    def _build_preemption_callback(self):
+        """Construct the PreemptionCallback for this controller, if enabled.
+
+        Returns the callback (a WorkerGroupCallback) or None to disable.
+
+        Disabled cases:
+          * Env override ``RAY_TRAIN_PREEMPTION_HANDLING_ENABLED=0``.
+          * TorchFT mode (``manages_replica_groups=True``). TorchFT already
+            handles peer loss via per-step quorum: survivors keep stepping
+            with a smaller replica set (or wait at a barrier if the user
+            configured ``min_replica_size`` higher). Driving a
+            PreemptingState transition on top of this would interfere with
+            TorchFT's existing graceful-degrade path and slow down the
+            common case. Re-enable via a dedicated TorchFT-aware preemption
+            flow in a follow-up.
+          * Local mode / not running inside a Ray actor.
+        """
+        if not ray_constants.env_bool("RAY_TRAIN_PREEMPTION_HANDLING_ENABLED", True):
+            return None
+        if self._manages_replica_groups:
+            logger.info(
+                "PreemptionCallback not enabled: TorchFT mode "
+                "(manages_replica_groups=True). TorchFT handles preemption "
+                "via its own per-step quorum."
+            )
+            return None
+
+        from ray.train.v2._internal.callbacks.preemption_callback import (
+            PreemptionCallback,
+        )
+
+        try:
+            controller_actor = ray.get_runtime_context().current_actor
+        except Exception:
+            # Local mode / not inside an actor; skip the callback.
+            logger.info(
+                "PreemptionCallback not enabled: controller is not running "
+                "inside a Ray actor."
+            )
+            return None
+
+        poll_interval_s = float(
+            os.getenv("RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S", "5")
+        )
+        return PreemptionCallback(
+            controller_actor=controller_actor,
+            poll_interval_s=poll_interval_s,
+        )
+
+    def notify_preempting(self, info: PreemptionInfo) -> None:
+        """Called by ``PreemptionCallback`` when ``get_draining_nodes()``
+        observes a new or updated drain affecting one of our workers.
+
+        Updates the latest preemption info; the actual state transition to
+        ``PreemptingState`` happens on the next control loop iteration when
+        ``_step()`` reads ``self._latest_preemption_info``.
+
+        Idempotent: re-calls with the same set of preempted ranks just refresh
+        the deadline. The PreemptionCallback is responsible for diffing
+        against the previous drain set before calling this method.
+        """
+        self._latest_preemption_info = info
+        logger.info(
+            f"Controller notified of preemption: "
+            f"preempted_ranks={info.preempted_ranks}, "
+            f"preempted_node_ids={info.preempted_node_ids}, "
+            f"deadline_in={info.seconds_remaining:.1f}s"
+        )
+
+    def _should_leave_preempting(self, info: PreemptionInfo) -> bool:
+        """Return True iff the controller should transition out of
+        ``PreemptingState``.
+
+        Two completion criteria:
+          - All preempted-rank workers have exited (cleanly or via error)
+            AND all survivors have also exited (status.finished). Survivors
+            get the full deadline window to complete their JIT-checkpoint
+            work before the worker group is torn down.
+          - The preemption deadline has expired (safety net regardless of
+            worker state).
+
+        Note: this method is never called in TorchFT mode because
+        ``_build_preemption_callback`` does not register the
+        PreemptionCallback when ``manages_replica_groups=True``.
+        """
+        if info.seconds_remaining <= 0:
+            return True
+
+        status = self._worker_group.get_latest_poll_status() if self._worker_group else None
+        if status is None:
+            return False
+
+        preempted_ranks = set(info.preempted_ranks)
+        preempted_workers_done = all(
+            (rank not in status.worker_statuses)
+            or (not status.worker_statuses[rank].running)
+            for rank in preempted_ranks
+        )
+        if not preempted_workers_done:
+            return False
+
+        # Wait for survivors too (including the time they spend writing JIT
+        # checkpoints). Deadline expiry above is the safety net.
+        return status.finished
+
+    def _build_preemption_error(self, info: PreemptionInfo) -> PreemptionError:
+        """Synthesize a PreemptionError from the current poll status when
+        leaving PreemptingState.
+
+        Per the design doc Rule 1, for any preempted rank whose status.error
+        is None (i.e., it exited cleanly via UDF return), synthesize a
+        PreemptionError into its WorkerStatus.error so that
+        ``failing_replica_group_indices`` picks it up correctly.
+        """
+        status = self._worker_group.get_latest_poll_status() if self._worker_group else None
+        worker_failures: Dict[int, Exception] = {}
+        deadline_exceeded = info.seconds_remaining <= 0
+
+        if status is not None:
+            for rank in info.preempted_ranks:
+                ws = status.worker_statuses.get(rank)
+                if ws is None:
+                    continue
+                if ws.error is not None:
+                    worker_failures[rank] = ws.error
+                else:
+                    # Clean exit on a preempted rank: synthesize a per-rank
+                    # PreemptionError into its WorkerStatus.error so that
+                    # WorkerGroupPollStatus.failing_replica_group_indices
+                    # (which is computed from .error) includes this rank's
+                    # replica group, enabling the TorchFT branch in
+                    # _execute_resize_decision to fire when appropriate.
+                    synth = PreemptionError(
+                        error_message=(
+                            f"Rank {rank} preempted (clean exit via UDF return)."
+                        ),
+                        preempted_ranks=info.preempted_ranks,
+                        preempted_node_ids=info.preempted_node_ids,
+                        deadline_exceeded=deadline_exceeded,
+                    )
+                    ws.error = synth
+                    worker_failures[rank] = synth
+
+        return PreemptionError(
+            error_message=(
+                f"Training interrupted by preemption: "
+                f"preempted_ranks={info.preempted_ranks}, "
+                f"preempted_node_ids={info.preempted_node_ids}, "
+                f"deadline_exceeded={deadline_exceeded}"
+            ),
+            preempted_ranks=info.preempted_ranks,
+            preempted_node_ids=info.preempted_node_ids,
+            deadline_exceeded=deadline_exceeded,
+            worker_failures=worker_failures,
+        )
 
     def _execute_failure_decision(
         self,
@@ -644,6 +797,19 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
 
+            # Preemption signal trumps both finished and error checks: if the
+            # PreemptionCallback observed a drain since our last tick, route
+            # through PreemptingState so survivors get their grace window and
+            # the failure policy sees a PreemptionError (not WorkerGroupError).
+            if self._latest_preemption_info is not None:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=PreemptingState(
+                        preemption_info=self._latest_preemption_info
+                    ),
+                )
+
             if worker_group_status.finished and not worker_group_status.errors:
                 self._return_value = worker_group_status.worker_statuses[0].return_value
                 return TrainControllerLoopIterationResult(
@@ -690,6 +856,39 @@ class TrainController:
                 next_state=SchedulingState(
                     scaling_decision=controller_state.scaling_decision
                 ),
+            )
+        elif isinstance(controller_state, PreemptingState):
+            # Keep polling workers while in PreemptingState so we observe
+            # clean exits and the deadline. The poll status also serves as
+            # the input to _should_leave_preempting() and
+            # _build_preemption_error().
+            await self._poll_workers()
+
+            # Always evaluate against the latest PreemptionInfo. The callback
+            # may have observed additional drains (e.g., a second host in the
+            # same TPU slice entering drain a few seconds after the first)
+            # and updated _latest_preemption_info via notify_preempting. The
+            # latest info contains the union of preempted_ranks and the
+            # earliest deadline; both are required for correct wait logic.
+            info = self._latest_preemption_info or controller_state.preemption_info
+
+            if not self._should_leave_preempting(info):
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=PreemptingState(preemption_info=info),
+                )
+
+            # Leave: build PreemptionError and route through failure policy.
+            preemption_error = self._build_preemption_error(info)
+            # Clear the latched signal so a future drain can re-enter
+            # PreemptingState from RunningState.
+            self._latest_preemption_info = None
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=preemption_error,
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=preemption_error
             )
         elif isinstance(controller_state, ShuttingDownState):
             return await self._shutdown()

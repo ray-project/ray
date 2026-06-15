@@ -8,6 +8,7 @@ from ray.train.v2._internal.exceptions import (
 from ray.train.v2.api.config import FailureConfig
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    PreemptionError,
     TrainingFailedError,
     WorkerGroupError,
 )
@@ -26,6 +27,7 @@ class DefaultFailurePolicy(FailurePolicy):
         super().__init__(failure_config)
         self._worker_group_failures = 0
         self._controller_failures = 0
+        self._preemption_failures = 0
 
     def _log_decision(
         self,
@@ -36,6 +38,8 @@ class DefaultFailurePolicy(FailurePolicy):
     ):
         if isinstance(training_failed_error, ControllerError):
             error_source = "controller"
+        elif isinstance(training_failed_error, PreemptionError):
+            error_source = "preemption"
         elif isinstance(training_failed_error, WorkerGroupError):
             error_source = "worker group"
         else:
@@ -54,6 +58,10 @@ class DefaultFailurePolicy(FailurePolicy):
         )
 
     def _is_retryable_error(self, training_failed_error: TrainingFailedError) -> bool:
+        # Order matters: PreemptionError is a subclass of TrainingFailedError
+        # but NOT of WorkerGroupError, so checking it first is just for clarity.
+        if isinstance(training_failed_error, PreemptionError):
+            return True
         if isinstance(training_failed_error, WorkerGroupError):
             return True
         elif isinstance(training_failed_error, ControllerError):
@@ -72,7 +80,17 @@ class DefaultFailurePolicy(FailurePolicy):
             error_count = 1
             retry_limit = 0
         else:
-            if isinstance(training_failed_error, ControllerError):
+            if isinstance(training_failed_error, PreemptionError):
+                # PreemptionError has its own budget so unplanned-failure
+                # max_failures is not consumed by planned preemption events.
+                self._preemption_failures += 1
+                error_count = self._preemption_failures
+                retry_limit = (
+                    self.failure_config.max_preemption_failures
+                    if self.failure_config.max_preemption_failures != -1
+                    else float("inf")
+                )
+            elif isinstance(training_failed_error, ControllerError):
                 self._controller_failures += 1
                 error_count = self._controller_failures
                 retry_limit = (

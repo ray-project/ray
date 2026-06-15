@@ -355,6 +355,7 @@ class FailureConfig(FailureConfigV1):
 
     fail_fast: Union[bool, str] = _DEPRECATED
     controller_failure_limit: int = -1
+    max_preemption_failures: int = -1
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
