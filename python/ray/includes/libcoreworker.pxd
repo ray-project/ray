@@ -238,8 +238,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool AddObjectOutOfScopeOrFreedCallback(
             const CObjectID &object_id,
             void (*callback)(const CObjectID &, void *) nogil,
-            void *callback_context,
-            void (*on_drop)(void *) nogil)
+            void *callback_context)
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const

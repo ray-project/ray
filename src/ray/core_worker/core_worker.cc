@@ -2485,10 +2485,6 @@ bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
 
 bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
-  RAY_CHECK(HasOwner(object_id))
-      << "AddObjectOutOfScopeOrFreedCallback can only be called for objects owned by "
-         "this worker. Object: "
-      << object_id;
   auto wrapped = [&object_freed_callback_service = object_freed_callback_service_,
                   callback](const ObjectID &id) {
     object_freed_callback_service.post([callback, id]() { callback(id); },
@@ -2500,16 +2496,12 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(
 bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                                     void (*callback)(const ObjectID &,
                                                                      void *),
-                                                    void *callback_context,
-                                                    void (*on_drop)(void *)) {
+                                                    void *callback_context) {
   RAY_CHECK(callback != nullptr) << "callback must not be null";
-  // Wrap callback_context in a shared_ptr so on_drop is called when the lambda is
-  // destroyed — whether the callback fired normally or was dropped at shutdown.
-  auto owned = std::shared_ptr<void>(callback_context, [on_drop](void *p) {
-    if (on_drop) on_drop(p);
-  });
   return AddObjectOutOfScopeOrFreedCallback(
-      object_id, [callback, owned](const ObjectID &id) { callback(id, owned.get()); });
+      object_id, [callback, callback_context](const ObjectID &id) {
+        callback(id, callback_context);
+      });
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {

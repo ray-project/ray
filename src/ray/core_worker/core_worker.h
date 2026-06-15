@@ -420,22 +420,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id The owned object to watch.
   /// \param[in] callback Function to invoke when the object goes out of scope. Called
-  ///            with (object_id, callback_context). Must remain valid until `on_drop`
-  ///            fires.
-  /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback` and
-  ///            `on_drop`. In the Cython overload, this is a pointer to a Python `bytes`
-  ///            object containing the object ID binary, used as the key into the callback
+  ///            with (object_id, callback_context).
+  /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback`.
+  ///            In the Cython overload, this is a pointer to a Python `bytes` object
+  ///            containing the object ID binary, used as the key into the callback
   ///            registry.
-  /// \param[in] on_drop Destructor for `callback_context`. If non-null, called when the
-  ///            internal lambda is destroyed, on both the normal (callback invoked) and
-  ///            shutdown (lambda dropped without firing) paths. Pass a function that
-  ///            releases any resources held by `callback_context`.
   /// \return true if registered; false if the object is already out of scope or freed
   ///         (callback will never fire).
   bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
                                           void (*callback)(const ObjectID &, void *),
-                                          void *callback_context,
-                                          void (*on_drop)(void *) = nullptr);
+                                          void *callback_context);
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
