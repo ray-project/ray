@@ -331,6 +331,8 @@ calls a Torch preprocessor holds the tensors on the heap. As the UDF produces ou
 rows or batches, Ray Data serializes them into PyArrow tables and stores them in the 
 shared object store.
 
+.. image:: ./data-memory-model-3.svg
+
 To limit object store use, Ray Data applies backpressure and stops launching tasks once
 enough data is buffered. If Ray Data produces more data than fits, Ray Core *spills* 
 those objects to disk. 
