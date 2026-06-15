@@ -39,8 +39,8 @@ bool AppendFileSection(const std::string &path,
   file.read(&output[old_size], static_cast<std::streamsize>(size));
   
   uint64_t bytes_read = static_cast<uint64_t>(file.gcount());
+  // Shrink the string back to its original state to drop uninitialized garbage
   if (bytes_read != size) {
-    // Shrink the string back to its original state to drop the uninitialized garbage
     output.resize(old_size);
     return false;
   }
