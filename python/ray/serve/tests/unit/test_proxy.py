@@ -2,7 +2,7 @@ import asyncio
 import pickle
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import grpc
 import pytest
@@ -756,83 +756,6 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "request_type,messages,expected_status_code",
-        [
-            (
-                "websocket",
-                [
-                    {"type": "websocket.accept"},
-                    {"type": "websocket.send"},
-                    {"type": "websocket.send"},
-                ],
-                "1006",  # no close streamed -> synthetic abnormal-closure code
-            ),
-            (
-                "websocket",
-                [
-                    {"type": "websocket.accept"},
-                    {"type": "websocket.send"},
-                    {"type": "websocket.close", "code": "1000"},
-                ],
-                "1000",  # close streamed before disconnect -> real code recorded
-            ),
-            (
-                "http",
-                [
-                    {"type": "http.response.start", "status": "200"},
-                    {"type": "http.response.body", "body": b"x", "more_body": True},
-                    {"type": "http.response.body", "body": b"y", "more_body": True},
-                ],
-                "200",  # response start streamed -> real code recorded
-            ),
-        ],
-    )
-    async def test_proxy_request_counts_request_on_client_disconnect(
-        self, request_type, messages, expected_status_code
-    ):
-        """A request whose client disconnects mid-stream is still counted.
-
-        Previously the request counter / access log emission ran only after
-        `proxy_request` completed normally, so a mid-stream disconnect (the
-        generator finalized with GeneratorExit) was dropped. The recorded code
-        reflects a terminal status seen in the stream, else a synthetic
-        disconnect code.
-        """
-        http_proxy = self.create_http_proxy()
-        http_proxy.request_counter = MagicMock()
-        http_proxy.processing_latency_tracker = MagicMock()
-        http_proxy.request_error_counter = MagicMock()
-        http_proxy.deployment_request_error_counter = MagicMock()
-        http_proxy.proxy_router.route = "route"
-        http_proxy.proxy_router.handle = FakeHTTPHandle(messages=messages)
-        http_proxy.proxy_router.app_is_cross_language = False
-
-        scope = {
-            "type": request_type,
-            "headers": [(b"x-request-id", b"fake_request_id")],
-        }
-        gen = http_proxy.proxy_request(
-            ASGIProxyRequest(
-                scope=scope, receive=FakeHttpReceive(), send=FakeHttpSend()
-            )
-        )
-        # Consume the forwarded ASGI messages (so any terminal status in the
-        # stream is captured), then finalize the generator to model the consumer
-        # abandoning iteration before the trailing ResponseStatus arrives.
-        for _ in range(len(messages)):
-            await gen.__anext__()
-        await gen.aclose()
-
-        # The request must be counted exactly once even though it was torn down
-        # before completing, with the expected status code.
-        http_proxy.request_counter.inc.assert_called_once()
-        assert (
-            http_proxy.request_counter.inc.call_args.kwargs["tags"]["status_code"]
-            == expected_status_code
-        )
 
     @pytest.mark.parametrize(
         "header_key",

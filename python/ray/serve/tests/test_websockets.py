@@ -10,8 +10,8 @@ from websockets.sync.client import connect
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor
-from ray.serve._private.test_utils import get_application_url
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
 
 
 @pytest.mark.parametrize("route_prefix", [None, "/prefix"])
@@ -74,6 +74,55 @@ def test_client_disconnect(serve_instance):
         print("Client connected.")
 
     wait_response.result()
+
+
+def test_client_disconnect_records_request_metric(serve_instance):
+    """A WebSocket client that disconnects mid-stream is still recorded in
+    ray_serve_num_http_requests_total.
+
+    Regression test: the proxy finalizes its response generator with
+    GeneratorExit when the client connection drops mid-stream, which previously
+    skipped the request-counter / access-log emission entirely, so the request
+    silently vanished from the proxy metrics.
+    """
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class WebSocketServer:
+        @app.websocket("/")
+        async def ws_handler(self, ws: WebSocket):
+            await ws.accept()
+            # Stream densely so the proxy is mid-send when the client drops --
+            # this is what triggers the GeneratorExit finalization in the proxy.
+            try:
+                while True:
+                    await ws.send_text("data")
+            except (WebSocketDisconnect, ConnectionClosed, RuntimeError):
+                pass
+
+    app_name = "ws_disconnect_metric_app"
+    serve.run(WebSocketServer.bind(), name=app_name)
+    url = f"{get_application_url(is_websocket=True, use_localhost=True, app_name=app_name)}/"
+
+    # Receive one frame (the stream is flowing), then drop the socket abruptly
+    # mid-stream -- no close handshake -- so the proxy's next send fails.
+    client = connect(url)
+    client.recv()
+    client.socket.close()
+
+    # Filter to THIS app: ray_serve_num_http_requests_total is cumulative, so
+    # WS requests from other tests in the (session-scoped) fixture must not make
+    # the assertion pass spuriously.
+    def request_recorded() -> bool:
+        reqs = get_metric_dictionaries("ray_serve_num_http_requests_total")
+        ws_reqs = [
+            m for m in reqs if m["method"] == "WS" and m["application"] == app_name
+        ]
+        assert ws_reqs, f"WS request for {app_name} not recorded: {reqs}"
+        return True
+
+    wait_for_condition(request_recorded, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Hanging on Windows.")
