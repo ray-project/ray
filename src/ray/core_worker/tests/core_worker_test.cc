@@ -295,6 +295,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
  protected:
+  FakeClock clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
@@ -320,9 +321,6 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
-
-  // Controllable time for testing publisher timeouts and other time-dependent logic.
-  FakeClock clock_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
