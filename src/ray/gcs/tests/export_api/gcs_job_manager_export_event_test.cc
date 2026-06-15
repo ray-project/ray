@@ -21,9 +21,7 @@
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_job_manager.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
@@ -55,14 +53,6 @@ class GcsJobManagerTest : public ::testing::Test {
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
 
-    // Mock client factory which abuses the "address" argument to return a
-    // CoreWorkerClient whose number of running tasks equal to the address port. This is
-    // just for testing purposes.
-    worker_client_pool_ =
-        std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &address) {
-          return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
-              address.port());
-        });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
     log_dir_ = "event_12345";
   }
@@ -82,7 +72,6 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
   observability::FakeGauge fake_running_job_gauge_;
   observability::FakeCounter fake_finished_job_counter_;
@@ -106,7 +95,6 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
                                      fake_running_job_gauge_,
@@ -157,7 +145,6 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *function_manager_,
                                      *fake_kv_,
                                      io_service_,
-                                     *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
                                      fake_running_job_gauge_,
