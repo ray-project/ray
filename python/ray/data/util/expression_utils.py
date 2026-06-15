@@ -1,6 +1,6 @@
 """Utility functions for expression-based operations."""
 
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, List, Optional
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr
@@ -132,3 +132,27 @@ def _call_udf_instance_with_async_bridge(
     else:
         # Synchronous instance - direct call
         return instance(*args, **kwargs)
+
+
+def _iter_children(expr: "Expr") -> Iterable["Expr"]:
+    """Yield the immediate child expressions of ``expr``.
+
+    Args:
+        expr: The expression whose direct children should be iterated.
+
+    Yields:
+        Expr: The immediate children of ``expr``. Leaf expressions (e.g. columns,
+        literals) yield nothing.
+    """
+    from ray.data.expressions import AliasExpr, BinaryExpr, UDFExpr, UnaryExpr
+
+    if isinstance(expr, BinaryExpr):
+        yield expr.left
+        yield expr.right
+    elif isinstance(expr, UnaryExpr):
+        yield expr.operand
+    elif isinstance(expr, AliasExpr):
+        yield expr.expr
+    elif isinstance(expr, UDFExpr):
+        yield from expr.args
+        yield from expr.kwargs.values()

@@ -1,7 +1,7 @@
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, replace
-from typing import Any, Dict, Hashable, Iterable, List, Optional
+from typing import Dict, Hashable, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -9,6 +9,9 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX, Project
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _StructuralFingerprintVisitor,
+)
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
@@ -17,15 +20,13 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
-    PyArrowComputeUDFExpr,
     RandomExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
     UUIDExpr,
-    _CallableClassUDF,
-    _ExprVisitor,
 )
+from ray.data.util.expression_utils import _iter_children
 
 __all__ = ["CommonSubExprElimination"]
 
@@ -50,134 +51,11 @@ class _Candidate:
         return max(o.depth for o in self.occurrences)
 
 
-def _make_hashable(value: Any) -> Hashable:
-    try:
-        hash(value)
-        return value
-    except TypeError:
-        pass
-
-    if isinstance(value, list):
-        return tuple(_make_hashable(v) for v in value)
-    if isinstance(value, tuple):
-        return tuple(_make_hashable(v) for v in value)
-    if isinstance(value, dict):
-        return tuple(
-            sorted(
-                ((k, _make_hashable(v)) for k, v in value.items()),
-                key=lambda item: repr(item[0]),
-            )
-        )
-    if isinstance(value, set):
-        return frozenset(_make_hashable(v) for v in value)
-
-    return repr(value)
-
-
-def _data_type_key(expr: Expr) -> Hashable:
-    return repr(getattr(expr, "data_type", None))
-
-
-def _udf_function_key(fn: Any) -> Hashable:
-    if isinstance(fn, _CallableClassUDF):
-        return ("callable_class", fn.callable_class_spec.make_key())
-    return ("function", _make_hashable(fn))
-
-
-class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
-    def visit_column(self, expr: ColumnExpr) -> Hashable:
-        return ("column", expr.name)
-
-    def visit_literal(self, expr: LiteralExpr) -> Hashable:
-        return ("literal", type(expr.value), _make_hashable(expr.value))
-
-    def visit_binary(self, expr: BinaryExpr) -> Hashable:
-        return (
-            "binary",
-            expr.op,
-            self.visit(expr.left),
-            self.visit(expr.right),
-        )
-
-    def visit_unary(self, expr: UnaryExpr) -> Hashable:
-        return ("unary", expr.op, self.visit(expr.operand))
-
-    def visit_udf(self, expr: UDFExpr) -> Hashable:
-        if isinstance(expr, PyArrowComputeUDFExpr):
-            return (
-                "pyarrow_compute_udf",
-                _make_hashable(expr.pc_func),
-                _make_hashable(expr.pc_positional),
-                _make_hashable(expr.pc_kwargs),
-                tuple(self.visit(arg) for arg in expr.args),
-                tuple(
-                    (k, self.visit(v))
-                    for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
-                ),
-                _data_type_key(expr),
-            )
-
-        return (
-            "udf",
-            _udf_function_key(expr.fn),
-            tuple(self.visit(arg) for arg in expr.args),
-            tuple(
-                (k, self.visit(v))
-                for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
-            ),
-            _data_type_key(expr),
-        )
-
-    def visit_alias(self, expr: AliasExpr) -> Hashable:
-        return (
-            "alias",
-            expr.name,
-            expr._is_rename,
-            self.visit(expr.expr),
-            _data_type_key(expr),
-        )
-
-    def visit_download(self, expr: DownloadExpr) -> Hashable:
-        return ("download", expr.uri_column_name)
-
-    def visit_star(self, expr: StarExpr) -> Hashable:
-        return ("star",)
-
-    def visit_monotonically_increasing_id(
-        self, expr: MonotonicallyIncreasingIdExpr
-    ) -> Hashable:
-        return ("monotonically_increasing_id", expr._instance_id)
-
-    def visit_random(self, expr: RandomExpr) -> Hashable:
-        return (
-            "random",
-            expr.seed,
-            expr.reseed_after_execution,
-            _data_type_key(expr),
-        )
-
-    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
-        return ("uuid", _data_type_key(expr))
-
-
 _IGNORED_CSE_ROOT_TYPES = (ColumnExpr, LiteralExpr, AliasExpr, StarExpr)
 
 
 def _is_ignored_cse_root(expr: Expr) -> bool:
     return isinstance(expr, _IGNORED_CSE_ROOT_TYPES)
-
-
-def _iter_children(expr: Expr) -> Iterable[Expr]:
-    if isinstance(expr, BinaryExpr):
-        yield expr.left
-        yield expr.right
-    elif isinstance(expr, UnaryExpr):
-        yield expr.operand
-    elif isinstance(expr, AliasExpr):
-        yield expr.expr
-    elif isinstance(expr, UDFExpr):
-        yield from expr.args
-        yield from expr.kwargs.values()
 
 
 def _collect_occurrences(exprs: List[Expr]) -> List[_Occurrence]:

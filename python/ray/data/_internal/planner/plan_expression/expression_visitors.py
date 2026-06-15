@@ -1,5 +1,5 @@
 from dataclasses import replace
-from typing import Dict, List, TypeVar
+from typing import Any, Dict, Hashable, List, TypeVar
 
 from ray.data.expressions import (
     AliasExpr,
@@ -10,6 +10,7 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
+    PyArrowComputeUDFExpr,
     RandomExpr,
     StarExpr,
     UDFExpr,
@@ -577,6 +578,124 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_uuid(self, expr: "UUIDExpr") -> str:
         """Visit a uuid expression and return its inline representation."""
         return "uuid()"
+
+
+def _make_hashable(value: Any) -> Hashable:
+    try:
+        hash(value)
+        return value
+    except TypeError:
+        pass
+
+    if isinstance(value, list):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, tuple):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(
+            sorted(
+                ((k, _make_hashable(v)) for k, v in value.items()),
+                key=lambda item: repr(item[0]),
+            )
+        )
+    if isinstance(value, set):
+        return frozenset(_make_hashable(v) for v in value)
+
+    return repr(value)
+
+
+def _data_type_key(expr: Expr) -> Hashable:
+    return repr(getattr(expr, "data_type", None))
+
+
+def _udf_function_key(fn: Any) -> Hashable:
+    if isinstance(fn, _CallableClassUDF):
+        return ("callable_class", fn.callable_class_spec.make_key())
+    return ("function", _make_hashable(fn))
+
+
+class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
+    """Visitor that computes a hashable structural fingerprint for an expression.
+
+    Two expressions that are structurally equivalent produce equal fingerprints,
+    so the fingerprint can be used as a cheap bucketing key before falling back to
+    full ``structurally_equals`` comparison (e.g. for common sub-expression
+    elimination).
+    """
+
+    def visit_column(self, expr: ColumnExpr) -> Hashable:
+        return ("column", expr.name)
+
+    def visit_literal(self, expr: LiteralExpr) -> Hashable:
+        return ("literal", type(expr.value), _make_hashable(expr.value))
+
+    def visit_binary(self, expr: BinaryExpr) -> Hashable:
+        return (
+            "binary",
+            expr.op,
+            self.visit(expr.left),
+            self.visit(expr.right),
+        )
+
+    def visit_unary(self, expr: UnaryExpr) -> Hashable:
+        return ("unary", expr.op, self.visit(expr.operand))
+
+    def visit_udf(self, expr: UDFExpr) -> Hashable:
+        if isinstance(expr, PyArrowComputeUDFExpr):
+            return (
+                "pyarrow_compute_udf",
+                _make_hashable(expr.pc_func),
+                _make_hashable(expr.pc_positional),
+                _make_hashable(expr.pc_kwargs),
+                tuple(self.visit(arg) for arg in expr.args),
+                tuple(
+                    (k, self.visit(v))
+                    for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+                ),
+                _data_type_key(expr),
+            )
+
+        return (
+            "udf",
+            _udf_function_key(expr.fn),
+            tuple(self.visit(arg) for arg in expr.args),
+            tuple(
+                (k, self.visit(v))
+                for k, v in sorted(expr.kwargs.items(), key=lambda item: item[0])
+            ),
+            _data_type_key(expr),
+        )
+
+    def visit_alias(self, expr: AliasExpr) -> Hashable:
+        return (
+            "alias",
+            expr.name,
+            expr._is_rename,
+            self.visit(expr.expr),
+            _data_type_key(expr),
+        )
+
+    def visit_download(self, expr: DownloadExpr) -> Hashable:
+        return ("download", expr.uri_column_name)
+
+    def visit_star(self, expr: StarExpr) -> Hashable:
+        return ("star",)
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Hashable:
+        return ("monotonically_increasing_id", expr._instance_id)
+
+    def visit_random(self, expr: RandomExpr) -> Hashable:
+        return (
+            "random",
+            expr.seed,
+            expr.reseed_after_execution,
+            _data_type_key(expr),
+        )
+
+    def visit_uuid(self, expr: UUIDExpr) -> Hashable:
+        return ("uuid", _data_type_key(expr))
 
 
 def get_column_references(expr: Expr) -> List[str]:
