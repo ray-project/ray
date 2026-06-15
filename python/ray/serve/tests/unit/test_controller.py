@@ -16,11 +16,11 @@ from ray.serve._private.controller import (
     applications_match,
     calculate_target_capacity_direction,
 )
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.schema import (
     ControllerHealthMetrics,
     DurationStats,
@@ -745,9 +745,7 @@ class TestAggregatedAutoscalingMetricsDelay:
         now = 1000.0
 
         with pytest.MonkeyPatch.context() as monkeypatch:
-            monkeypatch.setattr(
-                "ray.serve._private.controller.time.time", lambda: now
-            )
+            monkeypatch.setattr("ray.serve._private.controller.time.time", lambda: now)
             _get_aggregated_autoscaling_metrics_delay_ms(
                 delay_by_source, "slow_source", 200.0, timeout_s=1.0
             )
@@ -786,17 +784,24 @@ class TestAggregatedAutoscalingMetricsDelay:
         )
         controller.get_deployment_config = MagicMock(return_value=deployment_config)
 
-        assert controller._get_deployment_metrics_interval_s(
-            "dep", "app", for_handle=False
-        ) == 30.0
+        assert (
+            controller._get_deployment_metrics_interval_s(
+                "dep", "app", for_handle=False
+            )
+            == 30.0
+        )
 
         controller.get_deployment_config = MagicMock(return_value=None)
-        assert controller._get_deployment_metrics_interval_s(
-            "dep", "app", for_handle=False
-        ) == RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-        assert controller._get_deployment_metrics_interval_s(
-            "dep", "app", for_handle=True
-        ) == RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        assert (
+            controller._get_deployment_metrics_interval_s(
+                "dep", "app", for_handle=False
+            )
+            == RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        )
+        assert (
+            controller._get_deployment_metrics_interval_s("dep", "app", for_handle=True)
+            == RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
+        )
 
 
 if __name__ == "__main__":
