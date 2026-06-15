@@ -1,6 +1,9 @@
+import ctypes
+import ctypes.util
 import functools
 import glob
 import logging
+import os
 import threading
 import time
 import traceback
@@ -25,11 +28,115 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Supported NIXL backends that can be requested through ``RAY_NIXL_BACKEND``.
+_SUPPORTED_BACKENDS = ("UCX", "LIBFABRIC")
+
+# Probe buffer size for the LIBFABRIC/EFA registration check. Must exceed EFA's
+# ~32 MiB host bounce pool so the probe hits a real ``fi_mr_reg`` registration.
+_LIBFABRIC_PROBE_SIZE_BYTES = 64 * 1024 * 1024
+
 
 @functools.lru_cache(maxsize=1)
 def _is_efa_available() -> bool:
-    """Detect whether AWS EFA (Elastic Fabric Adapter) devices are present."""
-    return bool(glob.glob("/sys/class/net/efa*"))
+    """Detect whether AWS EFA (Elastic Fabric Adapter) devices are present.
+
+    A bare host exposes ``efa*`` netdevs, but inside a container/Kubernetes pod
+    netdevs are network-namespaced away and only the rdma-verbs devices under
+    ``/sys/class/infiniband`` are mounted in. Those verbs devices are not
+    EFA-specific -- ordinary InfiniBand/RoCE NICs appear there too -- so we
+    confirm each one is bound to the kernel ``efa`` driver before treating it as
+    EFA. Without that check, non-AWS RDMA nodes would wrongly auto-select the
+    LIBFABRIC backend instead of UCX.
+    """
+    if glob.glob("/sys/class/net/efa*"):
+        return True
+    for ib_dev in glob.glob("/sys/class/infiniband/*"):
+        # A stale or broken sysfs entry shouldn't abort the scan; skip it and
+        # keep looking (defaulting to UCX if nothing resolves to the efa driver).
+        try:
+            driver = os.path.realpath(os.path.join(ib_dev, "device", "driver"))
+        except OSError:
+            continue
+        if os.path.basename(driver) == "efa":
+            return True
+    return False
+
+
+def _backend_override() -> Optional[str]:
+    """Returns the explicit NIXL backend requested via ``RAY_NIXL_BACKEND``, if any.
+
+    An explicit override is the deterministic safety net for pinning both transfer
+    endpoints onto the same backend, since per-process auto-detection can otherwise
+    diverge (for example one side picks UCX and the other LIBFABRIC) and fail every
+    transfer with ``NIXL_ERR_BACKEND``.
+    """
+    val = os.environ.get("RAY_NIXL_BACKEND")
+    if not val:
+        return None
+    backend = val.strip().upper()
+    if backend not in _SUPPORTED_BACKENDS:
+        raise ValueError(
+            f"RAY_NIXL_BACKEND must be one of {list(_SUPPORTED_BACKENDS)}, "
+            f"got {val!r}."
+        )
+    return backend
+
+
+@functools.lru_cache(maxsize=1)
+def _load_cudart() -> Optional["ctypes.CDLL"]:
+    """Best-effort load of the CUDA runtime for raw (non-VMM) device allocation."""
+    candidates = [
+        "libcudart.so",
+        "libcudart.so.12",
+        "libcudart.so.11.0",
+        "cudart64_12.dll",
+        "cudart64_110.dll",
+    ]
+    found = ctypes.util.find_library("cudart")
+    if found:
+        candidates.insert(0, found)
+    for name in candidates:
+        try:
+            return ctypes.CDLL(name)
+        except OSError:
+            continue
+    return None
+
+
+def _alloc_non_vmm_cuda_buffer(nbytes: int):
+    """Allocates a raw, non-VMM CUDA buffer for backend probing.
+
+    PyTorch's caching allocator uses CUDA VMM (``cuMemCreate``) when
+    ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`` (standard for Megatron).
+    VMM memory can't be RDMA-registered, so probing with a VMM buffer yields a
+    false negative. We deliberately allocate with ``cudaMalloc`` (non-VMM) so the
+    probe reflects the backend's capability for ordinary, registerable buffers.
+
+    Returns a ``(ptr, nbytes, gpu_id, free_fn)`` tuple, or ``None`` if CUDA isn't
+    available (for example a CPU-only actor) or the allocation fails.
+    """
+    try:
+        import torch
+    except ImportError:
+        return None
+    if not torch.cuda.is_available():
+        return None
+    cudart = _load_cudart()
+    if cudart is None:
+        return None
+
+    gpu_id = torch.cuda.current_device()
+    if cudart.cudaSetDevice(ctypes.c_int(gpu_id)) != 0:
+        return None
+    ptr = ctypes.c_void_p()
+    rc = cudart.cudaMalloc(ctypes.byref(ptr), ctypes.c_size_t(nbytes))
+    if rc != 0 or not ptr.value:
+        return None
+
+    def free_fn():
+        cudart.cudaFree(ptr)
+
+    return ptr.value, nbytes, gpu_id, free_fn
 
 
 @dataclass
@@ -121,6 +228,8 @@ class NixlTensorTransport(TensorTransportManager):
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
+        # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
+        self._backend: Optional[str] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -163,21 +272,32 @@ class NixlTensorTransport(TensorTransportManager):
         """
         self._remove_tensor_descs([tensor])
 
+    def _resolve_backend(self) -> "tuple[str, bool]":
+        """Returns ``(backend, is_override)`` for the backend to attempt.
+
+        Honors an explicit ``RAY_NIXL_BACKEND`` override, otherwise prefers
+        LIBFABRIC when EFA devices are present and UCX everywhere else.
+        """
+        override = _backend_override()
+        if override is not None:
+            return override, True
+        return ("LIBFABRIC" if _is_efa_available() else "UCX"), False
+
     def select_backend(self) -> str:
-        """Uses LIBFABRIC backend on AWS instances with EFA, UCX otherwise."""
-        return "LIBFABRIC" if _is_efa_available() else "UCX"
+        """Returns the NIXL backend to attempt.
 
-    def get_nixl_agent(self):
+        Honors an explicit ``RAY_NIXL_BACKEND`` override, otherwise prefers
+        LIBFABRIC when EFA devices are present and UCX everywhere else. When the
+        choice is LIBFABRIC by auto-detection (not an override), ``get_nixl_agent``
+        validates that a realistic CUDA registration succeeds before committing,
+        and raises otherwise (a failure signals a misconfigured instance).
         """
-        Creates a NIXL agent if not already created.
-        """
-        if self._nixl_agent is not None:
-            return self._nixl_agent
+        return self._resolve_backend()[0]
 
+    def _make_nixl_agent(self, backend: str):
+        """Creates a NIXL agent configured with the given backend."""
         from nixl._api import nixl_agent, nixl_agent_config
 
-        backend = self.select_backend()
-        logger.info("Using NIXL backend: %s", backend)
         agent_config = nixl_agent_config(backends=[backend])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
@@ -186,9 +306,73 @@ class NixlTensorTransport(TensorTransportManager):
             import uuid
 
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
-        self._nixl_agent = nixl_agent(actor_id, agent_config)
+        return nixl_agent(actor_id, agent_config)
 
-        return self._nixl_agent
+    def _libfabric_registration_works(self, agent) -> bool:
+        """Validates that LIBFABRIC/EFA can register a realistic GPU buffer.
+
+        EFA presence doesn't guarantee GPUDirect works. Without nvidia-peermem or
+        dmabuf, small CUDA buffers still register via EFA's ~32 MiB host bounce
+        pool, so the real failure only surfaces as ``NIXL_ERR_BACKEND`` at
+        transfer time. Probing with a buffer larger than that pool surfaces it
+        here instead.
+
+        Returns True if registration succeeds, or if there's no CUDA device to
+        probe (a CPU-only actor can't test GPUDirect, so it selects LIBFABRIC).
+        """
+        buf = _alloc_non_vmm_cuda_buffer(_LIBFABRIC_PROBE_SIZE_BYTES)
+        if buf is None:
+            return True
+        ptr, nbytes, gpu_id, free_fn = buf
+        reg_desc = None
+        try:
+            reg_desc = agent.register_memory(
+                [(ptr, nbytes, gpu_id, "")], mem_type="cuda"
+            )
+            return True
+        except Exception as e:
+            logger.debug(
+                "LIBFABRIC CUDA registration probe failed (size=%d bytes): %s",
+                nbytes,
+                e,
+            )
+            return False
+        finally:
+            try:
+                if reg_desc is not None:
+                    agent.deregister_memory(reg_desc)
+            except Exception:
+                pass
+            free_fn()
+
+    def get_nixl_agent(self):
+        """
+        Creates a NIXL agent if not already created.
+        """
+        if self._nixl_agent is not None:
+            return self._nixl_agent
+
+        backend, is_override = self._resolve_backend()
+        agent = self._make_nixl_agent(backend)
+
+        # Auto-selected LIBFABRIC: EFA presence doesn't guarantee GPUDirect works,
+        # so validate before committing and fail loudly instead of hitting a
+        # cryptic NIXL_ERR_BACKEND at transfer time. An override skips this.
+        if backend == "LIBFABRIC" and not is_override:
+            if not self._libfabric_registration_works(agent):
+                raise RuntimeError(
+                    "EFA devices were detected, but a realistic-size CUDA memory "
+                    "registration failed under the LIBFABRIC backend. This usually "
+                    "means GPUDirect isn't available (missing nvidia-peermem/dmabuf) "
+                    "or the probe ran against VMM memory "
+                    "(PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True). Fix the "
+                    "instance setup, or set RAY_NIXL_BACKEND=UCX to use UCX instead."
+                )
+
+        self._backend = backend
+        self._nixl_agent = agent
+        logger.info("Using NIXL backend: %s", backend)
+        return agent
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         # TODO(dayshah): This is called on a .remote RDT call, so it's quite expensive.
@@ -203,6 +387,10 @@ class NixlTensorTransport(TensorTransportManager):
 
                 get_tensor_transport_manager("NIXL").get_nixl_agent()
                 return True
+            except ValueError:
+                # A misconfigured RAY_NIXL_BACKEND is a user error, not a sign
+                # that NIXL is unavailable; surface it instead of masking it.
+                raise
             except Exception:
                 return False
 
@@ -610,13 +798,22 @@ class NixlTensorTransport(TensorTransportManager):
                         mem_type=mem_type,
                     )
                 except Exception as e:
-                    if "LIBFABRIC" in self._nixl_agent.backends:
+                    if self._backend == "LIBFABRIC":
                         backend_hint = (
                             "Set FI_LOG_LEVEL=Debug for detailed libfabric diagnostics."
                         )
                     else:
                         backend_hint = (
                             "Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                        )
+                    vmm_hint = ""
+                    alloc_conf = os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "").lower()
+                    if mem_type == "cuda" and "expandable_segments:true" in alloc_conf:
+                        vmm_hint = (
+                            "  - VMM memory can't be RDMA-registered: "
+                            "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True is set, "
+                            "which makes PyTorch back tensors with CUDA VMM. Allocate "
+                            "the transferred tensors without expandable_segments.\n"
                         )
                     raise RuntimeError(
                         f"Failed to register {mem_type} memory with NIXL "
@@ -628,6 +825,7 @@ class NixlTensorTransport(TensorTransportManager):
                         f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
                         f"  - IOMMU enabled without passthrough mode\n"
                         f"  - Container cgroup memory restrictions\n"
+                        f"{vmm_hint}"
                         f"{backend_hint}"
                     ) from e
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
