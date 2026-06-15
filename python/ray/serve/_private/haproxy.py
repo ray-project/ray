@@ -1654,35 +1654,23 @@ class HAProxyManager(ProxyActorInterface):
         if not wait_for_applications_running:
             return
 
-        # Ask the controller what this proxy should be serving. Using the
-        # controller's authoritative view (rather than this manager's locally
-        # broadcast self._target_groups) closes a race where serving() runs
-        # before the TARGET_GROUPS long-poll broadcast is applied.
-        try:
-            controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-            target_groups = await controller.get_target_groups.remote(
-                from_proxy_manager=True
-            )
-        except Exception:
-            # Best effort: if the controller is unreachable, fall back to the
-            # locally-received target groups rather than blocking.
-            logger.warning(
-                "Failed to query controller for target groups in serving(); "
-                "falling back to locally-received target groups.",
-                exc_info=True,
-            )
-            target_groups = self._target_groups
-
         ready_to_serve = False
-        while not ready_to_serve:
+        while not (
+            ready_to_serve
+        ):
             if self._is_draining():
                 return
+
+            # We have not received an update from the controller yet.
+            if len(self._target_groups) == 0:
+                await asyncio.sleep(0.2)
+                continue
 
             desired_backend_servers = {
                 self._generate_backend_name(tg): {
                     self._generate_server_name(target) for target in tg.targets
                 }
-                for tg in target_groups
+                for tg in self._target_groups
             }
             fallback_servers = {
                 self._generate_server_name(target)
@@ -1702,14 +1690,12 @@ class HAProxyManager(ProxyActorInterface):
                         extra={"log_to_stderr": True},
                     )
                     desired_servers = desired_backend_servers.get(backend, set())
+                    desired_servers.update(fallback_servers)
                     for server_name, server in servers.items():
                         if not server.is_up:
                             continue
 
-                        if server_name in desired_servers or (
-                            len(desired_servers) == 0
-                            and server_name in fallback_servers
-                        ):
+                        if server_name in desired_servers:
                             ready_backends.add(backend)
                             break
 
