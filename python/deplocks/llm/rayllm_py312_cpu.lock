@@ -7,6 +7,11 @@ absl-py==2.4.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   dm-tree
+ai-dynamo-runtime @ https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/dynamo/1.2.1/ai_dynamo_runtime-1.2.1-cp310-abi3-manylinux_2_35_x86_64.whl \
+    --hash=sha256:9ca26a9d410e61393fcf4f3a783983dc06ccc5754abd8b306bec8ada6738fa69
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
+    #   -r python/requirements/llm/llm-requirements.txt
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
@@ -3754,6 +3759,7 @@ pydantic==2.12.3 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   -r python/requirements.txt
+    #   ai-dynamo-runtime
     #   anthropic
     #   compressed-tensors
     #   fastapi
@@ -5354,7 +5360,7 @@ uvicorn==0.22.0 \
     #   fastapi
     #   fastapi-cli
     #   fastapi-cloud-cli
-uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' \
+uvloop==0.22.1 \
     --hash=sha256:017bd46f9e7b78e81606329d07141d3da446f8798c6baeec124260e22c262772 \
     --hash=sha256:0530a5fbad9c9e4ee3f2b33b148c6a64d47bbad8000ea63704fa8260f4cf728e \
     --hash=sha256:05e4b5f86e621cf3927631789999e697e58f0d2d32675b67d9ca9eb0bca55743 \
@@ -5406,6 +5412,7 @@ uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'c
     --hash=sha256:fe94b4564e865d968414598eea1a6de60adba0c040ba4ed05ac1300de402cd42
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
+    #   ai-dynamo-runtime
     #   uvicorn
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \

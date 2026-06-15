@@ -5,6 +5,9 @@ prometheus-fastapi-instrumentator>=8.0.0  # for starlette v1.0.1+
 # https://github.com/vllm-project/vllm/blob/v0.22.0/requirements/kv_connectors.txt#L2
 nixl==1.2.0
 nixl-cu13==1.2.0
+# Now kept out of ray[llm] extra: PyPI rejects direct-URL dependencies.
+# TODO (jeffreywang): Move to official wheels once dynamo changes are upstreamed.
+ai-dynamo-runtime @ https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/dynamo/1.2.1/ai_dynamo_runtime-1.2.1-cp310-abi3-manylinux_2_35_x86_64.whl
 anyio>=4.5.0
 # For json mode
 jsonref>=1.1.0
