@@ -8,13 +8,14 @@ import os
 from enum import Enum, auto
 
 
-def get_store_name(group_name):
+def get_store_name(group_name: str):
     """Generate the unique name for the NCCLUniqueID store (named actor).
 
     Args:
         group_name: unique user name for the store.
-    Return:
-        str: SHA256-hexlified name for the store.
+
+    Returns:
+        SHA256-hexlified name for the store.
     """
     if not group_name:
         raise ValueError("group_name is None.")

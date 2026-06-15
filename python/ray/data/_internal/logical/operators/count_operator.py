@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 __all__ = [
     "Count",
@@ -28,3 +31,10 @@ class Count(LogicalOperator):
     @property
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
+
+    def infer_schema(self) -> Optional["Schema"]:
+        # Fixed output: one row per partial count with a single ``__num_rows``
+        # int64 column.
+        import pyarrow as pa
+
+        return pa.schema([pa.field(self.COLUMN_NAME, pa.int64(), nullable=False)])

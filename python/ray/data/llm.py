@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
 
-from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
@@ -15,7 +14,6 @@ from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig as _ChatTemplateStageConfig,
     DetokenizeStageConfig as _DetokenizeStageConfig,
     HttpRequestStageConfig as _HttpRequestStageConfig,
-    PrepareImageStageConfig as _PrepareImageStageConfig,
     PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
     TokenizerStageConfig as _TokenizerStageConfig,
 )
@@ -113,20 +111,22 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
-        engine_kwargs: The kwargs to pass to the vLLM engine. Default engine kwargs are
-            pipeline_parallel_size: 1, tensor_parallel_size: 1, max_num_seqs: 128,
-            distributed_executor_backend: "mp".
+        engine_kwargs: The kwargs to pass to the vLLM engine. Defaults to
+            pipeline_parallel_size: 1 and tensor_parallel_size: 1. Ray Data LLM sets
+            ``distributed_executor_backend`` to ``"uni"`` when ``tp*pp == 1`` and
+            ``"ray"`` otherwise. vLLM's ``max_num_seqs`` default is resolved by vLLM
+            and is GPU-dependent (e.g., 256 on A100/A10G, 1024 on H100/MI300x).
         task_type: The task type to use. If not specified, will use 'generate' by default.
         runtime_env: The runtime environment to use for the vLLM engine. See
             :ref:`this doc <handling_dependencies>` for more details.
-        max_pending_requests: The maximum number of pending requests. If not specified,
-            will use the default value from the vLLM engine.
+        max_pending_requests: The maximum number of pending requests. If unset,
+            defaults to ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)`` using
+            vLLM's resolved engine config.
         max_concurrent_batches: The maximum number of concurrent batches in the engine.
-            This is to overlap the batch processing to avoid the tail latency of
-            each batch. The default value may not be optimal when the batch size
-            or the batch processing latency is too small, but it should be good
-            enough for batch size >= 64. Sets the engine actor's Ray Core
-            ``max_concurrency``.
+            Overlapping batch processing reduces per-batch tail latency. Sets the
+            engine actor's Ray Core ``max_concurrency``. The default is tuned for
+            batch sizes >= 32; consider increasing it for smaller batch sizes or
+            short per-batch latencies.
         max_tasks_in_flight_per_actor: Max tasks Ray Data submits concurrently to
             each engine actor. Passed through to ``ray.data.ActorPoolStrategy``.
             If unset, Ray Data uses
@@ -137,13 +137,27 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             env var.
         should_continue_on_error: If True, continue processing when inference fails for a row
             instead of raising an exception. Failed rows will have a non-empty
-            ``__inference_error__`` column containing the error message, and other
-            output columns will be empty strings. Error rows bypass postprocess. If False
-            (default), any inference error will raise an exception.
+            ``__inference_error__`` column containing the error message; the other
+            output columns are populated with type-appropriate defaults
+            (empty string/list, ``None``, ``0``, or ``-1``). Error rows bypass
+            postprocess. If False (default), any inference error will raise an
+            exception.
+        log_engine_metrics: If True (default), export vLLM engine metrics (prefix
+            cache hit rate, TTFT, TPOT, KV cache utilization, etc.) via Ray's
+            Prometheus endpoint.
+        dynamic_lora_loading_path: Path holding dynamic LoRA adapter checkpoints
+            (one per subfolder). If unset and LoRA is used, the ``model`` in a
+            LoRA request is interpreted as a HF model ID.
+        placement_group_config: Optional placement group config for scheduling
+            vLLM engine workers. Accepts ``bundle_per_worker`` (auto-replicated by
+            ``tp*pp``) or ``bundles`` (full list of resource dicts), plus an
+            optional ``strategy``
+            (``PACK``/``STRICT_PACK``/``SPREAD``/``STRICT_SPREAD``).
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
-            and ``chat_template`` fields are deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``apply_chat_template`` and ``chat_template`` fields are deprecated but
+            still supported.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
@@ -152,13 +166,13 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
             ``detokenize`` field is deprecated but still supported.
-        prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
-            Defaults to False. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, and memory. Both the legacy ``has_image`` field
-            and ``prepare_image_stage`` are deprecated but still supported. Prefer to use multimodal
-            processor to process multimodal data instead.
-        accelerator_type: The accelerator type used by the LLM stage in a processor.
-            Default to None, meaning that only the CPU will be used.
+        prepare_multimodal_stage: Multimodal preprocessing stage config
+            (bool | dict | PrepareMultimodalStageConfig). Defaults to False.
+            Use nested config for per-stage control over batch_size, concurrency,
+            runtime_env, num_cpus, memory, ``model_config_kwargs``,
+            ``chat_template_content_format``, and ``apply_sys_msg_formatting``.
+        accelerator_type: The accelerator type required for the vLLM engine workers
+            (e.g., "H100", "A100").
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
@@ -554,51 +568,6 @@ class HttpRequestStageConfig(_HttpRequestStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
-class PrepareImageStageConfig(_PrepareImageStageConfig):
-    """The configuration for the prepare image stage.
-
-    Args:
-        enabled: Whether this stage is enabled. Defaults to True.
-        batch_size: Rows per batch. If not specified, will use the processor-level
-            batch_size.
-        concurrency: Actor pool size or range for this stage. If not specified,
-            will use the processor-level concurrency. If ``concurrency`` is a
-            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
-            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
-            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
-        runtime_env: Optional runtime environment for this stage. If not specified,
-            will use the processor-level runtime_env. See
-            :ref:`this doc <handling_dependencies>` for more details.
-        num_cpus: Number of CPUs to reserve for each map worker in this stage.
-        memory: Heap memory in bytes to reserve for each map worker in this stage.
-    """
-
-    pass
-
-
-@Deprecated(new="build_processor", error=False)
-def build_llm_processor(
-    config: ProcessorConfig,
-    preprocess: Optional[UserDefinedFunction] = None,
-    postprocess: Optional[UserDefinedFunction] = None,
-    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
-    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
-    builder_kwargs: Optional[Dict[str, Any]] = None,
-) -> Processor:
-    """
-    [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
-    """
-    return build_processor(
-        config,
-        preprocess,
-        postprocess,
-        preprocess_map_kwargs,
-        postprocess_map_kwargs,
-        builder_kwargs,
-    )
-
-
 @PublicAPI(stability="beta")
 def build_processor(
     config: ProcessorConfig,
@@ -615,8 +584,8 @@ def build_processor(
             control over batch_size, concurrency, runtime_env, num_cpus, and memory
             (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
             or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
-            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``,
-            ``has_image``) are deprecated but still supported with deprecation warnings.
+            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``)
+            are deprecated but still supported with deprecation warnings.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -780,7 +749,5 @@ __all__ = [
     "PrepareMultimodalStageConfig",
     "TokenizerStageConfig",
     "HttpRequestStageConfig",
-    "PrepareImageStageConfig",
-    "build_llm_processor",
     "build_processor",
 ]

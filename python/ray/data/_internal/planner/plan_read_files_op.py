@@ -1,9 +1,12 @@
 """Physical planner for the V2 ``ReadFiles`` logical operator.
 
-``ReadFiles`` now consumes ``FileManifest`` blocks from an upstream
+``ReadFiles`` consumes ``FileManifest`` blocks from an upstream
 ``ListFiles`` physical op. This planner wires one map transform —
 ``do_read`` — that calls ``scanner.create_reader().read(manifest)`` for
-each incoming bucket and applies any recorded column renames.
+each incoming bucket.
+
+V2 reads never rename columns at the read stage; column renaming is
+always handled by a ``Project`` operator above ``ReadFiles``.
 
 Listing, shuffling, and size-balanced bucketing previously lived here;
 they've moved to :func:`plan_list_files_op` where they belong.
@@ -33,7 +36,6 @@ from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data.block import Block
 from ray.data.context import DataContext
-from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +55,7 @@ def plan_read_files_op(
 
     # NOTE: Avoid capturing the whole ``op`` in closures — only field values.
     scanner = op.scanner
-    renames = op.column_renames
+    block_udf = op.block_udf
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
@@ -69,7 +71,9 @@ def plan_read_files_op(
             if len(manifest) == 0:
                 continue
             for table in reader.read(manifest):
-                yield _DatasourceProjectionPushdownMixin._apply_rename(table, renames)
+                if block_udf is not None:
+                    table = block_udf(table)
+                yield table
 
     return MapOperator.create(
         MapTransformer(

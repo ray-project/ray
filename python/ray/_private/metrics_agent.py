@@ -285,6 +285,9 @@ class OpenCensusProxyCollector:
 
         Args:
             namespace: Prometheus namespace.
+            component_timeout_s: Number of seconds after which a component
+                without new reports is considered stale and its metrics are
+                no longer exported.
         """
         # -- Protect `self._components` --
         self._components_lock = threading.Lock()
@@ -729,6 +732,9 @@ class MetricsAgent:
             metrics: A list of protobuf Metric defined from OpenCensus.
             worker_id_hex: The worker ID it proxies metrics export. None
                 if the metric is not from a worker (i.e., raylet, GCS).
+
+        Returns:
+            None.
         """
         with self._lock:
             if not self.view_manager:
@@ -766,7 +772,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             Ray to store logs and metadata.
     """
 
-    def __init__(self, gcs_address, temp_dir):
+    def __init__(self, gcs_address: str, temp_dir: str):
         gcs_client_options = ray._raylet.GcsClientOptions.create(
             gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
         )

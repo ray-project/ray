@@ -1,3 +1,6 @@
+.. meta::
+    :description: The main guide to contributing to Ray, covering the pull request and code review workflow, coding style, the contributor license agreement, and how to find good first issues. Start here to learn how to submit and land a contribution to the Ray project.
+
 .. include:: /_includes/_latest_contribution_doc.rst
 
 .. _getting-involved:

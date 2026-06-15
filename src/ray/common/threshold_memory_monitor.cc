@@ -24,11 +24,17 @@ namespace ray {
 ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                                                int64_t memory_usage_threshold_bytes,
                                                uint64_t monitor_interval_ms,
-                                               const std::string root_cgroup_path)
+                                               bool resource_isolation_enabled,
+                                               const std::string &root_cgroup_path,
+                                               const std::string &user_cgroup_path,
+                                               const std::string &system_cgroup_path)
     : kill_workers_callback_(std::move(kill_workers_callback)),
       worker_killing_in_progress_(false),
       memory_usage_threshold_bytes_(memory_usage_threshold_bytes),
+      resource_isolation_enabled_(resource_isolation_enabled),
       root_cgroup_path_(root_cgroup_path),
+      user_cgroup_path_(user_cgroup_path),
+      system_cgroup_path_(system_cgroup_path),
       io_service_(/*enable_metrics=*/false,
                   /*running_on_single_thread=*/true,
                   "MemoryMonitor.IOContext"),
@@ -39,28 +45,43 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
       }),
       runner_(PeriodicalRunner::Create(io_service_)) {
   int64_t total_memory_bytes =
-      MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_).total_bytes;
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_).total_bytes;
   float computed_threshold_fraction = static_cast<float>(memory_usage_threshold_bytes_) /
                                       static_cast<float>(total_memory_bytes);
   RAY_LOG(INFO) << absl::StrFormat(
-      "MemoryMonitor initialized with usage threshold at %d bytes "
-      "(%f%% of system memory), total system memory bytes: %d, monitor interval: %dms",
+      "ThresholdMemoryMonitor initialized with usage threshold at %d bytes "
+      "(%f%% of system memory), total system memory bytes: %d, monitor interval: %dms"
+      "%s",
       memory_usage_threshold_bytes_,
       computed_threshold_fraction * 100,
       total_memory_bytes,
-      monitor_interval_ms);
+      monitor_interval_ms,
+      resource_isolation_enabled_
+          ? ", resource isolation enabled, monitoring only user slice memory usage"
+          : "");
 
   runner_->RunFnPeriodically(
       [this] {
-        SystemMemorySnapshot cur_memory_snapshot =
-            MemoryMonitorUtils::TakeSystemMemorySnapshot(root_cgroup_path_);
+        std::optional<MemoryUsageSnapshot> exceeded_snapshot;
+        if (resource_isolation_enabled_) {
+          exceeded_snapshot = IsResourceIsolationThresholdExceeded();
+        } else {
+          exceeded_snapshot = IsHostMemoryThresholdExceeded();
+        }
 
-        bool is_usage_above_threshold =
-            IsUsageAboveThreshold(cur_memory_snapshot, memory_usage_threshold_bytes_);
-
-        if (is_usage_above_threshold && IsEnabled()) {
+        if (exceeded_snapshot.has_value() && IsEnabled()) {
+          const MemoryUsageSnapshot &cur_memory_snapshot = exceeded_snapshot.value();
           Disable();
-          kill_workers_callback_();
+          std::string trigger_reason = absl::StrFormat(
+              "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB total)",
+              cur_memory_snapshot.used_bytes,
+              memory_usage_threshold_bytes_,
+              (cur_memory_snapshot.total_bytes > 0
+                   ? static_cast<float>(memory_usage_threshold_bytes_) /
+                         static_cast<float>(cur_memory_snapshot.total_bytes) * 100
+                   : 0.0f),
+              cur_memory_snapshot.total_bytes);
+          kill_workers_callback_(trigger_reason);
         }
       },
       monitor_interval_ms,
@@ -83,28 +104,64 @@ bool ThresholdMemoryMonitor::IsEnabled() const {
   return !worker_killing_in_progress_.load();
 }
 
-bool ThresholdMemoryMonitor::IsUsageAboveThreshold(
-    const SystemMemorySnapshot &system_memory, int64_t threshold_bytes) {
-  int64_t used_memory_bytes = system_memory.used_bytes;
-  int64_t total_memory_bytes = system_memory.total_bytes;
+std::optional<MemoryUsageSnapshot>
+ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
+  MemoryUsageSnapshot cur_memory_snapshot =
+      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_);
+  int64_t used_memory_bytes = cur_memory_snapshot.used_bytes;
+  int64_t total_memory_bytes = cur_memory_snapshot.total_bytes;
   if (total_memory_bytes == MemoryMonitorInterface::kNull ||
       used_memory_bytes == MemoryMonitorInterface::kNull) {
     RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
-    return false;
+    return std::nullopt;
   }
-  bool is_usage_above_threshold = used_memory_bytes > threshold_bytes;
+  bool is_usage_above_threshold = used_memory_bytes > memory_usage_threshold_bytes_;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
         "Node memory usage above threshold, used: %d, threshold_bytes: %d, "
         "total bytes: %d, threshold fraction: %f",
         used_memory_bytes,
-        threshold_bytes,
+        memory_usage_threshold_bytes_,
         total_memory_bytes,
-        static_cast<float>(threshold_bytes) / static_cast<float>(total_memory_bytes));
+        static_cast<float>(memory_usage_threshold_bytes_) /
+            static_cast<float>(total_memory_bytes));
   }
-  return is_usage_above_threshold;
+  return is_usage_above_threshold
+             ? std::optional<MemoryUsageSnapshot>(cur_memory_snapshot)
+             : std::nullopt;
+}
+
+std::optional<MemoryUsageSnapshot>
+ThresholdMemoryMonitor::IsResourceIsolationThresholdExceeded() {
+  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> user_slice_memory_snapshot_or =
+      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_path_,
+                                                           system_cgroup_path_);
+  if (!user_slice_memory_snapshot_or.has_value()) {
+    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
+        "Failed to take user slice memory snapshot due to: %s. "
+        "The threshold memory monitor will not be able to provide resource isolation "
+        "protection.",
+        user_slice_memory_snapshot_or.message());
+    return std::nullopt;
+  }
+  MemoryUsageSnapshot user_slice_memory_snapshot = user_slice_memory_snapshot_or.value();
+  bool is_usage_above_threshold =
+      user_slice_memory_snapshot.used_bytes > memory_usage_threshold_bytes_;
+  if (is_usage_above_threshold) {
+    RAY_LOG_EVERY_MS(INFO, MemoryMonitorInterface::kLogIntervalMs) << absl::StrFormat(
+        "User slice memory usage above threshold, used: %d, threshold_bytes: %d, "
+        "total bytes: %d, threshold fraction: %f",
+        user_slice_memory_snapshot.used_bytes,
+        memory_usage_threshold_bytes_,
+        user_slice_memory_snapshot.total_bytes,
+        static_cast<float>(memory_usage_threshold_bytes_) /
+            static_cast<float>(user_slice_memory_snapshot.total_bytes));
+  }
+  return is_usage_above_threshold
+             ? std::optional<MemoryUsageSnapshot>(user_slice_memory_snapshot)
+             : std::nullopt;
 }
 
 }  // namespace ray

@@ -6,9 +6,15 @@ from pydantic import Field, field_validator
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
+from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
-from ray.llm._internal.serve.core.ingress.builder import IngressClsConfig
+from ray.llm._internal.serve.core.ingress.builder import (
+    IngressClsConfig,
+    _build_direct_streaming_llm_deployment,
+    _build_openai_ingress_request_router,
+    _validate_direct_streaming_ingress_config,
+)
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
@@ -102,6 +108,23 @@ def build_dp_openai_app(builder_config: dict) -> Application:
 
     builder_config = DPOpenAiServingArgs.model_validate(builder_config)
     llm_config = builder_config.llm_config
+
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_ingress_config(
+            builder_config.ingress_deployment_config,
+            builder_config.ingress_cls_config,
+        )
+        direct_deployment = _build_direct_streaming_llm_deployment(
+            llm_config,
+            deployment_cls=DPServer,
+        )
+        logger.info(
+            "Direct streaming enabled for DP: "
+            "DPServer=ingress, LLMRouter=ingress_request_router"
+        )
+        return direct_deployment._with_ingress_request_router(
+            _build_openai_ingress_request_router(server=direct_deployment)
+        )
 
     dp_deployment = build_dp_deployment(llm_config)
 

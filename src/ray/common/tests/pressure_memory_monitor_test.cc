@@ -99,7 +99,8 @@ TEST_F(PressureMemoryMonitorTest, TestInvalidStallDurationReturnsFalse) {
 TEST_F(PressureMemoryMonitorTest, TestNonexistentCgroupPathFailsGracefully) {
   MemoryPsi psi = {.mode = "some", .stall_proportion = 0.5f, .stall_duration_s = 2};
   std::string nonexistent_path = "/nonexistent/cgroup/path";
-  auto result = PressureMemoryMonitor::Create(psi, std::move(nonexistent_path), []() {});
+  auto result =
+      PressureMemoryMonitor::Create(psi, std::move(nonexistent_path), [](std::string) {});
 
   ASSERT_TRUE(result.has_error())
       << "Failed to catch invalid cgroup path when creating PressureMemoryMonitor";
@@ -109,7 +110,8 @@ TEST_F(PressureMemoryMonitorTest, TestNonexistentCgroupPathFailsGracefully) {
 TEST_F(PressureMemoryMonitorTest, TestMonitorCreationWritesTriggerStringToFile) {
   MemoryPsi psi = {.mode = "some", .stall_proportion = 0.5f, .stall_duration_s = 2};
 
-  auto result = PressureMemoryMonitor::Create(psi, mock_cgroup_dir_->GetPath(), []() {});
+  auto result =
+      PressureMemoryMonitor::Create(psi, mock_cgroup_dir_->GetPath(), [](std::string) {});
   ASSERT_TRUE(result.has_value())
       << "Failed to create PressureMemoryMonitor: " << result.message();
 
@@ -162,7 +164,9 @@ TEST_F(PressureMemoryMonitorTest,
   close(listener);
 
   std::shared_ptr<boost::latch> has_called_once = std::make_shared<boost::latch>(1);
-  auto kill_workers_callback = [has_called_once]() { has_called_once->count_down(); };
+  auto kill_workers_callback = [has_called_once](std::string) {
+    has_called_once->count_down();
+  };
   std::unique_ptr<PressureMemoryMonitor> monitor =
       std::make_unique<PressureMemoryMonitor>(
           mock_cgroup_dir_->GetPath(), listener_fd, kill_workers_callback);

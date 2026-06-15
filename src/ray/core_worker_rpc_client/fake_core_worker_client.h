@@ -127,10 +127,6 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
   void Exit(const ExitRequest &request,
             const ClientCallback<ExitReply> &callback) override {}
 
-  void AssignObjectOwner(
-      const AssignObjectOwnerRequest &request,
-      const ClientCallback<AssignObjectOwnerReply> &callback) override {}
-
   // SubscriberClientInterface methods
   void PubsubLongPolling(
       PubsubLongPollingRequest &&request,

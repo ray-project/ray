@@ -119,11 +119,12 @@ void RedisStoreClient::MGetValues(
 }
 
 RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
-                                   const RedisClientOptions &options)
+                                   const RedisClientOptions &options,
+                                   ClockInterface &clock)
     : io_service_(io_service),
       options_(options),
       external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      primary_context_(std::make_shared<RedisContext>(io_service)) {
+      primary_context_(std::make_shared<RedisContext>(io_service, clock)) {
   RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
   RAY_CHECK_OK(primary_context_->Connect(options.ip,
                                          options.port,
@@ -520,7 +521,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
-  RedisContext context(io_service);
+  Clock real_clock;
+  RedisContext context(io_service, real_clock);
   RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
   RAY_CHECK_OK(context.Connect(options.ip,
                                options.port,

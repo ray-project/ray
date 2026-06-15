@@ -828,13 +828,14 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
   size_t num_objects_written = 0;
 
-  if (request.has_returned_object()) {
-    const rpc::ReturnObject &returned_object = request.returned_object();
+  for (int64_t i = 0; i < request.returned_objects_size(); i++) {
+    const rpc::ReturnObject &returned_object = request.returned_objects(i);
     const auto object_id = ObjectID::FromBinary(returned_object.object_id());
+    const auto object_index = item_index + i;
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
+    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
 
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -858,8 +859,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
   // Handle backpressure if needed.
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
+  auto last_item_index = request.returned_objects_size() == 0
+                             ? item_index
+                             : item_index + request.returned_objects_size() - 1;
 
-  if (stream_it->second.IsObjectConsumed(item_index)) {
+  if (stream_it->second.IsObjectConsumed(last_item_index)) {
     execution_signal_callback(Status::OK());
     if (backpressure_threshold != -1 && consumption_update_callback) {
       consumption_update_callback(Status::OK(), total_consumed);

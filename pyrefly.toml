@@ -54,7 +54,6 @@ ignore-missing-imports = [
     "tensorflow_datasets.*",
     "tensorflow_metadata.*",
     "testcontainers.*",
-    "tfx_bsl.*",
     "torch.*",
     "torchvision.*",
     "tqdm.*",

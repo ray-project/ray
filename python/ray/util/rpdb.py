@@ -258,7 +258,10 @@ def _connect_ray_pdb(
     )
     sockname = rdb._listen_socket.getsockname()
     pdb_address = build_address(ip_address, sockname[1])
-    parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
+    frames = inspect.getouterframes(inspect.currentframe())
+    # Use the parent frame if available, otherwise fall back to the current frame
+    # In some call paths (e.g., post-mortem debugging), there may not be enough frames
+    parentframeinfo = frames[2] if len(frames) > 2 else frames[-1]
     data = {
         "proctitle": ray._raylet.getproctitle(),
         "pdb_address": pdb_address,

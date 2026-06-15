@@ -67,9 +67,11 @@ Status TaskGeneratorBackpressureWaiter::WaitAllObjectsReported() {
   return return_status;
 }
 
-void TaskGeneratorBackpressureWaiter::IncrementObjectGenerated() {
+void TaskGeneratorBackpressureWaiter::IncrementObjectGenerated(
+    int64_t num_objects_generated) {
+  RAY_CHECK_GE(num_objects_generated, 0);
   absl::MutexLock lock(&mutex_);
-  total_objects_generated_ += 1;
+  total_objects_generated_ += num_objects_generated;
   num_object_reports_in_flight_++;
 }
 

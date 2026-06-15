@@ -67,6 +67,8 @@ _METRICS = [
     "ray_node_disk_usage",
     "ray_node_mem_used",
     "ray_node_mem_total",
+    "ray_node_mem_used_host",
+    "ray_node_mem_total_host",
     "ray_node_cpu_utilization",
     # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
     # , e.g. need to see how users currently depend on them.
@@ -147,6 +149,7 @@ _DASHBOARD_METRICS = [
     "ray_dashboard_api_requests_count_requests_created",
     "ray_component_cpu_percentage",
     "ray_component_uss_mb",
+    "ray_component_uss_bytes",
 ]
 
 _EVENT_AGGREGATOR_METRICS = [
@@ -167,6 +170,8 @@ _NODE_METRICS = [
     "ray_node_mem_used",
     "ray_node_mem_available",
     "ray_node_mem_total",
+    "ray_node_mem_total_host",
+    "ray_node_mem_used_host",
     "ray_node_disk_io_read",
     "ray_node_disk_io_write",
     "ray_node_disk_io_read_count",
@@ -192,7 +197,9 @@ if sys.platform == "linux" or sys.platform == "linux2":
 _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
     "ray_component_rss_mb",
+    "ray_component_rss_bytes",
     "ray_component_uss_mb",
+    "ray_component_uss_bytes",
     "ray_component_num_fds",
 ]
 
@@ -816,13 +823,15 @@ def test_per_func_name_stats(shutdown_only):
     comp_metrics = [
         "ray_component_cpu_percentage",
         "ray_component_rss_mb",
+        "ray_component_rss_bytes",
         "ray_component_num_fds",
     ]
     timeseries = PrometheusTimeseries()
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
         comp_metrics.append("ray_component_uss_mb")
-        comp_metrics.append("ray_component_mem_shared_bytes")
+        comp_metrics.append("ray_component_uss_bytes")
+        comp_metrics.append("ray_component_shared_bytes")
     addr = ray.init(num_cpus=2)
 
     @ray.remote

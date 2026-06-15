@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -116,9 +117,18 @@ class RayletClientInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
-  virtual void CancelResourceReserve(
-      const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
+  /// Request a raylet to remove the resources for one or more placement group
+  /// bundles.
+  ///
+  /// \param placement_group_id The placement group whose bundles are being removed.
+  ///   All bundles in the request must belong to this placement group.
+  /// \param bundle_specs Bundles to remove on this raylet. All must belong to
+  ///   placement_group_id.
+  virtual void RemovePlacementGroupBundles(
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+      const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+          &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
       const std::vector<rpc::Bundle> &bundles_in_use,
@@ -214,6 +224,8 @@ class RayletClientInterface {
   virtual void CancelLocalTask(
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
+
+  virtual void FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) = 0;
 
   virtual ~RayletClientInterface() = default;
 };

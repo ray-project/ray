@@ -487,10 +487,10 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   /// Test the active connection timeout.
   ///
 
-  auto reply_cnt = 0;
-  send_reply_callback = [&reply_cnt](Status status,
-                                     std::function<void()> success,
-                                     std::function<void()> failure) { reply_cnt++; };
+  auto reply_count = 0;
+  send_reply_callback = [&reply_count](Status status,
+                                       std::function<void()> success,
+                                       std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
@@ -520,7 +520,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
 
   // Refresh the connection.
   subscriber->PublishIfPossible(/*force_noop=*/true);
-  ASSERT_EQ(reply_cnt, 1);
+  ASSERT_EQ(reply_count, 1);
 
   // New connection is established.
   reply = rpc::PubsubLongPollingReply();
@@ -542,7 +542,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
       std::make_shared<rpc::PubMessage>(GeneratePubMessage(oid, GetNextSequenceId())));
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
-  ASSERT_EQ(reply_cnt, 2);
+  ASSERT_EQ(reply_count, 2);
 
   // Although time has passed, since the connection was refreshed, timeout shouldn't
   // happen.
@@ -568,10 +568,10 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   /// Test the subscriber is considered as dead due to the disconnection timeout.
   ///
 
-  auto reply_cnt = 0;
-  send_reply_callback = [&reply_cnt](Status status,
-                                     std::function<void()> success,
-                                     std::function<void()> failure) { reply_cnt++; };
+  auto reply_count = 0;
+  send_reply_callback = [&reply_count](Status status,
+                                       std::function<void()> success,
+                                       std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
@@ -586,7 +586,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
   subscriber->PublishIfPossible(/*force_noop=*/true);
-  ASSERT_EQ(reply_cnt, 1);
+  ASSERT_EQ(reply_count, 1);
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 
@@ -607,7 +607,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
   subscriber->PublishIfPossible(/*force_noop=*/true);
-  ASSERT_EQ(reply_cnt, 2);
+  ASSERT_EQ(reply_count, 2);
 
   // Some time has passed, but it is not timed out yet.
   current_time_ += subscriber_timeout_ms_ / 2;
@@ -621,7 +621,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
   subscriber->PublishIfPossible(/*force_noop=*/true);
-  ASSERT_EQ(reply_cnt, 3);
+  ASSERT_EQ(reply_count, 3);
   current_time_ += subscriber_timeout_ms_ / 2;
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
@@ -639,10 +639,10 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
   /// Test the subscriber timeout in more complicated scenario.
   ///
 
-  auto reply_cnt = 0;
-  send_reply_callback = [&reply_cnt](Status status,
-                                     std::function<void()> success,
-                                     std::function<void()> failure) { reply_cnt++; };
+  auto reply_count = 0;
+  send_reply_callback = [&reply_count](Status status,
+                                       std::function<void()> success,
+                                       std::function<void()> failure) { reply_count++; };
 
   auto subscriber = std::make_shared<SubscriberState>(
       subscriber_id_,
@@ -657,7 +657,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
                                   reply.mutable_pub_messages(),
                                   send_reply_callback);
   subscriber->PublishIfPossible(/*force_noop=*/true);
-  ASSERT_EQ(reply_cnt, 1);
+  ASSERT_EQ(reply_count, 1);
   ASSERT_TRUE(subscriber->IsActive());
   ASSERT_FALSE(subscriber->ConnectionExists());
 

@@ -177,6 +177,7 @@ void ActorHandle::SetActorTaskSpec(
                            serialized_retry_exception_allowlist,
                            concurrency_group_counters_[concurrency_group_name]++,
                            tensor_transport,
+                           inner_.is_detached(),
                            actor_generator_bp);
 }
 

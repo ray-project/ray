@@ -383,16 +383,19 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     int64_t generator_backpressure_num_objects)
+                     int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
                      c_string serialized_runtime_env)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
                      c_string serialized_runtime_env,
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,

@@ -61,7 +61,9 @@ class TaskGeneratorBackpressureWaiter {
   Status WaitUntilObjectConsumed();
   Status WaitAllObjectsReported();
 
-  void IncrementObjectGenerated();
+  /// Increment the number of objects generated. The executor should call this
+  /// before sending an object report to the caller.
+  void IncrementObjectGenerated(int64_t num_objects_generated = 1);
   void OnObjectReportAccepted();
   void OnObjectConsumed(int64_t total_objects_consumed);
 

@@ -80,6 +80,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
+    RECORD_REPLICA_METADATA_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -92,6 +93,9 @@ from ray.serve._private.constants import (
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    USER_HEALTH_CHECK_PROBE_INTERVAL_S,
+    USER_HEALTH_CHECK_PROBE_MAX_FAIL,
+    USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
 )
 from ray.serve._private.default_impl import (
     create_replica_impl,
@@ -188,6 +192,23 @@ from ray.util import metrics as ray_metrics
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
+
+
+def _validate_replica_metadata(metadata: Any) -> Dict[str, Any]:
+    """Validate the return value of a user ``record_replica_metadata`` hook.
+
+    Returns an empty dict for ``None``; raises ``TypeError`` if the hook returned
+    something other than a dict (it must be a JSON-serializable mapping that the
+    controller can propagate to routers).
+    """
+    if metadata is None:
+        return {}
+    if not isinstance(metadata, dict):
+        raise TypeError(
+            f"{RECORD_REPLICA_METADATA_METHOD} must return a dict, got "
+            f"{type(metadata).__name__}."
+        )
+    return metadata
 
 
 def _wrap_grpc_call(f):
@@ -287,6 +308,7 @@ ReplicaMetadata = Tuple[
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
     Optional[GangContext],  # gang_context
+    Dict[str, Any],  # replica_metadata
 ]
 
 
@@ -1107,6 +1129,9 @@ class Replica:
         self._shutting_down = False
         # Gang context for this replica.
         self._gang_context: Optional[GangContext] = None
+        # Static, immutable per-replica metadata captured once at init time
+        # via the user's `record_replica_metadata` hook (if defined).
+        self._replica_metadata: Dict[str, Any] = {}
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -1246,6 +1271,7 @@ class Replica:
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
             self._gang_context,
+            self._replica_metadata,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -1773,6 +1799,16 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._user_callable_wrapper.start_user_loop_watchdog(
+                        self._event_loop
+                    )
+                    # Capture static per-replica metadata exactly once, now that
+                    # the user callable is initialized. Unlike routing stats,
+                    # this is never polled and is treated as immutable.
+                    if self._user_callable_wrapper.has_user_replica_metadata_method:
+                        self._replica_metadata = _validate_replica_metadata(
+                            await self._user_callable_wrapper.call_user_record_replica_metadata()
+                        )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
                             self._user_callable_wrapper._callable.docs_path
@@ -1913,22 +1949,27 @@ class Replica:
         finally:
             self._semaphore.release()
 
-    async def _drain_ongoing_requests(self):
-        """Wait for any ongoing requests to finish.
+    async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
+        """Wait until the minimum draining period has elapsed and no ongoing
+        requests remain.
 
-        Sleep for a grace period before the first time we check the number of ongoing
-        requests to allow the notification to remove this replica to propagate to
-        callers first.
+        The minimum draining period gives load balancers time to deregister
+        this replica; a request admitted during it becomes ongoing and is
+        waited for like any other.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
+        deadline = time.monotonic() + min_draining_period_s
         while True:
             await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
-            if num_ongoing_requests > 0:
+            min_period_remaining_s = deadline - time.monotonic()
+            if num_ongoing_requests > 0 or min_period_remaining_s > 0:
                 logger.info(
-                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
-                    f"because there are {num_ongoing_requests} ongoing requests."
+                    f"Waiting for an additional {wait_loop_period_s}s to shut down: "
+                    f"{num_ongoing_requests} ongoing requests, "
+                    f"{max(0.0, min_period_remaining_s):.1f}s minimum draining "
+                    f"period remaining."
                 )
             else:
                 logger.info(
@@ -1939,6 +1980,7 @@ class Replica:
 
     async def shutdown(self):
         try:
+            self._user_callable_wrapper.stop_user_loop_watchdog()
             await self._user_callable_wrapper.call_destructor()
         except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
@@ -1956,38 +1998,35 @@ class Replica:
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
-        coros = []
-        if (
-            RAY_SERVE_ENABLE_DIRECT_INGRESS
-            and self._ingress
-            and self._user_callable_initialized
-        ):
-            # In direct ingress mode, we need to wait at least
-            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
-            # balancers (e.g., ALB) time to deregister the replica, in addition to
-            # waiting for requests to drain.
-            coros.append(asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S))
-
         # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
+        # can skip the drain entirely.
         if self._user_callable_initialized:
-            coros.append(self._drain_ongoing_requests())
+            # In direct ingress mode, hold the replica open at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S so load balancers can
+            # deregister it; the drain also waits for in-flight requests.
+            min_draining_period_s = (
+                RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+                if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
+                else 0.0
+            )
+            await self._drain_ongoing_requests(min_draining_period_s)
 
-        if coros:
-            await asyncio.gather(*coros)
-
-        await self.shutdown()
-
-        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
+        # Close listeners before tearing down user code so a late connection
+        # can't hit a mid-shutdown replica (the drain above ensured none remain).
         if self._direct_ingress_http_server_task:
             self._direct_ingress_http_server_task.cancel()
         if self._direct_ingress_grpc_server_task:
             self._direct_ingress_grpc_server_task.cancel()
 
+        await self.shutdown()
+
     async def check_health(self):
         try:
-            # If there's no user-defined health check, nothing runs on the user code event
-            # loop and no future is returned.
+            # Runs the user-defined check_health on the user code loop if defined.
+            # Otherwise, if the background watchdog has detected the user loop is
+            # unresponsive, raises immediately. If the watchdog is disabled
+            # (MAX_FAIL=0) or the fail counter hasn't reached the threshold yet,
+            # returns None.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -2406,7 +2445,7 @@ class Replica:
                 request_metadata, request_args, request_kwargs
             )
 
-        with self._wrap_request(request_metadata):
+        with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
             async with self._start_request(request_metadata):
                 self._num_queued_requests -= 1
@@ -2437,7 +2476,8 @@ class Replica:
                         self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
-                    return
+                    status_code_callback(status.code.name)
+                    raise e
                 finally:
                     set_grpc_code_and_details(context, status)
 
@@ -3049,6 +3089,9 @@ class UserCallableWrapper:
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._user_health_check: Optional[Callable] = None
+        self._user_loop_probe_consecutive_fail_count: int = 0
+        self._user_loop_probe_task: Optional[asyncio.Task] = None
         self._deployment_config = deployment_config
         self._ray_actor_options = ray_actor_options or {}
         self._user_code_threadpool: Optional[
@@ -3097,6 +3140,72 @@ class UserCallableWrapper:
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
+
+    def _user_loop_watchdog_enabled(self) -> bool:
+        """Whether we run the optional background user-loop probe (and may fast-fail HC)."""
+        return (
+            self._run_user_code_in_separate_thread
+            and self._user_health_check is None
+            and USER_HEALTH_CHECK_PROBE_MAX_FAIL > 0
+        )
+
+    def start_user_loop_watchdog(self, main_loop: asyncio.AbstractEventLoop) -> None:
+        """Periodically probe the user code loop from the replica main loop (opt-in).
+
+        With user code on a separate thread, a wedged asyncio loop can queue health
+        probes indefinitely. If ``RAY_SERVE_USER_HEALTH_CHECK_PROBE_MAX_FAIL`` > 0,
+        repeated timeouts fail ``check_health`` without waiting for the controller
+        RPC timeout. Applies even when ``RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1``: async
+        work on that loop stays observable regardless of sync thread-pool idle/busy mix.
+        """
+        if not self._user_loop_watchdog_enabled():
+            return
+        if self._user_loop_probe_task is not None:
+            return
+        self._user_loop_probe_task = main_loop.create_task(self._user_loop_probe_loop())
+
+    def stop_user_loop_watchdog(self) -> None:
+        if self._user_loop_probe_task is not None:
+            self._user_loop_probe_task.cancel()
+            self._user_loop_probe_task = None
+        # Reset so a subsequent start_user_loop_watchdog() doesn't begin with a stale
+        # fail count that would immediately trip call_user_health_check().
+        self._user_loop_probe_consecutive_fail_count = 0
+
+    async def _user_loop_probe_loop(self) -> None:
+        while True:
+            await asyncio.sleep(USER_HEALTH_CHECK_PROBE_INTERVAL_S)
+
+            fut = asyncio.run_coroutine_threadsafe(
+                asyncio.sleep(0), self._user_code_event_loop
+            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.wrap_future(fut),
+                    timeout=USER_HEALTH_CHECK_PROBE_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe timed out "
+                    f"(failed {self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL} before health check fails). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+            except Exception as e:
+                self._user_loop_probe_consecutive_fail_count += 1
+                logger.warning(
+                    "User event loop probe failed: "
+                    f"{e} ({self._user_loop_probe_consecutive_fail_count}/"
+                    f"{USER_HEALTH_CHECK_PROBE_MAX_FAIL}). "
+                    f"deployment={self._deployment_id.name} "
+                    f"app={self._deployment_id.app_name}",
+                )
+                continue
+
+            self._user_loop_probe_consecutive_fail_count = 0
 
     def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
         num_cpus = self._ray_actor_options.get("num_cpus")
@@ -3369,6 +3478,9 @@ class UserCallableWrapper:
         self._user_record_routing_stats = getattr(
             self._callable, REQUEST_ROUTING_STATS_METHOD, None
         )
+        self._user_record_replica_metadata = getattr(
+            self._callable, RECORD_REPLICA_METADATA_METHOD, None
+        )
         self._user_autoscaling_stats = getattr(
             self._callable, "record_autoscaling_stats", None
         )
@@ -3396,11 +3508,21 @@ class UserCallableWrapper:
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
-        # To avoid this issue for basic cases without a user-defined health check, skip
-        # interacting with the user callable entirely.
+        # When there is no user-defined health check, health is determined by the
+        # optional watchdog fail counter.
+        if (
+            self._user_loop_watchdog_enabled()
+            and self._user_loop_probe_consecutive_fail_count
+            >= USER_HEALTH_CHECK_PROBE_MAX_FAIL
+        ):
+            raise RuntimeError(
+                "User event loop unresponsive: probe failed "
+                f"{self._user_loop_probe_consecutive_fail_count} consecutive times "
+                f"(limit {USER_HEALTH_CHECK_PROBE_MAX_FAIL})."
+            )
+
         if self._user_health_check is not None:
             return self._call_user_health_check()
-
         return None
 
     @property
@@ -3413,6 +3535,21 @@ class UserCallableWrapper:
 
         if self._user_record_routing_stats is not None:
             return self._call_user_record_routing_stats()
+
+        return None
+
+    @property
+    def has_user_replica_metadata_method(self) -> bool:
+        """Whether the user has defined a record_replica_metadata method."""
+        return self._user_record_replica_metadata is not None
+
+    def call_user_record_replica_metadata(
+        self,
+    ) -> Optional[concurrent.futures.Future]:
+        self._raise_if_not_initialized("call_user_record_replica_metadata")
+
+        if self._user_record_replica_metadata is not None:
+            return self._call_user_record_replica_metadata()
 
         return None
 
@@ -3431,6 +3568,11 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
         result, _ = await self._call_func_or_gen(self._user_record_routing_stats)
+        return result
+
+    @_run_user_code
+    async def _call_user_record_replica_metadata(self) -> Dict[str, Any]:
+        result, _ = await self._call_func_or_gen(self._user_record_replica_metadata)
         return result
 
     @_run_user_code

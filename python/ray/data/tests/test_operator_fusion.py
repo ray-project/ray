@@ -466,7 +466,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
     assert "ReadRange->MapBatches(fn)" not in stats
     # Ensure all three operators are also present in usage record
-    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
@@ -528,7 +528,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert "Operator 1 ReadRange" in ds.stats()
     assert "Operator 2 Repartition" in ds.stats()
     assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapRows"])
 
     ctx.target_max_block_size = old_target_max_block_size
 
@@ -634,7 +634,7 @@ def test_read_map_chain_operator_fusion_e2e(
         "->MapBatches(<lambda>)->FlatMap(<lambda>):"
     )
     assert name in ds.stats()
-    _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
+    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):

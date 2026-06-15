@@ -142,10 +142,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                           ExitReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAssignObjectOwner(AssignObjectOwnerRequest request,
-                                       AssignObjectOwnerReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleNumPendingTasks(NumPendingTasksRequest request,
                                      NumPendingTasksReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
