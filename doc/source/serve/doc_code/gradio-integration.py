@@ -6,7 +6,7 @@ from ray.serve.gradio_integrations import GradioServer
 
 import gradio as gr
 
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 # __doc_import_end__
 
@@ -33,12 +33,18 @@ example_input = (
 
 
 def gradio_summarizer_builder():
-    summarizer = pipeline("summarization", model="t5-small")
+    # t5-small is a text-to-text model that summarizes when the input is
+    # prefixed with the task. (transformers 5 removed the "summarization"
+    # pipeline task, so we call the model directly.)
+    tokenizer = AutoTokenizer.from_pretrained("t5-small")
+    summarizer_model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def model(text):
-        summary_list = summarizer(text)
-        summary = summary_list[0]["summary_text"]
-        return summary
+        input_ids = tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
+        output_ids = summarizer_model.generate(
+            input_ids, min_new_tokens=5, max_new_tokens=40
+        )
+        return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
     return gr.Interface(
         fn=model,

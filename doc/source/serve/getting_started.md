@@ -185,7 +185,7 @@ For example, let's deploy a machine learning pipeline with two steps:
 1. Summarize English text
 2. Translate the summary into French
 
-`Translator` already performs step 2. We can use [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/v4.21.0/en/main_classes/pipelines#transformers.SummarizationPipeline) to accomplish step 1. Here's an example of the `SummarizationPipeline` that runs locally:
+`Translator` already performs step 2. We use a second [t5-small](https://huggingface.co/t5-small) model to accomplish step 1. Here's an example of the `Summarizer` that runs locally:
 
 ```{literalinclude} ../serve/doc_code/getting_started/models.py
 :start-after: __start_summarization_model__
