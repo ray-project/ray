@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Unit tests for preemption handling. No Ray cluster required.
 
 Covers the four non-TorchFT paths (A/B/C/D) at the state-machine + failure-
@@ -9,24 +10,31 @@ directly. End-to-end UDF behavior is exercised separately by
 import sys
 from unittest.mock import MagicMock
 
+
 class MockModule(MagicMock):
     def __getattr__(self, name):
         return MagicMock()
+
 
 class MockFinder:
     def find_spec(self, fullname, path, target=None):
         if fullname == "ray._raylet" or fullname.startswith("ray.core.generated"):
             from importlib.machinery import ModuleSpec
+
             return ModuleSpec(fullname, MockLoader(fullname))
         return None
+
 
 class MockLoader:
     def __init__(self, fullname):
         self.fullname = fullname
+
     def create_module(self, spec):
         return MockModule()
+
     def exec_module(self, module):
         pass
+
 
 sys.meta_path.insert(0, MockFinder())
 
@@ -100,6 +108,11 @@ def test_preempting_state_carries_info():
 # ─── DefaultFailurePolicy: PreemptionError branch ───────────────────────────
 
 
+def test_preemption_invalid_budget():
+    with pytest.raises(ValueError, match="max_preemption_failures must be >= -1"):
+        FailureConfig(max_preemption_failures=-2)
+
+
 def test_preemption_budget_is_independent_of_max_failures():
     """Path A: planned preemption must not consume the unplanned-failure budget."""
     cfg = FailureConfig(max_failures=0, max_preemption_failures=3)
@@ -142,9 +155,7 @@ def test_worker_group_error_budget_independent_from_preemption():
     assert policy.make_decision(wg_err) == FailureDecision.RAISE
 
     # preemption budget still untouched
-    preempt_err = PreemptionError(
-        "test", preempted_ranks=[2], preempted_node_ids=["n"]
-    )
+    preempt_err = PreemptionError("test", preempted_ranks=[2], preempted_node_ids=["n"])
     for _ in range(5):
         assert policy.make_decision(preempt_err) == FailureDecision.RETRY
 
@@ -161,15 +172,13 @@ def _fake_controller(worker_statuses):
     # Bind methods to a stub via __get__ so we don't instantiate the actor.
     stub = MagicMock()
     stub._worker_group = MagicMock()
-    stub._worker_group.get_latest_poll_status.return_value = (
-        WorkerGroupPollStatus(worker_statuses=worker_statuses)
+    stub._worker_group.get_latest_poll_status.return_value = WorkerGroupPollStatus(
+        worker_statuses=worker_statuses
     )
-    stub._should_leave_preempting = (
-        TrainController._should_leave_preempting.__get__(stub)
+    stub._should_leave_preempting = TrainController._should_leave_preempting.__get__(
+        stub
     )
-    stub._build_preemption_error = (
-        TrainController._build_preemption_error.__get__(stub)
-    )
+    stub._build_preemption_error = TrainController._build_preemption_error.__get__(stub)
     return stub
 
 
@@ -328,12 +337,14 @@ def test_failure_domain_tpu_slice_autodetect(monkeypatch):
     monkeypatch.setattr(
         pc.PreemptionCallback,
         "_lookup_tpu_slice_labels",
-        staticmethod(lambda nids: {
-            "node-a": "slice-0",
-            "node-b": "slice-0",
-            "node-c": "slice-1",
-            "node-d": "slice-1",
-        }),
+        staticmethod(
+            lambda nids: {
+                "node-a": "slice-0",
+                "node-b": "slice-0",
+                "node-c": "slice-1",
+                "node-d": "slice-1",
+            }
+        ),
     )
 
     cb = pc.PreemptionCallback(controller_actor=None)
@@ -370,6 +381,7 @@ def test_resolve_deadline_uses_earliest_when_reported():
     from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionWatcher,
     )
+
     # Earliest (min) wins.
     d = PreemptionWatcher._resolve_deadline([2000, 1000, 3000])
     assert d == 1.0  # 1000ms = 1.0s since epoch (just verify it's converted)
@@ -383,6 +395,7 @@ def test_resolve_deadline_default_60s_when_no_deadlines(monkeypatch):
     from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionWatcher,
     )
+
     before = time.time()
     d = PreemptionWatcher._resolve_deadline([])
     after = time.time()
@@ -395,6 +408,7 @@ def test_resolve_deadline_user_override(monkeypatch):
     from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionWatcher,
     )
+
     before = time.time()
     d = PreemptionWatcher._resolve_deadline([])
     after = time.time()
@@ -407,6 +421,7 @@ def test_resolve_deadline_inf_opt_in(monkeypatch):
     from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionWatcher,
     )
+
     assert PreemptionWatcher._resolve_deadline([]) == float("inf")
 
     monkeypatch.setenv("RAY_TRAIN_PREEMPTION_DEFAULT_DEADLINE_S", "none")
@@ -418,6 +433,7 @@ def test_resolve_deadline_invalid_value_falls_back(monkeypatch):
     from ray.train.v2._internal.callbacks.preemption_callback import (
         PreemptionWatcher,
     )
+
     before = time.time()
     d = PreemptionWatcher._resolve_deadline([])
     after = time.time()
@@ -492,10 +508,10 @@ def test_fake_node_map_enables_survivor_path(monkeypatch):
     calls = [w.actor.mark_preempt.remote.call_args[0][0] for w in workers]
     assert all(c.preempted_ranks == [1, 3] for c in calls)
     # User-side branching uses ``rank in info.preempted_ranks``.
-    assert 0 not in calls[0].preempted_ranks   # rank 0 -> survivor
-    assert 1 in calls[1].preempted_ranks       # rank 1 -> preempted
-    assert 2 not in calls[2].preempted_ranks   # rank 2 -> survivor
-    assert 3 in calls[3].preempted_ranks       # rank 3 -> preempted
+    assert 0 not in calls[0].preempted_ranks  # rank 0 -> survivor
+    assert 1 in calls[1].preempted_ranks  # rank 1 -> preempted
+    assert 2 not in calls[2].preempted_ranks  # rank 2 -> survivor
+    assert 3 in calls[3].preempted_ranks  # rank 3 -> preempted
 
 
 def test_on_drain_change_signals_every_worker():
@@ -536,4 +552,5 @@ def test_on_drain_change_signals_every_worker():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main([__file__, "-v"]))

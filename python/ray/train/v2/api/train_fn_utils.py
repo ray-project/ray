@@ -156,7 +156,8 @@ def preemption_status() -> Optional["PreemptionInfo"]:
                 for step in range(total_steps):
                     info = ray.train.preemption_status()
                     if info is not None:
-                        if info.this_worker_preempted:
+                        rank = ray.train.get_context().get_world_rank()
+                        if rank in info.preempted_ranks:
                             cleanup_local()
                         else:
                             save_checkpoint(state)
@@ -168,6 +169,7 @@ def preemption_status() -> Optional["PreemptionInfo"]:
     # DistributedTrainContext, which is a thin facade and does not have
     # preemption-related fields.
     from ray.train.v2._internal.execution.context import get_train_context
+
     return get_train_context().preemption_status()
 
 

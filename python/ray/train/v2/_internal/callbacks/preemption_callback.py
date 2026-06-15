@@ -50,7 +50,10 @@ _FAKE_NODE_MAP_ENV = "RAY_TRAIN_PREEMPTION_FAKE_NODE_MAP"
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.train.v2._internal.execution.worker_group.worker_group import WorkerGroup
+    from ray.train.v2._internal.execution.worker_group.worker_group import (
+        WorkerGroup,
+        WorkerGroupContext,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -150,7 +153,8 @@ class PreemptionWatcher:
 
         while not self._stopped:
             try:
-                drained = self._drain_source()
+                loop = asyncio.get_running_loop()
+                drained = await loop.run_in_executor(None, self._drain_source)
                 if drained != self._last_drained:
                     logger.info(
                         "Drained nodes changed: %s -> %s",
@@ -188,6 +192,10 @@ class PreemptionWatcher:
                 deadlines_ms.append(deadline_ms)
 
         if not affected_ranks:
+            try:
+                self._controller.notify_preempting.remote(None)
+            except Exception as e:
+                logger.warning("Failed to clear controller preemption status: %s", e)
             logger.warning(
                 "Drain detected on nodes %s but none belong to this worker "
                 "group (domain map keys: %s). No mark_preempt will fire. "
@@ -222,9 +230,7 @@ class PreemptionWatcher:
             try:
                 worker_actor.mark_preempt.remote(info)
             except Exception as e:
-                logger.warning(
-                    "Failed to send mark_preempt to rank %d: %s", rank, e
-                )
+                logger.warning("Failed to send mark_preempt to rank %d: %s", rank, e)
 
     @staticmethod
     def _resolve_deadline(deadlines_ms: List[int]) -> float:
@@ -296,9 +302,29 @@ class PreemptionCallback(WorkerGroupCallback):
         self._watcher: Optional["ActorHandle"] = None
         self._watch_ref = None
 
+    def _cleanup_watcher(self):
+        if self._watcher is None:
+            return
+        # Try graceful stop first (lets the poll loop exit cleanly and emit
+        # its shutdown log line), then hard-kill the actor so resources are
+        # reclaimed even if stop() didn't complete.
+        try:
+            self._watcher.stop.remote()
+        except Exception:
+            logger.debug("PreemptionWatcher.stop() RPC failed", exc_info=True)
+        try:
+            ray.kill(self._watcher)
+        except Exception:
+            logger.debug("ray.kill(PreemptionWatcher) failed", exc_info=True)
+        self._watcher = None
+        self._watch_ref = None
+
     # ─── Lifecycle hooks ──────────────────────────────────────────────────
 
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
+        # Clean up any existing watcher to prevent orphans on restarts
+        self._cleanup_watcher()
+
         node_to_domain_ranks = self._build_failure_domain_map(worker_group)
         worker_actors_by_rank = {
             w.distributed_context.world_rank: w.actor
@@ -321,27 +347,14 @@ class PreemptionCallback(WorkerGroupCallback):
         )
 
     def before_worker_group_shutdown(self, worker_group: "WorkerGroup"):
-        if self._watcher is None:
-            return
-        # Try graceful stop first (lets the poll loop exit cleanly and emit
-        # its shutdown log line), then hard-kill the actor so resources are
-        # reclaimed even if stop() didn't complete.
-        try:
-            self._watcher.stop.remote()
-        except Exception:
-            logger.debug("PreemptionWatcher.stop() RPC failed", exc_info=True)
-        try:
-            ray.kill(self._watcher)
-        except Exception:
-            logger.debug("ray.kill(PreemptionWatcher) failed", exc_info=True)
-        self._watcher = None
-        self._watch_ref = None
+        self._cleanup_watcher()
+
+    def after_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        self._cleanup_watcher()
 
     # ─── Failure-domain mapping ───────────────────────────────────────────
 
-    def _build_failure_domain_map(
-        self, wg: "WorkerGroup"
-    ) -> Dict[str, List[int]]:
+    def _build_failure_domain_map(self, wg: "WorkerGroup") -> Dict[str, List[int]]:
         """Return ``{node_id: ranks_in_same_failure_domain}``.
 
         Auto-detection — no user configuration required:
@@ -361,9 +374,7 @@ class PreemptionCallback(WorkerGroupCallback):
         if not workers:
             return {}
 
-        fake_node_map = self._parse_fake_node_map(
-            os.environ.get(_FAKE_NODE_MAP_ENV)
-        )
+        fake_node_map = self._parse_fake_node_map(os.environ.get(_FAKE_NODE_MAP_ENV))
         if fake_node_map:
             logger.warning(
                 "PreemptionCallback using fake node map (test mode): %s",

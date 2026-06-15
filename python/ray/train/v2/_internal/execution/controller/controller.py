@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -17,6 +17,7 @@ from ray.train.v2._internal.constants import (
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
+    PREEMPTION_HANDLING_ENABLED_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
@@ -371,7 +372,11 @@ class TrainController:
             flow in a follow-up.
           * Local mode / not running inside a Ray actor.
         """
-        if not ray_constants.env_bool("RAY_TRAIN_PREEMPTION_HANDLING_ENABLED", True):
+        if not ray_constants.env_bool(
+            PREEMPTION_HANDLING_ENABLED_ENV_VAR, True
+        ) or not ray_constants.env_bool(
+            ENABLE_PREEMPTION_WATCHER_ENV_VAR, DEFAULT_ENABLE_PREEMPTION_WATCHER
+        ):
             return None
         if self._manages_replica_groups:
             logger.info(
@@ -395,9 +400,7 @@ class TrainController:
             )
             return None
 
-        poll_interval_s = float(
-            os.getenv("RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S", "5")
-        )
+        poll_interval_s = float(os.getenv("RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S", "5"))
         return PreemptionCallback(
             controller_actor=controller_actor,
             poll_interval_s=poll_interval_s,
@@ -442,7 +445,9 @@ class TrainController:
         if info.seconds_remaining <= 0:
             return True
 
-        status = self._worker_group.get_latest_poll_status() if self._worker_group else None
+        status = (
+            self._worker_group.get_latest_poll_status() if self._worker_group else None
+        )
         if status is None:
             return False
 
@@ -468,7 +473,9 @@ class TrainController:
         PreemptionError into its WorkerStatus.error so that
         ``failing_replica_group_indices`` picks it up correctly.
         """
-        status = self._worker_group.get_latest_poll_status() if self._worker_group else None
+        status = (
+            self._worker_group.get_latest_poll_status() if self._worker_group else None
+        )
         worker_failures: Dict[int, Exception] = {}
         deadline_exceeded = info.seconds_remaining <= 0
 
@@ -499,7 +506,6 @@ class TrainController:
 
         return PreemptionError(
             error_message=(
-                f"Training interrupted by preemption: "
                 f"preempted_ranks={info.preempted_ranks}, "
                 f"preempted_node_ids={info.preempted_node_ids}, "
                 f"deadline_exceeded={deadline_exceeded}"

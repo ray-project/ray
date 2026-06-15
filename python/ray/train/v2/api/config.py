@@ -358,6 +358,8 @@ class FailureConfig(FailureConfigV1):
     max_preemption_failures: int = -1
 
     def __post_init__(self):
+        if self.max_preemption_failures < -1:
+            raise ValueError("max_preemption_failures must be >= -1.")
         if self.fail_fast != _DEPRECATED:
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
