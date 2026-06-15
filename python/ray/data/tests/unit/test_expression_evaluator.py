@@ -363,7 +363,7 @@ def test_eval_projection_star_rename_missing_source_raises():
         eval_projection(projection, block)
 
 
-def test_eval_projection_with_cse_common_exprs_arrow():
+def test_eval_projection_with_common_sub_exprs_arrow():
     block = pa.table({"a": [1, 2, 3]})
     common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
     projection = [
@@ -376,7 +376,7 @@ def test_eval_projection_with_cse_common_exprs_arrow():
     out = eval_projection(
         projection,
         block,
-        cse_common_exprs=[common],
+        common_sub_exprs=[common],
     )
 
     assert out.column_names == ["y"]
@@ -390,7 +390,7 @@ def test_eval_projection_cse_temp_columns_do_not_leak_with_star():
     out = eval_projection(
         [star(), col(f"{CSE_TEMP_COLUMN_PREFIX}test_0").alias("y")],
         block,
-        cse_common_exprs=[common],
+        common_sub_exprs=[common],
     )
 
     assert out.column_names == ["a", "y"]
@@ -403,7 +403,7 @@ def test_eval_projection_preserves_reserved_prefix_without_cse():
     assert out.column_names == [f"{CSE_TEMP_COLUMN_PREFIX}user"]
 
 
-def test_eval_projection_with_cse_common_exprs_pandas():
+def test_eval_projection_with_common_sub_exprs_pandas():
     block = pd.DataFrame({"a": [1, 2, 3]})
     common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
     projection = [
@@ -416,7 +416,7 @@ def test_eval_projection_with_cse_common_exprs_pandas():
     out = eval_projection(
         projection,
         block,
-        cse_common_exprs=[common],
+        common_sub_exprs=[common],
     )
 
     assert out.columns.tolist() == ["y"]

@@ -915,7 +915,7 @@ def eval_projection(
     projection_exprs: List[Expr],
     block: Block,
     *,
-    cse_common_exprs: Optional[List[Expr]] = None,
+    common_sub_exprs: Optional[List[Expr]] = None,
 ) -> Block:
     """
     Evaluate a projection (list of expressions) against a block.
@@ -924,11 +924,11 @@ def eval_projection(
     temporary columns on a working block. Visible projection expressions are
     then evaluated against that working block.
     """
-    if not cse_common_exprs:
+    if not common_sub_exprs:
         return _eval_projection_without_cse(projection_exprs, block)
 
     working_block = block
-    for common_expr in cse_common_exprs:
+    for common_expr in common_sub_exprs:
         assert common_expr.name is not None
         working_block = BlockAccessor.for_block(working_block).fill_column(
             common_expr.name,
@@ -936,5 +936,5 @@ def eval_projection(
         )
 
     output_block = _eval_projection_without_cse(projection_exprs, working_block)
-    temp_columns = [expr.name for expr in cse_common_exprs]
+    temp_columns = [expr.name for expr in common_sub_exprs]
     return _drop_cse_temp_columns(output_block, temp_columns)

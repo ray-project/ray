@@ -139,7 +139,7 @@ def plan_project_op(
     # serializing the entire op object (which may contain references to non-serializable
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
-    cse_common_exprs = op.get_cse_common_exprs()
+    common_sub_exprs = op.get_common_sub_exprs()
 
     compute = get_compute(op.compute)
 
@@ -159,7 +159,7 @@ def plan_project_op(
             return eval_projection(
                 projection_exprs,
                 block,
-                cse_common_exprs=cse_common_exprs,
+                common_sub_exprs=common_sub_exprs,
             )
         except Exception as e:
             _try_wrap_udf_exception(e)

@@ -34,7 +34,7 @@ def _apply_cse(project: Project) -> Project:
 
 
 def _temp_names(project: Project) -> list[str]:
-    return [expr.name for expr in project.get_cse_common_exprs()]
+    return [expr.name for expr in project.get_common_sub_exprs()]
 
 
 @udf(return_dtype=DataType.int64())
@@ -55,10 +55,10 @@ def test_repeated_udf_in_one_project():
 
     optimized = _apply_cse(project)
 
-    assert len(optimized.get_cse_common_exprs()) == 1
+    assert len(optimized.get_common_sub_exprs()) == 1
     temp_name = _temp_names(optimized)[0]
     assert temp_name.startswith(CSE_TEMP_COLUMN_PREFIX)
-    assert isinstance(_unwrap_alias(optimized.get_cse_common_exprs()[0]), UDFExpr)
+    assert isinstance(_unwrap_alias(optimized.get_common_sub_exprs()[0]), UDFExpr)
     assert isinstance(optimized.exprs[0], AliasExpr)
     assert optimized.exprs[0].name == "y"
     assert temp_name in repr(optimized.exprs[0])
@@ -72,7 +72,7 @@ def test_structurally_equal_separately_constructed_udf_calls():
 
     optimized = _apply_cse(project)
 
-    assert len(optimized.get_cse_common_exprs()) == 1
+    assert len(optimized.get_common_sub_exprs()) == 1
 
 
 def test_nested_common_expressions_materialize_bottom_up():
@@ -91,7 +91,7 @@ def test_nested_common_expressions_materialize_bottom_up():
 
     optimized = _apply_cse(project)
 
-    common_exprs = optimized.get_cse_common_exprs()
+    common_exprs = optimized.get_common_sub_exprs()
     assert len(common_exprs) == 2
     first_temp, second_temp = _temp_names(optimized)
     assert isinstance(_unwrap_alias(common_exprs[0]), UDFExpr)
@@ -110,8 +110,8 @@ def test_alias_root_is_ignored_but_child_is_extracted():
 
     optimized = _apply_cse(project)
 
-    assert len(optimized.get_cse_common_exprs()) == 1
-    assert isinstance(_unwrap_alias(optimized.get_cse_common_exprs()[0]), UDFExpr)
+    assert len(optimized.get_common_sub_exprs()) == 1
+    assert isinstance(_unwrap_alias(optimized.get_common_sub_exprs()[0]), UDFExpr)
     assert [expr.name for expr in optimized.exprs] == ["x", "y"]
 
 
@@ -128,8 +128,8 @@ def test_columns_and_literals_alone_are_not_materialized():
 
     optimized = _apply_cse(project)
 
-    assert len(optimized.get_cse_common_exprs()) == 1
-    common_inner = _unwrap_alias(optimized.get_cse_common_exprs()[0])
+    assert len(optimized.get_common_sub_exprs()) == 1
+    common_inner = _unwrap_alias(optimized.get_common_sub_exprs()[0])
     assert isinstance(common_inner, BinaryExpr)
 
 
@@ -141,8 +141,8 @@ def test_pyarrow_compute_udf_reuse():
 
     optimized = _apply_cse(project)
 
-    assert len(optimized.get_cse_common_exprs()) == 1
-    common_inner = _unwrap_alias(optimized.get_cse_common_exprs()[0])
+    assert len(optimized.get_common_sub_exprs()) == 1
+    common_inner = _unwrap_alias(optimized.get_common_sub_exprs()[0])
     assert isinstance(common_inner, PyArrowComputeUDFExpr)
 
 
@@ -155,7 +155,7 @@ def test_output_schema_uses_visible_expressions_only(ray_start_regular_shared_2_
     optimized = LogicalOptimizer().optimize(ds._logical_plan)
     project = optimized.dag
     assert isinstance(project, Project)
-    assert project.get_cse_common_exprs()
+    assert project.get_common_sub_exprs()
     assert project.infer_schema().names == ["y"]
     assert all(
         not name.startswith(CSE_TEMP_COLUMN_PREFIX)
@@ -207,7 +207,7 @@ def test_logical_post_optimize_cse_executes_without_pushing_temps_into_read(
     optimized = LogicalOptimizer().optimize(ds._logical_plan)
     project = optimized.dag
     assert isinstance(project, Project)
-    assert project.get_cse_common_exprs()
+    assert project.get_common_sub_exprs()
     assert ds.take_all() == [{"y": 4}, {"y": 6}]
 
 

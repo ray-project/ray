@@ -406,7 +406,7 @@ class CommonSubExprElimination(Rule):
         if not isinstance(op, Project):
             return op
 
-        if op.get_cse_common_exprs():
+        if op.get_common_sub_exprs():
             return op
 
         candidates = _find_candidates(op.exprs)
@@ -424,5 +424,5 @@ class CommonSubExprElimination(Rule):
             ray_remote_args=op.ray_remote_args,
             ray_remote_args_fn=op.ray_remote_args_fn,
             per_block_limit=op.per_block_limit,
-            _cse_common_exprs=common_exprs,
+            _common_sub_exprs=common_exprs,
         )
