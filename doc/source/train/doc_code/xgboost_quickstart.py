@@ -6,8 +6,8 @@ import pandas as pd
 import xgboost
 
 # 1. Load your data as an `xgboost.DMatrix`.
-train_df = pd.read_csv("s3://ray-example-data/iris/train/1.csv")
-eval_df = pd.read_csv("s3://ray-example-data/iris/val/1.csv")
+train_df = pd.read_csv("s3://ray-example-data/iris/train/1.csv", storage_options={"anon": True})
+eval_df = pd.read_csv("s3://ray-example-data/iris/val/1.csv", storage_options={"anon": True})
 
 train_X = train_df.drop("target", axis=1)
 train_y = train_df["target"]
