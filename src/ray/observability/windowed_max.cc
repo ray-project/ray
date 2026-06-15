@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/observability/windowed_metric.h"
+#include "ray/observability/windowed_max.h"
 
 #include <algorithm>
 
 namespace ray {
 namespace observability {
 
-double WindowedMetric::Observe(absl::Time now, double value) {
+double WindowedMax::Observe(absl::Time now, double value) {
   samples_.push_back({now, value});
 
   // Evict samples that have fallen out of the window. Never evict the last remaining

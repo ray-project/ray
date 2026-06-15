@@ -25,7 +25,7 @@
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
-#include "ray/observability/windowed_metric.h"
+#include "ray/observability/windowed_max.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -91,7 +91,7 @@ class IOContextMonitor {
     bool healthy = true;
     bool deadline_warning_logged = false;
     // Sliding window of recent probe latencies; only accessed from the monitor.
-    observability::WindowedMetric latency_window;
+    observability::WindowedMax latency_window;
   };
 
   bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);

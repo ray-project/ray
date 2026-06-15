@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/observability/windowed_metric.h"
+#include "ray/observability/windowed_max.h"
 
 #include "absl/time/time.h"
 #include "gtest/gtest.h"
@@ -24,13 +24,13 @@ namespace {
 // A fixed base time to anchor sample timestamps. Values are arbitrary.
 const absl::Time kT0 = absl::FromUnixSeconds(1000);
 
-TEST(WindowedMetricTest, FirstSampleReturnsItself) {
-  WindowedMetric window(absl::Seconds(30));
+TEST(WindowedMaxTest, FirstSampleReturnsItself) {
+  WindowedMax window(absl::Seconds(30));
   EXPECT_DOUBLE_EQ(window.Observe(kT0, 5.0), 5.0);
 }
 
-TEST(WindowedMetricTest, ReturnsWindowedMaxEveryCall) {
-  WindowedMetric window(absl::Seconds(30));
+TEST(WindowedMaxTest, ReturnsWindowedMaxEveryCall) {
+  WindowedMax window(absl::Seconds(30));
 
   // First sample sets the max.
   EXPECT_DOUBLE_EQ(window.Observe(kT0, 10.0), 10.0);
@@ -45,8 +45,8 @@ TEST(WindowedMetricTest, ReturnsWindowedMaxEveryCall) {
   EXPECT_DOUBLE_EQ(window.Observe(kT0 + absl::Seconds(3), 12.0), 12.0);
 }
 
-TEST(WindowedMetricTest, EvictsSamplesOutsideWindow) {
-  WindowedMetric window(absl::Seconds(30));
+TEST(WindowedMaxTest, EvictsSamplesOutsideWindow) {
+  WindowedMax window(absl::Seconds(30));
 
   // A high sample at t=0.
   EXPECT_DOUBLE_EQ(window.Observe(kT0, 100.0), 100.0);
@@ -59,8 +59,8 @@ TEST(WindowedMetricTest, EvictsSamplesOutsideWindow) {
   EXPECT_DOUBLE_EQ(window.Observe(kT0 + absl::Seconds(31), 5.0), 20.0);
 }
 
-TEST(WindowedMetricTest, SampleAtWindowEdgeIsRetained) {
-  WindowedMetric window(absl::Seconds(30));
+TEST(WindowedMaxTest, SampleAtWindowEdgeIsRetained) {
+  WindowedMax window(absl::Seconds(30));
 
   EXPECT_DOUBLE_EQ(window.Observe(kT0, 50.0), 50.0);
 
@@ -73,8 +73,8 @@ TEST(WindowedMetricTest, SampleAtWindowEdgeIsRetained) {
                    10.0);
 }
 
-TEST(WindowedMetricTest, AllSamplesEvictedKeepsLatest) {
-  WindowedMetric window(absl::Seconds(30));
+TEST(WindowedMaxTest, AllSamplesEvictedKeepsLatest) {
+  WindowedMax window(absl::Seconds(30));
 
   EXPECT_DOUBLE_EQ(window.Observe(kT0, 80.0), 80.0);
 
@@ -82,16 +82,16 @@ TEST(WindowedMetricTest, AllSamplesEvictedKeepsLatest) {
   EXPECT_DOUBLE_EQ(window.Observe(kT0 + absl::Hours(1), 3.0), 3.0);
 }
 
-TEST(WindowedMetricTest, NonPositiveWindowKeepsLatestSample) {
+TEST(WindowedMaxTest, NonPositiveWindowKeepsLatestSample) {
   // A zero (or negative) window must not evict the just-added sample, which would
   // leave the container empty and crash the max computation.
-  WindowedMetric zero_window(absl::ZeroDuration());
+  WindowedMax zero_window(absl::ZeroDuration());
   EXPECT_DOUBLE_EQ(zero_window.Observe(kT0, 7.0), 7.0);
   // The next sample evicts the prior one but is itself retained, so the max tracks
   // the latest value rather than crashing.
   EXPECT_DOUBLE_EQ(zero_window.Observe(kT0 + absl::Seconds(1), 2.0), 2.0);
 
-  WindowedMetric negative_window(-absl::Seconds(5));
+  WindowedMax negative_window(-absl::Seconds(5));
   EXPECT_DOUBLE_EQ(negative_window.Observe(kT0, 1.0), 1.0);
 }
 

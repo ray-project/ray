@@ -35,9 +35,9 @@ namespace observability {
 /// that is not re-recorded disappears from subsequent scrapes.
 ///
 /// Not thread-safe; callers must synchronize externally if shared across threads.
-class WindowedMetric {
+class WindowedMax {
  public:
-  explicit WindowedMetric(absl::Duration window_duration)
+  explicit WindowedMax(absl::Duration window_duration)
       : window_duration_(window_duration) {}
 
   /// Record a new sample with value `value` observed at `now`.
