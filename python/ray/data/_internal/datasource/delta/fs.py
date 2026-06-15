@@ -66,6 +66,22 @@ def make_fs_config(
 
 
 def worker_filesystem(config: _FsConfig) -> pa_fs.FileSystem:
-    """Materialise the filesystem on a worker from a picklable config."""
+    """Materialise the filesystem on a worker from a picklable config.
+
+    Honours ``config.storage_options`` so vended cloud credentials (e.g. a
+    Unity Catalog session token) reach the worker's writes — mirroring the
+    driver's ``DeltaAdapter._driver_fs``. Falls back to the path-only
+    ``from_uri`` filesystem when no usable credentials are present, so writes
+    that rely on ambient worker credentials are unchanged.
+    """
+    from ray.data._internal.datasource.delta.utils import (
+        create_filesystem_from_storage_options,
+    )
+
+    fs = create_filesystem_from_storage_options(
+        config.table_uri, config.storage_options
+    )
+    if fs is not None:
+        return fs
     fs, _ = pa_fs.FileSystem.from_uri(config.table_uri)
     return fs

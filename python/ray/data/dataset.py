@@ -162,6 +162,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+    from ray.data.catalog import Catalog
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -4693,6 +4694,7 @@ class Dataset:
         self,
         path: str,
         *,
+        catalog: Optional["Catalog"] = None,
         mode: str = "append",
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -4717,7 +4719,17 @@ class Dataset:
             >>> ds.write_delta("/tmp/my-delta-table", mode="overwrite")  # doctest: +SKIP
 
         Args:
-            path: Path to the Delta table.
+            path: Path to the Delta table. When ``catalog`` is provided, this
+                is instead a catalog table identifier (e.g.
+                ``"catalog.schema.table"``) that the catalog resolves to a
+                physical location.
+            catalog: An optional :class:`~ray.data.Catalog` (e.g.
+                :class:`~ray.data.UnityCatalog`). When provided, ``path`` is
+                treated as a catalog table identifier; the catalog resolves it
+                to the physical URL and vends ``READ_WRITE`` cloud credentials
+                into ``storage_options`` (which then reach the write workers).
+                User-supplied ``storage_options`` / ``filesystem`` take
+                precedence over vended values.
             mode: One of:
 
                 * ``"append"`` (default): add data to the table, creating it
@@ -4761,6 +4773,29 @@ class Dataset:
                 or if ``mode`` is unrecognised.
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
+
+        # When a catalog is supplied, treat ``path`` as a catalog table
+        # identifier: resolve it (vending READ_WRITE credentials) to the
+        # physical URL + storage_options. The vended storage_options are
+        # injected into write_kwargs so the existing _FsConfig -> worker
+        # filesystem path carries them to workers. User-supplied
+        # storage_options take precedence over vended values.
+        if catalog is not None:
+            resolved = catalog.resolve(path, operation="READ_WRITE")
+            if resolved.data_format != "delta":
+                raise ValueError(
+                    f"write_delta: catalog resolved '{path}' to format "
+                    f"'{resolved.data_format}', not 'delta'. "
+                    f"Use write_{resolved.data_format}(...) instead."
+                )
+            path = resolved.url
+            user_storage_options = write_kwargs.get("storage_options")
+            write_kwargs["storage_options"] = {
+                **resolved.storage_options,
+                **(user_storage_options or {}),
+            }
+            if filesystem is None and resolved.filesystem is not None:
+                filesystem = resolved.filesystem
 
         datasink = DeltaDatasink(
             path,

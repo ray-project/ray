@@ -1087,6 +1087,7 @@ def test_write_delta_signature_unchanged():
     expected = [
         "self",
         "path",
+        "catalog",  # PR 9b: optional keyword-only Catalog for credential vending.
         "mode",
         "partition_cols",
         "filesystem",

@@ -294,6 +294,104 @@ def test_read_unity_catalog_emits_deprecation_warning(monkeypatch):
     assert result == "DATASET"
 
 
+# ----------------------------------------------------------------------
+# worker_filesystem honours storage_options (the linchpin for write creds).
+# ----------------------------------------------------------------------
+
+
+def test_worker_filesystem_builds_from_storage_options():
+    """With S3 credentials in the config, worker_filesystem must build a
+    credentialed S3FileSystem, not a bare from_uri filesystem."""
+    import pyarrow.fs as pa_fs
+
+    from ray.data._internal.datasource.delta.fs import _FsConfig, worker_filesystem
+
+    config = _FsConfig(
+        table_uri="s3://bucket/tbl/",
+        storage_options={
+            "AWS_ACCESS_KEY_ID": "AKIA",
+            "AWS_SECRET_ACCESS_KEY": "secret",
+            "AWS_SESSION_TOKEN": "tok",
+            "AWS_REGION": "us-west-2",
+        },
+    )
+    fs = worker_filesystem(config)
+    assert isinstance(fs, pa_fs.S3FileSystem)
+
+
+def test_worker_filesystem_falls_back_to_from_uri_for_local(tmp_path):
+    """No usable cloud creds -> fall back to the path-only filesystem
+    (unchanged behavior for local / ambient-credential writes)."""
+    import pyarrow.fs as pa_fs
+
+    from ray.data._internal.datasource.delta.fs import _FsConfig, worker_filesystem
+
+    config = _FsConfig(table_uri=str(tmp_path), storage_options={})
+    fs = worker_filesystem(config)
+    assert isinstance(fs, pa_fs.LocalFileSystem)
+
+
+# ----------------------------------------------------------------------
+# write_delta(catalog=) wiring.
+# ----------------------------------------------------------------------
+
+
+def test_write_delta_with_catalog_resolves_read_write_and_injects(monkeypatch):
+    """write_delta(catalog=) resolves with operation=READ_WRITE and injects the
+    vended storage_options into the DeltaDatasink."""
+    import ray.data.dataset as dataset_mod
+
+    seen = {}
+
+    class _StubCatalog(Catalog):
+        def resolve(self, identifier, *, operation="READ"):
+            seen["identifier"] = identifier
+            seen["operation"] = operation
+            return ResolvedTable(
+                url="s3://bucket/tbl/",
+                data_format="delta",
+                storage_options={
+                    "AWS_ACCESS_KEY_ID": "vended",
+                    "AWS_REGION": "us-west-2",
+                },
+            )
+
+    captured = {}
+
+    def _fake_datasink(path, **kwargs):
+        captured["path"] = path
+        captured["storage_options"] = kwargs.get("storage_options")
+        return object()
+
+    # Patch the DeltaDatasink import target + write_datasink so no cluster runs.
+    import ray.data._internal.datasource.delta as delta_pkg
+
+    monkeypatch.setattr(delta_pkg, "DeltaDatasink", _fake_datasink)
+    monkeypatch.setattr(
+        dataset_mod.Dataset, "write_datasink", lambda self, *a, **k: None
+    )
+
+    ds = dataset_mod.Dataset.__new__(dataset_mod.Dataset)  # bare instance; no data
+    dataset_mod.Dataset.write_delta(ds, "cat.schema.tbl", catalog=_StubCatalog())
+
+    assert seen["operation"] == "READ_WRITE"
+    assert seen["identifier"] == "cat.schema.tbl"
+    assert captured["path"] == "s3://bucket/tbl/"
+    assert captured["storage_options"]["AWS_ACCESS_KEY_ID"] == "vended"
+
+
+def test_write_delta_with_catalog_format_mismatch_raises(monkeypatch):
+    import ray.data.dataset as dataset_mod
+
+    class _ParquetCatalog(Catalog):
+        def resolve(self, identifier, *, operation="READ"):
+            return ResolvedTable(url="s3://b/x.parquet", data_format="parquet")
+
+    ds = dataset_mod.Dataset.__new__(dataset_mod.Dataset)
+    with pytest.raises(ValueError, match="not 'delta'"):
+        dataset_mod.Dataset.write_delta(ds, "cat.schema.tbl", catalog=_ParquetCatalog())
+
+
 if __name__ == "__main__":
     import sys
 
