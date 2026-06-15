@@ -69,8 +69,8 @@ TEST(WindowedMetricTest, SampleAtWindowEdgeIsRetained) {
   EXPECT_DOUBLE_EQ(window.Observe(kT0 + absl::Seconds(30), 10.0), 50.0);
 
   // Just past the edge: the first sample is evicted, max drops to 10.
-  EXPECT_DOUBLE_EQ(
-      window.Observe(kT0 + absl::Seconds(30) + absl::Nanoseconds(1), 10.0), 10.0);
+  EXPECT_DOUBLE_EQ(window.Observe(kT0 + absl::Seconds(30) + absl::Nanoseconds(1), 10.0),
+                   10.0);
 }
 
 TEST(WindowedMetricTest, AllSamplesEvictedKeepsLatest) {
