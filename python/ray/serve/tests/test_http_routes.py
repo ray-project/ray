@@ -9,7 +9,6 @@ import ray
 from ray import serve
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
-from ray._common.test_utils import wait_for_condition
 
 
 def test_path_validation(serve_instance):
@@ -94,7 +93,6 @@ def test_deployment_without_route(serve_instance):
             return "1"
 
     serve.run(D.bind(), route_prefix=None)
-    wait_for_condition(lambda: httpx.get("http://localhost:8000/-/routes").json() == 0)
     routes = httpx.get("http://localhost:8000/-/routes")
     assert len(routes.json()) == 0
 
