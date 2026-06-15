@@ -158,6 +158,11 @@ class MetadataPrefetcher:
         if self._done_pending:
             fired = [t for t in self._done_pending if not t.has_pending_emits()]
             for task in fired:
+                # A failed task fires its done-callback with the error (below);
+                # also surface it so the caller counts it toward
+                # ``max_errored_blocks``, like the inline failure path did.
+                if task.task_error is not None:
+                    failures.append((task.operator_name, task.task_error))
                 _fire_task_done(task)
             self._done_pending.difference_update(fired)
 

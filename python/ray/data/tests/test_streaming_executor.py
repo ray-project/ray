@@ -1442,26 +1442,35 @@ class TestDataOpTask:
         assert bytes_read == pytest.approx(256 * MiB, rel=1e-3)
 
     def test_on_data_ready_exception(self, ray_start_regular_shared):
+        # On task failure, ``on_data_ready`` no longer raises inline; it
+        # postpones completion (like normal end-of-stream) and the exception
+        # is delivered to ``task_done_callback`` once the task's pairs drain.
         streaming_gen = create_stub_streaming_gen(
             block_nbytes=[128 * MiB],
             raise_exception=AssertionError("Block generation failed"),
         )
 
-        def verify_exception(exc, task_exec_stats, task_exec_driver_stats):
-            assert isinstance(exc, AssertionError)
-            assert task_exec_stats is None
-            assert task_exec_driver_stats is None
+        done = []
+
+        def capture_done(exc, task_exec_stats, task_exec_driver_stats):
+            done.append((exc, task_exec_stats, task_exec_driver_stats))
 
         data_op_task = DataOpTask(
             0,
             streaming_gen,
-            task_done_callback=verify_exception,
+            task_done_callback=capture_done,
         )
 
-        with pytest.raises(AssertionError, match="Block generation failed"):
-            while not data_op_task.has_finished:
-                ray.wait([streaming_gen], fetch_local=False)
-                drain_and_emit(data_op_task, None)
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            drain_and_emit(data_op_task, None)
+
+        assert len(done) == 1
+        exc, task_exec_stats, task_exec_driver_stats = done[0]
+        assert isinstance(exc, AssertionError)
+        assert "Block generation failed" in str(exc)
+        assert task_exec_stats is None
+        assert task_exec_driver_stats is None
 
     def test_operator_name_parameter(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[1])

@@ -213,13 +213,16 @@ class DataOpTask(OpTask):
         self._last_block_meta: Optional[BlockMetadata] = None
         self._has_finished = False
 
-        # When ``on_data_ready`` is invoked in deferred-emit mode and the
-        # streaming gen raises ``StopIteration``, we postpone firing
-        # ``task_done_callback`` until after the caller's deferred-emit
-        # replay updates ``_last_block_meta`` to the actual final meta.
-        # The caller (``process_completed_tasks``) walks tasks with this
-        # flag set and fires the callback once the replay is complete.
+        # When ``on_data_ready`` reaches end-of-stream (normal completion) or
+        # the task fails, we postpone firing ``task_done_callback`` until the
+        # task's already-pulled deferred pairs have emitted, so its output is
+        # delivered before its completion is signalled. The caller drains the
+        # prefetcher, which fires the callback once the pairs are emitted.
         self._task_done_pending: bool = False
+
+        # If the task failed, the exception to pass to ``task_done_callback``
+        # when the postponed completion fires (None for normal completion).
+        self._task_error: Optional[Exception] = None
 
         # Count of this task's deferred pairs not yet emitted by the async
         # ``MetadataPrefetcher``. The postponed ``task_done_callback`` fires
@@ -276,13 +279,15 @@ class DataOpTask(OpTask):
 
         self._track_task_output_backpressure(max_bytes_to_read)
 
-        if self._pending_emit_count > 0:
-            # Pairs pulled in a previous iteration are still awaiting their
-            # background metadata fetch. Don't run ahead of them: pulling more
-            # output would release the generator's backpressure and let the
-            # producer get arbitrarily far ahead of unfetched metadata (the
-            # pre-deferred code fetched each pair's metadata before pulling
-            # the next one). Retry once the pending pairs have been emitted.
+        if self._task_done_pending or self._pending_emit_count > 0:
+            # Either the task already reached end-of-stream / failed and is
+            # waiting for its pairs to drain (don't pull more), or pairs pulled
+            # in a previous iteration are still awaiting their background
+            # metadata fetch. Don't run ahead of them: pulling more output
+            # would release the generator's backpressure and let the producer
+            # get arbitrarily far ahead of unfetched metadata (the pre-deferred
+            # code fetched each pair's metadata before pulling the next one).
+            # Retry once the pending pairs have been emitted.
             return 0
 
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
@@ -327,14 +332,15 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        self._task_done_callback(
-                            ex,
-                            None,  # TaskExecStats
-                            None,  # TaskExecDriverStats
-                        )
-
-                        self._has_finished = True
-                        raise ex from None
+                        # Postpone completion, like normal end-of-stream: record
+                        # the error and break. The caller's drain fires
+                        # ``task_done_callback(ex)`` AFTER this task's
+                        # already-pulled good pairs have emitted (preserving the
+                        # emit-then-fail order of the pre-deferred code) and
+                        # surfaces ``ex`` for ``max_errored_blocks`` accounting.
+                        self._task_error = ex
+                        self._task_done_pending = True
+                        break
 
                 if self._pending_meta_ref.is_nil():
                     # We have a reference to the block but the metadata isn't ready
@@ -409,6 +415,13 @@ class DataOpTask(OpTask):
         """Name of the physical operator that created this task."""
         return self._operator_name
 
+    @property
+    def task_error(self) -> Optional[Exception]:
+        """The task's failure exception if it failed, else None. Set once the
+        task is done-pending; surfaced by the prefetcher for
+        ``max_errored_blocks`` accounting when the postponed completion fires."""
+        return self._task_error
+
     def is_done_pending(self) -> bool:
         """Whether this task hit end-of-stream and is waiting for its
         deferred pairs to finish emitting before its ``task_done_callback``
@@ -437,17 +450,26 @@ def _emit_deferred_entry(d: DeferredEmit, meta_bytes: bytes) -> None:
 
 
 def _fire_task_done(task: "DataOpTask") -> None:
-    """Fire a task's postponed end-of-stream ``task_done_callback`` using its
-    now-final ``_last_block_meta``."""
-    task._task_done_callback(
-        None,  # exception
-        task._last_block_meta.task_exec_stats
-        if task._last_block_meta is not None
-        else None,
-        TaskExecDriverStats(
-            task_output_backpressure_s=task._total_output_backpressure_s,
-        ),
-    )
+    """Fire a task's postponed ``task_done_callback``. For a failed task,
+    pass the exception with no stats (matching the pre-deferred failure
+    path); for normal completion, pass its now-final ``_last_block_meta``
+    stats."""
+    if task._task_error is not None:
+        task._task_done_callback(
+            task._task_error,
+            None,  # TaskExecStats
+            None,  # TaskExecDriverStats
+        )
+    else:
+        task._task_done_callback(
+            None,  # exception
+            task._last_block_meta.task_exec_stats
+            if task._last_block_meta is not None
+            else None,
+            TaskExecDriverStats(
+                task_output_backpressure_s=task._total_output_backpressure_s,
+            ),
+        )
     task._has_finished = True
     task._task_done_pending = False
 
