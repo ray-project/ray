@@ -1489,7 +1489,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    self_node_id_,
                                    initial_config_.node_manager_address,
-                                   time(nullptr),
+                                   absl::ToUnixSeconds(clock_.Now()),
                                    disconnect_type,
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
