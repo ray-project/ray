@@ -2633,7 +2633,9 @@ class Replica:
         headers = dict(scope["headers"])
         request_id = (
             # RequestIdMiddleware populates the request ID in the headers if it isn't provided.
-            headers.get(SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8"), b"").decode("utf-8")
+            headers.get(SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8"), b"").decode(
+                "utf-8"
+            )
             or generate_request_id()
         )
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
