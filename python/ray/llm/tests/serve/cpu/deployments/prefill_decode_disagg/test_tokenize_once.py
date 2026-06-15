@@ -29,10 +29,9 @@ def test_reuse_sets_private_copy_then_clears():
 
 
 def test_reuse_teardown_is_cross_context_safe():
-    # Enter the block in one asyncio Context and exit it in another, as happens
-    # when a peeked-then-abandoned decode generator is finalized off-task. The old
-    # reset(token) teardown raised "Token was created in a different Context" here;
-    # the set(None) teardown must not.
+    # Enter in one asyncio Context and exit in another, as when a peeked-then-
+    # abandoned decode generator is finalized off-task. reset(token) would raise
+    # "Token was created in a different Context". set(None) must not.
     cm = reuse_prompt_token_ids([1, 2, 3])
     contextvars.copy_context().run(cm.__enter__)
     cm.__exit__(None, None, None)

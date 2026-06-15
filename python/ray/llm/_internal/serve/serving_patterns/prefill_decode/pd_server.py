@@ -120,8 +120,8 @@ class PDOrchestratorMixin:
     # Set by __init__ of the concrete class that mixes this in.
     _prefill_handle: DeploymentHandle
 
-    # Tokenize-once: decode reuses prefill's prompt token ids. Set from
-    # experimental_configs in PDDecodeServer.__init__; default off.
+    # Decode reuses prefill's prompt token ids. Set from experimental_configs in
+    # PDDecodeServer.__init__. Default off.
     _pd_tokenize_once: bool = False
 
     # ---- Connector backend resolution ----
@@ -170,11 +170,10 @@ class PDOrchestratorMixin:
         )
 
     def _decode_reuse_ids(self, prefill_chunk) -> Optional[list]:
-        """Prompt token ids for the decode stage to reuse (skip re-tokenizing),
-        or None when tokenize-once is disabled or prefill returned none.
+        """Prompt token ids for decode to reuse, or None when disabled or absent.
 
-        Chat responses carry the ids at the top level; completion responses carry
-        them on the first choice (``CompletionResponseChoice.prompt_token_ids``)."""
+        Chat carries them top-level. Completions carry them on the first choice as
+        ``CompletionResponseChoice.prompt_token_ids``."""
         if not self._pd_tokenize_once:
             return None
         ids = getattr(prefill_chunk, "prompt_token_ids", None)
@@ -185,10 +184,11 @@ class PDOrchestratorMixin:
         return ids
 
     def _request_prefill_token_ids(self, prefill_request) -> None:
-        """Have prefill echo its prompt token ids so decode can reuse them; no-op
-        when tokenize-once is off or the request type lacks the field. Called on
-        sequential-handoff paths only -- concurrent decode runs before prefill
-        returns, so it has nothing to reuse."""
+        """Ask prefill to echo its prompt token ids so decode can reuse them.
+
+        No-op when disabled or the request lacks the field. Used on sequential handoff
+        only. Concurrent decode starts before prefill returns, so it has nothing to
+        reuse."""
         if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
             prefill_request.return_token_ids = True
 
@@ -327,8 +327,7 @@ class PDOrchestratorMixin:
         decode_request = backend.prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
-        # Reuse prefill's prompt token ids for this request's local decode so the
-        # decode render skips re-tokenizing (no-op when tokenize-once is off).
+        # Reuse prefill's ids for this decode so the render skips re-tokenizing.
         with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
             local_gen = await getattr(super(), method)(decode_request, raw_request_info)
             async for chunk in local_gen:
@@ -632,10 +631,8 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
             engine_cls=engine_cls,
             model_downloader=model_downloader,
         )
-        # Tokenize-once is active only if enabled AND the renderer wrap installs
-        # (install() no-ops and returns False on engines without vLLM's renderer).
-        # Installs once in this (decode) replica process; the `and` short-circuits
-        # so install() is not called when the feature is disabled.
+        # Active only if enabled and the renderer wrap installs. The `and`
+        # short-circuits so install() is not called when disabled.
         self._pd_tokenize_once = (
             bool(self._llm_config.experimental_configs.get("pd_tokenize_once"))
             and _install_tokenize_once()

@@ -1,18 +1,13 @@
 """Decode-stage reuse of prefill's prompt token ids (P/D tokenize-once).
 
-In prefill/decode disaggregation a chat prompt is otherwise tokenized twice (once
-per stage). This wraps ``BaseRenderer.tokenize_prompts_async`` to inject the token
-ids prefill already produced (published per-task via a contextvar by
-``reuse_prompt_token_ids``) into the rendered prompt. vLLM's tokenizer skips the
-encode when ``prompt_token_ids`` is already present, so the redundant tokenize is
-avoided while the rest of the pipeline (multimodal data, detokenization,
-truncation/validation, response shaping) runs unchanged. No vLLM source change, no
-new request field. ``install()`` is idempotent, called once per decode replica.
+A P/D chat prompt is otherwise tokenized once per stage. ``install()`` wraps
+``BaseRenderer.tokenize_prompts_async`` to inject the ids prefill already produced.
+``reuse_prompt_token_ids`` publishes those ids per async task. vLLM skips the encode
+when ``prompt_token_ids`` is present, so the rest of the pipeline runs unchanged.
+``install()`` is idempotent and fails safe.
 
-Relies on decode tokenization running within the reuse block -- on the same async
-task or a task spawned from it (true today). If vLLM moved tokenization onto an
-unrelated thread/executor the contextvar would not propagate and this degrades to
-normal tokenization (slow, never wrong).
+Decode tokenization must run within the reuse block, on the same async task or one
+spawned from it, so the contextvar reaches it.
 """
 
 import contextlib
@@ -22,9 +17,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Per-async-task reused prompt token ids. contextvars propagate across ``await``
-# within the same task (and to tasks spawned from it), so concurrent requests on
-# other tasks don't cross-contaminate.
+# Per-async-task reused prompt token ids. contextvars don't leak across tasks, so
+# concurrent requests can't cross-contaminate.
 _reused_token_ids: contextvars.ContextVar = contextvars.ContextVar(
     "pd_reused_prompt_token_ids", default=None
 )
@@ -32,10 +26,9 @@ _reused_token_ids: contextvars.ContextVar = contextvars.ContextVar(
 
 @contextlib.contextmanager
 def reuse_prompt_token_ids(token_ids):
-    """Reuse ``token_ids`` for the chat render inside this block (skip tokenize).
+    """Publish ``token_ids`` so the chat render inside this block skips tokenize.
 
-    No-op when ``token_ids`` is falsy (feature disabled, or the prefill stage did
-    not return token ids), so callers don't need a separate enabled check.
+    No-op when ``token_ids`` is falsy, so callers need no separate enabled check.
     """
     if not token_ids:
         yield
@@ -44,22 +37,17 @@ def reuse_prompt_token_ids(token_ids):
     try:
         yield
     finally:
-        # Clear with set(None), not reset(token): this block spans the decode
-        # generator's yields, so the finally may run in a different asyncio Context
-        # than the enter (async-gen finalization after a streaming disconnect, or GC
-        # of a peeked-then-abandoned generator). ContextVar.reset() raises across
-        # Contexts; set() does not, and reuse never nests so there is no prior value
-        # to restore.
+        # Use set(None), not reset(token). The finally may run in a different
+        # Context than the enter during off-task generator finalization, where
+        # reset() would raise.
         _reused_token_ids.set(None)
 
 
 def install() -> bool:
     """Wrap ``BaseRenderer.tokenize_prompts_async`` to honor the contextvar.
 
-    Idempotent (guarded by an attribute on the wrapped method) and resilient: any
-    failure (missing module, or a vLLM version whose renderer differs) leaves
-    tokenization untouched and returns False, so it never crashes startup. Returns
-    True if the wrap is active.
+    Idempotent and fails safe. Returns False and leaves tokenization untouched when
+    vLLM's renderer is missing or differs, so it never crashes startup.
     """
     try:
         from vllm.renderers.base import BaseRenderer
@@ -74,11 +62,9 @@ def install() -> bool:
         @functools.wraps(orig)
         async def tokenize_prompts_async(self, prompts, params, *args, **kwargs):
             ids = _reused_token_ids.get()
-            # Inject the reused ids into the single rendered prompt and delegate to
-            # the real tokenizer: vLLM skips the encode when prompt_token_ids is
-            # already present but still preserves multi_modal_data and runs
-            # detokenization + truncation/validation. Anything else (batched, embeds,
-            # encoder-decoder, already tokenized) falls through. ``ids`` is a copy.
+            # Inject the reused ids into the lone rendered prompt so vLLM skips the
+            # encode but still preserves multi_modal_data and runs detok/validation.
+            # Anything else falls through to a normal tokenize.
             if (
                 ids
                 and len(prompts) == 1
