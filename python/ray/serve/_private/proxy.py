@@ -1785,7 +1785,7 @@ class ProxyActor(ProxyActorInterface):
             actor_id=ray.get_runtime_context().get_actor_id(),
         )
         self._event_loop_monitor.start(event_loop)
-    
+
     def get_proxy_handle(self, endpoint: DeploymentID, info: EndpointInfo):
         client = _get_global_client()
         handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
