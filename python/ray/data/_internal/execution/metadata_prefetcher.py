@@ -67,8 +67,9 @@ class MetadataPrefetcher:
 
         # Executor-thread-only state below.
         # Per-operator (keyed by the caller's op key) FIFO of pairs awaiting
-        # metadata, in append (= emission) order. ``defaultdict`` preserves
-        # insertion order (py3.7+), so ops are drained in submit order.
+        # metadata, in append (= emission) order. ``defaultdict`` is a ``dict``
+        # subclass, so it preserves insertion order (guaranteed since Python
+        # 3.7; Ray requires >= 3.10) and ops are drained in submit order.
         self._fifos: "defaultdict[Any, deque]" = defaultdict(deque)
         # Tasks whose end-of-stream callback is postponed until all of their
         # deferred pairs have been emitted. A set so a task that is re-seen on
