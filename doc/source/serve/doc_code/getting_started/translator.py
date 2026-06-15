@@ -23,7 +23,9 @@ class Translator:
         input_ids = self.tokenizer(
             f"translate English to French: {text}", return_tensors="pt"
         ).input_ids
-        output_ids = self.model.generate(input_ids, max_new_tokens=40)
+        output_ids = self.model.generate(
+            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+        )
 
         # Post-process output to return only the translation text
         translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -43,7 +45,13 @@ class Summarizer:
     def summarize(self, text: str) -> str:
         # Run inference
         input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
-        output_ids = self.model.generate(input_ids, min_new_tokens=5, max_new_tokens=15)
+        output_ids = self.model.generate(
+            input_ids,
+            num_beams=4,
+            early_stopping=True,
+            min_new_tokens=5,
+            max_new_tokens=20,
+        )
 
         # Post-process output to return only the summary text
         summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -77,7 +85,11 @@ french_text = response.text
 print(french_text)
 # __end_client__
 
-assert isinstance(french_text, str) and french_text
+expected_french = (
+    "C’était le meilleur des temps, c’était le pire des temps, "
+    "c’était l’ère de la sagesse"
+)
+assert french_text == expected_french, f"got {french_text!r}"
 
 serve.shutdown()
 ray.shutdown()

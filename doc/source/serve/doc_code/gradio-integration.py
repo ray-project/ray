@@ -42,7 +42,11 @@ def gradio_summarizer_builder():
     def model(text):
         input_ids = tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
         output_ids = summarizer_model.generate(
-            input_ids, min_new_tokens=5, max_new_tokens=40
+            input_ids,
+            num_beams=4,
+            early_stopping=True,
+            min_new_tokens=5,
+            max_new_tokens=40,
         )
         return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 

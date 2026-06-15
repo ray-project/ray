@@ -22,7 +22,9 @@ class Translator:
         input_ids = self.tokenizer(
             f"translate English to French: {text}", return_tensors="pt"
         ).input_ids
-        output_ids = self.model.generate(input_ids, max_new_tokens=40)
+        output_ids = self.model.generate(
+            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+        )
 
         # Post-process output to return only the translation text
         translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -43,7 +45,7 @@ serve.run(translator_app)
 import requests
 
 response = requests.post("http://127.0.0.1:8000/", json="Hello world!").text
-assert isinstance(response, str) and response
+assert response == "Bonjour monde!", f"got {response!r}"
 
 serve.shutdown()
 ray.shutdown()

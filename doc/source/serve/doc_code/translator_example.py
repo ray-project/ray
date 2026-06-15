@@ -18,7 +18,9 @@ class Translator:
         input_ids = self.tokenizer(
             f"translate English to German: {text}", return_tensors="pt"
         ).input_ids
-        output_ids = self.model.generate(input_ids, max_new_tokens=40)
+        output_ids = self.model.generate(
+            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+        )
         return self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
     async def __call__(self, req: starlette.requests.Request):
@@ -40,4 +42,4 @@ print(resp.text)
 # 'Hallo, das Wetter ist heute ziemlich gut!'
 # __request_end__
 
-assert isinstance(resp.text, str) and resp.text
+assert resp.text == "Hallo, das Wetter ist heute ziemlich gut!", f"got {resp.text!r}"

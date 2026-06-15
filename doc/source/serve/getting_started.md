@@ -193,12 +193,12 @@ For example, let's deploy a machine learning pipeline with two steps:
 :language: python
 ```
 
-You can copy-paste this script and run it locally. It summarizes the snippet from _A Tale of Two Cities_ to `it was the best of times, it was the worst of times .`
+You can copy-paste this script and run it locally. It summarizes the snippet from _A Tale of Two Cities_ to `it was the best of times, it was the worst of times, it was the age of wisdom`
 
 ```console
 $ python summary_model.py
 
-it was the best of times, it was the worst of times .
+it was the best of times, it was the worst of times, it was the age of wisdom
 ```
 
 Here's an application that chains the two models together. The graph takes English text, summarizes it, and then translates it:
@@ -242,7 +242,7 @@ While the application is running, we can open a separate terminal window and que
 ```console
 $ python composed_client.py
 
-c'était le meilleur des temps, c'était le pire des temps .
+C’était le meilleur des temps, c’était le pire des temps, c’était l’ère de la sagesse
 ```
 
 Composed Ray Serve applications let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition) to learn more.

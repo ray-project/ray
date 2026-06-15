@@ -24,7 +24,9 @@ class Translator:
         input_ids = self.tokenizer(
             f"translate English to French: {text}", return_tensors="pt"
         ).input_ids
-        output_ids = self.model.generate(input_ids, max_new_tokens=40)
+        output_ids = self.model.generate(
+            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+        )
 
         # Post-process output to return only the translation text
         translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -48,7 +50,7 @@ french_text = response.json()
 print(french_text)
 # __client_function_end__
 
-assert isinstance(french_text, str) and french_text
+assert french_text == "Bonjour monde!", f"got {french_text!r}"
 
 serve.shutdown()
 ray.shutdown()

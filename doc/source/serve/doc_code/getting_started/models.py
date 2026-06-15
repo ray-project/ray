@@ -18,7 +18,9 @@ class Translator:
         input_ids = self.tokenizer(
             f"translate English to French: {text}", return_tensors="pt"
         ).input_ids
-        output_ids = self.model.generate(input_ids, max_new_tokens=40)
+        output_ids = self.model.generate(
+            input_ids, num_beams=4, early_stopping=True, max_new_tokens=40
+        )
 
         # Post-process output to return only the translation text
         translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -33,7 +35,7 @@ print(translation)
 # __end_translation_model__
 
 # Test model behavior
-assert isinstance(translation, str) and translation
+assert translation == "Bonjour monde!", f"got {translation!r}"
 
 
 # __start_summarization_model__
@@ -52,7 +54,13 @@ class Summarizer:
     def summarize(self, text: str) -> str:
         # Run inference: prefix the input with the task, then generate.
         input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
-        output_ids = self.model.generate(input_ids, min_new_tokens=5, max_new_tokens=15)
+        output_ids = self.model.generate(
+            input_ids,
+            num_beams=4,
+            early_stopping=True,
+            min_new_tokens=5,
+            max_new_tokens=20,
+        )
 
         # Post-process output to return only the summary text
         summary = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -70,4 +78,7 @@ print(summary)
 # __end_summarization_model__
 
 # Test model behavior
-assert isinstance(summary, str) and summary
+expected_summary = (
+    "it was the best of times, it was the worst of times, it was the age of wisdom"
+)
+assert summary == expected_summary, f"got {summary!r}"
