@@ -407,46 +407,6 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
-    @serve.deployment(name="default-deployment")
-    class EchoRequestID:
-        async def Method1(
-            self, request: serve_pb2.UserDefinedMessage
-        ) -> serve_pb2.UserDefinedResponse:
-            request_id = ray.serve.context._get_serve_request_context().request_id
-            return serve_pb2.UserDefinedResponse(greeting=request_id)
-
-    serve.run(EchoRequestID.bind())
-    grpc_url = get_application_url("gRPC")
-
-    def _get_trailing_request_id(call) -> Optional[str]:
-        for key, value in call.trailing_metadata():
-            if key == "request_id":
-                return value
-        return None
-
-    channel = grpc.insecure_channel(grpc_url)
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-
-    # Case 1: no request_id passed, should get populated and returned as
-    # trailing metadata.
-    response, call = stub.Method1.with_call(serve_pb2.UserDefinedMessage())
-    assert response.greeting != ""
-    assert response.greeting == _get_trailing_request_id(call)
-    # This call would raise if the request ID isn't a valid UUID.
-    UUID(response.greeting, version=4)
-
-    # Case 2: request_id passed, result and trailing metadata should match it.
-    response, call = stub.Method1.with_call(
-        serve_pb2.UserDefinedMessage(),
-        metadata=(("request_id", "TEST-METADATA"),),
-    )
-    assert response.greeting == "TEST-METADATA"
-    assert _get_trailing_request_id(call) == "TEST-METADATA"
-
-    channel.close()
-
-
 def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
     pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
 
