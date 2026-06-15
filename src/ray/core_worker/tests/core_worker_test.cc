@@ -93,6 +93,7 @@ class CoreWorkerTest : public ::testing::Test {
            bool is_streaming_generator,
            bool retry_exception,
            int64_t generator_backpressure_num_objects,
+           int64_t num_objects_per_yield,
            const std::optional<std::string> &tensor_transport) -> Status {
       return Status::OK();
     };
@@ -138,7 +139,7 @@ class CoreWorkerTest : public ::testing::Test {
                                       rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
-        /*get_time_ms=*/[this]() { return clock_.NowUnixMillis(); },
+        /*clock=*/clock_,
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         worker_context->GetWorkerID());
