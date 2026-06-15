@@ -447,6 +447,8 @@ class SGLangServer:
                 for task in tasks:
                     if not task.done():
                         task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
             return
 
         results = await self._generate_and_extract_metadata(request, prompts_to_process)
