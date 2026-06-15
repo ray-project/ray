@@ -4,8 +4,10 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
-from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
+from ray.data._internal.execution.interfaces import (
+    NodeIdStr,
+    RefBundle,
+)
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -306,8 +308,8 @@ class SplitCoordinator:
                     ds = self._base_dataset
                     # Re-execute dataset
                     self._current_executor = ds._create_executor()
-                    self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, ds._plan
+                    self._output_iterator = ds._build_bundle_iterator(
+                        self._current_executor
                     )
                     # Register the streaming split external consumers with the executor's resource manager.
                     self._current_executor.set_external_consumer_bytes(0)

@@ -153,6 +153,11 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
         # Resources don't match - cannot fuse
         return downstream_project
 
+    # Do not fuse if either op specifies a `ray_remote_args_fn`,
+    # since it is not known whether the generated args will be compatible.
+    if upstream_project.ray_remote_args_fn or downstream_project.ray_remote_args_fn:
+        return downstream_project
+
     # Check if compute strategies are compatible
     fused_compute = FuseOperators._fuse_compute_strategy(
         upstream_project.compute, downstream_project.compute
