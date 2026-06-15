@@ -207,6 +207,9 @@ def url_from_resource(
             scheme is added here.
 
             Defaults to "https://kubernetes.default:443".
+
+    Returns:
+        The REST URL for the resource.
     """
     if kubernetes_host.startswith("http://"):
         raise ValueError("Kubernetes host must be accessed over HTTPS.")

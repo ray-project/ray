@@ -12,8 +12,10 @@ import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
+    DEFAULT_ENABLE_PREEMPTION_WATCHER,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+    ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
@@ -187,6 +189,28 @@ class TrainController:
             if train_run_context.backend_config
             else False
         )
+
+        # Register the preemption-observability callback when not in TorchFT
+        # mode (replica groups handle peer loss via their own quorum).
+        enable_preemption_watcher = ray_constants.env_bool(
+            ENABLE_PREEMPTION_WATCHER_ENV_VAR,
+            DEFAULT_ENABLE_PREEMPTION_WATCHER,
+        )
+        if self._manages_replica_groups:
+            if enable_preemption_watcher and ray_constants.env_set_by_user(
+                ENABLE_PREEMPTION_WATCHER_ENV_VAR
+            ):
+                logger.info(
+                    "The preemption watcher is not compatible with replica "
+                    "groups (e.g. TorchFT), which handle peer loss via their "
+                    "own quorum; skipping it."
+                )
+        elif enable_preemption_watcher:
+            from ray.train.v2._internal.callbacks.preemption_callback import (
+                PreemptionCallback,
+            )
+
+            self._worker_group_callbacks_to_propagate.append(PreemptionCallback())
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()

@@ -625,9 +625,12 @@ message TaskSpec {
   optional string tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
   FallbackStrategy fallback_strategy = 45;
+  // Private streaming generator option. The number of ObjectRefs produced by
+  // each generator yield. Defaults to 1.
+  uint64 num_objects_per_yield = 46;
   // Marks actor creation tasks for system control-plane actors that should be
   // protected from OOM killing.
-  bool is_system_actor = 46;
+  bool is_system_actor = 47;
 }
 
 message TaskInfoEntry {

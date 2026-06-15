@@ -475,12 +475,12 @@ def test_schema_partial_execution(
     # entire Dataset.
     assert not ds._has_computed_output()
     if ray.data.DataContext.get_current().use_datasource_v2:
-        assert ds._plan._logical_plan.dag.dag_str == (
+        assert ds._logical_plan.dag.dag_str == (
             "ListFiles[ListFiles] -> ReadFiles[ReadFilesParquetV2] -> "
             "MapBatches[MapBatches(<lambda>)]"
         )
     else:
-        assert ds._plan._logical_plan.dag.dag_str == (
+        assert ds._logical_plan.dag.dag_str == (
             "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
         )
 

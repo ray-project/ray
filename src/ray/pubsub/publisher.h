@@ -491,10 +491,10 @@ class Publisher : public PublisherInterface {
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;
 
-  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_count_
       ABSL_GUARDED_BY(mutex_);
 
-  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_bytes_cnt_
+  absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_bytes_count_
       ABSL_GUARDED_BY(mutex_);
 
   /// The monotonically increasing sequence_id for this publisher.

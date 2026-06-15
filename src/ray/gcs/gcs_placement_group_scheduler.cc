@@ -256,7 +256,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
     int max_retry,
-    int current_retry_cnt) {
+    int current_retry_count) {
   if (bundle_specs.empty()) {
     RAY_LOG(WARNING) << "RemovePlacementGroupBundles called on empty bundle list.";
     return;
@@ -269,7 +269,7 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
 
   auto node_id = NodeID::FromBinary(node.value()->node_id());
 
-  if (max_retry == current_retry_cnt) {
+  if (max_retry == current_retry_count) {
     RAY_LOG(ERROR) << "Failed to remove " << bundle_specs.size()
                    << " bundle(s) for placement group " << placement_group_id
                    << " at node " << node_id
@@ -291,8 +291,8 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
        node_id,
        node,
        max_retry,
-       current_retry_cnt](const Status &status,
-                          const rpc::RemovePlacementGroupBundlesReply &reply) {
+       current_retry_count](const Status &status,
+                            const rpc::RemovePlacementGroupBundlesReply &reply) {
         if (status.ok()) {
           RAY_LOG(INFO) << "Finished removing " << bundle_specs.size()
                         << " bundle(s) for placement group " << placement_group_id
@@ -309,12 +309,12 @@ void GcsPlacementGroupScheduler::RemovePlacementGroupBundles(
                bundle_specs,
                node,
                max_retry,
-               current_retry_cnt] {
+               current_retry_count] {
                 RemovePlacementGroupBundles(placement_group_id,
                                             bundle_specs,
                                             node,
                                             max_retry,
-                                            current_retry_cnt + 1);
+                                            current_retry_count + 1);
               },
               std::chrono::milliseconds(1000) /* milliseconds */);
         }
@@ -682,7 +682,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
                                   entry.second,
                                   gcs_node_manager_.GetAliveNode(entry.first),
                                   /*max_retry*/ 5,
-                                  /*current_retry_cnt*/ 0);
+                                  /*current_retry_count*/ 0);
     }
   }
 }
@@ -704,7 +704,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
                                   entry.second,
                                   gcs_node_manager_.GetAliveNode(entry.first),
                                   /*max_retry*/ 5,
-                                  /*current_retry_cnt*/ 0);
+                                  /*current_retry_count*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
     cluster_resource_scheduler_.GetClusterResourceManager()

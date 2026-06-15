@@ -52,9 +52,9 @@ if PYDANTIC_INSTALLED:
         name: str
         tpuType: str
         tpuTopology: str
-        tensorcoreUtilization: int  # percentage
-        hbmUtilization: int  # percentage
-        dutyCycle: int  # percentage
+        tensorcoreUtilization: float  # percentage
+        hbmUtilization: float  # percentage
+        dutyCycle: float  # percentage
         memoryUsed: int  # in bytes
         memoryTotal: int  # in bytes
 

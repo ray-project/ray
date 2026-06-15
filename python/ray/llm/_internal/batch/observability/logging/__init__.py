@@ -4,7 +4,7 @@ from typing import Optional
 from ray._common.filters import CoreContextFilter
 
 
-def _setup_logger(logger_name: str):
+def _setup_logger(logger_name: str) -> None:
     """Setup logger given the logger name.
 
     This function is idempotent and won't set up the same logger multiple times. It will

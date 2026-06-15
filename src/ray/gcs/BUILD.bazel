@@ -240,7 +240,6 @@ ray_cc_library(
         "//src/ray/observability:ray_event_recorder",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/ray_syncer",
-        "//src/ray/util:array",
         "//src/ray/util:type_traits",
     ],
 )
