@@ -4,7 +4,7 @@ The planning tests do not require GPUs. Tests marked ``gpu`` exercise cuDF and
 RAPIDS MPF paths on actual GPU hardware.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -35,7 +35,10 @@ from ray.data.context import DataContext, ShuffleStrategy
 
 
 def _make_input_op_mock(num_blocks=None, size_bytes=None):
-    """Return a minimal PhysicalOperator mock compatible with HashShufflingOperatorBase."""
+    """Return a minimal PhysicalOperator mock.
+
+    The mock is compatible with HashShufflingOperatorBase.
+    """
     logical_mock = MagicMock(LogicalOperator)
     logical_mock.infer_metadata.return_value = BlockMetadata(
         num_rows=None,
@@ -135,20 +138,15 @@ class TestGPUHashAggregatePlanning:
                     "custom(value)",
                     on="value",
                     ignore_nulls=True,
+                    accumulator_columns=("acc",),
                 )
-
-            def gpu_accumulator_columns(
-                self, accumulator_prefix: str
-            ) -> Tuple[str, ...]:
-                return (f"{accumulator_prefix}_acc",)
 
             def gpu_partial_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
+                accumulator_columns: Tuple[str, ...],
                 *,
-                output_name: str,
-                accumulator_prefix: str,
                 input_schema: Any = None,
             ) -> Any:
                 raise NotImplementedError
@@ -157,9 +155,8 @@ class TestGPUHashAggregatePlanning:
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
-                *,
+                accumulator_columns: Tuple[str, ...],
                 output_name: str,
-                accumulator_prefix: str,
             ) -> Any:
                 raise NotImplementedError
 
@@ -178,6 +175,90 @@ class TestGPUHashAggregatePlanning:
         assert not hasattr(gpu_agg, "aggregate_block")
         assert not hasattr(gpu_agg, "combine")
         assert not hasattr(gpu_agg, "finalize")
+        for method_name in (
+            "_gpu_empty_global_partial_values",
+            "_gpu_partial_accumulator_dtypes",
+            "_gpu_final_arrow_types",
+            "_gpu_final_cudf_types",
+        ):
+            assert not hasattr(gpu_agg, method_name)
+
+    def test_custom_gpu_aggregation_plan_supported_without_input_schema(self):
+        class _CustomGPUAggregate(GPUAggregateFn):
+            def __init__(self) -> None:
+                super().__init__(
+                    "custom(value)",
+                    on="value",
+                    ignore_nulls=True,
+                    accumulator_columns=("acc",),
+                )
+
+            def gpu_partial_aggregate(
+                self,
+                df: Any,
+                key_columns: Tuple[str, ...],
+                accumulator_columns: Tuple[str, ...],
+                *,
+                input_schema: Any = None,
+            ) -> Any:
+                raise NotImplementedError
+
+            def gpu_final_aggregate(
+                self,
+                df: Any,
+                key_columns: Tuple[str, ...],
+                accumulator_columns: Tuple[str, ...],
+                output_name: str,
+            ) -> Any:
+                raise NotImplementedError
+
+        gpu_agg = _CustomGPUAggregate()
+        plan = build_gpu_aggregation_plan(("user_id",), (gpu_agg,), input_schema=None)
+
+        assert isinstance(plan, GPUAggregationPlan), plan
+        assert plan._gpu_aggregates == (gpu_agg,)
+        assert plan.output_names == ("custom(value)",)
+        assert plan.required_columns == ("user_id", "value")
+
+    def test_gpu_shuffle_routes_custom_gpu_aggregate_without_input_schema(self):
+        class _CustomGPUAggregate(GPUAggregateFn):
+            def __init__(self) -> None:
+                super().__init__(
+                    "custom(value)",
+                    on="value",
+                    ignore_nulls=True,
+                    accumulator_columns=("acc",),
+                )
+
+            def gpu_partial_aggregate(
+                self,
+                df: Any,
+                key_columns: Tuple[str, ...],
+                accumulator_columns: Tuple[str, ...],
+                *,
+                input_schema: Any = None,
+            ) -> Any:
+                raise NotImplementedError
+
+            def gpu_final_aggregate(
+                self,
+                df: Any,
+                key_columns: Tuple[str, ...],
+                accumulator_columns: Tuple[str, ...],
+                output_name: str,
+            ) -> Any:
+                raise NotImplementedError
+
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+
+        logical_op = self._make_aggregate_op([_CustomGPUAggregate()], input_schema=None)
+        input_physical_op = _make_input_op_mock()
+
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, GPUHashAggregateOperator)
 
     def test_gpu_shuffle_routes_supported_aggregate_to_gpu_operator(self):
         ctx = DataContext()
@@ -564,60 +645,33 @@ class TestGPUAggregationPlanReal:
                     "custom(value)",
                     on="value",
                     ignore_nulls=True,
+                    accumulator_columns=("acc",),
                 )
                 self.seen_schema: Optional[pa.Schema] = None
-
-            def gpu_accumulator_columns(
-                self, accumulator_prefix: str
-            ) -> Tuple[str, ...]:
-                return (f"{accumulator_prefix}_acc",)
 
             def gpu_partial_aggregate(
                 self,
                 df: cudf.DataFrame,
                 key_columns: Tuple[str, ...],
+                accumulator_columns: Tuple[str, ...],
                 *,
-                output_name: str,
-                accumulator_prefix: str,
                 input_schema: Any = None,
             ) -> cudf.DataFrame:
                 self.seen_schema = input_schema
-                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+                acc_col = accumulator_columns[0]
                 return df[[key_columns[0], "value"]].rename(columns={"value": acc_col})
 
             def gpu_final_aggregate(
                 self,
                 df: cudf.DataFrame,
                 key_columns: Tuple[str, ...],
-                *,
+                accumulator_columns: Tuple[str, ...],
                 output_name: str,
-                accumulator_prefix: str,
             ) -> cudf.DataFrame:
-                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
+                acc_col = accumulator_columns[0]
                 return df[[key_columns[0], acc_col]].rename(
                     columns={acc_col: output_name}
                 )
-
-            def gpu_partial_accumulator_dtypes(
-                self,
-                df: cudf.DataFrame,
-                accumulator_prefix: str,
-                *,
-                input_schema: Any = None,
-            ) -> Dict[str, Any]:
-                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
-                return {acc_col: df["value"].dtype}
-
-            def gpu_final_output_dtypes(
-                self,
-                df: cudf.DataFrame,
-                output_name: str,
-                accumulator_prefix: str,
-                *,
-                input_schema: Any = None,
-            ) -> Dict[str, Any]:
-                acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
-                return {output_name: df[acc_col].dtype}
 
         schema = pa.schema([("user_id", pa.int64()), ("value", pa.int32())])
         gpu_agg = _CustomGPUAggregate()
@@ -642,92 +696,8 @@ class TestGPUAggregationPlanReal:
         }
         assert str(result["custom(value)"].dtype) == "int32"
 
-    def test_null_reductions_preserve_groups_and_accumulator_dtypes(
-        self, ray_with_gpu, monkeypatch
-    ):
+    def test_null_reductions_preserve_groups_and_accumulator_dtypes(self, ray_with_gpu):
         import cudf
-
-        original_group_with_optional_reduction = (
-            hash_aggregate._BuiltinGPUAggregateFn._group_with_optional_reduction
-        )
-        original_gpu_partial_aggregate = hash_aggregate.GPUCount.gpu_partial_aggregate
-
-        def _drop_all_null_group_with_optional_reduction(
-            self,
-            df,
-            key_columns,
-            *,
-            value_column,
-            size_col,
-            count_col,
-            aggregate_name,
-            output_column,
-            output_dtype,
-        ):
-            result, count_dtype = original_group_with_optional_reduction(
-                self,
-                df,
-                key_columns,
-                value_column=value_column,
-                size_col=size_col,
-                count_col=count_col,
-                aggregate_name=aggregate_name,
-                output_column=output_column,
-                output_dtype=output_dtype,
-            )
-            if hash_aggregate._all_counts_zero(result, count_col):
-                return result, count_dtype
-            grouped = df.groupby(list(key_columns), dropna=False)
-            out = grouped[value_column].count().reset_index()
-            counts = out.rename(columns={out.columns[-1]: "__count"})
-            non_null_keys = counts[counts["__count"] > 0][list(key_columns)]
-            result = result.merge(non_null_keys, on=list(key_columns), how="inner")
-            if output_column in result.columns:
-                result[output_column] = result[output_column].astype("float64")
-            return result, count_dtype
-
-        def _gpu_partial_aggregate_drop_zero_counts(
-            self,
-            df,
-            key_columns,
-            *,
-            output_name,
-            accumulator_prefix,
-            input_schema=None,
-        ):
-            acc_col = self.gpu_accumulator_columns(accumulator_prefix)[0]
-            if self.target_column is None or not self.ignore_nulls:
-                return original_gpu_partial_aggregate(
-                    self,
-                    df,
-                    key_columns,
-                    output_name=output_name,
-                    accumulator_prefix=accumulator_prefix,
-                    input_schema=input_schema,
-                )
-
-            grouped = df.groupby(list(key_columns), dropna=False)
-            result = grouped.agg(
-                **{acc_col: (self.target_column, "count")}
-            ).reset_index()
-            count_dtype = hash_aggregate._cudf_column_dtype(result, acc_col)
-            counts = result[result[acc_col] > 0]
-            result = result[list(key_columns)].merge(
-                counts, on=list(key_columns), how="left"
-            )
-            hash_aggregate._fill_missing_count(result, acc_col, count_dtype)
-            return result[list(key_columns) + [acc_col]]
-
-        monkeypatch.setattr(
-            hash_aggregate._BuiltinGPUAggregateFn,
-            "_group_with_optional_reduction",
-            _drop_all_null_group_with_optional_reduction,
-        )
-        monkeypatch.setattr(
-            hash_aggregate.GPUCount,
-            "gpu_partial_aggregate",
-            _gpu_partial_aggregate_drop_zero_counts,
-        )
 
         schema = pa.schema([("user_id", pa.int64())])
         plan = build_gpu_aggregation_plan(

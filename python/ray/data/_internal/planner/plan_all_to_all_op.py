@@ -100,6 +100,7 @@ def _plan_gpu_shuffle_aggregate(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     from ray.data._internal.gpu_shuffle.hash_aggregate import (
+        GPUAggregateFn,
         GPUHashAggregateOperator,
         build_gpu_aggregation_plan,
     )
@@ -116,6 +117,12 @@ def _plan_gpu_shuffle_aggregate(
     if isinstance(aggregation_plan, str):
         # Fall back to CPU hash aggregate if GPU aggregation plan is not supported.
         fallback_reason = aggregation_plan
+        if any(isinstance(agg, GPUAggregateFn) for agg in aggregation_fns):
+            raise ValueError(
+                "GPU aggregation plan is not supported for a GPUAggregateFn "
+                f"aggregate list with key={logical_op.key}, aggs={logical_op.aggs}: "
+                f"{fallback_reason}."
+            )
         logger.warning(
             "GPU aggregation plan is not supported for key=%s, aggs=%s: %s; "
             "falling back to CPU hash aggregate.",

@@ -852,28 +852,6 @@ class DataType:
             return False
         return pa.types.is_nested(self._physical_dtype)
 
-    def _get_underlying_arrow_type(self) -> pa.DataType:
-        """Get the underlying Arrow type, handling dictionary and run-end encoding.
-
-        Returns:
-            The underlying PyArrow type, unwrapping dictionary/run-end encoding
-
-        Raises:
-            ValueError: If called on a non-Arrow type (pattern-matching, NumPy, or Python types)
-        """
-        if not self.is_arrow_type():
-            raise ValueError(
-                f"Cannot get Arrow type for non-Arrow DataType {self}. "
-                f"Type is: {type(self._physical_dtype)}"
-            )
-
-        pa_type = self._physical_dtype
-        if pa.types.is_dictionary(pa_type):
-            return pa_type.value_type
-        elif pa.types.is_run_end_encoded(pa_type):
-            return pa_type.value_type
-        return pa_type
-
     def is_null_type(self) -> bool:
         """Check if this DataType represents a null type."""
         if self.is_arrow_type():
@@ -1049,3 +1027,25 @@ class DataType:
                 datetime.timedelta,
             )
         return False
+
+    def _get_underlying_arrow_type(self) -> pa.DataType:
+        """Get the underlying Arrow type, handling dictionary and run-end encoding.
+
+        Returns:
+            The underlying PyArrow type, unwrapping dictionary/run-end encoding
+
+        Raises:
+            ValueError: If called on a non-Arrow type (pattern-matching, NumPy, or Python types)
+        """
+        if not self.is_arrow_type():
+            raise ValueError(
+                f"Cannot get Arrow type for non-Arrow DataType {self}. "
+                f"Type is: {type(self._physical_dtype)}"
+            )
+
+        pa_type = self._physical_dtype
+        if pa.types.is_dictionary(pa_type):
+            return pa_type.value_type
+        elif pa.types.is_run_end_encoded(pa_type):
+            return pa_type.value_type
+        return pa_type
