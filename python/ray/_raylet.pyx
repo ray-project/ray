@@ -1088,6 +1088,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_bool *is_retryable_error
         c_string *application_error
         shared_ptr[CGeneratorBackpressureWaiter] waiter
+        int64_t num_objects_per_yield
 
     def initialize(self, generator: Union[Generator, AsyncGenerator]):
         # We couldn't make this a part of `make` method because
@@ -1120,6 +1121,7 @@ cdef class StreamingGeneratorExecutionContext:
         c_bool *is_retryable_error,
         c_string *application_error,
         int64_t generator_backpressure_num_objects,
+        int64_t num_objects_per_yield,
     ):
         cdef StreamingGeneratorExecutionContext self = (
             StreamingGeneratorExecutionContext())
@@ -1141,6 +1143,7 @@ cdef class StreamingGeneratorExecutionContext:
         self.is_retryable_error = is_retryable_error
         self.application_error = application_error
         self.should_retry_exceptions = should_retry_exceptions
+        self.num_objects_per_yield = num_objects_per_yield
 
         self.waiter = make_shared[CGeneratorBackpressureWaiter](
             generator_backpressure_num_objects,
@@ -1167,28 +1170,53 @@ cdef report_streaming_generator_output(
         context: Streaming generator's execution context.
         output: The output yielded from a
             generator or raised as an exception.
-        generator_index: index of the output element in the
-            generated sequence
+        generator_index: The first ObjectRef stream index for this yield.
     """
     worker = ray._private.worker.global_worker
 
     cdef:
-        # Ray Object created from an output.
-        c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        # Ray Objects created from an output.
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] return_objs
+        size_t i
+        c_bool output_error_reported = False
 
     start = time.perf_counter()
 
     # Report the intermediate result if there was no error.
-    create_generator_return_obj(
-        output,
-        context.generator_id,
-        worker,
-        context.caller_address,
-        context.task_id,
-        context.return_size,
-        generator_index,
-        context.is_async,
-        &return_obj)
+    try:
+        create_generator_return_objs(
+            output,
+            context.generator_id,
+            worker,
+            context.caller_address,
+            context.task_id,
+            context.return_size,
+            generator_index,
+            context.num_objects_per_yield,
+            context.is_async,
+            &return_objs)
+    except Exception as e:
+        if (
+            context.num_objects_per_yield == 1
+            or return_objs.size() != <size_t>context.num_objects_per_yield
+        ):
+            raise
+
+        # Dynamic IDs for this grouped yield are already allocated. If storing
+        # failed after some objects were written, report the whole group as
+        # non-retryable so the caller does not block waiting for later stream
+        # indexes and the allocated IDs can be cleared.
+        context.is_retryable_error[0] = False
+        store_task_errors(
+            worker, e,
+            True,  # task_exception
+            context.actor,  # actor
+            context.actor_id,  # actor id
+            context.function_name, context.task_type, context.title,
+            context.caller_address,
+            &return_objs,
+            context.application_error)
+        output_error_reported = True
 
     # Del output here so that we can GC the memory
     # usage asap.
@@ -1199,22 +1227,25 @@ cdef report_streaming_generator_output(
     if interrupt_signal_event is not None and interrupt_signal_event.is_set():
         return
 
-    context.streaming_generator_returns[0].push_back(
-        c_pair[CObjectID, c_bool](
-            return_obj.first,
-            is_plasma_object(return_obj.second)))
+    for i in range(return_objs.size()):
+        context.streaming_generator_returns[0].push_back(
+            c_pair[CObjectID, c_bool](
+                return_objs[i].first,
+                is_plasma_object(return_objs[i].second)))
 
     serialization_dur_s = time.perf_counter() - start
 
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
+            return_objs,
             context.generator_id,
             context.caller_address,
             generator_index,
             context.attempt_number,
             context.waiter))
 
+    if output_error_reported:
+        return None
 
     return StreamingGeneratorStats(
         object_creation_dur_s=serialization_dur_s,
@@ -1233,14 +1264,13 @@ cdef report_streaming_generator_exception(
         context: Streaming generator's execution context.
         output_or_exception: The output yielded from a
             generator or raised as an exception.
-        generator_index: index of the output element in the
-            generated sequence
+        generator_index: The ObjectRef stream index for this exception.
     """
     worker = ray._private.worker.global_worker
 
     cdef:
         # Ray Object created from an output.
-        c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] return_objs
 
     create_generator_error_object(
         e,
@@ -1258,7 +1288,7 @@ cdef report_streaming_generator_exception(
         generator_index,
         context.is_async,
         context.should_retry_exceptions,
-        &return_obj,
+        &return_objs,
         context.is_retryable_error,
         context.application_error
     )
@@ -1274,12 +1304,12 @@ cdef report_streaming_generator_exception(
 
     context.streaming_generator_returns[0].push_back(
         c_pair[CObjectID, c_bool](
-            return_obj.first,
-            is_plasma_object(return_obj.second)))
+            return_objs[0].first,
+            is_plasma_object(return_objs[0].second)))
 
     with nogil:
         check_status(CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-            return_obj,
+            return_objs,
             context.generator_id,
             context.caller_address,
             generator_index,
@@ -1321,9 +1351,12 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
                 # next output
                 output = gen.send(stats)
                 # Track serialization duration of the next output
-                stats = report_streaming_generator_output(context, output, gen_index, None)
+                stats = report_streaming_generator_output(
+                    context, output, gen_index, None)
+                if stats is None:
+                    break
 
-                gen_index += 1
+                gen_index += context.num_objects_per_yield
 
             except StopIteration:
                 break
@@ -1405,7 +1438,9 @@ async def execute_streaming_generator_async(
                     cur_generator_index,
                     interrupt_signal_event,
                 )
-                cur_generator_index += 1
+                if stats is None:
+                    break
+                cur_generator_index += context.num_objects_per_yield
 
             except StopAsyncIteration:
                 break
@@ -1444,7 +1479,7 @@ async def execute_streaming_generator_async(
     check_status(return_status)
 
 
-cdef create_generator_return_obj(
+cdef create_generator_return_objs(
         output,
         const CObjectID &generator_id,
         worker: "Worker",
@@ -1452,9 +1487,10 @@ cdef create_generator_return_obj(
         TaskID task_id,
         return_size,
         generator_index,
+        int64_t num_objects_per_yield,
         is_async,
-        c_pair[CObjectID, shared_ptr[CRayObject]] *return_object):
-    """Create a generator return object based on a given output.
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *return_objects):
+    """Create generator return objects based on a given output.
 
     Args:
         output: The output from a next(generator).
@@ -1465,32 +1501,54 @@ cdef create_generator_return_obj(
             the owner, so we can also call it "owner address".
         task_id: The task ID of the generator task.
         return_size: The number of static returns.
-        generator_index: The index of a current error object.
+        generator_index: The first ObjectRef stream index for this yield.
+        num_objects_per_yield: The number of ObjectRefs to create for each yield.
         is_async: Whether or not the given object is created within
             an async actor.
-        return_object(out): A Ray Object that contains the given output.
+        return_objects(out): Ray Objects that contain the given output.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
+        int64_t stream_index
+        int64_t i
+        CObjectID return_id
 
-    return_id = core_worker.allocate_dynamic_return_id_for_generator(
-        caller_address,
-        task_id.native(),
-        return_size,
-        generator_index,
-        is_async,
-    )
-    intermediate_result.push_back(
+    if num_objects_per_yield == 1:
+        outputs = (output,)
+    else:
+        if not isinstance(output, (tuple, list)):
+            raise ValueError(
+                "Streaming generator tasks with _num_objects_per_yield="
+                f"{num_objects_per_yield} must yield a tuple or list "
+                f"of length {num_objects_per_yield}."
+            )
+        if len(output) != num_objects_per_yield:
+            raise ValueError(
+                "Streaming generator task yielded "
+                f"{len(output)} objects, but _num_objects_per_yield="
+                f"{num_objects_per_yield}."
+            )
+        outputs = output
+
+    return_objects.reserve(num_objects_per_yield)
+    for i in range(num_objects_per_yield):
+        stream_index = generator_index + i
+        return_id = core_worker.allocate_dynamic_return_id_for_generator(
+            caller_address,
+            task_id.native(),
+            return_size,
+            stream_index,
+            is_async,
+        )
+        return_objects.push_back(
             c_pair[CObjectID, shared_ptr[CRayObject]](
                 return_id, shared_ptr[CRayObject]()))
-    core_worker.store_task_outputs(
-        worker, [output],
-        caller_address,
-        &intermediate_result,
-        generator_id.Binary())
 
-    return_object[0] = intermediate_result.back()
+    core_worker.store_task_outputs(
+        worker, outputs,
+        caller_address,
+        return_objects,
+        generator_id.Binary())
 
 
 cdef create_generator_error_object(
@@ -1509,7 +1567,7 @@ cdef create_generator_error_object(
         generator_index,
         is_async,
         c_bool should_retry_exceptions,
-        c_pair[CObjectID, shared_ptr[CRayObject]] *error_object,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *error_objects,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Create a generator error object.
@@ -1538,17 +1596,16 @@ cdef create_generator_error_object(
             It is used to write an error message.
         actor_id: The ID of the actor. It is used to write an error message.
         return_size: The number of static returns.
-        generator_index: The index of a current error object.
+        generator_index: The ObjectRef stream index for this exception.
         is_async: Whether or not the given object is created within
             an async actor.
-        error_object(out): A Ray Object that contains the given error exception.
+        error_objects(out): Ray Objects that contain the given error exception.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
     is_retryable_error[0] = determine_if_retryable(
@@ -1578,7 +1635,7 @@ cdef create_generator_error_object(
         generator_index,
         is_async,
     )
-    intermediate_result.push_back(
+    error_objects.push_back(
             c_pair[CObjectID, shared_ptr[CRayObject]](
                 error_id, shared_ptr[CRayObject]()))
     store_task_errors(
@@ -1588,10 +1645,8 @@ cdef create_generator_error_object(
                 actor_id,  # actor id
                 function_name, task_type, title,
                 caller_address,
-                &intermediate_result,
+                error_objects,
                 application_error)
-
-    error_object[0] = intermediate_result.back()
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(
@@ -1701,6 +1756,7 @@ cdef void execute_task(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
+        int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
@@ -1874,7 +1930,8 @@ cdef void execute_task(
                                 streaming_generator_returns,
                                 is_retryable_error,
                                 application_error,
-                                generator_backpressure_num_objects)
+                                generator_backpressure_num_objects,
+                                num_objects_per_yield)
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
                         context.initialize(outputs)
@@ -2068,6 +2125,7 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
+        int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport):
 
     is_retryable_error[0] = False
@@ -2161,6 +2219,7 @@ cdef execute_task_with_cancellation_handler(
                      is_streaming_generator,
                      should_retry_exceptions,
                      generator_backpressure_num_objects,
+                     num_objects_per_yield,
                      c_tensor_transport)
 
         # Check for cancellation.
@@ -2279,6 +2338,7 @@ cdef CRayStatus task_execution_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
+        int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
@@ -2309,6 +2369,7 @@ cdef CRayStatus task_execution_handler(
                         is_streaming_generator,
                         should_retry_exceptions,
                         generator_backpressure_num_objects,
+                        num_objects_per_yield,
                         c_tensor_transport)
             except Exception as e:
                 sys_exit = SystemExit()
@@ -3507,6 +3568,7 @@ cdef class CoreWorker:
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
                     int64_t generator_backpressure_num_objects,
+                    int64_t num_objects_per_yield,
                     c_bool enable_task_events,
                     labels,
                     label_selector,
@@ -3553,6 +3615,7 @@ cdef class CoreWorker:
                 name, num_returns, c_resources,
                 b"",
                 generator_backpressure_num_objects,
+                num_objects_per_yield,
                 serialized_runtime_env_info,
                 enable_task_events,
                 c_labels,
@@ -3787,6 +3850,7 @@ cdef class CoreWorker:
                           double num_method_cpus,
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
+                          int64_t num_objects_per_yield,
                           c_bool enable_task_events,
                           tensor_transport: Optional[str],
                           dict labels=None):
@@ -3843,6 +3907,7 @@ cdef class CoreWorker:
                         c_resources,
                         concurrency_group_name,
                         generator_backpressure_num_objects,
+                        num_objects_per_yield,
                         serialized_runtime_env,
                         enable_task_events,
                         c_labels,
@@ -4020,6 +4085,7 @@ cdef class CoreWorker:
                                          method_meta.max_task_retries,
                                          method_meta.retry_exceptions,
                                          method_meta.generator_backpressure_num_objects, # noqa
+                                         method_meta.num_objects_per_yield,
                                          method_meta.enable_task_events,
                                          enable_tensor_transport,
                                          method_meta.method_name_to_tensor_transport,
@@ -4039,6 +4105,7 @@ cdef class CoreWorker:
                                          {},  # method max_task_retries
                                          {},  # method retry_exceptions
                                          {},  # generator_backpressure_num_objects
+                                         {},  # num_objects_per_yield
                                          {},  # enable_task_events
                                          False,  # enable_tensor_transport
                                          None,  # method_name_to_tensor_transport

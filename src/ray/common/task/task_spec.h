@@ -193,6 +193,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int64_t GeneratorBackpressureNumObjects() const;
 
+  int64_t NumObjectsPerYield() const;
+
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
