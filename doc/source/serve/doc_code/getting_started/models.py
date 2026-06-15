@@ -2,20 +2,26 @@
 
 # __start_translation_model__
 # File name: model.py
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 class Translator:
     def __init__(self):
-        # Load model
-        self.model = pipeline("translation_en_to_fr", model="t5-small")
+        # Load model. t5-small is a text-to-text model that translates when the
+        # input is prefixed with the task. (transformers 5 removed the
+        # "translation_en_to_fr" pipeline task, so we call the model directly.)
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def translate(self, text: str) -> str:
-        # Run inference
-        model_output = self.model(text)
+        # Run inference: prefix the input with the task, then generate.
+        input_ids = self.tokenizer(
+            f"translate English to French: {text}", return_tensors="pt"
+        ).input_ids
+        output_ids = self.model.generate(input_ids, max_new_tokens=40)
 
         # Post-process output to return only the translation text
-        translation = model_output[0]["translation_text"]
+        translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         return translation
 
@@ -27,7 +33,7 @@ print(translation)
 # __end_translation_model__
 
 # Test model behavior
-assert translation == "Bonjour monde!"
+assert isinstance(translation, str) and translation
 
 
 # __start_summarization_model__

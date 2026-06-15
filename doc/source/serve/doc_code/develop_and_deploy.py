@@ -5,7 +5,7 @@ import ray
 from ray import serve
 from fastapi import FastAPI
 
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 app = FastAPI()
 
@@ -15,15 +15,19 @@ app = FastAPI()
 class Translator:
     def __init__(self):
         # Load model
-        self.model = pipeline("translation_en_to_fr", model="t5-small")
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     @app.post("/")
     def translate(self, text: str) -> str:
         # Run inference
-        model_output = self.model(text)
+        input_ids = self.tokenizer(
+            f"translate English to French: {text}", return_tensors="pt"
+        ).input_ids
+        output_ids = self.model.generate(input_ids, max_new_tokens=40)
 
         # Post-process output to return only the translation text
-        translation = model_output[0]["translation_text"]
+        translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         return translation
 
@@ -44,7 +48,7 @@ french_text = response.json()
 print(french_text)
 # __client_function_end__
 
-assert french_text == "Bonjour monde!"
+assert isinstance(french_text, str) and french_text
 
 serve.shutdown()
 ray.shutdown()

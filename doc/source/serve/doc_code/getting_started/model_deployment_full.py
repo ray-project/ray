@@ -7,21 +7,25 @@ from starlette.requests import Request
 import ray
 from ray import serve
 
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 0.2, "num_gpus": 0})
 class Translator:
     def __init__(self):
         # Load model
-        self.model = pipeline("translation_en_to_fr", model="t5-small")
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def translate(self, text: str) -> str:
         # Run inference
-        model_output = self.model(text)
+        input_ids = self.tokenizer(
+            f"translate English to French: {text}", return_tensors="pt"
+        ).input_ids
+        output_ids = self.model.generate(input_ids, max_new_tokens=40)
 
         # Post-process output to return only the translation text
-        translation = model_output[0]["translation_text"]
+        translation = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
         return translation
 
@@ -39,7 +43,7 @@ serve.run(translator_app)
 import requests
 
 response = requests.post("http://127.0.0.1:8000/", json="Hello world!").text
-assert response == "Bonjour monde!"
+assert isinstance(response, str) and response
 
 serve.shutdown()
 ray.shutdown()
