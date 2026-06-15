@@ -33,6 +33,7 @@
 #include <google/protobuf/util/json_util.h>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
@@ -47,7 +48,6 @@
 #include "ray/util/event.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/time.h"
 
 using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
@@ -321,7 +321,8 @@ CoreWorker::CoreWorker(
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
-    ray::observability::MetricInterface &actor_by_state_gauge)
+    ray::observability::MetricInterface &actor_by_state_gauge,
+    ClockInterface &clock)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -375,7 +376,8 @@ CoreWorker::CoreWorker(
             io_service_.post([free_actor_object_callback,
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
-          }) {
+          }),
+      clock_(clock) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -438,7 +440,7 @@ CoreWorker::CoreWorker(
           std::move(job_id),
           /*attempt_number=*/0,
           rpc::TaskStatus::RUNNING,
-          /*timestamp=*/absl::GetCurrentTimeNanos(),
+          /*timestamp=*/clock_.NowUnixNanos(),
           /*is_actor_task_event=*/false,
           options_.session_name,
           GetCurrentNodeId(),
@@ -600,7 +602,7 @@ void CoreWorker::Disconnect(
         worker_context_->GetCurrentJobID(),
         /*attempt_number=*/0,
         rpc::TaskStatus::FINISHED,
-        /*timestamp=*/absl::GetCurrentTimeNanos(),
+        /*timestamp=*/clock_.NowUnixNanos(),
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name,
         GetCurrentNodeId());
@@ -724,11 +726,9 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_info.emplace("raylet_socket", options_.raylet_socket);
 
   if (options_.worker_type == WorkerType::DRIVER) {
-    auto start_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
+    auto start_time = clock_.NowUnixMillis();
     worker_info.emplace("driver_id", worker_id.Binary());
-    worker_info.emplace("start_time", absl::StrFormat("%d", start_time));
+    worker_info.emplace("start_time", absl::StrCat(start_time));
     if (!options_.driver_name.empty()) {
       worker_info.emplace("name", options_.driver_name);
     }
@@ -746,7 +746,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
 
   worker_data->set_is_alive(true);
   worker_data->set_pid(pid_);
-  worker_data->set_start_time_ms(current_sys_time_ms());
+  worker_data->set_start_time_ms(clock_.NowUnixMillis());
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
@@ -813,7 +813,7 @@ void CoreWorker::InternalHeartbeat() {
   std::vector<TaskToRetry> tasks_to_resubmit;
   {
     absl::MutexLock lock(&mutex_);
-    const auto current_time = current_time_ms();
+    const auto current_time = clock_.SteadyNowMillis();
     while (!to_resubmit_.empty() && current_time > to_resubmit_.top().execution_time_ms) {
       tasks_to_resubmit.emplace_back(to_resubmit_.top());
       to_resubmit_.pop();
@@ -1308,7 +1308,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
-  auto start_time = current_time_ms();
+  auto start_time = clock_.SteadyNowMillis();
 
   StatusSet<StatusT::NotFound> objects_have_owners = reference_counter_->HasOwner(ids);
 
@@ -1360,7 +1360,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
-                                  timeout_ms - (current_time_ms() - start_time));
+                                  timeout_ms - (clock_.SteadyNowMillis() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
@@ -1487,7 +1487,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-  int64_t start_time = current_time_ms();
+  int64_t start_time = clock_.SteadyNowMillis();
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
   RAY_RETURN_NOT_OK(memory_store_->Wait(
@@ -1499,8 +1499,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
       &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
-    timeout_ms =
-        std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+    timeout_ms = std::max(
+        0, static_cast<int>(timeout_ms - (clock_.SteadyNowMillis() - start_time)));
   }
   if (fetch_local) {
     // With fetch_local we want to start fetching plasma_object_ids from other nodes'
@@ -1839,7 +1839,8 @@ void CoreWorker::BuildCommonTaskSpec(
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     const LabelSelector &label_selector,
-    const std::vector<FallbackOption> &fallback_strategy) {
+    const std::vector<FallbackOption> &fallback_strategy,
+    int64_t num_objects_per_yield) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1889,7 +1890,8 @@ void CoreWorker::BuildCommonTaskSpec(
       enable_task_events,
       labels,
       label_selector,
-      fallback_strategy);
+      fallback_strategy,
+      num_objects_per_yield);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1970,7 +1972,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       task_options.labels,
                       task_options.label_selector,
-                      task_options.fallback_strategy);
+                      task_options.fallback_strategy,
+                      task_options.num_objects_per_yield);
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
@@ -2408,7 +2411,8 @@ Status CoreWorker::SubmitActorTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       /*labels=*/task_options.labels,
                       /*label_selector=*/{},
-                      /*fallback_strategy=*/{});
+                      /*fallback_strategy=*/{},
+                      task_options.num_objects_per_yield);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2656,8 +2660,11 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
-  return std::make_unique<worker::ProfileEvent>(
-      *task_event_buffer_, *worker_context_, options_.node_ip_address, event_name);
+  return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
+                                                *worker_context_,
+                                                options_.node_ip_address,
+                                                event_name,
+                                                clock_);
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
@@ -2914,6 +2921,7 @@ Status CoreWorker::ExecuteTask(
       /*retry_exception=*/task_spec.ShouldRetryExceptions(),
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
+      /*num_objects_per_yield=*/task_spec.NumObjectsPerYield(),
       /*tensor_transport=*/task_spec.TensorTransport());
 
   // Get the reference counts for any IDs that we borrowed during this task,
@@ -3146,7 +3154,8 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
 }
 
 Status CoreWorker::ReportGeneratorItemReturns(
-    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+        &dynamic_return_objects,
     const ObjectID &generator_id,
     const rpc::Address &owner_address,
     int64_t item_index,
@@ -3159,26 +3168,33 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(owner_address);
 
-  // This means it is the last report when the task has finished executing.
-  if (!dynamic_return_object.first.IsNil()) {
+  std::vector<ObjectID> return_ids;
+  return_ids.reserve(dynamic_return_objects.size());
+  for (const auto &dynamic_return_object : dynamic_return_objects) {
+    if (dynamic_return_object.first.IsNil()) {
+      continue;
+    }
     SerializeReturnObject(dynamic_return_object.first,
                           dynamic_return_object.second,
-                          request.mutable_returned_object());
-    std::vector<ObjectID> deleted;
+                          request.add_returned_objects());
+    return_ids.push_back(dynamic_return_object.first);
+  }
+  if (!return_ids.empty()) {
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
-    // we borrow the object. When the object value is allocatd, the
+    // we borrow the object. When the object value is allocated, the
     // memory store is updated. We should clear borrowers and memory store
     // here.
+    std::vector<ObjectID> deleted;
     ReferenceCounterInterface::ReferenceTableProto borrowed_refs;
-    reference_counter_->PopAndClearLocalBorrowers(
-        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    reference_counter_->PopAndClearLocalBorrowers(return_ids, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
   }
-  const auto return_id = dynamic_return_object.first;
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << ", id: " << return_id;
 
-  waiter->IncrementObjectGenerated();
+  const auto return_id = return_ids.empty() ? ObjectID::Nil() : return_ids.front();
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << ", id: " << return_id << ", count: " << return_ids.size();
+
+  waiter->IncrementObjectGenerated(return_ids.size());
 
   client->ReportGeneratorItemReturns(
       std::move(request),
@@ -4577,7 +4593,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
 void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
   absl::MutexLock lock(&mutex_);
-  TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec};
+  TaskToRetry task_to_retry{clock_.SteadyNowMillis() + delay_ms, spec};
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));

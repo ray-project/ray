@@ -22,6 +22,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
+#include "ray/util/clock.h"
 #include "ray/util/mutex_protected.h"
 
 namespace ray {
@@ -151,6 +152,9 @@ class CoreWorkerProcessImpl {
  private:
   /// The various options.
   const CoreWorkerOptions options_;
+
+  /// Real-time clock used by the core worker and its subcomponents.
+  Clock clock_;
 
   /// The worker ID of this worker.
   const WorkerID worker_id_;
