@@ -2402,11 +2402,19 @@ class Replica:
                 application_names=application_names
             ).SerializeToString()
 
-        request_id = generate_request_id()
+        # Pick up the request ID from the gRPC invocation metadata if the client
+        # passed one, otherwise generate a new one.
+        request_id = ""
+        for key, value in context.invocation_metadata():
+            if key == "request_id":
+                request_id = value
+                break
+        if not request_id:
+            request_id = generate_request_id()
+
         c = RayServegRPCContext(context)
         c.set_trailing_metadata([("request_id", request_id)])
         request_metadata = RequestMetadata(
-            # TODO: pick up the request ID from gRPC initial metadata.
             request_id=request_id,
             internal_request_id=generate_request_id(),
             call_method=service_method.split("/")[-1],
