@@ -1,3 +1,4 @@
+import copy
 import math
 from typing import Dict, Optional, Union
 
@@ -64,15 +65,16 @@ class DistributionTracker:
             self._count = total
             self._min = min(self._min, other._min)
             self._max = max(self._max, other._max)
-        if self._sketch is None or other._sketch is None:
-            # Moments above still merged; quantile detail is lost for the
-            # side(s) without a sketch.
-            self._sketch = None
-        else:
+        if self._sketch is not None and other._sketch is not None:
             try:
                 self._sketch.merge(other._sketch)
             except Exception:
                 self._sketch = None
+        elif self._sketch is None and other._sketch is not None:
+            # self tracked data but has no sketch; adopt a copy of other's
+            # sketch (copy, not alias, so a later add_sample() on self won't
+            # mutate other).
+            self._sketch = copy.copy(other._sketch)
 
     @property
     def num_samples(self) -> int:
