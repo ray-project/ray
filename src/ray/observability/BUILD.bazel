@@ -202,6 +202,25 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "ray_event_recorder_base",
+    srcs = [
+        "ray_event_recorder_base.cc",
+    ],
+    hdrs = [
+        "ray_event_recorder_base.h",
+    ],
+    deps = [
+        ":metric_interface",
+        ":ray_event_recorder_interface",
+        "//src/ray/asio:periodical_runner_interface",
+        "//src/ray/common:ray_config",
+        "//src/ray/rpc:event_aggregator_client",
+        "//src/ray/util:graceful_shutdown",
+        "//src/ray/util:logging",
+    ],
+)
+
+ray_cc_library(
     name = "ray_event_recorder",
     srcs = [
         "ray_event_recorder.cc",
@@ -212,12 +231,10 @@ ray_cc_library(
     deps = [
         ":metric_interface",
         ":ray_event",
-        ":ray_event_recorder_interface",
-        "//src/ray/asio:periodical_runner_interface",
+        ":ray_event_recorder_base",
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
-        "//src/ray/util:graceful_shutdown",
         "//src/ray/util:logging",
         "@boost//:circular_buffer",
     ],

@@ -15,7 +15,6 @@
 #include "ray/observability/ray_event_recorder.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/util/graceful_shutdown.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
@@ -29,71 +28,13 @@ RayEventRecorder::RayEventRecorder(
     std::string_view metric_source,
     ray::observability::MetricInterface &dropped_events_counter,
     const NodeID &node_id)
-    : event_aggregator_client_(event_aggregator_client),
-      periodical_runner_(std::move(periodical_runner)),
-      max_buffer_size_(max_buffer_size),
-      metric_source_(metric_source),
-      buffer_(max_buffer_size),
-      dropped_events_counter_(dropped_events_counter),
-      node_id_(node_id) {}
-
-void RayEventRecorder::StartExportingEvents() {
-  absl::MutexLock lock(&mutex_);
-  if (!RayConfig::instance().enable_ray_event()) {
-    RAY_LOG(INFO) << "Ray event recording is disabled. Skipping start exporting events.";
-    return;
-  }
-  if (exporting_started_) {
-    return;
-  }
-  exporting_started_ = true;
-  periodical_runner_->RunFnPeriodically(
-      [this]() { ExportEvents(); },
-      RayConfig::instance().ray_events_report_interval_ms(),
-      "RayEventRecorder.ExportEvents");
-}
-
-void RayEventRecorder::StopExportingEvents() {
-  {
-    absl::MutexLock lock(&mutex_);
-    if (!enabled_) {
-      return;
-    }
-    // Set enabled_ to false early to prevent new events from being added during shutdown.
-    // This prevents event loss from events added after ExportEvents() clears the buffer.
-    enabled_ = false;
-  }
-  RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
-
-  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
-
-  // Local handler implementing GracefulShutdownHandler interface.
-  class ShutdownHandler : public GracefulShutdownHandler {
-   public:
-    explicit ShutdownHandler(RayEventRecorder *recorder) : recorder_(recorder) {}
-
-    bool WaitUntilIdle(absl::Duration timeout) override {
-      absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
-      auto deadline = absl::Now() + timeout;
-      while (recorder_->grpc_in_progress_) {
-        if (recorder_->grpc_completion_cv_.WaitWithDeadline(
-                &recorder_->grpc_completion_mutex_, deadline)) {
-          return false;  // Timeout
-        }
-      }
-      return true;
-    }
-
-    void Flush() override { recorder_->ExportEvents(); }
-
-   private:
-    RayEventRecorder *recorder_;
-  };
-
-  ShutdownHandler handler(this);
-  GracefulShutdownWithFlush(
-      handler, absl::Milliseconds(flush_timeout_ms), "RayEventRecorder");
-}
+    : RayEventRecorderBase(event_aggregator_client,
+                           std::move(periodical_runner),
+                           max_buffer_size,
+                           metric_source,
+                           dropped_events_counter,
+                           node_id),
+      buffer_(max_buffer_size) {}
 
 void RayEventRecorder::ExportEvents() {
   absl::MutexLock lock(&mutex_);
