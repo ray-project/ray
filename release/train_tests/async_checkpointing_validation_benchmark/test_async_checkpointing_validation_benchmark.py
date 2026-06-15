@@ -109,6 +109,7 @@ class Predictor:
 
 
 def validate_with_map_batches(checkpoint):
+    validation_dataset.set_name("async_val_map_batches")
     validation_dataset.context.execution_options.label_selector = {
         "ray-subcluster": "validation"
     }
@@ -152,7 +153,7 @@ def eval_only_train_func(config_dict):
     model.cuda().eval()
 
     # Get the data
-    test_data_shard = ray.train.get_dataset_shard("test")
+    test_data_shard = ray.train.get_dataset_shard("async_val_torch_trainer")
     test_dataloader = test_data_shard.iter_torch_batches(batch_size=128)
 
     # Report metrics
@@ -171,13 +172,13 @@ def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
         eval_only_train_func,
         train_loop_config={"checkpoint": checkpoint},
         scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
-        datasets={"test": validation_dataset},
+        datasets={"async_val_torch_trainer": validation_dataset},
         run_config=ray.train.RunConfig(
             name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
         ),
         dataset_config=ray.train.DataConfig(
             execution_options={
-                "test": ExecutionOptions(
+                "async_val_torch_trainer": ExecutionOptions(
                     label_selector={"ray-subcluster": "validation"}
                 ),
             },
@@ -208,7 +209,7 @@ def validate_and_report(
     checkpoint_save_mode = config["checkpoint_save_mode"]
 
     if validate_within_trainer:
-        test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
+        test_dataloader = ray.train.get_dataset_shard("inline_val").iter_torch_batches(
             batch_size=128
         )
 
@@ -406,14 +407,14 @@ def run_training_with_validation(
         "checkpoint_save_mode": checkpoint_save_mode,
     }
     if validate_within_trainer:
-        datasets["test"] = validation_dataset
+        datasets["inline_val"] = validation_dataset
         # Sync validation: train workers iterate both datasets, so split each
         # across the train subcluster and the validation subcluster respectively.
         dataset_config = ray.train.DataConfig(
-            datasets_to_split=["train", "test"],
+            datasets_to_split=["train", "inline_val"],
             execution_options={
                 "train": ExecutionOptions(label_selector={"ray-subcluster": "train"}),
-                "test": ExecutionOptions(
+                "inline_val": ExecutionOptions(
                     label_selector={"ray-subcluster": "validation"}
                 ),
             },
