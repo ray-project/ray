@@ -498,6 +498,12 @@ Configure individual pipeline stages for fine-grained resource control:
 
 See :ref:`stage config classes <stage-configs-ref>` for all available fields.
 
+.. note::
+    To drop a stage from the pipeline, set it to ``False`` (for example,
+    ``detokenize_stage=False``) or pass ``"enabled": False``. The optional stages are
+    ``prepare_multimodal_stage``, ``chat_template_stage``, ``tokenize_stage``, and
+    ``detokenize_stage``; the vLLM engine stage always runs.
+
 LoRA adapters
 ~~~~~~~~~~~~~
 
