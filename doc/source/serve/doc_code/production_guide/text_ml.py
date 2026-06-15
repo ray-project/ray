@@ -63,8 +63,6 @@ class Summarizer:
             input_ids,
             num_beams=4,
             early_stopping=True,
-            length_penalty=2.0,
-            no_repeat_ngram_size=3,
             min_length=self.min_length,
             max_length=self.max_length,
         )
@@ -103,10 +101,10 @@ response = requests.post("http://127.0.0.1:8000/", json=english_text)
 french_text = response.text
 
 print(french_text)
-# 'c'était le meilleur des temps, c'était le pire des temps .'
+# 'C'était le meilleur des temps, c'était le pire des temps,'
 # __end_client__
 
-assert french_text == "c'était le meilleur des temps, c'était le pire des temps ."
+assert french_text == "C'était le meilleur des temps, c'était le pire des temps,"
 
 serve.run(
     Summarizer.bind(Translator.options(user_config={"language": "german"}).bind())
@@ -124,10 +122,10 @@ response = requests.post("http://127.0.0.1:8000/", json=english_text)
 german_text = response.text
 
 print(german_text)
-# 'Es war die beste Zeit, es war die schlimmste Zeit .'
+# 'es war die beste Zeit, es war die schlimmste Zeit,'
 # __end_second_client__
 
-assert german_text == "Es war die beste Zeit, es war die schlimmste Zeit ."
+assert german_text == "es war die beste Zeit, es war die schlimmste Zeit,"
 
 serve.shutdown()
 ray.shutdown()
