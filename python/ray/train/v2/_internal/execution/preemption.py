@@ -51,12 +51,12 @@ class PreemptionContext:
 
     def set(self, info: PreemptionInfo) -> None:
         with self._lock:
-            self._info = info
+            self._preemption_info = info
 
     def get(self) -> Optional[PreemptionInfo]:
         """Return the current preemption signal, or ``None`` if none received."""
         with self._lock:
-            return self._info
+            return self._preemption_info
 
 
 def _get_draining_nodes() -> Dict[str, int]:
