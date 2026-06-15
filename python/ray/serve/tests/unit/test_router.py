@@ -758,7 +758,9 @@ class FakeGrpcReplicaResultForRejection(gRPCReplicaResult):
         self._with_rejection = True
         self._rejection_response = None
         self._is_streaming = is_streaming
-        self._actor_id = Mock(binary=Mock(return_value=b"fake-actor-id"))
+        # ActorUnavailableError -> ActorID(actor_id) requires a valid 16-byte
+        # binary, so use a real random ActorID rather than an arbitrary value.
+        self._actor_id = ray.ActorID.from_random()
 
 
 def _aio_rpc_error(
