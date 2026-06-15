@@ -42,8 +42,8 @@ class PreemptionInfo:
 class PreemptionContext:
     """Thread-shared preemption signal for one worker actor."""
 
-    _preemption_info: Optional[PreemptionInfo] = None
-    _lock: threading.Lock = field(default_factory=threading.Lock)
+    _preemption_info: Optional[PreemptionInfo] = field(default=None, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
     def set(self, info: PreemptionInfo) -> None:
         with self._lock:
