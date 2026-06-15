@@ -8,10 +8,7 @@ This tutorial will walk you through the process of writing and testing a Ray Ser
 * test a Ray Serve application locally over HTTP
 * compose multi-model machine learning models together into a single application
 
-We'll use two models in this tutorial:
-
-* [HuggingFace's t5-small](https://huggingface.co/t5-small) as a text-translation model
-* [HuggingFace's t5-small](https://huggingface.co/t5-small) as a text-summarization model
+This tutorial uses [HuggingFace's t5-small](https://huggingface.co/t5-small) model for text translation and text summarization.
 
 You can also follow along using your own models from any Python framework.
 
