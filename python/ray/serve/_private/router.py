@@ -1311,6 +1311,7 @@ class AsyncioRouter:
                 port=replica._replica_info.port,
                 node_id=replica.node_id,
                 availability_zone=replica.availability_zone,
+                replica_metadata=replica.replica_metadata,
                 _replica=replica,
                 _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
                 _request_metadata=request_meta,
