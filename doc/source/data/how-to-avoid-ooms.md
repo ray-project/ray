@@ -58,7 +58,7 @@ You can see node death in the "Node Count" chart in the Ray Core dashboard:
 
 ![Unexpected system-level worker deaths chart](node-count.png)
 
-Nodes die for reasons unrelated to memory pressure. If you see node death along with 
+Nodes can die for reasons unrelated to memory pressure. If you see node death along with 
 other memory-related errors, memory pressure might have caused the death.
 
 ## Best practices
