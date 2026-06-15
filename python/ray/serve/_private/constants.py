@@ -936,8 +936,15 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
 
 # Hold released replica ports out of the pool this long so proxies can
 # drop their stale slot before a new replica grabs the same port. 0 disables.
+# Defaults to hard-stop-after plus a margin: soft-stopped (reloaded-out)
+# HAProxy workers run no health checks and keep routing to their frozen
+# server list until hard-stop-after fires, so a freed port must stay out
+# of the pool at least that long or another app's replica can inherit the
+# old app's traffic. The margin covers the broadcast/reload lag before an
+# old worker's hard-stop clock starts.
 RAY_SERVE_PORT_QUARANTINE_S = get_env_float_non_negative(
-    "RAY_SERVE_PORT_QUARANTINE_S", 10.0
+    "RAY_SERVE_PORT_QUARANTINE_S",
+    float(RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S + 30),
 )
 # The minimum drain period for a HTTP proxy.
 # If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
