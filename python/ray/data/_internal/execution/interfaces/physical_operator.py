@@ -344,23 +344,27 @@ class DataOpTask(OpTask):
                 self._metadata_ready_callback(self._pending_meta_ref)
 
             # Local size lookup (no RPC). The driver owns every block ref the
-            # streaming generator yields, so the object_size is always known
-            # locally — it's the value that matches ``meta.size_bytes`` used
-            # by the budget loop.
+            # streaming generator yields, so in the steady state object_size
+            # is known locally — it's the value that matches ``meta.size_bytes``
+            # used by the budget loop.
             info = get_local_object_locations([self._pending_block_ref]).get(
                 self._pending_block_ref
             )
-            assert info is not None, (
-                "Expected the driver to know the location of block "
-                f"{self._pending_block_ref.hex()} yielded by operator "
-                f"'{self._operator_name}'."
-            )
-            object_size = info.get("object_size")
-            assert object_size is not None, (
-                "Expected the driver to know the local object_size of block "
-                f"{self._pending_block_ref.hex()} yielded by operator "
-                f"'{self._operator_name}'."
-            )
+            object_size = info.get("object_size") if info is not None else None
+            if object_size is None:
+                # Rare: the driver's location record for this block has no
+                # size yet (``get_local_object_locations`` may omit the entry
+                # or its size). Fall back to fetching the metadata for the
+                # budget size instead of aborting. No timeout — this path is
+                # rare and the block was just yielded, so it's local.
+                logger.warning(
+                    "Local object_size unavailable for a block from operator "
+                    "'%s'; fetching its metadata inline for the output-budget "
+                    "size.",
+                    self._operator_name,
+                )
+                meta_with_schema = pickle.loads(ray.get(self._pending_meta_ref))
+                object_size = meta_with_schema.metadata.size_bytes
 
             # Defer everything: no ray.get inside the loop, no emit,
             # no _last_block_meta update. The caller batch-fetches the

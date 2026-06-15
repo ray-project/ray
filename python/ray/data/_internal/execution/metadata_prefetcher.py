@@ -147,7 +147,14 @@ class MetadataPrefetcher:
                 if isinstance(result, BaseException):
                     failures.append((d.task.operator_name, result))
                     continue
-                _emit_deferred_entry(d, result)
+                try:
+                    _emit_deferred_entry(d, result)
+                except Exception as e:
+                    # Deserializing/emitting the fetched metadata can also fail
+                    # (e.g. ``pickle.loads`` raising on a corrupt object). Treat
+                    # it as a block-level error and route it through the same
+                    # accounting, rather than letting it escape ``drain``.
+                    failures.append((d.task.operator_name, e))
 
         if self._done_pending:
             fired = [t for t in self._done_pending if not t.has_pending_emits()]
