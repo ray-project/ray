@@ -96,12 +96,17 @@ class ObjectRefStream {
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
-  /// Advance the stream by num_items without checking whether each item has
-  /// already been written to the stream.
-  ///
-  /// This is intended for callers that have already waited on deterministic
-  /// generated ObjectIDs and need to mark those indexes as consumed.
-  /// \return KeyError if it reaches to EoF before consuming any item. Ok otherwise.
+  /**
+   * Advance the stream by num_items without checking whether each item has
+   * already been written to the stream.
+   *
+   * This is intended for callers that have already waited on deterministic
+   * generated ObjectIDs and need to mark those indexes as consumed.
+   *
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return KeyError if it reaches to EoF before consuming any item. Ok otherwise.
+   */
   Status TryReadNextItems(int64_t num_items);
 
   /// Return True if there's no more object to read. False otherwise.
@@ -109,11 +114,17 @@ class ObjectRefStream {
 
   std::pair<ObjectID, bool> PeekNextItem();
 
-  /// Read multiple upcoming indexes without consuming them.
-  ///
-  /// Returned refs start at the next unconsumed index and are deterministic.
-  /// Each bool indicates whether the corresponding index has been written to
-  /// the stream.
+  /**
+   * Read multiple upcoming indexes without consuming them.
+   *
+   * Returned refs start at the next unconsumed index and are deterministic.
+   *
+   * \param[in] num_items The number of indexes to peek at, starting from the
+   * current head of the stream.
+   * \return A list of num_items object ids for the next indexes, each paired
+   * with a bool indicating whether the corresponding index has been written to
+   * the stream.
+   */
   std::vector<std::pair<ObjectID, bool>> PeekNextItems(int64_t num_items);
 
   /// Return True if the item_index is already consumed.
@@ -146,15 +157,17 @@ class ObjectRefStream {
   /// \return True if object ID is temporarily written. False otherwise.
   bool TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id);
 
-  /// Mark that after a given item_index, the stream cannot be written
-  /// anymore.
-  ///
-  /// \param[in] item_index The item index for the end of the stream. The
-  /// caller should pass 1 past the highest index that the generator is
-  /// guaranteed to return. The EOF index will be set to the max of this index
-  /// and the next index for the caller to consume.
-  /// \param[out] The ObjectIDs that should be marked with the EOF sentinel. This
-  /// includes the EOF index itself and any already-peeked refs after EOF.
+  /**
+   * Mark that after a given item_index, the stream cannot be written anymore.
+   *
+   * \param[in] item_index The item index for the end of the stream. The
+   * caller should pass 1 past the highest index that the generator is
+   * guaranteed to return. The EOF index will be set to the max of this index
+   * and the next index for the caller to consume.
+   * \param[out] object_ids_to_eof The ObjectIDs that should be marked with the
+   * EOF sentinel. This includes the EOF index itself and any already-peeked
+   * refs after EOF.
+   */
   void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
@@ -428,11 +441,19 @@ class TaskManager : public TaskManagerInterface {
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Advance the ObjectRefStream cursor by num_items.
-  ///
-  /// Unlike TryReadObjectRefStream, this does not require each index to be
-  /// present in refs_written_to_stream_. This is intended for bulk consumers
-  /// that have already waited for the deterministic refs to become ready.
+  /**
+   * Advance the ObjectRefStream cursor by num_items.
+   *
+   * Unlike TryReadObjectRefStream, this does not require each index to be
+   * present in refs_written_to_stream_. This is intended for bulk consumers
+   * that have already waited for the deterministic refs to become ready.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
+   * OK otherwise.
+   */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items)
       ABSL_LOCKS_EXCLUDED(mu_);
 
@@ -458,15 +479,17 @@ class TaskManager : public TaskManagerInterface {
   std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Read multiple next indexes of a ObjectRefStream of generator_id without
-  /// consuming them.
-  ///
-  /// This API must be idempotent.
-  ///
-  /// \param[in] generator_id The object ref id of the streaming
-  /// generator task.
-  /// \param[in] num_items Number of next refs to peek.
-  /// \return Object references for the next indexes and whether each object is ready.
+  /**
+   * Read multiple next indexes of an ObjectRefStream of generator_id without
+   * consuming them.
+   *
+   * This API must be idempotent.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items Number of next refs to peek.
+   * \return Object references for the next indexes and whether each object is
+   * ready.
+   */
   std::vector<std::pair<ObjectID, bool>> PeekObjectRefStreamN(
       const ObjectID &generator_id, int64_t num_items) ABSL_LOCKS_EXCLUDED(mu_);
 

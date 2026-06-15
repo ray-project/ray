@@ -329,10 +329,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
-  /// Advance multiple indexes of an ObjectRefStream.
-  ///
-  /// This is intended for bulk consumers that have already waited on
-  /// deterministic ObjectRefs and only need to mark them as consumed.
+  /**
+   * Advance multiple indexes of an ObjectRefStream.
+   *
+   * This is intended for bulk consumers that have already waited on
+   * deterministic ObjectRefs and only need to mark them as consumed.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
+   * OK otherwise.
+   */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
 
   /// Return True if there's no more object to read. False otherwise.
@@ -347,8 +355,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
-  /// Read multiple next indexes of a ObjectRefStream of generator_id without
-  /// consuming them.
+  /**
+   * Read multiple next indexes of an ObjectRefStream of generator_id without
+   * consuming them.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to peek at, starting from the
+   * current head of the stream.
+   * \return A list of num_items object references for the next indexes, each
+   * paired with whether the object is already ready (i.e. its value is
+   * retrievable). None of the references should be nil.
+   */
   std::vector<std::pair<rpc::ObjectReference, bool>> PeekObjectRefStreamN(
       const ObjectID &generator_id, int64_t num_items);
 

@@ -3223,6 +3223,41 @@ def _wait_generators_bulk(
     last ref is ready, the whole batch can be returned and consumed. It then
     fetches only the refs whose corresponding ``fetch_local`` flag is true
     before returning the batch.
+
+    Args:
+        ray_generators: A list of ``(generator, fetch_local_per_ref)`` tuples.
+            ``generator`` is an ``ObjectRefGenerator`` and
+            ``fetch_local_per_ref`` is a non-empty ``list[bool]`` whose length
+            is the number of next refs to request from that generator. The
+            i-th bool indicates whether the i-th requested ref should be
+            fetched to the local node before the batch is returned. All
+            generators must be unique.
+        num_return: The maximum number of generator batches to return. Must be
+            positive and no greater than ``len(ray_generators)``. Defaults to 1.
+        timeout: The maximum number of seconds to wait before returning. If
+            ``None`` (default), waits indefinitely. Must be nonnegative.
+
+    Returns:
+        A list of at most ``num_return`` ``(generator, refs)`` tuples, one per
+        ready generator batch. ``refs`` is the full list of requested refs for
+        that generator (length equal to its ``fetch_local_per_ref``). Returns
+        an empty list if no batch became ready within the timeout.
+
+    Raises:
+        TypeError: If ``ray_generators`` or any element has the wrong type.
+        ValueError: If a ``fetch_local_per_ref`` is empty, generators are not
+            unique, ``timeout`` is negative, or ``num_return`` is out of range.
+
+    Example:
+        >>> ready = _wait_generators_bulk(  # doctest: +SKIP
+        ...     [
+        ...         (gen1, [True, False]),
+        ...         (gen2, [False, True]),
+        ...     ],
+        ...     num_return=1,
+        ...     timeout=2,
+        ... )
+        >>> assert ready == [(gen1, [ref1, ref2])]  # doctest: +SKIP
     """
     worker = global_worker
     worker.check_connected()
@@ -3283,8 +3318,6 @@ def _wait_generators_bulk(
                     "_wait_generators_bulk() fetch_local_per_ref entries must be "
                     f"bool, got {type(fetch_local)} at index {i}, ref {j}"
                 )
-
-    worker.check_connected()
 
     with profiling.profile("ray._wait_generators_bulk"):
         if len(ray_generators) == 0:

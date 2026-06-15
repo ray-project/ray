@@ -181,10 +181,15 @@ class ObjectRefGenerator:
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
     def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
-        """Return the next num_refs references from a generator.
+        """Return the next num_refs references from a generator without consuming them.
 
-        Note that the ObjectIDs generated from a generator are always
-        deterministic. This method does not consume the stream.
+        Args:
+            num_refs: The number of references to return, starting from the
+                current head of the stream. Must be positive.
+
+        Returns:
+            A list of exactly num_refs ObjectRefs corresponding to the next
+            results in the stream, starting from the current head.
         """
         if num_refs <= 0:
             raise ValueError("num_refs must be positive")
@@ -198,9 +203,15 @@ class ObjectRefGenerator:
         ]
 
     def _consume_next_ref_n(self, num_refs: int) -> None:
-        """Consume the next num_refs references from a generator.
+        """Consume (advance) the next num_refs references from a generator.
 
-        The EOF sentinel is consumable and returned to the caller as an ObjectRef.
+        If fewer than num_refs references remain before the end of the stream,
+        only the remaining references are consumed and the call returns
+        without raising.
+
+        Args:
+            num_refs: The number of references to consume, starting from the
+                current head of the stream. Must be positive.
         """
         if num_refs <= 0:
             raise ValueError("num_refs must be positive")
