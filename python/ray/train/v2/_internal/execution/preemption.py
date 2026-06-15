@@ -40,11 +40,7 @@ class PreemptionInfo:
 
 @dataclass
 class PreemptionContext:
-    """Thread-shared preemption signal for one worker actor.
-
-    Written by the actor's main thread (the ``mark_preempt`` RPC handler) and
-    read by the UDF thread; all access goes through the lock-guarded methods.
-    """
+    """Thread-shared preemption signal for one worker actor."""
 
     _preemption_info: Optional[PreemptionInfo] = None
     _lock: threading.Lock = field(default_factory=threading.Lock)

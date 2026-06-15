@@ -227,8 +227,6 @@ class RayTrainWorker:
             else None
         )
 
-        # Echo the latest preemption signal so the controller can observe it
-        # via poll (and so it acts as a dead-worker fallback in later stages).
         return WorkerStatus(
             running=running,
             error=error,
