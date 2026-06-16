@@ -415,6 +415,34 @@ class TestObstoreDownloadPath:
         assert out.column("bytes")[0].as_py() == content
         assert size_col not in out.column_names
 
+    def test_download_bytes_threaded_empty_block_consistent_schema(self):
+        # Regression: a zero-row block with a list<string> column first and a
+        # scalar string column second must not gain a partial bytes-column
+        # schema. The list column used to append an empty list<binary> while
+        # the trailing scalar column appended nothing, leaving the empty block
+        # with a different schema than blocks that have rows. An empty block
+        # now yields the input schema unchanged (bytes columns come as a set).
+        ctx = DataContext.get_current()
+        table = pa.Table.from_arrays(
+            [
+                pa.array([], type=pa.list_(pa.string())),
+                pa.array([], type=pa.string()),
+            ],
+            names=["frames", "uri"],
+        )
+
+        results = list(
+            download_bytes_threaded(
+                table, ["frames", "uri"], ["frames_bytes", "uri_bytes"], ctx
+            )
+        )
+
+        assert sum(t.num_rows for t in results) == 0
+        for t in results:
+            cols = set(t.column_names)
+            # Bytes columns appear together or not at all, never partially.
+            assert ("frames_bytes" in cols) == ("uri_bytes" in cols)
+
 
 class TestObstoreRangeSplitDownload:
     """Tests for the range-split download path (get_range_async).

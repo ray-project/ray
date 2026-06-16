@@ -208,10 +208,13 @@ def download_bytes_threaded(
             uris = column.to_pylist()
 
         if len(uris) == 0:
-            if is_list:
-                # Rows exist but hold only empty/null lists: still append the
-                # re-nested (empty/null) list<binary> column so the output schema
-                # stays consistent with blocks that did download bytes.
+            # `row_lengths` is non-empty only when the block has rows whose list
+            # cells are all empty/null: append the re-nested (empty/null)
+            # list<binary> column so the schema matches blocks that downloaded
+            # bytes. A truly empty (0-row) block appends nothing and yields the
+            # input schema, exactly like the scalar path, keeping empty and
+            # non-empty blocks schema-consistent.
+            if is_list and row_lengths:
                 output_block = output_block.append_column(
                     output_bytes_column_name,
                     renest_downloaded_bytes([], row_lengths),
