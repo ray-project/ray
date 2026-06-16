@@ -394,13 +394,23 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
+
+    @serve.deployment()
+    def f(*args):
+        return "Hi"
+
+    app_name = "app"
+    serve.run(f.bind(), name=app_name, route_prefix="/app")
+
     # Should generate 404 responses
-    broken_url = "http://127.0.0.1:8000/fake_route"
+    app_url = get_application_url("HTTP", app_name=app_name, exclude_route_prefix=True)
+    broken_url = f"{app_url}/fake_route"
     _ = httpx.get(broken_url).text
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
-    channel = grpc.insecure_channel("127.0.0.1:9000")
+    grpc_url = get_application_url("gRPC", app_name=app_name)
+    channel = grpc.insecure_channel(grpc_url)
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
@@ -746,10 +756,8 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
 
     serve.run(WebSocketServer.bind())
 
-    websocket_url = get_application_url(is_websocket=True)
-
     # Regular disconnect (1000) is not an error.
-    with connect(websocket_url) as ws:
+    with connect("ws://localhost:8000/") as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("1000")
             ws.recv()
@@ -761,7 +769,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     )
 
     # Goaway disconnect (1001) is not an error.
-    with connect(websocket_url) as ws:
+    with connect("ws://localhost:8000/") as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("1001")
             ws.recv()
@@ -773,7 +781,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     )
 
     # Other codes are errors.
-    with connect(websocket_url) as ws:
+    with connect("ws://localhost:8000/") as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("1011")
             ws.recv()
@@ -785,7 +793,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     )
 
     # Other codes are errors.
-    with connect(websocket_url) as ws:
+    with connect("ws://localhost:8000/") as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("3000")
             ws.recv()

@@ -2350,9 +2350,7 @@ class Replica:
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=not healthy,
                 status_code=str(
-                    grpc.StatusCode.OK
-                    if healthy
-                    else grpc.StatusCode.UNAVAILABLE
+                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
                 ),
             )
             return HealthzResponse(message=message).SerializeToString()
@@ -2375,9 +2373,7 @@ class Replica:
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=not healthy,
                 status_code=str(
-                    grpc.StatusCode.OK
-                    if healthy
-                    else grpc.StatusCode.UNAVAILABLE
+                    grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
                 ),
             )
             return ListApplicationsResponse(
@@ -2387,6 +2383,33 @@ class Replica:
         c = RayServegRPCContext(context)
         request_id = c.request_id() or generate_request_id()
         c.set_trailing_metadata([("request_id", request_id)])
+
+        # If the request targets a different application, return NOT_FOUND.
+        # If no application is specified, serve this replica's app.
+        requested_app = c.application()
+        if requested_app and requested_app != self._deployment_id.app_name:
+            status = ResponseStatus(
+                code=grpc.StatusCode.NOT_FOUND,
+                message=(
+                    f"Application '{requested_app}' not found. Ping "
+                    "/ray.serve.RayServeAPIService/ListApplications for available "
+                    "applications."
+                ),
+                is_error=True,
+            )
+            set_grpc_code_and_details(context, status)
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.GRPC,
+                method=service_method,
+                route="",
+                app_name="",
+                deployment_name="",
+                latency_ms=(time.time() - start_time) * 1000.0,
+                is_error=True,
+                status_code=str(grpc.StatusCode.NOT_FOUND),
+            )
+            return b""
+
         request_metadata = RequestMetadata(
             request_id=request_id,
             internal_request_id=generate_request_id(),
@@ -2606,12 +2629,25 @@ class Replica:
         # matches and downstream user code dispatches.
         route_prefix = self._route_prefix or ""
         if not route.startswith(route_prefix):
+            status_code = 404
             for msg in convert_object_to_asgi_messages(
                 f"Path '{route}' not found. "
                 "Ping http://.../-/routes for available routes.",
-                status_code=404,
+                status_code=status_code,
             ):
                 await send(msg)
+
+            latency_ms = (time.time() - start_time) * 1000.0
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.HTTP,
+                method=method,
+                route="",
+                app_name="",
+                deployment_name="",
+                latency_ms=latency_ms,
+                is_error=True,
+                status_code=str(status_code),
+            )
             return
 
         headers = dict(scope["headers"])
