@@ -8,6 +8,10 @@ import pyarrow as pa
 import pyarrow.fs as pafs
 from typing_extensions import override
 
+from ray.data._internal.planner._download_list_utils import (
+    flatten_uri_list,
+    is_uri_list_column,
+)
 from ray.data._internal.planner._obstore_download import (
     _FILE_SIZE_COLUMN_PREFIX,
     RAY_DATA_OBSTORE_RANGE_THRESHOLD,
@@ -73,10 +77,34 @@ class PartitionActor:
     def _sampled_file_sizes_for_partition_estimate(
         self, block: pa.Table, uri_column_name: str
     ) -> List[Optional[int]]:
-        uris = block.column(uri_column_name).to_pylist()
+        column = block.column(uri_column_name)
+        if is_uri_list_column(column.type):
+            return self._sampled_list_row_sizes(column)
+        uris = column.to_pylist()
         sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
         # ``_sample_sizes`` returns concrete ``int``s; widen for this API.
         return cast(List[Optional[int]], self._sample_sizes(sample_uris))
+
+    def _sampled_list_row_sizes(self, column: "pa.ChunkedArray") -> List[Optional[int]]:
+        """Per-row size estimate for a list<string> URI column.
+
+        Samples the first ``INIT_SAMPLE_BATCH_SIZE`` rows and estimates each
+        row's download size as the sum of its inner files' sizes (a null/empty
+        cell contributes 0). Returns one estimate per sampled row, so it lines
+        up with the scalar columns in ``_estimate_nrows_per_partition``.
+        """
+        sample = column.slice(0, self.INIT_SAMPLE_BATCH_SIZE)
+        flat_uris, row_lengths = flatten_uri_list(sample)
+        flat_sizes = self._sample_sizes(flat_uris)
+        row_sizes: List[Optional[int]] = []
+        pos = 0
+        for length in row_lengths:
+            if length is None:
+                row_sizes.append(0)
+                continue
+            row_sizes.append(sum(flat_sizes[pos : pos + length]))
+            pos += length
+        return row_sizes
 
     def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
         sampled_file_sizes_by_column = {}
@@ -214,8 +242,13 @@ class AsyncPartitionActor(PartitionActor):
         self._validate_uri_columns(block)
 
         if block.num_rows > 0 and RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0:
-            first_uri = block.column(self._uri_column_names[0])[0].as_py()
-            if _is_obstore_supported_url(first_uri):
+            first_column = block.column(self._uri_column_names[0])
+            # Range-split size hints assume scalar string cells; skip the probe
+            # for list URI columns (their sizes are sampled without a hidden
+            # size column).
+            if not is_uri_list_column(first_column.type) and _is_obstore_supported_url(
+                first_column[0].as_py()
+            ):
                 block = self._attach_file_sizes(block)
 
         yield from self._partition_and_yield(block)
@@ -289,8 +322,14 @@ class AsyncPartitionActor(PartitionActor):
         download path falls back to HEAD via obstore.
         """
         for uri_column_name in self._uri_column_names:
+            column = block.column(uri_column_name)
+            if is_uri_list_column(column.type):
+                # Defer the range-split size-hint optimization for list URI
+                # columns: the download path samples their sizes directly and
+                # does not expect a hidden size column.
+                continue
             size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
-            uris = block.column(uri_column_name).to_pylist()
+            uris = column.to_pylist()
             # Fetches all file sizes (not just a sample).
             sizes = self._sample_sizes(uris)
             block = block.append_column(size_col, pa.array(sizes, type=pa.int64()))

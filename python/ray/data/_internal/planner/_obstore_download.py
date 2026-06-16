@@ -9,6 +9,12 @@ if TYPE_CHECKING:
 import pyarrow as pa
 import pyarrow.fs
 
+from ray.data._internal.planner._download_list_utils import (
+    first_inner_uri,
+    flatten_uri_list,
+    is_uri_list_column,
+    renest_downloaded_bytes,
+)
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _iter_arrow_table_for_target_max_block_size,
@@ -380,17 +386,23 @@ def download_bytes_async(
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
 
-    first_uris = block.column(uri_column_names[0]).to_pylist()
-    if not first_uris:
-        yield block
-        return
+    first_column = block.column(uri_column_names[0])
+    if is_uri_list_column(first_column.type):
+        # list<string> column: peek the first inner URI for scheme detection.
+        first_uri = first_inner_uri(first_column)
+    else:
+        first_uris = first_column.to_pylist()
+        if not first_uris:
+            yield block
+            return
+        first_uri = first_uris[0]
 
     # Fall back to PyArrow for URI schemes obstore doesn't handle.
-    if not _is_obstore_supported_url(first_uris[0]):
+    if not _is_obstore_supported_url(first_uri):
         logger.debug(
             "URI scheme not supported by obstore (first URI: %s); "
             "falling back to PyArrow threaded download.",
-            first_uris[0],
+            first_uri,
         )
         yield from _yield_threaded_download_bytes(
             block,
@@ -420,7 +432,30 @@ def download_bytes_async(
     for uri_column_name, output_bytes_column_name in zip(
         uri_column_names, output_bytes_column_names
     ):
-        uris = output_block.column(uri_column_name).to_pylist()
+        column = output_block.column(uri_column_name)
+
+        if is_uri_list_column(column.type):
+            # Flatten every row's URIs into one flat list, download it through
+            # the same concurrent engine, then re-nest preserving per-row shape.
+            # List columns carry no __ray_file_size__ column (see
+            # AsyncPartitionActor), so no precomputed sizes are passed.
+            flat_uris, row_lengths = flatten_uri_list(column)
+            flat_bytes = (
+                asyncio.run(
+                    _download_uris_with_obstore(
+                        flat_uris, uri_column_name, filesystem=filesystem
+                    )
+                )
+                if flat_uris
+                else []
+            )
+            output_block = output_block.append_column(
+                output_bytes_column_name,
+                renest_downloaded_bytes(flat_bytes, row_lengths),
+            )
+            continue
+
+        uris = column.to_pylist()
 
         if not uris:
             continue
