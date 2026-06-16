@@ -16,5 +16,3 @@ typer
 meson
 pybind11
 hf_transfer
-# ray[llm] implies ray[serve], which bundles the HAProxy binary on Linux.
-ray-haproxy==2.8.20; sys_platform == 'linux'
