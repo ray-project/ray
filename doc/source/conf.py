@@ -965,6 +965,10 @@ def setup(app):
         # _collections paths so the fail_on_warning build is not blocked by fetched content.
         # TODO: fix the offending footnote-like text upstream and remove this filter.
         def filter(self, record):
+            # INFO/DEBUG records (the bulk of build output) can't be the
+            # footnote/target warnings below, so skip getMessage() for them.
+            if record.levelno < logging.WARNING:
+                return True
             msg = record.getMessage()
             if (
                 "autonumbered footnote references" in msg
