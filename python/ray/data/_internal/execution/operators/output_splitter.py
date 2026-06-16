@@ -339,6 +339,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         This method may be overridden for testing.
 
+        Args:
+            bundle: The ``RefBundle`` whose object locations to look up.
+
         Returns:
             A list of node ids where the objects in the bundle are located
         """
