@@ -27,6 +27,7 @@ from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    FooterDerivedInMemorySizeEstimator,
     ParquetInMemorySizeEstimator,
 )
 from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
@@ -106,9 +107,42 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
     assert scanner.schema == schema
 
 
-def test_get_size_estimator_returns_parquet_estimator(tmp_path):
+def test_get_size_estimator_returns_footer_derived_by_default(tmp_path):
+    # Default: row-group-aware chunker + footer-size flag on -> the footer-
+    # derived (type-aware) estimator that reads the per-chunk in_memory_size
+    # hint stamped by the chunker.
     datasource = ParquetDatasourceV2([str(tmp_path)])
-    assert isinstance(datasource.get_size_estimator(), ParquetInMemorySizeEstimator)
+    assert isinstance(
+        datasource.get_size_estimator(), FooterDerivedInMemorySizeEstimator
+    )
+
+
+def test_get_size_estimator_falls_back_when_footer_flag_off(tmp_path):
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    saved = ctx.parquet_use_footer_size_estimate
+    ctx.parquet_use_footer_size_estimate = False
+    try:
+        datasource = ParquetDatasourceV2([str(tmp_path)])
+        assert isinstance(datasource.get_size_estimator(), ParquetInMemorySizeEstimator)
+    finally:
+        ctx.parquet_use_footer_size_estimate = saved
+
+
+def test_get_size_estimator_falls_back_for_byte_estimate_chunker(tmp_path):
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    saved = ctx.parquet_chunker_row_group_aware
+    # The legacy byte-estimate chunker stamps no in_memory_size hint, so the
+    # footer-derived estimator has nothing to read -> use the constant-ratio one.
+    ctx.parquet_chunker_row_group_aware = False
+    try:
+        datasource = ParquetDatasourceV2([str(tmp_path)])
+        assert isinstance(datasource.get_size_estimator(), ParquetInMemorySizeEstimator)
+    finally:
+        ctx.parquet_chunker_row_group_aware = saved
 
 
 def test_paths_and_filesystem_resolved(tmp_path):
@@ -298,7 +332,7 @@ def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
 
     # Explicit range [25, 50) → 25 row groups, starting row offset 250.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=25, row_group_end=50
+        ParquetFileChunkMetadata, row_group_start=25, row_group_end=50, in_memory_size=0
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
     assert len(sub_fragments) == 25
@@ -323,13 +357,13 @@ def test_fragments_from_chunk_metadata_clamps_range_beyond_row_groups(tmp_path):
 
     # Fully out-of-range [5, 6) → clamped to [1, 1) → no sub-fragments.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=5, row_group_end=6
+        ParquetFileChunkMetadata, row_group_start=5, row_group_end=6, in_memory_size=0
     )
     assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
 
     # Partially out-of-range [0, 9) → clamped to [0, 1) → the one real row group.
     chunk_md = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=0, row_group_end=9
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=9, in_memory_size=0
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
     assert len(sub_fragments) == 1
@@ -468,7 +502,7 @@ def test_parquet_file_reader_handles_out_of_range_chunks(tmp_path):
 
     # Explicit range entirely beyond the file's one row group.
     out_of_range = create_chunk_metadata(
-        ParquetFileChunkMetadata, row_group_start=3, row_group_end=4
+        ParquetFileChunkMetadata, row_group_start=3, row_group_end=4, in_memory_size=0
     )
     manifest = FileManifest.construct_manifest([file_path], [file_size], [out_of_range])
 

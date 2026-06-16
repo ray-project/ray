@@ -451,6 +451,14 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
+    # Top-level column names the downstream read projects to, or ``None`` for
+    # "all columns". Populated by ``ProjectionPushdown`` from the pushed-down
+    # projection on the consuming ``ReadFiles`` so size-balanced bucketing
+    # (which runs here, during listing) can size each chunk by only the
+    # projected columns -- see ``plan_list_files_op`` and
+    # ``ParquetFileChunker.projected_columns``. Sizing-only: it does not affect
+    # which files are listed or what the read returns.
+    projected_columns: Optional[List[str]] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

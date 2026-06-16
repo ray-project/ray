@@ -36,6 +36,8 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    FooterDerivedInMemorySizeEstimator,
+    InMemorySizeEstimator,
     ParquetInMemorySizeEstimator,
 )
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
@@ -160,7 +162,17 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             file_chunker=self._file_chunker,
         )
 
-    def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
+    def get_size_estimator(self) -> InMemorySizeEstimator:
+        # When the row-group-aware chunker is in use it stamps a footer-derived,
+        # type-aware in-memory estimate on each chunk; prefer that over the flat
+        # encoding-ratio guess so partition sizing tracks per-file compression /
+        # encoding. Falls back to the constant-ratio estimator otherwise (legacy
+        # byte-estimate chunker, or the flag turned off for A/B).
+        ctx = DataContext.get_current()
+        if ctx.parquet_use_footer_size_estimate and isinstance(
+            self._file_chunker, ParquetFileChunker
+        ):
+            return FooterDerivedInMemorySizeEstimator()
         return ParquetInMemorySizeEstimator()
 
     @override

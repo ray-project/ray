@@ -91,6 +91,19 @@ DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
 # same way as ``use_datasource_v2``.
 DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE = True
 
+# When True (and the row-group-aware chunker is in use), V2 Parquet partition
+# sizing uses the footer-derived, type-aware in-memory estimate carried per
+# chunk (``FooterDerivedInMemorySizeEstimator``) instead of a single global
+# on-disk × encoding-ratio guess. This absorbs cross-file compression and
+# (for fixed-width columns) encoding variance. Runtime-toggleable for A/B.
+DEFAULT_PARQUET_USE_FOOTER_SIZE_ESTIMATE = True
+
+# Multiplier applied to a variable-width column's uncompressed page bytes when
+# estimating its Arrow in-memory size (fixed-width columns are sized exactly
+# from row count × type width, so this only affects string / binary / nested
+# columns). Conservative constant; tune up if string-heavy reads under-size.
+DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = 2.0
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -792,6 +805,16 @@ class DataContext:
     # byte-estimate chunker. Runtime toggle for A/B experiments (read at
     # ``read_parquet`` time, like ``use_datasource_v2``).
     parquet_chunker_row_group_aware: bool = DEFAULT_PARQUET_CHUNKER_ROW_GROUP_AWARE
+    # When True (with the row-group-aware chunker), size V2 Parquet partitions
+    # from the per-chunk footer-derived in-memory estimate instead of a global
+    # on-disk × encoding-ratio guess. See ``FooterDerivedInMemorySizeEstimator``.
+    parquet_use_footer_size_estimate: bool = DEFAULT_PARQUET_USE_FOOTER_SIZE_ESTIMATE
+    # Multiplier for a variable-width column's uncompressed bytes -> Arrow
+    # in-memory bytes (fixed-width columns are sized exactly). Only affects the
+    # footer-derived estimate above.
+    parquet_in_memory_var_width_factor: float = (
+        DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR
+    )
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

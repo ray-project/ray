@@ -72,6 +72,61 @@ def test_shuffle_config_factory_returns_config_when_seeded(tmp_path):
     assert config.seed == 42
 
 
+def test_projected_columns_defaults_to_none(tmp_path):
+    op = _mk_list_files(tmp_path, num_files=1)
+    assert op.projected_columns is None
+
+
+# v2c: the planner copies ``ListFiles.projected_columns`` onto the Parquet
+# chunker so its footer-derived in-memory size hint counts only the projected
+# columns. Tested via the extracted helper to avoid spinning up a cluster.
+
+
+def test_apply_projected_columns_sets_parquet_chunker():
+    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+        ParquetFileChunker,
+    )
+    from ray.data._internal.planner.plan_list_files_op import (
+        _apply_projected_columns_to_chunker,
+    )
+
+    chunker = ParquetFileChunker()
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False, file_chunker=chunker)
+    assert chunker.projected_columns is None
+
+    _apply_projected_columns_to_chunker(indexer, ["a", "c"])
+    assert chunker.projected_columns == {"a", "c"}
+
+
+def test_apply_projected_columns_noop_when_none():
+    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+        ParquetFileChunker,
+    )
+    from ray.data._internal.planner.plan_list_files_op import (
+        _apply_projected_columns_to_chunker,
+    )
+
+    chunker = ParquetFileChunker()
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False, file_chunker=chunker)
+    _apply_projected_columns_to_chunker(indexer, None)
+    assert chunker.projected_columns is None
+
+
+def test_apply_projected_columns_noop_for_non_parquet_chunker():
+    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+        WholeFileChunker,
+    )
+    from ray.data._internal.planner.plan_list_files_op import (
+        _apply_projected_columns_to_chunker,
+    )
+
+    # No ParquetFileChunker -> nothing to set; must not raise.
+    indexer = NonSamplingFileIndexer(
+        ignore_missing_paths=False, file_chunker=WholeFileChunker()
+    )
+    _apply_projected_columns_to_chunker(indexer, ["a"])  # no-op, no error
+
+
 if __name__ == "__main__":
     import sys
 
