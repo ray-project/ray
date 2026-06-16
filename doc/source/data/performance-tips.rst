@@ -243,29 +243,6 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 Reducing memory usage
 ---------------------
 
-.. _data_out_of_memory:
-
-Troubleshooting out-of-memory errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory through Ray's object store.
-Ray caps object store memory usage by spilling to disk, but excessive worker heap memory usage can cause out-of-memory situations.
-
-Ray Data attempts to bound its heap memory usage to ``num_execution_slots * max_block_size``. The number of execution slots is by default equal to the number of CPUs, unless custom resources are specified.
-The maximum block size is set by the configuration parameter :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` and is set to 128MiB by default.
-If the Dataset includes an :ref:`all-to-all shuffle operation <optimizing_shuffles>` (such as :func:`~ray.data.Dataset.random_shuffle`), then the default maximum block size is controlled by :class:`DataContext.target_shuffle_max_block_size <ray.data.context.DataContext>`, set to 1GiB by default to avoid creating too many tiny blocks.
-
-.. note::
-    It's **not** recommended to modify :class:`DataContext.target_max_block_size <ray.data.context.DataContext>`. The default is already chosen to balance between high overheads from too many tiny blocks vs. excessive heap memory usage from too-large blocks.
-
-When a task's output is larger than the maximum block size, the worker automatically splits the output into multiple smaller blocks to avoid running out of heap memory.
-However, too-large blocks are still possible, and they can lead to out-of-memory situations.
-To avoid these issues:
-
-1. Make sure no single item in your dataset is too large. Aim for rows that are <10 MB each.
-2. Call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with ``batch_size="auto"`` to let Ray Data automatically pick an appropriate batch size, or specify an explicit integer batch size small enough that the output batch fits comfortably in heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
-3. If neither of these is sufficient, manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
-
 Avoiding object spilling
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -296,7 +273,7 @@ There are two ways to do this:
 2. If you don't need control over the exact number of output blocks and just want to produce larger blocks, use :meth:`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set ``batch_size`` to the desired number of rows per block. This is executed in a streaming fashion and avoids materialization.
 
 When :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is used, Ray Data coalesces blocks so that each map task can process at least this many rows.
-Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it does not necessarily determine the task's final *output* block size; see :ref:`the section <data_out_of_memory>` on block memory usage for more information on how block size is determined.
+Note that the chosen ``batch_size`` is a lower bound on the task's input block size but it doesn't necessarily determine the task's final *output* block size.
 
 To illustrate these, the following code uses both strategies to coalesce the 10 tiny blocks with 1 row each into 1 larger block with 10 rows:
 
