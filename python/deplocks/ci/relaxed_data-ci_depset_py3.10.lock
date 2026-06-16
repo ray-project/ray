@@ -4171,6 +4171,12 @@ pyyaml==6.0.3 \
 #   responses
 #   uvicorn
 #   webdataset
+ray-haproxy==2.8.20; sys_platform == "linux" \
+    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
+    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   ray
 raydp==1.7.0b20250423.dev0 \
     --hash=sha256:97798d0447af470bb6d9338abf6356a14a030038908fca8da57d3753c4463586
 # via
