@@ -269,7 +269,7 @@ steps:
   - label: ":train: ml: release tests"
     tags:
       - ml
-      - python
+      - core_python
       - release_tests
     instance_type: large
     commands:

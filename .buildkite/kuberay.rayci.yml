@@ -8,7 +8,7 @@ steps:
 
   - label: ":kubernetes: operator"
     tags:
-      - python
+      - core_python
       - docker
     instance_type: large
     commands:
@@ -25,7 +25,7 @@ steps:
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
     key: kuberay_tests
     tags:
-      - python
+      - core_python
       - docker
       - oss
       - skip-on-premerge

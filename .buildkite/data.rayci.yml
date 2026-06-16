@@ -82,7 +82,6 @@ steps:
   - label: ":database: data: tensorflow-datasets tests"
     key: data_tensorflow_datasets_tests
     tags:
-      - python
       - data
     instance_type: medium
     commands:
@@ -108,7 +107,6 @@ steps:
 
   - label: ":database: data: arrow v23 tests"
     tags:
-      - python
       - data
     instance_type: medium
     parallelism: 8
@@ -122,7 +120,6 @@ steps:
 
   - label: ":database: data: arrow v23 tests (data_non_parallel)"
     tags:
-      - python
       - data
       - data_non_parallel
     instance_type: medium
@@ -305,7 +302,6 @@ steps:
 
   - label: ":database: data: integration tests"
     tags:
-      - python
       - data
     instance_type: medium
     commands:
@@ -319,7 +315,6 @@ steps:
 
   - label: ":database: data: dashboard tests"
     tags:
-      - python
       - data
       - dashboard
     instance_type: small
@@ -333,7 +328,6 @@ steps:
   - label: ":database: data: flaky tests"
     key: data_flaky_tests
     tags:
-      - python
       - data
       - flaky
       - skip-on-premerge
@@ -350,7 +344,6 @@ steps:
   - label: ":database: data: flaky gpu tests"
     key: data_flaky_gpu_tests
     tags:
-      - python
       - data
       - skip-on-premerge
     instance_type: gpu-large
@@ -365,7 +358,6 @@ steps:
   - label: ":database: data: postmerge authenticated tests"
     key: data_postmerge_authenticated_tests
     tags:
-      - python
       - data
       - oss
       - skip-on-premerge

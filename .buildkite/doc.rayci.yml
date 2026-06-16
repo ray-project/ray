@@ -37,7 +37,7 @@ steps:
   - label: ":book: doc: check API annotations"
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
@@ -59,7 +59,7 @@ steps:
   - label: ":book: doc: check API doc consistency"
     tags:
       - oss
-      - python
+      - core_python
       - dashboard
       - ray_client
       - data
