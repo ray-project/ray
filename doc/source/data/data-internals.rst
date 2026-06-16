@@ -306,7 +306,7 @@ Memory Management
 This section describes how Ray Data manages execution and object store memory.
 
 Ray divides each node's memory into three pools. By default, it reserves 30% for the
-object store and 10% for system overhead, and treats the rest as logical memory.
+object store and 10% for system overhead, and treats the remaining as logical memory.
 
 .. image:: ./data-memory-model-1.svg
 

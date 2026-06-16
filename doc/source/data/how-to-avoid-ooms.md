@@ -72,7 +72,7 @@ Choose the smallest batch size that achieves good performance, or use
 that doesn't degrade throughput on a variety of UDFs.
 See https://docs.google.com/document/d/1sw9CVm9cKp1b6voLc5gWIJLJM57NSGQjJ-HxvD_92jQ/edit?tab=t.0 -->
 
-If your UDF runs on CPU and isn't vectorized, use `map` instead. If it is vectorized, a
+If your UDF runs on CPU and isn't vectorized, use `map` instead. If it's vectorized, a
 good rule of thumb is a batch size of about 16 MiB. Unlike GPUs, CPUs have limited 
 ability to parallelize work, so they don't benefit from large batches the way a GPU 
 does.
@@ -123,7 +123,7 @@ To avoid this, set ``DataContext.get_current().default_map_logical_memory = True
 ### Start Ray with resource isolation
 
 
-...
+TODO(@Kunchd)
 
 
 ### Isolate reads for large files
