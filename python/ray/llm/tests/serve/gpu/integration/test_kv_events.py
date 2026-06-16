@@ -180,10 +180,18 @@ class TestKvEvents:
 
         replica_endpoints = await self._discover_replicas(deployed_handle)
 
-        # Every replica registered its KV-event endpoint with the selection
-        # service on startup, and those workers match LongPoll replica tracking.
+        # Each replica advertises its KV-events endpoint via record_routing_stats;
+        # the controller propagates it on the LongPoll replica snapshot and the
+        # actor registers the worker with the selection service. Wait for every
+        # replica to be registered (the controller polls routing stats on an
+        # interval, so this is not synchronous with replica startup).
+        async def all_replicas_registered():
+            replica_by_worker = await actor.get_kv_event_worker_replicas.remote()
+            return sorted(replica_by_worker.values()) == sorted(replica_endpoints)
+
+        await async_wait_for_condition(all_replicas_registered, timeout=90)
+
         replica_by_worker = await actor.get_kv_event_worker_replicas.remote()
-        assert sorted(replica_by_worker.values()) == sorted(replica_endpoints)
         endpoints = {
             worker_id: replica_endpoints[replica_id]
             for worker_id, replica_id in replica_by_worker.items()

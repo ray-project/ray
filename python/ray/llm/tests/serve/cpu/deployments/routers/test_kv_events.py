@@ -18,7 +18,14 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     configure_kv_events_for_kv_routing,
     derive_kv_event_block_size,
+    kv_event_routing_stats,
     resolve_kv_event_source_endpoint,
+)
+from ray.serve._private.common import (
+    DeploymentID,
+    DeploymentTargetInfo,
+    ReplicaID,
+    RunningReplicaInfo,
 )
 from ray.serve.llm.request_router import KVAwareRouter
 
@@ -79,11 +86,33 @@ class TestConfigureKvEvents:
         assert endpoint == f"tcp://{node_ip}:5557"
         assert "127.0.0.1" not in endpoint and "*" not in endpoint
 
+    def test_routing_stats_advertise_endpoint(self, ray_instance):
+        """The replica advertises its node-routable endpoint plus the engine
+        facts the selection service needs to schedule it -- via record_routing_stats."""
+        llm_config = make_kv_aware_llm_config()
+        configure_kv_events_for_kv_routing(llm_config)
+
+        stats = kv_event_routing_stats(llm_config, max_num_batched_tokens=4096)
+        node_ip = ray.util.get_node_ip_address()
+        assert stats == {
+            "kv_events": {
+                "endpoint": f"tcp://{node_ip}:5557",
+                "max_num_batched_tokens": 4096,
+                "dp_rank": 0,
+            }
+        }
+
+    def test_routing_stats_empty_without_kv_events(self):
+        """Nothing to advertise when KV-cache events are not enabled."""
+        llm_config = make_kv_aware_llm_config()
+        assert kv_event_routing_stats(llm_config, max_num_batched_tokens=4096) == {}
+
 
 @ray.remote(num_cpus=0)
 class LocalKVRouterActor(KVRouterActor.__ray_actor_class__):
     """The real KVRouterActor with Serve LongPoll tracking disabled (there is no
-    Serve controller in these unit tests)."""
+    Serve controller in these unit tests); tests drive _on_deployment_targets
+    directly with synthetic replica snapshots."""
 
     def _start_replica_tracking(self) -> None:
         pass
@@ -133,6 +162,40 @@ class ReplicaStandIn:
         self._pub.shutdown()
 
 
+def running_replica(unique_id: str, endpoint: str, dp_rank: int = 0):
+    """A RunningReplicaInfo whose routing_stats advertise a KV-events endpoint,
+    exactly as a real replica's record_routing_stats would surface it."""
+    return RunningReplicaInfo(
+        replica_id=ReplicaID(
+            unique_id=unique_id,
+            deployment_id=DeploymentID(name="llm", app_name="app"),
+        ),
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone=None,
+        actor_name=f"actor-{unique_id}",
+        max_ongoing_requests=10,
+        routing_stats={
+            "kv_events": {
+                "endpoint": endpoint,
+                "max_num_batched_tokens": MAX_NUM_BATCHED_TOKENS,
+                "dp_rank": dp_rank,
+            }
+        },
+    )
+
+
+def targets(*replicas):
+    return DeploymentTargetInfo(is_available=True, running_replicas=list(replicas))
+
+
+async def wait_registered(actor, worker_ids):
+    await async_wait_for_condition(
+        lambda: ray.get(actor.get_registered_worker_ids.remote()) == sorted(worker_ids),
+        timeout=15,
+    )
+
+
 async def wait_for_overlap(actor, token_ids, predicate, publish=None, timeout=30):
     """Poll the actor's overlap view until ``predicate`` holds.
 
@@ -154,23 +217,25 @@ async def wait_for_overlap(actor, token_ids, predicate, publish=None, timeout=30
 
 
 class TestSelectionServiceEventFlow:
-    """End-to-end over the connect-out event plane: a replica's vLLM ZMQ PUB ->
+    """End-to-end over the connect-out event plane: a replica advertises its
+    vLLM ZMQ PUB endpoint on the LongPoll snapshot -> the actor registers it ->
     the selection service's connect-out listener -> its KV indexer, with no
     broker and no in-replica Dynamo bridge."""
 
     @pytest.mark.asyncio
     async def test_register_then_ingest_events(self, ray_instance):
-        """Registering a worker makes the selection service dial its endpoint and
-        index the KV events it publishes."""
+        """A replica appearing on the snapshot with a KV-events endpoint makes the
+        selection service dial it and index the KV events it publishes."""
         actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
         replica = ReplicaStandIn.remote(23901)
         try:
             worker_id = get_worker_id("replica-A")
             endpoint = await replica.endpoint.remote()
-            await actor.register_kv_event_worker.remote(
-                worker_id, "replica-A", BLOCK_SIZE, endpoint, MAX_NUM_BATCHED_TOKENS, 0
+            # The LongPoll snapshot now carries this replica's KV-events endpoint.
+            await actor._on_deployment_targets.remote(
+                targets(running_replica("replica-A", endpoint))
             )
-            assert await actor.get_registered_worker_ids.remote() == [worker_id]
+            await wait_registered(actor, [worker_id])
 
             # Two full blocks of prompt; once ingested both overlap the query.
             token_ids = list(range(2 * BLOCK_SIZE))
@@ -204,15 +269,15 @@ class TestSelectionServiceEventFlow:
             "replica-B": get_worker_id("replica-B"),
         }
         try:
-            for name, standin in (("replica-A", a), ("replica-B", b)):
-                await actor.register_kv_event_worker.remote(
-                    workers[name],
-                    name,
-                    BLOCK_SIZE,
-                    await standin.endpoint.remote(),
-                    MAX_NUM_BATCHED_TOKENS,
-                    0,
+            # Both replicas advertise their endpoints in a single snapshot.
+            await actor._on_deployment_targets.remote(
+                targets(
+                    running_replica("replica-A", await a.endpoint.remote()),
+                    running_replica("replica-B", await b.endpoint.remote()),
                 )
+            )
+            await wait_registered(actor, list(workers.values()))
+
             tokens_a = list(range(BLOCK_SIZE))
             tokens_b = list(range(BLOCK_SIZE, 2 * BLOCK_SIZE))
 
@@ -238,15 +303,16 @@ class TestSelectionServiceEventFlow:
                 ray.kill(handle, no_restart=True)
 
     @pytest.mark.asyncio
-    async def test_delete_worker_evicts(self, ray_instance):
-        """Removing a worker tears down its listener and drops it from the catalog."""
+    async def test_departed_replica_is_evicted(self, ray_instance):
+        """A replica dropping off the snapshot tears down its listener and drops
+        it from the selection service catalog."""
         actor = LocalKVRouterActor.remote(block_size=BLOCK_SIZE)
         replica = ReplicaStandIn.remote(23904)
         worker_id = get_worker_id("replica-A")
         try:
             endpoint = await replica.endpoint.remote()
-            await actor.register_kv_event_worker.remote(
-                worker_id, "replica-A", BLOCK_SIZE, endpoint, MAX_NUM_BATCHED_TOKENS, 0
+            await actor._on_deployment_targets.remote(
+                targets(running_replica("replica-A", endpoint))
             )
             token_ids = list(range(2 * BLOCK_SIZE))
             await wait_for_overlap(
@@ -256,11 +322,10 @@ class TestSelectionServiceEventFlow:
                 publish=lambda: replica.publish_stored.remote([401, 402], token_ids),
             )
 
-            await actor.remove_worker.remote(worker_id)
-            await async_wait_for_condition(
-                lambda: ray.get(actor.get_registered_worker_ids.remote()) == [],
-                timeout=15,
-            )
+            # The replica departs: an empty snapshot evicts its worker.
+            await actor._on_deployment_targets.remote(targets())
+            await wait_registered(actor, [])
+            assert await actor.get_candidate_worker_ids.remote() == []
         finally:
             await replica.close.remote()
             for a in (replica, actor):

@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import ray
 from ray import serve
@@ -43,14 +43,17 @@ class KVRouterActor:
     endpoint (no broker and no in-replica Dynamo bridge), and exposes replica
     membership tracking and KV-overlap queries.
 
-    Each replica binds its engine's KV-event PUB and registers its endpoint via
-    :meth:`register_kv_event_worker`; the selection service then dials it.
+    Each replica advertises its engine's KV-events endpoint via
+    ``record_routing_stats``; the controller propagates it on the ``LongPoll``
+    replica snapshot, and the actor reconciles the selection service against that
+    snapshot in :meth:`_on_deployment_targets` -- registering newly-advertised
+    workers (the service then dials them) and evicting departed ones.
     """
 
     def __init__(self, block_size: int):
         self._block_size = block_size
         self._replica_id_by_worker: Dict[int, str] = {}
-        self._dyn_worker_id_to_replica_id: Dict[int, str] = {}
+        self._pending_tasks: Set[asyncio.Task] = set()
         self._long_poll_client: Optional[LongPollClient] = None
         self._create_selection_service()
         self._start_replica_tracking()
@@ -82,30 +85,55 @@ class KVRouterActor:
             client_id=f"{type(self).__name__}:{deployment_id}",
         )
 
-    def _on_deployment_targets(self, target_info: DeploymentTargetInfo) -> None:
-        """LongPoll listener: drop selection-service workers for departed replicas.
+    def _schedule(self, coro) -> None:
+        """Run a coroutine on the actor's event loop, holding a reference until
+        it completes.
 
-        Diffs the snapshot against the tracked workers. Additions are recorded
-        for membership only; the replica registers its own KV-event endpoint via
-        :meth:`register_kv_event_worker` once its engine is serving. Removals
-        evict the worker (and its KV blocks) from the selection service.
+        The LongPoll listener that drives registration/eviction is synchronous
+        while the selection service's worker mutations are async; keeping the
+        task referenced prevents it from being garbage-collected mid-flight.
         """
-        new = {
-            get_worker_id(r.replica_id.unique_id): r.replica_id.to_full_id_str()
-            for r in target_info.running_replicas
-        }
-        current = set(self._replica_id_by_worker)
-        added = new.keys() - current
-        removed = current - new.keys()
+        task = asyncio.ensure_future(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
 
-        for worker_id in removed:
+    def _on_deployment_targets(self, target_info: DeploymentTargetInfo) -> None:
+        """LongPoll listener: reconcile selection-service workers against the
+        running-replica snapshot.
+
+        Each replica advertises its KV-events endpoint via
+        ``record_routing_stats`` (carried in ``RunningReplicaInfo.routing_stats``
+        and rebroadcast when it changes). Replicas newly carrying that endpoint
+        are registered with the selection service (which then dials them);
+        departed replicas are evicted along with their KV blocks. A replica that
+        is running but has not advertised its endpoint yet is skipped until a
+        later snapshot carries it.
+        """
+        members = set()
+        advertised: Dict[int, tuple] = {}
+        for r in target_info.running_replicas:
+            worker_id = get_worker_id(r.replica_id.unique_id)
+            members.add(worker_id)
+            kv_events = r.routing_stats.get("kv_events")
+            if kv_events is not None:
+                advertised[worker_id] = (r.replica_id.to_full_id_str(), kv_events)
+
+        registered = set(self._replica_id_by_worker)
+
+        for worker_id in registered - members:
             self.remove_worker(worker_id)
             self._replica_id_by_worker.pop(worker_id, None)
-            self._dyn_worker_id_to_replica_id.pop(worker_id, None)
 
-        for worker_id in added:
-            self._replica_id_by_worker[worker_id] = new[worker_id]
+        for worker_id in advertised.keys() - registered:
+            replica_id, kv_events = advertised[worker_id]
+            # Mark registered synchronously so a re-poll (or back-to-back
+            # snapshot) before the async upsert finishes cannot register the
+            # same worker -- and re-spawn its listener -- twice.
+            self._replica_id_by_worker[worker_id] = replica_id
+            self._schedule(self._upsert_worker(worker_id, replica_id, kv_events))
 
+        added = advertised.keys() - registered
+        removed = registered - members
         if added or removed:
             logger.info(
                 "KV selection membership updated: +%d -%d, tracking %d worker(s).",
@@ -115,70 +143,59 @@ class KVRouterActor:
             )
 
     def remove_worker(self, worker_id: int) -> None:
-        """Evict a departed replica's worker from the selection service.
+        """Evict a departed replica's worker (and its KV blocks) from the
+        selection service.
 
         Scheduled on the actor's event loop rather than awaited: the LongPoll
         listener that calls this is synchronous, while ``delete_worker`` is async.
         """
-        asyncio.ensure_future(self._svc.delete_worker(worker_id))
+        self._schedule(self._svc.delete_worker(worker_id))
 
-    async def register_kv_event_worker(
-        self,
-        worker_id: int,
-        replica_id: str,
-        kv_block_size: int,
-        kv_events_endpoint: str,
-        max_num_batched_tokens: int,
-        dp_rank: int = 0,
+    async def _upsert_worker(
+        self, worker_id: int, replica_id: str, kv_events: Dict[str, Any]
     ) -> None:
         """Register a replica's KV-event endpoint with the selection service.
 
-        Called by each replica once its engine's KV-event PUB is bound. The
-        selection service spawns a connect-out ZMQ listener to
-        ``kv_events_endpoint`` and indexes the replica's live KV events.
-
-        ``endpoint`` and ``max_num_batched_tokens`` make the worker schedulable
-        (required for overlap/scoring queries); Ray owns request dispatch, so the
-        endpoint is an opaque Ray-internal handle the selection service never
-        dials for inference.
+        The selection service spawns a connect-out ZMQ listener to the
+        replica's ``endpoint`` and indexes its live KV events. ``endpoint`` and
+        ``max_num_batched_tokens`` make the worker schedulable (required for
+        overlap/scoring queries); Ray owns request dispatch, so the worker's
+        ``endpoint`` is an opaque Ray-internal handle the service never dials for
+        inference.
         """
-        if kv_block_size != self._block_size:
-            raise ValueError(
-                f"KV event worker {worker_id} (replica {replica_id}) resolved "
-                f"block size {kv_block_size}, but the selection service indexes "
-                f"at the build-time block size {self._block_size}; its events "
-                "would never match overlap queries."
-            )
-        self._dyn_worker_id_to_replica_id[worker_id] = replica_id
+        dp_rank = kv_events["dp_rank"]
         await self._svc.upsert_worker(
             {
                 "worker_id": worker_id,
                 "model_name": _MODEL_NAME,
                 "tenant_id": _TENANT_ID,
                 "endpoint": f"ray://{replica_id}",
-                "block_size": kv_block_size,
-                "max_num_batched_tokens": max_num_batched_tokens,
+                "block_size": self._block_size,
+                "max_num_batched_tokens": kv_events["max_num_batched_tokens"],
                 "data_parallel_start_rank": dp_rank,
                 "data_parallel_size": 1,
                 # In-process depythonize maps HashMap<u32, String> from int keys.
-                "kv_events_endpoints": {dp_rank: kv_events_endpoint},
+                "kv_events_endpoints": {dp_rank: kv_events["endpoint"]},
             }
         )
         logger.info(
-            "Registered KV event worker %d for replica %s at %s (%d registered).",
+            "Registered KV event worker %d for replica %s at %s.",
             worker_id,
             replica_id,
-            kv_events_endpoint,
-            len(self._dyn_worker_id_to_replica_id),
+            kv_events["endpoint"],
         )
 
     def get_candidate_worker_ids(self) -> List[int]:
-        """Return the currently tracked worker ids, sorted ascending."""
+        """The workers currently registered with the selection service, sorted.
+
+        A worker appears once its replica has advertised its KV-events endpoint
+        and the actor has registered it (connect-out indexing has begun).
+        """
         return sorted(self._replica_id_by_worker)
 
     def get_kv_event_worker_replicas(self) -> Dict[int, str]:
         """The registered Dynamo worker id -> replica full id mapping."""
-        return dict(self._dyn_worker_id_to_replica_id)
+        return dict(self._replica_id_by_worker)
 
     def get_registered_worker_ids(self) -> List[int]:
         """Worker ids the selection service can currently schedule, sorted.

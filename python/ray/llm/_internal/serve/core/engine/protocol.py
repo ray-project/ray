@@ -38,6 +38,12 @@ class LLMEngine(abc.ABC):
         """Start the engine"""
         pass
 
+    def routing_stats(self) -> dict:
+        """Replica routing stats surfaced to Serve's request router via
+        ``record_routing_stats`` (e.g. the KV-events endpoint for KV-aware
+        routing). Empty unless the engine advertises something."""
+        return {}
+
     @abc.abstractmethod
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Mounts the LoRA model on the engine, given the local disk path."""

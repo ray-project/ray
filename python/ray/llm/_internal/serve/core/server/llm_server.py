@@ -548,6 +548,17 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        """Serve request-router hook, polled by the controller.
+
+        Surfaces this replica's routing stats (the engine's KV-events endpoint
+        for KV-aware routing); the deployment's ``KVRouterActor`` reads them off
+        the ``LongPoll`` replica snapshot to register the worker.
+        """
+        if self.engine is None:
+            return {}
+        return self.engine.routing_stats()
+
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 

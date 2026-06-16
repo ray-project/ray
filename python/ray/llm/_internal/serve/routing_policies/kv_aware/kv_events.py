@@ -83,6 +83,31 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     return _engine_event_connect_endpoint(llm_config, kv_events_config)
 
 
+def kv_event_routing_stats(
+    llm_config: LLMConfig, max_num_batched_tokens: int
+) -> Dict[str, Any]:
+    """This replica's routing-stats payload advertising its KV-events endpoint.
+
+    Surfaced to Serve via ``record_routing_stats`` and propagated to the
+    deployment's ``KVRouterActor`` through ``LongPoll``: the actor's selection
+    service connects out to ``endpoint`` and indexes the replica's KV events.
+    ``max_num_batched_tokens`` and ``dp_rank`` are the engine-resolved facts the
+    selection service needs to treat the replica as a schedulable worker.
+
+    Empty when KV-cache events are not enabled (nothing to advertise).
+    """
+    endpoint = resolve_kv_event_source_endpoint(llm_config)
+    if endpoint is None:
+        return {}
+    return {
+        "kv_events": {
+            "endpoint": endpoint,
+            "max_num_batched_tokens": max_num_batched_tokens,
+            "dp_rank": llm_config.engine_kwargs.get("data_parallel_rank") or 0,
+        }
+    }
+
+
 def _engine_event_connect_endpoint(
     llm_config: LLMConfig, kv_events_config: Dict[str, Any]
 ) -> str:

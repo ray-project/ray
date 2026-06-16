@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Dict,
     List,
     Literal,
     Optional,
@@ -50,11 +51,9 @@ from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_registration import (
-    maybe_register_kv_event_worker,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     assign_replica_kv_events_endpoint,
+    kv_event_routing_stats,
 )
 from ray.llm._internal.serve.utils.node_initialization_utils import initialize_node
 from ray.util.placement_group import PlacementGroup
@@ -259,6 +258,9 @@ class VLLMEngine(LLMEngine):
         self.llm_config.setup_engine_backend()
 
         self._running = False
+        # Routing stats advertised to Serve's request router; populated in
+        # start() once the engine's KV-events endpoint is bound.
+        self._routing_stats: Dict[str, Any] = {}
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -368,15 +370,22 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
-        await maybe_register_kv_event_worker(
+        self._routing_stats = kv_event_routing_stats(
             self.llm_config,
-            vllm_engine_config.cache_config.block_size,
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
 
         self._running = True
 
         logger.info("Started vLLM engine.")
+
+    def routing_stats(self) -> Dict[str, Any]:
+        """This replica's KV-events advertisement for KV-aware routing.
+
+        Polled by Serve's controller and propagated to the deployment's
+        ``KVRouterActor`` via ``LongPoll``; empty unless KV-cache events are on.
+        """
+        return self._routing_stats
 
     def _validate_openai_serving_models(self):
         assert self._oai_models is not None, "oai_models is not initialized"
