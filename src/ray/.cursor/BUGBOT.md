@@ -64,7 +64,7 @@ Unit tests must not
 
 ## Rule: C++ time access must use ClockInterface
 - Apply to changed C++ files under `src/ray/`.
-- If the diff adds any call to get the current time that doesn't go through a `ClockInterface`, post the message below. Examples include:
+- If the diff adds or modifies any call to get the current time that doesn't go through a `ClockInterface`, post the message below. Examples include:
   - `absl::Now()`, `absl::GetCurrentTimeNanos()`
   - `std::chrono::system_clock::now()`, `std::chrono::steady_clock::now()`, `std::chrono::high_resolution_clock::now()`
   - a new `get_time_ms`/`get_time`-style time callback used in place of a clock
