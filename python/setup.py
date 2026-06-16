@@ -280,8 +280,6 @@ if setup_spec.type == SetupType.RAY:
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
             "mmh3",
-            # HAProxy binary for the experimental Serve HAProxy ingress.
-            # Only manylinux wheels are published so gate on Linux.
             "ray-haproxy==2.8.20; sys_platform == 'linux'",
         ],
         "tune": [
