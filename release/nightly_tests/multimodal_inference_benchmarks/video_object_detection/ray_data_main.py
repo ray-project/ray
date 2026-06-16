@@ -97,6 +97,10 @@ def run_pipeline():
         ExtractImageFeatures,
         batch_size=BATCH_SIZE,
         num_gpus=1.0,
+        # Ray Data can't prevent OOMs if you don't set `memory` for high-memory UDFs
+        # like this one. We chose this value because it was the max USS we observed in
+        # previous nightly test runs.
+        memory=3_529_273_344,  # ~3.5 GB
     )
     ds = ds.flat_map(explode_features)
     ds = ds.map(crop_image)
