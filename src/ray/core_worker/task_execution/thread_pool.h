@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -30,7 +31,7 @@ namespace core {
 
 /// Thread pool implementation that provides backpressure by blocking until there is
 /// a thread available.
-class BoundedExecutor {
+class BoundedExecutor : public Postable {
  public:
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
                                   bool has_other_concurrency_groups) {
@@ -54,7 +55,7 @@ class BoundedExecutor {
 
   /// Posts work to the pool. This is a non-blocking call. In addition, the execution
   /// order of the tasks is not guaranteed if there are multiple threads in the pool.
-  void Post(std::function<void()> fn);
+  void Post(std::function<void()> fn) override;
 
   /// Stop the thread pool.
   void Stop();

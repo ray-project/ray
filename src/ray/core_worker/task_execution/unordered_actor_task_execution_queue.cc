@@ -27,7 +27,7 @@ namespace core {
 
 UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     instrumented_io_context &io_service,
-    instrumented_io_context &task_execution_service,
+    std::shared_ptr<Postable> default_postable,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
@@ -36,7 +36,7 @@ UnorderedActorTaskExecutionQueue::UnorderedActorTaskExecutionQueue(
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
     : io_service_(io_service),
-      task_execution_service_(task_execution_service),
+      default_postable_(std::move(default_postable)),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
@@ -148,30 +148,17 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
 
-  // Package the "post user task body off io_service_" decision into a
-  // PostExecuteFn that captures the correct target (fiber / pool /
-  // task_execution_service_).
-  PostExecuteFn post_execute;
+  // Pick where to run the user task body: fiber, concurrency-group pool,
+  // or the default postable.
+  std::shared_ptr<Postable> post_execute;
   if (is_asyncio_) {
-    auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                                   request.FunctionDescriptor());
-    post_execute = [fiber = std::move(fiber)](std::function<void()> task) mutable {
-      fiber->EnqueueFiber(std::move(task));
-    };
+    post_execute = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                                     request.FunctionDescriptor());
   } else {
     RAY_CHECK(pool_manager_ != nullptr);
     auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                            request.FunctionDescriptor());
-    if (pool == nullptr) {
-      post_execute = [this](std::function<void()> task) {
-        task_execution_service_.post(std::move(task),
-                                     "UnorderedActorTaskExecutionQueue.Execute");
-      };
-    } else {
-      post_execute = [pool = std::move(pool)](std::function<void()> task) mutable {
-        pool->Post(std::move(task));
-      };
-    }
+    post_execute = pool ? std::shared_ptr<Postable>(std::move(pool)) : default_postable_;
   }
   AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(post_execute));
 }
@@ -217,7 +204,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
 }
 
 void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute request, PostExecuteFn post_execute) {
+    TaskID task_id, TaskToExecute request, std::shared_ptr<Postable> post_execute) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -260,7 +247,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     request.Execute();
     post_task_cleanup();
   };
-  post_execute(std::move(execute_handler));
+  post_execute->Post(std::move(execute_handler));
 }
 
 }  // namespace core

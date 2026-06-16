@@ -24,13 +24,13 @@ namespace core {
 
 OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &io_service,
-    instrumented_io_context &task_execution_service,
+    std::shared_ptr<Postable> default_postable,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds)
     : io_service_(io_service),
-      task_execution_service_(task_execution_service),
+      default_postable_(std::move(default_postable)),
       reorder_wait_seconds_(reorder_wait_seconds),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
@@ -292,16 +292,20 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
+  std::shared_ptr<Postable> post_execute = default_postable_;
+  if (pool) {
+    post_execute = std::move(pool);
+  }
   // This runs on io_service_ for two reasons:
   // 1. all operations except for task execution happen on io_service_
   // 2. This serializes the is_canceled check with CancelTaskIfFound (also on
   // io_service_), eliminating the race where a cancel arriving mid-Execute would report
   // success but the task would still run.
-  AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(pool));
+  AcceptRequestOrRejectIfCanceled(task_id, std::move(request), std::move(post_execute));
 }
 
 void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute request, std::shared_ptr<BoundedExecutor> pool) {
+    TaskID task_id, TaskToExecute request, std::shared_ptr<Postable> post_execute) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -325,12 +329,7 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     absl::MutexLock lock(&mu_);
     pending_task_id_to_is_canceled.erase(task_id);
   };
-  if (pool == nullptr) {
-    task_execution_service_.post(std::move(execute_handler),
-                                 "OrderedActorTaskExecutionQueue.Execute");
-  } else {
-    pool->Post(std::move(execute_handler));
-  }
+  post_execute->Post(std::move(execute_handler));
 }
 
 }  // namespace core

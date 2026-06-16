@@ -34,6 +34,7 @@ ray_cc_library(
     hdrs = ["fiber.h"],
     visibility = [":__subpackages__"],
     deps = [
+        ":common",
         "//src/ray/util:logging",
         "@boost//:fiber",
     ],
@@ -45,6 +46,7 @@ ray_cc_library(
     hdrs = ["thread_pool.h"],
     visibility = [":__subpackages__"],
     deps = [
+        ":common",
         "//src/ray/util:logging",
         "@boost//:asio",
         "@boost//:thread",
@@ -69,6 +71,7 @@ ray_cc_library(
     hdrs = ["common.h"],
     visibility = [":__subpackages__"],
     deps = [
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
