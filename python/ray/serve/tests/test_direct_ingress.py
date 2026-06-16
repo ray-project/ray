@@ -407,10 +407,6 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: duplicate HTTP tests for gRPC")
-
-
 def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
     pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
 
