@@ -43,7 +43,7 @@ steps:
       python:
         - "3.14"
       cuda:
-        - "13.0.0-cudnn"
+        - "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -187,7 +187,7 @@ steps:
     env_file: rayci.env
     array:
       gpu:
-        - "cu13.0.0-cudnn"
+        - "cu12.8.1-cudnn"
       python:
         - "3.14"
     env:
@@ -217,7 +217,7 @@ steps:
       - ray-llm-anyscale-cuda-build($)
     array:
       gpu:
-        - cu13.0.0-cudnn
+        - cu12.8.1-cudnn
       python:
         - "3.14"
 
