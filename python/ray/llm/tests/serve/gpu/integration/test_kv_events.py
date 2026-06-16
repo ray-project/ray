@@ -18,10 +18,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     configure_kv_events_for_kv_routing,
 )
-from ray.serve._private.constants import (
-    SERVE_DEPLOYMENT_ACTOR_PREFIX,
-    SERVE_NAMESPACE,
-)
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
@@ -99,19 +96,9 @@ def tokenize_prompt(endpoint, messages=MESSAGES):
     return response.json()["tokens"]
 
 
-def prompt_block_hashes(token_ids):
-    """Dynamo's content hashes for the full blocks of a token sequence."""
-    return compute_block_hash_for_seq(list(token_ids), BLOCK_SIZE)
-
-
-def stored_tokens_hashes(indexer_events, worker_id):
-    """Dynamo per-block token hashes stored for a worker in the indexer dump."""
-    return {
-        block["tokens_hash"]
-        for entry in indexer_events
-        if entry["worker_id"] == worker_id
-        for block in entry["event"]["data"]["stored"]["blocks"]
-    }
+def num_prompt_blocks(token_ids):
+    """Number of full KV blocks in a token sequence (Dynamo's hashing)."""
+    return len(compute_block_hash_for_seq(list(token_ids), BLOCK_SIZE))
 
 
 class TestKvEvents:
@@ -182,7 +169,10 @@ class TestKvEvents:
 
     @pytest.mark.asyncio
     @pytest.mark.timeout(600)
-    async def test_kv_events_reach_router_actor(self, deployed_handle):
+    async def test_kv_events_reach_selection_service(self, deployed_handle):
+        """Each replica's real engine KV events reach the selection service via
+        its connect-out listener, and a per-worker prefix-cache reset is observed
+        as reduced overlap -- all with no broker and no in-replica bridge."""
         actor = discover_deployment_actor(
             APP_NAME, deployed_handle.deployment_name, KV_ROUTER_ACTOR_NAME
         )
@@ -190,7 +180,8 @@ class TestKvEvents:
 
         replica_endpoints = await self._discover_replicas(deployed_handle)
 
-        # Every replica registered its Dynamo worker identity on startup.
+        # Every replica registered its KV-event endpoint with the selection
+        # service on startup, and those workers match LongPoll replica tracking.
         replica_by_worker = await actor.get_kv_event_worker_replicas.remote()
         assert sorted(replica_by_worker.values()) == sorted(replica_endpoints)
         endpoints = {
@@ -198,8 +189,8 @@ class TestKvEvents:
             for worker_id, replica_id in replica_by_worker.items()
         }
         worker_ids = sorted(endpoints)
-        # The Ray-supplied worker ids agree with LongPoll replica tracking.
         assert await actor.get_candidate_worker_ids.remote() == worker_ids
+        assert await actor.get_registered_worker_ids.remote() == worker_ids
 
         # The same prompt on each replica caches the same content.
         usages = {}
@@ -207,61 +198,35 @@ class TestKvEvents:
             usages[worker_id] = post_chat(endpoints[worker_id])["usage"]
 
         prompt_token_ids = tokenize_prompt(endpoints[worker_ids[0]])
-        expected_hashes = prompt_block_hashes(prompt_token_ids)
-        num_prompt_blocks = len(expected_hashes)
-        assert num_prompt_blocks >= 2
+        prompt_blocks = num_prompt_blocks(prompt_token_ids)
+        assert prompt_blocks >= 2
 
-        # The engines' events reached the indexer: full prompt overlap
+        # The engines' KV events reached the indexer: full prompt overlap is
         # scored on both workers.
         async def both_workers_fully_overlap():
             overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
-            return {
-                worker_id: blocks
-                for worker_id, blocks in overlaps.items()
-                if blocks == num_prompt_blocks
-            }.keys() == set(worker_ids)
+            return all(overlaps.get(w) == prompt_blocks for w in worker_ids)
 
-        await async_wait_for_condition(both_workers_fully_overlap, timeout=30)
-        events = await actor.get_kv_indexer_events.remote()
-        assert sorted({e["worker_id"] for e in events}) == worker_ids
+        await async_wait_for_condition(both_workers_fully_overlap, timeout=60)
 
-        # Each worker's chain holds the prompt's exact hashes plus decode
-        # blocks. The block filling on the last step may not commit, and
-        # decode events trail the response, so wait for total - 1.
-        total_blocks = (len(prompt_token_ids) + MAX_TOKENS) // BLOCK_SIZE
-
-        async def all_blocks_indexed():
-            events = await actor.get_kv_indexer_events.remote()
-            return all(
-                len(stored_tokens_hashes(events, worker_id)) >= total_blocks - 1
-                for worker_id in worker_ids
-            )
-
-        await async_wait_for_condition(all_blocks_indexed, timeout=30)
-        events = await actor.get_kv_indexer_events.remote()
         for worker_id in worker_ids:
             usage = usages[worker_id]
             assert usage["prompt_tokens"] == len(prompt_token_ids)
             assert usage["completion_tokens"] == MAX_TOKENS
 
-            hashes = stored_tokens_hashes(events, worker_id)
-            assert set(expected_hashes) <= hashes
-            assert len(hashes) in (total_blocks, total_blocks - 1)
-
-        # /reset_prefix_cache clears only this worker's view; the engine
-        # drains queued KV events on scheduler steps, so a small follow-up
-        # request flushes the AllBlocksCleared event.
+        # /reset_prefix_cache clears only this worker's view; the engine drains
+        # queued KV events on scheduler steps, so a small follow-up request
+        # flushes the AllBlocksCleared event to the listener.
         reset_worker, untouched_worker = worker_ids
         host, port = endpoints[reset_worker]
         response = requests.post(f"http://{host}:{port}/reset_prefix_cache", timeout=60)
         assert response.status_code == 200, response.text
-        flush_messages = FLUSH_MESSAGES
-        post_chat(endpoints[reset_worker], messages=flush_messages, max_tokens=2)
+        post_chat(endpoints[reset_worker], messages=FLUSH_MESSAGES, max_tokens=2)
 
-        # The reset worker's overlap falls back to the chat-template prefix
-        # the two prompts share.
-        flush_token_ids = tokenize_prompt(endpoints[reset_worker], flush_messages)
-        shared_prefix = next(
+        # The reset worker's overlap falls back to the chat-template prefix the
+        # two prompts share; the untouched worker keeps the full prompt.
+        flush_token_ids = tokenize_prompt(endpoints[reset_worker], FLUSH_MESSAGES)
+        diverge = next(
             (
                 i
                 for i, (a, b) in enumerate(zip(prompt_token_ids, flush_token_ids))
@@ -269,16 +234,15 @@ class TestKvEvents:
             ),
             min(len(prompt_token_ids), len(flush_token_ids)),
         )
-        shared_blocks = shared_prefix // BLOCK_SIZE
+        shared_blocks = diverge // BLOCK_SIZE
 
         async def reset_worker_cleared():
             overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
-            # A fully-cleared worker has no overlap, so it is absent from the dict.
             return overlaps.get(reset_worker, 0) == shared_blocks
 
-        await async_wait_for_condition(reset_worker_cleared, timeout=30)
+        await async_wait_for_condition(reset_worker_cleared, timeout=60)
         overlaps = await actor.get_kv_overlap_blocks.remote(prompt_token_ids)
-        assert overlaps.get(untouched_worker) == num_prompt_blocks
+        assert overlaps.get(untouched_worker) == prompt_blocks
 
 
 if __name__ == "__main__":

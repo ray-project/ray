@@ -11,9 +11,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
-from ray.llm._internal.serve.core.configs.llm_config import (
-    LLMConfig,
-)
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
@@ -23,11 +21,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     KVAwareRouter,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
-    derive_kv_event_block_size,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_events import (
     configure_kv_events_for_kv_routing,
+    derive_kv_event_block_size,
 )
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.deployment import Application

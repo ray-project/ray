@@ -1,21 +1,10 @@
 import asyncio
 import hashlib
-import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_broker import (
-    KvEventBroker,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_event_plane import (
-    configure_kv_event_broker_env,
-    configure_kv_event_plane_env,
-    create_kv_event_plane_runtime,
-    kv_event_namespace,
-    kv_events_endpoint_path,
-)
 from ray.serve._private.common import DeploymentTargetInfo
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -27,6 +16,12 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 KV_ROUTER_ACTOR_NAME = "serve_llm_kv_router"
+
+# The selection service keys all worker, indexer, and load state by
+# (model_name, tenant_id). A deployment-scoped actor serves exactly one model,
+# so a single fixed key scopes all of its workers together.
+_MODEL_NAME = "default"
+_TENANT_ID = "default"
 
 
 def get_worker_id(replica_unique_id: str) -> int:
@@ -40,57 +35,35 @@ def get_worker_id(replica_unique_id: str) -> int:
 
 @ray.remote
 class KVRouterActor:
-    """Deployment-scoped Ray actor hosting the KV-aware router.
+    """Deployment-scoped Ray actor owning the Dynamo selection service.
 
-    KVRouterActor, independent of any replica's lifetime, is attached to the LLMServer
-    deployment via Serve's DeploymentActorConfig.
+    Rather than running Dynamo's HTTP ``select_service``, the actor consumes the
+    runtime-free ``SelectionService`` as an in-process Python object. It indexes
+    each replica's KV events by connecting **out** to the replica's engine ZMQ
+    endpoint (no broker and no in-replica Dynamo bridge), and exposes replica
+    membership tracking and KV-overlap queries.
 
-    - Owns Dynamo ``KvRouter``, whose ``KvEventConsumer`` consumes the replicas' KV events
-      from the event plane into the global KV indexer.
-    - Hosts the ZMQ event broker the replicas' publishers connect to.
-    - Exposes the KV-aware routing interfaces for (1) replica membership tracking and
-      (2) KV-aware replica selection.
-
-    TODO (jeffreywang): The radix tree that backs them lands in a follow-up PR.
+    Each replica binds its engine's KV-event PUB and registers its endpoint via
+    :meth:`register_kv_event_worker`; the selection service then dials it.
     """
 
     def __init__(self, block_size: int):
         self._block_size = block_size
         self._replica_id_by_worker: Dict[int, str] = {}
-        self._long_poll_client: Optional[LongPollClient] = None
         self._dyn_worker_id_to_replica_id: Dict[int, str] = {}
-
-        namespace = self._kv_event_plane_namespace()
-        configure_kv_event_plane_env(namespace)
-        # The deployment's event plane runs through this actor's broker. Its URL is
-        # handed to each replica's publisher.
-        self._kv_event_broker = KvEventBroker()
-        configure_kv_event_broker_env(self._kv_event_broker.broker_url)
-        self._create_kv_router(namespace, block_size)
+        self._long_poll_client: Optional[LongPollClient] = None
+        self._create_selection_service()
         self._start_replica_tracking()
 
-    def _create_kv_router(self, namespace: str, block_size: int) -> None:
-        """Create the Dynamo ``KvRouter`` consuming this deployment's KV events."""
+    def _create_selection_service(self) -> None:
+        """Create the in-process Dynamo selection service for this deployment."""
         # Imported here, not at module scope: Ray pickles this actor class by
         # value, and Dynamo's pyo3 classes cannot be pickled as its globals.
-        from dynamo.llm import KvRouter, KvRouterConfig
+        from dynamo.llm import SelectionService
 
-        self._kv_router_runtime = create_kv_event_plane_runtime(
-            asyncio.get_running_loop()
-        )
-        endpoint = self._kv_router_runtime.endpoint(kv_events_endpoint_path(namespace))
-        self._kv_router = KvRouter(
-            endpoint=endpoint,
-            block_size=block_size,
-            kv_router_config=KvRouterConfig(
-                use_kv_events=True,
-                durable_kv_events=False,  # Events arrive over the event plane (ZMQ)
-            ),
-        )
+        self._svc = SelectionService(indexer_threads=4)
         logger.info(
-            "Dynamo KvRouter created for namespace %s (block size %d).",
-            namespace,
-            block_size,
+            "Dynamo SelectionService created (block size %d).", self._block_size
         )
 
     def _start_replica_tracking(self) -> None:
@@ -110,10 +83,12 @@ class KVRouterActor:
         )
 
     def _on_deployment_targets(self, target_info: DeploymentTargetInfo) -> None:
-        """LongPoll listener: sync the worker mapping to the running replicas.
+        """LongPoll listener: drop selection-service workers for departed replicas.
 
-        Diffs the snapshot against the current mapping and updates the reverse
-        worker->replica map.
+        Diffs the snapshot against the tracked workers. Additions are recorded
+        for membership only; the replica registers its own KV-event endpoint via
+        :meth:`register_kv_event_worker` once its engine is serving. Removals
+        evict the worker (and its KV blocks) from the selection service.
         """
         new = {
             get_worker_id(r.replica_id.unique_id): r.replica_id.to_full_id_str()
@@ -129,144 +104,104 @@ class KVRouterActor:
             self._dyn_worker_id_to_replica_id.pop(worker_id, None)
 
         for worker_id in added:
-            # Membership tracking only: the replica calls add_worker itself via
-            # register_kv_event_worker when its publisher starts.
             self._replica_id_by_worker[worker_id] = new[worker_id]
 
         if added or removed:
             logger.info(
-                "KV router replica membership updated: +%d -%d, tracking %d worker(s).",
+                "KV selection membership updated: +%d -%d, tracking %d worker(s).",
                 len(added),
                 len(removed),
                 len(self._replica_id_by_worker),
             )
 
-    def get_candidate_worker_ids(self) -> List[int]:
-        """(Test only) Return the currently tracked worker ids, sorted ascending."""
-        return sorted(self._replica_id_by_worker)
-
     def remove_worker(self, worker_id: int) -> None:
-        """Evict a removed replica's worker from the KvRouter's indexer.
+        """Evict a departed replica's worker from the selection service.
 
         Scheduled on the actor's event loop rather than awaited: the LongPoll
-        listener that calls this is synchronous, while ``KvRouter.remove_worker``
-        is async.
+        listener that calls this is synchronous, while ``delete_worker`` is async.
         """
-        asyncio.ensure_future(self._kv_router.remove_worker(worker_id))
+        asyncio.ensure_future(self._svc.delete_worker(worker_id))
 
     async def register_kv_event_worker(
-        self, worker_id: int, replica_id: str, kv_block_size: int
-    ) -> str:
-        """Register a replica's KV-event identity before it publishes.
+        self,
+        worker_id: int,
+        replica_id: str,
+        kv_block_size: int,
+        kv_events_endpoint: str,
+        max_num_batched_tokens: int,
+        dp_rank: int = 0,
+    ) -> None:
+        """Register a replica's KV-event endpoint with the selection service.
 
-        TODO (jeffreywang): understand more about the registration flow.
+        Called by each replica once its engine's KV-event PUB is bound. The
+        selection service spawns a connect-out ZMQ listener to
+        ``kv_events_endpoint`` and indexes the replica's live KV events.
+
+        ``endpoint`` and ``max_num_batched_tokens`` make the worker schedulable
+        (required for overlap/scoring queries); Ray owns request dispatch, so the
+        endpoint is an opaque Ray-internal handle the selection service never
+        dials for inference.
         """
         if kv_block_size != self._block_size:
             raise ValueError(
                 f"KV event worker {worker_id} (replica {replica_id}) resolved "
-                f"block size {kv_block_size}, but the KvRouter indexes at the "
-                f"build-time block size {self._block_size}; its events would "
-                "never match overlap queries."
+                f"block size {kv_block_size}, but the selection service indexes "
+                f"at the build-time block size {self._block_size}; its events "
+                "would never match overlap queries."
             )
         self._dyn_worker_id_to_replica_id[worker_id] = replica_id
-        # Add to the router before returning: the publisher only starts emitting
-        # events after this RPC resolves, so the worker is always known to the
-        # router before its first event arrives.
-        await self._kv_router.add_worker(worker_id)
+        await self._svc.upsert_worker(
+            {
+                "worker_id": worker_id,
+                "model_name": _MODEL_NAME,
+                "tenant_id": _TENANT_ID,
+                "endpoint": f"ray://{replica_id}",
+                "block_size": kv_block_size,
+                "max_num_batched_tokens": max_num_batched_tokens,
+                "data_parallel_start_rank": dp_rank,
+                "data_parallel_size": 1,
+                # In-process depythonize maps HashMap<u32, String> from int keys.
+                "kv_events_endpoints": {dp_rank: kv_events_endpoint},
+            }
+        )
         logger.info(
-            "Registered KV event worker %d for replica %s (%d registered).",
+            "Registered KV event worker %d for replica %s at %s (%d registered).",
             worker_id,
             replica_id,
+            kv_events_endpoint,
             len(self._dyn_worker_id_to_replica_id),
         )
-        return self._kv_event_broker.broker_url
 
-    def _kv_event_plane_namespace(self) -> str:
-        """The Dynamo namespace scoping this deployment's KV events."""
-        return kv_event_namespace(serve.get_deployment_actor_context().deployment_id)
+    def get_candidate_worker_ids(self) -> List[int]:
+        """Return the currently tracked worker ids, sorted ascending."""
+        return sorted(self._replica_id_by_worker)
 
     def get_kv_event_worker_replicas(self) -> Dict[int, str]:
-        """(Test only) The registered Dynamo worker id -> replica full id mapping."""
+        """The registered Dynamo worker id -> replica full id mapping."""
         return dict(self._dyn_worker_id_to_replica_id)
 
-    async def get_kv_indexer_events(self) -> List[Dict[str, Any]]:
-        """(Test only) The KV events applied to the router's global indexer."""
-        return json.loads(await self._kv_router.dump_events())
+    def get_registered_worker_ids(self) -> List[int]:
+        """Worker ids the selection service can currently schedule, sorted.
+
+        ``delete_worker`` leaves a tombstone record in the catalog marked
+        unschedulable, so filter to schedulable workers (registered + serving).
+        """
+        workers = self._svc.list_workers(_MODEL_NAME, _TENANT_ID)
+        return sorted(
+            w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
+        )
 
     async def get_kv_overlap_blocks(self, token_ids: List[int]) -> Dict[int, int]:
-        """(Test only) Per-worker device-tier KV overlap blocks for a token sequence.
+        """Per-worker device-tier KV overlap blocks for a token sequence.
 
-        The global indexer's view of how many leading blocks of ``token_ids``
-        each worker has cached: the overlap input to KV-aware scoring.
+        The selection service's view of how many leading blocks of ``token_ids``
+        each worker has cached: the overlap signal that drives KV-aware scoring.
         """
-        scores = await self._kv_router.get_overlap_scores(token_ids)
-        return {
-            worker["worker_id"]: worker["device_blocks"] for worker in scores["workers"]
-        }
-
-    async def select_worker(
-        self,
-        request_id: str,
-        token_ids: List[int],
-        allowed_worker_ids: List[int],
-    ) -> Dict[str, Any]:
-        """Score the allowed workers for a request based on KV-cache overlap and
-        load and pick the best one.
-
-        Args:
-            request_id: Unique identifier for the request being routed.
-            token_ids: Prompt token ids used to compute KV-cache overlap.
-            allowed_worker_ids: Candidate worker ids the router may select from.
-
-        Returns:
-            A dict describing the selected worker:
-            ``worker_id`` (int): the chosen worker.
-            ``dp_rank`` (int): data-parallel rank within the worker.
-            ``overlap_blocks`` (int): KV blocks already cached on that worker.
-            ``score`` (float): the worker's routing score (higher is better).
-        """
-        raise NotImplementedError("KVRouterActor.select_worker is not implemented")
-
-    async def on_request_added(
-        self,
-        request_id: str,
-        expected_output_tokens: Optional[int] = None,
-    ) -> None:
-        """Commit a routed request to the worker chosen by ``select_worker``.
-
-        Args:
-            request_id: Unique identifier for the request.
-            expected_output_tokens: Predicted number of output tokens.
-        """
-        raise NotImplementedError("KVRouterActor.on_request_added is not implemented")
-
-    async def on_prefill_complete(self, request_id: str) -> None:
-        """Record a request's transition from prefill to decode.
-
-        Args:
-            request_id: Unique identifier for the request.
-        """
-        raise NotImplementedError(
-            "KVRouterActor.on_prefill_complete is not implemented"
+        scores = await self._svc.overlap_scores(
+            {
+                "model_name": _MODEL_NAME,
+                "tenant_id": _TENANT_ID,
+                "token_ids": list(token_ids),
+            }
         )
-
-    async def on_decode_progress(
-        self, request_id: str, cumulative_output_tokens: int
-    ) -> None:
-        """Adds any newly crossed decode blocks to the request's accounted load.
-
-        Args:
-            request_id: Unique identifier for the request.
-            cumulative_output_tokens: Total output tokens generated so far.
-        """
-        raise NotImplementedError("KVRouterActor.on_decode_progress is not implemented")
-
-    async def on_request_completed(self, request_id: str) -> None:
-        """Release the KV-cache accounting for a finished request.
-
-        Args:
-            request_id: Unique identifier for the request.
-        """
-        raise NotImplementedError(
-            "KVRouterActor.on_request_completed is not implemented"
-        )
+        return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
