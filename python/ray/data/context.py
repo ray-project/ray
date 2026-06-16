@@ -284,6 +284,10 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
 
+DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED = env_bool(
+    "RAY_DATA_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED", False
+)
+
 DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
     "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
 )
@@ -673,6 +677,11 @@ class DataContext:
             workers that are later reused by downstream operators. Enabling this flag
             can reduce OOMs but also cause performance regressions. Defaults to
             ``False``.
+        default_map_logical_memory_enabled: If ``True``, the system sets logical
+            ``memory`` for map tasks and actors even if you haven't specified a value;
+            otherwise, the system launches map tasks and actors with no logical
+            ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
+            for some APIs but not others. Defaults to ``False``.
     """
 
     # `None` means the block size is infinite.
@@ -852,6 +861,10 @@ class DataContext:
 
     custom_execution_callback_classes: List[Type["ExecutionCallback"]] = field(
         default_factory=list
+    )
+
+    default_map_logical_memory_enabled: bool = (
+        DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
 
     def __post_init__(self):
