@@ -3356,7 +3356,7 @@ def _wait_generators_bulk(
 
         ready_last_refs, _ = wait(
             last_refs,
-            num_returns=len(last_refs),
+            num_returns=num_return,
             timeout=timeout_remaining(),
             fetch_local=last_refs_fetch_local,
         )
