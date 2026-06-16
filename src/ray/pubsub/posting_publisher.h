@@ -81,9 +81,6 @@ class PostingPublisher : public PublisherInterface {
   std::string DebugString() const override { return inner_->DebugString(); }
 
  private:
-  /// Per channel event-stats names (e.g.
-  /// "Publisher.Publish.WORKER_OBJECT_LOCATIONS_CHANNEL"), built once so the
-  /// hot path does not allocate. Leaked intentionally; lives for the process.
   static absl::flat_hash_map<int, std::string> BuildEventNames(absl::string_view prefix) {
     absl::flat_hash_map<int, std::string> names;
     for (int i = rpc::ChannelType_MIN; i <= rpc::ChannelType_MAX; ++i) {

@@ -380,7 +380,12 @@ class ReportHead(SubprocessModule):
         attempt_number = req.query.get("attempt_number")
         node_id_hex = req.query.get("node_id")
 
-        duration_s = int(req.query.get("duration", 5))
+        try:
+            duration_s = int(req.query.get("duration", 5))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(
+                text="duration query parameter must be an integer"
+            )
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
         format = req.query.get("format", "flamegraph")
@@ -504,7 +509,10 @@ class ReportHead(SubprocessModule):
         logger.info(
             f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, subprocesses={subprocesses}"
         )
-        pid = int(pid)
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(
                 pid=pid, native=native, subprocesses=subprocesses
@@ -572,8 +580,16 @@ class ReportHead(SubprocessModule):
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
-        pid = int(pid)
-        duration_s = int(req.query.get("duration", 5))
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
+        try:
+            duration_s = int(req.query.get("duration", 5))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(
+                text="duration query parameter must be an integer"
+            )
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
         format = req.query.get("format", "flamegraph")
@@ -667,17 +683,23 @@ class ReportHead(SubprocessModule):
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         # Profile for num_iterations training steps (calls to optimizer.step())
-        num_iterations = int(req.query.get("num_iterations", 4))
+        try:
+            num_iterations = int(req.query.get("num_iterations", 4))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="num_iterations must be an integer")
 
         logger.info(
             f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
             f"Profiling for {num_iterations} training steps."
         )
 
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
+
         reply = await reporter_stub.GpuProfiling(
-            reporter_pb2.GpuProfilingRequest(
-                pid=int(pid), num_iterations=num_iterations
-            )
+            reporter_pb2.GpuProfilingRequest(pid=pid, num_iterations=num_iterations)
         )
 
         if not reply.success:
@@ -697,6 +719,111 @@ class ReportHead(SubprocessModule):
         )
         redirect_url = f"/api/v0/logs/file?{query}"
         raise aiohttp.web.HTTPFound(redirect_url)
+
+    @routes.get("/worker/jax_profile")
+    async def jax_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the JAX profile trace for a specific worker.
+
+        Params:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                port: Optional. The port where JAX profiler server is listening.
+                      If not provided, it will be automatically discovered from GCS.
+                ip or node_id: Required. The IP address or hex ID of the node.
+                duration: Optional. Duration in seconds for profiling (default: 5).
+
+        Returns:
+            JSON response with the path where trace files are saved.
+        """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
+
+        pid = req.query.get("pid")
+        port = req.query.get("port")
+        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
+
+        if not pid:
+            raise ValueError("pid is required")
+        if not node_id_hex and not ip:
+            raise ValueError("ip or node_id is required")
+
+        if node_id_hex:
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
+            )
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at node_id {node_id_hex}"
+                )
+        else:
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at IP {ip}"
+                )
+
+        node_id, ip, http_port, grpc_port = addrs
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
+
+        try:
+            duration_s = int(req.query.get("duration", 5))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(
+                text="duration query parameter must be an integer"
+            )
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
+
+        if not port:
+            port_bytes = await self.gcs_client.async_internal_kv_get(
+                f"jax_profiler_port:{node_id.hex()}:{pid}".encode(),
+                namespace=KV_NAMESPACE_DASHBOARD,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            if port_bytes:
+                try:
+                    port = int(port_bytes.decode())
+                except (UnicodeDecodeError, ValueError):
+                    raise aiohttp.web.HTTPInternalServerError(
+                        text=(
+                            f"Discovered JAX profiler port for worker {pid} on node"
+                            f"{node_id.hex()} is corrupt: {port_bytes!r}"
+                        )
+                    )
+            else:
+                raise aiohttp.web.HTTPBadRequest(
+                    text=(
+                        f"port is required because JAX profiler port could not be "
+                        f"automatically discovered for worker {pid} on node {node_id.hex()}"
+                    )
+                )
+        else:
+            try:
+                port = int(port)
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(text="port must be an integer")
+
+        logger.info(
+            f"Sending JAX profiling request to {build_address(ip, grpc_port)}, pid {pid}, port {port}"
+        )
+
+        reply = await reporter_stub.JaxProfiling(
+            reporter_pb2.JaxProfilingRequest(pid=pid, port=port, duration=duration_s)
+        )
+
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+        logger.info("Returning profiling response, location {}".format(reply.output))
+
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="JAX profiling finished.",
+            trace_directory=reply.output,
+        )
 
     @routes.get("/memory_profile")
     async def memory_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -740,14 +867,14 @@ class ReportHead(SubprocessModule):
         # Either is_task or not, we need to get ip and grpc_port.
         if is_task:
             if "attempt_number" not in req.query:
-                return aiohttp.web.HTTPInternalServerError(
+                raise aiohttp.web.HTTPBadRequest(
                     text=(
                         "Failed to execute task profiling: "
                         "task's attempt number is required"
                     )
                 )
             if "node_id" not in req.query:
-                return aiohttp.web.HTTPInternalServerError(
+                raise aiohttp.web.HTTPBadRequest(
                     text=(
                         "Failed to execute task profiling: "
                         "task's node id is required"
@@ -772,7 +899,12 @@ class ReportHead(SubprocessModule):
                 )
             _, ip, _, grpc_port = addrs
         else:
-            pid = int(req.query["pid"])
+            if "pid" not in req.query:
+                raise aiohttp.web.HTTPBadRequest(text="pid is required")
+            try:
+                pid = int(req.query["pid"])
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
             ip = req.query.get("ip")
             node_id_hex = req.query.get("node_id")
 
@@ -799,7 +931,12 @@ class ReportHead(SubprocessModule):
         assert pid is not None
         ip_port = build_address(ip, grpc_port)
 
-        duration_s = int(req.query.get("duration", 10))
+        try:
+            duration_s = int(req.query.get("duration", 10))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(
+                text="duration query parameter must be an integer"
+            )
 
         # Default not using `--native`, `--leaks` and `--format` for profiling
         format = req.query.get("format", "flamegraph")
