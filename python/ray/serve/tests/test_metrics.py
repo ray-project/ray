@@ -117,7 +117,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
-    grpc_url = "localhost:9000"
+    grpc_url = get_application_url("gRPC", app_name=app_name)
     channel = grpc.insecure_channel(grpc_url)
     wait_for_condition(
         ping_grpc_list_applications, channel=channel, app_names=[app_name]
@@ -235,7 +235,7 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
     httpx.get("http://127.0.0.1:8000/B/")
 
     # Ping gPRC proxy
-    channel = grpc.insecure_channel("localhost:9000")
+    channel = grpc.insecure_channel("127.0.0.1:9000")
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
     # Ensure all expected metrics are present.
@@ -334,9 +334,11 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     app_name = "app"
     serve.run(A.bind(), name=app_name)
 
-    httpx.get("http://localhost:8000", timeout=None)
-    httpx.get("http://localhost:8000", timeout=None)
-    channel = grpc.insecure_channel("localhost:9000")
+    http_url = get_application_url("HTTP", app_name=app_name)
+    _ = httpx.get(http_url, timeout=None)
+    _ = httpx.get(http_url, timeout=None)
+    grpc_url = get_application_url("gRPC", app_name=app_name)
+    channel = grpc.insecure_channel(grpc_url)
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
 
@@ -462,7 +464,8 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote(clear=True))
 
     # make grpc call
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name="status_code_timeout")
+    channel = grpc.insecure_channel(grpc_url)
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name="status_code_timeout")
 
@@ -535,7 +538,8 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     )
 
     # make grpc call
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name="disconnect")
+    channel = grpc.insecure_channel(grpc_url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", "disconnect"),)
@@ -586,7 +590,8 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     print("Sent requests to correct URL.")
 
     # Ping gPRC proxy for broken app
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = get_application_url("gRPC", app_name=real_app_name)
+    channel = grpc.insecure_channel(grpc_url)
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
@@ -741,8 +746,10 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
 
     serve.run(WebSocketServer.bind())
 
+    websocket_url = get_application_url(is_websocket=True)
+
     # Regular disconnect (1000) is not an error.
-    with connect("ws://localhost:8000/") as ws:
+    with connect(websocket_url) as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("1000")
             ws.recv()
@@ -754,7 +761,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     )
 
     # Goaway disconnect (1001) is not an error.
-    with connect("ws://localhost:8000/") as ws:
+    with connect(websocket_url) as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("1001")
             ws.recv()
@@ -766,7 +773,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     )
 
     # Other codes are errors.
-    with connect("ws://localhost:8000/") as ws:
+    with connect(websocket_url) as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("1011")
             ws.recv()
@@ -778,7 +785,7 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     )
 
     # Other codes are errors.
-    with connect("ws://localhost:8000/") as ws:
+    with connect(websocket_url) as ws:
         with pytest.raises(ConnectionClosed):
             ws.send("3000")
             ws.recv()
@@ -1177,7 +1184,7 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     serve.run(APIServer.bind(), name="api_app", route_prefix="/api")
 
     # Make requests to different route patterns with various parameter values
-    base_url = "http://localhost:8000/api"
+    base_url = get_application_url("HTTP", app_name="api_app")
     assert httpx.get(f"{base_url}/").status_code == 200
     assert httpx.get(f"{base_url}/users/123").status_code == 200
     assert httpx.get(f"{base_url}/users/456").status_code == 200
@@ -1537,10 +1544,12 @@ def test_max_processing_latency_metric(metrics_start_shutdown):
 
     stop_sending = threading.Event()
 
+    http_url = get_application_url("HTTP", app_name=app_name)
+
     def _send_requests_forever(route: str):
         while not stop_sending.is_set():
             try:
-                httpx.get(f"http://localhost:8000/api{route}", timeout=5)
+                httpx.get(f"{http_url}{route}", timeout=5)
             except Exception:
                 pass
 

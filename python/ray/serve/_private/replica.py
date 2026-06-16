@@ -353,7 +353,6 @@ class ReplicaMetricsManager:
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
         max_ongoing_requests: int,
-        grpc_enabled: bool,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -381,10 +380,6 @@ class ReplicaMetricsManager:
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
-
-        self._ingress_protocols = [RequestProtocol.HTTP]
-        if grpc_enabled:
-            self._ingress_protocols.append(RequestProtocol.GRPC)
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -495,17 +490,13 @@ class ReplicaMetricsManager:
             # logic as those collected by the proxy (see RequestIngressMetrics). When
             # direct ingress is enabled traffic bypasses the proxy, so a given
             # request is recorded by exactly one of the two.
-            node_id = ray.get_runtime_context().get_node_id()
-            node_ip_address = ray.util.get_node_ip_address()
+            self._ingress_node_id = ray.get_runtime_context().get_node_id()
+            self._ingress_node_ip_address = ray.util.get_node_ip_address()
 
-            for protocol in self._ingress_protocols:
-                self._ingress_metrics[protocol] = RequestIngressMetrics(
-                    protocol,
-                    source="ingress",
-                    node_id=node_id,
-                    node_ip_address=node_ip_address,
-                )
-                self._ingress_ongoing_requests[protocol] = 0
+            # gRPC ingress metrics are allocated lazily via
+            # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
+            # the controller, which is not available at construction time.
+            self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
@@ -525,6 +516,29 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _add_ingress_metrics(self, protocol: RequestProtocol):
+        """Allocate metric objects and ongoing-request counter for a protocol."""
+        self._ingress_metrics[protocol] = RequestIngressMetrics(
+            protocol,
+            source="ingress",
+            node_id=self._ingress_node_id,
+            node_ip_address=self._ingress_node_ip_address,
+        )
+        self._ingress_ongoing_requests[protocol] = 0
+
+    def enable_grpc_ingress_metrics(self):
+        """Allocate gRPC ingress metrics for a direct-ingress replica.
+
+        gRPC config is fetched from the controller after this manager is
+        constructed, so gRPC ingress metrics are allocated here (from the replica's
+        server-start path) rather than in `__init__`.
+        """
+        if not self._is_direct_ingress:
+            return
+
+        if RequestProtocol.GRPC not in self._ingress_metrics:
+            self._add_ingress_metrics(RequestProtocol.GRPC)
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -549,23 +563,27 @@ class ReplicaMetricsManager:
         if not self._is_direct_ingress:
             return
 
-        for protocol in self._ingress_protocols:
-            metrics = self._ingress_metrics[protocol]
-            metrics.set_num_ongoing_requests(self._ingress_ongoing_requests[protocol])
+        for protocol in self._ingress_metrics:
+            protocol_metrics = self._ingress_metrics[protocol]
+            protocol_metrics.set_num_ongoing_requests(
+                self._ingress_ongoing_requests[protocol]
+            )
             for request_tags, count in self._cached_ingress_request_counter[
                 protocol
             ].items():
-                metrics.request_counter.inc(count, tags=dict(request_tags))
+                protocol_metrics.request_counter.inc(count, tags=dict(request_tags))
 
             for request_tags, count in self._cached_ingress_request_error_counter[
                 protocol
             ].items():
-                metrics.request_error_counter.inc(count, tags=dict(request_tags))
+                protocol_metrics.request_error_counter.inc(
+                    count, tags=dict(request_tags)
+                )
 
             for request_tags, count in self._cached_deployment_request_error_counter[
                 protocol
             ].items():
-                metrics.deployment_request_error_counter.inc(
+                protocol_metrics.deployment_request_error_counter.inc(
                     count, tags=dict(request_tags)
                 )
 
@@ -573,7 +591,7 @@ class ReplicaMetricsManager:
                 protocol
             ].items():
                 for latency_ms in latencies:
-                    metrics.processing_latency_tracker.observe(
+                    protocol_metrics.processing_latency_tracker.observe(
                         latency_ms, tags=dict(latency_tags)
                     )
 
@@ -695,7 +713,11 @@ class ReplicaMetricsManager:
 
         protocol = request_metadata.protocol
 
-        if self._is_direct_ingress and request_metadata.is_direct_ingress:
+        if (
+            self._is_direct_ingress
+            and request_metadata.is_direct_ingress
+            and protocol in self._ingress_metrics
+        ):
             self._ingress_ongoing_requests[protocol] += delta
 
         if not self._cached_metrics_enabled:
@@ -704,7 +726,7 @@ class ReplicaMetricsManager:
             if (
                 self._is_direct_ingress
                 and request_metadata.is_direct_ingress
-                and protocol in self._ingress_protocols
+                and protocol in self._ingress_metrics
             ):
                 self._ingress_metrics[protocol].set_num_ongoing_requests(
                     self._ingress_ongoing_requests[protocol]
@@ -2073,6 +2095,7 @@ class Replica:
         # Allocate and start gRPC server for ingress replicas if enabled.
         # Ingress request router replicas only need HTTP for /internal/route.
         if grpc_enabled:
+            self._metrics_manager.enable_grpc_ingress_metrics()
 
             async def start_grpc_server_fn(port):
                 options = gRPCOptions(
@@ -2326,7 +2349,11 @@ class Replica:
                 deployment_name=self._deployment_id.name,
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=not healthy,
-                status_code=grpc.StatusCode.OK.name if healthy else grpc.StatusCode.UNAVAILABLE.name,
+                status_code=str(
+                    grpc.StatusCode.OK
+                    if healthy
+                    else grpc.StatusCode.UNAVAILABLE
+                ),
             )
             return HealthzResponse(message=message).SerializeToString()
 
@@ -2347,7 +2374,11 @@ class Replica:
                 deployment_name=self._deployment_id.name,
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=not healthy,
-                status_code=grpc.StatusCode.OK.name if healthy else grpc.StatusCode.UNAVAILABLE.name,
+                status_code=str(
+                    grpc.StatusCode.OK
+                    if healthy
+                    else grpc.StatusCode.UNAVAILABLE
+                ),
             )
             return ListApplicationsResponse(
                 application_names=application_names
@@ -2431,7 +2462,7 @@ class Replica:
                 finally:
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
-                    status_code_callback(status.code.name)
+                    status_code_callback(str(status.code))
                     set_grpc_code_and_details(context, status)
 
                 return result.SerializeToString()
