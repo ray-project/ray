@@ -39,14 +39,29 @@ Usage:
         --file-size 1GiB --num-files 100 \\
         --row-group-size 64MiB --compression-ratio 1 --codec none \\
         --output s3://anyscale-data-benchmarks/read_path/parquet/m/large
+
+Mixed mode (--mode mixed)
+-------------------------
+Generates a HETEROGENEOUS dataset from just --num-files and --file-size: the
+codec is sampled per file, and each row group's on-disk size + compression
+ratio are sampled from discrete buckets (--mixed-rg-sizes / --mixed-codecs /
+--mixed-compression-ratios), so files differ from one another AND row groups
+vary within a file. This stresses the V2 row-group-aware chunker (size
+variance) and the footer-derived in-memory size estimator (compression
+variance). Reads are unchanged (--use-version v1/v2/v3).
+
+    python parquet_dataset_gen.py --mode mixed \\
+        --file-size 256MiB --num-files 40 \\
+        --output ./out/mixed --use-version v3
 """
 import argparse
 import io
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -311,6 +326,22 @@ def _build_file_body(table: pa.Table, codec: str, row_groups: int) -> bytes:
     return buf.getvalue()
 
 
+def _build_file_body_mixed(tables: List[pa.Table], codec: str) -> bytes:
+    """Concatenate a HETEROGENEOUS sequence of calibrated row-group tables into a
+    single parquet file -- one row group per table, each with its own on-disk
+    size and compression ratio. All tables share the single ``{"data": binary}``
+    schema, so mixing per-row payload sizes within one file is valid. The codec
+    is fixed per file because Parquet sets compression at writer construction."""
+    buf = io.BytesIO()
+    writer = pq.ParquetWriter(
+        buf, tables[0].schema, compression=codec, use_dictionary=False
+    )
+    for t in tables:
+        writer.write_table(t, row_group_size=t.num_rows)
+    writer.close()
+    return buf.getvalue()
+
+
 # --- driver ---------------------------------------------------------------
 _PUT_PARALLELISM = int(os.environ.get("DATASET_GEN_PARALLELISM", "32"))
 
@@ -319,14 +350,20 @@ DEFAULT_READ_MEMORY_BYTES = 4 * 1024**3  # 4 GiB
 
 
 def _read_back(
-    path: str, total_disk_bytes: Optional[int], memory: int, use_version: str
+    path: str,
+    total_disk_bytes: Optional[int],
+    memory: int,
+    use_version: str,
+    footer_size_estimate: str = "default",
+    var_width_factor: Optional[float] = None,
 ) -> None:
     """Post-generation read benchmark. Reads the just-written parquet with Ray
     Data and drains it through internal ref bundles -- the iter_bundles consume
     mode: blocks are materialised by the read tasks but never shipped to the
     driver, so this measures read+decode throughput rather than transfer. Read
-    config is fixed except for `memory` (logical bytes passed to read_parquet):
-    format=parquet, iter_bundles."""
+    config is fixed except for `memory` (logical bytes passed to read_parquet)
+    and the orthogonal v2a/v2b sizing knobs (`footer_size_estimate`,
+    `var_width_factor`): format=parquet, iter_bundles."""
     try:
         import ray
     except ImportError:
@@ -368,6 +405,37 @@ def _read_back(
                 f"the flag name for your Ray build.",
                 flush=True,
             )
+
+    # v2a/v2b sizing knobs, orthogonal to the version. The footer-derived,
+    # type-aware in-memory size estimator (parquet_use_footer_size_estimate)
+    # only engages on the V2 row-group-aware path (v3) and is ON by default,
+    # so v3 already exercises it. Toggle it here to A/B the new estimator
+    # against the legacy constant-ratio one, and to sweep the var-width factor
+    # (parquet_in_memory_var_width_factor). "default" leaves the build default
+    # untouched.
+    extra = {}
+    if footer_size_estimate != "default":
+        extra["parquet_use_footer_size_estimate"] = footer_size_estimate == "on"
+    if var_width_factor is not None:
+        extra["parquet_in_memory_var_width_factor"] = var_width_factor
+    for flag, value in extra.items():
+        if hasattr(ctx, flag):
+            setattr(ctx, flag, value)
+            applied[flag] = value
+        else:
+            print(
+                f"[read][warn] this Ray build ({ray.__version__}) has no "
+                f"DataContext.{flag}; ignoring (needs the footer-size-estimate "
+                f"work).",
+                flush=True,
+            )
+    if footer_size_estimate != "default" and use_version != "v3":
+        print(
+            f"[read][warn] --footer-size-estimate only affects v3 (V2 + "
+            f"row-group-aware chunker); it is inert for {use_version}.",
+            flush=True,
+        )
+
     print(
         f"[read] datasource {use_version} ({applied if applied else 'build default'})",
         flush=True,
@@ -413,6 +481,9 @@ def generate(
     read_back: bool,
     read_memory: int,
     use_version: str,
+    seed: int = 0,
+    footer_size_estimate: str = "default",
+    var_width_factor: Optional[float] = None,
 ) -> None:
     backend = _make_backend(output)
 
@@ -420,7 +491,14 @@ def generate(
         print(f"[skip] {output} already populated (use --force to overwrite).")
         if read_back:
             # benchmark the existing data
-            _read_back(output, None, read_memory, use_version)
+            _read_back(
+                output,
+                None,
+                read_memory,
+                use_version,
+                footer_size_estimate,
+                var_width_factor,
+            )
         return
 
     if codec == "none" and compression_ratio != 1.0:
@@ -449,7 +527,7 @@ def generate(
         flush=True,
     )
 
-    rng = np.random.default_rng(seed=0)
+    rng = np.random.default_rng(seed=seed)
     table, _, random_bytes = _calibrate(row_group_size, rows, payload_bytes, codec, rng)
 
     body = _build_file_body(table, codec, row_groups_per_file)
@@ -469,7 +547,220 @@ def generate(
     print(f"[done] {output}", flush=True)
 
     if read_back:
-        _read_back(output, file_disk * num_files, read_memory, use_version)
+        _read_back(
+            output,
+            file_disk * num_files,
+            read_memory,
+            use_version,
+            footer_size_estimate,
+            var_width_factor,
+        )
+
+
+def _resolve_mixed_rg_sizes(spec: Optional[str], file_size: int) -> List[int]:
+    """Resolve the discrete on-disk row-group-size buckets for mixed mode.
+
+    Default (``spec is None``): a doubling sequence from 64 MiB up to
+    ``file_size`` inclusive (e.g. 64MiB,128MiB,256MiB for a 256 MiB file). If
+    ``file_size <= 64 MiB`` it collapses to ``{file_size}`` (one bucket -- no
+    within-file size variance possible). Explicit specs are comma-separated
+    sizes (``parse_size`` each), clamped to ``<= file_size`` and de-duplicated.
+    """
+    base = 64 * 1024**2
+    if spec is None:
+        if file_size <= base:
+            print(
+                f"[warn] --file-size {human(file_size)} <= 64MiB; mixed RG sizes "
+                f"collapse to a single bucket (no within-file size variance). "
+                f"Use a larger --file-size or set --mixed-rg-sizes.",
+                flush=True,
+            )
+            return [file_size]
+        sizes = []
+        s = base
+        while s < file_size:
+            sizes.append(s)
+            s *= 2
+        sizes.append(file_size)
+        return sizes
+    parsed = [parse_size(tok) for tok in spec.split(",") if tok.strip()]
+    if not parsed:
+        raise SystemExit("--mixed-rg-sizes parsed to an empty list")
+    clamped = []
+    for s in parsed:
+        c = min(s, file_size)
+        if c not in clamped:
+            clamped.append(c)
+    return clamped
+
+
+def _build_and_put_mixed(
+    backend: _Backend,
+    plans: List[Tuple[str, str, List[pa.Table]]],
+    file_size: int,
+) -> int:
+    """Assemble each file body from its pre-sampled row-group tables and upload
+    it. Unlike the uniform path (one shared body), mixed bodies are distinct, so
+    they're built inside the upload tasks and concurrency is bounded by a memory
+    budget (only a few full file bodies resident at once). Returns total bytes
+    uploaded. ``plans`` are pre-sampled sequentially (deterministic) by the
+    caller; this phase only builds + puts. Returns total on-disk bytes."""
+    total = len(plans)
+    if not total:
+        return 0
+    mem_budget = 4 * 1024**3  # cap resident file bodies to ~4 GiB
+    workers = max(1, min(_PUT_PARALLELISM, max(1, mem_budget // max(1, file_size))))
+    workers = min(workers, total)
+    step = max(1, total // 20)
+    done = [0]
+    total_bytes = [0]
+    lock = threading.Lock()
+    t0 = time.time()
+
+    def _one(plan: Tuple[str, str, List[pa.Table]]) -> None:
+        name, codec, tables = plan
+        body = _build_file_body_mixed(tables, codec)
+        backend.put(name, body)
+        with lock:
+            done[0] += 1
+            total_bytes[0] += len(body)
+            d = done[0]
+        if d % step == 0 or d == total:
+            elapsed = time.time() - t0
+            rate = d / elapsed if elapsed else 0
+            print(f"  [put] {d}/{total} ({rate:.1f}/s, {elapsed:.0f}s)", flush=True)
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        list(ex.map(_one, plans))
+    return total_bytes[0]
+
+
+def generate_mixed(
+    output: str,
+    file_size: int,
+    num_files: int,
+    rg_sizes: List[int],
+    compression_ratios: List[float],
+    codecs: List[str],
+    rows_per_row_group: int,
+    force: bool,
+    read_back: bool,
+    read_memory: int,
+    use_version: str,
+    seed: int,
+    footer_size_estimate: str = "default",
+    var_width_factor: Optional[float] = None,
+) -> None:
+    """Generate a heterogeneous mix: codec sampled PER FILE, and on-disk size +
+    compression ratio sampled PER ROW GROUP from discrete buckets. Files differ
+    from one another AND row groups vary within a file -- stressing the v3
+    row-group-aware chunker (size variance) and the v2a/v2b footer estimator
+    (compression variance). Reads are unchanged (v1/v2/v3)."""
+    backend = _make_backend(output)
+
+    if not force and backend.exists_nonempty(""):
+        print(f"[skip] {output} already populated (use --force to overwrite).")
+        if read_back:
+            _read_back(
+                output,
+                None,
+                read_memory,
+                use_version,
+                footer_size_estimate,
+                var_width_factor,
+            )
+        return
+
+    rows = rows_per_row_group
+    rng = np.random.default_rng(seed=seed)
+
+    # Calibrate lazily, cache by (codec, rg_size, ratio). codec=none can't
+    # compress, so its ratio is pinned to 1.0. This bounds calibrations to
+    # |codecs| x |rg_sizes| x |ratios| regardless of file/row-group count.
+    cache: Dict[Tuple[str, int, float], Tuple[pa.Table, int]] = {}
+
+    def _table_for(codec: str, rg_size: int, ratio: float) -> Tuple[pa.Table, int]:
+        if codec == "none":
+            ratio = 1.0
+        key = (codec, rg_size, ratio)
+        if key not in cache:
+            payload_bytes = max(1, int(round((rg_size / rows) * ratio)))
+            print(
+                f"[calibrate] codec={codec} rg~{human(rg_size)} R={ratio}",
+                flush=True,
+            )
+            table, body, _ = _calibrate(rg_size, rows, payload_bytes, codec, rng)
+            cache[key] = (table, len(body))
+        return cache[key]
+
+    print(
+        f"[plan] mixed: {num_files} file(s), ~{human(file_size)} each\n"
+        f"       rg-sizes={[human(s) for s in rg_sizes]}\n"
+        f"       compression-ratios={compression_ratios}; codecs={codecs}\n"
+        f"       rows/group={rows}, seed={seed}",
+        flush=True,
+    )
+
+    # --- sequential sampling (deterministic; uses rng) ---
+    plans: List[Tuple[str, str, List[pa.Table]]] = []
+    codec_counts: Dict[str, int] = {}
+    rg_size_counts: Dict[int, int] = {}
+    ratio_counts: Dict[float, int] = {}
+    rg_disk_samples: List[int] = []
+    est_total_disk = 0
+
+    for i in range(num_files):
+        codec = codecs[int(rng.integers(0, len(codecs)))]
+        codec_counts[codec] = codec_counts.get(codec, 0) + 1
+
+        tables: List[pa.Table] = []
+        file_disk = 0
+        while file_disk < file_size or not tables:
+            rg_size = rg_sizes[int(rng.integers(0, len(rg_sizes)))]
+            ratio = float(
+                compression_ratios[int(rng.integers(0, len(compression_ratios)))]
+            )
+            table, enc_len = _table_for(codec, rg_size, ratio)
+            tables.append(table)
+            file_disk += enc_len
+            rg_size_counts[rg_size] = rg_size_counts.get(rg_size, 0) + 1
+            eff_ratio = 1.0 if codec == "none" else ratio
+            ratio_counts[eff_ratio] = ratio_counts.get(eff_ratio, 0) + 1
+            rg_disk_samples.append(enc_len)
+        plans.append((f"part-{i:08d}.parquet", codec, tables))
+        est_total_disk += file_disk
+
+    total_rgs = len(rg_disk_samples)
+    print(
+        f"[built] {num_files} file(s), {total_rgs} row group(s); "
+        f"~{human(est_total_disk)} on disk (est)\n"
+        f"        codecs: "
+        + ", ".join(f"{c}x{n}" for c, n in sorted(codec_counts.items()))
+        + "\n        rg on-disk: "
+        + f"min {human(min(rg_disk_samples))}, "
+        + f"mean {human(est_total_disk / total_rgs)}, "
+        + f"max {human(max(rg_disk_samples))}\n"
+        + "        rg-size buckets: "
+        + ", ".join(f"{human(s)}x{n}" for s, n in sorted(rg_size_counts.items()))
+        + "\n        ratio buckets: "
+        + ", ".join(f"{r}x{n}" for r, n in sorted(ratio_counts.items())),
+        flush=True,
+    )
+
+    # --- concurrent build + upload (bounded memory) ---
+    total_disk = _build_and_put_mixed(backend, plans, file_size)
+    _verify_mixed(backend, num_files)
+    print(f"[done] {output} ({human(total_disk)} on disk)", flush=True)
+
+    if read_back:
+        _read_back(
+            output,
+            total_disk,
+            read_memory,
+            use_version,
+            footer_size_estimate,
+            var_width_factor,
+        )
 
 
 def _put_all(backend: _Backend, items: List[Tuple[str, bytes]]) -> None:
@@ -520,6 +811,27 @@ def _verify(backend: _Backend, num_files: int, file_disk: int) -> None:
     print(f"  [verify {status}] {num_files} files; sample: {pretty}", flush=True)
 
 
+def _verify_mixed(backend: _Backend, num_files: int) -> None:
+    """Mixed files vary in size, so we can't assert a uniform size. Confirm the
+    first/middle/last files exist and report their (differing) sizes."""
+    sample = sorted({0, num_files // 2, num_files - 1})
+    pretty, missing = [], False
+    for i in sample:
+        key = f"part-{i:08d}.parquet"
+        sz = backend.size(key)
+        if sz is None:
+            print(f"  [verify] FAIL missing {backend.describe(key)}", flush=True)
+            missing = True
+        else:
+            pretty.append(f"part-{i:08d}={human(sz)}")
+    if not missing:
+        print(
+            f"  [verify ok] {num_files} files (varying sizes); "
+            f"sample: {', '.join(pretty)}",
+            flush=True,
+        )
+
+
 def main():
     p = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -533,16 +845,51 @@ def main():
     )
     p.add_argument("--num-files", type=int, required=True)
     p.add_argument(
+        "--mode",
+        default="uniform",
+        choices=["uniform", "mixed"],
+        help="uniform: every file/row group uses --row-group-size + "
+        "--compression-ratio + --codec (the original behavior). mixed: "
+        "generate a heterogeneous mix -- codec sampled per file, on-disk "
+        "row-group size + compression ratio sampled per row group from "
+        "--mixed-* buckets; only --num-files and --file-size are required.",
+    )
+    p.add_argument(
         "--row-group-size",
         type=parse_size,
-        required=True,
-        help="Target on-disk size per row group, e.g. 16MiB.",
+        default=None,
+        help="Target on-disk size per row group, e.g. 16MiB. "
+        "Required for --mode uniform; ignored for --mode mixed.",
     )
     p.add_argument(
         "--compression-ratio",
         type=float,
         default=1.0,
-        help="In-memory(uncompressed) / on-disk. 1.0 = incompressible.",
+        help="In-memory(uncompressed) / on-disk. 1.0 = incompressible. "
+        "Ignored for --mode mixed (see --mixed-compression-ratios).",
+    )
+    p.add_argument(
+        "--mixed-rg-sizes",
+        default=None,
+        help="[mode=mixed] Comma-separated on-disk row-group-size buckets, e.g. "
+        "'64MiB,128MiB,256MiB'. Default: doubling from 64MiB up to --file-size.",
+    )
+    p.add_argument(
+        "--mixed-compression-ratios",
+        default="2.0,4.0,8.0",
+        help="[mode=mixed] Comma-separated compression-ratio buckets (each >= "
+        "1.0). codec=none files are pinned to 1.0.",
+    )
+    p.add_argument(
+        "--mixed-codecs",
+        default="snappy,zstd,gzip,none",
+        help="[mode=mixed] Comma-separated codecs sampled per file.",
+    )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="RNG seed for reproducible generation (both modes).",
     )
     p.add_argument(
         "--rows-per-row-group",
@@ -587,8 +934,72 @@ def main():
         help="Datasource/chunker combo: v1=DataSource V1; v2=V2 + byte-estimate "
         "chunker; v3=V2 + row-group-aware chunker.",
     )
+    p.add_argument(
+        "--footer-size-estimate",
+        default="default",
+        choices=["default", "on", "off"],
+        help="Toggle DataContext.parquet_use_footer_size_estimate during read-"
+        "back (the footer-derived, type-aware in-memory size estimator). Only "
+        "affects v3 (V2 + row-group-aware chunker), where it is ON by default. "
+        "Use on/off to A/B the new estimator vs the legacy constant-ratio one; "
+        "'default' leaves the build default untouched.",
+    )
+    p.add_argument(
+        "--var-width-factor",
+        type=float,
+        default=None,
+        help="Override DataContext.parquet_in_memory_var_width_factor during "
+        "read-back (uncompressed->Arrow multiplier for variable-width columns "
+        "in the footer estimator). Default: leave the build default.",
+    )
     args = p.parse_args()
 
+    if args.mode == "mixed":
+        if args.row_group_size is not None:
+            print(
+                "[warn] --row-group-size is ignored for --mode mixed "
+                "(see --mixed-rg-sizes).",
+                flush=True,
+            )
+        rg_sizes = _resolve_mixed_rg_sizes(args.mixed_rg_sizes, args.file_size)
+        ratios = [
+            float(tok)
+            for tok in args.mixed_compression_ratios.split(",")
+            if tok.strip()
+        ]
+        codecs = [tok.strip() for tok in args.mixed_codecs.split(",") if tok.strip()]
+        allowed = {"snappy", "zstd", "gzip", "lz4", "brotli", "none"}
+        bad = [c for c in codecs if c not in allowed]
+        if bad:
+            raise SystemExit(f"unknown codec(s) in --mixed-codecs: {bad}")
+        if not codecs:
+            raise SystemExit("--mixed-codecs parsed to an empty list")
+        if not ratios:
+            raise SystemExit("--mixed-compression-ratios parsed to an empty list")
+        if any(r < 1.0 for r in ratios):
+            raise SystemExit("--mixed-compression-ratios must all be >= 1.0")
+
+        generate_mixed(
+            output=args.output,
+            file_size=args.file_size,
+            num_files=args.num_files,
+            rg_sizes=rg_sizes,
+            compression_ratios=ratios,
+            codecs=codecs,
+            rows_per_row_group=args.rows_per_row_group,
+            force=args.force,
+            read_back=args.read_back,
+            read_memory=args.read_memory,
+            use_version=args.use_version,
+            seed=args.seed,
+            footer_size_estimate=args.footer_size_estimate,
+            var_width_factor=args.var_width_factor,
+        )
+        return
+
+    # uniform mode
+    if args.row_group_size is None:
+        raise SystemExit("--row-group-size is required for --mode uniform")
     if args.row_group_size > args.file_size:
         print(
             "[warn] row-group-size > file-size; each file will be one row group.",
@@ -607,6 +1018,9 @@ def main():
         read_back=args.read_back,
         read_memory=args.read_memory,
         use_version=args.use_version,
+        seed=args.seed,
+        footer_size_estimate=args.footer_size_estimate,
+        var_width_factor=args.var_width_factor,
     )
 
 
