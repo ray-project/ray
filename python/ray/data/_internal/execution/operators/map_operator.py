@@ -408,9 +408,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
-            throttling_disabled: If ``True``, exempt this operator from object-store
-                resource reservation/throttling. Intended for terminal "drain"
-                operators (e.g. writes) whose object-store output is negligible.
+            throttling_disabled: If ``True``, exempt this operator from resource reservation/throttling.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -761,10 +759,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return self._supports_fusion
 
     def throttling_disabled(self) -> bool:
-        # Terminal "drain" operators (e.g. writes) emit negligible object-store
-        # output, so excluding them from resource reservation lets them run as fast
-        # as CPU allows instead of being gated on object-store budget. See
-        # ``ReservationOpResourceAllocator.is_op_eligible``.
         return self._throttling_disabled
 
     def num_active_tasks(self) -> int:

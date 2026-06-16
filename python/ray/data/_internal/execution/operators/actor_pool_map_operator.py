@@ -151,9 +151,7 @@ class ActorPoolMapOperator(MapOperator):
             default_logical_memory_enabled: If ``True``, the operator launches actors
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
-            throttling_disabled: If ``True``, exempt this operator from object-store
-                resource reservation/throttling. Intended for terminal "drain"
-                operators (e.g. writes) whose object-store output is negligible.
+            throttling_disabled: If ``True``, exempt this operator from resource reservation/throttling.
         """
         super().__init__(
             map_transformer,

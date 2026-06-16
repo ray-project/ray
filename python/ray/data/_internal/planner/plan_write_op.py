@@ -148,10 +148,7 @@ def _plan_write_op_internal(
         on_start=on_start,
         # Writes are a terminal drain: each task streams its input to external storage
         # and emits only a tiny stats block to the object store. Throttling writes on
-        # the object-store reservation is counterproductive -- it keeps upstream
-        # outputs pinned in plasma longer because the write op can't drain them. Mark
-        # the write op as throttling-disabled so it is excluded from resource
-        # reservation and can run as fast as CPU/input availability allow.
+        # the object-store reservation is counterproductive.
         throttling_disabled=True,
     )
 
