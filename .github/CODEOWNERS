@@ -28,6 +28,8 @@
 /doc/source/cluster/ @ray-project/ray-core
 /doc/source/ray-core/ @ray-project/ray-core
 
+/doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core
+
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @dayshah @MengjinYan
 
