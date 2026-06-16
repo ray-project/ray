@@ -81,13 +81,21 @@ def run_solo(args: argparse.Namespace) -> float:
 
 
 def run_concurrent(args: argparse.Namespace) -> Dict[str, float]:
-    """Run both tenants on threads concurrently; return per-tenant wall-time."""
+    """Run both tenants on threads concurrently; return per-tenant wall-time.
+
+    Re-raises if either thread raised. ``threading.Thread`` swallows
+    exceptions by default, so we capture and surface them after join.
+    """
     per_tenant: Dict[str, float] = {}
+    thread_errors: Dict[str, BaseException] = {}
 
     def _run(sc: str) -> None:
-        t0 = time.perf_counter()
-        run_pipeline(sc, args)
-        per_tenant[sc] = time.perf_counter() - t0
+        try:
+            t0 = time.perf_counter()
+            run_pipeline(sc, args)
+            per_tenant[sc] = time.perf_counter() - t0
+        except BaseException as e:
+            thread_errors[sc] = e
 
     threads = [
         threading.Thread(target=_run, args=(sc,), name=f"pipeline-{sc}")
@@ -97,6 +105,12 @@ def run_concurrent(args: argparse.Namespace) -> Dict[str, float]:
         t.start()
     for t in threads:
         t.join()
+    if thread_errors:
+        sc, exc = next(iter(thread_errors.items()))
+        raise RuntimeError(
+            f"Tenant {sc!r} pipeline raised; "
+            f"other failures: {list(thread_errors)[1:]}"
+        ) from exc
     return per_tenant
 
 
