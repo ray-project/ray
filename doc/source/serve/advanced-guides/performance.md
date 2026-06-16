@@ -244,7 +244,7 @@ When HAProxy mode is enabled:
 
 #### Prerequisites
 
-HAProxy must be available on every node that runs a Serve proxy. On Linux, `pip install "ray[serve]"` installs the [`ray-haproxy`](https://pypi.org/project/ray-haproxy/) package, which ships a prebuilt HAProxy binary that Serve uses automatically. To use a different binary, set `RAY_SERVE_HAPROXY_BINARY_PATH` to its absolute path or put `haproxy` on `$PATH`.
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The [official Ray Docker images](https://hub.docker.com/r/rayproject/ray) (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
 
 #### Enabling HAProxy
 
@@ -279,7 +279,7 @@ ray start --head  # or ray start --address=<head-ip>:6379 on workers
 
 #### Installing HAProxy manually (example)
 
-Some platforms have no `ray-haproxy` wheel, such as non-glibc Linux, macOS, and Windows. On those platforms, install HAProxy 2.8+ from source on every node. These steps are provided as an example only.
+If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. These steps are provided as an example only. In the future, HAProxy will be bundled with the `ray` Python package.
 
 The following steps are for Ubuntu/Debian:
 ```bash

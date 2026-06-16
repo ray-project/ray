@@ -1588,6 +1588,13 @@
         byod:
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
+    - __suffix__: aws.pip_haproxy
+      cluster:
+        byod:
+          post_build_script: byod_install_ray_haproxy.sh
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1626,6 +1633,13 @@
         byod:
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
+    - __suffix__: aws.pip_haproxy
+      cluster:
+        byod:
+          post_build_script: byod_install_ray_haproxy.sh
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
 
 - name: serve_controller_benchmark_haproxy
   python: "3.10"
@@ -1658,6 +1672,14 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.pip_haproxy
+      cluster:
+        byod:
+          post_build_script: byod_install_ray_haproxy.sh
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
+            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
     - __suffix__: gce
       env: gce
       frequency: manual

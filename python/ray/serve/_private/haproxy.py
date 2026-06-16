@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
@@ -182,7 +183,10 @@ def _tail_file(path: str, n_bytes: int = 4096) -> str:
 def get_haproxy_binary() -> str:
     """Return the path to the HAProxy binary.
 
-    Resolution order:
+    When RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY is disabled (default), returns
+    RAY_SERVE_HAPROXY_BINARY_PATH (defaults to "haproxy", i.e. system PATH).
+
+    When enabled, resolution order:
       1. The binary bundled in the ``ray-haproxy`` package.
       2. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
       3. ``haproxy`` on the system PATH (fallback).
@@ -195,9 +199,13 @@ def get_haproxy_binary() -> str:
 
 
 def _resolve_haproxy_binary() -> str:
-    # 1. Bundled binary from the ray-haproxy package. Tried first so ray[serve]
-    # installs work without extra configuration. Falls through if the package is
-    # missing or its binary is unusable.
+    if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
+        return RAY_SERVE_HAPROXY_BINARY_PATH
+
+    # 1. Bundled binary from the ray-haproxy package. Tried first so the flag
+    # forces the pip binary even when the runtime image bakes in an explicit
+    # RAY_SERVE_HAPROXY_BINARY_PATH (e.g. /usr/local/bin/haproxy); otherwise the
+    # override below would shadow it and the flag would be a no-op.
     try:
         from ray_haproxy import get_haproxy_binary as _pip_binary
 
@@ -226,7 +234,7 @@ def _resolve_haproxy_binary() -> str:
 
     raise FileNotFoundError(
         "Could not find an HAProxy binary. "
-        "Install 'ray[serve]' for the bundled binary, "
+        "Install 'ray[haproxy]' for the bundled binary, "
         "set RAY_SERVE_HAPROXY_BINARY_PATH, "
         "or ensure 'haproxy' is on PATH."
     )
