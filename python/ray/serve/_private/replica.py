@@ -2699,6 +2699,8 @@ class Replica:
                 raise asyncio.CancelledError
             else:
                 request_task.cancel()
+                if receive_task is not None:
+                    receive_task.cancel()
                 status_code_callback("408")
                 if not response_started:
                     msg = (
@@ -2707,6 +2709,19 @@ class Replica:
                     )
                     await send_http_response(msg, 408, send)
                 raise asyncio.CancelledError
+
+    def _get_inflight_direct_ingress_task_counts_for_testing(self) -> Dict[str, int]:
+        """Return counts of in-flight direct-ingress asyncio tasks. Used for testing."""
+        counts = {"request_tasks": 0, "receive_tasks": 0}
+        for task in asyncio.all_tasks(self._event_loop):
+            if task.done():
+                continue
+            name = getattr(task.get_coro(), "__name__", "")
+            if name == "call_asgi":
+                counts["request_tasks"] += 1
+            elif name == "_fetch_until_disconnect":
+                counts["receive_tasks"] += 1
+        return counts
 
 
 async def send_http_response(message, status_code, send):
@@ -2819,6 +2834,11 @@ class ReplicaActor:
 
     def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         return self._replica_impl.list_outbound_deployments()
+
+    async def _get_inflight_direct_ingress_task_counts_for_testing(
+        self,
+    ) -> Dict[str, int]:
+        return self._replica_impl._get_inflight_direct_ingress_task_counts_for_testing()
 
     async def initialize_and_get_metadata(
         self,
