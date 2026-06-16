@@ -199,21 +199,32 @@ class _IdempotencyVisitor(_ExprVisitor[bool]):
         return True
 
     # --- composites: idempotent iff all children are ---
+    #
+    # Children are visited via ``child.is_idempotent()`` (not ``self.visit(child)``)
+    # so each node's result is read from / written to its per-instance cache. This
+    # keeps an all-nodes query (e.g. CSE visiting every occurrence) linear overall
+    # instead of re-walking each subtree.
     def visit_alias(self, expr: AliasExpr) -> bool:
-        return self.visit(expr.expr)
+        return expr.expr.is_idempotent()
 
     def visit_unary(self, expr: UnaryExpr) -> bool:
-        return self.visit(expr.operand)
+        return expr.operand.is_idempotent()
 
     def visit_binary(self, expr: BinaryExpr) -> bool:
-        return self.visit(expr.left) and self.visit(expr.right)
+        return expr.left.is_idempotent() and expr.right.is_idempotent()
 
     def visit_udf(self, expr: UDFExpr) -> bool:
         # FUTURE EXTENSION POINT: today UDFs are assumed idempotent and we only recurse
         # into their argument expressions. When per-UDF non-determinism is supported,
         # gate this on the UDF's declared determinism as well.
-        children = list(expr.args) + list(expr.kwargs.values())
-        return all(self.visit(child) for child in children)
+        return all(arg.is_idempotent() for arg in expr.args) and all(
+            value.is_idempotent() for value in expr.kwargs.values()
+        )
+
+
+# Stateless singleton: ``Expr.is_idempotent`` reuses this rather than allocating a
+# visitor per node during the initial (uncached) computation.
+_IDEMPOTENCY_VISITOR = _IdempotencyVisitor()
 
 
 class _CallableClassUDFCollector(_ExprVisitorBase):
