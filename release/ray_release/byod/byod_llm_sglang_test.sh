@@ -12,7 +12,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --defaul
 export PATH="$HOME/.cargo/bin:$PATH"
 
 pip3 uninstall -y vllm
-pip3 install "sglang[all,ray]==0.5.10"
+pip3 install "sglang[tracing,ray]==0.5.10"
 # Reinstall opentelemetry-proto to regenerate _pb2.py files compatible with
 # the protobuf version that sglang pulls in (protobuf 4.x+ removed old-style
 # descriptor creation, causing Ray dashboard to crash on startup).
