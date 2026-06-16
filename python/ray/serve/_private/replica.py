@@ -1724,21 +1724,25 @@ class Replica:
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
+        # Reject new requests once quiescing so the router retries them on
+        # another replica.
+        if self._is_replica_quiescing(request_metadata):
+            logger.info(
+                "Replica is shutting down, rejecting request "
+                f"{request_metadata.request_id}.",
+                extra={"log_to_stderr": False},
+            )
+            yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
+            return
+
         # Check if the replica has capacity for the request.
         if not self._can_accept_request(request_metadata):
-            if self._is_replica_quiescing(request_metadata):
-                logger.info(
-                    "Replica is shutting down, rejecting request "
-                    f"{request_metadata.request_id}.",
-                    extra={"log_to_stderr": False},
-                )
-            else:
-                limit = self.max_ongoing_requests
-                logger.warning(
-                    f"Replica at capacity of max_ongoing_requests={limit}, "
-                    f"rejecting request {request_metadata.request_id}.",
-                    extra={"log_to_stderr": False},
-                )
+            limit = self.max_ongoing_requests
+            logger.warning(
+                f"Replica at capacity of max_ongoing_requests={limit}, "
+                f"rejecting request {request_metadata.request_id}.",
+                extra={"log_to_stderr": False},
+            )
             yield ReplicaQueueLengthInfo(False, self.get_num_ongoing_requests())
             return
 
