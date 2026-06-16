@@ -188,9 +188,9 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
       return;
     }
 
-    // task_receiver_'s state and the actor task queues' state both live on
-    // io_service_ now. Posting Stop() to io_service_ ensures it runs on
-    // the same thread that touches actor_task_execution_queues_ and queue internals.
+    // task_receiver_'s state and the actor task queues' state live on io_service_.
+    // Posting Stop() to io_service_ ensures it runs on the same thread that
+    // touches actor_task_execution_queues_ and queue internals.
     worker->io_service_.post(
         [this, weak_core_worker, shutdown_callback]() {
           auto worker_inner = weak_core_worker.lock();
