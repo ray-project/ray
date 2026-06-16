@@ -2,6 +2,7 @@ torch
 torchvision
 torchmetrics
 pytest
+locust==2.44.3
 openai
 google-api-python-client
 transformers
