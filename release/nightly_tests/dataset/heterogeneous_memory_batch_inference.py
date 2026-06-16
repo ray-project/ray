@@ -105,6 +105,8 @@ def build_and_run_pipeline(
             ray.data.DataContext.get_current().execution_options.label_selector = {
                 "ray-subcluster": subcluster
             }
+        else:
+            ray.data.DataContext.get_current().execution_options.label_selector = None
         ds = ray.data.range(num_rows)
 
     if subcluster is not None:
