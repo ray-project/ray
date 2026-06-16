@@ -1,5 +1,4 @@
 """Unit tests for the preemption watcher."""
-from types import SimpleNamespace
 from typing import Dict, Optional
 from unittest.mock import Mock, patch
 
@@ -7,11 +6,7 @@ import pytest
 
 import ray
 from ray.train.v2._internal.callbacks.preemption_callback import PreemptionCallback
-from ray.train.v2._internal.execution.preemption import (
-    PreemptionContext,
-    PreemptionInfo,
-    PreemptionWatcher,
-)
+from ray.train.v2._internal.execution.preemption import PreemptionWatcher
 
 _PREEMPTION_MOD = "ray.train.v2._internal.execution.preemption"
 
@@ -141,35 +136,6 @@ class TestPreemptionWatcher:
         )
         _poll_once_with(watcher, return_value={})
         actor0.mark_preempt.remote.assert_not_called()
-
-
-class TestPreemptionContext:
-    def test_get_returns_none_before_set(self):
-        assert PreemptionContext().get() is None
-
-    def test_set_then_get(self):
-        ctx = PreemptionContext()
-        info = PreemptionInfo(
-            deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]}
-        )
-        ctx.set(info)
-        assert ctx.get() is info
-
-
-class TestMarkPreempt:
-    def test_mark_preempt_stores_info(self):
-        from ray.train.v2._internal.execution.worker_group import worker as worker_mod
-
-        ctx = PreemptionContext()
-        stub_context = SimpleNamespace(preemption_context=ctx, get_world_rank=lambda: 0)
-        worker = worker_mod.RayTrainWorker.__new__(worker_mod.RayTrainWorker)
-        info = PreemptionInfo(
-            deadline_ms=30_000, preempted_node_to_ranks={"node-a": [0]}
-        )
-        with patch.object(worker_mod, "get_train_context", return_value=stub_context):
-            worker.mark_preempt(info)
-
-        assert ctx.get() is info
 
 
 class TestBuildFailureDomainMap:

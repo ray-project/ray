@@ -28,7 +28,10 @@ from ray.train.v2._internal.execution.context import (
     get_train_context,
     set_train_context,
 )
-from ray.train.v2._internal.execution.preemption import PreemptionInfo
+from ray.train.v2._internal.execution.preemption import (
+    PreemptionContext,
+    PreemptionInfo,
+)
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.train_fn_utils import (
     DistributedTrainFnUtils,
@@ -293,6 +296,7 @@ class RayTrainWorker:
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
+            preemption_context=PreemptionContext(),
             controller_actor=controller_actor,
             checkpoint=checkpoint,
             dataset_shard_provider=dataset_shard_provider,
