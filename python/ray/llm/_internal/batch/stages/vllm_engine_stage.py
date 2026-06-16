@@ -9,7 +9,6 @@ import os
 import time
 import uuid
 from collections import Counter
-from functools import partial
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
@@ -21,7 +20,6 @@ if TYPE_CHECKING:
 else:
     MultiModalDataDict = Any
 
-import ray
 from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -39,7 +37,6 @@ from ray.llm._internal.common.utils.download_utils import (
     download_model_files,
 )
 from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -813,12 +810,12 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             self.llm.shutdown()
 
 
-def _ray_scheduling_strategy_fn(
+def _get_engine_placement_group_bundles(
     num_bundles_per_replica: int,
     accelerator_type: Optional[str] = None,
     placement_group_config: Optional[Dict[str, Any]] = None,
-):
-    """Create a Ray scheduling strategy for the engine.
+) -> Tuple[List[Dict[str, float]], str]:
+    """Build the placement group bundles and strategy for one engine replica.
 
     Args:
         num_bundles_per_replica: The number of device bundles per
@@ -829,36 +826,26 @@ def _ray_scheduling_strategy_fn(
             If None, we use the default placement group configuration.
 
     Returns:
-        The Ray scheduling strategy.
+        A tuple of the bundle specs and the placement group strategy.
     """
 
     def _get_bundle() -> Dict[str, float]:
-        # GPU bundles
         bundle = {"GPU": 1, "CPU": 1}
-
-        # Accelerator type
         if accelerator_type:
             bundle[f"accelerator_type:{accelerator_type}"] = 0.001
         return bundle
 
     if placement_group_config:
         placement_group_config = copy.deepcopy(placement_group_config)
-
+        bundles = placement_group_config["bundles"]
         if accelerator_type:
-            for bundle in placement_group_config["bundles"]:
+            for bundle in bundles:
                 bundle[f"accelerator_type:{accelerator_type}"] = 0.001
-
-        pg = ray.util.placement_group(**placement_group_config)
+        strategy = placement_group_config.get("strategy", "PACK")
     else:
-        pg = ray.util.placement_group(
-            [_get_bundle()] * num_bundles_per_replica,
-            strategy="PACK",
-        )
-    return dict(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(
-            pg, placement_group_capture_child_tasks=True
-        )
-    )
+        bundles = [_get_bundle() for _ in range(num_bundles_per_replica)]
+        strategy = "PACK"
+    return bundles, strategy
 
 
 class vLLMEngineStage(StatefulStage):
@@ -906,10 +893,6 @@ class vLLMEngineStage(StatefulStage):
         )
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
-        # When Ray is used in the vLLM engine, we set num_devices to 0 so that
-        # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
-        # strategy in .map_batches() arguments and let vLLM Ray executor to
-        # create placement groups for each TP/PP worker.
         placement_group_config = fn_constructor_kwargs.pop(
             "placement_group_config", None
         )
@@ -923,14 +906,13 @@ class vLLMEngineStage(StatefulStage):
                     bundle_per_worker.copy() for _ in range(num_bundles_per_replica)
                 ]
         if executor_backend == "ray":
-            # Note that we have to use partial() to pass a function
-            # instead of an object.
-            map_batches_kwargs["ray_remote_args_fn"] = partial(
-                _ray_scheduling_strategy_fn,
+            bundles, strategy = _get_engine_placement_group_bundles(
                 num_bundles_per_replica,
                 accelerator_type,
                 placement_group_config,
             )
+            map_batches_kwargs["placement_group_bundles"] = bundles
+            map_batches_kwargs["placement_group_strategy"] = strategy
             ray_remote_args["num_gpus"] = 0
         else:
             if not placement_group_config:
