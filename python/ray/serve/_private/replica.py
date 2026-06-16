@@ -131,9 +131,9 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
     RollingWindowMax,
@@ -353,6 +353,7 @@ class ReplicaMetricsManager:
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
         max_ongoing_requests: int,
+        grpc_enabled: bool,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -380,6 +381,10 @@ class ReplicaMetricsManager:
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+
+        self._ingress_protocols = [RequestProtocol.HTTP]
+        if grpc_enabled:
+            self._ingress_protocols.append(RequestProtocol.GRPC)
 
         # Request counter (only set on replica startup).
         self._restart_counter = metrics.Counter(
@@ -482,22 +487,28 @@ class ReplicaMetricsManager:
 
         self.set_autoscaling_config(autoscaling_config)
 
+        # Only populated if direct ingress is enabled.
+        self._ingress_metrics: Dict[RequestProtocol, RequestIngressMetrics] = {}
+        self._ingress_ongoing_requests: Dict[RequestProtocol, int] = {}
         if self._is_direct_ingress:
             # These ingress metrics share the same names, tag keys, and emission
-            # logic as those collected by the proxy (see ProxyMetrics). When
+            # logic as those collected by the proxy (see RequestIngressMetrics). When
             # direct ingress is enabled traffic bypasses the proxy, so a given
             # request is recorded by exactly one of the two.
             node_id = ray.get_runtime_context().get_node_id()
             node_ip_address = ray.util.get_node_ip_address()
-            self._ingress_http_metrics = ProxyMetrics(
-                RequestProtocol.HTTP,
-                source="ingress",
-                node_id=node_id,
-                node_ip_address=node_ip_address,
-            )
-            self._ingress_ongoing_http_requests = 0
+
+            for protocol in self._ingress_protocols:
+                self._ingress_metrics[protocol] = RequestIngressMetrics(
+                    protocol,
+                    source="ingress",
+                    node_id=node_id,
+                    node_ip_address=node_ip_address,
+                )
+                self._ingress_ongoing_requests[protocol] = 0
 
             if self._cached_metrics_enabled:
+                # Mapping from protocol -> {request_tags -> value}.
                 self._cached_ingress_request_counter = defaultdict(
                     lambda: defaultdict(int)
                 )
@@ -538,45 +549,29 @@ class ReplicaMetricsManager:
         if not self._is_direct_ingress:
             return
 
-        for protocol in [RequestProtocol.HTTP]:
-            if protocol == RequestProtocol.HTTP:
-                ingress_request_counter = self._ingress_http_metrics.request_counter
-                ingress_request_error_counter = (
-                    self._ingress_http_metrics.request_error_counter
-                )
-                deployment_request_error_counter = (
-                    self._ingress_http_metrics.deployment_request_error_counter
-                )
-                ingress_processing_latencies = (
-                    self._ingress_http_metrics.processing_latency_tracker
-                )
-                self._ingress_http_metrics.set_num_ongoing_requests(
-                    self._ingress_ongoing_http_requests
-                )
-            else:
-                # TODO(alexyang): Add metrics for gRPC.
-                continue
-
+        for protocol in self._ingress_protocols:
+            metrics = self._ingress_metrics[protocol]
+            metrics.set_num_ongoing_requests(self._ingress_ongoing_requests[protocol])
             for request_tags, count in self._cached_ingress_request_counter[
                 protocol
             ].items():
-                ingress_request_counter.inc(count, tags=dict(request_tags))
+                metrics.request_counter.inc(count, tags=dict(request_tags))
 
             for request_tags, count in self._cached_ingress_request_error_counter[
                 protocol
             ].items():
-                ingress_request_error_counter.inc(count, tags=dict(request_tags))
+                metrics.request_error_counter.inc(count, tags=dict(request_tags))
 
             for request_tags, count in self._cached_deployment_request_error_counter[
                 protocol
             ].items():
-                deployment_request_error_counter.inc(count, tags=dict(request_tags))
+                metrics.deployment_request_error_counter.inc(count, tags=dict(request_tags))
 
             for latency_tags, latencies in self._cached_ingress_processing_latencies[
                 protocol
             ].items():
                 for latency_ms in latencies:
-                    ingress_processing_latencies.observe(
+                    metrics.processing_latency_tracker.observe(
                         latency_ms, tags=dict(latency_tags)
                     )
 
@@ -691,35 +686,31 @@ class ReplicaMetricsManager:
             if self._autoscaling_config:
                 self.start_metrics_pusher()
 
-    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
-        self._num_ongoing_requests += 1
+    def _change_num_ongoing_requests(self, request_metadata: RequestMetadata, delta: int) -> None:
+        self._num_ongoing_requests += delta
+        
+        protocol = request_metadata.protocol
 
         if self._is_direct_ingress and request_metadata.is_direct_ingress:
-            self._ingress_ongoing_http_requests += 1
+            self._ingress_ongoing_requests[protocol] += delta
 
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
-            if self._is_direct_ingress and request_metadata.is_direct_ingress:
-                if request_metadata.is_http_request:
-                    self._ingress_http_metrics.set_num_ongoing_requests(
-                        self._ingress_ongoing_http_requests
-                    )
+            if (
+                self._is_direct_ingress
+                and request_metadata.is_direct_ingress
+                and protocol in self._ingress_protocols
+            ):
+                self._ingress_metrics[protocol].set_num_ongoing_requests(
+                    self._ingress_ongoing_requests[protocol]
+                )
 
-    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
-        self._num_ongoing_requests -= 1
+    def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> None:
+        self._change_num_ongoing_requests(request_metadata, 1)
 
-        if self._is_direct_ingress and request_metadata.is_direct_ingress:
-            self._ingress_ongoing_http_requests -= 1
-
-        if not self._cached_metrics_enabled:
-            self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
-
-            if self._is_direct_ingress and request_metadata.is_direct_ingress:
-                if request_metadata.is_http_request:
-                    self._ingress_http_metrics.set_num_ongoing_requests(
-                        self._ingress_ongoing_http_requests
-                    )
+    def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> None:
+        self._change_num_ongoing_requests(request_metadata, -1)
 
     def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
@@ -841,15 +832,11 @@ class ReplicaMetricsManager:
         if not self._is_direct_ingress:
             return
 
-        if protocol != RequestProtocol.HTTP:
-            # TODO(alexyang): Add metrics for gRPC.
-            return
-
         if self._cached_metrics_enabled:
             # Cached path: accumulate per-tag-set counts/latencies keyed by the same
             # canonical tag schemas used by the direct emit path, and flush them in
             # `_report_cached_metrics`.
-            request_tags = ProxyMetrics.request_tags(
+            request_tags = RequestIngressMetrics.request_tags(
                 route=route,
                 method=method,
                 application=app_name,
@@ -862,13 +849,13 @@ class ReplicaMetricsManager:
                 frozenset(request_tags.items())
             ].append(latency_ms)
             if was_error:
-                request_error_tags = ProxyMetrics.request_error_tags(
+                request_error_tags = RequestIngressMetrics.request_error_tags(
                     route=route,
                     method=method,
                     application=app_name,
                     status_code=status_code,
                 )
-                deployment_error_tags = ProxyMetrics.deployment_error_tags(
+                deployment_error_tags = RequestIngressMetrics.deployment_error_tags(
                     route=route,
                     method=method,
                     application=app_name,
@@ -882,7 +869,7 @@ class ReplicaMetricsManager:
                     frozenset(deployment_error_tags.items())
                 ] += 1
         else:
-            self._ingress_http_metrics.record_request(
+            self._ingress_metrics[protocol].record_request(
                 route=route,
                 method=method,
                 application=app_name,
@@ -1071,6 +1058,7 @@ class Replica:
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
             max_ongoing_requests=self._deployment_config.max_ongoing_requests,
+
         )
 
         # Start event loop monitoring for the replica's main event loop.
@@ -1416,7 +1404,7 @@ class Replica:
             if user_exception is not None:
                 set_span_exception(user_exception, escaped=False)
 
-        # Record ingress metrics for direct ingress HTTP requests
+        # Record ingress metrics for direct ingress requests
         if request_metadata.is_direct_ingress and status_code is not None:
             self._metrics_manager.record_ingress_request_metrics(
                 protocol=RequestProtocol.HTTP,

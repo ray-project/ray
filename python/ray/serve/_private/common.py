@@ -834,6 +834,10 @@ class RequestMetadata:
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
 
+    @property
+    def protocol(self) -> RequestProtocol:
+        return self._request_protocol
+
 
 class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""

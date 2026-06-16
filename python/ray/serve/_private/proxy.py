@@ -69,7 +69,6 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     HandlerMetadata,
@@ -82,6 +81,7 @@ from ray.serve._private.proxy_request_response import (
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -161,7 +161,7 @@ class GenericProxy(ABC):
 
         self.proxy_router = proxy_router
 
-        self._proxy_metrics = ProxyMetrics(
+        self._proxy_metrics = RequestIngressMetrics(
             self.protocol,
             source="proxy",
             node_id=node_id,
