@@ -31,7 +31,7 @@ apt-get update -qq
 # container's effective CUDA driver version (via cuda-compat forward-compat),
 # which can flip on NCCL's cuMem host path and break multi-GPU collectives on
 # non-P2P GPUs (CUDA error 217). See NVIDIA/nccl#1838.
-apt-mark hold $(dpkg-query -W -f='${Package}\n' 'cuda-*' 2>/dev/null) 2>/dev/null || true
+dpkg-query -W -f='${Package}\n' 'cuda-*' 2>/dev/null | xargs -r apt-mark hold || true
 apt-get upgrade -qq
 apt-get install -y -qq \
     curl python-is-python3 git build-essential \
