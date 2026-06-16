@@ -423,6 +423,10 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     def has_star_expr(self) -> bool:
         return self.get_star_expr() is not None
 
+    def is_idempotent(self) -> bool:
+        """Return whether every output expression of this projection is idempotent."""
+        return all(expr.is_idempotent() for expr in self.exprs)
+
     def get_star_expr(self) -> Optional[StarExpr]:
         """Check if this projection contains a star() expression."""
         for expr in self.exprs:

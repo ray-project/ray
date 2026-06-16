@@ -415,6 +415,23 @@ class Expr(ABC):
         """
         return _PyArrowConvertibilityVisitor().visit(self)
 
+    def is_idempotent(self) -> bool:
+        """Return whether this expression is safe to duplicate, reorder, or move.
+
+        Returns ``False`` for non-idempotent expressions (``random``, ``uuid``,
+        ``monotonically_increasing_id``, and any composite containing them).
+        Optimizer rules consult this before any rewrite that would change an
+        expression's evaluation count, row set, or position.
+
+        Returns:
+            Whether the expression tree contains no non-idempotent nodes.
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _IdempotencyVisitor,
+        )
+
+        return _IdempotencyVisitor().visit(self)
+
     def __repr__(self) -> str:
         """Return a tree-structured string representation of the expression.
 

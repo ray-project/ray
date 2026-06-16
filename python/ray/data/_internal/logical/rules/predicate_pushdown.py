@@ -115,6 +115,13 @@ class PredicatePushdown(Rule):
         )
         from ray.data.expressions import AliasExpr, is_rename_expr
 
+        # Do not push a filter below a projection that produces a non-idempotent
+        # column (random/uuid/monotonically_increasing_id): reordering changes the row
+        # set / position the expression is evaluated over (e.g.
+        # monotonically_increasing_id reassigned over the filtered subset).
+        if not projection_op.is_idempotent():
+            return False
+
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
         predicate_columns = set(collector.get_column_refs() or [])

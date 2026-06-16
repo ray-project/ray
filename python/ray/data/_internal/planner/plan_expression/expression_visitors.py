@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass, replace
 from typing import Dict, Hashable, List, TypeVar
 
@@ -112,29 +113,35 @@ class _ExprVisitorBase(_ExprVisitor[None]):
 class _ColumnReferenceCollector(_ExprVisitorBase):
     """Visitor that collects all column references from expression trees.
 
-    This visitor traverses expression trees and accumulates column names
-    referenced in ColumnExpr nodes.
+    Backed by a ``Counter`` so callers can take either:
+    - ``get_column_refs()`` -> ordered, de-duplicated column names, or
+    - ``get_counts()``      -> per-name reference multiplicity, counting repeats
+      *within* a single expression (``x + x`` -> ``{"x": 2}``).
+
+    ``Counter`` preserves first-insertion order, so ``get_column_refs()`` returns the
+    same ordered, de-duplicated list as a plain insertion-ordered ``dict`` would.
     """
 
     def __init__(self):
-        """Initialize with an empty set of referenced columns."""
-
-        # NOTE: We're using dict to maintain insertion ordering
-        self._col_refs: Dict[str, None] = dict()
+        """Initialize with an empty reference counter."""
+        self._col_refs: Counter = Counter()
 
     def get_column_refs(self) -> List[str]:
         return list(self._col_refs.keys())
 
+    def get_counts(self) -> Counter:
+        return self._col_refs
+
     def visit_column(self, expr: ColumnExpr) -> None:
-        """Visit a column expression and collect its name.
+        """Visit a column expression and count its name.
 
         Args:
             expr: The column expression.
 
         Returns:
-            None (only collects columns as a side effect).
+            None (only counts columns as a side effect).
         """
-        self._col_refs[expr.name] = None
+        self._col_refs[expr.name] += 1
 
     def visit_alias(self, expr: AliasExpr) -> None:
         """Visit an alias expression and collect from its inner expression.
@@ -146,6 +153,67 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
             None (only collects columns as a side effect).
         """
         self.visit(expr.expr)
+
+
+class _IdempotencyVisitor(_ExprVisitor[bool]):
+    """Reports whether an expression is safe to duplicate, reorder, or move.
+
+    Returns ``True`` only when every node in the tree is idempotent. The three
+    non-idempotent leaf types (``RandomExpr``, ``UUIDExpr``,
+    ``MonotonicallyIncreasingIdExpr``) return ``False`` and propagate upward: a
+    composite is idempotent iff all of its children are.
+
+    Optimizer rules consult this (via :func:`is_idempotent`) before any rewrite that
+    would change an expression's evaluation count, row set, or position.
+    """
+
+    # --- non-idempotent leaves ---
+    def visit_random(self, expr: RandomExpr) -> bool:
+        # Conservatively non-idempotent even when seeded: CSE matches structurally and
+        # ignores ``_instance_id``, while the runtime RNG counter keys on it, so a
+        # seeded RandomExpr cannot be safely de-duplicated in general.
+        return False
+
+    def visit_uuid(self, expr: UUIDExpr) -> bool:
+        return False
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> bool:
+        return False
+
+    # --- idempotent leaves ---
+    def visit_column(self, expr: ColumnExpr) -> bool:
+        return True
+
+    def visit_literal(self, expr: LiteralExpr) -> bool:
+        return True
+
+    def visit_star(self, expr: StarExpr) -> bool:
+        return True
+
+    def visit_download(self, expr: DownloadExpr) -> bool:
+        # ``DownloadExpr`` is a leaf with no Expr children. It is idempotent (same URI
+        # yields the same bytes); CSE avoids re-fetching it for *cost* reasons, which
+        # is a separate concern from this correctness contract.
+        return True
+
+    # --- composites: idempotent iff all children are ---
+    def visit_alias(self, expr: AliasExpr) -> bool:
+        return self.visit(expr.expr)
+
+    def visit_unary(self, expr: UnaryExpr) -> bool:
+        return self.visit(expr.operand)
+
+    def visit_binary(self, expr: BinaryExpr) -> bool:
+        return self.visit(expr.left) and self.visit(expr.right)
+
+    def visit_udf(self, expr: UDFExpr) -> bool:
+        # FUTURE EXTENSION POINT: today UDFs are assumed idempotent and we only recurse
+        # into their argument expressions. When per-UDF non-determinism is supported,
+        # gate this on the UDF's declared determinism as well.
+        children = list(expr.args) + list(expr.kwargs.values())
+        return all(self.visit(child) for child in children)
 
 
 class _CallableClassUDFCollector(_ExprVisitorBase):
