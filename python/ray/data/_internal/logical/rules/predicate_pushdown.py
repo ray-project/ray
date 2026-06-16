@@ -84,6 +84,15 @@ class PredicatePushdown(Rule):
         if not cls._is_valid_filter_operator(input_op):
             return op
 
+        # Do not fuse across a non-idempotent predicate (random/uuid/
+        # monotonically_increasing_id): combining moves where a predicate is
+        # evaluated (and thus which rows it sees), changing results.
+        if (
+            not op.predicate_expr.is_idempotent()
+            or not input_op.predicate_expr.is_idempotent()
+        ):
+            return op
+
         # Combine predicates
         combined_predicate = op.predicate_expr & input_op.predicate_expr
 
@@ -282,6 +291,14 @@ class PredicatePushdown(Rule):
             if split.residual is None:
                 return result_op
             return Filter(predicate_expr=split.residual, input_dependencies=[result_op])
+
+        # Datasource pushdown (Case 1) only lowers PyArrow-convertible (hence
+        # idempotent) conjuncts. Beyond that, do not relocate a filter whose predicate
+        # is non-idempotent (random/uuid/monotonically_increasing_id): pushing it
+        # through a pass-through operator, into Union branches, or to a Join side
+        # changes the row set / position the expression is evaluated over.
+        if not predicate_expr.is_idempotent():
+            return filter_op
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):

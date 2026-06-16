@@ -104,6 +104,36 @@ def test_predicate_still_pushed_below_deterministic_projection(
     assert plan.rfind("Filter") < plan.rfind("Project"), plan
 
 
+def test_filter_with_nonidempotent_predicate_not_pushed_into_union_branches(
+    ray_start_regular_shared,
+):
+    # A filter whose own predicate is non-idempotent must not be duplicated into
+    # each Union branch (each branch would compute a separate local id).
+    union = ray.data.range(10).union(ray.data.range(10))
+    ds = union.filter(expr=monotonically_increasing_id() < 5)
+    plan = _optimized_plan_str(ds)
+    assert plan.rfind("Filter") > plan.rfind("Union"), plan
+
+
+def test_idempotent_filter_still_pushed_into_union_branches(ray_start_regular_shared):
+    union = ray.data.range(10).union(ray.data.range(10))
+    ds = union.filter(expr=col("id") > 2)
+    plan = _optimized_plan_str(ds)
+    # An idempotent predicate is still pushed below the Union, into the branches.
+    assert plan.rfind("Union") > plan.rfind("Filter"), plan
+
+
+def test_filter_with_nonidempotent_predicate_not_fused(ray_start_regular_shared):
+    # Fusing would move where monotonically_increasing_id() is evaluated.
+    ds = (
+        ray.data.range(20)
+        .filter(expr=monotonically_increasing_id() < 15)
+        .filter(expr=col("id") > 2)
+    )
+    plan = _optimized_plan_str(ds)
+    assert plan.count("Filter[") == 2, plan
+
+
 # ---------------------------------------------------------------------------
 # LimitPushdown: a limit must not be pushed past a projection that produces a
 # non-idempotent column.
