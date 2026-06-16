@@ -309,9 +309,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto object_info_publisher = std::make_unique<pubsub::PostingPublisher>(
       std::make_shared<pubsub::Publisher>(
           /*channels=*/
-          std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                        rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+          std::vector<rpc::ChannelType>{
+              rpc::ChannelType::WORKER_OBJECT_EVICTION,
+              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
           /*periodical_runner=*/*periodical_runner,
           /*clock=*/clock_,
           /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
