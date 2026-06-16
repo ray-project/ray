@@ -795,10 +795,13 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
       auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
       if (it != ref_stream_execution_signal_callbacks_.end()) {
         for (const ExecutionSignalCallback &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                         << " should resume. total_generated: " << total_generated
-                         << ". total_consumed: " << total_consumed
-                         << ". threshold: " << backpressure_threshold;
+          RAY_LOG(DEBUG) << absl::StrFormat(
+              "The task for a stream %s should resume. total_generated: %d. "
+              "total_consumed: %d. threshold: %d",
+              generator_id.Hex(),
+              total_generated,
+              total_consumed,
+              backpressure_threshold);
           execution_signal(Status::OK(), total_consumed);
         }
         it->second.clear();
