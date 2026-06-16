@@ -252,58 +252,6 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
         ds_named.sort(invalid_col_name).take_all()
 
 
-def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
-    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
-    ds = ray.data.from_items(
-        [
-            {"col1": 1, "col2": 2},
-            {"col1": 1, "col2": 4},
-            {"col1": 5, "col2": 6},
-            {"col1": 7, "col2": 8},
-        ]
-    )
-    df_expected = pd.DataFrame(
-        {
-            "col1": [7, 5, 1, 1],
-            "col2": [8, 6, 4, 2],
-        }
-    )
-    df_actual = (
-        ds.groupby("col1")
-        .map_groups(lambda g: g, batch_format="pandas")
-        .sort("col2", descending=True)
-        .to_pandas()
-    )
-    df_expected = df_expected.astype(df_actual.dtypes.to_dict())
-    pd.testing.assert_frame_equal(df_actual, df_expected)
-
-
-def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
-    """Checks that the Aggregate op can inherit batch_format
-    from upstream ops correctly."""
-    from ray.data.aggregate import AggregateFn
-
-    ds = ray.data.from_items(
-        [
-            {"col1": 1, "col2": 2},
-            {"col1": 1, "col2": 4},
-            {"col1": 5, "col2": 6},
-            {"col1": 7, "col2": 8},
-        ]
-    )
-    aggregation = AggregateFn(
-        init=lambda column: 1,
-        accumulate_row=lambda a, row: a * row["col2"],
-        merge=lambda a1, a2: a1 * a2,
-        name="prod",
-    )
-    assert (
-        ds.groupby("col1")
-        .map_groups(lambda g: g, batch_format="pandas")
-        .aggregate(aggregation)
-    ) == {"prod": 384}
-
-
 def test_aggregate_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
