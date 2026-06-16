@@ -76,8 +76,7 @@ class DistributionTracker:
                 self._sketch = None
         elif self._sketch is None and other._sketch is not None:
             # self tracked data but has no sketch; adopt a copy of other's
-            # sketch (copy, not alias, so a later add_sample() on self won't
-            # mutate other).
+            # sketch.
             self._sketch = copy.copy(other._sketch)
 
     @property
