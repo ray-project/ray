@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -70,11 +71,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_port,
                   IsLocalhost(config.node_ip_address),
                   config.grpc_server_thread_num,
-                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
-                  /*auth_token=*/nullptr,
-                  // The health check implementation is overridden to check the health
-                  // of our boost::asio event loop threads.
-                  /*enable_default_health_check_service=*/false),
+                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            config.node_ip_address,
@@ -313,18 +310,17 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
 
-  // Register a custom health check service that runs on the io_context instead of the
-  // default gRPC health check (which responds directly from gRPC threads). This way,
-  // if the GCS event loop is stuck, health checks will time out.
-  rpc_server_.RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(
-      io_context_provider_.GetDefaultIOContext()));
-
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
   if (port_ready_callback_) {
     port_ready_callback_(rpc_server_.GetPort());
   }
+
+  // Start monitoring the io_contexts. The monitor drives the serving status of
+  // the gRPC health check service, so it must be started after the RPC server is
+  // running (GetHealthCheckService() is only valid once the server is built).
+  InitIOContextMonitor();
 
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
@@ -349,6 +345,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
+
+    // Stop the io_context monitor before tearing down the io_contexts it probes.
+    if (io_context_monitor_thread_) {
+      io_context_monitor_thread_->Stop();
+    }
 
     // Flush any remaining events before stopping.
     if (ray_event_recorder_) {
@@ -415,6 +416,38 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
       gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
   }
+}
+
+void GcsServer::InitIOContextMonitor() {
+  std::vector<MonitoredIOContext> monitored_io_contexts;
+  // The main io_context always contributes to the health check.
+  monitored_io_contexts.push_back({"gcs_server_main_io_context",
+                                   &io_context_provider_.GetDefaultIOContext(),
+                                   /*include_in_health_check=*/true});
+  const auto &dedicated_io_contexts = io_context_provider_.GetAllDedicatedIOContexts();
+  for (const auto &dedicated_io_context : dedicated_io_contexts) {
+    monitored_io_contexts.push_back({dedicated_io_context->GetName(),
+                                     &dedicated_io_context->GetIoService(),
+                                     dedicated_io_context->UsedForHealthCheck()});
+  }
+
+  auto monitor = std::make_unique<IOContextMonitor>(
+      std::move(monitored_io_contexts),
+      metrics_.io_context_monitor_latency_ms_gauge,
+      metrics_.io_context_monitor_unhealthy_counter,
+      absl::Milliseconds(RayConfig::instance().io_context_monitor_healthy_deadline_ms()));
+  io_context_monitor_thread_ = std::make_unique<IOContextMonitorThread>(
+      std::move(monitor),
+      absl::Milliseconds(RayConfig::instance().io_context_monitor_probe_interval_ms()),
+      [this](bool healthy) {
+        // Drive the gRPC default health check service's serving status. Called
+        // from the monitor thread; SetServingStatus is thread-safe. The empty
+        // service name is the conventional overall-server health that clients
+        // (e.g. the GCS client) query.
+        rpc_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+            /*service_name=*/"", healthy);
+      });
+  io_context_monitor_thread_->Start();
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {

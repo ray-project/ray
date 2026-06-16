@@ -20,6 +20,7 @@
 
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/io_context_monitor.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -150,6 +151,10 @@ class GcsServer {
 
   /// Initialize gcs health check manager.
   void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
+
+  /// Start the IOContextMonitor that probes the GCS io_contexts and drives
+  /// io_contexts_healthy_.
+  void InitIOContextMonitor();
 
   /// Initialize gcs resource manager.
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
@@ -303,6 +308,11 @@ class GcsServer {
   std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
+  /// Monitors the GCS io_contexts on a dedicated thread; its LastHealthStatus()
+  /// drives the gRPC health check. Declared last so it is stopped/destroyed
+  /// before the io_contexts (owned by io_context_provider_) and metrics it
+  /// references.
+  std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
 };
 
 }  // namespace gcs
