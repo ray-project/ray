@@ -62,22 +62,25 @@ class _ExactDownloadPartitioner:
             yield block
             return
 
-        if self._target_nbytes is None:
-            if self._should_fetch_metadata_without_target(block):
-                yield self._annotate_partition(
-                    block, self._get_block_sizes_by_column(block)
-                )
-            else:
-                yield block
+        if (
+            self._target_nbytes is None
+            and not self._should_fetch_metadata_without_target(block)
+        ):
+            yield block
             return
 
-        target_nbytes = max(1, self._target_nbytes)
-        row_partitioner = WeightedRoundRobinPartitioner[int](
-            min_bucket_size=self._min_partition_nbytes(target_nbytes),
-            max_bucket_size=target_nbytes,
-            num_buckets=self._num_buckets,
-            emit_before_overflow=True,
-        )
+        # When there's no target size, every row stays in a single partition (the
+        # whole block), so we skip the round-robin partitioner and just fetch
+        # sizes to annotate. ``row_partitioner is None`` flags that mode below.
+        row_partitioner: Optional[WeightedRoundRobinPartitioner[int]] = None
+        if self._target_nbytes is not None:
+            target_nbytes = max(1, self._target_nbytes)
+            row_partitioner = WeightedRoundRobinPartitioner[int](
+                min_bucket_size=self._min_partition_nbytes(target_nbytes),
+                max_bucket_size=target_nbytes,
+                num_buckets=self._num_buckets,
+                emit_before_overflow=True,
+            )
         # Full-block per-column size arrays, filled chunk by chunk. Row index is
         # the absolute block position, so these are indexed directly when
         # reconstructing per-partition sizes in ``_drain_row_partitions``.
@@ -96,8 +99,13 @@ class _ExactDownloadPartitioner:
                 column_sizes = chunk_sizes_by_column[uri_column_name]
                 sizes_by_column[uri_column_name][chunk_start:chunk_end] = column_sizes
                 row_nbytes += column_sizes
-            row_nbytes_list = row_nbytes.tolist()
 
+            if row_partitioner is None:
+                # No target size: only accumulate full-block sizes; the block is
+                # emitted whole, annotated, after the loop.
+                continue
+
+            row_nbytes_list = row_nbytes.tolist()
             for chunk_row in range(chunk_end - chunk_start):
                 row_partitioner.add_item(
                     chunk_start + chunk_row,
@@ -108,6 +116,16 @@ class _ExactDownloadPartitioner:
                     row_partitioner,
                     sizes_by_column,
                 )
+
+        if row_partitioner is None:
+            yield self._annotate_partition(
+                block,
+                {
+                    uri_column_name: column_sizes.tolist()
+                    for uri_column_name, column_sizes in sizes_by_column.items()
+                },
+            )
+            return
 
         row_partitioner.finalize()
         yield from self._drain_row_partitions(
@@ -149,17 +167,6 @@ class _ExactDownloadPartitioner:
             chunk_end = min(chunk_start + self._metadata_chunk_size, block.num_rows)
             chunk = block.slice(chunk_start, chunk_end - chunk_start)
             yield chunk_start, chunk_end, self._get_chunk_sizes_by_column(chunk)
-
-    def _get_block_sizes_by_column(self, block: pa.Table) -> SizesByColumn:
-        sizes_by_column = {
-            uri_column_name: [] for uri_column_name in self._uri_column_names
-        }
-        for _, _, chunk_sizes_by_column in self._iter_chunk_sizes(block):
-            for uri_column_name in self._uri_column_names:
-                sizes_by_column[uri_column_name].extend(
-                    chunk_sizes_by_column[uri_column_name].tolist()
-                )
-        return sizes_by_column
 
     def _get_chunk_sizes_by_column(
         self, chunk: pa.Table
