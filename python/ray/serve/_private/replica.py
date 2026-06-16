@@ -1395,13 +1395,15 @@ class Replica:
                 "serve_access_log": True,
             }
 
+    def _is_replica_quiescing(self, request_metadata: RequestMetadata) -> bool:
+        # During graceful shutdown, reject new handle-path requests so the
+        # router retries them on another replica. Direct ingress requests are
+        # not rejected: their servers are shutting down gracefully and anything
+        # that still arrives is served to completion.
+        return self._quiescing and not request_metadata.is_direct_ingress
+
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
-        # While quiescing, reject new handle-path requests so the router
-        # retries them on another replica. Direct ingress requests are not
-        # rejected: their servers are shutting down gracefully and anything
-        # that still arrives is served to completion. Same for callers of the
-        # non-rejection paths, which cannot retry a rejection.
-        if self._quiescing and not request_metadata.is_direct_ingress:
+        if self._is_replica_quiescing(request_metadata):
             return False
 
         if request_metadata.is_direct_ingress:
@@ -1724,7 +1726,7 @@ class Replica:
     ):
         # Check if the replica has capacity for the request.
         if not self._can_accept_request(request_metadata):
-            if self._quiescing:
+            if self._is_replica_quiescing(request_metadata):
                 logger.info(
                     "Replica is shutting down, rejecting request "
                     f"{request_metadata.request_id}.",

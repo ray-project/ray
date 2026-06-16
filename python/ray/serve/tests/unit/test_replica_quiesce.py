@@ -91,9 +91,17 @@ def _make_shutdown_fake(
 
 
 class TestCanAcceptRequestWhileQuiescing:
+    @staticmethod
+    def _bind_quiescing(fake):
+        # _can_accept_request delegates the quiescing decision to
+        # _is_replica_quiescing; wire the real helper onto the fake so it runs
+        # instead of returning a truthy MagicMock.
+        fake._is_replica_quiescing = lambda rm: Replica._is_replica_quiescing(fake, rm)
+
     def test_handle_path_rejected_when_quiescing(self):
         fake = MagicMock()
         fake._quiescing = True
+        self._bind_quiescing(fake)
 
         assert (
             Replica._can_accept_request(fake, _make_metadata(is_direct_ingress=False))
@@ -112,6 +120,7 @@ class TestCanAcceptRequestWhileQuiescing:
         fake._quiescing = True
         fake.max_queued_requests = -1
         fake._num_queued_requests = 0
+        self._bind_quiescing(fake)
 
         assert (
             Replica._can_accept_request(fake, _make_metadata(is_direct_ingress=True))
@@ -122,6 +131,7 @@ class TestCanAcceptRequestWhileQuiescing:
         fake = MagicMock()
         fake._quiescing = False
         fake._semaphore.locked.return_value = False
+        self._bind_quiescing(fake)
 
         assert (
             Replica._can_accept_request(fake, _make_metadata(is_direct_ingress=False))
