@@ -350,6 +350,8 @@ The following example shows how to download a batch of images from URLs listed i
 
 .. testcode::
 
+    import pyarrow.fs
+
     import ray
     from ray.data.expressions import download
 
@@ -360,7 +362,10 @@ The following example shows how to download a batch of images from URLs listed i
     # This creates a new column 'bytes' with the downloaded file contents.
     ds = ds.with_column(
         "bytes",
-        download("image_url"),
+        download(
+            "image_url",
+            filesystem=pyarrow.fs.S3FileSystem(anonymous=True, region="us-west-2"),
+        ),
     )
 
     ds.take(1)

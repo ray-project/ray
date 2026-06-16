@@ -63,7 +63,7 @@ class GeneratorBackpressureWaiter {
 
   /// Increment the number of objects generated. The executor should call this
   /// before sending an object report to the caller.
-  void IncrementObjectGenerated();
+  void IncrementObjectGenerated(int64_t num_objects_generated = 1);
 
   /// Handle a completed object report. The executor should call this after
   /// receiving an ack from the caller for an object report.
