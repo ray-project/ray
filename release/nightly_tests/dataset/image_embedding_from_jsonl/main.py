@@ -55,6 +55,12 @@ def parse_args():
             "every minute with a grace period."
         ),
     )
+    parser.add_argument(
+        "--use-budget-scheduler",
+        action="store_true",
+        default=False,
+        help="Enable the budget-based scheduler instead of the default.",
+    )
     return parser.parse_args()
 
 
@@ -146,4 +152,7 @@ class Infer:
 if __name__ == "__main__":
     ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
+    if args.use_budget_scheduler:
+        ctx = ray.data.DataContext.get_current()
+        ctx.use_budget_scheduler = True
     main(args)
