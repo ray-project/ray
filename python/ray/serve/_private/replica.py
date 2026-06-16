@@ -2358,20 +2358,24 @@ class Replica:
 
         return healthy, message
 
-    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
+    def get_grpc_tracing_context(self, context: RayServegRPCContext):
         """Populate tracing context for gRPC requests.
 
-        This method extracts the "traceparent" metadata from the request headers and
-        sets the tracing context from it.
+        This method extracts the "traceparent" and "tracestate" metadata from the
+        request headers and sets the tracing context from it.
         """
         if not is_tracing_enabled():
             return
 
         tracing_ctx = {}
-        for key, value in context.invocation_metadata():
-            if key in ("traceparent", "tracestate"):
-                tracing_ctx = tracing_ctx or {}
-                tracing_ctx[key] = value
+
+        traceparent = context.traceparent()
+        if traceparent is not None:
+            tracing_ctx["traceparent"] = traceparent
+
+        tracestate = context.tracestate()
+        if tracestate is not None:
+            tracing_ctx["tracestate"] = tracestate
 
         return tracing_ctx
 
@@ -2402,11 +2406,10 @@ class Replica:
                 application_names=application_names
             ).SerializeToString()
 
-        request_id = generate_request_id()
         c = RayServegRPCContext(context)
+        request_id = c.request_id() or generate_request_id()
         c.set_trailing_metadata([("request_id", request_id)])
         request_metadata = RequestMetadata(
-            # TODO: pick up the request ID from gRPC initial metadata.
             request_id=request_id,
             internal_request_id=generate_request_id(),
             call_method=service_method.split("/")[-1],
@@ -2416,7 +2419,7 @@ class Replica:
             # TODO(edoakes): populate this.
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
-            tracing_context=self.get_grpc_tracing_context(context),
+            tracing_context=self.get_grpc_tracing_context(c),
             is_streaming=False,
             is_direct_ingress=True,
             _client=format_grpc_peer_address(context.peer()),
