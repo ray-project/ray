@@ -44,6 +44,9 @@ MAX_HOME_RETRIES = 3
 HOME_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
+_OUTPUT_MARKER_TOKEN_LENGTH = 16
+_OUTPUT_START_MARKER_PREFIX = "__ray_command_output_start_"
+_OUTPUT_END_MARKER_PREFIX = "__ray_command_output_end_"
 
 
 def is_rsync_silent():
@@ -111,6 +114,57 @@ def _with_interactive(cmd):
         f"export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({cmd})"
     )
     return ["bash", "--login", "-c", "-i", quote(force_interactive)]
+
+
+def _with_output_markers(cmd: str) -> str:
+    marker_token = hashlib.sha256(cmd.encode()).hexdigest()[
+        :_OUTPUT_MARKER_TOKEN_LENGTH
+    ]
+    start_marker = f"{_OUTPUT_START_MARKER_PREFIX}{marker_token}__"
+    end_marker = f"{_OUTPUT_END_MARKER_PREFIX}{marker_token}__"
+    return (
+        "__ray_command_status=0; "
+        f"printf '%s\\n' {start_marker}; "
+        f"({cmd}) || __ray_command_status=$?; "
+        f"printf '\\n%s\\n' {end_marker}; "
+        "exit $__ray_command_status"
+    )
+
+
+def _extract_output_between_markers(output: bytes) -> bytes:
+    start_prefix = _OUTPUT_START_MARKER_PREFIX.encode()
+    end_prefix = _OUTPUT_END_MARKER_PREFIX.encode()
+
+    start = output.find(start_prefix)
+    if start == -1:
+        return output
+
+    start_marker_end = start + len(start_prefix) + _OUTPUT_MARKER_TOKEN_LENGTH + 2
+    start_marker = output[start:start_marker_end]
+    if not start_marker.endswith(b"__"):
+        return output
+
+    marker_token = start_marker[
+        len(start_prefix) : len(start_prefix) + _OUTPUT_MARKER_TOKEN_LENGTH
+    ]
+    end_marker = end_prefix + marker_token + b"__"
+
+    start += len(start_marker)
+    if output[start : start + 2] == b"\r\n":
+        start += 2
+    elif output[start : start + 1] == b"\n":
+        start += 1
+
+    end = output.find(end_marker, start)
+    if end == -1:
+        return output
+
+    payload = output[start:end]
+    if payload.endswith(b"\r\n"):
+        payload = payload[:-2]
+    elif payload.endswith(b"\n"):
+        payload = payload[:-1]
+    return payload
 
 
 class SSHOptions:
@@ -295,7 +349,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                     use_login_shells=is_using_login_shells(),
                 )
             else:
-                return self.process_runner.check_output(final_cmd)
+                output = self.process_runner.check_output(final_cmd)
+                return _extract_output_between_markers(output)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
@@ -378,6 +433,8 @@ class SSHCommandRunner(CommandRunnerInterface):
         if cmd:
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
+            if with_output:
+                cmd = _with_output_markers(cmd)
             if is_using_login_shells():
                 final_cmd += _with_interactive(cmd)
             else:

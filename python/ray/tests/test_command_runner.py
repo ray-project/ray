@@ -5,6 +5,9 @@ from getpass import getuser
 import pytest
 
 from ray.autoscaler._private.command_runner import (
+    _OUTPUT_END_MARKER_PREFIX,
+    _OUTPUT_MARKER_TOKEN_LENGTH,
+    _OUTPUT_START_MARKER_PREFIX,
     DockerCommandRunner,
     SSHCommandRunner,
     _with_environment_variables,
@@ -122,6 +125,45 @@ def test_ssh_command_runner():
     for x, y in zip(process_runner.calls[0], expected):
         assert x == y
     process_runner.assert_has_call("1.2.3.4", exact=expected)
+
+
+def test_ssh_command_runner_with_output_ignores_profile_output():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    cmd_runner = SSHCommandRunner(
+        log_prefix="prefix",
+        node_id="0",
+        provider=provider,
+        auth_config=auth_config,
+        cluster_name="cluster",
+        process_runner=process_runner,
+        use_internal_ip=False,
+    )
+
+    marker_token = hashlib.sha256("echo hello".encode()).hexdigest()[
+        :_OUTPUT_MARKER_TOKEN_LENGTH
+    ]
+    start_marker = f"{_OUTPUT_START_MARKER_PREFIX}{marker_token}__"
+    end_marker = f"{_OUTPUT_END_MARKER_PREFIX}{marker_token}__"
+
+    process_runner.respond_to_call(
+        "echo hello",
+        [
+            "\n".join(
+                [
+                    "profile script banner",
+                    start_marker,
+                    "hello",
+                    end_marker,
+                    "profile script footer",
+                ]
+            )
+        ],
+    )
+
+    assert cmd_runner.run("echo hello", with_output=True) == b"hello"
+    process_runner.assert_has_call("1.2.3.4", pattern=start_marker)
 
 
 def test_docker_command_runner():
