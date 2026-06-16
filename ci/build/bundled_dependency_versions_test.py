@@ -2,7 +2,6 @@ import ast
 import re
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).absolute().parents[2]
 LOG4J_ARTIFACTS = {
     "log4j-api",
