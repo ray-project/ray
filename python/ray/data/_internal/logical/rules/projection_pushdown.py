@@ -157,6 +157,9 @@ def _would_duplicate_nonidempotent_expr(
 
     # Downstream reference multiplicity (counts ``x + x`` as 2).
     counter = _ColumnReferenceCollector()
+    # Note: We ignore _common_sub_exprs field as CSE rule is applied post-optimization.
+    # If order is to be changed, we also need to invoke the _ColumnReferenceCollector
+    # on _common_sub_exprs.
     for e in _filter_out_star(downstream_project.exprs):
         counter.visit(e)
     ref_counts = counter.get_counts()
