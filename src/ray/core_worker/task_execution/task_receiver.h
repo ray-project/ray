@@ -105,12 +105,11 @@ class TaskReceiver {
 
   /// Populate `reply` from a completed task execution's `status` and `result`, then
   /// invoke `send_reply_callback`.
-  static void HandleTaskExecutionResult(
-      Status status,
-      const TaskSpecification &task_spec,
-      const TaskExecutionResult &result,
-      const rpc::SendReplyCallback &send_reply_callback,
-      rpc::PushTaskReply *reply);
+  static void HandleTaskExecutionResult(Status status,
+                                        const TaskSpecification &task_spec,
+                                        const TaskExecutionResult &result,
+                                        const rpc::SendReplyCallback &send_reply_callback,
+                                        rpc::PushTaskReply *reply);
 
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;
