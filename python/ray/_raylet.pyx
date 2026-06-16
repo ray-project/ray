@@ -1349,17 +1349,20 @@ cdef report_streaming_generator_exception(
 
 def _reserve_actor_generator_slot(
         StreamingGeneratorExecutionContext context):
-    """Block (with the GIL released) until the actor-wide generator backpressure budget admits another object."""
-    cdef CRayStatus status
+    """Block (with the GIL released) until the actor-wide generator backpressure budget admits the next yield's objects."""
+    cdef:
+        CRayStatus status
+        int64_t num_objects = context.num_objects_per_yield
     with nogil:
-        status = context.actor_backpressure_metadata.get().ReserveSlot()
+        status = context.actor_backpressure_metadata.get().ReserveSlot(num_objects)
     check_status(status)
 
 
 def _release_actor_generator_slot(
         StreamingGeneratorExecutionContext context):
+    cdef int64_t num_objects = context.num_objects_per_yield
     with nogil:
-        context.actor_backpressure_metadata.get().ReleaseSlot()
+        context.actor_backpressure_metadata.get().ReleaseSlot(num_objects)
 
 
 cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context):
@@ -1395,8 +1398,9 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
         while True:
             try:
                 # Actor-wide backpressure pre-check. Block (releasing the
-                # GIL) until the actor's shared budget admits another
-                # object. No-op when the actor option is disabled.
+                # GIL) until the actor's shared budget admits this yield's
+                # objects (`_num_objects_per_yield`). No-op when the actor
+                # option is disabled.
                 if context.actor_backpressure_metadata.get() != NULL:
                     _reserve_actor_generator_slot(context)
                 # Send object serialization duration to the generator and retrieve

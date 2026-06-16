@@ -120,8 +120,12 @@ ActorWideGeneratorBackpressureWaiter::ActorWideGeneratorBackpressureWaiter(
 }
 
 Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
-    ActorTaskBackpressureMetadata &metadata) {
+    ActorTaskBackpressureMetadata &metadata, int64_t num_objects) {
   absl::MutexLock lock(&mutex_);
+  // Wait until the shared budget is below the cap, then admit the whole group
+  // of `num_objects`. A single group is admitted even if it overshoots the cap
+  // (mirrors the per-task waiter, which reports a full grouped yield before
+  // blocking); otherwise a group larger than the cap could never make progress.
   while (metadata.task_alive &&
          total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
     backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
@@ -133,19 +137,24 @@ Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
   if (!metadata.task_alive) {
     return Status::OK();
   }
-  total_objects_generated_ += 1;
-  metadata.per_task_generated += 1;
+  total_objects_generated_ += num_objects;
+  metadata.per_task_generated += num_objects;
   return Status::OK();
 }
 
 void ActorWideGeneratorBackpressureWaiter::ReleaseActorWideSlot(
-    ActorTaskBackpressureMetadata &metadata) {
+    ActorTaskBackpressureMetadata &metadata, int64_t num_objects) {
   absl::MutexLock lock(&mutex_);
-  if (!metadata.task_alive || metadata.per_task_generated <= metadata.per_task_consumed) {
+  if (!metadata.task_alive) {
     return;
   }
-  metadata.per_task_generated -= 1;
-  total_objects_generated_ -= 1;
+  const int64_t releasable =
+      std::min(num_objects, metadata.per_task_generated - metadata.per_task_consumed);
+  if (releasable <= 0) {
+    return;
+  }
+  metadata.per_task_generated -= releasable;
+  total_objects_generated_ -= releasable;
   if (total_objects_generated_ - total_objects_consumed_ < backpressure_threshold_) {
     backpressure_cond_var_.SignalAll();
   }
@@ -157,8 +166,9 @@ void ActorWideGeneratorBackpressureWaiter::OnConsumedForTask(
   if (!metadata.task_alive) {
     return;
   }
-  // per_task_generated counts ReserveActorWideSlot admissions only; reported
-  // totals may not line up (e.g. substitute values on RPC failure).
+  // per_task_generated counts ReserveActorWideSlot admissions in object units
+  // (matching the owner-reported consumed total); reported totals may still not
+  // line up (e.g. substitute values on RPC failure), so clamp to what we admitted.
   const int64_t clamped_total = std::min(total, metadata.per_task_generated);
   int64_t delta = clamped_total - metadata.per_task_consumed;
   if (delta <= 0) {
@@ -197,12 +207,12 @@ int64_t ActorWideGeneratorBackpressureWaiter::TotalObjectGenerated() const {
   return total_objects_generated_;
 }
 
-Status ActorTaskBackpressureMetadata::ReserveSlot() {
-  return actor_waiter->ReserveActorWideSlot(*this);
+Status ActorTaskBackpressureMetadata::ReserveSlot(int64_t num_objects) {
+  return actor_waiter->ReserveActorWideSlot(*this, num_objects);
 }
 
-void ActorTaskBackpressureMetadata::ReleaseSlot() {
-  actor_waiter->ReleaseActorWideSlot(*this);
+void ActorTaskBackpressureMetadata::ReleaseSlot(int64_t num_objects) {
+  actor_waiter->ReleaseActorWideSlot(*this, num_objects);
 }
 
 void ActorTaskBackpressureMetadata::OnConsumed(int64_t total) {

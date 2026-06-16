@@ -505,6 +505,45 @@ def test_actor_generator_backpressure_task_completes_before_consumed(shutdown_on
     _drain_all([g1, g2, g3])
 
 
+def test_actor_generator_backpressure_num_objects_per_yield(shutdown_only):
+    """Actor-wide cap counts objects, not yields, when ``_num_objects_per_yield`` > 1."""
+    ray.init(num_cpus=2)
+    reporter = TagReporter.remote()
+
+    # Cap of 4 objects with 2 objects per yield admits at most 2 yields (4
+    # objects) before parking. With the (buggy) per-yield accounting the cap
+    # would instead admit 4 yields (8 objects) before parking.
+    @ray.remote(_actor_generator_backpressure_num_objects=4)
+    class A:
+        @ray.method(_num_objects_per_yield=2)
+        def gen(self, rep, tag):
+            for i in range(5):
+                ray.get(rep.report.remote(tag, i))
+                yield i, i
+
+    a = A.remote()
+    g = a.gen.remote(reporter, "a")
+
+    # Exactly two yields (= 4 objects) fill the cap, then the producer parks.
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 2,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+    time.sleep(1)
+    assert ray.get(reporter.count_tag.remote("a")) == 2
+
+    # Consuming a ref frees budget below the cap and admits one more yield.
+    ray.get(next(g))
+    wait_for_condition(
+        lambda: ray.get(reporter.count_tag.remote("a")) == 3,
+        timeout=_ACTOR_GEN_BP_WAIT_S,
+    )
+
+    # Draining the rest lets the generator run to completion (5 yields total).
+    _drain_all([g])
+    assert ray.get(reporter.count_tag.remote("a")) == 5
+
+
 def test_actor_generator_backpressure_mt_actor(shutdown_only):
     """Two concurrent sync generator tasks; actor-wide cap 6; reclaim on drain."""
     ray.init(num_cpus=4)

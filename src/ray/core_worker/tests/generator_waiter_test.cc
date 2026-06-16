@@ -183,6 +183,63 @@ TEST(GeneratorWaiterTest, ReserveActorWideSlotBlocksAndAtomicallyIncrements) {
   ASSERT_EQ(md.per_task_consumed, 1);
 }
 
+TEST(GeneratorWaiterTest, ReserveActorWideSlotAccountsGroupedYieldsInObjectUnits) {
+  // The cap and the owner-reported consumed totals are both in object units, so
+  // a grouped yield (`_num_objects_per_yield` > 1) must reserve all of its
+  // objects against the actor-wide budget, not just one.
+  constexpr int64_t kPerYield = 3;
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      2 * kPerYield, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  // Each grouped yield admits its whole group of objects.
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md, kPerYield).ok());
+  ASSERT_EQ(md.per_task_generated, kPerYield);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), kPerYield);
+
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md, kPerYield).ok());
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2 * kPerYield);
+
+  // The budget is now full (2 * kPerYield objects); the next group blocks.
+  std::atomic<bool> third_done(false);
+  std::thread t([&] {
+    ASSERT_TRUE(waiter->ReserveActorWideSlot(md, kPerYield).ok());
+    third_done = true;
+  });
+  absl::SleepFor(absl::Milliseconds(50));
+  ASSERT_FALSE(third_done.load());
+
+  // Consuming objects (in object units) frees budget below the cap and unblocks.
+  waiter->OnConsumedForTask(md, kPerYield);
+  ASSERT_EQ(md.per_task_consumed, kPerYield);
+  t.join();
+  ASSERT_TRUE(third_done.load());
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 3 * kPerYield);
+}
+
+TEST(GeneratorWaiterTest, ReleaseActorWideSlotReclaimsWholeGroup) {
+  // On StopIteration the pre-reserved group produced no objects, so the whole
+  // reserved group must be reclaimed.
+  constexpr int64_t kPerYield = 3;
+  auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
+      2 * kPerYield, []() { return Status::OK(); });
+  ActorTaskBackpressureMetadata md(waiter);
+
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md, kPerYield).ok());
+  ASSERT_TRUE(waiter->ReserveActorWideSlot(md, kPerYield).ok());
+  ASSERT_EQ(waiter->TotalObjectGenerated(), 2 * kPerYield);
+
+  waiter->ReleaseActorWideSlot(md, kPerYield);
+  ASSERT_EQ(md.per_task_generated, kPerYield);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), kPerYield);
+
+  // Release clamps to what is still outstanding and never underflows.
+  waiter->OnConsumedForTask(md, kPerYield);
+  waiter->ReleaseActorWideSlot(md, kPerYield);
+  ASSERT_EQ(md.per_task_generated, kPerYield);
+  ASSERT_EQ(waiter->TotalObjectGenerated(), kPerYield);
+}
+
 TEST(GeneratorWaiterTest, OnConsumedForTaskAdvancesByDeltaIgnoresStale) {
   auto waiter = std::make_shared<ActorWideGeneratorBackpressureWaiter>(
       10, []() { return Status::OK(); });

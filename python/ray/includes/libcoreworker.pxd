@@ -111,8 +111,8 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CActorTaskBackpressureMetadata "ray::core::ActorTaskBackpressureMetadata":  # noqa
         CActorTaskBackpressureMetadata(
                 shared_ptr[CActorWideGeneratorBackpressureWaiter] actor_waiter)
-        CRayStatus ReserveSlot()
-        void ReleaseSlot()
+        CRayStatus ReserveSlot(int64_t num_objects)
+        void ReleaseSlot(int64_t num_objects)
         void OnReport(int64_t total)
         void Teardown()
 

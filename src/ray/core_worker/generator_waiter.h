@@ -43,8 +43,11 @@ struct ActorTaskBackpressureMetadata {
       : actor_waiter(std::move(w)) {}
 
   // Thin forwarders for Cython and RPC callbacks.
-  Status ReserveSlot();
-  void ReleaseSlot();
+  // num_objects is the number of objects the yield produces
+  // (`_num_objects_per_yield`), so a grouped yield reserves/releases its whole
+  // group of objects against the actor-wide budget.
+  Status ReserveSlot(int64_t num_objects = 1);
+  void ReleaseSlot(int64_t num_objects = 1);
   void OnConsumed(int64_t total);
   void Teardown();
 };
@@ -91,8 +94,13 @@ class ActorWideGeneratorBackpressureWaiter {
   ActorWideGeneratorBackpressureWaiter(int64_t actor_cap,
                                        std::function<Status()> check_signals);
 
-  Status ReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata);
-  void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata);
+  // num_objects is the number of objects admitted/reclaimed in one call so the
+  // actor-wide budget is accounted in object units even when a single yield
+  // produces multiple objects (`_num_objects_per_yield` > 1).
+  Status ReserveActorWideSlot(ActorTaskBackpressureMetadata &metadata,
+                              int64_t num_objects = 1);
+  void ReleaseActorWideSlot(ActorTaskBackpressureMetadata &metadata,
+                            int64_t num_objects = 1);
   void OnConsumedForTask(ActorTaskBackpressureMetadata &metadata, int64_t total);
   void TeardownTask(ActorTaskBackpressureMetadata &metadata);
 
