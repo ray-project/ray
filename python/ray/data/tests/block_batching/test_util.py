@@ -552,6 +552,49 @@ class TestIterThreaded:
         output = list(iter_threaded(iter([]), _identity, num_workers=4))
         assert output == []
 
+    @pytest.mark.parametrize("num_workers,output_buffer_size", [(1, 1), (4, 4)])
+    def test_credit_gate_bounds_in_flight_items(
+        self, num_workers: int, output_buffer_size: int
+    ):
+        """The credit-gated design caps total in-flight items (queue +
+        workers mid-processing) at ``output_buffer_size``. Verify by
+        instrumenting ``fn`` with a counter incremented on entry and
+        decremented after the queue takes ownership, then sampling it
+        while a slow consumer holds the queue near full."""
+
+        in_flight = 0
+        in_flight_lock = threading.Lock()
+        max_observed = 0
+
+        def instrumented_fn(it: Iterator[int]) -> Iterator[int]:
+            nonlocal in_flight, max_observed
+            for item in it:
+                with in_flight_lock:
+                    in_flight += 1
+                    max_observed = max(max_observed, in_flight)
+                # Hold the credit for a beat so the queue accumulates.
+                time.sleep(0.01)
+                yield item
+
+        consumed = []
+        for item in iter_threaded(
+            iter(range(100)),
+            instrumented_fn,
+            num_workers=num_workers,
+            output_buffer_size=output_buffer_size,
+        ):
+            with in_flight_lock:
+                in_flight -= 1  # consumer took ownership
+            time.sleep(0.005)  # slow consumer keeps queue partially full
+            consumed.append(item)
+
+        assert sorted(consumed) == list(range(100))
+        # The credit gate caps in-flight at output_buffer_size strictly.
+        assert max_observed <= output_buffer_size, (
+            f"Observed {max_observed} in-flight items, "
+            f"expected ≤ {output_buffer_size}"
+        )
+
 
 if __name__ == "__main__":
     import sys
