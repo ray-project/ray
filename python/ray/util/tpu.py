@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -453,6 +453,8 @@ class SlicePlacementGroup:
             indefinitely.
         bundle_label_selector: Optional list of label selectors to apply per bundle. These label
             selectors are applied in addition to dynamic TPU slice name labels, which take precedence.
+        per_slice_pgs: If False, creates 1 placement group for all slices.
+            If True, creates `num_slices` placement groups, 1 per slice.
 
     Examples:
 
@@ -497,10 +499,12 @@ class SlicePlacementGroup:
             DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S
         ),
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        per_slice_pgs: bool = False,
     ):
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
-        self._placement_group: Optional[PlacementGroup] = None
+        self._managed_pgs: List[PlacementGroup] = []
+        self._per_slice_pgs = per_slice_pgs
         self._user_bundle_label_selector = bundle_label_selector or []
 
         self._topology = topology.strip().lower()
@@ -537,11 +541,15 @@ class SlicePlacementGroup:
         self._validate_tpu_config()
 
         # Reserve a TPU slice of the provided accelerator version and topology.
-        self._placement_group = self._reserve_slice(
+        pgs = self._reserve_slice(
             strategy,
             name,
             lifetime,
         )
+        if self._per_slice_pgs:
+            self._managed_pgs = pgs
+        else:
+            self._managed_pgs = [pgs]
 
     def _validate_tpu_config(self):
         # Should validate topology and generation values and return a
@@ -560,7 +568,7 @@ class SlicePlacementGroup:
         strategy: str = "SPREAD",
         name: str = "",
         lifetime: Optional[str] = None,
-    ) -> PlacementGroup:
+    ) -> Union[PlacementGroup, List[PlacementGroup]]:
         """Performs the two-step scheduling to reserve a TPU slice."""
         if (
             self._user_bundle_label_selector
@@ -572,7 +580,7 @@ class SlicePlacementGroup:
             )
 
         self._bundle_label_selector = []
-        bundles = []
+        all_bundles = []
         bundles_per_slice = self._num_bundles // self._num_slices
 
         # Construct accelerator format for reserve_tpu_slice. e.g. From "v6e" to "TPU-V6E", "v5p" to "TPU-V5P".
@@ -590,7 +598,7 @@ class SlicePlacementGroup:
                         f"Failed to reserve TPU slice. Requested {self.num_slices} "
                         f"slice(s) of topology '{self._topology}' with accelerator type "
                         f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
-                        "available in the cluster."
+                        f"available in the cluster."
                     )
 
                 # Store the head placement group for clean-up when un-reserving the slice.
@@ -601,6 +609,7 @@ class SlicePlacementGroup:
                     ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name
                 }
 
+                slice_bundle_label_selector = []
                 for bundle_idx in range(bundles_per_slice):
                     global_bundle_idx = slice_idx * bundles_per_slice + bundle_idx
 
@@ -612,28 +621,63 @@ class SlicePlacementGroup:
                     # TPU slice name label takes precedence; user labels fill in the rest.
                     merged_labels = {**user_labels, **tpu_slice_name_label}
                     self._bundle_label_selector.append(merged_labels)
+                    slice_bundle_label_selector.append(merged_labels)
 
-                bundles += [
+                slice_bundles = [
                     self._bundle_resources.copy() for _ in range(bundles_per_slice)
                 ]
+                all_bundles += slice_bundles
 
-            pg = placement_group(
-                bundles=bundles,
-                strategy=strategy,
-                name=name,
-                lifetime=lifetime,
-                bundle_label_selector=self._bundle_label_selector,
-            )
+                if self._per_slice_pgs:
+                    pg_name = f"{name}_slice_{slice_idx}" if name else ""
+                    pg = placement_group(
+                        bundles=slice_bundles,
+                        strategy=strategy,
+                        name=pg_name,
+                        lifetime=lifetime,
+                        bundle_label_selector=slice_bundle_label_selector,
+                    )
+                    self._managed_pgs.append(pg)
 
-            return pg
+            if not self._per_slice_pgs:
+                pg = placement_group(
+                    bundles=all_bundles,
+                    strategy=strategy,
+                    name=name,
+                    lifetime=lifetime,
+                    bundle_label_selector=self._bundle_label_selector,
+                )
+                self._managed_pgs.append(pg)
+                return pg
+            else:
+                return self._managed_pgs
         except Exception:
             self.shutdown()
             raise
 
     @property
-    def placement_group(self) -> PlacementGroup:
-        """The underlying PlacementGroup object."""
-        return self._placement_group
+    def placement_group(self) -> Optional[PlacementGroup]:
+        """The underlying PlacementGroup object.
+
+        Raises:
+            ValueError: If per_slice_pgs=True was used.
+        """
+        if self._per_slice_pgs:
+            raise ValueError(
+                "per_slice_pgs=True, use `per_slice_placement_groups` instead."
+            )
+        return self._managed_pgs[0] if self._managed_pgs else None
+
+    @property
+    def per_slice_placement_groups(self) -> List[PlacementGroup]:
+        """The list of underlying PlacementGroup objects (one per TPU slice).
+
+        Raises:
+            ValueError: If per_slice_pgs=False was used.
+        """
+        if not self._per_slice_pgs:
+            raise ValueError("per_slice_pgs=False, use `placement_group` instead.")
+        return self._managed_pgs
 
     @property
     def chips_per_host(self) -> int:
@@ -711,15 +755,15 @@ class SlicePlacementGroup:
 
         Idempotent. Safe to call on a partially-constructed instance.
         """
-        worker_pg = getattr(self, "_placement_group", None)
-        if worker_pg is not None:
-            self._placement_group = None
+        worker_pgs = getattr(self, "_managed_pgs", [])
+        self._managed_pgs = []
+        for pg in worker_pgs:
             try:
-                remove_placement_group(worker_pg)
+                remove_placement_group(pg)
             except Exception:
                 logger.exception(
                     "Failed to remove TPU worker placement group %s.",
-                    getattr(worker_pg, "id", worker_pg),
+                    getattr(pg, "id", pg),
                 )
         self.release_head_pgs()
 
@@ -732,6 +776,7 @@ def slice_placement_group(
     resources_per_bundle: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
     chips_per_vm: Optional[int] = None,
+    per_slice_pgs: bool = False,
     **kwargs,
 ) -> SlicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU slice.
@@ -751,6 +796,8 @@ def slice_placement_group(
         chips_per_vm: An optional override for the number of chips per TPU VM.
             Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
             as either 1 VM (8 chips) or 2 VMs (4 chips each).
+        per_slice_pgs: If False, returns a SlicePlacementGroup that manages a single PlacementGroup.
+            If True, returns a SlicePlacementGroup that manages a list of per-slice PlacementGroups.
         **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
     Returns:
@@ -763,5 +810,6 @@ def slice_placement_group(
         resources_per_bundle=resources_per_bundle,
         num_slices=num_slices,
         chips_per_vm=chips_per_vm,
+        per_slice_pgs=per_slice_pgs,
         **kwargs,
     )
