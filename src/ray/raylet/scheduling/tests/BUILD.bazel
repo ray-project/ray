@@ -9,6 +9,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:lease",
         "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
@@ -27,6 +28,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
@@ -56,6 +58,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
@@ -77,6 +80,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/common:task_common",
@@ -97,6 +101,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
     ],
 )
