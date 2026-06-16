@@ -139,9 +139,10 @@ def _extract_output_between_markers(output: bytes) -> bytes:
     if start == -1:
         return output
 
-    start_marker_end = start + len(start_prefix) + _OUTPUT_MARKER_TOKEN_LENGTH + 2
+    expected_marker_len = len(start_prefix) + _OUTPUT_MARKER_TOKEN_LENGTH + 2
+    start_marker_end = start + expected_marker_len
     start_marker = output[start:start_marker_end]
-    if not start_marker.endswith(b"__"):
+    if len(start_marker) != expected_marker_len or not start_marker.endswith(b"__"):
         return output
 
     marker_token = start_marker[
