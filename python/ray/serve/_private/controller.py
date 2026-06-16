@@ -35,14 +35,11 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
-    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_LOG_TO_STDERR,
-    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
@@ -126,36 +123,6 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
-
-
-def _get_aggregated_autoscaling_metrics_delay_ms(
-    delay_by_source: Dict[str, Tuple[float, float]],
-    source_id: str,
-    delay_ms: float,
-    timeout_s: float,
-) -> float:
-    """Return the max latest metrics delay for a deployment/application series."""
-
-    now = time.time()
-    delay_by_source[source_id] = (delay_ms, now)
-    for cached_source_id, (_, updated_at) in list(delay_by_source.items()):
-        if now - updated_at > timeout_s:
-            del delay_by_source[cached_source_id]
-
-    return max(cached_delay_ms for cached_delay_ms, _ in delay_by_source.values())
-
-
-def _get_autoscaling_metrics_delay_cache_timeout_s(
-    metrics_interval_s: float,
-    *,
-    for_handle: bool = False,
-) -> float:
-    """Return cache TTL aligned with per-deployment metrics push interval."""
-
-    timeout_s = 2 * metrics_interval_s
-    if for_handle:
-        timeout_s = max(timeout_s, RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S)
-    return timeout_s
 
 
 class ServeController:
@@ -321,12 +288,6 @@ class ServeController:
         self._health_metrics_tracker = ControllerHealthMetricsTracker(
             controller_start_time=time.time()
         )
-        self._replica_metrics_delay_ms: Dict[
-            Tuple[str, str], Dict[str, Tuple[float, float]]
-        ] = {}
-        self._handle_metrics_delay_ms: Dict[
-            Tuple[str, str], Dict[str, Tuple[float, float]]
-        ] = {}
 
         self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
@@ -397,58 +358,6 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def _get_deployment_metrics_interval_s(
-        self, deployment: str, application: str, *, for_handle: bool
-    ) -> float:
-        deployment_config = self.get_deployment_config(
-            DeploymentID(name=deployment, app_name=application)
-        )
-        if (
-            deployment_config is not None
-            and deployment_config.autoscaling_config is not None
-        ):
-            return deployment_config.autoscaling_config.metrics_interval_s
-
-        return (
-            RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-            if for_handle
-            else RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-        )
-
-    def _autoscaling_metrics_delay_ms(
-        self,
-        delay_cache: Dict[Tuple[str, str], Dict[str, Tuple[float, float]]],
-        deployment: str,
-        application: str,
-        source_id: str,
-        latency_ms: float,
-        *,
-        for_handle: bool,
-    ) -> float:
-        """Delay value to report on the (deployment, application) delay gauge.
-
-        With the high-cardinality replica/handle tag enabled, each source has
-        its own time series, so we report its own latency directly. With the
-        tag disabled, all sources of a deployment share one series; reporting a
-        single source latency would be last-writer-wins and flap, so we
-        aggregate to the max delay across sources that reported within the cache
-        timeout, evicting stale/dead sources so they do not pin the max forever.
-        """
-        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-            return latency_ms
-
-        metrics_interval_s = self._get_deployment_metrics_interval_s(
-            deployment, application, for_handle=for_handle
-        )
-        return _get_aggregated_autoscaling_metrics_delay_ms(
-            delay_cache.setdefault((deployment, application), {}),
-            source_id,
-            latency_ms,
-            _get_autoscaling_metrics_delay_cache_timeout_s(
-                metrics_interval_s, for_handle=for_handle
-            ),
-        )
-
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
@@ -458,26 +367,16 @@ class ServeController:
         latency_ms = latency * 1000
         deployment = replica_metric_report.replica_id.deployment_id.name
         application = replica_metric_report.replica_id.deployment_id.app_name
-        tags = {
-            "deployment": deployment,
-            "application": application,
-        }
-        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-            tags["replica"] = replica_metric_report.replica_id.unique_id
 
-        metrics_delay_ms = self._autoscaling_metrics_delay_ms(
-            self._replica_metrics_delay_ms,
-            deployment,
-            application,
-            replica_metric_report.replica_id.unique_id,
+        # Record the metrics delay for observability. A histogram lets Prometheus
+        # aggregate reports from all replicas of a deployment, so we omit the
+        # per-replica tag to keep cardinality bounded.
+        self.replica_metrics_delay_histogram.observe(
             latency_ms,
-            for_handle=False,
-        )
-
-        # Record the metrics delay for observability
-        self.replica_metrics_delay_gauge.set(
-            metrics_delay_ms,
-            tags=tags,
+            tags={
+                "deployment": deployment,
+                "application": application,
+            },
         )
         # Track in health metrics
         self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
@@ -494,26 +393,16 @@ class ServeController:
         latency_ms = latency * 1000
         deployment = handle_metric_report.deployment_id.name
         application = handle_metric_report.deployment_id.app_name
-        tags = {
-            "deployment": deployment,
-            "application": application,
-        }
-        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-            tags["handle"] = handle_metric_report.handle_id
 
-        metrics_delay_ms = self._autoscaling_metrics_delay_ms(
-            self._handle_metrics_delay_ms,
-            deployment,
-            application,
-            handle_metric_report.handle_id,
+        # Record the metrics delay for observability. A histogram lets Prometheus
+        # aggregate reports from all handles of a deployment, so we omit the
+        # per-handle tag to keep cardinality bounded.
+        self.handle_metrics_delay_histogram.observe(
             latency_ms,
-            for_handle=True,
-        )
-
-        # Record the metrics delay for observability
-        self.handle_metrics_delay_gauge.set(
-            metrics_delay_ms,
-            tags=tags,
+            tags={
+                "deployment": deployment,
+                "application": application,
+            },
         )
         # Track in health metrics
         self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
@@ -874,29 +763,23 @@ class ServeController:
         )
 
         # Autoscaling metrics delay gauges
-        self.replica_metrics_delay_gauge = metrics.Gauge(
+        self.replica_metrics_delay_histogram = metrics.Histogram(
             "serve_autoscaling_replica_metrics_delay_ms",
             description=(
                 "Time taken for the replica metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=(
-                ("deployment", "application", "replica")
-                if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS
-                else ("deployment", "application")
-            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
         )
-        self.handle_metrics_delay_gauge = metrics.Gauge(
+        self.handle_metrics_delay_histogram = metrics.Histogram(
             "serve_autoscaling_handle_metrics_delay_ms",
             description=(
                 "Time taken for the handle metrics to be reported to the controller. "
                 "High values may indicate a busy controller."
             ),
-            tag_keys=(
-                ("deployment", "application", "handle")
-                if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS
-                else ("deployment", "application")
-            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application"),
         )
         self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
             "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",

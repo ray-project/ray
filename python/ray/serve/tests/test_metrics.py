@@ -1410,31 +1410,12 @@ def _check_controller_high_cardinality_metric_tags(include_high_cardinality: boo
             lifecycle_deployment_name,
             lifecycle_app_name,
         )
-        handle_metrics = get_matching_metrics(
-            "ray_serve_autoscaling_handle_metrics_delay_ms",
-            autoscaling_deployment_name,
-            autoscaling_app_name,
-        )
-        replica_metrics = get_matching_metrics(
-            "ray_serve_autoscaling_replica_metrics_delay_ms",
-            autoscaling_deployment_name,
-            autoscaling_app_name,
-        )
-        if (
-            not health_failure_metrics
-            or not health_status_metrics
-            or not handle_metrics
-            or not replica_metrics
-        ):
+        if not health_failure_metrics or not health_status_metrics:
             return False
 
         for metric in health_failure_metrics:
             assert_high_cardinality_tag(metric, "replica")
         for metric in health_status_metrics:
-            assert_high_cardinality_tag(metric, "replica")
-        for metric in handle_metrics:
-            assert_high_cardinality_tag(metric, "handle")
-        for metric in replica_metrics:
             assert_high_cardinality_tag(metric, "replica")
 
         return True
