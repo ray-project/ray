@@ -53,7 +53,7 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
             if any(_has_env_var(option) for option in uv_pip_install_options):
                 hash_input = {
                     "uv": uv,
-                    "env_vars": runtime_env.get("env_vars", {}),
+                    "env_vars": runtime_env.get("env_vars") or {},
                     "working_dir": runtime_env.get("working_dir"),
                 }
             uri = "uv://" + _get_uv_hash(uv_dict=hash_input)

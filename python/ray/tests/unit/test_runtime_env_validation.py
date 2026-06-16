@@ -521,6 +521,16 @@ class TestValidateUV:
         )
         assert first_uri != second_uri
 
+        assert uv.get_uri({"working_dir": "gcs://first.zip", "uv": base_uv}) == (
+            uv.get_uri(
+                {
+                    "working_dir": "gcs://first.zip",
+                    "env_vars": None,
+                    "uv": base_uv,
+                }
+            )
+        )
+
     def test_uv_uri_unchanged_for_options_without_env_vars(self):
         uv_config = {
             "packages": ["requests"],
