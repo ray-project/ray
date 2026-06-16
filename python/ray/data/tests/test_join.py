@@ -28,6 +28,7 @@ from ray.tests.conftest import *  # noqa
 )
 def test_simple_inner_join(
     ray_start_regular_shared_2_cpus,
+    use_polars_join,
     num_rows_left: int,
     num_rows_right: int,
     partition_size_hint: Optional[int],
@@ -95,6 +96,7 @@ def test_simple_inner_join(
 )
 def test_simple_left_right_outer_semi_anti_join(
     ray_start_regular_shared_2_cpus,
+    use_polars_join,
     join_type,
     num_rows_left,
     num_rows_right,
@@ -186,6 +188,7 @@ def test_simple_left_right_outer_semi_anti_join(
 )
 def test_simple_full_outer_join(
     ray_start_regular_shared_2_cpus,
+    use_polars_join,
     num_rows_left,
     num_rows_right,
 ):
@@ -239,7 +242,9 @@ def test_simple_full_outer_join(
 
 @pytest.mark.parametrize("left_suffix", [None, "_left"])
 @pytest.mark.parametrize("right_suffix", [None, "_right"])
-def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_suffix):
+def test_simple_self_join(
+    ray_start_regular_shared_2_cpus, use_polars_join, left_suffix, right_suffix
+):
     # NOTE: We override max-block size to make sure that in cases when a partition
     #       size hint is not provided, we're not over-estimating amount of memory
     #       required for the aggregators
@@ -364,6 +369,7 @@ def test_invalid_join_not_matching_key_columns(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_no_matches(
     ray_start_regular_shared_2_cpus,
+    use_polars_join,
     join_type,
 ):
     """Test anti-join when there are no matches - should return all rows from respective side"""
@@ -404,6 +410,7 @@ def test_anti_join_no_matches(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_all_matches(
     ray_start_regular_shared_2_cpus,
+    use_polars_join,
     join_type,
 ):
     """Test anti-join when all rows match - should return empty result"""
@@ -434,6 +441,7 @@ def test_anti_join_all_matches(
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
 def test_anti_join_multi_key(
     ray_start_regular_shared_2_cpus,
+    use_polars_join,
     join_type,
 ):
     """Test anti-join with multiple join keys"""
@@ -878,7 +886,9 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     )
 
 
-def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cpus):
+def test_chained_left_outer_join_with_empty_blocks(
+    ray_start_regular_shared_2_cpus, use_polars_join
+):
     """Regression test for https://github.com/ray-project/ray/issues/60013.
 
     The bug
@@ -982,7 +992,7 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
     ],
 )
 def test_overlapping_non_key_columns_without_suffixes(
-    ray_start_regular_shared_2_cpus, join_type, expected_row_count
+    ray_start_regular_shared_2_cpus, use_polars_join, join_type, expected_row_count
 ):
     """When both sides share a non-key column and no suffixes are provided,
     inner/outer joins must raise a clear ValueError (expected_row_count=None),

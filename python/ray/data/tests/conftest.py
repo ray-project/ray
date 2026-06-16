@@ -363,6 +363,21 @@ def use_polars_sort(request):
 
 
 @pytest.fixture(params=[True, False])
+def use_polars_join(request):
+    use_polars_join = request.param
+
+    ctx = ray.data.context.DataContext.get_current()
+
+    original_use_polars_join = ctx.use_polars_join
+
+    ctx.use_polars_join = use_polars_join
+
+    yield request.param
+
+    ctx.use_polars_join = original_use_polars_join
+
+
+@pytest.fixture(params=[True, False])
 def enable_automatic_tensor_extension_cast(request):
     ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
