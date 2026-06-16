@@ -211,16 +211,30 @@ Usage with NIXL (CPUs or NVIDIA GPUs)
 Installation
 ^^^^^^^^^^^^
 First, install NIXL with a plain ``pip install nixl``.
-For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. 
+For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__.
 
-Note that you should also set these UCX environment variables to either let UCX choose the right transport from all options, or so that you can yourself set your preferred transport option.
-
+NIXL uses UCX, so set UCX environment variables on all Ray workers that create
+or consume NIXL RDT objects. The most common starting point is to let UCX choose
+from every available transport and device, then narrow the values after profiling.
 
 .. code-block:: bash
 
    # Example UCX configuration, adjust according to your environment
    $ export UCX_TLS=all  # or specify specific transports like "rc,ud,sm,^cuda_ipc" ..etc
    $ export UCX_NET_DEVICES=all  # or specify network devices like "mlx5_0:1,mlx5_1:1"
+
+For RDMA and GPU transfers, also verify that the host and container are configured
+for memory registration:
+
+* Set the locked-memory limit high enough for your workload, commonly
+  ``ulimit -l unlimited``.
+* Load the ``nvidia-peermem`` kernel module when using GPUDirect RDMA.
+* Install and load GDRCopy (``gdrdrv``) for lower-latency GPU memory access.
+* Use IOMMU passthrough mode when IOMMU is enabled.
+* Avoid container memory or cgroup settings that prevent memory pinning.
+
+When debugging UCX or registration failures, set ``UCX_LOG_LEVEL=debug`` before
+starting Ray workers.
 
 
 Walkthrough
@@ -262,6 +276,112 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :end-before: __nixl_put__and_get_end__
 
 
+NIXL performance tuning
+^^^^^^^^^^^^^^^^^^^^^^^
+
+NIXL memory registration can be expensive, especially when a workload repeatedly
+returns the same large tensor storage or many views of the same storage. By
+default, Ray registers memory when it creates NIXL RDT metadata for an
+``ObjectRef`` and deregisters that memory after the ``ObjectRef`` is garbage
+collected. This is convenient, but repeated register/deregister cycles can
+dominate small or frequent transfers.
+
+Use these APIs to reduce memory registration overhead:
+
+* :func:`ray.experimental.register_nixl_memory <ray.experimental.register_nixl_memory>`:
+  Pre-register a long-lived tensor storage and keep it registered for the
+  lifetime of the worker process, or until you call
+  :func:`ray.experimental.deregister_nixl_memory <ray.experimental.deregister_nixl_memory>`.
+  This is best for model weights, cache blocks, or other tensors that are
+  returned many times.
+* :func:`ray.experimental.register_nixl_memory_pool <ray.experimental.register_nixl_memory_pool>`:
+  Allocate one CPU or GPU memory pool and register it once with NIXL. Ray copies
+  eligible tensors into pool-backed views for RDT transfers, avoiding repeated
+  registration of each tensor allocation.
+
+Pre-register reused tensors
+"""""""""""""""""""""""""""
+
+Call :func:`ray.experimental.register_nixl_memory <ray.experimental.register_nixl_memory>`
+inside the actor that owns the tensor. Registering the full tensor storage also
+covers views into that storage, so repeated transfers of rows, shards, or slices
+can reuse one registration.
+
+.. literalinclude:: ../doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_register_memory_start__
+   :end-before: __nixl_register_memory_end__
+
+Use this pattern when:
+
+* The same tensor storage is transferred repeatedly.
+* The tensor is long-lived relative to the RDT ``ObjectRef`` instances created
+  from it.
+* The tensor memory footprint is predictable enough to keep registered.
+
+Call :func:`ray.experimental.deregister_nixl_memory <ray.experimental.deregister_nixl_memory>`
+when the actor no longer needs the persistent registration. Live ``ObjectRef``
+instances that still reference the tensor keep their own registration references
+until they go out of scope.
+
+Use a memory pool for many transient tensors
+""""""""""""""""""""""""""""""""""""""""""""
+
+Call :func:`ray.experimental.register_nixl_memory_pool <ray.experimental.register_nixl_memory_pool>`
+once per worker process to pre-allocate and register a pool. The pool can be on
+CPU or CUDA, but Ray only uses it for tensors on the same device as the pool and
+for tensors that were not already pre-registered with
+:func:`ray.experimental.register_nixl_memory <ray.experimental.register_nixl_memory>`.
+
+.. literalinclude:: ../doc_code/direct_transport_nixl.py
+   :language: python
+   :start-after: __nixl_memory_pool_start__
+   :end-before: __nixl_memory_pool_end__
+
+The memory pool is useful when a producer creates many short-lived tensors with
+similar lifetimes. Within one RDT object, tensors that share the same underlying
+PyTorch storage, including views, share one pool allocation. Across calls, the
+same storage can reuse its pool slot while it remains tracked by Ray.
+
+Size the pool for the maximum live NIXL RDT data produced by the actor, not just
+for one transfer. The pool allocates space based on the entire underlying
+storage size of each tensor, so returning small views of large tensors can
+quickly exhaust the pool unless those views are cloned first to reclaim unused
+storage. If the pool is too small, Ray raises ``NixlOutOfMemoryError``. Increase
+the pool size or reduce the number of simultaneously live RDT ``ObjectRef``
+instances.
+
+Common NIXL anti-patterns
+"""""""""""""""""""""""""
+
+Avoid these patterns when tuning NIXL RDT workloads:
+
+* Returning many views of the same large storage without pre-registering the
+  base tensor or using a memory pool. Registering the base storage once is
+  usually cheaper than registering and deregistering the same storage repeatedly.
+* Creating a new CUDA tensor for every small message. Batch small tensors into
+  fewer RDT objects when possible, or use a memory pool sized for the expected
+  live working set.
+* Keeping unnecessary RDT ``ObjectRef`` instances alive. Registrations and pool
+  blocks are released only after the corresponding refs go out of scope and Ray
+  finishes dependent tasks.
+* Mutating tensor storage after creating an RDT ref when receivers expect
+  snapshot semantics. RDT objects are mutable references. Clone before
+  ``ray.put`` or before returning from an RDT method if the producer will mutate
+  the storage before consumers finish.
+* Registering memory too broadly. Persistent registrations improve repeated
+  transfers, but they also keep pinned or GPU memory registered. Deregister
+  tensors that are no longer reused.
+* Mixing CPU and CUDA tensors in one RDT object. All tensors in an RDT object
+  must have the same device type.
+* Returning non-contiguous tensor views. NIXL RDT requires tensors in the RDT
+  object to be contiguous.
+
+Profile before and after changing registrations. The best configuration depends
+on tensor sizes, view counts, transfer frequency, number of live refs, and the
+UCX transport selected for the cluster.
+
+
 Summary
 -------
 
@@ -269,7 +389,11 @@ RDT allows Ray to store and pass objects directly between Ray actors, using acce
 Here are the main points to keep in mind:
 
 * If using a collective-based tensor transport (Gloo or NCCL), a collective group must be created ahead of time. NIXL just requires all involved actors to have NIXL installed.
-* Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference, not a copy, to the stored tensor(s). 
+* For NIXL, use :func:`ray.experimental.register_nixl_memory <ray.experimental.register_nixl_memory>`
+  or :func:`ray.experimental.register_nixl_memory_pool <ray.experimental.register_nixl_memory_pool>`
+  to reduce repeated memory registration overhead in workloads that reuse tensor
+  storage or create many short-lived tensors.
+* Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference, not a copy, to the stored tensor(s).
 * Otherwise, actors can be used as normal.
 
 For a full list of limitations, see the :ref:`limitations <limitations>` section.
