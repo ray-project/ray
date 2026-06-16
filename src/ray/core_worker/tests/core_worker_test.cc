@@ -66,6 +66,12 @@ class CoreWorkerTest : public ::testing::Test {
   CoreWorkerTest()
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()) {
+    // Workers schedule a periodic CoreWorker.ExitIfParentRayletDies task. Advancing
+    // the FakeClock in these tests fires it, which requires RAYLET_PID to be set and
+    // shuts the worker down if that process is dead. Point it at the current (alive)
+    // test process so the check passes and the worker is not torn down.
+    RayConfig::instance().RAYLET_PID() = std::to_string(getpid());
+
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
