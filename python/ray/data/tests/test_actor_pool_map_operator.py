@@ -1879,6 +1879,41 @@ class TestPlacementGroup:
         # The placement group is retained across the restart (not removed).
         assert get_pg_states()[pg_id] == "CREATED"
 
+    def test_idle_downscale_skips_restarting_actor(self, shutdown_only):
+        """Idle downscale must skip a restarting actor: it has 0 in-flight tasks
+        but Ray is recovering it, and releasing it would remove its PG and kill
+        it mid-restart."""
+        ray.shutdown()
+        ray.init(num_cpus=1)
+
+        pool = _make_actor_pool(
+            _create_actor_in_pg_fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+        ready_ref = pool.get_pending_actor_refs()[0]
+        ray.get(ready_ref)
+        actor = pool.pending_to_running(ready_ref)
+        [pg_id] = list(get_pg_states())
+
+        # Mark the idle actor as restarting
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
+        ):
+            pool.refresh_actor_state()
+            assert pool.num_restarting_actors() == 1
+            # Nothing is released: the only idle actor is restarting, so it's skipped.
+            released = pool.scale(
+                ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
+            )
+            assert released == 0
+
+        assert pool.num_running_actors() == 1
+        assert get_pg_states()[pg_id] == "CREATED"
+
     def test_removed_when_creation_fails(self, shutdown_only):
         """If the actor factory raises, the PG created for it is removed, not
         leaked, and the error propagates."""
