@@ -32,6 +32,7 @@
 #include "mock/ray/raylet/local_lease_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/cgroup2/noop_cgroup_manager.h"
@@ -358,7 +359,7 @@ class NodeManagerTest : public ::testing::Test {
         *mock_object_manager_, fake_task_by_state_counter_);
 
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
-        io_service_,
+        ray::PeriodicalRunner::Create(io_service_),
         ray::scheduling::NodeID(raylet_node_id_.Binary()),
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
@@ -416,7 +417,8 @@ class NodeManagerTest : public ::testing::Test {
           return node_manager_->GetObjectsFromPlasma(object_ids, results);
         },
         max_task_args_memory,
-        scheduler_metrics);
+        scheduler_metrics,
+        clock_);
 
     cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
         raylet_node_id_,
@@ -430,6 +432,7 @@ class NodeManagerTest : public ::testing::Test {
 
     node_manager_ = std::make_unique<NodeManager>(
         io_service_,
+        ray::PeriodicalRunner::Create(io_service_),
         raylet_node_id_,
         "test_node_name",
         node_manager_config,
