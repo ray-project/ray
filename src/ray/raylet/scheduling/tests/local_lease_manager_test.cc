@@ -27,6 +27,7 @@
 
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_manager.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
@@ -260,7 +261,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      io_context,
+      PeriodicalRunner::Create(io_context),
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/
@@ -360,7 +361,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
             /*scheduler_metrics=*/scheduler_metrics_,
-            /*get_time=*/[this]() { return current_time_ms_; })) {}
+            /*clock=*/clock_)) {}
 
   void SetUp() override {
     static rpc::GcsNodeAddressAndLiveness node_info;
@@ -388,7 +389,6 @@ class LocalLeaseManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
-  int64_t current_time_ms_ = 0;
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 
