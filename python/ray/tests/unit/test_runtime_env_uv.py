@@ -1,3 +1,4 @@
+import os
 import sys
 from unittest.mock import patch
 
@@ -104,6 +105,49 @@ async def test_install_uv_packages_expands_install_options(tmp_path):
     assert not any(
         "RAY_RUNTIME_ENV_CREATE_WORKING_DIR" in arg for arg in captured_cmds[0]
     )
+
+
+@pytest.mark.asyncio
+async def test_install_uv_packages_does_not_expand_host_only_env_vars(tmp_path):
+    target_dir = tmp_path / "uv_env"
+    exec_cwd = tmp_path / "exec_cwd"
+    target_dir.mkdir()
+    exec_cwd.mkdir()
+
+    runtime_env = TestRuntimeEnv(
+        uv_config={
+            "packages": [],
+            "uv_pip_install_options": [
+                "--index-url=$HOST_ONLY_UV_INDEX",
+                "--constraint=$RUNTIME_ENV_CONSTRAINT",
+            ],
+        },
+        env_vars={"RUNTIME_ENV_CONSTRAINT": "constraints.txt"},
+    )
+    captured_cmds = []
+
+    async def fake_check_output_cmd(cmd, **kwargs):
+        captured_cmds.append(cmd)
+        return ""
+
+    with patch.dict(os.environ, {"HOST_ONLY_UV_INDEX": "https://example.com/simple"}):
+        uv_processor = uv.UvProcessor(
+            target_dir=str(target_dir), runtime_env=runtime_env
+        )
+        with patch.object(
+            uv_processor, "_check_uv_existence", return_value=True
+        ), patch("ray._private.runtime_env.uv.check_output_cmd", fake_check_output_cmd):
+            await uv_processor._install_uv_packages(
+                str(target_dir),
+                [],
+                str(exec_cwd),
+                uv_processor._uv_env,
+                uv.default_logger,
+            )
+
+    assert len(captured_cmds) == 1
+    assert "--index-url=$HOST_ONLY_UV_INDEX" in captured_cmds[0]
+    assert "--constraint=constraints.txt" in captured_cmds[0]
 
 
 if __name__ == "__main__":
