@@ -244,7 +244,7 @@ When HAProxy mode is enabled:
 
 #### Prerequisites
 
-HAProxy must be available on every node that runs a Serve proxy, either on `$PATH` as `haproxy` or bundled with the [`ray-haproxy`](https://pypi.org/project/ray-haproxy/) package. On Linux, `pip install "ray[serve]"` installs `ray-haproxy`, which ships a prebuilt HAProxy binary. Set `RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1` to use the bundled binary instead of one on `$PATH`.
+HAProxy must be available on every node that runs a Serve proxy. On Linux, `pip install "ray[serve]"` installs the [`ray-haproxy`](https://pypi.org/project/ray-haproxy/) package, which ships a prebuilt HAProxy binary that Serve uses automatically. To use a different binary, set `RAY_SERVE_HAPROXY_BINARY_PATH` to its absolute path or put `haproxy` on `$PATH`.
 
 #### Enabling HAProxy
 
