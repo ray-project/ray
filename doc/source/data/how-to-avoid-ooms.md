@@ -18,7 +18,57 @@ job might be using too much memory.
 When the Ray OOM killer proactively kills a task or actor, you might see an error like
 this:
 
-...
+```
+  Task hungry_hippo failed due to oom. There are infinite oom retries remaining, so the task will be retried. Error: 2 worker(s) were killed due to the node running low on memory. Memory on the node (IP: <ip address>, ID: 92edc4e97e4dac3cee61126133ee7ab6d0a2ee73803623d24a02979d) was 110.69GB / 124.35GB (0.890161)
+  OOM kill reason: user cgroup memory upper bound was met or exceeded
+  Object store memory usage: [- objects spillable: 0
+  - bytes spillable: 0
+  - objects unsealed: 0
+  - bytes unsealed: 0
+  - objects in use: 0
+  - bytes in use: 0
+  - objects evictable: 0
+  - bytes evictable: 0
+  
+  - objects created by worker: 0
+  - bytes created by worker: 0
+  - objects restored: 0
+  - bytes restored: 0
+  - objects received: 0
+  - bytes received: 0
+  - objects errored: 0
+  - bytes errored: 0
+  
+  Eviction Stats:
+  (global lru) capacity: 35098657996
+  (global lru) used: 0%
+  (global lru) num objects: 0
+  (global lru) num evictions: 0
+  (global lru) bytes evicted: 0]
+  Ray killed 2 worker(s) based on the killing policy
+  Considered workers: [
+  Selected to kill: (Task: job ID=01000000, lease ID=0600000001000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=hungry_hippo, required resources={CPU: 1}, pid=3310152, actual memory used=0.67GB, worker ID=3e3d8f80b70d48b643d79ed2292b5d4f779820a964e55ad65413687d)
+  Selected to kill: (Task: job ID=01000000, lease ID=0400000001000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=hungry_hippo, required resources={CPU: 1}, pid=3310153, actual memory used=21.64GB, worker ID=0e5649d39c15609c0db6a5cf95de94befded2ee7da2facbf64b52e6f)
+  (Task: job ID=01000000, lease ID=0500000001000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=hungry_hippo, required resources={CPU: 1}, pid=3310151, actual memory used=21.95GB, worker ID=34241048bfb59ac29bd5e32d706c9bd41eafc6972c9bcbada99464e7)
+  (Task: job ID=01000000, lease ID=0000000001000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=hungry_hippo, required resources={CPU: 1}, pid=3310149, actual memory used=21.87GB, worker ID=2cc6dbeef4ebc06789de65fb43e04fbe1feebf1e699902ece89a8328)
+  (Task: job ID=01000000, lease ID=0200000001000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=hungry_hippo, required resources={CPU: 1}, pid=3310155, actual memory used=21.85GB, worker ID=14d4cc84e2f21ba3edbc9948b780d67013afbffda99dd33e829d56d3)
+  (Task: job ID=01000000, lease ID=0100000001000000ffffffffffffffffffffffffffffffffffffffffffffffff, task name=hungry_hippo, required resources={CPU: 1}, pid=3310147, actual memory used=21.53GB, worker ID=c90db9af23d78530d1f848c1301bc4b877925fe9122bc70948ad9489)]
+  Total non-selected idle workers: 25
+  Total non-selected idle workers USS bytes: 1.00GB
+  To see more information about memory usage on this node, use `ray logs raylet.out -ip <ip address>`
+  Top 10 memory users: PID  MEM(GB) COMMAND
+  3310151   21.95   ray::hungry_hippo
+  3310149   21.87   ray::hungry_hippo
+  3310155   21.85   ray::hungry_hippo
+  3310153   21.64   ray::hungry_hippo
+  3310147   21.53   ray::hungry_hippo
+  3108574   1.95    bazel
+  3180337   1.61    ray::foo_actor
+  3310152   0.67    ray::hungry_hippo
+  2924839   0.53    ray::idle_worker
+  3149737   0.47    ray::idle_worker
+  Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero. Since 2.56, Ray updated the oom killing policy to enabling killing multiple workers and selecting workers based on the time since the task start executing. To revert to the legacy policy of determining worker to oom kill based on owner group size or only selecting a single worker to kill at a time, set the environment variable `RAY_worker_killing_policy_by_group` to true before starting Ray. If the idle workers have a non-trivial memory footprint at the time of OOM (check OOM log for non-selected idle workers), consider setting the environment variable `RAY_idle_worker_killing_memory_threshold_bytes` to a lower value to consider idle workers with lower memory footprint for killing.
+```
 
 You can see the number of Ray OOM kills in the "..." chart in the Ray Core dashboard:
 
@@ -87,9 +137,13 @@ To avoid this, set ``DataContext.get_current().default_map_logical_memory = True
 
 ### Start Ray with resource isolation
 
+If you are encountering kernel OOM kills or memory pressure related node deaths, 
+you can enable *resource isolation* to provide enhanced protection for critical system components and eliminate kernel OOMs and node deaths. 
 
-...
+To enable *resource isolation*, simply pass the `--enable-resource-isolation` flag to your ray start command. If you still experience kernel OOMs with resource isolation enabled, this means that we did not allocate enough memory for our system components. In this case, please allocate more memory to critical system processes (default to 10% of total memory) by passing in a custom byte value to `--system-reserved-memory`.
 
+For more details on enabling resource isolation, please see {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
+For more details on debugging node failure or kernel OOMs, please see {doc}`Debugging Memory Issues </ray-observability/user-guides/debug-apps/debug-memory>`.
 
 ### Isolate reads for large files
 
@@ -145,4 +199,6 @@ If you want to experiment with oversubscription at the risk of potential OOMs, d
 ## Further reading
 
 For a deeper understanding of how Ray handles memory, read 
-{doc}`Ray Core resource isolation </ray-core/resource-isolation-with-cgroupv2>`.
+{ref}`Ray Data Memory Management <data_memory_management>`, 
+{ref}`Out-Of-Memory Prevention <ray-oom-prevention>`, 
+{doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
