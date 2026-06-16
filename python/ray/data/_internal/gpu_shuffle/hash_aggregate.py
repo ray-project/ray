@@ -1633,13 +1633,19 @@ class GPUHashAggregateOperator(GPUShuffleOperator):
             )
 
         nranks = _derive_num_gpu_ranks(data_context)
-        target_num_partitions = (
-            num_partitions
-            if len(key_columns) > 0 and num_partitions is not None
-            else nranks
-            if len(key_columns) == 0
-            else data_context.default_hash_shuffle_parallelism
-        )
+        if len(key_columns) == 0:
+            # global aggregation
+            target_num_partitions = 1
+        elif num_partitions is not None:
+            # user-specified number of partitions
+            target_num_partitions = num_partitions
+        else:
+            # estimate number of partitions from input operator, otherwise use default
+            input_logical_op = input_op._logical_operators[0]
+            target_num_partitions = (
+                input_logical_op.estimated_num_outputs()
+                or data_context.default_hash_shuffle_parallelism
+            )
         # rapidsmpf requires total_nparts >= nranks
         target_num_partitions = max(target_num_partitions, nranks)
 
