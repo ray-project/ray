@@ -1,5 +1,6 @@
-from typing import Callable, Dict, Iterator, List, Optional, Protocol
+from typing import Callable, Dict, Iterator, List, Optional, Protocol, Tuple
 
+import numpy as np
 import pyarrow as pa
 
 from ray._common.utils import env_integer
@@ -13,11 +14,9 @@ URI_PARTITION_NUM_BUCKETS = max(
 )
 
 UriColumnName = str
-RowIndex = int
 FileSizeBytes = int
 
 SizesByColumn = Dict[UriColumnName, List[FileSizeBytes]]
-SizesByRowIndex = Dict[RowIndex, Dict[UriColumnName, FileSizeBytes]]
 
 SizeAnnotator = Callable[[pa.Table, SizesByColumn], pa.Table]
 MetadataPredicate = Callable[[pa.Table], bool]
@@ -79,35 +78,42 @@ class _ExactDownloadPartitioner:
             num_buckets=self._num_buckets,
             emit_before_overflow=True,
         )
-        sizes_by_row_index: SizesByRowIndex = {}
+        # Full-block per-column size arrays, filled chunk by chunk. Row index is
+        # the absolute block position, so these are indexed directly when
+        # reconstructing per-partition sizes in ``_drain_row_partitions``.
+        sizes_by_column: Dict[UriColumnName, np.ndarray] = {
+            uri_column_name: np.zeros(block.num_rows, dtype=np.int64)
+            for uri_column_name in self._uri_column_names
+        }
 
-        for chunk_start in range(0, block.num_rows, self._metadata_chunk_size):
-            chunk_end = min(chunk_start + self._metadata_chunk_size, block.num_rows)
-            chunk = block.slice(chunk_start, chunk_end - chunk_start)
-            chunk_sizes_by_column = self._get_chunk_sizes_by_column(chunk)
+        for chunk_start, chunk_end, chunk_sizes_by_column in self._iter_chunk_sizes(
+            block
+        ):
+            # Vectorize the per-row totals: write each column's sizes into the
+            # full array and accumulate the row sum in one pass per column.
+            row_nbytes = np.zeros(chunk_end - chunk_start, dtype=np.int64)
+            for uri_column_name in self._uri_column_names:
+                column_sizes = chunk_sizes_by_column[uri_column_name]
+                sizes_by_column[uri_column_name][chunk_start:chunk_end] = column_sizes
+                row_nbytes += column_sizes
+            row_nbytes_list = row_nbytes.tolist()
 
-            for chunk_row in range(chunk.num_rows):
-                row_index = chunk_start + chunk_row
-                sizes_by_row_index[row_index] = {
-                    uri_column_name: chunk_sizes_by_column[uri_column_name][chunk_row]
-                    for uri_column_name in self._uri_column_names
-                }
-                row_nbytes = sum(sizes_by_row_index[row_index].values())
+            for chunk_row in range(chunk_end - chunk_start):
                 row_partitioner.add_item(
-                    row_index,
-                    row_nbytes if row_nbytes > 0 else None,
+                    chunk_start + chunk_row,
+                    row_nbytes_list[chunk_row] or None,
                 )
                 yield from self._drain_row_partitions(
                     block,
                     row_partitioner,
-                    sizes_by_row_index,
+                    sizes_by_column,
                 )
 
         row_partitioner.finalize()
         yield from self._drain_row_partitions(
             block,
             row_partitioner,
-            sizes_by_row_index,
+            sizes_by_column,
         )
 
     def _min_partition_nbytes(self, target_nbytes: int) -> int:
@@ -119,41 +125,45 @@ class _ExactDownloadPartitioner:
         self,
         block: pa.Table,
         row_partitioner: WeightedRoundRobinPartitioner[int],
-        sizes_by_row_index: SizesByRowIndex,
+        sizes_by_column: Dict[UriColumnName, np.ndarray],
     ) -> Iterator[pa.Table]:
         while row_partitioner.has_partition():
-            row_indices = row_partitioner.next_partition()
-            sizes_by_column = {
-                uri_column_name: [
-                    sizes_by_row_index[row_index][uri_column_name]
-                    for row_index in row_indices
-                ]
+            row_indices = np.asarray(row_partitioner.next_partition(), dtype=np.int64)
+            partition_sizes_by_column = {
+                uri_column_name: sizes_by_column[uri_column_name][row_indices].tolist()
                 for uri_column_name in self._uri_column_names
             }
-            for row_index in row_indices:
-                sizes_by_row_index.pop(row_index, None)
-            yield self._build_partition(block, row_indices, sizes_by_column)
+            partition = block.take(row_indices)
+            yield self._annotate_partition(partition, partition_sizes_by_column)
 
     def _should_fetch_metadata_without_target(self, block: pa.Table) -> bool:
         if self._fetch_metadata_without_target is None:
             return False
         return self._fetch_metadata_without_target(block)
 
+    def _iter_chunk_sizes(
+        self, block: pa.Table
+    ) -> Iterator[Tuple[int, int, Dict[UriColumnName, np.ndarray]]]:
+        """Yield ``(chunk_start, chunk_end, sizes_by_column)`` per metadata chunk."""
+        for chunk_start in range(0, block.num_rows, self._metadata_chunk_size):
+            chunk_end = min(chunk_start + self._metadata_chunk_size, block.num_rows)
+            chunk = block.slice(chunk_start, chunk_end - chunk_start)
+            yield chunk_start, chunk_end, self._get_chunk_sizes_by_column(chunk)
+
     def _get_block_sizes_by_column(self, block: pa.Table) -> SizesByColumn:
         sizes_by_column = {
             uri_column_name: [] for uri_column_name in self._uri_column_names
         }
-        for chunk_start in range(0, block.num_rows, self._metadata_chunk_size):
-            chunk_end = min(chunk_start + self._metadata_chunk_size, block.num_rows)
-            chunk = block.slice(chunk_start, chunk_end - chunk_start)
-            chunk_sizes_by_column = self._get_chunk_sizes_by_column(chunk)
+        for _, _, chunk_sizes_by_column in self._iter_chunk_sizes(block):
             for uri_column_name in self._uri_column_names:
                 sizes_by_column[uri_column_name].extend(
-                    chunk_sizes_by_column[uri_column_name]
+                    chunk_sizes_by_column[uri_column_name].tolist()
                 )
         return sizes_by_column
 
-    def _get_chunk_sizes_by_column(self, chunk: pa.Table) -> SizesByColumn:
+    def _get_chunk_sizes_by_column(
+        self, chunk: pa.Table
+    ) -> Dict[UriColumnName, np.ndarray]:
         sizes_by_column = {}
         for uri_column_name in self._uri_column_names:
             uris = chunk.column(uri_column_name).to_pylist()
@@ -161,15 +171,6 @@ class _ExactDownloadPartitioner:
                 self._file_size_provider.get_file_sizes(uris), len(uris)
             )
         return sizes_by_column
-
-    def _build_partition(
-        self,
-        block: pa.Table,
-        row_indices: List[RowIndex],
-        sizes_by_column: SizesByColumn,
-    ) -> pa.Table:
-        partition = block.take(pa.array(row_indices, type=pa.int64()))
-        return self._annotate_partition(partition, sizes_by_column)
 
     def _annotate_partition(
         self,
@@ -183,11 +184,34 @@ class _ExactDownloadPartitioner:
     @staticmethod
     def _normalize_sizes(
         sizes: List[Optional[FileSizeBytes]], expected_len: int
-    ) -> List[FileSizeBytes]:
-        normalized = [
-            size if size is not None and size > 0 else 0
-            for size in sizes[:expected_len]
-        ]
-        if len(normalized) < expected_len:
-            normalized.extend([0] * (expected_len - len(normalized)))
+    ) -> np.ndarray:
+        """Force raw provider sizes into a dense, row-aligned ``int64`` array.
+
+        The file-size provider contract is loose (``List[Optional[int]]`` with no
+        length guarantee), but every consumer downstream assumes the opposite, so
+        this is the single boundary that enforces those preconditions:
+
+        - **No ``None``.** A failed/unsupported lookup returns ``None``, which
+          can't live in an ``int64`` array; the vectorized math in ``partition``
+          (``np.fromiter``, ``+=``, slice assignment) would raise. Map it to 0.
+        - **Exactly ``expected_len`` entries (one per row).** ``expected_len`` is
+          the chunk's row count. The provider may return a different length (e.g.
+          ``_resolve_paths_and_filesystem`` silently drops unresolvable URIs), so
+          truncate/zero-pad to keep ``size[i]`` aligned with ``row[i]`` — a
+          mismatch would crash the fixed-width slice assignment or, worse,
+          misattribute sizes to the wrong rows.
+        - **Non-negative.** ``0`` is a meaningful sentinel ("unknown size" → row
+          gets ``None`` weight in the partitioner and routes to a plain GET, not
+          a ranged download). Negatives are garbage; clamp them to ``0`` so they
+          can't skew partition weights or the range-split decision.
+        """
+        # Coerce None -> 0 (numpy int arrays can't hold None), clamp negatives
+        # to 0, and zero-pad/truncate to exactly ``expected_len`` entries.
+        normalized = np.zeros(expected_len, dtype=np.int64)
+        usable = sizes[:expected_len]
+        if usable:
+            values = np.fromiter(
+                (size or 0 for size in usable), dtype=np.int64, count=len(usable)
+            )
+            normalized[: len(usable)] = np.clip(values, 0, None)
         return normalized

@@ -1,13 +1,14 @@
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
 from freezegun import freeze_time
+from freezegun.api import FrozenDateTimeFactory
 
 from ray.data._internal.planner._obstore_download import (
     _BUCKET_REGION_CACHE,
@@ -616,7 +617,7 @@ class TestS3FSSessionCredentialProvider:
         provider = _S3FSSessionCredentialProvider(session, ttl=timedelta(minutes=30))
         with freeze_time() as frozen:
             asyncio.run(provider())
-            frozen.tick(timedelta(minutes=31))
+            cast(FrozenDateTimeFactory, frozen).tick(timedelta(minutes=31))
             asyncio.run(provider())
         assert session.get_credentials.call_count == 2
 

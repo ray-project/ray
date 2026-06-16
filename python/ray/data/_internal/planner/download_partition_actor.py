@@ -142,7 +142,7 @@ class _ObstoreFileSizeProvider:
         if not _is_obstore_supported_url(uris[0]):
             return self._fallback_provider.get_file_sizes(uris)
 
-        async def _head_uris() -> List[int]:
+        async def _head_uris() -> List[Optional[int]]:
             sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
 
             async def _head_one(uri: str) -> int:
@@ -151,11 +151,16 @@ class _ObstoreFileSizeProvider:
                     store = self._registry.get(store_url)
                     async with sem:
                         meta = await obs.head_async(store, path)
-                    return meta["size"] if isinstance(meta, dict) else meta.size
+                    if isinstance(meta, dict):
+                        return int(meta["size"])
+                    size = getattr(meta, "size", None)
+                    return int(size) if size is not None else 0
                 except Exception:
                     return 0
 
-            sizes = await asyncio.gather(*[_head_one(u) for u in uris])
+            sizes: List[Optional[int]] = list(
+                await asyncio.gather(*[_head_one(u) for u in uris])
+            )
             failed = [uri for uri, size in zip(uris, sizes) if size == 0]
             if failed:
                 logger.debug(
