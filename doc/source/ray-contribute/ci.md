@@ -1,15 +1,17 @@
-.. meta::
-    :description: Explains the continuous integration workflow on Ray pull requests, including the microcheck default test set, how to add tests to it, and the full suite that runs at merge time. Read this to understand which tests run on your PR and how to trigger more.
+---
+myst:
+  html_meta:
+    description: "Explains the continuous integration workflow on Ray pull requests, including the microcheck default test set, how to add tests to it, and the full suite that runs at merge time. Read this to understand which tests run on your PR and how to trigger more."
+---
 
-CI Testing Workflow on PRs
-==========================
+# CI Testing Workflow on PRs
 
 This guide helps contributors to understand the Continuous Integration (CI)
 workflow on a PR. Here CI stands for the automated testing of the codebase
 on the PR.
 
-`microcheck`: default tests on your PR
---------------------------------------
+## `microcheck`: default tests on your PR
+
 With every commit on your PR, by default, we'll run a set of tests
 called `microcheck`.
 
@@ -25,25 +27,26 @@ the full test suite. Some of the notable features of microcheck are:
   `@microcheck TEST_TARGET01 TEST_TARGET02 ....`. This line must be in the
   body of your message, starting from the second line or
   below (the first line is the commit message title). For example, here
-  is how I manually add tests in my pull request::
+  is how I manually add tests in my pull request:
 
-    // git command to add commit message
-    git commit -a -s
+  ```
+  // git command to add commit message
+  git commit -a -s
 
-    // content of the commit message
-    run other serve doc tests
+  // content of the commit message
+  run other serve doc tests
 
-    @microcheck //doc:source/serve/doc_code/distilbert //doc:source/serve/doc_code/object_detection //doc:source/serve/doc_code/stable_diffusion
+  @microcheck //doc:source/serve/doc_code/distilbert //doc:source/serve/doc_code/object_detection //doc:source/serve/doc_code/stable_diffusion
 
-    Signed-off-by: can <can@anyscale.com>
+  Signed-off-by: can <can@anyscale.com>
+  ```
 
 If microcheck passes, you'll see a green checkmark on your PR. If it
 fails, you'll see a red cross. In either case, you'll see a summary of
 the test run statuses in the github UI.
 
+## Additional tests at merge time
 
-Additional tests at merge time
-------------------------------
 In this workflow, to merge your PR, simply click on the Enable auto-merge
 button (or ask a committer to do so). This will trigger additional test
 cases, and the PR will merge automatically once they finish and pass.

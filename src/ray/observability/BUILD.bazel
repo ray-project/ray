@@ -35,6 +35,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "windowed_max",
+    srcs = ["windowed_max.cc"],
+    hdrs = ["windowed_max.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "fake_metric",
     hdrs = [
         "fake_metric.h",

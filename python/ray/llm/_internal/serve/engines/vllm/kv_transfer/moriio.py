@@ -178,11 +178,13 @@ class MoRIIOConnectorBackend(BaseConnectorBackend):
         # Stash so replica_metadata() can publish it; the decode
         # orchestrator reads the selected prefill replica's copy off the peer.
         self._zmq_address = zmq_address
-        # NOTE: cross-node correctness additionally needs each worker to
-        # advertise the node INTERNAL IP (set VLLM_HOST_IP inside every worker
-        # process). VLLM_HOST_IP is excluded from vLLM's driver->worker env copy,
-        # so it can only be set in-process -- handled by a vLLM general-plugin
-        # shipped separately. Single-node deployments work without it.
+        # Cross-node correctness: vLLM's MoRIIO worker otherwise binds/advertises
+        # get_ip(), which on a Ray cluster is the node's unroutable public IP, and
+        # VLLM_HOST_IP cannot be propagated to workers (it is excluded from vLLM's
+        # driver->worker env copy). Pass the routable node IP through the connector
+        # config, which does reach the workers; vLLM's MoRIIO connector honors
+        # "host_ip" over get_ip(). Requires vllm-project/vllm#45488.
+        extra["host_ip"] = host
 
     # ---- parallelism (data/tensor) ----
 
