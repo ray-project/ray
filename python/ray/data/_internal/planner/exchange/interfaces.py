@@ -65,7 +65,7 @@ class ExchangeTaskSpec:
         Reduce function to be run for each output block.
 
         Args:
-            mapper_outputs: List of map output blocks to reduce.
+            *mapper_outputs: List of map output blocks to reduce.
             partial_reduce: Whether should partially or fully reduce.
 
         Returns:
@@ -92,7 +92,8 @@ class ExchangeTaskScheduler:
     """
 
     def __init__(self, exchange_spec: ExchangeTaskSpec):
-        """
+        """Initialize the scheduler.
+
         Args:
             exchange_spec: The implementation of exchange tasks to execute.
         """

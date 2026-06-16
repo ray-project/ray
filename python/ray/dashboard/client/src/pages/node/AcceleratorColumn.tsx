@@ -7,7 +7,6 @@ import {
   normalizeAccelerators,
   UnifiedAcceleratorStat,
 } from "../../util/accelerator";
-import { memoryConverter } from "../../util/converter";
 
 export type NodeAcceleratorEntryProps = {
   slot: number;
@@ -45,14 +44,7 @@ const TpuTooltip = ({ tpu }: { tpu: TPUStats }) => {
         Tensorcore: {tensorcoreUtilization.toFixed(1)}%
       </Typography>
       <Typography variant="body2">
-        HBM Bandwidth: {hbmUtilization.toFixed(1)}%
-      </Typography>
-      <Typography variant="body2">
-        Used Memory: {memoryConverter(tpu.memoryUsed)} /{" "}
-        {memoryConverter(tpu.memoryTotal)}
-      </Typography>
-      <Typography variant="body2">
-        Free Memory: {memoryConverter(tpu.memoryTotal - tpu.memoryUsed)}
+        HBM Utilization: {hbmUtilization.toFixed(1)}%
       </Typography>
     </Box>
   );
