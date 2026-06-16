@@ -565,7 +565,9 @@ class ReplicaMetricsManager:
             for request_tags, count in self._cached_deployment_request_error_counter[
                 protocol
             ].items():
-                metrics.deployment_request_error_counter.inc(count, tags=dict(request_tags))
+                metrics.deployment_request_error_counter.inc(
+                    count, tags=dict(request_tags)
+                )
 
             for latency_tags, latencies in self._cached_ingress_processing_latencies[
                 protocol
@@ -686,9 +688,11 @@ class ReplicaMetricsManager:
             if self._autoscaling_config:
                 self.start_metrics_pusher()
 
-    def _change_num_ongoing_requests(self, request_metadata: RequestMetadata, delta: int) -> None:
+    def _change_num_ongoing_requests(
+        self, request_metadata: RequestMetadata, delta: int
+    ) -> None:
         self._num_ongoing_requests += delta
-        
+
         protocol = request_metadata.protocol
 
         if self._is_direct_ingress and request_metadata.is_direct_ingress:
@@ -1058,7 +1062,6 @@ class Replica:
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
             max_ongoing_requests=self._deployment_config.max_ongoing_requests,
-
         )
 
         # Start event loop monitoring for the replica's main event loop.
