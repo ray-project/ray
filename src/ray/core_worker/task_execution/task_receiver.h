@@ -40,12 +40,6 @@ namespace core {
 using RepeatedObjectRefCount =
     ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
-void HandleTaskExecutionResult(Status status,
-                               const TaskSpecification &task_spec,
-                               const TaskExecutionResult &result,
-                               const rpc::SendReplyCallback &send_reply_callback,
-                               rpc::PushTaskReply *reply);
-
 class TaskReceiver {
  public:
   using TaskHandler = std::function<Status(
@@ -108,6 +102,15 @@ class TaskReceiver {
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(const TaskSpecification &task_spec);
+
+  /// Populate `reply` from a completed task execution's `status` and `result`, then
+  /// invoke `send_reply_callback`.
+  static void HandleTaskExecutionResult(
+      Status status,
+      const TaskSpecification &task_spec,
+      const TaskExecutionResult &result,
+      const rpc::SendReplyCallback &send_reply_callback,
+      rpc::PushTaskReply *reply);
 
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;

@@ -27,11 +27,12 @@
 namespace ray {
 namespace core {
 
-void HandleTaskExecutionResult(Status status,
-                               const TaskSpecification &task_spec,
-                               const TaskExecutionResult &result,
-                               const rpc::SendReplyCallback &send_reply_callback,
-                               rpc::PushTaskReply *reply) {
+void TaskReceiver::HandleTaskExecutionResult(
+    Status status,
+    const TaskSpecification &task_spec,
+    const TaskExecutionResult &result,
+    const rpc::SendReplyCallback &send_reply_callback,
+    rpc::PushTaskReply *reply) {
   reply->set_is_retryable_error(result.is_retryable_error);
   reply->set_is_application_error(!result.application_error.empty());
   std::string task_execution_error;
