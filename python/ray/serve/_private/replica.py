@@ -795,7 +795,7 @@ class ReplicaMetricsManager:
         *,
         route: str,
         latency_ms: float,
-        was_error: bool,
+        is_error: bool,
         exception_type: Optional[str] = None,
     ):
         """Records per-request metrics."""
@@ -805,14 +805,14 @@ class ReplicaMetricsManager:
 
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
-            if was_error:
+            if is_error:
                 exc_type = exception_type or "Unknown"
                 self._cached_error_counter[(route, exc_type)] += 1
             else:
                 self._cached_request_counter[route] += 1
         else:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
-            if was_error:
+            if is_error:
                 exc_type = exception_type or "Unknown"
                 self._error_counter.inc(
                     tags={"route": route, "exception_type": exc_type}
@@ -829,7 +829,7 @@ class ReplicaMetricsManager:
         app_name: str,
         deployment_name: str,
         latency_ms: float,
-        was_error: bool,
+        is_error: bool,
         status_code: str,
     ):
         """Record per-request metrics."""
@@ -852,7 +852,7 @@ class ReplicaMetricsManager:
             self._cached_ingress_processing_latencies[protocol][
                 frozenset(request_tags.items())
             ].append(latency_ms)
-            if was_error:
+            if is_error:
                 request_error_tags = RequestIngressMetrics.request_error_tags(
                     route=route,
                     method=method,
@@ -879,7 +879,7 @@ class ReplicaMetricsManager:
                 application=app_name,
                 status_code=status_code,
                 latency_ms=latency_ms,
-                is_error=was_error,
+                is_error=is_error,
                 deployment_name=deployment_name,
             )
 
@@ -1355,7 +1355,7 @@ class Replica:
         request_metadata: RequestMetadata,
     ):
         http_method = request_metadata._http_method
-        http_route = request_metadata.route
+        route = request_metadata.route
         call_method = request_metadata.call_method
         if user_exception is None:
             status_str = "OK"
@@ -1367,12 +1367,12 @@ class Replica:
         # Mutating self._access_log_context is not thread safe, but since this
         # is only called from the same thread, it is safe. Mutating the same object
         # because creating a new dict is expensive.
-        self._access_log_context[SERVE_LOG_ROUTE] = http_route
+        self._access_log_context[SERVE_LOG_ROUTE] = route
         self._access_log_context[SERVE_LOG_REQUEST_ID] = request_metadata.request_id
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
-                route=http_route if self._ingress and http_route else call_method,
+                route=route if self._ingress and route else call_method,
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
@@ -1384,9 +1384,9 @@ class Replica:
             type(user_exception).__name__ if user_exception is not None else None
         )
         self._metrics_manager.record_request_metrics(
-            route=http_route,
+            route=route,
             latency_ms=latency_ms,
-            was_error=user_exception is not None,
+            is_error=user_exception is not None,
             exception_type=exception_type,
         )
 
@@ -1409,14 +1409,25 @@ class Replica:
 
         # Record ingress metrics for direct ingress requests
         if request_metadata.is_direct_ingress and status_code is not None:
+            if request_metadata.is_grpc_request:
+                protocol = RequestProtocol.GRPC
+                # Match the proxy's `method` tag (the full gRPC service method).
+                # gRPC status codes are names (e.g. "OK", "UNAVAILABLE"); anything
+                # other than OK is an error, mirroring ResponseStatus.is_error.
+                method = request_metadata._grpc_service_method
+                is_error = status_code != grpc.StatusCode.OK.name
+            else:
+                protocol = RequestProtocol.HTTP
+                method = request_metadata._http_method
+                is_error = status_code.startswith(("4", "5"))
             self._metrics_manager.record_ingress_request_metrics(
-                protocol=RequestProtocol.HTTP,
-                method=request_metadata._http_method,
-                route=self._route_prefix,
+                protocol=protocol,
+                method=method,
+                route=route,
                 app_name=self._deployment_id.app_name,
                 deployment_name=self._deployment_id.name,
                 latency_ms=latency_ms,
-                was_error=status_code.startswith(("4", "5")),
+                is_error=is_error,
                 status_code=status_code,
             )
 
@@ -1455,7 +1466,7 @@ class Replica:
                 scope, request_metadata, request.receive_asgi_messages
             )
 
-            request_metadata._http_method = scope.get("method", "WS")
+            request_metadata._http_method = scope.get("method", "WS").upper()
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
@@ -2300,12 +2311,23 @@ class Replica:
         request_proto: Any,
         context: grpc._cython.cygrpc._ServicerContext,
     ) -> bytes:
+        start_time = time.time()
         if service_method == "/ray.serve.RayServeAPIService/Healthz":
             healthy, message = await self._dataplane_health_check()
             context.set_code(
                 grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
             )
             context.set_details(message)
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.GRPC,
+                method=service_method,
+                route=self._deployment_id.app_name,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=(time.time() - start_time) * 1000.0,
+                is_error=not healthy,
+                status_code=grpc.StatusCode.OK.name if healthy else grpc.StatusCode.UNAVAILABLE.name,
+            )
             return HealthzResponse(message=message).SerializeToString()
 
         if service_method == "/ray.serve.RayServeAPIService/ListApplications":
@@ -2317,6 +2339,16 @@ class Replica:
             context.set_details(message)
             # ListApplications returns only the app name the replica is serving.
             application_names = [self._deployment_id.app_name]
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.GRPC,
+                method=service_method,
+                route=self._deployment_id.app_name,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=(time.time() - start_time) * 1000.0,
+                is_error=not healthy,
+                status_code=grpc.StatusCode.OK.name if healthy else grpc.StatusCode.UNAVAILABLE.name,
+            )
             return ListApplicationsResponse(
                 application_names=application_names
             ).SerializeToString()
@@ -2328,6 +2360,7 @@ class Replica:
             request_id=request_id,
             internal_request_id=generate_request_id(),
             call_method=service_method.split("/")[-1],
+            _grpc_service_method=service_method,
             _request_protocol=RequestProtocol.GRPC,
             grpc_context=c,
             app_name=self._deployment_id.app_name,
@@ -2394,9 +2427,11 @@ class Replica:
                         self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
-                    status_code_callback(status.code.name)
                     raise e
                 finally:
+                    # Record the status code for both success and error paths so
+                    # ingress metrics are emitted for successful gRPC requests.
+                    status_code_callback(status.code.name)
                     set_grpc_code_and_details(context, status)
 
                 return result.SerializeToString()
@@ -2528,7 +2563,7 @@ class Replica:
                 app_name=self._deployment_id.app_name,
                 deployment_name=self._deployment_id.name,
                 latency_ms=latency_ms,
-                was_error=not healthy,
+                is_error=not healthy,
                 status_code=str(status_code),
             )
             return
@@ -2572,7 +2607,7 @@ class Replica:
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
-            _http_method=scope.get("method", "WS"),
+            _http_method=scope.get("method", "WS").upper(),
             is_direct_ingress=True,
             _client=format_client_address(scope.get("client")),
         )

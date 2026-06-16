@@ -800,6 +800,10 @@ class RequestMetadata:
 
     _http_method: str = ""
 
+    # Full gRPC service method (e.g. "/pkg.Service/Method") for direct-ingress gRPC
+    # requests. Mirrors the proxy's `method` metric tag (`gRPCProxyRequest.method`).
+    _grpc_service_method: str = ""
+
     # The client address in "host:port" format, if available.
     _client: str = ""
 
