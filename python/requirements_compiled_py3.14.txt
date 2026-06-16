@@ -1758,7 +1758,7 @@ pygments==2.18.0
     #   sphinx
 pyiceberg==0.11.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
-pyjwt==2.12.1
+pyjwt==2.13.0
     # via
     #   adal
     #   azure-cli-core
