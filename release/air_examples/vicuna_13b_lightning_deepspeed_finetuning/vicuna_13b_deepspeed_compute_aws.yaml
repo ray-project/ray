@@ -9,9 +9,9 @@ head_node:
     instance_type: g5.16xlarge
 
 worker_nodes:
-    - instance_type: g5.48xlarge
-      min_nodes: 1
-      max_nodes: 1
+    - instance_type: g5.4xlarge
+      min_nodes: 8
+      max_nodes: 8
       market_type: ON_DEMAND
 
 advanced_instance_config:

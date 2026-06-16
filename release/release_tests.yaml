@@ -504,7 +504,7 @@
   python: "3.10"
   group: AIR examples
   working_dir: air_examples/pythia_lightning_fsdp_finetuning
-  frequency: manual
+  frequency: weekly
   team: ml
   cluster:
     anyscale_sdk_2026: true
