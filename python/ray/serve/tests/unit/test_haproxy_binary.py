@@ -78,10 +78,10 @@ def test_pip_package_oserror_falls_through(_mock_which):
 @patch(FLAG_PATCH, True)
 def test_nothing_available_raises_with_instructions(_mock_which):
     """When no binary is available from any source, the error message must
-    tell the user how to fix it (install ray[haproxy], set the env var, or
+    tell the user how to fix it (install ray[serve], set the env var, or
     put haproxy on PATH)."""
     with patch.dict("sys.modules", {"ray_haproxy": None}):
-        with pytest.raises(FileNotFoundError, match=r"ray\[haproxy\]"):
+        with pytest.raises(FileNotFoundError, match=r"ray\[serve\]"):
             get_haproxy_binary()
 
 

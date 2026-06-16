@@ -234,7 +234,7 @@ def _resolve_haproxy_binary() -> str:
 
     raise FileNotFoundError(
         "Could not find an HAProxy binary. "
-        "Install 'ray[haproxy]' for the bundled binary, "
+        "Install 'ray[serve]' for the bundled binary, "
         "set RAY_SERVE_HAPROXY_BINARY_PATH, "
         "or ensure 'haproxy' is on PATH."
     )
