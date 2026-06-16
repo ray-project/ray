@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import gc
 import logging
 import sys
 import time
@@ -7,6 +8,7 @@ import time
 import numpy as np
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import client_test_enabled
 from ray._private.worker import _wait_generators_bulk
 from ray.exceptions import ObjectRefStreamEndOfStreamError, RayTaskError
@@ -295,6 +297,62 @@ def test__wait_generators_bulk_after_partial_error(ray_start_regular):
     assert isinstance(exc_info.value.as_instanceof_cause(), ValueError)
     with pytest.raises(ObjectRefStreamEndOfStreamError):
         ray.get(refs[2])
+
+
+def _assert_no_owned_refs_leak():
+    """Wait until the owner holds no live references and the store is empty."""
+
+    def check():
+        gc.collect()
+        core_worker = ray._private.worker.global_worker.core_worker
+        ref_counts = core_worker.get_all_reference_counts()
+        for rc in ref_counts.values():
+            if rc["local"] != 0 or rc["submitted"] != 0:
+                return False
+        return core_worker.get_memory_store_size() == 0
+
+    wait_for_condition(check, timeout=30)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__wait_generators_bulk_no_ref_leak(ray_start_regular):
+    """Draining a generator entirely via _wait_generators_bulk must not leak
+    owner-side references for the consumed objects.
+
+    The bulk peek (peek_object_ref_stream_n) hands back ObjectRefs that add their
+    own local reference, while the owner-side stream reference taken at peek/report
+    time is only released for *unconsumed* refs at stream teardown. This test
+    confirms whether consumed refs leave that owner-side reference dangling.
+    """
+
+    @ray.remote
+    def gen():
+        for i in range(3):
+            yield i
+
+    g = gen.remote()
+
+    collected = []
+    saw_eof = False
+    while not saw_eof:
+        ready = _wait_generators_bulk([(g, [True, True, True])], timeout=10)
+        assert len(ready) == 1
+        # Avoid binding the generator object to a local (e.g. via tuple unpacking),
+        # which would keep its stream alive and prevent teardown.
+        refs = ready[0][1]
+        for ref in refs:
+            try:
+                collected.append(ray.get(ref))
+            except ObjectRefStreamEndOfStreamError:
+                saw_eof = True
+                break
+
+    assert collected == [0, 1, 2]
+
+    # Drop every handle to the generator and its (consumed) objects.
+    del g, ready, refs, ref
+
+    _assert_no_owned_refs_leak()
 
 
 if __name__ == "__main__":

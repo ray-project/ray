@@ -106,9 +106,12 @@ class ObjectRefStream {
    *
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
+   * \param[out] consumed_object_ids Appended with the object ids actually
+   * advanced past (capped at the end of the stream). The caller is responsible
+   * for releasing the owner-side references held for these objects.
    * \return KeyError if it reaches to EoF before consuming any item. Ok otherwise.
    */
-  Status TryReadNextItems(int64_t num_items);
+  Status TryReadNextItems(int64_t num_items, std::vector<ObjectID> *consumed_object_ids);
 
   /// Return True if there's no more object to read. False otherwise.
   bool IsFinished() const;

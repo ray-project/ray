@@ -153,8 +153,10 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
-Status ObjectRefStream::TryReadNextItems(int64_t num_items) {
+Status ObjectRefStream::TryReadNextItems(int64_t num_items,
+                                         std::vector<ObjectID> *consumed_object_ids) {
   RAY_CHECK_GT(num_items, 0);
+  RAY_CHECK(consumed_object_ids != nullptr);
   if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
     RAY_CHECK(next_index_ == end_of_stream_index_);
@@ -179,9 +181,11 @@ Status ObjectRefStream::TryReadNextItems(int64_t num_items) {
   // them at once and only mark them as consumed. If this is ever called without
   // first confirming readiness, it would silently advance past unwritten
   // objects and drop them.
+  consumed_object_ids->reserve(num_items_to_consume);
   for (int64_t i = 0; i < num_items_to_consume; i++) {
     const ObjectID object_id = GetObjectRefAtIndex(next_index_ + i);
     temporarily_owned_refs_.erase(object_id);
+    consumed_object_ids->push_back(object_id);
   }
   total_num_object_consumed_ += num_items_to_consume;
   next_index_ += num_items_to_consume;
@@ -790,13 +794,26 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "TryReadObjectRefStreamN API can be used only when the stream has been "
          "created and not removed.";
-  Status status = stream_it->second.TryReadNextItems(num_items);
+  std::vector<ObjectID> consumed_object_ids;
+  Status status = stream_it->second.TryReadNextItems(num_items, &consumed_object_ids);
 
   // If we could read the next items, signal the executor to resume if necessary.
   if (status.ok()) {
     ResumeGeneratorTaskIfBackpressured(
         generator_id, backpressure_threshold, stream_it->second);
   }
+
+  // Release the owner-side reference held for each consumed object. Unlike
+  // TryReadObjectRefStream, whose returned ObjectRef reuses this reference (it
+  // is created with skip_adding_local_ref=True), the bulk API hands back the
+  // refs peeked via PeekObjectRefStreamN, which add their own local reference.
+  // Without releasing here, the owner-side reference taken at peek/report time
+  // would dangle for every consumed object (it is never reclaimed by the
+  // teardown path, which only releases unconsumed refs). The consumer's peeked
+  // ref governs the object lifetime from here on.
+  std::vector<ObjectID> deleted;
+  reference_counter_.TryReleaseLocalRefs(consumed_object_ids, &deleted);
+  in_memory_store_.Delete(deleted);
   return status;
 }
 
