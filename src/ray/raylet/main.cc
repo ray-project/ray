@@ -1126,7 +1126,7 @@ int main(int argc, char *argv[]) {
     auto resource_map = node_manager_config.resource_config.GetResourceMap();
     self_node_info.mutable_resources_total()->insert(resource_map.begin(),
                                                      resource_map.end());
-    self_node_info.set_start_time_ms(clock.NowUnixMillis());
+    self_node_info.set_start_time_ms(absl::ToUnixMillis(Now()));
     self_node_info.set_is_head_node(is_head_node);
     self_node_info.mutable_labels()->insert(node_manager_config.labels.begin(),
                                             node_manager_config.labels.end());
