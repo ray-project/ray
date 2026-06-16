@@ -65,7 +65,7 @@ def test_read_videos_invalid_params():
     with pytest.raises(ValueError):
         ray.data.read_videos(uri, resize=(120, 0))
     with pytest.raises(ValueError):
-        ray.data.read_videos(uri, resize=(120,))
+        ray.data.read_videos(uri, resize=(120,))  # pyrefly: ignore[bad-argument-type]
 
     # `fps` must be positive.
     with pytest.raises(ValueError):
