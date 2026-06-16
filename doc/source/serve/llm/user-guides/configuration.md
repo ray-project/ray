@@ -26,13 +26,13 @@ llm_config = LLMConfig(
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model_loading_config` | dict or `ModelLoadingConfig` | required | Which model to serve and where to load it from. See [Model loading](#model-loading). |
+| `model_loading_config` | dict or {class}`~ray.serve.llm.ModelLoadingConfig` | required | Which model to serve and where to load it from. See [Model loading](#model-loading). |
 | `engine_kwargs` | dict | `{}` | Arguments forwarded to the inference engine (vLLM). See [Engine arguments](#engine-arguments). |
 | `accelerator_type` | str | `None` | The accelerator the model runs on, for example `"A10G"`. See [Accelerators](#accelerators-and-placement). |
 | `accelerator_config` | dict | `None` | Hardware-specific config (GPU, TPU, CPU). Inferred from `accelerator_type` or `placement_group_config` when omitted. |
 | `placement_group_config` | dict | `None` | Resource bundles and placement strategy for engine workers. See [Accelerators and placement](#accelerators-and-placement). |
 | `deployment_config` | dict | `{}` | Ray Serve deployment options such as autoscaling and replicas. See [Deployment options](#deployment-options). |
-| `lora_config` | dict or `LoraConfig` | `None` | LoRA adapter settings. See [LoRA](#lora). |
+| `lora_config` | dict or {class}`~ray.serve.llm.LoraConfig` | `None` | LoRA adapter settings. See [LoRA](#lora). |
 | `runtime_env` | dict | `None` | Ray runtime environment applied to the replica and engine workers (for example, `env_vars`). |
 | `llm_engine` | str | `"vLLM"` | The inference engine. `"vLLM"` is the supported value. |
 | `server_cls` | str or class | `None` | Custom server class, for example `SGLangServer`. Accepts an import path string or a class. See {doc}`SGLang integration <sglang>`. |
@@ -42,7 +42,7 @@ llm_config = LLMConfig(
 
 ## Model loading
 
-`model_loading_config` is validated against `ModelLoadingConfig`:
+`model_loading_config` is validated against {class}`~ray.serve.llm.ModelLoadingConfig`:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -66,7 +66,7 @@ model_loading_config=dict(
 )
 ```
 
-A cloud mirror is validated against `CloudMirrorConfig` and supports `s3://`, `gs://`, `abfss://`, and `azure://` URIs. Mirroring weights from cloud storage avoids per-replica Hugging Face downloads. See {doc}`Deployment initialization <deployment-initialization>`.
+A cloud mirror is validated against {class}`~ray.serve.llm.CloudMirrorConfig` and supports `s3://`, `gs://`, `abfss://`, and `azure://` URIs. Mirroring weights from cloud storage avoids per-replica Hugging Face downloads. See {doc}`Deployment initialization <deployment-initialization>`.
 
 ## Engine arguments
 
@@ -125,7 +125,7 @@ Set `num_replicas="auto"` to let Serve autoscale. Use `request_router_config` to
 
 ## LoRA
 
-When `lora_config` is set, the deployment serves LoRA adapters on top of the base model. It is validated against `LoraConfig`:
+When `lora_config` is set, the deployment serves LoRA adapters on top of the base model. It is validated against {class}`~ray.serve.llm.LoraConfig`:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
