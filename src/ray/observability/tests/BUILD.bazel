@@ -11,11 +11,23 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "windowed_max_test",
+    size = "small",
+    srcs = ["windowed_max_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:windowed_max",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_test(
     name = "ray_event_recorder_test",
     size = "small",
     srcs = ["ray_event_recorder_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:python_event_interface",
         "//src/ray/observability:ray_actor_definition_event",
