@@ -1,17 +1,17 @@
 --index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/cu130
+--extra-index-url https://download.pytorch.org/whl/cu128
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
     --hash=sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   dm-tree
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
 aiohttp==3.13.5 \
     --hash=sha256:019a67772e034a0e6b9b17c13d0a8fe56ad9fb150fc724b7f3ffd3724288d9e5 \
@@ -135,7 +135,7 @@ aiohttp==3.13.5 \
     --hash=sha256:fe6970addfea9e5e081401bcbadf865d2b6da045472f58af08427e108d618540 \
     --hash=sha256:fee86b7c4bd29bdaf0d53d14739b08a106fdda809ca5fe032a15f52fae5fe254
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   aiohttp-cors
     #   taskiq
@@ -143,44 +143,44 @@ aiohttp-cors==0.8.1 \
     --hash=sha256:3180cf304c5c712d626b9162b195b1db7ddf976a2a25172b35bb2448b890a80d \
     --hash=sha256:ccacf9cb84b64939ea15f859a146af1f662a6b1d68175754a07315e305fb1403
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 aiorwlock==1.5.1 \
     --hash=sha256:2729c77ec736c8d85ec305aa3827a50394fd8c6d823f4404d301cc8c59a4b7f5 \
     --hash=sha256:a28e534a5fce4dabe437055db141369a0803c69fe61c406b6fc5cdfa8f3dda13
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
     --hash=sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
 amqp==5.3.1 \
     --hash=sha256:43b3319e1b4e7d1251833a93d672b4af1e40f3d632d479b98661a95f117880a2 \
     --hash=sha256:cddc00c725449522023bad949f70fff7b48f0b1ade74d170a6f10ab044739432
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   kombu
 annotated-doc==0.0.4 \
     --hash=sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320 \
     --hash=sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   fastapi
     #   typer
 annotated-types==0.7.0 \
     --hash=sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53 \
     --hash=sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   pydantic
 anyio==4.13.0 \
     --hash=sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708 \
     --hash=sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   starlette
     #   taskiq
     #   watchfiles
@@ -188,7 +188,7 @@ attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
     #   dm-tree
     #   jsonschema
@@ -197,25 +197,25 @@ billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   google-auth
 celery==5.6.3 \
     --hash=sha256:0808f42f80909c4d5833202360ffafb2a4f83f4d8e23e1285d926610e9a7afa6 \
     --hash=sha256:177006bd2054b882e9f01be59abd8529e88879ef50d7918a7050c5a9f4e12912
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 certifi==2026.4.22 \
     --hash=sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a \
     --hash=sha256:8d455352a37b71bf76a79caa83a3d6c25afee4a385d632127b6afb3963f1c580
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   requests
 cffi==2.0.0 ; platform_python_implementation != 'PyPy' \
     --hash=sha256:00bdf7acc5f795150faa6957054fbbca2439db2f775ce831222b66f192f03beb \
@@ -303,7 +303,7 @@ cffi==2.0.0 ; platform_python_implementation != 'PyPy' \
     --hash=sha256:fc7de24befaeae77ba923797c7c87834c73648a05a4bde34b3b7e5588973a453 \
     --hash=sha256:fe562eb1a64e67dd297ccc4f5addea2501664954f2692b69a76449ec7913ecbf
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   cryptography
 charset-normalizer==3.4.7 \
     --hash=sha256:007d05ec7321d12a40227aae9e2bc6dca73f3cb21058999a1df9e193555a9dcc \
@@ -436,13 +436,13 @@ charset-normalizer==3.4.7 \
     --hash=sha256:fbccdc05410c9ee21bbf16a35f4c1d16123dcdeb8a1d38f33654fa21d0234f79 \
     --hash=sha256:fea24543955a6a729c45a73fe90e08c743f0b3334bbf3201e6c4bc1b0c7fa464
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   requests
 click==8.3.2 \
     --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
     --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   celery
     #   click-didyoumean
@@ -454,31 +454,31 @@ click-didyoumean==0.3.1 \
     --hash=sha256:4f82fdff0dbe64ef8ab2279bd6aa3f6a99c3b28c05aa09cbfc07c9d7fbb5a463 \
     --hash=sha256:5c4bb6007cfea5f2fd6583a2fb6701a22a41eb98957e63d0fac41c10e7c3117c
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
 click-plugins==1.1.1.2 \
     --hash=sha256:008d65743833ffc1f5417bf0e78e8d2c23aab04d9745ba817bd3e71b0feb6aa6 \
     --hash=sha256:d7af3984a99d243c131aa1a828331e7630f4a88a9741fd05c927b204bcf92261
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
 click-repl==0.3.0 \
     --hash=sha256:17849c23dba3d667247dc4defe1757fff98694e90fe37474f3feebb69ced26a9 \
     --hash=sha256:fb7e06deb8da8de86180a33a9da97ac316751c094c6899382da7feeeeb51b812
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
 cloudpickle==3.1.1 \
     --hash=sha256:b216fa8ae4019d5482a8ac3c95d8f6346115d8835911fd4aefd1a445e4242c64 \
     --hash=sha256:c8c5a44295039331ee9dad40ba100a9c7297b6f988e50e87ccdf3765a668350e
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   gymnasium
 colorful==0.5.8 \
     --hash=sha256:a9381fdda3337fbaba5771991020abc69676afa102646650b759927892875992 \
     --hash=sha256:bb16502b198be2f1c42ba3c52c703d5f651d826076817185f0294c1a549a7445
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 cryptography==44.0.3 \
     --hash=sha256:02f55fb4f8b79c1221b0961488eaae21015b69b210e18c386b69de182ebb1259 \
@@ -519,12 +519,12 @@ cryptography==44.0.3 \
     --hash=sha256:fc3c9babc1e1faefd62704bb46a69f359a9819eb0292e40df3fb6e3574715cd4 \
     --hash=sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   pyopenssl
-cuda-pathfinder==1.5.4 ; sys_platform != 'darwin' \
-    --hash=sha256:9563d3175ce1828531acf4b94e1c1c7d67208c347ca002493e2654878b26f4b7
+cuda-pathfinder==1.5.5 ; sys_platform != 'darwin' \
+    --hash=sha256:0228c023f95d1480f143ef5c8922d27a2ab052087a942e81dc289c9eb8f91689
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   cupy-cuda12x
 cupy-cuda12x==14.0.1 ; sys_platform != 'darwin' \
     --hash=sha256:21fcb4e917e43237edcc5e3a1a1241e2a2946ba9e577ce36fd580bd9856f91e8 \
@@ -543,13 +543,13 @@ cupy-cuda12x==14.0.1 ; sys_platform != 'darwin' \
     --hash=sha256:f244bc14fad6f1ef0c74abd98afa4b82d2534aecdba911197810ec0047f0d1f3 \
     --hash=sha256:fa356384760e01498d010af2d96de536ef3dad19db1d3a1ad0764e4323fb919f
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 distlib==0.4.0 \
     --hash=sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16 \
     --hash=sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   virtualenv
 dm-tree==0.1.10 \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
@@ -580,25 +580,25 @@ dm-tree==0.1.10 \
     --hash=sha256:f0e8907bb6809dc195be3af077e382126eaebe06c00f835d09ae26e36d2165ff \
     --hash=sha256:f395390d6acfb5d39c564c8bbcaf35352a81eb2f0d34d449739039b2ef786e14
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 farama-notifications==0.0.4 \
     --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
     --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   gymnasium
 fastapi==0.133.0 \
     --hash=sha256:0a78878483d60702a1dde864c24ab349a1a53ef4db6b6f74f8cd4a2b2bc67d2f \
     --hash=sha256:b900a2bf5685cdb0647a41d5900bdeafc3a9e8a28ac08c6246b76699e164d60d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 filelock==3.29.0 \
     --hash=sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90 \
     --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   python-discovery
     #   virtualenv
@@ -734,32 +734,32 @@ frozenlist==1.8.0 \
     --hash=sha256:fb30f9626572a76dfe4293c7194a09fb1fe93ba94c7d4f720dfae3b646b45027 \
     --hash=sha256:fe3c58d2f5db5fbd18c2987cba06d51b0529f52bc3a6cdc33d3f4eab725104bd
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
     #   aiosignal
 fsspec==2023.12.1 \
     --hash=sha256:6271f1d3075a378bfe432f6f42bf7e1d2a6ba74f78dd9b512385474c579146a0 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 google-api-core==2.30.3 \
     --hash=sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8 \
     --hash=sha256:e601a37f148585319b26db36e219df68c5d07b6382cff2d580e83404e44d641b
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   opencensus
 google-auth==2.39.0 \
     --hash=sha256:0150b6711e97fb9f52fe599f55648950cc4540015565d8fbb31be2ad6e1548a2 \
     --hash=sha256:73222d43cdc35a3aeacbfdcaf73142a97839f10de930550d89ebfe1d0a00cde7
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   google-api-core
 googleapis-common-protos==1.74.0 \
     --hash=sha256:57971e4eeeba6aad1163c1f0fc88543f965bb49129b8bb55b2b7b26ecab084f1 \
     --hash=sha256:702216f78610bb510e3f12ac3cafd281b7ac45cc5d86e90ad87e4d301a3426b5
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   google-api-core
 grpcio==1.76.0 \
     --hash=sha256:035d90bc79eaa4bed83f524331d55e35820725c9fbb00ffa1904d5550ed7ede3 \
@@ -824,25 +824,25 @@ grpcio==1.76.0 \
     --hash=sha256:fd5ef5932f6475c436c4a55e4336ebbe47bd3272be04964a03d316bbf4afbcbc \
     --hash=sha256:ff8a59ea85a1f2191a0ffcc61298c571bc566332f82e5f5be1b83c9d8e668a62
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 gymnasium==1.2.2 \
     --hash=sha256:46d927328f8518bb5a689dbe270d228c1da2b08bcb71ae0152c10aa66f48d530 \
     --hash=sha256:f04ec362b1fdf73a8b327db5ef89384a3f2ba411e05d3521513414fbbb2199c8
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   uvicorn
 idna==3.12 \
     --hash=sha256:60ffaa1858fac94c9c124728c24fcde8160f3fb4a7f79aa8cdd33a9d1af60a67 \
     --hash=sha256:724e9952cc9e2bd7550ea784adb098d837ab5267ef67a1ab9cf7846bdbdd8254
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   anyio
     #   requests
     #   yarl
@@ -850,36 +850,36 @@ importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   opentelemetry-api
 jinja2==3.1.6 ; sys_platform != 'win32' \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   memray
 jsonschema==4.24.1 \
     --hash=sha256:6b916866aa0b61437785f1277aa2cbd63512e8d4b47151072ef13292049b4627 \
     --hash=sha256:fe45a130cc7f67cd0d67640b4e7e3e2e666919462ae355eda238296eafeb4b5d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 jsonschema-specifications==2025.9.1 \
     --hash=sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe \
     --hash=sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   jsonschema
 kombu==5.6.2 \
     --hash=sha256:8060497058066c6f5aed7c26d7cd0d3b574990b09de842a8c5aaed0b92cc5a55 \
     --hash=sha256:efcfc559da324d41d61ca311b0c64965ea35b4c55cc04ee36e55386145dace93
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
 linkify-it-py==2.1.0 ; sys_platform != 'win32' \
     --hash=sha256:0d252c1594ecba2ecedc444053db5d3a9b7ec1b0dd929c8f1d74dce89f86c05e \
     --hash=sha256:43360231720999c10e9328dc3691160e27a718e280673d444c38d7d3aaa3b98b
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   markdown-it-py
 llvmlite==0.47.0 ; python_full_version < '3.15' \
     --hash=sha256:003bcf7fa579e14db59c1a1e113f93ab8a06b56a4be31c7f08264d1d4072d077 \
@@ -908,7 +908,7 @@ llvmlite==0.47.0 ; python_full_version < '3.15' \
     --hash=sha256:f9d118bc1dd7623e0e65ca9ac485ec6dd543c3b77bc9928ddc45ebd34e1e30a7 \
     --hash=sha256:fa1cbd800edd3b20bc141521f7fd45a6185a5b84109aa6855134e81397ffe72b
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   numba
 lz4==4.4.5 \
@@ -970,32 +970,32 @@ lz4==4.4.5 \
     --hash=sha256:f9b8bde9909a010c75b3aea58ec3910393b758f3c219beed67063693df854db0 \
     --hash=sha256:ff1b50aeeec64df5603f17984e4b5be6166058dcf8f1e26a3da40d7a0f6ab547
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 markdown-it-py==2.2.0 \
     --hash=sha256:5a35f8d1870171d9acc47b99612dc146129b631baf04970128b568f190d0cc30 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   mdit-py-plugins
     #   rich
     #   textual
 markupsafe==3.0.3 ; sys_platform != 'win32' \
     --hash=sha256:457a69a9577064c05a97c41f4e65148652db078a3a509039e64d3467b9e7ef97
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   jinja2
 mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   markdown-it-py
 memray==1.19.3 ; sys_platform != 'win32' \
     --hash=sha256:003bf98ffa7b022ddbac8b832a2c4e63e2a7f67d0c69d38b1712bc3347e7066b \
@@ -1048,7 +1048,7 @@ memray==1.19.3 ; sys_platform != 'win32' \
     --hash=sha256:fbbe64058ea329e7ff4f2c8067e6400b7db7d44a3f897a36c21f1a54e9b0c1ee \
     --hash=sha256:fc9f873609cbbaef82a91f213a1877ab510e9a96d4e20516726a9d7a981c8117
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 mmh3==5.2.1 \
     --hash=sha256:022aa1a528604e6c83d0a7705fdef0b5355d897a9e0fa3a8d26709ceaa06965d \
@@ -1159,7 +1159,7 @@ mmh3==5.2.1 \
     --hash=sha256:fceef7fe67c81e1585198215e42ad3fdba3a25644beda8fbdaf85f4d7b93175a \
     --hash=sha256:fd96476f04db5ceba1cfa0f21228f67c1f7402296f0e73fee3513aa680ad237b
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 msgpack==1.1.2 \
     --hash=sha256:0051fffef5a37ca2cd16978ae4f0aef92f164df86823871b5162812bebecd8e2 \
@@ -1225,7 +1225,7 @@ msgpack==1.1.2 \
     --hash=sha256:fac4be746328f90caa3cd4bc67e6fe36ca2bf61d5c6eb6d895b6527e3f05071e \
     --hash=sha256:fffee09044073e69f2bad787071aeec727183e7580443dfeb8556cbf1978d162
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 multidict==6.7.1 \
     --hash=sha256:026d264228bcd637d4e060844e39cdc60f86c479e463d49075dedc21b18fbbe0 \
@@ -1375,7 +1375,7 @@ multidict==6.7.1 \
     --hash=sha256:fc5907494fccf3e7d3f94f95c91d6336b092b5fc83811720fae5e2765890dfba \
     --hash=sha256:fcee94dfbd638784645b066074b338bc9cc155d4b4bffa4adce1615c5a426c19
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
     #   yarl
 numba==0.65.0 ; python_full_version < '3.15' \
@@ -1405,7 +1405,7 @@ numba==0.65.0 ; python_full_version < '3.15' \
     --hash=sha256:edad0d9f6682e93624c00125a471ae4df186175d71fd604c983c377cdc03e68b \
     --hash=sha256:ee336b398a6fca51b1f626034de99f50cb1bd87d537a166275158a3cee744b82
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 numpy==2.3.2 \
     --hash=sha256:07b62978075b67eee4065b166d000d457c82a1efe726cce608b9db9dd66a73a5 \
@@ -1483,7 +1483,7 @@ numpy==2.3.2 \
     --hash=sha256:fc927d7f289d14f5e037be917539620603294454130b6de200091e23d27dc9be \
     --hash=sha256:fed5527c4cf10f16c6d0b6bee1f89958bccb0ad2522c8cadc2efd318bcd545f5
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   cupy-cuda12x
     #   dm-tree
@@ -1496,19 +1496,19 @@ opencensus==0.11.4 \
     --hash=sha256:a18487ce68bc19900336e0ff4655c5a116daf10c1b3685ece8d971bddad6a864 \
     --hash=sha256:cbef87d8b8773064ab60e5c2a1ced58bbaa38a6d052c41aec224958ce544eff2
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 opencensus-context==0.1.3 \
     --hash=sha256:073bb0590007af276853009fac7e4bab1d523c3f03baf4cb4511ca38967c6039 \
     --hash=sha256:a03108c3c10d8c80bb5ddf5c8a1f033161fa61972a9917f9b9b3a18517f0088c
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   opencensus
 opentelemetry-api==1.39.0 \
     --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
     --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
@@ -1517,26 +1517,26 @@ opentelemetry-exporter-prometheus==0.60b0 \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 opentelemetry-proto==1.39.0 \
     --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 opentelemetry-sdk==1.39.0 \
     --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
     --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.60b0 \
     --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
     --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   opentelemetry-sdk
 ormsgpack==1.12.2 \
     --hash=sha256:0b39e629fd2e1c5b2f46f99778450b59454d1f901bc507963168985e79f09c5d \
@@ -1589,13 +1589,13 @@ ormsgpack==1.12.2 \
     --hash=sha256:f3601f19afdbea273ed70b06495e5794606a8b690a568d6c996a90d7255e51c1 \
     --hash=sha256:fcd55e5f6ba0dbce624942adf9f152062135f991a0126064889f68eb850de0dd
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 packaging==26.1 \
     --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
     --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   kombu
     #   taskiq
@@ -1657,13 +1657,13 @@ pandas==2.3.3 \
     --hash=sha256:f086f6fe114e19d92014a1966f43a3e62285109afe874f067f5abbdcbb10e59c \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 platformdirs==4.9.6 \
     --hash=sha256:3bfa75b0ad0db84096ae777218481852c0ebc6c727b3168c1b9e0118e458cf0a \
     --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   python-discovery
     #   textual
     #   virtualenv
@@ -1671,14 +1671,14 @@ prometheus-client==0.25.0 \
     --hash=sha256:5e373b75c31afb3c86f1a52fa1ad470c9aace18082d39ec0d2f918d11cc9ba28 \
     --hash=sha256:d5aec89e349a6ec230805d0df882f3807f74fd6c1a2fa86864e3c2279059fed1
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   opentelemetry-exporter-prometheus
 prompt-toolkit==3.0.52 \
     --hash=sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855 \
     --hash=sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   click-repl
 propcache==0.4.1 \
     --hash=sha256:0002004213ee1f36cfb3f9a42b5066100c44276b9b72b4e1504cddd3d692e86e \
@@ -1804,14 +1804,14 @@ propcache==0.4.1 \
     --hash=sha256:fd6f30fdcf9ae2a70abd34da54f18da086160e4d7d9251f81f3da0ff84fc5a48 \
     --hash=sha256:fe49d0a85038f36ba9e3ffafa1103e61170b28e95b16622e11be0a0ea07c6781
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
     #   yarl
 proto-plus==1.27.2 \
     --hash=sha256:6432f75893d3b9e70b9c412f1d2f03f65b11fb164b793d14ae2ca01821d22718 \
     --hash=sha256:b2adde53adadf75737c44d3dcb0104fde65250dfc83ad59168b4aa3e574b6a24
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   google-api-core
 protobuf==6.33.6 \
     --hash=sha256:0cd27b587afca21b7cfa59a74dcbd48a50f0a6400cfb59391340ad729d91d326 \
@@ -1825,7 +1825,7 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   google-api-core
     #   googleapis-common-protos
@@ -1842,7 +1842,7 @@ py-spy==0.4.2 \
     --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
     --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 pyarrow==23.0.1 \
     --hash=sha256:00be9576d970c31defb5c32eb72ef585bf600ef6d0a82d5eccaae96639cf9d07 \
@@ -1896,38 +1896,38 @@ pyarrow==23.0.1 \
     --hash=sha256:fa8e51cb04b9f8c9c5ace6bab63af9a1f88d35c0d6cbf53e8c17c098552285e1 \
     --hash=sha256:fed7020203e9ef273360b9e45be52a2a47d3103caf156a30ace5247ffb51bdbd
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 pyasn1==0.6.3 \
     --hash=sha256:697a8ecd6d98891189184ca1fa05d1bb00e2f84b5977c481452050549c8a72cf \
     --hash=sha256:a80184d120f0864a52a073acc6fc642847d0be408e7c7252f31390c0f4eadcde
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   pyasn1-modules
     #   rsa
 pyasn1-modules==0.4.2 \
     --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
     --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   google-auth
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy' \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   cffi
 pycron==3.2.0 \
     --hash=sha256:6d2349746270bd642b71b9f7187cf13f4d9ee2412b4710396a507b5fe4f60dac \
     --hash=sha256:e125a28aca0295769541a40633f70b602579df48c9cb357c36c28d2628ba2b13
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   taskiq
 pydantic==2.13.3 \
     --hash=sha256:6db14ac8dfc9a1e57f87ea2c0de670c251240f43cb0c30a5130e9720dc612927 \
     --hash=sha256:af09e9d1d09f4e7fe37145c1f577e1d61ceb9a41924bf0094a36506285d0a84d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   fastapi
     #   taskiq
@@ -2053,38 +2053,38 @@ pydantic-core==2.46.3 \
     --hash=sha256:ff5e7783bcc5476e1db448bf268f11cb257b1c276d3e89f00b5727be86dd0127 \
     --hash=sha256:ffe0883b56cfc05798bf994164d2b2ff03efe2d22022a2bb080f3b626176dd56
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   pydantic
 pygments==2.18.0 \
     --hash=sha256:786ff802f32e91311bff3889f6e9a86e81505fe99f2735bb6d60ae0c5004f199 \
     --hash=sha256:b8e6aca0523f3ab76fee51799c488e38782ac06eafcf95e7ba832985c8e7b13a
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   rich
 pyopenssl==25.1.0 \
     --hash=sha256:2b11f239acc47ac2e5aca04fd7fa829800aeee22a2eb30d744572a157bd8a1ab \
     --hash=sha256:8d031884482e0c67ee92bf9a4d8cceb08d92aba7136432ffb0703c5280fc205b
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
     #   pandas
 python-discovery==1.2.2 \
     --hash=sha256:876e9c57139eb757cb5878cbdd9ae5379e5d96266c99ef731119e04fffe533bb \
     --hash=sha256:e1ae95d9af875e78f15e19aed0c6137ab1bb49c200f21f5061786490c9585c7a
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   virtualenv
 pytz==2022.7.1 \
     --hash=sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   pandas
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
@@ -2161,27 +2161,27 @@ pyyaml==6.0.3 \
     --hash=sha256:fa160448684b4e94d80416c0fa4aac48967a969efe22931448d853ada8baf926 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   jsonschema
     #   jsonschema-specifications
 requests==2.33.1 \
     --hash=sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517 \
     --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   google-api-core
 rich==13.7.1 \
     --hash=sha256:4edbae314f59eb482f54e9e30bf00d33350aaa94f4bfcd4e9e3110e64d0d7222 \
     --hash=sha256:9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   memray
     #   textual
@@ -2303,14 +2303,14 @@ rpds-py==0.30.0 \
     --hash=sha256:f8d1736cfb49381ba528cd5baa46f82fdc65c06e843dab24dd70b63d09121b3f \
     --hash=sha256:fe5fa731a1fa8a0a56b0977413f8cacac1768dad38d16b3a296712709476fbd5
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   jsonschema
     #   referencing
 rsa==4.7.2 \
     --hash=sha256:78f9a9bf4e7be0c5ded4583326e7461e3a3c5aae24073648b4bdfa797d78c9d2 \
     --hash=sha256:9d689e6ca1b3038bc82bf8d23e944b6b6037bc02301a574935b2dd946e0353b9
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   google-auth
 scipy==1.17.1 \
     --hash=sha256:010f4333c96c9bb1a4516269e33cb5917b08ef2166d5556ca2fd9f082a9e6ea0 \
@@ -2375,68 +2375,68 @@ scipy==1.17.1 \
     --hash=sha256:f8885db0bc2bffa59d5c1b72fad7a6a92d3e80e7257f967dd81abb553a90d293 \
     --hash=sha256:fcb310ddb270a06114bb64bbe53c94926b943f5b7f0842194d585c65eb4edd76
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
     --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   typer
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   opencensus
     #   python-dateutil
 smart-open==6.2.0 \
     --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
     --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 starlette==1.0.1 \
     --hash=sha256:512399c5f1de7fac99c88572212ded9ddeddef2fb32afa82d724000e88b38f4f \
     --hash=sha256:7c0e69b2ee1c848bd54669d908500117a3ee13de603a21427e5c6fc1adf98dcd
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
     #   fastapi
 taskiq==0.12.2 \
     --hash=sha256:491491ad255fb88bf4d3e04e356dd1e6507ca7d8197b68a2f89ce7c5b5c7cc51 \
     --hash=sha256:de0c375d9c68481dd0625ebaa332f8f582866a0499663a45cedf7407b00e03f0
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 taskiq-dependencies==1.5.7 \
     --hash=sha256:0d3b240872ef152b719153b9526d866d2be978aeeaea6600e878414babc2dcb4 \
     --hash=sha256:6fcee5d159bdb035ef915d4d848826169b6f06fe57cc2297a39b62ea3e76036f
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   taskiq
 tensorboardx==2.6.5 \
     --hash=sha256:c10b891d00af306537cb8b58a039b2ba41571f0da06f433a41c4ca8d6abe1373 \
     --hash=sha256:ca176db3997ee8c07d2eb77381225956a3fd1c10c91beafab1f17069adc47017
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 textual==4.0.0 ; sys_platform != 'win32' \
     --hash=sha256:1cab4ea3cfc0e47ae773405cdd6bc2a17ed76ff7b648379ac8017ea89c5ad28c \
     --hash=sha256:214051640f890676a670aa7d29cd2a37d27cfe6b2cf866e9d5abc3b6c89c5800
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   memray
 typer==0.24.1 \
     --hash=sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e \
     --hash=sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   fastapi
     #   grpcio
     #   gymnasium
@@ -2451,45 +2451,45 @@ typing-inspection==0.4.2 \
     --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   fastapi
     #   pydantic
 tzdata==2026.1 \
     --hash=sha256:4b1d2be7ac37ceafd7327b961aa3a54e467efbdb563a23655fbfe0d39cfc42a9 \
     --hash=sha256:67658a1903c75917309e753fdc349ac0efd8c27db7a0cb406a25be4840f87f98
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   kombu
     #   pandas
 tzlocal==5.3.1 \
     --hash=sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd \
     --hash=sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   celery
 uc-micro-py==2.0.0 ; sys_platform != 'win32' \
     --hash=sha256:3603a3859af53e5a39bc7677713c78ea6589ff188d70f4fee165db88e22b242c \
     --hash=sha256:c53691e495c8db60e16ffc4861a35469b0ba0821fe409a8a7a0a71864d33a811
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   linkify-it-py
 urllib3==1.26.20 \
     --hash=sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e \
     --hash=sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
     --hash=sha256:e9434d3bbf05f310e762147f769c9f21235ee118ba2d2bf1155a7196448bd996
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   amqp
     #   celery
     #   kombu
@@ -2497,7 +2497,7 @@ virtualenv==21.2.4 \
     --hash=sha256:29d21e941795206138d0f22f4e45ff7050e5da6c6472299fb7103318763861ac \
     --hash=sha256:b294ef68192638004d72524ce7ef303e9d0cf5a44c95ce2e54a7500a6381cada
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
@@ -2523,13 +2523,13 @@ watchfiles==0.19.0 \
     --hash=sha256:d9b073073e048081e502b6c6b0b88714c026a1a4c890569238d04aca5f9ca74b \
     --hash=sha256:fac19dc9cbc34052394dbe81e149411a62e71999c0a19e1e09ce537867f95ae0
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   -r python/requirements.txt
 wcwidth==0.6.0 \
     --hash=sha256:1a3a1e510b553315f8e146c54764f4fb6264ffad731b3d78088cdb1478ffbdad \
     --hash=sha256:cdc4e4262d6ef9a1a57e018384cbeb1208d8abbc64176027e2c2455c81313159
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   prompt-toolkit
 wrapt==1.17.3 \
     --hash=sha256:02b551d101f31694fc785e58e0720ef7d9a10c4e62c1c9358ce6f63f23e30a56 \
@@ -2614,7 +2614,7 @@ wrapt==1.17.3 \
     --hash=sha256:fbd3c8319de8e1dc79d346929cd71d523622da527cca14e0c1d257e31c2b8b10 \
     --hash=sha256:fd341868a4b6714a5962c1af0bd44f7c404ef78720c7de4892901e540417111c
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   dm-tree
 yarl==1.23.0 \
     --hash=sha256:03214408cfa590df47728b84c679ae4ef00be2428e11630277be0727eba2d7cc \
@@ -2746,11 +2746,11 @@ yarl==1.23.0 \
     --hash=sha256:fe8f8f5e70e6dbdfca9882cd9deaac058729bcf323cf7a58660901e55c9c94f6 \
     --hash=sha256:fffc45637bcd6538de8b85f51e3df3223e4ad89bccbfca0481c08c7fc8b7ed7d
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   aiohttp
 zipp==3.23.1 \
     --hash=sha256:0b3596c50a5c700c9cb40ba8d86d9f2cc4807e9bedb06bcdf7fac85633e444dc \
     --hash=sha256:32120e378d32cd9714ad503c1d024619063ec28aad2248dc6672ad13edfa5110
     # via
-    #   -c python/deplocks/llm/ray_test_py314_cu130.lock
+    #   -c python/deplocks/llm/ray_test_py314_cu128.lock
     #   importlib-metadata

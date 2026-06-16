@@ -5,7 +5,7 @@ srcs:
   - python/requirements.txt
   - python/requirements/llm/patches/vllm-trial-import-patch
   - python/requirements/llm/patches/vllm-cuda-visible-devices-patch
-  - python/deplocks/llm/rayllm_py314_cu130.lock
+  - python/deplocks/llm/rayllm_py314_cu128.lock
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
 tags:

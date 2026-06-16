@@ -40,10 +40,10 @@ build_arg_sets:
     PYTHON_VERSION: "3.13"
     PYTHON_SHORT: "313"
     CUDA_CODE: cu130
-  py314_cu130:
+  py314_cu128:
     PYTHON_VERSION: "3.14"
     PYTHON_SHORT: "314"
-    CUDA_CODE: cu130
+    CUDA_CODE: cu128
 
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
@@ -129,7 +129,7 @@ depsets:
     build_arg_sets:
       - py311_cu128
       - py312_cu130
-      - py314_cu130
+      - py314_cu128
 
   - name: ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
     operation: expand
