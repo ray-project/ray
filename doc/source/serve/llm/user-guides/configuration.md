@@ -81,7 +81,7 @@ A cloud mirror is validated against `CloudMirrorConfig` and supports `s3://`, `g
 | `max_num_seqs` | Maximum number of sequences batched together per step. |
 | `kv_transfer_config` | KV connector settings for prefill/decode and cache offloading. See {doc}`KV cache offloading <kv-cache-offloading>`. |
 
-For the full list, see the [vLLM engine arguments](https://docs.vllm.ai/en/latest/serving/engine_args.html). Note that `disable_log_stats=True` is rejected when `log_engine_metrics` is enabled, because engine metrics require log stats.
+For the full list, see the [vLLM engine arguments](https://docs.vllm.ai/en/latest/serving/engine_args.html). `disable_log_stats=True` is rejected when `log_engine_metrics` is enabled, because engine metrics require log stats.
 
 ## Accelerators and placement
 

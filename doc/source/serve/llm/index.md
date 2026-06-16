@@ -2,34 +2,25 @@
 
 # Serving LLMs
 
-Ray Serve LLM provides a high-performance, scalable framework for deploying Large Language Models (LLMs) in production. It specializes Ray Serve primitives for distributed LLM serving workloads, offering enterprise-grade features with OpenAI API compatibility.
+Ray Serve LLM deploys large language models in production. It builds on Ray Serve primitives for distributed, multi-node LLM serving and exposes an OpenAI-compatible API.
 
-## Why Ray Serve LLM?
+## Key features
 
-Ray Serve LLM excels at highly distributed multi-node inference workloads:
-
-- **Advanced parallelism strategies**: Seamlessly combine pipeline parallelism, tensor parallelism, expert parallelism, and data parallel attention for models of any size.
-- **Prefill-decode disaggregation**: Separates and optimizes prefill and decode phases independently for better resource utilization and cost efficiency.
-- **Custom request routing**: Implements prefix-aware, session-aware, or custom routing logic to maximize cache hits and reduce latency.
-- **Multi-node deployments**: Serves massive models that span multiple nodes with automatic placement and coordination.
-- **Production-ready**: Has built-in autoscaling, monitoring, fault tolerance, and observability.
-
-## Features
-
-- ⚡️ Automatic scaling and load balancing
-- 🌐 Unified multi-node multi-model deployment
-- 🔌 OpenAI-compatible API
-- 🔄 Multi-LoRA support with shared base models
-- 🚀 Engine-agnostic architecture (vLLM, SGLang, etc.)
-- 📊 Built-in metrics and Grafana dashboards
-- 🎯 Advanced serving patterns (PD disaggregation, data parallel attention)
+- OpenAI-compatible API for chat, completions, and embeddings.
+- Multi-node, multi-model deployment with autoscaling and load balancing.
+- Parallelism strategies: tensor, pipeline, expert, and data parallel attention.
+- Prefill-decode disaggregation to scale the prefill and decode phases independently.
+- Custom request routing, including prefix-aware routing for higher cache hit rates.
+- Multi-LoRA serving on a shared base model.
+- Engine-agnostic backends such as vLLM and SGLang.
+- Built-in metrics and Grafana dashboards.
 
 ## Install
 
-Ray Serve LLM ships with Ray. Install it together with the serve and llm extras:
+Ray Serve LLM ships with Ray. Install it with the `llm` extra:
 
 ```bash
-pip install "ray[serve,llm]"
+pip install "ray[llm]"
 ```
 
 This pulls in vLLM and the OpenAI-compatible server stack. You need a GPU to run most models. The {doc}`Quickstart <quick-start>` covers prerequisites, supported hardware, and gated-model setup.

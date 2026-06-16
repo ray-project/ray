@@ -68,7 +68,7 @@ class LLMEngine(ABC):
 
 Ray Serve LLM provides:
 
-- **VLLMEngine**: Production-ready implementation using vLLM.
+- **VLLMEngine**: Implementation using vLLM.
   - Supports continuous batching and paged attention.
   - Supports all kinds of parallelism.
   - KV cache transfer for prefill-decode disaggregation.

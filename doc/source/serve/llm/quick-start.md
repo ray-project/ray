@@ -4,7 +4,7 @@
 ## Prerequisites
 
 ```bash
-pip install "ray[serve,llm]"
+pip install "ray[llm]"
 ```
 
 Before you start:
