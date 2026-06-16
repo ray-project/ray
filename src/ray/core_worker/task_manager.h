@@ -804,6 +804,20 @@ class TaskManager : public TaskManagerInterface {
   bool TryDelObjectRefStreamInternal(const ObjectID &generator_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// Return the generator backpressure threshold for the given generator, or 0
+  /// if the task metadata is no longer present. A threshold of -1 means
+  /// backpressure is disabled.
+  int64_t GetGeneratorBackpressureThreshold(const ObjectID &generator_id)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Shared helper for TryReadObjectRefStream{,N}. After refs have been
+  /// consumed, signal the executor to resume if the number of unconsumed
+  /// objects has dropped below the backpressure threshold.
+  void ResumeGeneratorTaskIfBackpressured(const ObjectID &generator_id,
+                                          int64_t backpressure_threshold,
+                                          ObjectRefStream &stream)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_);
+
   /// Update the references for a task that is being resubmitted.
   void UpdateReferencesForResubmit(const TaskSpecification &spec,
                                    std::vector<ObjectID> *task_deps)

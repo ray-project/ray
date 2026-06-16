@@ -721,100 +721,90 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
   return true;
 }
 
+int64_t TaskManager::GetGeneratorBackpressureThreshold(const ObjectID &generator_id) {
+  absl::MutexLock lock(&mu_);
+  absl::flat_hash_map<TaskID, TaskEntry>::iterator it =
+      submissible_tasks_.find(generator_id.TaskId());
+  if (it != submissible_tasks_.end()) {
+    return it->second.spec_.GeneratorBackpressureNumObjects();
+  }
+  return 0;
+}
+
+void TaskManager::ResumeGeneratorTaskIfBackpressured(const ObjectID &generator_id,
+                                                     int64_t backpressure_threshold,
+                                                     ObjectRefStream &stream) {
+  int64_t total_generated = stream.TotalNumObjectWritten();
+  int64_t total_consumed = stream.TotalNumObjectConsumed();
+  int64_t total_unconsumed = total_generated - total_consumed;
+  if (backpressure_threshold == -1 || total_unconsumed >= backpressure_threshold) {
+    return;
+  }
+
+  absl::flat_hash_map<ObjectID, std::vector<ExecutionSignalCallback>>::iterator it =
+      ref_stream_execution_signal_callbacks_.find(generator_id);
+  if (it == ref_stream_execution_signal_callbacks_.end()) {
+    return;
+  }
+  for (const ExecutionSignalCallback &execution_signal : it->second) {
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "The task for a stream %s should resume. total_generated: %d. "
+        "total_consumed: %d. threshold: %d",
+        generator_id.Hex(),
+        total_generated,
+        total_consumed,
+        backpressure_threshold);
+    execution_signal(Status::OK(), total_consumed);
+  }
+  it->second.clear();
+}
+
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  auto backpressure_threshold = 0;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
-    if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
-    }
-  }
+  RAY_CHECK(object_id_out != nullptr);
+  int64_t backpressure_threshold = GetGeneratorBackpressureThreshold(generator_id);
 
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  RAY_CHECK(object_id_out != nullptr);
-  auto stream_it = object_ref_streams_.find(generator_id);
+  absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
+      object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "TryReadObjectRefStream API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  auto status = stream_it->second.TryReadNextItem(object_id_out);
+         "created and not removed.";
+  Status status = stream_it->second.TryReadNextItem(object_id_out);
 
-  /// If you could read the next item, signal the executor to resume
-  /// if necessary.
+  // If we could read the next item, signal the executor to resume if necessary.
   if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
-      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end()) {
-        for (const auto &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << "The task for a stream " << generator_id
-                         << " should resume. total_generated: " << total_generated
-                         << ". total_consumed: " << total_consumed
-                         << ". threshold: " << backpressure_threshold;
-          execution_signal(Status::OK(), total_consumed);
-        }
-        it->second.clear();
-      }
-    }
+    ResumeGeneratorTaskIfBackpressured(
+        generator_id, backpressure_threshold, stream_it->second);
   }
-
   return status;
 }
 
 Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
                                             int64_t num_items) {
   RAY_CHECK_GT(num_items, 0);
-  auto backpressure_threshold = 0;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
-    if (it != submissible_tasks_.end()) {
-      backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
-    }
-  }
+  int64_t backpressure_threshold = GetGeneratorBackpressureThreshold(generator_id);
 
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
+  absl::flat_hash_map<ObjectID, ObjectRefStream>::iterator stream_it =
+      object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "TryReadObjectRefStreamN API can be used only when the stream has been "
-         "created "
-         "and not removed.";
-  auto status = stream_it->second.TryReadNextItems(num_items);
+         "created and not removed.";
+  Status status = stream_it->second.TryReadNextItems(num_items);
 
-  /// If you could read the next items, signal the executor to resume
-  /// if necessary.
+  // If we could read the next items, signal the executor to resume if necessary.
   if (status.ok()) {
-    auto total_generated = stream_it->second.TotalNumObjectWritten();
-    auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-    auto total_unconsumed = total_generated - total_consumed;
-    if (backpressure_threshold != -1 && total_unconsumed < backpressure_threshold) {
-      auto it = ref_stream_execution_signal_callbacks_.find(generator_id);
-      if (it != ref_stream_execution_signal_callbacks_.end()) {
-        for (const ExecutionSignalCallback &execution_signal : it->second) {
-          RAY_LOG(DEBUG) << absl::StrFormat(
-              "The task for a stream %s should resume. total_generated: %d. "
-              "total_consumed: %d. threshold: %d",
-              generator_id.Hex(),
-              total_generated,
-              total_consumed,
-              backpressure_threshold);
-          execution_signal(Status::OK(), total_consumed);
-        }
-        it->second.clear();
-      }
-    }
+    ResumeGeneratorTaskIfBackpressured(
+        generator_id, backpressure_threshold, stream_it->second);
   }
-
   return status;
 }
 
 bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
+  absl::flat_hash_map<ObjectID, ObjectRefStream>::const_iterator stream_it =
+      object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "IsFinished API can be used only when the stream has been "
          "created "
