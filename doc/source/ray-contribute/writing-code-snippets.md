@@ -28,7 +28,7 @@ There are three types of examples: *doctest-style*, *code-output-style*, and *li
 
 *doctest-style* examples mimic interactive Python sessions.
 
-```
+```{code-block} text
 .. doctest::
 
     >>> def is_even(x):
@@ -53,7 +53,7 @@ False
 :::{tip}
 If you're writing docstrings, exclude `.. doctest::` to simplify your code:
 
-```
+```{code-block} text
 Example:
     >>> def is_even(x):
     ...     return (x % 2) == 0
@@ -68,7 +68,7 @@ Example:
 
 *code-output-style* examples contain ordinary Python code.
 
-```
+```{code-block} text
 .. testcode::
 
     def is_even(x):
@@ -102,7 +102,7 @@ False
 
 *literalinclude* examples display Python modules.
 
-```
+```{code-block} text
 .. literalinclude:: ./doc_code/example_module.py
     :language: python
     :start-after: __is_even_begin__
@@ -135,7 +135,7 @@ If you're not sure which style to use, use *code-output-style*.
 If you're writing a small example that emphasizes object representations, or if you
 want to print intermediate objects, use *doctest-style*.
 
-```
+```{code-block} text
 .. doctest::
 
     >>> import ray
@@ -152,7 +152,7 @@ want to print intermediate objects, use *doctest-style*.
 
 If you're writing a longer example, or if object representations aren't relevant to your example, use *code-output-style*.
 
-```
+```{code-block} text
 .. testcode::
 
     from typing import Dict
@@ -209,7 +209,7 @@ You don't need to test examples that depend on external systems like Weights and
 
 To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code.
 
-```
+```{code-block} text
 .. doctest::
 
     >>> import ray
@@ -220,7 +220,7 @@ To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code
 
 To skip a *code-output-style* example, add `:skipif: True` to the `testcode` block.
 
-```
+```{code-block} text
 .. testcode::
     :skipif: True
 
@@ -240,7 +240,7 @@ If your Python code is non-deterministic, or if your output is excessively long,
 
 To ignore parts of a *doctest-style* output, replace problematic sections with ellipses.
 
-```
+```{code-block} text
 >>> import ray
 >>> ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 Dataset(num_rows=..., schema=...)
@@ -253,7 +253,7 @@ To ignore an output altogether, write a *code-output-style* snippet. Don't use `
 If parts of your output are long or non-deterministic, replace problematic sections
 with ellipses.
 
-```
+```{code-block} text
 .. testcode::
 
     import ray
@@ -268,7 +268,7 @@ with ellipses.
 If your output is nondeterministic and you want to display a sample output, add
 `:options: +MOCK`.
 
-```
+```{code-block} text
 .. testcode::
 
     import random
@@ -283,7 +283,7 @@ If your output is nondeterministic and you want to display a sample output, add
 If your output is hard to test and you don't want to display a sample output, exclude
 the `testoutput`.
 
-```
+```{code-block} text
 .. testcode::
 
     print("This output is hidden and untested")
