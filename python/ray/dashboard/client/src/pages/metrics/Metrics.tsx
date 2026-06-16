@@ -9,6 +9,7 @@ import {
   Tab,
   Tabs,
   Theme,
+  Typography,
 } from "@mui/material";
 import React, { useContext, useMemo, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
@@ -72,6 +73,19 @@ export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
 };
 
 type DashboardTab = "core" | "data";
+
+export const isGrafanaCloudHost = (grafanaHost: string | undefined) => {
+  if (grafanaHost === undefined) {
+    return false;
+  }
+
+  try {
+    const hostname = new URL(grafanaHost).hostname;
+    return hostname === "grafana.net" || hostname.endsWith(".grafana.net");
+  } catch (e) {
+    return false;
+  }
+};
 
 // Exported for use by Serve metrics sections (they still use individual panels)
 export type MetricConfig = {
@@ -156,6 +170,7 @@ export const Metrics = () => {
 
   const currentDashboardUrl = buildDashboardUrl(selectedTab);
   const currentGrafanaUrl = buildDashboardUrl(selectedTab, false);
+  const useGrafanaCloudFallback = isGrafanaCloudHost(grafanaHost);
 
   return (
     <Box
@@ -215,31 +230,77 @@ export const Metrics = () => {
               </Button>
             </Box>
           </Paper>
-          <Box
-            sx={{
-              flex: 1,
-              overflow: "hidden",
-              width: "100%",
-            }}
-          >
+          {useGrafanaCloudFallback ? (
+            <GrafanaCloudFallback grafanaUrl={currentGrafanaUrl} />
+          ) : (
             <Box
-              component="iframe"
-              title={
-                selectedTab === "data" ? "Ray Data Dashboard" : "Core Dashboard"
-              }
-              src={currentDashboardUrl}
               sx={{
+                flex: 1,
+                overflow: "hidden",
                 width: "100%",
-                height: "100%",
-                border: "none",
               }}
-            />
-          </Box>
+            >
+              <Box
+                component="iframe"
+                title={
+                  selectedTab === "data"
+                    ? "Ray Data Dashboard"
+                    : "Core Dashboard"
+                }
+                src={currentDashboardUrl}
+                sx={{
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                }}
+              />
+            </Box>
+          )}
         </React.Fragment>
       )}
     </Box>
   );
 };
+
+type GrafanaCloudFallbackProps = {
+  grafanaUrl: string;
+};
+
+const GrafanaCloudFallback = ({ grafanaUrl }: GrafanaCloudFallbackProps) => (
+  <Box
+    sx={{
+      flex: 1,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      p: 3,
+    }}
+  >
+    <Alert
+      severity="info"
+      action={
+        <Button
+          color="inherit"
+          component="a"
+          href={grafanaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          startIcon={<RiExternalLinkLine />}
+        >
+          Open in Grafana
+        </Button>
+      }
+      sx={{ maxWidth: 720 }}
+    >
+      <Typography component="div" sx={{ fontWeight: 500 }}>
+        Open this dashboard in Grafana Cloud
+      </Typography>
+      Grafana Cloud does not allow dashboards to be embedded in iframes. Ray
+      metrics are still available; open the selected dashboard in Grafana Cloud
+      to view them with the current Ray filters.
+    </Alert>
+  </Box>
+);
 
 export type GrafanaNotRunningAlertProps = {
   severity?: AlertProps["severity"];
