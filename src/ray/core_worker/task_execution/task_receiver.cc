@@ -27,7 +27,7 @@
 namespace ray {
 namespace core {
 
-void TaskReceiver::HandleTaskExecutionResult(
+void HandleTaskExecutionResult(
     Status status,
     const TaskSpecification &task_spec,
     const TaskExecutionResult &result,
@@ -95,16 +95,6 @@ void TaskReceiver::HandleTaskExecutionResult(
     }
 
     if (task_spec.IsActorCreationTask()) {
-      concurrency_groups_ = task_spec.ConcurrencyGroups();
-      if (is_asyncio_) {
-        fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-            concurrency_groups_, fiber_max_concurrency_, initialize_thread_callback_);
-      } else {
-        const int default_max_concurrency = task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-            concurrency_groups_, default_max_concurrency, initialize_thread_callback_);
-      }
-
       if (status.IsCreationTaskError()) {
         RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
                          << task_spec.TaskId()
@@ -206,9 +196,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
   };
 
   if (task_spec.IsActorCreationTask()) {
-    SetupActor(task_spec.IsAsyncioActor(),
-               task_spec.MaxActorConcurrency(),
-               task_spec.AllowOutOfOrderExecution());
+    SetupActor(task_spec);
     normal_task_execution_queue_->EnqueueTask(
         TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
   } else if (task_spec.IsActorTask()) {
@@ -272,18 +260,27 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   return normal_task_execution_queue_->CancelTaskIfFound(task_id);
 }
 
-void TaskReceiver::SetupActor(bool is_asyncio,
-                              int fiber_max_concurrency,
-                              bool allow_out_of_order_execution) {
+void TaskReceiver::SetupActor(const TaskSpecification &task_spec) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
+
   // Note: It's possible to have allow_out_of_order_execution as false but max_concurrency
   // > 1, from the C++ / Java API's.
-  RAY_CHECK(is_asyncio ? allow_out_of_order_execution : true)
+  RAY_CHECK(task_spec.IsAsyncioActor() ? task_spec.AllowOutOfOrderExecution() : true)
       << "allow_out_of_order_execution must be true if is_asyncio is true";
-  is_asyncio_ = is_asyncio;
-  fiber_max_concurrency_ = fiber_max_concurrency;
-  allow_out_of_order_execution_ = allow_out_of_order_execution;
+  is_asyncio_ = task_spec.IsAsyncioActor();
+  fiber_max_concurrency_ = task_spec.MaxActorConcurrency();
+  allow_out_of_order_execution_ = task_spec.AllowOutOfOrderExecution();
+
+  concurrency_groups_ = task_spec.ConcurrencyGroups();
+  if (is_asyncio_) {
+    fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
+        concurrency_groups_, fiber_max_concurrency_, initialize_thread_callback_);
+  } else {
+    const int default_max_concurrency = task_spec.MaxActorConcurrency();
+    pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+        concurrency_groups_, default_max_concurrency, initialize_thread_callback_);
+  }
 }
 
 void TaskReceiver::Stop() {
