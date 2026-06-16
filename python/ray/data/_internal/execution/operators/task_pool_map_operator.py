@@ -46,6 +46,7 @@ class TaskPoolMapOperator(MapOperator):
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
         default_logical_memory_enabled: bool = False,
+        throttling_disabled: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -82,6 +83,9 @@ class TaskPoolMapOperator(MapOperator):
             default_logical_memory_enabled: If ``True``, the operator launches tasks
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            throttling_disabled: If ``True``, exempt this operator from object-store
+                resource reservation/throttling. Intended for terminal "drain"
+                operators (e.g. writes) whose object-store output is negligible.
         """
         super().__init__(
             map_transformer,
@@ -97,6 +101,7 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args,
             on_start,
             default_logical_memory_enabled,
+            throttling_disabled=throttling_disabled,
         )
 
         self._isolate_workers = isolate_workers

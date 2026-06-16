@@ -205,6 +205,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        throttling_disabled: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -228,6 +229,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         self._map_transformer = map_transformer
         self._supports_fusion = supports_fusion
+        self._throttling_disabled = throttling_disabled
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = ray_remote_args
         self._ray_remote_args_fn = ray_remote_args_fn
@@ -365,6 +367,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        throttling_disabled: bool = False,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -405,6 +408,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            throttling_disabled: If ``True``, exempt this operator from object-store
+                resource reservation/throttling. Intended for terminal "drain"
+                operators (e.g. writes) whose object-store output is negligible.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -447,6 +453,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                throttling_disabled=throttling_disabled,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
@@ -475,6 +482,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                throttling_disabled=throttling_disabled,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -751,6 +759,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def supports_fusion(self) -> bool:
         return self._supports_fusion
+
+    def throttling_disabled(self) -> bool:
+        # Terminal "drain" operators (e.g. writes) emit negligible object-store
+        # output, so excluding them from resource reservation lets them run as fast
+        # as CPU allows instead of being gated on object-store budget. See
+        # ``ReservationOpResourceAllocator.is_op_eligible``.
+        return self._throttling_disabled
 
     def num_active_tasks(self) -> int:
         # Override `num_active_tasks` to only include data tasks and exclude

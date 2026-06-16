@@ -116,6 +116,7 @@ class ActorPoolMapOperator(MapOperator):
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        throttling_disabled: bool = False,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -150,6 +151,9 @@ class ActorPoolMapOperator(MapOperator):
             default_logical_memory_enabled: If ``True``, the operator launches actors
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            throttling_disabled: If ``True``, exempt this operator from object-store
+                resource reservation/throttling. Intended for terminal "drain"
+                operators (e.g. writes) whose object-store output is negligible.
         """
         super().__init__(
             map_transformer,
@@ -165,6 +169,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
             on_start,
             default_logical_memory_enabled,
+            throttling_disabled=throttling_disabled,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle
