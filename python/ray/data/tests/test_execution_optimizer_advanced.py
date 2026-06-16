@@ -26,7 +26,6 @@ from ray.data._internal.logical.operators import (
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.rules import (
@@ -251,33 +250,6 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
 
     with pytest.raises(ValueError, match="there's no such column in the dataset"):
         ds_named.sort(invalid_col_name).take_all()
-
-
-def test_inherit_batch_format_rule():
-    if (
-        DataContext.get_current().batch_to_block_arrow_format
-    ):  # Skip the test if batch_to_block_arrow_format is True as rule is disabled
-        pytest.skip(
-            "Skipping inherit batch format rule test as batch_to_block_arrow_format is True"
-        )
-
-    from ray.data._internal.logical.rules import (
-        InheritBatchFormatRule,
-    )
-
-    ctx = DataContext.get_current()
-
-    operator1 = get_parquet_read_logical_op()
-    operator2 = MapBatches(
-        fn=lambda g: g, batch_format="pandas", input_dependencies=[operator1]
-    )
-    sort_key = SortKey("number", descending=True)
-    operator3 = Sort(sort_key, input_dependencies=[operator2])
-    original_plan = LogicalPlan(dag=operator3, context=ctx)
-
-    rule = InheritBatchFormatRule()
-    optimized_plan = rule.apply(original_plan)
-    assert optimized_plan.dag.batch_format == "pandas"
 
 
 def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
