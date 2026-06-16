@@ -557,15 +557,15 @@ class TestClusterAutoscaling:
                     {"resources": {"memory": 32 * GiB, "node:__internal_head__": 1.0}},
                     {
                         "resources": {"CPU": 8, "memory": 32 * GiB},
-                        "labels": {"__subcluster__": "training"},
+                        "labels": {"ray-subcluster": "training"},
                     },
                     {
                         "resources": {"CPU": 8, "memory": 32 * GiB},
-                        "labels": {"__subcluster__": "training"},
+                        "labels": {"ray-subcluster": "training"},
                     },
                     {
                         "resources": {"CPU": 4, "memory": 16 * GiB},
-                        "labels": {"__subcluster__": "validation"},
+                        "labels": {"ray-subcluster": "validation"},
                     },
                 ],
                 [
