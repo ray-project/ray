@@ -250,7 +250,11 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     # Deduplicate packages for package lists.
     result["packages"] = list(OrderedDict.fromkeys(result["packages"]))
 
-    if len(result["packages"]) == 0:
+    if len(result["packages"]) == 0 and result.get("uv_pip_install_options") in (
+        None,
+        [],
+        ["--no-cache"],
+    ):
         result = None
     logger.debug(f"Rewrote runtime_env `uv` field from {uv} to {result}.")
     return result
