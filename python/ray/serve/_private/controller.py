@@ -415,6 +415,40 @@ class ServeController:
             else RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S
         )
 
+    def _autoscaling_metrics_delay_ms(
+        self,
+        delay_cache: Dict[Tuple[str, str], Dict[str, Tuple[float, float]]],
+        deployment: str,
+        application: str,
+        source_id: str,
+        latency_ms: float,
+        *,
+        for_handle: bool,
+    ) -> float:
+        """Delay value to report on the (deployment, application) delay gauge.
+
+        With the high-cardinality replica/handle tag enabled, each source has
+        its own time series, so we report its own latency directly. With the
+        tag disabled, all sources of a deployment share one series; reporting a
+        single source latency would be last-writer-wins and flap, so we
+        aggregate to the max delay across sources that reported within the cache
+        timeout, evicting stale/dead sources so they do not pin the max forever.
+        """
+        if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
+            return latency_ms
+
+        metrics_interval_s = self._get_deployment_metrics_interval_s(
+            deployment, application, for_handle=for_handle
+        )
+        return _get_aggregated_autoscaling_metrics_delay_ms(
+            delay_cache.setdefault((deployment, application), {}),
+            source_id,
+            latency_ms,
+            _get_autoscaling_metrics_delay_cache_timeout_s(
+                metrics_interval_s, for_handle=for_handle
+            ),
+        )
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
@@ -431,21 +465,14 @@ class ServeController:
         if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             tags["replica"] = replica_metric_report.replica_id.unique_id
 
-        metrics_delay_ms = latency_ms
-        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-            metrics_interval_s = self._get_deployment_metrics_interval_s(
-                deployment, application, for_handle=False
-            )
-            metrics_delay_ms = _get_aggregated_autoscaling_metrics_delay_ms(
-                self._replica_metrics_delay_ms.setdefault(
-                    (deployment, application), {}
-                ),
-                replica_metric_report.replica_id.unique_id,
-                latency_ms,
-                _get_autoscaling_metrics_delay_cache_timeout_s(
-                    metrics_interval_s, for_handle=False
-                ),
-            )
+        metrics_delay_ms = self._autoscaling_metrics_delay_ms(
+            self._replica_metrics_delay_ms,
+            deployment,
+            application,
+            replica_metric_report.replica_id.unique_id,
+            latency_ms,
+            for_handle=False,
+        )
 
         # Record the metrics delay for observability
         self.replica_metrics_delay_gauge.set(
@@ -474,19 +501,14 @@ class ServeController:
         if RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             tags["handle"] = handle_metric_report.handle_id
 
-        metrics_delay_ms = latency_ms
-        if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
-            metrics_interval_s = self._get_deployment_metrics_interval_s(
-                deployment, application, for_handle=True
-            )
-            metrics_delay_ms = _get_aggregated_autoscaling_metrics_delay_ms(
-                self._handle_metrics_delay_ms.setdefault((deployment, application), {}),
-                handle_metric_report.handle_id,
-                latency_ms,
-                _get_autoscaling_metrics_delay_cache_timeout_s(
-                    metrics_interval_s, for_handle=True
-                ),
-            )
+        metrics_delay_ms = self._autoscaling_metrics_delay_ms(
+            self._handle_metrics_delay_ms,
+            deployment,
+            application,
+            handle_metric_report.handle_id,
+            latency_ms,
+            for_handle=True,
+        )
 
         # Record the metrics delay for observability
         self.handle_metrics_delay_gauge.set(
