@@ -138,10 +138,10 @@ class TestGPUHashAggregatePlanning:
                     "custom(value)",
                     on="value",
                     ignore_nulls=True,
-                    accumulator_columns=("acc",),
+                    accumulators=("acc",),
                 )
 
-            def gpu_partial_aggregate(
+            def partial_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
@@ -151,7 +151,7 @@ class TestGPUHashAggregatePlanning:
             ) -> Any:
                 raise NotImplementedError
 
-            def gpu_final_aggregate(
+            def final_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
@@ -176,12 +176,12 @@ class TestGPUHashAggregatePlanning:
         assert not hasattr(gpu_agg, "combine")
         assert not hasattr(gpu_agg, "finalize")
         for method_name in (
-            "_gpu_empty_global_partial_values",
-            "_gpu_partial_accumulator_dtypes",
-            "_gpu_final_arrow_types",
-            "_gpu_final_cudf_types",
+            "_empty_global_partial_values",
+            "_partial_accumulator_dtypes",
+            "_final_arrow_types",
+            "_final_cudf_dtypes",
         ):
-            assert not hasattr(gpu_agg, method_name)
+            assert hasattr(gpu_agg, method_name)
 
     def test_custom_gpu_aggregation_plan_supported_without_input_schema(self):
         class _CustomGPUAggregate(GPUAggregateFn):
@@ -190,10 +190,10 @@ class TestGPUHashAggregatePlanning:
                     "custom(value)",
                     on="value",
                     ignore_nulls=True,
-                    accumulator_columns=("acc",),
+                    accumulators=("acc",),
                 )
 
-            def gpu_partial_aggregate(
+            def partial_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
@@ -203,7 +203,7 @@ class TestGPUHashAggregatePlanning:
             ) -> Any:
                 raise NotImplementedError
 
-            def gpu_final_aggregate(
+            def final_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
@@ -227,10 +227,10 @@ class TestGPUHashAggregatePlanning:
                     "custom(value)",
                     on="value",
                     ignore_nulls=True,
-                    accumulator_columns=("acc",),
+                    accumulators=("acc",),
                 )
 
-            def gpu_partial_aggregate(
+            def partial_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
@@ -240,7 +240,7 @@ class TestGPUHashAggregatePlanning:
             ) -> Any:
                 raise NotImplementedError
 
-            def gpu_final_aggregate(
+            def final_aggregate(
                 self,
                 df: Any,
                 key_columns: Tuple[str, ...],
@@ -645,11 +645,11 @@ class TestGPUAggregationPlanReal:
                     "custom(value)",
                     on="value",
                     ignore_nulls=True,
-                    accumulator_columns=("acc",),
+                    accumulators=("acc",),
                 )
                 self.seen_schema: Optional[pa.Schema] = None
 
-            def gpu_partial_aggregate(
+            def partial_aggregate(
                 self,
                 df: cudf.DataFrame,
                 key_columns: Tuple[str, ...],
@@ -661,7 +661,7 @@ class TestGPUAggregationPlanReal:
                 acc_col = accumulator_columns[0]
                 return df[[key_columns[0], "value"]].rename(columns={"value": acc_col})
 
-            def gpu_final_aggregate(
+            def final_aggregate(
                 self,
                 df: cudf.DataFrame,
                 key_columns: Tuple[str, ...],
@@ -782,23 +782,15 @@ class TestGPUAggregationPlanReal:
         partial = plan.partial_aggregate(df)
         assert partial[plan.accumulator_columns[0]].iloc[0] == 3
 
-    def test_normalize_partial_output_null_key_column(self, ray_with_gpu):
+    def test_partial_aggregate_normalizes_null_key_column(self, ray_with_gpu):
         import cudf
 
         nan_key_plan = build_gpu_aggregation_plan(
             ("item",), (Count(),), input_schema=pa.schema([("item", pa.null())])
         )
         assert isinstance(nan_key_plan, GPUAggregationPlan), nan_key_plan
-        nan_key_partial = cudf.DataFrame(
-            {
-                "item": cudf.Series([None], dtype="float64"),
-                nan_key_plan.accumulator_columns[0]: np.array([1], dtype=np.int64),
-            }
-        )
-        normalized_nan_key_partial = nan_key_plan._normalize_partial_output(
-            nan_key_partial,
-            nan_key_partial,
-            ("item",),
+        normalized_nan_key_partial = nan_key_plan.partial_aggregate(
+            cudf.DataFrame({"item": cudf.Series([None], dtype="float64")}),
             input_schema=pa.schema([("item", pa.null())]),
         )
 
@@ -808,39 +800,25 @@ class TestGPUAggregationPlanReal:
             == "int64"
         )
 
-    def test_normalize_partial_output_unknown_schema_widening(self, ray_with_gpu):
+    def test_partial_aggregate_normalizes_unknown_schema_accumulators(
+        self, ray_with_gpu
+    ):
         import cudf
 
-        unknown_schema_plan = build_gpu_aggregation_plan(tuple(), (Sum("B"),))
+        unknown_schema_plan = build_gpu_aggregation_plan(("A",), (Sum("B"),))
         assert isinstance(unknown_schema_plan, GPUAggregationPlan), unknown_schema_plan
         unknown_schema_acc_col = unknown_schema_plan.accumulator_columns[0]
         int_input = cudf.DataFrame({"A": [0], "B": np.array([1], dtype=np.int64)})
-        int_partial = cudf.DataFrame(
-            {
-                "A": np.array([0], dtype=np.int64),
-                unknown_schema_acc_col: np.array([1], dtype=np.int64),
-            }
-        )
         double_input = cudf.DataFrame(
             {"A": [0], "B": np.array([1.0], dtype=np.float64)}
         )
-        double_partial = cudf.DataFrame(
-            {
-                "A": np.array([0], dtype=np.int64),
-                unknown_schema_acc_col: np.array([1.0], dtype=np.float64),
-            }
-        )
 
-        normalized_int_partial = unknown_schema_plan._normalize_partial_output(
-            int_partial,
+        normalized_int_partial = unknown_schema_plan.partial_aggregate(
             int_input,
-            ("A",),
             input_schema=pa.schema([("A", pa.int64()), ("B", pa.int64())]),
         )
-        normalized_double_partial = unknown_schema_plan._normalize_partial_output(
-            double_partial,
+        normalized_double_partial = unknown_schema_plan.partial_aggregate(
             double_input,
-            ("A",),
             input_schema=pa.schema([("A", pa.int64()), ("B", pa.float64())]),
         )
 

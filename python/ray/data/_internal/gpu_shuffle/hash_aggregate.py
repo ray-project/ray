@@ -28,7 +28,6 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
     GPUShuffleOperator,
     _derive_num_gpu_ranks,
 )
-from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count, Max, Mean, Min, Sum
 from ray.data.block import (
@@ -54,7 +53,7 @@ logger = logging.getLogger(__name__)
 _GLOBAL_AGGREGATE_KEY = "__hash_aggregate_global_key"
 
 
-def _cast_column_to_dtype(
+def _cast_cudf_column_dtype(
     df: cudf.DataFrame, column: str, dtype: Optional[DataType]
 ) -> None:
     """Cast a ``cudf.DataFrame`` column to specified dtype in place."""
@@ -73,14 +72,12 @@ def _cast_column_to_dtype(
         df[column] = df[column].astype(cast_dtype)
     except (TypeError, ValueError, NotImplementedError):
         # fallback for handling all-null columns
-        is_all_null = len(df) == 0 or bool(df[column].isnull().all())
-        if not is_all_null:
+        if len(df) > 0 and not bool(df[column].isnull().all()):
             return
 
         import cudf
 
-        if isinstance(df, cudf.DataFrame) and hasattr(cudf, "Series"):
-            df[column] = cudf.Series([None] * len(df), dtype=cast_dtype)
+        df[column] = cudf.Series([None] * len(df), dtype=cast_dtype)
 
 
 def _cudf_column_dtype(df: cudf.DataFrame, column: str) -> Optional[DataType]:
@@ -93,60 +90,25 @@ def _cudf_column_dtype(df: cudf.DataFrame, column: str) -> Optional[DataType]:
 
     raw_dtype = df[column].dtype
     try:
-        import cudf
-
-        if isinstance(df, cudf.DataFrame):
-            return DataType.from_cudf(raw_dtype)
+        return DataType.from_cudf(raw_dtype)
     except (AttributeError, ImportError, TypeError):
-        pass
-    return DataType.from_dtype(raw_dtype)
-
-
-def _fill_missing_count(
-    result: cudf.DataFrame, count_column: str, dtype: Optional[DataType] = None
-) -> None:
-    """Fill missing counts with 0 and cast to specified dtype."""
-    if count_column not in result.columns:
-        result[count_column] = 0
-    else:
-        result[count_column] = result[count_column].fillna(0)
-    _cast_column_to_dtype(result, count_column, dtype)
-
-
-def _fill_missing_reduction(
-    result: cudf.DataFrame, reduction_column: str, dtype: Optional[DataType] = None
-) -> None:
-    """Fill any missing reduction values with None and cast to specified dtype."""
-    if reduction_column not in result.columns:
-        result[reduction_column] = None
-    _cast_column_to_dtype(result, reduction_column, dtype)
+        return DataType.from_dtype(raw_dtype)
 
 
 def _schema_column_dtype(
     schema: Optional[Schema], column: Optional[str]
 ) -> Optional[DataType]:
-    """Get the DataType of a column from a ``Schema`` (Arrow or Pandas).
+    """Get the DataType of a column from a ``Schema``.
 
     Returns None if the column is not found (or None).
     """
-    if schema is None or column is None:
-        return None
-
-    try:
-        names = schema.names
-    except AttributeError:
-        return None
-
-    if not isinstance(names, (list, tuple)) or column not in names:
+    if schema is None or column is None or column not in schema.names:
         return None
 
     if isinstance(schema, pa.Schema):
         return DataType.from_dtype(schema.field(column).type)
 
-    if isinstance(schema, PandasBlockSchema):
-        return DataType.from_dtype(schema.types[names.index(column)])
-
-    return None
+    return DataType.from_dtype(schema.types[schema.names.index(column)])
 
 
 class GPUAggregateFn(abc.ABC):
@@ -160,9 +122,10 @@ class GPUAggregateFn(abc.ABC):
         on: The name of the column to perform the aggregation on.
         ignore_nulls: Whether to ignore null values during aggregation.
             For example, should "count" include null rows or not?
-        accumulator_columns: The names of (internal) accumulator columns used by the
-            aggregation. For example, "sum" uses "value", but "mean" uses both "sum"
-            and "count".
+        accumulators: The names of (internal) accumulators used by the aggregation.
+            For example, "sum" uses "value" while "mean" uses ("sum", "count",
+            "null_count").  These will be combined with the accumulator_prefix to form
+            the final, unique names of the GPU accumulator columns.
     """
 
     def __init__(
@@ -171,28 +134,22 @@ class GPUAggregateFn(abc.ABC):
         *,
         on: Optional[str],
         ignore_nulls: bool,
-        accumulator_columns: Tuple[str, ...] = ("value",),
+        accumulators: Tuple[str, ...] = ("value",),
     ) -> None:
         if not name:
             raise ValueError(
                 f"Non-empty string has to be provided as name (got {name})"
             )
-        if not accumulator_columns or any(not column for column in accumulator_columns):
-            raise ValueError("Accumulator column suffixes must be non-empty strings.")
+        if not accumulators or any(not accumulator for accumulator in accumulators):
+            raise ValueError("Accumulators must be non-empty strings.")
 
         self.name = name
         self.target_column = on
         self.ignore_nulls = ignore_nulls
-        self._accumulator_column_suffixes = accumulator_columns
-
-    def _gpu_accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
-        return tuple(
-            f"{accumulator_prefix}_{suffix}"
-            for suffix in self._accumulator_column_suffixes
-        )
+        self._accumulators = accumulators
 
     @abc.abstractmethod
-    def gpu_partial_aggregate(
+    def partial_aggregate(
         self,
         df: Any,
         key_columns: Tuple[str, ...],
@@ -200,11 +157,12 @@ class GPUAggregateFn(abc.ABC):
         *,
         input_schema: Optional[Schema] = None,
     ) -> Any:
-        """Aggregate one input block into GPU accumulator columns."""
+        """Aggregate one input block (as a ``cudf.DataFrame``) into GPU accumulator
+        columns."""
         ...
 
     @abc.abstractmethod
-    def gpu_final_aggregate(
+    def final_aggregate(
         self,
         df: Any,
         key_columns: Tuple[str, ...],
@@ -214,53 +172,107 @@ class GPUAggregateFn(abc.ABC):
         """Aggregate shuffled GPU accumulator columns into final output."""
         ...
 
+    def _accumulator_columns(self, accumulator_prefix: str) -> Tuple[str, ...]:
+        """Return the final, unique names of the GPU accumulator columns per
+        aggregation by concatenating the accumulator_prefix and the accumulator columns.
 
-def _aggregate_with_null_semantics(
-    df: cudf.DataFrame,
-    key_columns: Tuple[str, ...],
-    value_column: str,
-    aggregate_name: str,
-    output_column: str,
-    output_dtype: Optional[DataType],
-    ignore_nulls: bool,
-    size_col: str,
-    count_col: str,
-) -> Tuple[cudf.DataFrame, Optional[DataType]]:
-    grouped = df.groupby(list(key_columns), dropna=False)
+        The accumulator_prefix is generated by the GPUAggregationPlan to uniquely
+        identify each GPU aggregation, e.g. for a single `mean` aggregation with
+        accumulator prefix "__ray_gpu_agg_0", the unique accumulator column names
+        will be:
+        - "__ray_gpu_agg_0_sum"
+        - "__ray_gpu_agg_0_count"
+        - "__ray_gpu_agg_0_null_count"
+        """
+        return tuple(
+            f"{accumulator_prefix}_{accumulator}" for accumulator in self._accumulators
+        )
 
-    sizes = grouped.size().reset_index()
-    sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
-    count_dtype = _cudf_column_dtype(sizes, size_col)
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
+        """Return accumulator values for an empty block during a global aggregation
+        operation (no key columns).
 
-    counts = grouped[value_column].count().reset_index()
-    counts = counts.rename(columns={counts.columns[-1]: count_col})
+        This is used to ensure that the GPU aggregation can handle empty blocks
+        gracefully.
 
-    result = sizes.merge(counts, on=list(key_columns), how="left")
-    _fill_missing_count(result, count_col, count_dtype)
+        Subclasses should override this when all-null accumulator values are not
+        semantically correct for empty global input.
+        """
+        return {
+            column: None for column in self._accumulator_columns(accumulator_prefix)
+        }
 
-    all_counts_zero = False
-    if len(result) > 0 and count_col in result.columns:
-        try:
-            all_counts_zero = bool((result[count_col] == 0).all())
-        except TypeError:
-            # fallback for non-numeric columns
-            pass
+    def _partial_accumulator_dtypes(
+        self,
+        df: cudf.DataFrame,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        """Return dtypes for partial accumulator columns.
 
-    if all_counts_zero:
-        result[output_column] = None
-        _cast_column_to_dtype(result, output_column, output_dtype)
+        Subclasses should override this when accumulator columns require explicit
+        dtype normalization.
+        """
+        return {
+            column: None for column in self._accumulator_columns(accumulator_prefix)
+        }
+
+    def _final_cudf_dtypes(
+        self,
+        df: cudf.DataFrame,
+        output_name: str,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        """Return dtypes for final cuDF output columns.
+
+        Subclasses should override this when final output columns require explicit
+        dtype normalization.
+        """
+        return {}
+
+    def _final_arrow_types(
+        self,
+        output_name: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, pa.DataType]:
+        """Return Arrow types for final output columns.
+
+        Subclasses should override this when Arrow output normalization requires
+        explicit types.
+        """
+        return {}
+
+
+def _fill_missing_count(
+    result: cudf.DataFrame, count_column: str, dtype: Optional[DataType] = None
+) -> None:
+    """Fill missing counts with 0 and cast to specified dtype.
+
+    This is used to ensure that the GPU aggregation can handle empty blocks
+    gracefully.
+    """
+    if count_column not in result.columns:
+        result[count_column] = 0
     else:
-        # invoke the cuDF aggregation function for the given aggregate_name
-        aggregated = getattr(grouped[value_column], aggregate_name)().reset_index()
-        aggregated = aggregated.rename(columns={aggregated.columns[-1]: output_column})
-        result = result.merge(aggregated, on=list(key_columns), how="left")
-        _fill_missing_reduction(result, output_column, output_dtype)
+        result[count_column] = result[count_column].fillna(0)
+    _cast_cudf_column_dtype(result, count_column, dtype)
 
-    null_mask = result[count_col] == 0
-    if not ignore_nulls:
-        null_mask = result[size_col] != result[count_col]
-    result.loc[null_mask, output_column] = None
-    return result, count_dtype
+
+def _fill_missing_reduction(
+    result: cudf.DataFrame, reduction_column: str, dtype: Optional[DataType] = None
+) -> None:
+    """Fill any missing reduction values with None and cast to specified dtype.
+
+    This is used to ensure that the GPU aggregation can handle empty blocks
+    gracefully.
+    """
+    if reduction_column not in result.columns:
+        result[reduction_column] = None
+    _cast_cudf_column_dtype(result, reduction_column, dtype)
 
 
 def _reduction_dtype(
@@ -313,28 +325,10 @@ class GPUCount(GPUAggregateFn):
             agg.name,
             on=agg.get_target_column(),
             ignore_nulls=agg._ignore_nulls,
-            accumulator_columns=("value",),
+            accumulators=("value",),
         )
 
-    def _gpu_empty_global_partial_values(
-        self, accumulator_prefix: str
-    ) -> Dict[str, Any]:
-        return {self._gpu_accumulator_columns(accumulator_prefix)[0]: 0}
-
-    def _gpu_partial_accumulator_dtypes(
-        self,
-        df: cudf.DataFrame,
-        accumulator_prefix: str,
-        *,
-        input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: DataType.from_numpy(
-                "int64"
-            )
-        }
-
-    def gpu_partial_aggregate(
+    def partial_aggregate(
         self,
         df: cudf.DataFrame,
         key_columns: Tuple[str, ...],
@@ -361,7 +355,7 @@ class GPUCount(GPUAggregateFn):
         _fill_missing_count(result, acc_col, count_dtype)
         return result[list(key_columns) + [acc_col]]
 
-    def gpu_final_aggregate(
+    def final_aggregate(
         self,
         df: cudf.DataFrame,
         key_columns: Tuple[str, ...],
@@ -375,7 +369,23 @@ class GPUCount(GPUAggregateFn):
         result = result.rename(columns={result.columns[-1]: output_name})
         return result[list(key_columns) + [output_name]]
 
-    def _gpu_final_cudf_types(
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
+        return {self._accumulator_columns(accumulator_prefix)[0]: 0}
+
+    def _partial_accumulator_dtypes(
+        self,
+        df: cudf.DataFrame,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        return {
+            self._accumulator_columns(accumulator_prefix)[0]: DataType.from_numpy(
+                "int64"
+            )
+        }
+
+    def _final_cudf_dtypes(
         self,
         df: cudf.DataFrame,
         output_name: str,
@@ -389,27 +399,109 @@ class GPUCount(GPUAggregateFn):
 class GPUSum(GPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Sum`."""
 
-    _cudf_aggregate_name = "sum"
-
     def __init__(self, agg: Sum, *, source_dtype: Optional[DataType] = None) -> None:
         self.source_dtype = source_dtype
         super().__init__(
             agg.name,
             on=agg.get_target_column(),
             ignore_nulls=agg._ignore_nulls,
-            accumulator_columns=("value",),
+            accumulators=("value",),
         )
 
-    def _gpu_empty_global_partial_values(
-        self, accumulator_prefix: str
-    ) -> Dict[str, Any]:
+    def partial_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> cudf.DataFrame:
+        assert self.target_column is not None
+        acc_col = accumulator_columns[0]
+        output_dtype = _reduction_dtype(
+            self.source_dtype,
+            self.target_column,
+            "sum",
+            df,
+            input_schema,
+        )
+        size_col = f"{acc_col}_size"
+        count_col = f"{acc_col}_count"
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[self.target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[acc_col] = None
+            _cast_cudf_column_dtype(result, acc_col, output_dtype)
+        else:
+            aggregated = grouped[self.target_column].sum().reset_index()
+            aggregated = aggregated.rename(columns={aggregated.columns[-1]: acc_col})
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, acc_col, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, acc_col] = None
+        return result[list(key_columns) + [acc_col]]
+
+    def final_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+    ) -> cudf.DataFrame:
+        acc_col = accumulator_columns[0]
+        output_dtype = _cudf_column_dtype(df, acc_col)
+        size_col = f"{acc_col}_partial_size"
+        count_col = f"{acc_col}_partial_count"
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[acc_col].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[output_name] = None
+            _cast_cudf_column_dtype(result, output_name, output_dtype)
+        else:
+            aggregated = grouped[acc_col].sum().reset_index()
+            aggregated = aggregated.rename(
+                columns={aggregated.columns[-1]: output_name}
+            )
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, output_name, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, output_name] = None
+        return result[list(key_columns) + [output_name]]
+
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
         return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: (
+            self._accumulator_columns(accumulator_prefix)[0]: (
                 None if self.ignore_nulls else 0
             )
         }
 
-    def _gpu_partial_accumulator_dtypes(
+    def _partial_accumulator_dtypes(
         self,
         df: cudf.DataFrame,
         accumulator_prefix: str,
@@ -418,68 +510,34 @@ class GPUSum(GPUAggregateFn):
     ) -> Dict[str, Optional[DataType]]:
         assert self.target_column is not None
         return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: (
+            self._accumulator_columns(accumulator_prefix)[0]: (
                 _reduction_dtype(
                     self.source_dtype,
                     self.target_column,
-                    self._cudf_aggregate_name,
+                    "sum",
                     df,
                     input_schema,
                 )
             )
         }
 
-    def gpu_partial_aggregate(
+    def _final_cudf_dtypes(
         self,
         df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+        accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> cudf.DataFrame:
-        assert self.target_column is not None
-        acc_col = accumulator_columns[0]
-        result, _ = _aggregate_with_null_semantics(
-            df,
-            key_columns,
-            self.target_column,
-            self._cudf_aggregate_name,
-            acc_col,
-            _reduction_dtype(
-                self.source_dtype,
-                self.target_column,
-                self._cudf_aggregate_name,
-                df,
-                input_schema,
-            ),
-            self.ignore_nulls,
-            f"{acc_col}_size",
-            f"{acc_col}_count",
-        )
-        return result[list(key_columns) + [acc_col]]
+    ) -> Dict[str, Optional[DataType]]:
+        acc_col = self._accumulator_columns(accumulator_prefix)[0]
+        acc_dtype = _cudf_column_dtype(df, acc_col)
+        if acc_dtype is None:
+            acc_dtype = self._partial_accumulator_dtypes(
+                df, accumulator_prefix, input_schema=input_schema
+            )[acc_col]
+        return {output_name: acc_dtype}
 
-    def gpu_final_aggregate(
-        self,
-        df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        accumulator_columns: Tuple[str, ...],
-        output_name: str,
-    ) -> cudf.DataFrame:
-        acc_col = accumulator_columns[0]
-        result, _ = _aggregate_with_null_semantics(
-            df,
-            key_columns,
-            acc_col,
-            self._cudf_aggregate_name,
-            output_name,
-            _cudf_column_dtype(df, acc_col),
-            self.ignore_nulls,
-            f"{acc_col}_partial_size",
-            f"{acc_col}_partial_count",
-        )
-        return result[list(key_columns) + [output_name]]
-
-    def _gpu_final_arrow_types(
+    def _final_arrow_types(
         self,
         output_name: str,
         *,
@@ -492,27 +550,9 @@ class GPUSum(GPUAggregateFn):
             return {}
         return {output_name: pa.null()}
 
-    def _gpu_final_cudf_types(
-        self,
-        df: cudf.DataFrame,
-        output_name: str,
-        accumulator_prefix: str,
-        *,
-        input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        acc_col = self._gpu_accumulator_columns(accumulator_prefix)[0]
-        acc_dtype = _cudf_column_dtype(df, acc_col)
-        if acc_dtype is None:
-            acc_dtype = self._gpu_partial_accumulator_dtypes(
-                df, accumulator_prefix, input_schema=input_schema
-            )[acc_col]
-        return {output_name: acc_dtype}
-
 
 class GPUMin(GPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Min`."""
-
-    _cudf_aggregate_name = "min"
 
     def __init__(self, agg: Min, *, source_dtype: Optional[DataType] = None) -> None:
         self.source_dtype = source_dtype
@@ -520,19 +560,103 @@ class GPUMin(GPUAggregateFn):
             agg.name,
             on=agg.get_target_column(),
             ignore_nulls=agg._ignore_nulls,
-            accumulator_columns=("value",),
+            accumulators=("value",),
         )
 
-    def _gpu_empty_global_partial_values(
-        self, accumulator_prefix: str
-    ) -> Dict[str, Any]:
+    def partial_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> cudf.DataFrame:
+        assert self.target_column is not None
+        acc_col = accumulator_columns[0]
+        output_dtype = _reduction_dtype(
+            self.source_dtype,
+            self.target_column,
+            "min",
+            df,
+            input_schema,
+        )
+        size_col = f"{acc_col}_size"
+        count_col = f"{acc_col}_count"
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[self.target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[acc_col] = None
+            _cast_cudf_column_dtype(result, acc_col, output_dtype)
+        else:
+            aggregated = grouped[self.target_column].min().reset_index()
+            aggregated = aggregated.rename(columns={aggregated.columns[-1]: acc_col})
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, acc_col, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, acc_col] = None
+        return result[list(key_columns) + [acc_col]]
+
+    def final_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+    ) -> cudf.DataFrame:
+        acc_col = accumulator_columns[0]
+        output_dtype = _cudf_column_dtype(df, acc_col)
+        size_col = f"{acc_col}_partial_size"
+        count_col = f"{acc_col}_partial_count"
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[acc_col].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[output_name] = None
+            _cast_cudf_column_dtype(result, output_name, output_dtype)
+        else:
+            aggregated = grouped[acc_col].min().reset_index()
+            aggregated = aggregated.rename(
+                columns={aggregated.columns[-1]: output_name}
+            )
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, output_name, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, output_name] = None
+        return result[list(key_columns) + [output_name]]
+
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
         return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: (
+            self._accumulator_columns(accumulator_prefix)[0]: (
                 None if self.ignore_nulls else float("+inf")
             )
         }
 
-    def _gpu_partial_accumulator_dtypes(
+    def _partial_accumulator_dtypes(
         self,
         df: cudf.DataFrame,
         accumulator_prefix: str,
@@ -541,68 +665,34 @@ class GPUMin(GPUAggregateFn):
     ) -> Dict[str, Optional[DataType]]:
         assert self.target_column is not None
         return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: (
+            self._accumulator_columns(accumulator_prefix)[0]: (
                 _reduction_dtype(
                     self.source_dtype,
                     self.target_column,
-                    self._cudf_aggregate_name,
+                    "min",
                     df,
                     input_schema,
                 )
             )
         }
 
-    def gpu_partial_aggregate(
+    def _final_cudf_dtypes(
         self,
         df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+        accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> cudf.DataFrame:
-        assert self.target_column is not None
-        acc_col = accumulator_columns[0]
-        result, _ = _aggregate_with_null_semantics(
-            df,
-            key_columns,
-            self.target_column,
-            self._cudf_aggregate_name,
-            acc_col,
-            _reduction_dtype(
-                self.source_dtype,
-                self.target_column,
-                self._cudf_aggregate_name,
-                df,
-                input_schema,
-            ),
-            self.ignore_nulls,
-            f"{acc_col}_size",
-            f"{acc_col}_count",
-        )
-        return result[list(key_columns) + [acc_col]]
+    ) -> Dict[str, Optional[DataType]]:
+        acc_col = self._accumulator_columns(accumulator_prefix)[0]
+        acc_dtype = _cudf_column_dtype(df, acc_col)
+        if acc_dtype is None:
+            acc_dtype = self._partial_accumulator_dtypes(
+                df, accumulator_prefix, input_schema=input_schema
+            )[acc_col]
+        return {output_name: acc_dtype}
 
-    def gpu_final_aggregate(
-        self,
-        df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        accumulator_columns: Tuple[str, ...],
-        output_name: str,
-    ) -> cudf.DataFrame:
-        acc_col = accumulator_columns[0]
-        result, _ = _aggregate_with_null_semantics(
-            df,
-            key_columns,
-            acc_col,
-            self._cudf_aggregate_name,
-            output_name,
-            _cudf_column_dtype(df, acc_col),
-            self.ignore_nulls,
-            f"{acc_col}_partial_size",
-            f"{acc_col}_partial_count",
-        )
-        return result[list(key_columns) + [output_name]]
-
-    def _gpu_final_arrow_types(
+    def _final_arrow_types(
         self,
         output_name: str,
         *,
@@ -615,27 +705,9 @@ class GPUMin(GPUAggregateFn):
             return {}
         return {output_name: pa.null()}
 
-    def _gpu_final_cudf_types(
-        self,
-        df: cudf.DataFrame,
-        output_name: str,
-        accumulator_prefix: str,
-        *,
-        input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        acc_col = self._gpu_accumulator_columns(accumulator_prefix)[0]
-        acc_dtype = _cudf_column_dtype(df, acc_col)
-        if acc_dtype is None:
-            acc_dtype = self._gpu_partial_accumulator_dtypes(
-                df, accumulator_prefix, input_schema=input_schema
-            )[acc_col]
-        return {output_name: acc_dtype}
-
 
 class GPUMax(GPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Max`."""
-
-    _cudf_aggregate_name = "max"
 
     def __init__(self, agg: Max, *, source_dtype: Optional[DataType] = None) -> None:
         self.source_dtype = source_dtype
@@ -643,19 +715,103 @@ class GPUMax(GPUAggregateFn):
             agg.name,
             on=agg.get_target_column(),
             ignore_nulls=agg._ignore_nulls,
-            accumulator_columns=("value",),
+            accumulators=("value",),
         )
 
-    def _gpu_empty_global_partial_values(
-        self, accumulator_prefix: str
-    ) -> Dict[str, Any]:
+    def partial_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> cudf.DataFrame:
+        assert self.target_column is not None
+        acc_col = accumulator_columns[0]
+        output_dtype = _reduction_dtype(
+            self.source_dtype,
+            self.target_column,
+            "max",
+            df,
+            input_schema,
+        )
+        size_col = f"{acc_col}_size"
+        count_col = f"{acc_col}_count"
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[self.target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[acc_col] = None
+            _cast_cudf_column_dtype(result, acc_col, output_dtype)
+        else:
+            aggregated = grouped[self.target_column].max().reset_index()
+            aggregated = aggregated.rename(columns={aggregated.columns[-1]: acc_col})
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, acc_col, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, acc_col] = None
+        return result[list(key_columns) + [acc_col]]
+
+    def final_aggregate(
+        self,
+        df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
+        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+    ) -> cudf.DataFrame:
+        acc_col = accumulator_columns[0]
+        output_dtype = _cudf_column_dtype(df, acc_col)
+        size_col = f"{acc_col}_partial_size"
+        count_col = f"{acc_col}_partial_count"
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[acc_col].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[output_name] = None
+            _cast_cudf_column_dtype(result, output_name, output_dtype)
+        else:
+            aggregated = grouped[acc_col].max().reset_index()
+            aggregated = aggregated.rename(
+                columns={aggregated.columns[-1]: output_name}
+            )
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, output_name, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, output_name] = None
+        return result[list(key_columns) + [output_name]]
+
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
         return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: (
+            self._accumulator_columns(accumulator_prefix)[0]: (
                 None if self.ignore_nulls else float("-inf")
             )
         }
 
-    def _gpu_partial_accumulator_dtypes(
+    def _partial_accumulator_dtypes(
         self,
         df: cudf.DataFrame,
         accumulator_prefix: str,
@@ -664,68 +820,34 @@ class GPUMax(GPUAggregateFn):
     ) -> Dict[str, Optional[DataType]]:
         assert self.target_column is not None
         return {
-            self._gpu_accumulator_columns(accumulator_prefix)[0]: (
+            self._accumulator_columns(accumulator_prefix)[0]: (
                 _reduction_dtype(
                     self.source_dtype,
                     self.target_column,
-                    self._cudf_aggregate_name,
+                    "max",
                     df,
                     input_schema,
                 )
             )
         }
 
-    def gpu_partial_aggregate(
+    def _final_cudf_dtypes(
         self,
         df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        accumulator_columns: Tuple[str, ...],
+        output_name: str,
+        accumulator_prefix: str,
         *,
         input_schema: Optional[Schema] = None,
-    ) -> cudf.DataFrame:
-        assert self.target_column is not None
-        acc_col = accumulator_columns[0]
-        result, _ = _aggregate_with_null_semantics(
-            df,
-            key_columns,
-            self.target_column,
-            self._cudf_aggregate_name,
-            acc_col,
-            _reduction_dtype(
-                self.source_dtype,
-                self.target_column,
-                self._cudf_aggregate_name,
-                df,
-                input_schema,
-            ),
-            self.ignore_nulls,
-            f"{acc_col}_size",
-            f"{acc_col}_count",
-        )
-        return result[list(key_columns) + [acc_col]]
+    ) -> Dict[str, Optional[DataType]]:
+        acc_col = self._accumulator_columns(accumulator_prefix)[0]
+        acc_dtype = _cudf_column_dtype(df, acc_col)
+        if acc_dtype is None:
+            acc_dtype = self._partial_accumulator_dtypes(
+                df, accumulator_prefix, input_schema=input_schema
+            )[acc_col]
+        return {output_name: acc_dtype}
 
-    def gpu_final_aggregate(
-        self,
-        df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        accumulator_columns: Tuple[str, ...],
-        output_name: str,
-    ) -> cudf.DataFrame:
-        acc_col = accumulator_columns[0]
-        result, _ = _aggregate_with_null_semantics(
-            df,
-            key_columns,
-            acc_col,
-            self._cudf_aggregate_name,
-            output_name,
-            _cudf_column_dtype(df, acc_col),
-            self.ignore_nulls,
-            f"{acc_col}_partial_size",
-            f"{acc_col}_partial_count",
-        )
-        return result[list(key_columns) + [output_name]]
-
-    def _gpu_final_arrow_types(
+    def _final_arrow_types(
         self,
         output_name: str,
         *,
@@ -738,27 +860,9 @@ class GPUMax(GPUAggregateFn):
             return {}
         return {output_name: pa.null()}
 
-    def _gpu_final_cudf_types(
-        self,
-        df: cudf.DataFrame,
-        output_name: str,
-        accumulator_prefix: str,
-        *,
-        input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        acc_col = self._gpu_accumulator_columns(accumulator_prefix)[0]
-        acc_dtype = _cudf_column_dtype(df, acc_col)
-        if acc_dtype is None:
-            acc_dtype = self._gpu_partial_accumulator_dtypes(
-                df, accumulator_prefix, input_schema=input_schema
-            )[acc_col]
-        return {output_name: acc_dtype}
-
 
 class GPUMean(GPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Mean`."""
-
-    _cudf_aggregate_name = "mean"
 
     def __init__(self, agg: Mean, *, source_dtype: Optional[DataType] = None) -> None:
         self.source_dtype = source_dtype
@@ -766,41 +870,10 @@ class GPUMean(GPUAggregateFn):
             agg.name,
             on=agg.get_target_column(),
             ignore_nulls=agg._ignore_nulls,
-            accumulator_columns=("sum", "count", "null_count"),
+            accumulators=("sum", "count", "null_count"),
         )
 
-    def _gpu_empty_global_partial_values(
-        self, accumulator_prefix: str
-    ) -> Dict[str, Any]:
-        sum_col, count_col, null_count_col = self._gpu_accumulator_columns(
-            accumulator_prefix
-        )
-        return {sum_col: None, count_col: 0, null_count_col: 0}
-
-    def _gpu_partial_accumulator_dtypes(
-        self,
-        df: cudf.DataFrame,
-        accumulator_prefix: str,
-        *,
-        input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        sum_col, count_col, null_count_col = self._gpu_accumulator_columns(
-            accumulator_prefix
-        )
-        assert self.target_column is not None
-        return {
-            sum_col: _reduction_dtype(
-                self.source_dtype,
-                self.target_column,
-                "mean",
-                df,
-                input_schema,
-            ),
-            count_col: DataType.from_numpy("int64"),
-            null_count_col: DataType.from_numpy("int64"),
-        }
-
-    def gpu_partial_aggregate(
+    def partial_aggregate(
         self,
         df: cudf.DataFrame,
         key_columns: Tuple[str, ...],
@@ -812,30 +885,45 @@ class GPUMean(GPUAggregateFn):
 
         sum_col, count_col, null_count_col = accumulator_columns
         size_col = f"{sum_col}_size"
-        result, count_dtype = _aggregate_with_null_semantics(
-            df,
-            key_columns,
+        output_dtype = _reduction_dtype(
+            self.source_dtype,
             self.target_column,
-            "sum",
-            sum_col,
-            _reduction_dtype(
-                self.source_dtype,
-                self.target_column,
-                "mean",
-                df,
-                input_schema,
-            ),
-            self.ignore_nulls,
-            size_col,
-            count_col,
+            "mean",
+            df,
+            input_schema,
         )
+        grouped = df.groupby(list(key_columns), dropna=False)
+
+        sizes = grouped.size().reset_index()
+        sizes = sizes.rename(columns={sizes.columns[-1]: size_col})
+        count_dtype = _cudf_column_dtype(sizes, size_col)
+
+        counts = grouped[self.target_column].count().reset_index()
+        counts = counts.rename(columns={counts.columns[-1]: count_col})
+
+        result = sizes.merge(counts, on=list(key_columns), how="left")
+        _fill_missing_count(result, count_col, count_dtype)
+
+        if len(result) > 0 and bool((result[count_col] == 0).all()):
+            result[sum_col] = None
+            _cast_cudf_column_dtype(result, sum_col, output_dtype)
+        else:
+            aggregated = grouped[self.target_column].sum().reset_index()
+            aggregated = aggregated.rename(columns={aggregated.columns[-1]: sum_col})
+            result = result.merge(aggregated, on=list(key_columns), how="left")
+            _fill_missing_reduction(result, sum_col, output_dtype)
+
+        null_mask = result[count_col] == 0
+        if not self.ignore_nulls:
+            null_mask = result[size_col] != result[count_col]
+        result.loc[null_mask, sum_col] = None
 
         result[null_count_col] = result[size_col] - result[count_col]
-        _cast_column_to_dtype(result, null_count_col, count_dtype)
+        _cast_cudf_column_dtype(result, null_count_col, count_dtype)
 
         return result[list(key_columns) + list(accumulator_columns)]
 
-    def gpu_final_aggregate(
+    def final_aggregate(
         self,
         df: cudf.DataFrame,
         key_columns: Tuple[str, ...],
@@ -872,7 +960,46 @@ class GPUMean(GPUAggregateFn):
 
         return result[list(key_columns) + [output_name]]
 
-    def _gpu_final_arrow_types(
+    def _empty_global_partial_values(self, accumulator_prefix: str) -> Dict[str, Any]:
+        sum_col, count_col, null_count_col = self._accumulator_columns(
+            accumulator_prefix
+        )
+        return {sum_col: None, count_col: 0, null_count_col: 0}
+
+    def _partial_accumulator_dtypes(
+        self,
+        df: cudf.DataFrame,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        sum_col, count_col, null_count_col = self._accumulator_columns(
+            accumulator_prefix
+        )
+        assert self.target_column is not None
+        return {
+            sum_col: _reduction_dtype(
+                self.source_dtype,
+                self.target_column,
+                "mean",
+                df,
+                input_schema,
+            ),
+            count_col: DataType.from_numpy("int64"),
+            null_count_col: DataType.from_numpy("int64"),
+        }
+
+    def _final_cudf_dtypes(
+        self,
+        df: cudf.DataFrame,
+        output_name: str,
+        accumulator_prefix: str,
+        *,
+        input_schema: Optional[Schema] = None,
+    ) -> Dict[str, Optional[DataType]]:
+        return {output_name: DataType.from_numpy("float64")}
+
+    def _final_arrow_types(
         self,
         output_name: str,
         *,
@@ -885,16 +1012,6 @@ class GPUMean(GPUAggregateFn):
             return {}
         return {output_name: pa.null()}
 
-    def _gpu_final_cudf_types(
-        self,
-        df: cudf.DataFrame,
-        output_name: str,
-        accumulator_prefix: str,
-        *,
-        input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        return {output_name: DataType.from_numpy("float64")}
-
 
 def _empty_dataframe(
     cudf_module: types.ModuleType,
@@ -906,7 +1023,7 @@ def _empty_dataframe(
     df = cudf_module.DataFrame()
     for column in columns:
         df[column] = []
-        _cast_column_to_dtype(df, column, dtypes.get(column))
+        _cast_cudf_column_dtype(df, column, dtypes.get(column))
     return df
 
 
@@ -932,63 +1049,68 @@ class GPUAggregationPlan:
 
         self._key_columns = key_columns
         self._gpu_aggregates = gpu_aggregates
-        self._output_names = self._resolve_aggregation_names(gpu_aggregates)
-        self._accumulator_prefixes = self._generate_accumulator_prefixes(
-            gpu_aggregates, accumulator_prefix
-        )
         self._input_schema = input_schema
-        self._is_global = len(key_columns) == 0
-        global_key = _GLOBAL_AGGREGATE_KEY
-        required_columns = {
-            column
-            for agg in gpu_aggregates
-            if (column := agg.target_column) is not None
-        }
-        while global_key in required_columns:
-            global_key = f"_{global_key}"
-        self._shuffle_key_columns = (global_key,) if self._is_global else key_columns
+        self._is_global = not key_columns
+        self._shuffle_key_columns = key_columns
 
-    @staticmethod
-    def _resolve_aggregation_names(
-        gpu_aggregates: Sequence[GPUAggregateFn],
-    ) -> Tuple[str, ...]:
-        """Resolve duplicate aggregate names the same way TableBlockAccessor does."""
+        # Resolve duplicate aggregation names the same way TableBlockAccessor does.
         counts: Dict[str, int] = defaultdict(int)
         resolved_names: List[str] = []
-
         for agg in gpu_aggregates:
             name = agg.name
             if counts[name] > 0:
                 name = TableBlockAccessor._munge_conflict(name, counts[name])
             counts[agg.name] += 1
             resolved_names.append(name)
+        self._output_names = tuple(resolved_names)
 
-        return tuple(resolved_names)
-
-    @staticmethod
-    def _generate_accumulator_prefixes(
-        gpu_aggregates: Sequence[GPUAggregateFn],
-        accumulator_prefix: str,
-    ) -> Tuple[str, ...]:
-        return tuple(
+        # Generate unique accumulator prefixes for each resolved name
+        self._accumulator_prefixes = tuple(
             f"{accumulator_prefix}_{index}" for index, _ in enumerate(gpu_aggregates)
         )
 
-    def _iter_aggregations(
-        self,
-    ) -> Iterator[Tuple[GPUAggregateFn, str, str]]:
-        return zip(self._gpu_aggregates, self._output_names, self._accumulator_prefixes)
+        # If global aggregation (w/o key columns), use an artificial shuffle key.
+        if self._is_global:
+            # filter out empty target columns
+            required_columns = {
+                agg.target_column
+                for agg in gpu_aggregates
+                if agg.target_column is not None
+            }
+            # ensure a unique global key by prepending an underscore if needed
+            # (just in case there is a collision)
+            global_key = _GLOBAL_AGGREGATE_KEY
+            while global_key in required_columns:
+                global_key = f"_{global_key}"
+            # set the shuffle key to the global key
+            self._shuffle_key_columns = (global_key,)
 
     @property
-    def shuffle_key_columns(self) -> Tuple[str, ...]:
-        return self._shuffle_key_columns
+    def accumulator_columns(self) -> Tuple[str, ...]:
+        """Return all internal accumulator columns for the GPU aggregation plan."""
+        columns: List[str] = []
+        for agg, accumulator_prefix in zip(
+            self._gpu_aggregates, self._accumulator_prefixes
+        ):
+            columns.extend(agg._accumulator_columns(accumulator_prefix))
+        return tuple(columns)
 
     @property
     def output_names(self) -> Tuple[str, ...]:
+        """Return all final output names for the GPU aggregation plan.
+
+        These will be used as the column names for the final output of the GPU
+        aggregations in the plan, e.g. "sum(col1)", "mean(col2)", etc.
+        """
         return self._output_names
 
     @property
     def required_columns(self) -> Tuple[str, ...]:
+        """Return all required columns for the GPU aggregation plan.
+
+        These include the key columns and aggregation target columns, e.g.
+        groupby("col1").sum("col2")
+        """
         columns = list(self._key_columns)
         for agg in self._gpu_aggregates:
             target_column = agg.target_column
@@ -997,67 +1119,136 @@ class GPUAggregationPlan:
         return tuple(columns)
 
     @property
-    def accumulator_columns(self) -> Tuple[str, ...]:
-        columns: List[str] = []
-        for agg, _, accumulator_prefix in self._iter_aggregations():
-            columns.extend(agg._gpu_accumulator_columns(accumulator_prefix))
-        return tuple(columns)
+    def shuffle_key_columns(self) -> Tuple[str, ...]:
+        """Return the shuffle key columns for the GPU aggregation plan."""
+        return self._shuffle_key_columns
 
-    def _partial_output_dtypes(
+    def normalize_output_arrow(
         self,
-        df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
+        table: pa.Table,
         input_schema: Optional[Schema] = None,
-    ) -> Dict[str, Optional[DataType]]:
-        dtypes: Dict[str, Optional[DataType]] = {}
-        for column in key_columns:
-            if column not in df.columns:
-                continue
-            dtype = self._effective_column_dtype(column, input_schema)
-            if dtype is None:
-                dtype = _cudf_column_dtype(df, column)
-            elif dtype.is_null_type():
-                dtype = DataType.from_numpy("float64")
-            dtypes[column] = dtype
-        for agg, _, accumulator_prefix in self._iter_aggregations():
-            dtype_fn = getattr(agg, "_gpu_partial_accumulator_dtypes", None)
-            if dtype_fn is None:
-                dtypes.update(
-                    {
-                        column: None
-                        for column in agg._gpu_accumulator_columns(accumulator_prefix)
-                    }
-                )
-                continue
-            dtypes.update(
-                {
-                    column: DataType.from_dtype(dtype)
-                    for column, dtype in dtype_fn(
-                        df,
-                        accumulator_prefix,
-                        input_schema=input_schema,
-                    ).items()
-                }
-            )
-        return dtypes
+    ) -> pa.Table:
+        arrow_types = self._final_arrow_types(input_schema)
+        if not arrow_types:
+            return table
 
-    def _normalize_partial_output(
-        self,
-        result: cudf.DataFrame,
-        df: cudf.DataFrame,
-        key_columns: Tuple[str, ...],
-        input_schema: Optional[Schema] = None,
+        columns = []
+        for column_name in table.column_names:
+            if column_name in arrow_types:
+                columns.append(pa.nulls(table.num_rows, type=arrow_types[column_name]))
+            else:
+                columns.append(table[column_name])
+        return pa.table(columns, names=table.column_names)
+
+    def partial_aggregate(
+        self, df: cudf.DataFrame, input_schema: Optional[Schema] = None
     ) -> cudf.DataFrame:
-        for column, dtype in self._partial_output_dtypes(
+        import cudf as cudf_module
+
+        if self._is_global:
+            df = df.copy(deep=False)
+            df[self._shuffle_key_columns[0]] = 0
+
+        key_columns = self._shuffle_key_columns
+        if len(df) == 0:
+            if self._is_global:
+                values: Dict[str, List[Any]] = {key_columns[0]: [0]}
+                for agg, accumulator_prefix in zip(
+                    self._gpu_aggregates,
+                    self._accumulator_prefixes,
+                ):
+                    empty_values = agg._empty_global_partial_values(accumulator_prefix)
+                    for column, value in empty_values.items():
+                        values[column] = [value]
+                result = cudf_module.DataFrame(values)[
+                    list(key_columns) + list(self.accumulator_columns)
+                ]
+                for column, dtype in self._partial_accumulator_dtypes(
+                    df, key_columns, input_schema=input_schema
+                ).items():
+                    _cast_cudf_column_dtype(result, column, dtype)
+                return result
+            return _empty_dataframe(
+                cudf_module,
+                list(key_columns) + list(self.accumulator_columns),
+                dtypes=self._partial_accumulator_dtypes(
+                    df, key_columns, input_schema=input_schema
+                ),
+            )
+
+        result = None
+        for agg, accumulator_prefix in zip(
+            self._gpu_aggregates, self._accumulator_prefixes
+        ):
+            accumulator_columns = agg._accumulator_columns(accumulator_prefix)
+            partial = agg.partial_aggregate(
+                df,
+                key_columns,
+                accumulator_columns,
+                input_schema=input_schema,
+            )
+            result = (
+                partial
+                if result is None
+                else result.merge(partial, on=list(key_columns), how="outer")
+            )
+
+        assert result is not None
+        for column, dtype in self._partial_accumulator_dtypes(
             df, key_columns, input_schema=input_schema
         ).items():
-            _cast_column_to_dtype(result, column, dtype)
-        return result
+            _cast_cudf_column_dtype(result, column, dtype)
+        return result[list(key_columns) + list(self.accumulator_columns)]
+
+    def final_aggregate(
+        self,
+        df: cudf.DataFrame,
+        input_schema: Optional[Schema] = None,
+    ) -> cudf.DataFrame:
+        import cudf as cudf_module
+
+        key_columns = self._shuffle_key_columns
+        output_columns = ([] if self._is_global else list(key_columns)) + list(
+            self.output_names
+        )
+
+        if len(df) == 0:
+            return _empty_dataframe(
+                cudf_module,
+                output_columns,
+                dtypes=self._final_cudf_dtypes(
+                    df,
+                    input_schema=input_schema,
+                ),
+            )
+
+        result = None
+        for agg, output_name, accumulator_prefix in zip(
+            self._gpu_aggregates, self._output_names, self._accumulator_prefixes
+        ):
+            accumulator_columns = agg._accumulator_columns(accumulator_prefix)
+            finalized = agg.final_aggregate(
+                df,
+                key_columns,
+                accumulator_columns,
+                output_name,
+            )
+            result = (
+                finalized
+                if result is None
+                else result.merge(finalized, on=list(key_columns), how="outer")
+            )
+
+        assert result is not None
+        if self._is_global:
+            result = result.drop(columns=[self._shuffle_key_columns[0]])
+
+        return result[output_columns]
 
     def merge_input_schema(
         self, current: Optional[pa.Schema], observed: Optional[Schema]
     ) -> Optional[pa.Schema]:
-        """Merge an observed block schema into the runtime input schema."""
+        """Merge an observed block schema into the current runtime input schema."""
         if observed is None:
             return current
 
@@ -1106,44 +1297,58 @@ class GPUAggregationPlan:
         ordered_names.extend(name for name in fields if name not in ordered_names)
         return pa.schema([(name, fields[name]) for name in ordered_names])
 
+    def _effective_column_dtype(
+        self, column: str, runtime_input_schema: Optional[Schema] = None
+    ) -> Optional[DataType]:
+        """Return the dtype for a column in the input schema.
+
+        This method first checks the input schema provided to the GPUAggregationPlan
+        constructor, and then falls back to the runtime input schema if provided.
+        """
+        dtype = _schema_column_dtype(self._input_schema, column)
+        if dtype is not None:
+            return dtype
+        return _schema_column_dtype(runtime_input_schema, column)
+
     def _effective_input_schema(
         self, runtime_input_schema: Optional[Schema] = None
     ) -> Optional[Schema]:
+        """Return the effective input schema for the GPU aggregation plan.
+
+        This method supplies a fallback schema derived from the input schema,
+        if the runtime input schema is not provided.
+        """
         return (
             runtime_input_schema
             if runtime_input_schema is not None
             else self._input_schema
         )
 
-    def _effective_column_dtype(
-        self, column: str, runtime_input_schema: Optional[Schema] = None
-    ) -> Optional[DataType]:
-        dtype = _schema_column_dtype(self._input_schema, column)
-        if dtype is not None:
-            return dtype
-        return _schema_column_dtype(runtime_input_schema, column)
-
     def _final_arrow_types(
         self, input_schema: Optional[Schema] = None
     ) -> Dict[str, pa.DataType]:
+        """Return the Arrow types for the final output columns of the GPU aggregation plan."""
         input_schema = self._effective_input_schema(input_schema)
         types: Dict[str, pa.DataType] = {}
-        for agg, output_name, _ in self._iter_aggregations():
-            arrow_types_fn = getattr(agg, "_gpu_final_arrow_types", None)
-            if arrow_types_fn is not None:
-                types.update(
-                    arrow_types_fn(
-                        output_name,
-                        input_schema=input_schema,
-                    )
+        for agg, output_name in zip(self._gpu_aggregates, self._output_names):
+            types.update(
+                agg._final_arrow_types(
+                    output_name,
+                    input_schema=input_schema,
                 )
+            )
         return types
 
-    def _final_output_dtypes(
+    def _final_cudf_dtypes(
         self,
         df: cudf.DataFrame,
         input_schema: Optional[Schema] = None,
     ) -> Dict[str, Optional[DataType]]:
+        """Return the cuDF dtypes for the final output columns of the GPU aggregation plan.
+
+        This provides a fallback schema derived from the supplied input schema and runtime input
+        schema,
+        """
         input_schema = self._effective_input_schema(input_schema)
         dtypes: Dict[str, Optional[DataType]] = {}
 
@@ -1156,190 +1361,52 @@ class GPUAggregationPlan:
                     dtype = DataType.from_numpy("float64")
                 dtypes[column] = dtype
 
-        for agg, output_name, accumulator_prefix in self._iter_aggregations():
-            dtype_fn = getattr(agg, "_gpu_final_cudf_types", None)
-            if dtype_fn is not None:
-                dtypes.update(
-                    {
-                        column: DataType.from_dtype(dtype)
-                        for column, dtype in dtype_fn(
-                            df,
-                            output_name,
-                            accumulator_prefix,
-                            input_schema=input_schema,
-                        ).items()
-                    }
-                )
+        for agg, output_name, accumulator_prefix in zip(
+            self._gpu_aggregates, self._output_names, self._accumulator_prefixes
+        ):
+            dtypes.update(
+                {
+                    column: DataType.from_dtype(dtype)
+                    for column, dtype in agg._final_cudf_dtypes(
+                        df,
+                        output_name,
+                        accumulator_prefix,
+                        input_schema=input_schema,
+                    ).items()
+                }
+            )
         return dtypes
 
-    def normalize_output_arrow(
-        self,
-        table: pa.Table,
-        input_schema: Optional[Schema] = None,
-    ) -> pa.Table:
-        arrow_types = self._final_arrow_types(input_schema)
-        if not arrow_types:
-            return table
-
-        columns = []
-        for column_name in table.column_names:
-            if column_name in arrow_types:
-                columns.append(pa.nulls(table.num_rows, type=arrow_types[column_name]))
-            else:
-                columns.append(table[column_name])
-        return pa.table(columns, names=table.column_names)
-
-    def partial_aggregate(
-        self, df: cudf.DataFrame, input_schema: Optional[Schema] = None
-    ) -> cudf.DataFrame:
-        import cudf as cudf_module
-
-        if self._is_global:
-            df = df.copy(deep=False)
-            df[self._shuffle_key_columns[0]] = 0
-
-        key_columns = self._shuffle_key_columns
-        if len(df) == 0:
-            if self._is_global:
-                values: Dict[str, List[Any]] = {key_columns[0]: [0]}
-                for agg, _, accumulator_prefix in self._iter_aggregations():
-                    empty_values_fn = getattr(
-                        agg, "_gpu_empty_global_partial_values", None
-                    )
-                    if empty_values_fn is None:
-                        empty_values = {
-                            column: None
-                            for column in agg._gpu_accumulator_columns(
-                                accumulator_prefix
-                            )
-                        }
-                    else:
-                        empty_values = empty_values_fn(accumulator_prefix)
-                    for column, value in empty_values.items():
-                        values[column] = [value]
-                result = cudf_module.DataFrame(values)[
-                    list(key_columns) + list(self.accumulator_columns)
-                ]
-                for column, dtype in self._partial_output_dtypes(
-                    df, key_columns, input_schema=input_schema
-                ).items():
-                    _cast_column_to_dtype(result, column, dtype)
-                return result
-            return _empty_dataframe(
-                cudf_module,
-                list(key_columns) + list(self.accumulator_columns),
-                dtypes=self._partial_output_dtypes(
-                    df, key_columns, input_schema=input_schema
-                ),
-            )
-
-        result = None
-        for agg, output_name, accumulator_prefix in self._iter_aggregations():
-            accumulator_columns = agg._gpu_accumulator_columns(accumulator_prefix)
-            partial = agg.gpu_partial_aggregate(
-                df,
-                key_columns,
-                accumulator_columns,
-                input_schema=input_schema,
-            )
-            result = (
-                partial
-                if result is None
-                else result.merge(partial, on=list(key_columns), how="outer")
-            )
-
-        assert result is not None
-        result = self._normalize_partial_output(
-            result, df, key_columns, input_schema=input_schema
-        )
-        return result[list(key_columns) + list(self.accumulator_columns)]
-
-    def final_aggregate(
+    def _partial_accumulator_dtypes(
         self,
         df: cudf.DataFrame,
+        key_columns: Tuple[str, ...],
         input_schema: Optional[Schema] = None,
-    ) -> cudf.DataFrame:
-        import cudf as cudf_module
-
-        key_columns = self._shuffle_key_columns
-        output_columns = ([] if self._is_global else list(key_columns)) + list(
-            self.output_names
-        )
-
-        if len(df) == 0:
-            return _empty_dataframe(
-                cudf_module,
-                output_columns,
-                dtypes=self._final_output_dtypes(
-                    df,
-                    input_schema=input_schema,
-                ),
+    ) -> Dict[str, Optional[DataType]]:
+        dtypes: Dict[str, Optional[DataType]] = {}
+        for column in key_columns:
+            if column not in df.columns:
+                continue
+            dtype = self._effective_column_dtype(column, input_schema)
+            if dtype is None:
+                dtype = _cudf_column_dtype(df, column)
+            elif dtype.is_null_type():
+                dtype = DataType.from_numpy("float64")
+            dtypes[column] = dtype
+        for agg, accumulator_prefix in zip(
+            self._gpu_aggregates, self._accumulator_prefixes
+        ):
+            dtypes.update(
+                {
+                    column: DataType.from_dtype(dtype) if dtype is not None else None
+                    for column, dtype in agg._partial_accumulator_dtypes(
+                        df,
+                        accumulator_prefix,
+                        input_schema=input_schema,
+                    ).items()
+                }
             )
-
-        result = None
-        for agg, output_name, accumulator_prefix in self._iter_aggregations():
-            accumulator_columns = agg._gpu_accumulator_columns(accumulator_prefix)
-            finalized = agg.gpu_final_aggregate(
-                df,
-                key_columns,
-                accumulator_columns,
-                output_name,
-            )
-            result = (
-                finalized
-                if result is None
-                else result.merge(finalized, on=list(key_columns), how="outer")
-            )
-
-        assert result is not None
-        if self._is_global:
-            result = result.drop(columns=[self._shuffle_key_columns[0]])
-
-        return result[output_columns]
-
-
-def _get_builtin_gpu_aggregate_fn(
-    agg: AggregateFn,
-    *,
-    input_schema: Optional[Schema] = None,
-) -> Union[GPUAggregateFn, str]:
-    """Get a GPU equivalent function for a built-in aggregation function.
-
-    Args:
-        agg: The built-in aggregation function to convert.
-        input_schema: The schema of the input data.
-
-    Returns:
-        A GPU aggregate function if supported, otherwise a fallback reason.
-    """
-    if not isinstance(agg, AggregateFnV2):
-        return (
-            f"{type(agg).__name__} is not supported by GPU aggregation because "
-            "it is not an AggregateFnV2."
-        )
-
-    target_column = agg.get_target_column()
-    source_dtype = _schema_column_dtype(input_schema, target_column)
-
-    if isinstance(agg, Count):
-        return GPUCount(agg, source_dtype=source_dtype)
-
-    if target_column is None:
-        return (
-            f"{type(agg).__name__} is not supported by GPU aggregation "
-            "without a target column."
-        )
-
-    if isinstance(agg, Sum):
-        return GPUSum(agg, source_dtype=source_dtype)
-    if isinstance(agg, Min):
-        return GPUMin(agg, source_dtype=source_dtype)
-    if isinstance(agg, Max):
-        return GPUMax(agg, source_dtype=source_dtype)
-    if isinstance(agg, Mean):
-        return GPUMean(agg, source_dtype=source_dtype)
-
-    return f"{type(agg).__name__} is not supported by GPU aggregation."
+        return dtypes
 
 
 def build_gpu_aggregation_plan(
@@ -1382,14 +1449,34 @@ def build_gpu_aggregation_plan(
             gpu_aggregate = agg
         else:
             # try to convert built-in GPU aggregation functions to GPU equivalents
-            gpu_aggregate = _get_builtin_gpu_aggregate_fn(
-                agg, input_schema=input_schema
-            )
-            if not isinstance(gpu_aggregate, GPUAggregateFn):
-                # any unsupported built-in aggregation in the list
-                # will just fall back the entire list to CPU
-                fallback_reason = str(gpu_aggregate)
-                return fallback_reason
+            if not isinstance(agg, AggregateFnV2):
+                return (
+                    f"{type(agg).__name__} is not supported by GPU aggregation "
+                    "because it is not an AggregateFnV2."
+                )
+
+            target_column = agg.get_target_column()
+            source_dtype = _schema_column_dtype(input_schema, target_column)
+
+            if isinstance(agg, Count):
+                gpu_aggregate = GPUCount(agg, source_dtype=source_dtype)
+            elif target_column is None:
+                return (
+                    f"{type(agg).__name__} is not supported by GPU aggregation "
+                    "without a target column."
+                )
+            elif isinstance(agg, Sum):
+                gpu_aggregate = GPUSum(agg, source_dtype=source_dtype)
+            elif isinstance(agg, Min):
+                gpu_aggregate = GPUMin(agg, source_dtype=source_dtype)
+            elif isinstance(agg, Max):
+                gpu_aggregate = GPUMax(agg, source_dtype=source_dtype)
+            elif isinstance(agg, Mean):
+                gpu_aggregate = GPUMean(agg, source_dtype=source_dtype)
+            else:
+                # Any unsupported built-in aggregation in the list falls back
+                # the entire list to CPU.
+                return f"{type(agg).__name__} is not supported by GPU aggregation."
 
         gpu_aggregates.append(gpu_aggregate)
 
