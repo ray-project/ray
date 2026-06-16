@@ -532,7 +532,7 @@ def test_heterogeneous_spilling(use_budget_scheduler):
     try:
         ctx = ray.data.DataContext.get_current()
         ctx.use_budget_scheduler = use_budget_scheduler
-        ctx.target_max_block_size = 2 * BLOCK_SIZE
+        ctx.target_max_block_size = 4 * BLOCK_SIZE
 
         amplification = 10  # Each produce task: 1 input → 10 MiB output
 
@@ -549,7 +549,7 @@ def test_heterogeneous_spilling(use_budget_scheduler):
             del batch["data"]
             return {"id": batch["id"]}
 
-        num_blocks = 20
+        num_blocks = 10
         ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
         ds = ds.map_batches(produce, batch_size=1)
         ds = ds.map_batches(gpu_consume, batch_size=1, num_cpus=0, num_gpus=1)

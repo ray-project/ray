@@ -606,14 +606,46 @@ class StreamingExecutor(Executor, threading.Thread):
         fraction = self._resource_manager._object_store_memory_limit_fraction
         max_bytes = int(object_store_memory * fraction)
         available_cpus = cluster.get("CPU", 1.0)
+
+        # Compute per-node-type budgets to avoid overflowing smaller nodes
+        # on heterogeneous clusters. Apply the fraction per-node, then sum
+        # by node type (cpu vs gpu).
+        node_type_budgets = self._compute_node_type_budgets(fraction)
+
         scheduler = BudgetScheduler(
             max_bytes=max_bytes,
             available_cpus=available_cpus,
+            node_type_budgets=node_type_budgets,
         )
         for op in self._topology:
             if not isinstance(op, InputDataBuffer):
                 scheduler.register_operator(op)
         return scheduler
+
+    @staticmethod
+    def _compute_node_type_budgets(
+        fraction: float,
+    ) -> Dict[str, int]:
+        """Compute per-node-type object store budgets.
+
+        Groups nodes into "cpu" (has CPUs, no GPUs) and "gpu" (has GPUs),
+        sums object store memory per group, and applies the fraction.
+        """
+        import ray
+
+        budgets: Dict[str, int] = {}
+        for node in ray.nodes():
+            if not node.get("Alive", False):
+                continue
+            r = node.get("Resources", {})
+            # Skip the head node (no schedulable resources).
+            if r.get("CPU", 0) == 0 and r.get("GPU", 0) == 0:
+                continue
+            obj_store = r.get("object_store_memory", 0)
+            node_type = "gpu" if r.get("GPU", 0) > 0 else "cpu"
+            budgets[node_type] = budgets.get(node_type, 0) + int(obj_store * fraction)
+
+        return budgets if budgets else {"cpu": 0}
 
     def _select_operator_budget(self, topology: Topology) -> Optional[PhysicalOperator]:
         """Select the next operator using the BudgetScheduler."""

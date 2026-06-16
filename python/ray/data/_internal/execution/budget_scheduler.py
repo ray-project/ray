@@ -57,6 +57,8 @@ class TaskState:
     num_cpus: float = 1.0
     # Whether the task has finished executing (but may still have unconsumed output).
     finished: bool = False
+    # Node type this task runs on ("cpu" or "gpu").
+    node_type: str = "cpu"
 
     @property
     def concurrent_bytes(self) -> int:
@@ -72,6 +74,8 @@ class OpSchedulingState:
     expected_peak_ratio: float = 1.0
     # Total bytes buffered in this operator's output queue.
     buffered_output_bytes: int = 0
+    # Node type this operator's tasks run on ("cpu" or "gpu").
+    node_type: str = "cpu"
 
 
 class BudgetScheduler:
@@ -89,6 +93,7 @@ class BudgetScheduler:
         max_bytes: Global memory budget in bytes.
         available_cpus: Number of CPU slots available for task execution.
         ema_alpha: Smoothing factor for peak-memory EMA updates.
+        node_type_budgets: Budgets by node type.
     """
 
     def __init__(
@@ -96,11 +101,26 @@ class BudgetScheduler:
         max_bytes: int,
         available_cpus: float,
         ema_alpha: float = DEFAULT_EMA_ALPHA,
+        node_type_budgets: Optional[Dict[str, int]] = None,
     ):
         self.max_bytes = max_bytes
         self.total_cpus = available_cpus
         self.available_cpus = available_cpus
         self.ema_alpha = ema_alpha
+
+        # Per-node-type budgets. On heterogeneous clusters, each node type
+        # (e.g. "cpu", "gpu") has its own object store limit. Data produced
+        # by an operator lands on nodes of that operator's type, so we must
+        # enforce per-type limits to avoid overflowing smaller nodes even
+        # when the global budget has room.
+        # Falls back to {all: max_bytes} on homogeneous clusters.
+        self.node_type_budgets: Dict[str, int] = node_type_budgets or {
+            "cpu": max_bytes,
+        }
+        # Per-node-type allocated bytes, mirrors allocated_bytes but split.
+        self.allocated_bytes_by_type: Dict[str, int] = {
+            t: 0 for t in self.node_type_budgets
+        }
 
         # Sum of expected_peak_bytes for all running tasks, plus any
         # excess from tasks whose actual peak exceeded the estimate.
@@ -115,12 +135,29 @@ class BudgetScheduler:
         # Monotonically increasing task id counter.
         self._next_task_id: int = 0
 
-    def update_limits(self, max_bytes: int, total_cpus: float) -> None:
+    def update_limits(
+        self,
+        max_bytes: int,
+        total_cpus: float,
+        node_type_budgets: Optional[Dict[str, int]] = None,
+    ) -> None:
         """Update resource limits, preserving in-flight accounting."""
         self.max_bytes = max_bytes
         cpu_delta = total_cpus - self.total_cpus
         self.total_cpus = total_cpus
         self.available_cpus += cpu_delta
+        if node_type_budgets is not None:
+            for t, budget in node_type_budgets.items():
+                self.node_type_budgets[t] = budget
+                if t not in self.allocated_bytes_by_type:
+                    self.allocated_bytes_by_type[t] = 0
+
+    def _get_op_node_type(self, op: Operator) -> str:
+        """Determine which node type an operator's tasks run on."""
+        resources = op.per_task_resource_allocation()
+        if resources and resources.gpu and resources.gpu > 0:
+            return "gpu"
+        return "cpu"
 
     def register_operator(
         self,
@@ -135,8 +172,10 @@ class BudgetScheduler:
                 bytes to input bytes. For source operators (input_bytes=1),
                 set this to the target partition size.
         """
+        node_type = self._get_op_node_type(op)
         self.op_states[op] = OpSchedulingState(
             expected_peak_ratio=initial_peak_ratio,
+            node_type=node_type,
         )
 
     def get_op_state(self, op: Operator) -> OpSchedulingState:
@@ -231,6 +270,13 @@ class BudgetScheduler:
         if self.allocated_bytes + expected_peak > self.max_bytes:
             return False
 
+        # Check per-node-type budget to avoid overflowing smaller nodes.
+        node_type = state.node_type
+        type_budget = self.node_type_budgets.get(node_type, self.max_bytes)
+        type_allocated = self.allocated_bytes_by_type.get(node_type, 0)
+        if type_allocated + expected_peak > type_budget:
+            return False
+
         return True
 
     def _get_task_cpus(self, op: Operator) -> float:
@@ -278,6 +324,10 @@ class BudgetScheduler:
                     # concurrent_bytes, so reduce it as outputs are consumed.
                     if task.finished:
                         self.allocated_bytes -= consumed
+                        self.allocated_bytes_by_type[task.node_type] = (
+                            self.allocated_bytes_by_type.get(task.node_type, 0)
+                            - consumed
+                        )
                         if task.concurrent_bytes == 0:
                             del self.task_states[producing_tid]
 
@@ -308,14 +358,19 @@ class BudgetScheduler:
         task_id = self._next_task_id
         self._next_task_id += 1
 
+        node_type = state.node_type
         self.task_states[task_id] = TaskState(
             op=op,
             input_bytes=input_bytes,
             expected_peak_bytes=expected_peak,
             num_cpus=num_cpus,
+            node_type=node_type,
         )
 
         self.allocated_bytes += expected_peak
+        self.allocated_bytes_by_type[node_type] = (
+            self.allocated_bytes_by_type.get(node_type, 0) + expected_peak
+        )
         self.available_cpus -= num_cpus
 
         # Consume outputs from the op's input operators.
@@ -362,6 +417,9 @@ class BudgetScheduler:
             ) - previously_charged
             if new_charge > 0:
                 self.allocated_bytes += new_charge
+                self.allocated_bytes_by_type[task.node_type] = (
+                    self.allocated_bytes_by_type.get(task.node_type, 0) + new_charge
+                )
 
         # Backpressure if over budget and this task is contributing excess.
         if self.allocated_bytes >= self.max_bytes:
@@ -399,7 +457,11 @@ class BudgetScheduler:
         # The task was charged max(expected_peak, actual_peak) while running;
         # now it only needs concurrent_bytes in the budget.
         charged = max(task.expected_peak_bytes, task.peak_concurrent_bytes)
-        self.allocated_bytes -= charged - task.concurrent_bytes
+        released = charged - task.concurrent_bytes
+        self.allocated_bytes -= released
+        self.allocated_bytes_by_type[task.node_type] = (
+            self.allocated_bytes_by_type.get(task.node_type, 0) - released
+        )
 
         # Release CPU.
         self.available_cpus += task.num_cpus
