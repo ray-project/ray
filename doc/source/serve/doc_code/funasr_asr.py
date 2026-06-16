@@ -2,7 +2,7 @@
 import contextlib
 import os
 import tempfile
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Iterable, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
@@ -16,7 +16,15 @@ DEFAULT_MODEL = "iic/SenseVoiceSmall"
 ALLOWED_MODELS = {DEFAULT_MODEL}
 
 
-@serve.deployment
+@serve.deployment(
+    autoscaling_config={
+        "min_replicas": 1,
+        "initial_replicas": 1,
+        "max_replicas": 2,
+        "target_ongoing_requests": 20,
+    },
+    max_ongoing_requests=40,
+)
 @serve.ingress(fastapi_app)
 class OpenAICompatibleIngress:
     def __init__(self, asr_handle: DeploymentHandle):
@@ -48,12 +56,9 @@ class OpenAICompatibleIngress:
             )
 
         audio_bytes = await file.read()
-        result = await self._asr_handle.transcribe.remote(
-            audio_bytes=audio_bytes,
-            filename=file.filename,
-            model=model,
-            language=language,
-            response_format=response_format,
+        asr_handle = self._asr_handle.options(multiplexed_model_id=model)
+        result = await asr_handle.transcribe.remote(
+            audio_bytes, file.filename, language, response_format
         )
 
         if response_format == "text":
@@ -62,7 +67,13 @@ class OpenAICompatibleIngress:
 
 
 @serve.deployment(
-    autoscaling_config={"min_replicas": 0, "initial_replicas": 1, "max_replicas": 4},
+    autoscaling_config={
+        "min_replicas": 0,
+        "initial_replicas": 1,
+        "max_replicas": 4,
+        "target_ongoing_requests": 4,
+    },
+    max_ongoing_requests=8,
     ray_actor_options={"num_gpus": 1},
 )
 class FunASRModel:
@@ -77,67 +88,73 @@ class FunASRModel:
         from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
         self._device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
-        self._models: Dict[str, Any] = {}
         self._default_model = default_model
         self._allowed_models = set(allowed_models)
         self._auto_model_cls = AutoModel
         self._postprocess = rich_transcription_postprocess
 
-    def _get_model(self, model_name: str):
+    @serve.multiplexed(max_num_models_per_replica=1)
+    async def _get_model(self, model_name: str) -> Any:
         if model_name not in self._allowed_models:
             raise ValueError(
                 f"Unsupported model '{model_name}'. Supported models: "
                 f"{sorted(self._allowed_models)}"
             )
 
-        if model_name not in self._models:
-            self._models[model_name] = self._auto_model_cls(
-                model=model_name,
-                vad_model="fsmn-vad",
-                vad_kwargs={"max_single_segment_time": 30000},
-                device=self._device,
-            )
-        return self._models[model_name]
+        return self._auto_model_cls(
+            model=model_name,
+            vad_model="fsmn-vad",
+            vad_kwargs={"max_single_segment_time": 30000},
+            device=self._device,
+        )
 
-    def transcribe(
+    @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.1)
+    async def transcribe(
         self,
-        audio_bytes: bytes,
-        filename: Optional[str],
-        model: Optional[str],
-        language: Optional[str],
-        response_format: str,
-    ):
-        suffix = os.path.splitext(filename or "")[1] or ".wav"
-        audio_path = None
+        audio_bytes: List[bytes],
+        filenames: List[Optional[str]],
+        languages: List[Optional[str]],
+        response_formats: List[str],
+    ) -> List[dict]:
+        model_name = serve.get_multiplexed_model_id() or self._default_model
+        model = await self._get_model(model_name)
+        audio_paths = []
         try:
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as audio_file:
-                audio_file.write(audio_bytes)
-                audio_path = audio_file.name
+            for audio, filename in zip(audio_bytes, filenames):
+                suffix = os.path.splitext(filename or "")[1] or ".wav"
+                with tempfile.NamedTemporaryFile(
+                    suffix=suffix, delete=False
+                ) as audio_file:
+                    audio_file.write(audio)
+                    audio_paths.append(audio_file.name)
 
-            model_name = model or self._default_model
-            result = self._get_model(model_name).generate(
-                input=audio_path,
-                language=language or "auto",
+            results = model.generate(
+                input=audio_paths,
+                language=[language or "auto" for language in languages],
                 use_itn=True,
                 batch_size_s=60,
                 merge_vad=True,
                 merge_length_s=15,
             )
         finally:
-            if audio_path:
+            for audio_path in audio_paths:
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(audio_path)
 
-        transcription = result[0] if result else {}
-        text = self._postprocess(transcription.get("text", ""))
-
-        if response_format == "verbose_json":
-            return {
-                "text": text,
-                "segments": transcription.get("sentence_info", []),
-                "model": model_name,
-            }
-        return {"text": text}
+        responses = []
+        for transcription, response_format in zip(results, response_formats):
+            text = self._postprocess(transcription.get("text", ""))
+            if response_format == "verbose_json":
+                responses.append(
+                    {
+                        "text": text,
+                        "segments": transcription.get("sentence_info", []),
+                        "model": model_name,
+                    }
+                )
+            else:
+                responses.append({"text": text})
+        return responses
 
 
 entrypoint = OpenAICompatibleIngress.bind(FunASRModel.bind())
