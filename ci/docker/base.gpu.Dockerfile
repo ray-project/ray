@@ -17,6 +17,12 @@ ENV RAY_USE_RANDOM_PORTS=1
 ENV RAY_DEFAULT_BUILD=1
 ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
+# Work around an NVIDIA driver bug that breaks NCCL cuMem host buffer
+# registration on non-P2P GPUs (e.g. T4) with CUDA error 217 (peer access not
+# supported), failing multi-GPU collectives. Affects drivers 560-575
+# (CUDA 12.6-12.9); NVIDIA fixed it in r580+ (see NVIDIA/nccl#1838).
+# TODO(elliot-barn): remove once the CI GPU fleet is on driver r580 or newer.
+ENV NCCL_CUMEM_HOST_ENABLE=0
 
 RUN <<EOF
 #!/bin/bash
