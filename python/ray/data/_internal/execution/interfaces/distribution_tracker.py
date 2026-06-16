@@ -49,6 +49,10 @@ class DistributionTracker:
         Uses Chan's parallel variant of Welford's algorithm for moments.
         See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford:~:text=Parallel%20algorithm%5Bedit%5D
         """
+        if other is self:
+            # Merging an accumulator into itself would double its samples
+            # (count, m2, and the sketch), so treat it as a no-op.
+            return
         if other._count == 0:
             return
         if self._count == 0:
