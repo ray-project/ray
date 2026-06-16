@@ -2110,7 +2110,7 @@ def test_tasks_cancelled_on_timeout(_skip_if_ff_not_enabled, serve_instance):
 
     serve.run(TasksCancelledOnTimeoutTest.bind(), name=name)
     http_url = get_application_url("HTTP", app_name=name)
-    headers = {SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER.encode("utf-8"): "1".encode("utf-8")}
+    headers = {SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER: "1"}
 
     replica = _get_replica_actor_handle(name, name)
 

@@ -2786,7 +2786,7 @@ class Replica:
         for task in asyncio.all_tasks(self._event_loop):
             if task.done():
                 continue
-            name = getattr(getattr(task.get_coro(), "cr_code", None), "co_name", "")
+            name = getattr(task.get_coro(), "__name__", "")
             if name == "call_asgi":
                 counts["request_tasks"] += 1
             elif name == "_fetch_until_disconnect":
