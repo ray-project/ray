@@ -95,7 +95,8 @@ class PartitionActor:
         """
         sample = column.slice(0, self.INIT_SAMPLE_BATCH_SIZE)
         flat_uris, row_lengths = flatten_uri_list(sample)
-        flat_sizes = self._sample_sizes(flat_uris)
+        # Null inner URIs (None) are sized as 0; cast for the str-typed API.
+        flat_sizes = self._sample_sizes(cast(List[str], flat_uris))
         row_sizes: List[Optional[int]] = []
         pos = 0
         for length in row_lengths:

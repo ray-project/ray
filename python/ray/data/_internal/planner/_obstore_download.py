@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, cast
 
 if TYPE_CHECKING:
     from ray.data.context import DataContext
@@ -397,8 +397,10 @@ def download_bytes_async(
             return
         first_uri = first_uris[0]
 
-    # Fall back to PyArrow for URI schemes obstore doesn't handle.
-    if not _is_obstore_supported_url(first_uri):
+    # Fall back to PyArrow for URI schemes obstore doesn't handle. A None
+    # first_uri (a list column whose sampled cells are all empty/null) also
+    # falls back to the list-aware threaded path.
+    if first_uri is None or not _is_obstore_supported_url(first_uri):
         logger.debug(
             "URI scheme not supported by obstore (first URI: %s); "
             "falling back to PyArrow threaded download.",
@@ -440,10 +442,14 @@ def download_bytes_async(
             # List columns carry no __ray_file_size__ column (see
             # AsyncPartitionActor), so no precomputed sizes are passed.
             flat_uris, row_lengths = flatten_uri_list(column)
+            # Null inner URIs stay None for positional alignment; the downloader
+            # maps them to None bytes, like any failed download.
             flat_bytes = (
                 asyncio.run(
                     _download_uris_with_obstore(
-                        flat_uris, uri_column_name, filesystem=filesystem
+                        cast(List[str], flat_uris),
+                        uri_column_name,
+                        filesystem=filesystem,
                     )
                 )
                 if flat_uris

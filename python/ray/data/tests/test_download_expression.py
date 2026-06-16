@@ -1,4 +1,5 @@
 import io
+from typing import List, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -121,8 +122,8 @@ class TestDownloadExpressionFunctionality:
             ],  # interleaved valid / invalid / valid
         ]
 
-        frame_uris = []
-        expected_bytes = []
+        frame_uris: List[Optional[List[str]]] = []
+        expected_bytes: List[Optional[List[Optional[bytes]]]] = []
         for row in rows:
             if row is None:
                 frame_uris.append(None)
