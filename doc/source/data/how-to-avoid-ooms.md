@@ -6,7 +6,7 @@ This guide describes what OOMs look like and provides practical guidance for mit
 them.
 
 For a lower-level explanation of how Ray Data treats memory, read 
-{ref}`Ray Data Memory Management <data_memory_management>` and  
+{ref}`Ray Data Memory Model <data_memory_management>` and  
 {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
 
 
@@ -116,6 +116,10 @@ other memory-related errors, memory pressure might have caused the death.
 Choose the smallest batch size that achieves good performance, or use
 ``batch_size="auto"``.
 
+:::{versionadded} 2.56
+``batch_size="auto"`` was added in Ray 2.56.
+:::
+
 <!-- We're recommending 16 MiB because we found that it's the smallest batch size
 that doesn't degrade throughput on a variety of UDFs.
 See https://docs.google.com/document/d/1sw9CVm9cKp1b6voLc5gWIJLJM57NSGQjJ-HxvD_92jQ/edit?tab=t.0 -->
@@ -144,7 +148,7 @@ To pick a value for ``memory``, read the Ray Data log file and look for the
 ReadRange->MapBatches(uses_lots_of_memory): {'average_num_outputs_per_task': 1.0, ..., 'max_uss_bytes': {'num_samples': 20, 'mean': 4393336422.4, 'variance': 26855731156.89417, 'min': 4393119744, 'max': 4393529344, 'p50': 4393418752.0, 'p90': 4393500672.0, 'p95': 4393529344.0, 'p99': 4393529344.0}, ...}
 ```
 
-Ray Data also emits the information to STDOUT:
+Ray Data also emits the information to stdout:
 
 ```
 Operator 'ReadRange->MapBatches(uses_lots_of_memory)' uses 4.1GiB of
@@ -168,14 +172,22 @@ actors for the ones you haven't.
 
 To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
 
+:::{versionadded} 2.56
+``DataContext.default_map_logical_memory`` was added in Ray 2.56.
+:::
+
 ### Start Ray with resource isolation
 
-If you are encountering kernel OOM kills or memory pressure related node deaths, 
-you can enable *resource isolation* to provide enhanced protection for critical system components and eliminate kernel OOMs and node deaths. 
+If you encounter kernel OOM kills or memory pressure related node deaths, enable 
+*resource isolation* to provide enhanced protection for critical system components and 
+eliminate kernel OOMs and node deaths. 
 
-To enable *resource isolation*, please follow the guide in {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
+To enable *resource isolation*, follow the guide in 
+{doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
 
-For more details on debugging node failure or kernel OOMs, please see {doc}`Debugging Memory Issues </ray-observability/user-guides/debug-apps/debug-memory>`.
+:::{versionadded} 2.56
+Resource isolation was completed in Ray 2.56.
+:::
 
 ### Configure system memory to cover the raylet and anything outside the container
 
@@ -183,9 +195,12 @@ By default, Ray reserves 10% of physical memory for system use. "System" covers 
 processes that aren't worker tasks or actors, the OS itself, and anything else on the
 node that isn't Ray, including processes outside the container.
 
-If you run large non-Ray processes like Vector or still experience kernel OOM even with *resource isolation* enabled, 
-your "system" processes are likely using more memory than the default reserved memory for system processes. 
-In this case, please allocate more memory by passing in a custom byte value to the ray start flag `--system-reserved-memory`.
+If you run large non-Ray processes like Vector or still experience kernel OOM even with 
+*resource isolation* enabled, your "system" processes are likely using more memory than 
+the default reserved memory for system processes. 
+
+In this case, allocate more memory by passing in a custom byte value to the ray start 
+flag `--system-reserved-memory`.
 
 The default is usually fine unless you're on tiny nodes, like an m5.xlarge.
 
@@ -200,6 +215,10 @@ consuming far more memory than they actually are.
 If you encounter this, try ``DataContext.get_current().isolate_read_workers = True``. 
 The flag prevents Ray Data from scheduling downstream operators on the same 
 workers as reads. It can improve memory safety at the cost of some performance.
+
+:::{versionadded} 2.56
+``DataContext.isolate_read_workers`` was added in Ray 2.56.
+:::
 
 ### Don't increase RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
 
@@ -231,7 +250,9 @@ If you want to experiment with oversubscription at the risk of potential OOMs, d
 
 ## Further reading
 
-For a deeper understanding of how Ray handles memory, read 
-{ref}`Ray Data Memory Management <data_memory_management>`, 
-{ref}`Out-Of-Memory Prevention <ray-oom-prevention>`, 
-{doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
+For a deeper understanding of how Ray handles memory, read the following guides:
+
+- {ref}`Ray Data Memory Model <data_memory_management>`
+- {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
+- {ref}`Ray Core Out-Of-Memory Prevention <ray-oom-prevention>`
+- {doc}`Debugging Memory Issues </ray-observability/user-guides/debug-apps/debug-memory>`

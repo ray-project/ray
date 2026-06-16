@@ -300,8 +300,8 @@ To ensure CPU resources are always available for Ray Data execution, limit the n
 
 .. _data_memory_management:
 
-Memory Management
-=================
+Memory Model
+============
 
 This section describes how Ray Data manages execution and object store memory.
 
