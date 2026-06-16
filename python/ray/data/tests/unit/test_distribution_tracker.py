@@ -72,6 +72,36 @@ def test_percentiles_approximate_expected_quantiles():
     assert tracker.p99 is not None and 95 <= tracker.p99 <= 100
 
 
+@pytest.mark.skipif(datasketches is None, reason="datasketches not installed")
+def test_cloudpickle_roundtrip_preserves_sketch():
+    # ``kll_doubles_sketch`` is C++-backed and not natively picklable —
+    # without DistributionTracker's serialize/deserialize hooks, any
+    # Ray Data path that cloudpickles a Dataset (it carries Timers,
+    # which carry DistributionTrackers) fails with
+    # ``TypeError: cannot pickle 'kll_doubles_sketch' object``.
+    import pickle
+
+    import cloudpickle
+
+    tracker = DistributionTracker()
+    for i in range(1, 101):
+        tracker.add_sample(float(i))
+
+    for dumps, loads in [
+        (pickle.dumps, pickle.loads),
+        (cloudpickle.dumps, cloudpickle.loads),
+    ]:
+        restored = loads(dumps(tracker))
+        # Welford moments are exact across the round-trip.
+        assert restored.num_samples == tracker.num_samples
+        assert restored.mean == tracker.mean
+        assert restored.min == tracker.min
+        assert restored.max == tracker.max
+        # The deserialized sketch must still answer quantile queries.
+        assert restored.p50 is not None
+        assert restored.p50 == tracker.p50
+
+
 if __name__ == "__main__":
     import sys
 

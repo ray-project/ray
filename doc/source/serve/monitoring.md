@@ -724,6 +724,14 @@ To enable the feature, set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`.
 | `serve_haproxy_ingress_router_server_mismatch_total` | Counter | `application` | Number of requests where HAProxy ultimately routed to a different replica than the router returned. This happens when the named replica is `DOWN` and `option redispatch` falls through to load balancing. Non-zero values indicate the router's view of replica health is stale, or replicas are flapping. |
 | `serve_haproxy_ingress_router_failures_total` | Counter | `application`, `reason` | Number of router consultations that failed to pin a replica. Each failure causes HAProxy to return `503` to the client. The `reason` tag is one of `router_unreachable` (socket connect/send/recv failed), `router_non_200` (router returned a non-200 status), `unparseable_replica_id` (router 200 but body didn't contain a string `replica_id`), or `unknown_replica_id` (router returned a `replica_id` not in HAProxy's current replica map). |
 
+### HAProxy config reload metrics
+
+This metric tracks how long it takes for a controller update (replica set or fallback-target change) to take effect in HAProxy when using Serve's HAProxy proxy.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `serve_haproxy_update_latency_s` | Histogram | `node_id` | Seconds from the first coalesced controller broadcast to the HAProxy reload completing. Includes the coalesce window (`RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S`), time queued behind an in-flight reload, and the reload itself. Use to detect slow config propagation; high values mean replica-set changes take longer to reach the data plane. |
+
 ### Replica lifecycle metrics
 
 These metrics track replica health, restarts, and lifecycle timing.
@@ -879,7 +887,8 @@ See the [Ray Metrics documentation](collect-metrics) for more details, including
 
 ## Profiling memory
 
-Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
+Ray provides two useful metrics to track memory usage: `ray_component_rss_bytes` (resident set size) and `ray_component_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_bytes` - `ray_component_shared_bytes`).
+Note: `ray_component_rss_mb` is being deprecated, please use `ray_component_rss_bytes` going forward. 
 
 If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors will run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
 

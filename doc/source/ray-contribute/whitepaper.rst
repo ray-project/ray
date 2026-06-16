@@ -1,3 +1,6 @@
+.. meta::
+    :description: Links to the Ray 2.0 and 1.0 architecture whitepapers and the Exoshuffle paper for in-depth coverage of Ray's internals, dataplane, scalability, and performance. Visit for authoritative deep-dives into Ray's architecture and design.
+
 .. _whitepaper:
 
 Architecture Whitepapers

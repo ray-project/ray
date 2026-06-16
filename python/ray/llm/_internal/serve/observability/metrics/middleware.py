@@ -114,7 +114,7 @@ class MeasureHTTPRequestMetricsMiddleware:
                 )
 
 
-def _get_route_details(scope):
+def _get_route_details(scope: dict) -> str:
     """
     Function to retrieve Starlette route from scope.
     TODO: there is currently no way to retrieve http.route from

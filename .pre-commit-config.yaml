@@ -10,6 +10,7 @@ exclude: |
     release/release_logs/|
     rllib/offline/tests/data|
     thirdparty/patches/|
+    python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
     doc/source/

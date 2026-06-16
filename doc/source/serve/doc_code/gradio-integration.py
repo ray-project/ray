@@ -44,6 +44,7 @@ def gradio_summarizer_builder():
         fn=model,
         inputs=[gr.Textbox(value=example_input, label="Input prompt")],
         outputs=[gr.Textbox(label="Model output")],
+        api_name="predict",
     )
     # __doc_gradio_app_end__
 

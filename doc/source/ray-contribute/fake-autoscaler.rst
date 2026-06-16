@@ -1,3 +1,6 @@
+.. meta::
+    :description: How to run and test Ray's autoscaler locally without a real cluster, using RAY_FAKE_CLUSTER and the fake multi-node provider. Useful for autoscaler development or for debugging applications that depend on autoscaling behavior.
+
 .. _fake-multinode:
 
 Testing Autoscaling Locally

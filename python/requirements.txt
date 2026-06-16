@@ -35,7 +35,7 @@ opentelemetry-sdk>=1.30.0
 opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
-fastapi
+fastapi>=0.133.0
 ormsgpack>=1.7.0
 gymnasium==1.2.2
 virtualenv!=20.21.1,>=20.0.24
@@ -47,7 +47,7 @@ prometheus_client>=0.7.1
 pandas>=2.2.3
 tensorboardX
 aiohttp>=3.13.3
-starlette
+starlette>=1.0.1
 typer
 fsspec
 pydantic>=2.5.0,<3; python_version < '3.14'

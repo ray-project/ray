@@ -149,12 +149,12 @@ class Response:
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
-    def __init__(self, content=None, status_code=200):
+    def __init__(self, content: Any = None, status_code: int = 200):
         """Construct a HTTP Response based on input type.
 
         Args:
             content: Any JSON serializable object.
-            status_code (int, optional): Default status code is 200.
+            status_code: Default status code is 200.
         """
         self._messages = convert_object_to_asgi_messages(
             obj=content,
@@ -255,6 +255,9 @@ class MessageQueue(Send):
 
         This method should not be used together with get_messages_nowait.
         Please use either `get_one_message` or `get_messages_nowait`.
+
+        Returns:
+            The next available ASGI message in the queue.
 
         Raises:
             StopAsyncIteration: if the queue is closed and there are no
@@ -516,6 +519,9 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
 def set_socket_reuse_port(sock: socket.socket) -> bool:
     """Mutate a socket object to allow multiple process listening on the same port.
+
+    Args:
+        sock: The socket to configure with SO_REUSEPORT.
 
     Returns:
         success: whether the setting was successful.
@@ -824,6 +830,19 @@ def _matches_session_id_header(header_key: str) -> bool:
     """
     return header_key.lower().replace("-", "_") == SERVE_SESSION_ID.lower().replace(
         "-", "_"
+    )
+
+
+def session_id_from_headers(headers: Dict[str, str]) -> Optional[str]:
+    """Return the session-id header value from str-keyed headers, or None.
+
+    Same matching rule as ``parse_session_id_header`` (which takes bytes
+    keys); use this for already-decoded ``Dict[str, str]`` headers such as
+    Starlette ``request.headers`` or ``RawRequestInfo.headers``.
+    """
+    return next(
+        (value for key, value in headers.items() if _matches_session_id_header(key)),
+        None,
     )
 
 

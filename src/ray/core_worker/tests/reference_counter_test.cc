@@ -34,6 +34,7 @@
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -58,6 +59,7 @@ class ReferenceCountTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_);
   }
@@ -92,6 +94,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         *owned_object_count_metric_,
         *owned_object_size_metric_,
         /*lineage_pinning_enabled=*/true);
@@ -154,12 +157,12 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscription_callback_map_(sub_callback_map),
         subscription_failure_callback_map_(sub_failure_callback_map),
         subscriber_id_(subscriber_id),
-        subscriber_(std::make_unique<pubsub::SubscriberState>(
-            subscriber_id,
-            /*get_time_ms=*/[]() { return 1.0; },
-            /*subscriber_timeout_ms=*/1000,
-            /*publish_batch_size=*/1000,
-            UniqueID::FromRandom())),
+        subscriber_(
+            std::make_unique<pubsub::SubscriberState>(subscriber_id,
+                                                      /*clock=*/clock_,
+                                                      /*subscriber_timeout_ms=*/1000,
+                                                      /*publish_batch_size=*/1000,
+                                                      UniqueID::FromRandom())),
         client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;
@@ -227,6 +230,9 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   UniqueID subscriber_id_;
+  // Declared before subscriber_ so it outlives the SubscriberState that holds a
+  // ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<pubsub::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
@@ -325,6 +331,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *owned_object_count_metric_,
             *owned_object_size_metric_,
             /*lineage_pinning_enabled=*/false) {}
@@ -890,10 +897,13 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       publisher.get(),
       subscriber.get(),
       /*is_node_dead=*/[](const NodeID &) { return false; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService());
+  Clock clock;
+  CoreWorkerMemoryStore store(io_context.GetIoService(), clock);
 
   // Tests putting an object with no references is ignored.
   store.Put(buffer, id2, rc->HasReference(id2));
