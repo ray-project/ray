@@ -253,10 +253,55 @@ class BatchIterator:
                     batch = next(batch_iter)
                 except StopIteration:
                     break
+            # Attribute per-stage latency now that the batch has arrived.
+            if self._stats:
+                self._report_batch_timings(batch)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
+
+    def _report_batch_timings(self, batch: "Batch") -> None:
+        """Accumulate per-stage background pipeline latencies into DatasetStats.
+
+        Called by the training thread after each batch is received.
+
+        fetch and batching use pre-computed durations (always non-negative, no
+        clock-skew risk). format/collate/finalize use consecutive timestamp
+        deltas — a max(0, ...) guard handles the rare case of clock skew.
+
+        This runs in the training thread — no locks are needed because the
+        background thread has already finished writing to ``batch.metadata.timings``
+        before enqueuing the batch.
+        """
+        if self._stats is None:
+            return
+        t = batch.metadata.timings
+
+        # Accumulated durations — directly safe, no delta arithmetic needed.
+        if t.fetch_duration_s:
+            self._stats.iter_pipeline_fetch_s.add(t.fetch_duration_s)
+        if t.batching_duration_s:
+            self._stats.iter_pipeline_batching_s.add(t.batching_duration_s)
+
+        # Timestamp deltas for single-event stages.
+        if t.batching_done_s and t.format_done_s:
+            self._stats.iter_pipeline_format_s.add(
+                max(0.0, t.format_done_s - t.batching_done_s)
+            )
+        if t.format_done_s and t.collate_done_s:
+            self._stats.iter_pipeline_collate_s.add(
+                max(0.0, t.collate_done_s - t.format_done_s)
+            )
+        # Finalize follows collate (if present) or format.
+        last_pre_finalize = t.collate_done_s or t.format_done_s
+        if last_pre_finalize and t.finalize_done_s:
+            self._stats.iter_pipeline_finalize_s.add(
+                max(0.0, t.finalize_done_s - last_pre_finalize)
+            )
+
+        self._stats.iter_batches_total += 1
+        self._stats.iter_rows_total += t.num_rows
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()

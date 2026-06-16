@@ -549,6 +549,47 @@ class _StatsActor:
             tag_keys=iter_tag_keys,
         )
 
+        # Fine-grained per-stage pipeline latency (issue #64132).
+        # These measure background pipeline stage durations summed across all batches.
+        # With prefetching enabled they run concurrently with training, so these values
+        # can exceed data_iter_total_blocked_seconds — they are NOT a breakdown of the
+        # training thread's wait time, but of where pipeline time is being spent.
+        self.iter_pipeline_fetch_s = Gauge(
+            "data_iter_pipeline_fetch_seconds",
+            description="Cumulative seconds the background pipeline spent in ray.get() across all batches",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_pipeline_batching_s = Gauge(
+            "data_iter_pipeline_batching_seconds",
+            description="Cumulative seconds the background pipeline spent re-chunking blocks into batches",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_pipeline_format_s = Gauge(
+            "data_iter_pipeline_format_seconds",
+            description="Cumulative seconds the background pipeline spent converting batch format",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_pipeline_collate_s = Gauge(
+            "data_iter_pipeline_collate_seconds",
+            description="Cumulative seconds the background pipeline spent in collate_fn",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_pipeline_finalize_s = Gauge(
+            "data_iter_pipeline_finalize_seconds",
+            description="Cumulative seconds the background pipeline spent in finalize_fn (e.g. CPU→GPU transfer)",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batches_total = Gauge(
+            "data_iter_batches_total",
+            description="Total number of batches consumed by the training loop",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_rows_total = Gauge(
+            "data_iter_rows_total",
+            description="Total rows handed to the training loop; rate() gives rows/sec throughput",
+            tag_keys=iter_tag_keys,
+        )
+
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset", "job_id", "start_time")
         self.data_dataset_estimated_total_blocks = Gauge(
@@ -749,6 +790,15 @@ class _StatsActor:
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
+
+        # Per-stage pipeline latency (issue #64132).
+        self.iter_pipeline_fetch_s.set(stats.iter_pipeline_fetch_s.get(), tags)
+        self.iter_pipeline_batching_s.set(stats.iter_pipeline_batching_s.get(), tags)
+        self.iter_pipeline_format_s.set(stats.iter_pipeline_format_s.get(), tags)
+        self.iter_pipeline_collate_s.set(stats.iter_pipeline_collate_s.get(), tags)
+        self.iter_pipeline_finalize_s.set(stats.iter_pipeline_finalize_s.get(), tags)
+        self.iter_batches_total.set(stats.iter_batches_total, tags)
+        self.iter_rows_total.set(stats.iter_rows_total, tags)
 
     def register_dataset(
         self,
@@ -1143,6 +1193,21 @@ class DatasetStats:
         self.iter_total_s: Timer = Timer()
         self.extra_metrics = {}
 
+        # Fine-grained per-stage pipeline latency (issue #64132).
+        # Each Timer accumulates the total duration that stage spent across all
+        # batches in the background pipeline. These are background-thread durations,
+        # not training-thread blocked time — with effective prefetching the pipeline
+        # stages run concurrently with training, so these can exceed iter_total_blocked_s.
+        self.iter_pipeline_fetch_s: Timer = Timer()
+        self.iter_pipeline_batching_s: Timer = Timer()
+        self.iter_pipeline_format_s: Timer = Timer()
+        self.iter_pipeline_collate_s: Timer = Timer()
+        self.iter_pipeline_finalize_s: Timer = Timer()
+
+        # Cumulative batch and row counters (monotonically increasing).
+        self.iter_batches_total: int = 0
+        self.iter_rows_total: int = 0
+
         # Block fetch stats during iteration.
         # These are stats about locations of blocks when the iterator is trying to
         # consume them. The iteration performance will be affected depending on
@@ -1196,6 +1261,13 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
             self.iter_prefetched_bytes,
+            self.iter_pipeline_fetch_s,
+            self.iter_pipeline_batching_s,
+            self.iter_pipeline_format_s,
+            self.iter_pipeline_collate_s,
+            self.iter_pipeline_finalize_s,
+            self.iter_batches_total,
+            self.iter_rows_total,
         )
 
         stats_summary_parents = []
@@ -1878,6 +1950,15 @@ class IterStatsSummary:
     iter_unknown_location: int
     # Current bytes of prefetched blocks in the iterator
     iter_prefetched_bytes: int
+    # Per-stage pipeline latency timers (issue #64132)
+    pipeline_fetch_time: Timer
+    pipeline_batching_time: Timer
+    pipeline_format_time: Timer
+    pipeline_collate_time: Timer
+    pipeline_finalize_time: Timer
+    # Cumulative batch and row counters
+    batches_total: int
+    rows_total: int
 
     def __str__(self) -> str:
         return self.to_string()
@@ -1983,6 +2064,26 @@ class IterStatsSummary:
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
+
+        # Per-stage pipeline latency summary (issue #64132).
+        # These are background-thread durations — they can exceed total blocked
+        # time when prefetching hides pipeline latency from the training thread.
+        stage_totals = [
+            ("block fetch (ray.get)", self.pipeline_fetch_time),
+            ("batching", self.pipeline_batching_time),
+            ("format", self.pipeline_format_time),
+            ("collate", self.pipeline_collate_time),
+            ("finalize (host→device)", self.pipeline_finalize_time),
+        ]
+        active_stages = [(name, t) for name, t in stage_totals if t.get() > 0]
+        if active_stages:
+            out += "\nPer-stage background pipeline latency (summed across all batches):\n"
+            for stage_name, timer in active_stages:
+                out += "    * {}: {}\n".format(stage_name, fmt(timer.get()))
+        if self.batches_total:
+            out += "Total batches consumed: {}\n".format(self.batches_total)
+        if self.rows_total:
+            out += "Total rows consumed: {}\n".format(self.rows_total)
 
         return out
 
