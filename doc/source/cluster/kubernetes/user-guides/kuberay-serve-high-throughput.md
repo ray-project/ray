@@ -25,7 +25,7 @@ The following example demonstrates how to deploy Qwen 3.5 on four replicas
 with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE) with [this
 sample RayService](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml).
 
-A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](ray-service.high-throughput-gemma4.yaml).
+A corresponding sample for high-performance serving with [Gemma 4 E2B with NVIDIA B200s is also available here](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-gemma4.yaml).
 
 ### 1. Configure the environment
 
@@ -133,7 +133,8 @@ Using the {ref}`Ray kubectl plugin <kubectl-plugin>` or `kubectl port-forward`
 to establish a connection to the Ray head:
 
 ```
-CLUSTER=$(kubectl get raycluster -o jsonpath='{.items[0].metadata.name}') kubectl ray session $CLUSTER
+CLUSTER=$(kubectl get raycluster -o jsonpath='{.items[0].metadata.name}')
+kubectl ray session $CLUSTER
 ```
 
 Now, use the Ray CLI to check for HAProxy. Alternatively, navigate to the Ray
