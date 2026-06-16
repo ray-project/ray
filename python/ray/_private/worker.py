@@ -622,7 +622,6 @@ class Worker:
     @property
     def job_logging_config(self):
         """Get the job's logging config for this worker"""
-        import sys
 
         # Defend against teardown C++ memory access violations on Windows (Issue #62442)
         if sys.platform == "win32" and sys.is_finalizing():
