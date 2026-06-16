@@ -29,7 +29,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 
 namespace {
 /// The error message constructed from below methods is user-facing, so please avoid
@@ -857,7 +856,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
-      current_sys_time_ms());
+      clock_.NowUnixMillis());
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
