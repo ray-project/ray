@@ -173,10 +173,21 @@ To avoid this, set ``DataContext.get_current().default_map_logical_memory = True
 If you are encountering kernel OOM kills or memory pressure related node deaths, 
 you can enable *resource isolation* to provide enhanced protection for critical system components and eliminate kernel OOMs and node deaths. 
 
-To enable *resource isolation*, simply pass the `--enable-resource-isolation` flag to your ray start command. If you still experience kernel OOMs with resource isolation enabled, this means that we did not allocate enough memory for our system components. In this case, please allocate more memory to critical system processes (default to 10% of total memory) by passing in a custom byte value to `--system-reserved-memory`.
+To enable *resource isolation*, please follow the guide in {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
 
-For more details on enabling resource isolation, please see {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`.
 For more details on debugging node failure or kernel OOMs, please see {doc}`Debugging Memory Issues </ray-observability/user-guides/debug-apps/debug-memory>`.
+
+### Configure system memory to cover the raylet and anything outside the container
+
+By default, Ray reserves 10% of physical memory for system use. "System" covers Ray
+processes that aren't worker tasks or actors, the OS itself, and anything else on the
+node that isn't Ray, including processes outside the container.
+
+If you run large non-Ray processes like Vector or still experience kernel OOM even with *resource isolation* enabled, 
+your "system" processes are likely using more memory than the default reserved memory for system processes. 
+In this case, please allocate more memory by passing in a custom byte value to the ray start flag `--system-reserved-memory`.
+
+The default is usually fine unless you're on tiny nodes, like an m5.xlarge.
 
 ### Isolate reads for large files
 
@@ -198,17 +209,6 @@ some workloads like shuffle, it can also increase the risk of OOMs because it de
 the amount of memory available for your UDFs.
 
 To improve memory safety, don't configure the knob.
-
-### Configure system memory to cover the raylet and anything outside the container
-
-By default, Ray reserves 10% of physical memory for system use. "System" covers Ray
-processes that aren't worker tasks or actors, the OS itself, and anything else on the
-node that isn't Ray, including processes outside the container.
-
-If you run large non-Ray processes like Vector, you might need to set this higher
-than the default.
-
-The default is usually fine unless you're on tiny nodes, like an m5.xlarge.
 
 ## What to expect after tuning
 
