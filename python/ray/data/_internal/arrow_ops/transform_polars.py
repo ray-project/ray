@@ -90,6 +90,11 @@ def join(
                 {column: f"{column}{left_suffix}" for column in collisions}
             )
 
+            left_on = [
+                f"{left}{left_suffix}" if left in collisions else left
+                for left in left_on
+            ]
+
         if right_suffix:
             right_df = right_df.rename(
                 {column: f"{column}{right_suffix}" for column in collisions}
