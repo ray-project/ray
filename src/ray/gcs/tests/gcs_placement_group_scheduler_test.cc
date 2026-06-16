@@ -23,6 +23,7 @@
 
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_placement_group.h"
@@ -65,7 +66,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_unique<pubsub::FakePublisher>());
     auto local_node_id = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-        io_service_,
+        PeriodicalRunner::Create(io_service_),
         scheduling::NodeID(local_node_id.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

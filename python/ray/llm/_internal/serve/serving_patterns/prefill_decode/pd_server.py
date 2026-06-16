@@ -207,6 +207,12 @@ class PDOrchestratorMixin:
         the resolved KV-connector backend. With the default backend flags
         (``requires_peer_binding=False``, ``concurrent_handoff=False``) the
         control flow and calls are identical to the historical NIXL/default flow.
+
+        A connector that encodes coordination data in the request id (MoRIIO's
+        dual-address id) just stamps ``request.request_id`` in ``prepare_*``; it
+        then reaches both engines unchanged -- the LLMServer pipeline preserves
+        an explicitly-set request_id (it no longer clobbers it with the Serve
+        id) and the engine copies it into the ``X-Request-Id`` header it reads.
         """
 
         # Determine method name for the handle call
@@ -476,9 +482,21 @@ class PDOrchestratorMixin:
 
         logger.info("[PDDecodeServer] Starting pre-warm across all P replicas.")
 
+        backend = self._get_connector_backend()
+        if backend.requires_peer_binding:
+            # Peer-binding connectors (e.g. MoRIIO) shape a prefill request
+            # against a specific selected replica's metadata; a peerless
+            # broadcast prewarm cannot bind one. The connector handshake
+            # completes on the first real request instead.
+            logger.info(
+                "[PDDecodeServer] Skipping pre-warm: connector %s requires peer "
+                "binding (handshake completes on the first real request).",
+                type(backend).__name__,
+            )
+            return
+
         model_id = self._llm_config.model_id
         dummy = self._make_dummy_request(model_id)
-        backend = self._get_connector_backend()
         prefill_req = backend.prepare_prefill_request(request=dummy, peer=None)
 
         # Broadcast to every live P replica; retry until they are up.
@@ -587,6 +605,25 @@ class PDPrefillServer(LLMServer):
     This is a standard LLMServer with an additional ``prewarm_prefill``
     method used during the pre-warm handshake.
     """
+
+    async def record_replica_metadata(self) -> Dict[str, Any]:
+        """Publish this prefill replica's connector coordination metadata.
+
+        Read by the decode orchestrator via the replica-metadata hook
+        (``ReplicaSelection.replica_metadata``) so peer-binding connectors (e.g.
+        MoRIIO) can address the selected prefill replica. Returns ``{}`` for
+        connectors that publish nothing (the ``BaseConnectorBackend`` default).
+
+        Returns the metadata of the backend that engine init
+        (``setup_engine_backend``) created, ``setup()``-ed, and stored on this
+        server's ``_llm_config``. The replica-metadata hook is captured after
+        engine init, so for connector deployments the backend is present by
+        then; with no backend stored there is nothing to publish.
+        """
+        backend = getattr(self._llm_config, "kv_connector_backend", None)
+        if backend is None:
+            return {}
+        return backend.replica_metadata()
 
     async def prewarm_prefill(
         self, prefill_request: CompletionRequest
