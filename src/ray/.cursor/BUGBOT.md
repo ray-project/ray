@@ -64,14 +64,13 @@ Unit tests must not
 
 ## Rule: C++ time access must use ClockInterface
 - Apply to changed C++ files under `src/ray/`.
-- If the diff adds a direct read of the current time, post the message below. Direct reads include:
+- If the diff adds any call to get the current time that doesn't go through a `ClockInterface`, post the message below. Examples include:
   - `absl::Now()`, `absl::GetCurrentTimeNanos()`
   - `std::chrono::system_clock::now()`, `std::chrono::steady_clock::now()`, `std::chrono::high_resolution_clock::now()`
-  - `time(nullptr)`, `gettimeofday(`, `clock_gettime(`
   - a new `get_time_ms`/`get_time`-style time callback used in place of a clock
 - Do NOT flag: using an injected `ray::ClockInterface` (e.g. `clock_.Now()`, `clock.NowUnixMillis()`, `SteadyNow()`) or durations/timeouts that do not read the current time (e.g. `absl::Milliseconds(...)`, `std::chrono::seconds(...)`).
 
-> ⚠️ This change reads the current time directly. In Ray C++ (`src/ray`), current-time access must go through an injected `ray::ClockInterface` (`src/ray/util/clock.h`) so it can be faked and unit tested deterministically.
+> ⚠️ This change reads the current time directly. In Ray C++ (`src/ray`), time access should go through an injected `ray::ClockInterface` (`src/ray/util/clock.h`) so it can be faked and unit tested deterministically.
 >
 > - Take a `ray::ClockInterface &` constructor parameter and use `clock_.Now()` / `clock_.NowUnixMillis()` (wall clock) or `clock_.SteadyNow()` (durations).
 > - Dependency inject a `ray::Clock` from the production entrypoint and a `ray::FakeClock` in tests (drive time with `AdvanceTime`/`SetTime` instead of `sleep`).
