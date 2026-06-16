@@ -4297,6 +4297,8 @@ class Dataset:
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
+        shard_by_node: bool = False,
+        nodes: Optional[List[str]] = None,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -4379,6 +4381,23 @@ class Dataset:
                 "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
+            shard_by_node: If ``True``, materialize the dataset and shard it across
+                the cluster's nodes: the rows are split into one roughly-balanced
+                shard per target node, and each shard is written -- pinned to its
+                node via a ``NodeAffinitySchedulingStrategy`` -- to ``path`` on
+                that node's local disk. No rows are dropped. This is the inverse
+                of ``read_parquet(path, shard_by_node=True)``: write shards onto
+                node-local NVMe here, then read them back with node locality
+                (e.g. for Ray Train). Because each node writes to its own local
+                ``path``, ``mode`` applies per node (no cross-node conflict) --
+                ``SaveMode.OVERWRITE`` refreshes each node's own directory. The
+                target must be node-local: remote/shared storage (S3, GCS, HDFS)
+                is rejected, since every node would write to the same physical
+                directory. Can't be combined with a user-provided
+                ``ray_remote_args["scheduling_strategy"]``.
+            nodes: Optional explicit list of node IDs (hex strings as returned by
+                ``ray.nodes()[i]["NodeID"]``) to shard across when ``shard_by_node``
+                is ``True``. Defaults to all alive nodes with CPU resources.
             **arrow_parquet_args: Options to pass to
                 `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -4410,6 +4429,25 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
         )
 
+        if shard_by_node:
+            self._write_parquet_sharded_by_node(
+                path,
+                nodes=nodes,
+                partition_cols=partition_cols,
+                arrow_parquet_args_fn=arrow_parquet_args_fn,
+                arrow_parquet_args=arrow_parquet_args,
+                min_rows_per_file=effective_min_rows,
+                max_rows_per_file=effective_max_rows,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                arrow_open_stream_args=arrow_open_stream_args,
+                filename_provider=filename_provider,
+                mode=mode,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+            )
+            return
+
         datasink = ParquetDatasink(
             path,
             partition_cols=partition_cols,
@@ -4429,6 +4467,106 @@ class Dataset:
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
+
+    def _write_parquet_sharded_by_node(
+        self,
+        path: str,
+        *,
+        nodes: Optional[List[str]],
+        partition_cols: Optional[List[str]],
+        arrow_parquet_args_fn: Callable[[], Dict[str, Any]],
+        arrow_parquet_args: Dict[str, Any],
+        min_rows_per_file: Optional[int],
+        max_rows_per_file: Optional[int],
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+        try_create_dir: bool,
+        arrow_open_stream_args: Optional[Dict[str, Any]],
+        filename_provider: Optional[FilenameProvider],
+        mode: SaveMode,
+        ray_remote_args: Optional[Dict[str, Any]],
+        concurrency: Optional[int],
+    ) -> None:
+        """Materialize this dataset and write one node-local shard per node.
+
+        See ``write_parquet(..., shard_by_node=True)``. The dataset is
+        materialized once, split into one roughly-balanced shard per target node
+        (no rows dropped), and each shard is written with its write tasks pinned
+        to its node, so the files land on that node's local disk.
+        """
+        from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+        if ray_remote_args and "scheduling_strategy" in ray_remote_args:
+            raise ValueError(
+                "`shard_by_node=True` pins each shard's write tasks to a node via "
+                "a `scheduling_strategy`, so it can't be combined with a "
+                "`ray_remote_args['scheduling_strategy']`."
+            )
+
+        # Node-local sharding only makes sense on node-local storage. On shared
+        # storage (S3/NFS) every node writes to the *same physical* directory, so
+        # shards pile up together and -- with OVERWRITE -- race-delete each other
+        # (data loss). Reject shared/remote targets; local OVERWRITE is fine
+        # because each node overwrites only its own directory.
+        from ray.data._internal.util import _ensure_node_local_target
+
+        _ensure_node_local_target(path, filesystem, operation="writes to")
+
+        if nodes is not None:
+            if not nodes:
+                raise ValueError("`nodes` must be a non-empty list of node IDs.")
+            node_ids = list(nodes)
+        else:
+            node_ids = [
+                node["NodeID"]
+                for node in ray.nodes()
+                if node.get("Alive") and node.get("Resources", {}).get("CPU", 0) > 0
+            ]
+            if not node_ids:
+                raise ValueError(
+                    "No alive nodes with CPU resources were found to shard the "
+                    "write across."
+                )
+
+        # Materialize once, then split by row count so every row is written
+        # exactly once (``split(equal=True)`` would drop the remainder).
+        materialized = self.materialize()
+        num_nodes = len(node_ids)
+        if num_nodes == 1:
+            shards = [materialized]
+        else:
+            total_rows = materialized.count()
+            rows_per_shard = total_rows // num_nodes
+            # ``n - 1`` split indices produce ``n`` shards; the last shard absorbs
+            # the remainder. With fewer rows than nodes some trailing shards are
+            # empty.
+            split_indices = [rows_per_shard * i for i in range(1, num_nodes)]
+            shards = materialized.split_at_indices(split_indices)
+
+        for node_id, shard in zip(node_ids, shards):
+            shard_remote_args = dict(ray_remote_args or {})
+            shard_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                node_id, soft=False
+            )
+            datasink = ParquetDatasink(
+                path,
+                partition_cols=partition_cols,
+                arrow_parquet_args_fn=arrow_parquet_args_fn,
+                arrow_parquet_args=arrow_parquet_args,
+                min_rows_per_file=min_rows_per_file,
+                max_rows_per_file=max_rows_per_file,
+                filesystem=filesystem,
+                try_create_dir=try_create_dir,
+                open_stream_args=arrow_open_stream_args,
+                filename_provider=filename_provider,
+                # Distinct uuid per shard so per-node filenames never coincide.
+                dataset_uuid=shard._uuid,
+                mode=mode,
+            )
+            shard.write_datasink(
+                datasink,
+                ray_remote_args=shard_remote_args,
+                concurrency=concurrency,
+            )
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
@@ -5880,9 +6018,9 @@ class Dataset:
                     "on the driver's node."
                 )
             label_selector = ray_remote_args.get("label_selector", {})
-            label_selector[
-                ray._raylet.RAY_NODE_ID_KEY
-            ] = ray.get_runtime_context().get_node_id()
+            label_selector[ray._raylet.RAY_NODE_ID_KEY] = (
+                ray.get_runtime_context().get_node_id()
+            )
             ray_remote_args["label_selector"] = label_selector
             ray_remote_args.pop("scheduling_strategy", None)
 
@@ -6901,9 +7039,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundle: RefBundle = self._execute()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        )
         # Schema is safe to call since we have already triggered execution with
         # self._execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)

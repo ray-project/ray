@@ -101,6 +101,10 @@ def plan_read_op(
                 # be reconstructed.
                 owns_blocks=False,
                 schema=None,
+                # Carry any per-task remote args (e.g. a node-affinity scheduling
+                # strategy) so the read MapOperator pins this task as the
+                # datasource requested. ``None`` for ordinary reads.
+                task_ray_remote_args=read_task.ray_remote_args,
             )
             ret.append(ref_bundle)
         return ret

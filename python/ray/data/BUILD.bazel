@@ -2201,6 +2201,20 @@ py_test(
 )
 
 py_test(
+    name = "test_node_sharded_read",
+    size = "medium",
+    srcs = ["tests/test_node_sharded_read.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_random_api",
     size = "small",
     srcs = ["tests/test_random_api.py"],
