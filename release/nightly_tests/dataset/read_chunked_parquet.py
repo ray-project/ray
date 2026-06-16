@@ -560,37 +560,31 @@ def generate(
 def _resolve_mixed_rg_sizes(spec: Optional[str], file_size: int) -> List[int]:
     """Resolve the discrete on-disk row-group-size buckets for mixed mode.
 
-    Default (``spec is None``): a doubling sequence from 64 MiB up to
-    ``file_size`` inclusive (e.g. 64MiB,128MiB,256MiB for a 256 MiB file). If
-    ``file_size <= 64 MiB`` it collapses to ``{file_size}`` (one bucket -- no
-    within-file size variance possible). Explicit specs are comma-separated
-    sizes (``parse_size`` each), clamped to ``<= file_size`` and de-duplicated.
+    Default (``spec is None``): ``[4MiB, 8MiB, 16MiB, 64MiB]``. Explicit specs
+    are comma-separated sizes (``parse_size`` each). Either way, sizes are
+    clamped to ``<= file_size`` and de-duplicated (a row group can't exceed the
+    file). If everything collapses to a single bucket there's no within-file
+    size variance, so we warn.
     """
-    base = 64 * 1024**2
     if spec is None:
-        if file_size <= base:
-            print(
-                f"[warn] --file-size {human(file_size)} <= 64MiB; mixed RG sizes "
-                f"collapse to a single bucket (no within-file size variance). "
-                f"Use a larger --file-size or set --mixed-rg-sizes.",
-                flush=True,
-            )
-            return [file_size]
-        sizes = []
-        s = base
-        while s < file_size:
-            sizes.append(s)
-            s *= 2
-        sizes.append(file_size)
-        return sizes
-    parsed = [parse_size(tok) for tok in spec.split(",") if tok.strip()]
-    if not parsed:
-        raise SystemExit("--mixed-rg-sizes parsed to an empty list")
-    clamped = []
-    for s in parsed:
+        sizes = [4 * 1024**2, 8 * 1024**2, 16 * 1024**2, 64 * 1024**2]
+    else:
+        sizes = [parse_size(tok) for tok in spec.split(",") if tok.strip()]
+        if not sizes:
+            raise SystemExit("--mixed-rg-sizes parsed to an empty list")
+    clamped: List[int] = []
+    for s in sizes:
         c = min(s, file_size)
         if c not in clamped:
             clamped.append(c)
+    if len(clamped) == 1:
+        print(
+            f"[warn] mixed RG sizes collapsed to a single bucket "
+            f"({human(clamped[0])}) for --file-size {human(file_size)}; no "
+            f"within-file size variance. Use a larger --file-size or set "
+            f"--mixed-rg-sizes.",
+            flush=True,
+        )
     return clamped
 
 
@@ -872,7 +866,8 @@ def main():
         "--mixed-rg-sizes",
         default=None,
         help="[mode=mixed] Comma-separated on-disk row-group-size buckets, e.g. "
-        "'64MiB,128MiB,256MiB'. Default: doubling from 64MiB up to --file-size.",
+        "'64MiB,128MiB,256MiB'. Default: 4MiB,8MiB,16MiB,64MiB (each clamped to "
+        "<= --file-size).",
     )
     p.add_argument(
         "--mixed-compression-ratios",
