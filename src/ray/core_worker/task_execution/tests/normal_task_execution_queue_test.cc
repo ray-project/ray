@@ -25,6 +25,23 @@
 namespace ray {
 namespace core {
 
+namespace {
+
+// Construct a TaskToExecute container for tests. The per-task execute/cancel behavior is
+// supplied to the queue at construction time (not per task), so the container only needs
+// to carry the task spec. The reply and send_reply_callback are dummy implementations
+// that are never inspected by the tests' queue-level callbacks.
+TaskToExecute MakeTaskToExecute(const TaskSpecification &task_spec) {
+  static rpc::PushTaskReply dummy_reply;
+  return TaskToExecute(
+      task_spec,
+      /*resource_ids=*/std::nullopt,
+      &dummy_reply,
+      [](const Status &, std::function<void()>, std::function<void()>) {});
+}
+
+}  // namespace
+
 TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   int n_executed = 0;
   int n_canceled = 0;
@@ -38,10 +55,7 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = TaskToExecute(task_spec,
-                                     /*resource_ids=*/std::nullopt,
-                                     /*reply=*/nullptr,
-                                     /*send_reply_callback=*/nullptr);
+  TaskToExecute task = MakeTaskToExecute(task_spec);
 
   queue->EnqueueTask(task);
   queue->EnqueueTask(task);
@@ -70,10 +84,7 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = TaskToExecute(task_spec,
-                                     /*resource_ids=*/std::nullopt,
-                                     /*reply=*/nullptr,
-                                     /*send_reply_callback=*/nullptr);
+  TaskToExecute task = MakeTaskToExecute(task_spec);
 
   // Enqueue several normal tasks but do not schedule them.
   queue->EnqueueTask(task);

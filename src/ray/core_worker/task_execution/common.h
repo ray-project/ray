@@ -25,6 +25,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -46,7 +47,10 @@ class TaskToExecute {
         pending_dependencies_(task_spec_.GetDependencies()),
         resource_ids_(std::move(resource_ids)),
         reply_(reply),
-        send_reply_callback_(std::move(send_reply_callback)) {}
+        send_reply_callback_(std::move(send_reply_callback)) {
+    RAY_CHECK(reply_ != nullptr) << "reply must not be null.";
+    RAY_CHECK(send_reply_callback_ != nullptr) << "send_reply_callback must not be null.";
+  }
 
   ray::TaskID TaskID() const { return task_spec_.TaskId(); }
   uint64_t AttemptNumber() const { return task_spec_.AttemptNumber(); }
