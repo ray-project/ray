@@ -293,7 +293,7 @@ void SubscriberState::ConnectToSubscriber(
   RAY_CHECK(!long_polling_connection_);
   long_polling_connection_ = std::make_unique<LongPollConnection>(
       publisher_id, pub_messages, std::move(send_reply_callback));
-  last_connection_update_time_ms_ = clock_.NowUnixMillis();
+  last_connection_update_time_ms_ = clock_.SteadyNowMillis();
   PublishIfPossible(/*force_noop=*/false);
 }
 
@@ -345,7 +345,7 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
   // Clean up & update metadata.
   long_polling_connection_.reset();
   // Clean up & update metadata.
-  last_connection_update_time_ms_ = clock_.NowUnixMillis();
+  last_connection_update_time_ms_ = clock_.SteadyNowMillis();
 }
 
 bool SubscriberState::CheckNoLeaks() const {
@@ -358,7 +358,7 @@ bool SubscriberState::ConnectionExists() const {
 }
 
 bool SubscriberState::IsActive() const {
-  return clock_.NowUnixMillis() - last_connection_update_time_ms_ <
+  return clock_.SteadyNowMillis() - last_connection_update_time_ms_ <
          connection_timeout_ms_;
 }
 
