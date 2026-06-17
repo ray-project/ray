@@ -150,14 +150,6 @@ class DeferredEmit:
     block_ref: "ray.ObjectRef[Block]"
     meta_ref: "ray.ObjectRef[BlockMetadata]"
 
-    def mark_pending(self) -> None:
-        """Account this pair as awaiting emission on its task."""
-        self.task._pending_emit_count += 1
-
-    def mark_emitted(self) -> None:
-        """Account this pair as emitted (or dropped) on its task."""
-        self.task._pending_emit_count -= 1
-
 
 class TaskGeneratorState(Enum):
     """Lifecycle of a ``DataOpTask``'s streaming generator, as seen by the
@@ -375,18 +367,21 @@ class DataOpTask(OpTask):
             if object_size is None:
                 # Rare: the location record for this block has no size yet
                 # (``get_local_object_locations`` may omit the entry or its
-                # size). Fall back to fetching the metadata inline for the
-                # size rather than aborting. No timeout — this path is rare and
-                # the block was just yielded, so it's local.
+                # size). Fall back to the metadata for the size, but with a
+                # short timeout — if it isn't local yet either, leave the pair
+                # pending and retry next round rather than blocking the loop.
                 logger.warning(
                     "Local object_size unavailable for a block from operator "
-                    "'%s'; fetching its metadata inline for the output-budget "
+                    "'%s'; falling back to its metadata for the output-budget "
                     "size.",
                     self._operator_name,
                 )
-                meta_with_schema: BlockMetadataWithSchema = pickle.loads(
-                    ray.get(self._pending_meta_ref)
-                )
+                try:
+                    meta_with_schema: BlockMetadataWithSchema = pickle.loads(
+                        ray.get(self._pending_meta_ref, timeout=METADATA_WAIT_TIMEOUT_S)
+                    )
+                except ray.exceptions.GetTimeoutError:
+                    break
                 object_size = meta_with_schema.metadata.size_bytes
 
             # Defer the pair: no emit and no ``_last_block_meta`` update here.
@@ -450,6 +445,16 @@ class DataOpTask(OpTask):
     def has_pending_emits(self) -> bool:
         """Whether this task still has pulled pairs not yet emitted."""
         return self._pending_emit_count > 0
+
+    def mark_pending(self) -> None:
+        """Account a pulled pair as awaiting emission. Called by the
+        prefetcher when a pair is queued for its background fetch."""
+        self._pending_emit_count += 1
+
+    def mark_emitted(self) -> None:
+        """Account a pulled pair as emitted (or dropped). Called by the
+        prefetcher once a pair's metadata is fetched and handled."""
+        self._pending_emit_count -= 1
 
     def emit_block(self, block_ref: "ray.ObjectRef[Block]", meta_bytes: bytes) -> None:
         """Build and emit one pulled block's ``RefBundle`` from its fetched

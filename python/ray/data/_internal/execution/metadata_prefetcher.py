@@ -29,6 +29,7 @@ import logging
 import queue as queue_module
 import threading
 from collections import defaultdict, deque
+from collections.abc import Hashable
 from typing import Any, Dict, List, Set, Tuple
 
 import ray
@@ -38,10 +39,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Sentinel for "ref not yet fetched" in the result store. A fetched result is
-# either the metadata bytes or an ``Exception`` captured during fetch.
-_NOT_READY = object()
 
 # How long ``stop`` waits for the fetch thread to exit.
 _FETCH_THREAD_JOIN_TIMEOUT_S = 5.0
@@ -54,6 +51,10 @@ _FETCH_WAIT_TIMEOUT_S = 0.1
 class MetadataPrefetcher:
     """Fetches deferred ``meta_ref``s on a background thread; emits in per-op
     order on the executor thread. See module docstring."""
+
+    # Sentinel for "ref not yet fetched" in the result store. A fetched result
+    # is either the metadata bytes or an ``Exception`` captured during fetch.
+    _NOT_READY = object()
 
     def __init__(self):
         # executor -> fetch thread: each item is a list[ObjectRef] (or None
@@ -72,7 +73,7 @@ class MetadataPrefetcher:
         # metadata, in append (= emission) order. ``defaultdict`` is a ``dict``
         # subclass, so it preserves insertion order (guaranteed since Python
         # 3.7; Ray requires >= 3.10) and ops are drained in submit order.
-        self._fifos: "defaultdict[Any, deque]" = defaultdict(deque)
+        self._fifos: "defaultdict[Hashable, deque[DeferredEmit]]" = defaultdict(deque)
         # Tasks whose end-of-stream callback is postponed until all of their
         # deferred pairs have been emitted. A set so a task that is re-seen on
         # a later iteration (still pending) isn't registered — or fired —
@@ -100,7 +101,7 @@ class MetadataPrefetcher:
 
     def submit(
         self,
-        op_key: Any,
+        op_key: Hashable,
         deferred: List[DeferredEmit],
         ready_tasks: List[DataOpTask],
     ) -> None:
@@ -112,7 +113,7 @@ class MetadataPrefetcher:
         if deferred:
             fifo = self._fifos[op_key]
             for d in deferred:
-                d.mark_pending()
+                d.task.mark_pending()
                 fifo.append(d)
             self._request_q.put([d.meta_ref for d in deferred])
         for task in ready_tasks:
@@ -159,12 +160,12 @@ class MetadataPrefetcher:
             while fifo:
                 d = fifo[0]
                 result = self._pop_result(d.meta_ref)
-                if result is _NOT_READY:
+                if result is self._NOT_READY:
                     # Preserve order: stop at the first pair still in flight;
                     # this operator is retried next drain.
                     break
                 fifo.popleft()
-                d.mark_emitted()
+                d.task.mark_emitted()
                 if isinstance(result, BaseException):
                     failures.append((d.task.operator_name, result))
                     continue
@@ -200,7 +201,7 @@ class MetadataPrefetcher:
 
     def _pop_result(self, ref: "ray.ObjectRef") -> Any:
         with self._results_lock:
-            return self._results.pop(ref, _NOT_READY)
+            return self._results.pop(ref, self._NOT_READY)
 
     def _run(self) -> None:
         """Fetch-thread loop: accumulate requested meta_refs into a pending
