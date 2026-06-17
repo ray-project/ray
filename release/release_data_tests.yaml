@@ -869,14 +869,16 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_FAIL_ON_SPILLING=0
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
     timeout: 3600
-    script: python heterogeneous_memory_batch_inference.py
+    # This release test uses large batch sizes. Since Ray Data requires memory hints
+    # for high-memory operations, we need to manually specify the memory.
+    script: python heterogeneous_memory_batch_inference.py --set-memory
 
 # Multitenancy variant: runs two copies of the heterogeneous_memory pipeline
 # concurrently on a single cluster, each pinned to its own subcluster via
