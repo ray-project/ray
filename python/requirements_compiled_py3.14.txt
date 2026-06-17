@@ -1264,7 +1264,7 @@ numexpr==2.14.1
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   pymars
-numpy==2.3.2
+numpy==2.3.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2568,7 +2568,7 @@ uri-template==1.3.0
     # via jsonschema
 uritemplate==4.2.0
     # via google-api-python-client
-urllib3==1.26.20
+urllib3==2.0.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   botocore

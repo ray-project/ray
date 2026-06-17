@@ -9,4 +9,4 @@ rich==13.7.1
 msgpack
 msgpack-numpy
 ormsgpack
-tf_keras
+tf_keras; python_version < '3.14'  # requires TensorFlow, which has no cp314 wheels yet
