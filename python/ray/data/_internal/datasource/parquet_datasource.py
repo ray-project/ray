@@ -394,6 +394,7 @@ class ParquetDatasource(Datasource):
         include_paths: bool = False,
         include_row_hash: bool = False,
         file_extensions: Optional[List[str]] = None,
+        ignore_missing_paths: bool = False,
     ):
         super().__init__()
         _check_pyarrow_version()
@@ -417,7 +418,9 @@ class ParquetDatasource(Datasource):
         # causing this data being duplicated and excessive object store spilling.
         source_paths_ref = ray.put(paths)
 
-        paths, resolved_filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, resolved_filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem, ignore_missing_paths, expand_globs=True
+        )
         filesystem = RetryingPyFileSystem.wrap(
             resolved_filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,

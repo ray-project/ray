@@ -91,7 +91,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # property and consumed by ``_read_datasource_v2``.
         self._supports_distributed_reads = not _is_local_scheme(paths)
         resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem
+            paths, filesystem, ignore_missing_paths, expand_globs=True
         )
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem

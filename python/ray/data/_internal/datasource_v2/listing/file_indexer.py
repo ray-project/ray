@@ -132,13 +132,18 @@ class NonSamplingFileIndexer(FileIndexer):
         filesystem: "FileSystem",
     ) -> Iterable[FileInfo]:
         for input_path in paths.to_pylist():
-            resolved_paths, _ = _resolve_paths_and_filesystem(input_path, filesystem)
-            assert len(resolved_paths) == 1
+            resolved_paths, _ = _resolve_paths_and_filesystem(
+                input_path, filesystem, self._ignore_missing_paths,
+                expand_globs=True,
+            )
 
-            for path, file_size in _get_file_infos(
-                resolved_paths[0], filesystem, self._ignore_missing_paths
-            ):
-                yield FileInfo(path=path, size=file_size)
+            for resolved_path in resolved_paths:
+                for path, file_size in _get_file_infos(
+                    resolved_path,
+                    filesystem,
+                    self._ignore_missing_paths,
+                ):
+                    yield FileInfo(path=path, size=file_size)
 
     def _get_file_info_iterator_threaded(
         self,
@@ -157,16 +162,17 @@ class NonSamplingFileIndexer(FileIndexer):
         ) -> Iterator[FileInfo]:
             for input_path in path_iterator:
                 resolved_paths, _ = _resolve_paths_and_filesystem(
-                    input_path, filesystem
+                    input_path, filesystem, self._ignore_missing_paths,
+                    expand_globs=True,
                 )
-                assert len(resolved_paths) == 1
 
-                for path, file_size in _get_file_infos(
-                    resolved_paths[0],
-                    filesystem,
-                    self._ignore_missing_paths,
-                ):
-                    yield FileInfo(path=path, size=file_size)
+                for resolved_path in resolved_paths:
+                    for path, file_size in _get_file_infos(
+                        resolved_path,
+                        filesystem,
+                        self._ignore_missing_paths,
+                    ):
+                        yield FileInfo(path=path, size=file_size)
 
         yield from make_async_gen(
             base_iterator=iter(paths_list),

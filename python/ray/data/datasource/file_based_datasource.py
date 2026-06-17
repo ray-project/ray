@@ -176,7 +176,9 @@ class FileBasedDatasource(Datasource):
         # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
         self._source_paths_ref = ray.put(paths)
-        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, self._filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem, ignore_missing_paths, expand_globs=True
+        )
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
