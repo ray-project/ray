@@ -2349,9 +2349,9 @@ class Replica:
                 deployment_name=self._deployment_id.name,
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=not healthy,
-                status_code=str(
+                status_code=(
                     grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-                ),
+                ).name,
             )
             return HealthzResponse(message=message).SerializeToString()
 
@@ -2372,9 +2372,9 @@ class Replica:
                 deployment_name=self._deployment_id.name,
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=not healthy,
-                status_code=str(
+                status_code=(
                     grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
-                ),
+                ).name,
             )
             return ListApplicationsResponse(
                 application_names=application_names
@@ -2406,7 +2406,7 @@ class Replica:
                 deployment_name="",
                 latency_ms=(time.time() - start_time) * 1000.0,
                 is_error=True,
-                status_code=str(grpc.StatusCode.NOT_FOUND),
+                status_code=grpc.StatusCode.NOT_FOUND.name,
             )
             return b""
 
@@ -2485,7 +2485,7 @@ class Replica:
                 finally:
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
-                    status_code_callback(str(status.code))
+                    status_code_callback(status.code.name)
                     set_grpc_code_and_details(context, status)
 
                 return result.SerializeToString()

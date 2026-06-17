@@ -445,7 +445,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_requests[0]["application"] == ""
-    assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_requests[0]["status_code"] == grpc.StatusCode.NOT_FOUND.name
     print("serve_num_grpc_requests working as expected.")
 
     num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
@@ -458,7 +458,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
-    assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
+    assert num_errors[0]["error_code"] == grpc.StatusCode.NOT_FOUND.name
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     print("serve_num_grpc_error_requests working as expected.")
 
@@ -507,7 +507,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
-    assert num_errors[0]["error_code"] == str(grpc.StatusCode.DEADLINE_EXCEEDED)
+    assert num_errors[0]["error_code"] == grpc.StatusCode.DEADLINE_EXCEEDED.name
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_errors[0]["application"] == "status_code_timeout"
 
@@ -595,7 +595,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
-    assert num_errors[0]["error_code"] == str(grpc.StatusCode.CANCELLED)
+    assert num_errors[0]["error_code"] == grpc.StatusCode.CANCELLED.name
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_errors[0]["application"] == "disconnect"
 
@@ -638,7 +638,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
-    assert num_deployment_errors[0]["error_code"] == str(grpc.StatusCode.INTERNAL)
+    assert num_deployment_errors[0]["error_code"] == grpc.StatusCode.INTERNAL.name
     assert (
         num_deployment_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     )
@@ -658,7 +658,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
     assert latency_metrics[0]["application"] == real_app_name
-    assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
+    assert latency_metrics[0]["status_code"] == grpc.StatusCode.INTERNAL.name
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
