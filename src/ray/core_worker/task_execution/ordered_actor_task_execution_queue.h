@@ -108,11 +108,11 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
 
-  /// Callbacks used to execute / reply-cancel a queued task.
+  /// Callbacks used to execute a queued task or reply that it's canceled.
   ExecuteTaskCallback execute_task_;
   CancelTaskCallback cancel_task_;
 
-  /// Mutext to protect attributes used for thread safe APIs.
+  /// Mutex to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
 
   /// A map of actor task IDs -> is_canceled

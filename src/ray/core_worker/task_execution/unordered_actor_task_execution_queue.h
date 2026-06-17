@@ -84,7 +84,7 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   /// Manage the running fiber states of actors in this worker. It works with
   /// python asyncio if this is an asyncio actor.
   std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
-  /// Callbacks used to execute / reply-cancel a queued task.
+  /// Callbacks used to execute a queued task or reply that it's canceled.
   ExecuteTaskCallback execute_task_;
   CancelTaskCallback cancel_task_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true

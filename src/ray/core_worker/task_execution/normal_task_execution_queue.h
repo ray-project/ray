@@ -55,7 +55,7 @@ class NormalTaskExecutionQueue {
   // Get the next queued task to execute if available.
   std::optional<TaskToExecute> TryPopQueuedTask();
 
-  /// Callbacks used to execute / reply-cancel a queued task.
+  /// Callbacks used to execute a queued task or reply that it's canceled.
   ExecuteTaskCallback execute_task_;
   CancelTaskCallback cancel_task_;
 
