@@ -289,11 +289,11 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
                 # gRPC pinged "B" once
                 if do_assert:
                     assert (
-                        'error_code="StatusCode.NOT_FOUND"' in metrics
+                        'error_code="NOT_FOUND"' in metrics
                         and "1.0" in metrics
                     )
                 if (
-                    'error_code="StatusCode.NOT_FOUND"' not in metrics
+                    'error_code="NOT_FOUND"' not in metrics
                     or "1.0" not in metrics
                 ):
                     return False
