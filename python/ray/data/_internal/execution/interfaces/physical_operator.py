@@ -250,27 +250,26 @@ class DataOpTask(OpTask):
         """Pull ready ``(block_ref, meta_ref)`` pairs from the streaming
         generator and append them to ``deferred_emits``; the
         ``MetadataPrefetcher`` later fetches each pair's metadata off-thread
-        and emits the ``RefBundle``.
+        and emits the ``RefBundle``. This method never calls ``ray.get`` on a
+        block/metadata it intends to emit, and never blocks the loop.
 
-        A *deferred emit* is a pulled pair whose ``RefBundle`` we do **not**
-        build here — we never call ``ray.get`` in this method. Our streaming
-        generators yield a block ref then its metadata ref, in that order, so
-        each loop pulls the two refs and defers them.
-
-        Two refs aren't always both available, and this method handles those
-        cases gracefully rather than blocking:
+        The generator yields a block ref then its metadata ref. Each loop
+        iteration pulls one pair and ends in one of these outcomes:
+        - both refs available -> defer the pair, charge its size, continue;
         - block ref not yet yielded -> stop, retry next call;
         - metadata ref not yet yielded -> stop, retry next call;
-        - generator exhausted before yielding a block -> end of stream
-          (normal completion); generator raises after a block -> task failure.
-          Either way we move to ``DRAINED`` and postpone completion.
+        - block size not locally known -> short metadata ``ray.get`` for the
+          size; if that also times out, stop and retry next call;
+        - generator exhausted before a block -> end of stream (normal
+          completion) -> ``DRAINED``;
+        - generator raises after a block -> task failure -> ``DRAINED``,
+          recording the error.
+        On ``DRAINED`` the task stops pulling; completion is postponed until
+        its already-deferred pairs have emitted.
 
-        For the output-budget loop we need each block's size. We read it from
-        the block's local ``object_size`` via
-        ``ray.experimental.get_local_object_locations`` (local-only, no RPC) —
-        the driver owns the just-yielded block ref, so this is normally known.
-        In the rare case it isn't, we fall back to fetching the metadata
-        inline for the size (see below).
+        The output-budget size comes from the block's local ``object_size``
+        (``get_local_object_locations``, no RPC); the driver owns the
+        just-yielded block ref, so it's normally known.
 
         Args:
             max_bytes_to_read: Max bytes of blocks to read. If None, all
@@ -286,13 +285,9 @@ class DataOpTask(OpTask):
         self._track_task_output_backpressure(max_bytes_to_read)
 
         if self._state is not TaskGeneratorState.ACTIVE or self._pending_emit_count > 0:
-            # Either the generator is already DRAINED (don't pull more), or
-            # pairs pulled in a previous iteration are still awaiting their
-            # background metadata fetch. Don't run ahead of them: pulling more
-            # output would release the generator's backpressure and let the
-            # producer get arbitrarily far ahead of unfetched metadata (the
-            # pre-deferred code fetched each pair's metadata before pulling the
-            # next one). Retry once the pending pairs have been emitted.
+            # Already DRAINED, or earlier pairs still await their background
+            # metadata fetch. Don't pull further output ahead of unfetched
+            # metadata; retry once the pending pairs have emitted.
             return 0
 
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
@@ -308,9 +303,7 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    # End of stream (normal completion): the generator yielded
-                    # all its blocks. Move to DRAINED; completion fires once the
-                    # already-pulled pairs have been emitted.
+                    # End of stream (normal completion).
                     self._state = TaskGeneratorState.DRAINED
                     break
 
@@ -337,12 +330,8 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        # Task failure. Like normal end-of-stream, move to
-                        # DRAINED rather than firing inline: completion (now
-                        # carrying ``ex``) fires only after this task's
-                        # already-pulled pairs have emitted, preserving the
-                        # pre-deferred emit-then-fail order. ``mark_done`` then
-                        # surfaces ``ex`` for ``max_errored_blocks`` accounting.
+                        # Task failure: record the error and drain. mark_done
+                        # later surfaces it for max_errored_blocks accounting.
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
                         break
@@ -365,11 +354,8 @@ class DataOpTask(OpTask):
                 info.get("object_size") if info is not None else None
             )
             if object_size is None:
-                # Rare: the location record for this block has no size yet
-                # (``get_local_object_locations`` may omit the entry or its
-                # size). Fall back to the metadata for the size, but with a
-                # short timeout — if it isn't local yet either, leave the pair
-                # pending and retry next round rather than blocking the loop.
+                # Rare: no local size record. Fall back to a short metadata
+                # ``ray.get`` for the size.
                 logger.warning(
                     "Local object_size unavailable for a block from operator "
                     "'%s'; falling back to its metadata for the output-budget "
@@ -381,12 +367,12 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_meta_ref, timeout=METADATA_WAIT_TIMEOUT_S)
                     )
                 except ray.exceptions.GetTimeoutError:
+                    # Metadata isn't local yet either. Leave this pair pending
+                    # (refs stay set, not nil'd) and break, so the next call
+                    # re-enters here and retries it.
                     break
                 object_size = meta_with_schema.metadata.size_bytes
 
-            # Defer the pair: no emit and no ``_last_block_meta`` update here.
-            # The ``MetadataPrefetcher`` fetches the metadata off-thread and
-            # emits the ``RefBundle`` (in append order) when it drains.
             deferred_emits.append(
                 DeferredEmit(
                     task=self,
@@ -394,13 +380,10 @@ class DataOpTask(OpTask):
                     meta_ref=self._pending_meta_ref,
                 )
             )
-            # Charge the per-iteration output budget at pull time, not at emit
-            # time: the block already exists in the object store and counts
-            # toward memory backpressure regardless of whether its metadata
-            # fetch later succeeds. Not refunded if the prefetcher drops the
-            # pair on a fetch error — the budget is recomputed fresh each
-            # scheduling iteration (see ``remaining_output_budget`` in
-            # ``process_completed_tasks``), so there is no balance to restore.
+            # Charge the budget at pull time (the block already exists in the
+            # object store). Not refunded on a later drop: the budget is
+            # recomputed each scheduling iteration, so there's no balance to
+            # restore.
             bytes_read += object_size
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
