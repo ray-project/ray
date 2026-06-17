@@ -31,6 +31,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _normalize_host(host: str) -> str:
+    host = host.rstrip("/")
+    if not host.startswith(("http://", "https://")):
+        host = f"https://{host}"
+    return host
+
+
 @PublicAPI(stability="alpha")
 class ReaderFormat(str, Enum):
     """Which reader is asking the catalog to resolve a table.
@@ -127,14 +134,7 @@ class UnityCatalog(Catalog):
             )
         )
         self._region = region
-        self._base_url = self._normalize_host(self._provider.get_host())
-
-    @staticmethod
-    def _normalize_host(host: str) -> str:
-        host = host.rstrip("/")
-        if not host.startswith(("http://", "https://")):
-            host = f"https://{host}"
-        return host
+        self._base_url = _normalize_host(self._provider.get_host())
 
     # ---- Catalog interface -------------------------------------------------
     def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
