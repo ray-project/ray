@@ -750,7 +750,9 @@ def process_completed_tasks(
 
             # Queue this op's pairs for background fetch; they emit in
             # per-op order in `drain()` once their metadata is ready.
-            metadata_prefetcher.submit(state, op_deferred, op_data_tasks)
+            metadata_prefetcher.submit_or_register_done(
+                state, op_deferred, op_data_tasks
+            )
 
     # Emit whatever's ready, in per-op order — UNCONDITIONALLY, even when there
     # are no active tasks this iteration. Pairs deferred in earlier iterations

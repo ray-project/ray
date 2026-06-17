@@ -1593,8 +1593,8 @@ class TestDataOpTask:
                     time.sleep(0.01)
             assert task_a.is_drained() and task_b.is_drained()
 
-            prefetcher.submit("a", deferred_a, [task_a])
-            prefetcher.submit("b", deferred_b, [task_b])
+            prefetcher.submit_or_register_done("a", deferred_a, [task_a])
+            prefetcher.submit_or_register_done("b", deferred_b, [task_b])
 
             deadline = time.time() + 30
             while len(outputs) < 4 and time.time() < deadline:
@@ -1640,7 +1640,7 @@ class TestDataOpTask:
         # Don't start the fetch thread: publish fetch results by hand to
         # control which pair's metadata is "fetched" first.
         prefetcher = MetadataPrefetcher()
-        prefetcher.submit("op", deferred, [task])
+        prefetcher.submit_or_register_done("op", deferred, [task])
         meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
 
         # Only the LATER pair's metadata is available: it must be held.
@@ -1691,7 +1691,7 @@ class TestDataOpTask:
         first, second = deferred
 
         prefetcher = MetadataPrefetcher()
-        prefetcher.submit("op", deferred, [task])
+        prefetcher.submit_or_register_done("op", deferred, [task])
         good_bytes = ray.get(first.meta_ref)
         boom = ValueError("metadata fetch boom")
         # First pair fetches fine; the second resolves to an exception.
