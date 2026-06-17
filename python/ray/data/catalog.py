@@ -9,7 +9,6 @@ authentication layer owned the readers. Now the reader is primary and a catalog
 is passed in only when authentication is required.
 """
 
-import atexit
 import logging
 import os
 import tempfile
@@ -292,19 +291,16 @@ class UnityCatalog(Catalog):
             storage_options["AZURE_STORAGE_ACCOUNT_NAME"] = storage_account
         return storage_options
 
-    def _write_gcp_creds(self, gcp_json: str) -> None:
+    @staticmethod
+    def _write_gcp_creds(gcp_json: str) -> None:
+        # The file is intentionally not deleted. The Ray driver may be
+        # long-lived there may still be references to the old file via
+        # GOOGLE_APPLICATION_CREDENTIALS, so removing it could break in-flight
+        # reads. The OS reclaims the temp directory in due course and file
+        # size is expected to be trivial.
         temp_file = tempfile.NamedTemporaryFile(
             mode="w", prefix="gcp_sa_", suffix=".json", delete=False
         )
         temp_file.write(gcp_json)
         temp_file.close()
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
-        atexit.register(self._cleanup_gcp_temp_file, temp_file.name)
-
-    @staticmethod
-    def _cleanup_gcp_temp_file(temp_file_path: str) -> None:
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.unlink(temp_file_path)
-            except OSError:
-                pass

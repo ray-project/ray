@@ -1,6 +1,7 @@
 """Tests for the Catalog connector API (ray.data.catalog)."""
 
 import contextlib
+import os
 import pickle
 from unittest import mock
 
@@ -114,6 +115,19 @@ def test_resolve_azure_returns_storage_options():
 
     assert resolved.filesystem is None
     assert resolved.storage_options == {"AZURE_STORAGE_SAS_TOKEN": "sv=2021&sig=abc"}
+
+
+def test_gcp_creds_written_and_env_set(monkeypatch):
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    catalog = UnityCatalog(url="https://h.databricks.com", token="t")
+
+    catalog._write_gcp_creds('{"sa": 1}')
+
+    path = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    assert os.path.exists(path)
+    with open(path) as f:
+        assert f.read() == '{"sa": 1}'
+    os.unlink(path)  # test housekeeping; production intentionally leaves it
 
 
 # ---------------------------------------------------------------------------
