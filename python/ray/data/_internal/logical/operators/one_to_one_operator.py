@@ -50,7 +50,11 @@ class AbstractOneToOne(LogicalOperator):
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
-        object.__setattr__(self, "num_outputs", num_outputs)
+        object.__setattr__(self, "_num_outputs", num_outputs)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
 
     def infer_metadata(self) -> BlockMetadata:
         """Best-effort output metadata derived from the single input dependency.
