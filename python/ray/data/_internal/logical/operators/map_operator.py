@@ -8,6 +8,7 @@ from typing import (
     Callable,
     Dict,
     Iterable,
+    List,
     Literal,
     Optional,
     Union,
@@ -60,7 +61,7 @@ class AbstractMap(AbstractOneToOne):
     def __init__(
         self,
         name: Optional[str] = None,
-        input_op: Optional[LogicalOperator] = None,
+        input_dependencies: Optional[List[LogicalOperator]] = None,
         num_outputs: Optional[int] = None,
         *,
         can_modify_num_rows: bool,
@@ -75,8 +76,9 @@ class AbstractMap(AbstractOneToOne):
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The
-                outputs of ``input_op`` will be the inputs to this operator.
+            input_dependencies: The operators preceding this operator in the plan
+                DAG. The outputs of these operators will be the inputs to this
+                operator.
             num_outputs: Number of outputs for this operator.
             can_modify_num_rows: Whether the operator can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
@@ -95,7 +97,7 @@ class AbstractMap(AbstractOneToOne):
                 autoscaling actor pool.
         """
         super().__init__(
-            input_op=input_op,
+            input_dependencies=input_dependencies,
             can_modify_num_rows=can_modify_num_rows,
             num_outputs=num_outputs,
             name=name,
@@ -141,7 +143,7 @@ class AbstractUDFMap(AbstractMap):
     def __init__(
         self,
         name: str,
-        input_op: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
         fn: UserDefinedFunction,
         *,
         can_modify_num_rows: bool,
@@ -159,8 +161,8 @@ class AbstractUDFMap(AbstractMap):
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
+            input_dependencies: The operators preceding this operator in the plan DAG.
+                The outputs of these operators will be the inputs to this operator.
             fn: User-defined function to be called.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
@@ -185,7 +187,7 @@ class AbstractUDFMap(AbstractMap):
         name = self._get_operator_name(name, fn)
         super().__init__(
             name,
-            input_op,
+            input_dependencies,
             can_modify_num_rows=can_modify_num_rows,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
@@ -518,7 +520,7 @@ class StreamingRepartition(
     """Logical operator for streaming repartition operation.
 
     Args:
-        input_op: The operator preceding this operator in the plan DAG.
+        input_dependencies: The operators preceding this operator in the plan DAG.
         target_num_rows_per_block: The target number of rows per block granularity for
             streaming repartition.
         strict: If True, guarantees that all output blocks, except for the last one,

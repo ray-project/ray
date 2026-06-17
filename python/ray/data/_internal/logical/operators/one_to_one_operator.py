@@ -29,7 +29,7 @@ class AbstractOneToOne(LogicalOperator):
 
     def __init__(
         self,
-        input_op: Optional[LogicalOperator],
+        input_dependencies: Optional[List[LogicalOperator]],
         can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
         *,
@@ -38,8 +38,8 @@ class AbstractOneToOne(LogicalOperator):
         """Initialize an AbstractOneToOne operator.
 
         Args:
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
+            input_dependencies: The operators preceding this operator in the plan DAG.
+                The outputs of these operators will be the inputs to this operator.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             num_outputs: If known, the number of blocks produced by this operator.
@@ -49,7 +49,7 @@ class AbstractOneToOne(LogicalOperator):
         super().__init__(
             _num_outputs=num_outputs,
         )
-        object.__setattr__(self, "_input_dependencies", [input_op] if input_op else [])
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies or []))
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
