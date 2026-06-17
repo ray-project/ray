@@ -64,6 +64,10 @@ class MetadataPrefetcher:
         # fetch thread -> executor: meta_ref -> bytes (or captured Exception).
         self._results: Dict["ray.ObjectRef", Any] = {}
         self._results_lock = threading.Lock()
+        # Set by the fetch thread whenever it publishes results; lets a
+        # ``drain(block_timeout_s>0)`` sleep until there's something to emit
+        # instead of the scheduling loop spinning while metadata is in flight.
+        self._published = threading.Event()
 
         # Executor-thread-only state below.
         # Per-operator (keyed by the caller's op key) FIFO of pairs awaiting
@@ -119,9 +123,18 @@ class MetadataPrefetcher:
                 # must not be registered (or later fired) twice.
                 self._done_pending.add(task)
 
-    def drain(self) -> List[Tuple[str, BaseException]]:
+    def drain(self, block_timeout_s: float = 0.0) -> List[Tuple[str, BaseException]]:
         """Emit every pair whose metadata is now available, in per-op append
         order, then fire postponed done callbacks for fully-drained tasks.
+
+        If ``block_timeout_s > 0`` and there are pending pairs but the fetch
+        thread hasn't published anything new, block up to that long for the
+        first result before emitting. This paces the scheduling loop to
+        metadata availability — without it the loop spins (re-running
+        per-iteration work like resource accounting and actor-state refresh)
+        while metadata is in flight. It only blocks when the iteration would
+        otherwise emit nothing; if results are already ready it returns at
+        once.
 
         Returns ``(operator_name, exception)`` for each pair whose metadata
         fetch failed. Those pairs are accounted as emitted (so the task can
@@ -133,6 +146,16 @@ class MetadataPrefetcher:
 
         Must be called on the executor thread.
         """
+        if (
+            block_timeout_s > 0
+            and not self._published.is_set()
+            and any(self._fifos.values())
+        ):
+            # Pending pairs but nothing freshly published — wait for the fetch
+            # thread rather than returning an empty drain.
+            self._published.wait(block_timeout_s)
+        self._published.clear()
+
         failures: List[Tuple[str, BaseException]] = []
         for fifo in self._fifos.values():
             while fifo:
@@ -250,3 +273,5 @@ class MetadataPrefetcher:
                     results[ref] = e
         with self._results_lock:
             self._results.update(results)
+        # Wake a scheduling thread blocked in ``drain(block_timeout_s>0)``.
+        self._published.set()

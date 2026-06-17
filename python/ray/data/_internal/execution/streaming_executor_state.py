@@ -752,7 +752,12 @@ def process_completed_tasks(
     # gating this on `active_tasks` would strand them and stall output forever.
     # Deferred metadata-fetch failures go through the same `max_errored_blocks`
     # accounting as inline `on_data_ready` errors.
-    for failed_op_name, fetch_exc in metadata_prefetcher.drain():
+    # Block briefly for metadata when there's pending work but nothing ready,
+    # so the loop is paced by metadata availability instead of spinning
+    # (re-running per-iteration scheduling work) while fetches are in flight.
+    for failed_op_name, fetch_exc in metadata_prefetcher.drain(
+        block_timeout_s=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
+    ):
         _record_errored_block(fetch_exc, failed_op_name)
 
     # Pull any operator outputs into the streaming op state.
