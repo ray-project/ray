@@ -36,7 +36,6 @@ class AbstractAllToAll(LogicalOperator):
     def __init__(
         self,
         input_dependencies: List[LogicalOperator],
-        num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         *,
@@ -47,26 +46,17 @@ class AbstractAllToAll(LogicalOperator):
         Args:
             input_dependencies: The operators preceding this operator in the plan DAG.
                 The outputs of these operators will be the inputs to this operator.
-            num_outputs: The number of expected output bundles outputted by this
-                operator.
             sub_progress_bar_names: Optional sub-stage progress bar names for this
                 operator.
             ray_remote_args: Args to provide to :func:`ray.remote`.
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
         """
-        super().__init__(
-            _num_outputs=num_outputs,
-        )
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -81,14 +71,16 @@ class RandomizeBlocks(
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.seed_config is None:
             object.__setattr__(self, "seed_config", RandomSeedConfig())
         object.__setattr__(self, "_name", "RandomizeBlockOrder")
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return None
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -113,7 +105,6 @@ class RandomShuffle(
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self, name: str):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -129,7 +120,10 @@ class RandomShuffle(
                 ],
             )
         object.__setattr__(self, "_name", name)
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return None
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -154,16 +148,15 @@ class Repartition(
 ):
     """Logical operator for repartition."""
 
-    num_outputs: InitVar[int]
     shuffle: bool = False
     keys: Optional[List[str]] = None
     sort: bool = False
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
+    num_outputs: Optional[int] = None
 
-    def __post_init__(self, num_outputs: int):
+    def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.shuffle:
             sub_progress_bar_names = [
@@ -175,7 +168,6 @@ class Repartition(
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
-        object.__setattr__(self, "_num_outputs", num_outputs)
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -209,7 +201,6 @@ class Sort(
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -222,7 +213,10 @@ class Sort(
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return None
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -245,7 +239,6 @@ class Aggregate(AbstractAllToAll):
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -258,7 +251,10 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return None
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = key field(s) from input schema + one field per aggregator.

@@ -56,7 +56,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     partition_size_hint: Optional[int] = None
     aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(
         self,
@@ -78,7 +77,10 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             "_input_dependencies",
             [left_input_op, right_input_op],
         )
-        object.__setattr__(self, "_num_outputs", num_partitions)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self.num_partitions
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]

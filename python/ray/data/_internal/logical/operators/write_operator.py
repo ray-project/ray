@@ -28,7 +28,6 @@ class Write(AbstractMap, LogicalOperatorPreservesSchema):
     min_rows_per_bundled_input: Optional[int] = field(init=False)
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -45,4 +44,7 @@ class Write(AbstractMap, LogicalOperatorPreservesSchema):
         object.__setattr__(
             self, "min_rows_per_bundled_input", min_rows_per_bundled_input
         )
-        object.__setattr__(self, "_num_outputs", None)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return None

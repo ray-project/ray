@@ -24,7 +24,6 @@ class LogicalOperator(Operator, ABC):
     _input_dependencies: List["LogicalOperator"] = field(
         init=False, default_factory=list, repr=False
     )
-    _num_outputs: Optional[int] = field(default=None, repr=False)
 
     @property
     def name(self) -> str:
