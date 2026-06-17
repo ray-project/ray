@@ -265,6 +265,26 @@ def test_read_unity_catalog_deprecation_delegates():
     assert isinstance(kwargs["catalog"], UnityCatalog)
 
 
+def test_read_unity_catalog_infers_format_from_cred_url():
+    # Metadata omits both data_source_format and storage_location; the vended
+    # credential URL extension must still identify the format.
+    patcher = mock.patch("ray.data.catalog.requests")
+    m = patcher.start()
+    m.get.return_value = MockResponse(_json_data={"table_id": "tid"})
+    m.post.return_value = MockResponse(_json_data={"url": "s3://bucket/data.parquet"})
+    try:
+        with mock.patch("ray.data.read_api.read_parquet") as read_parquet, pytest.warns(
+            DeprecationWarning
+        ):
+            ray.data.read_unity_catalog(
+                table="main.db.tbl", url="https://h.databricks.com", token="t"
+            )
+    finally:
+        patcher.stop()
+
+    read_parquet.assert_called_once()
+
+
 if __name__ == "__main__":
     import sys
 
