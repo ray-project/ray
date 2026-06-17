@@ -203,24 +203,18 @@ class MetadataPrefetcher:
 
     def _run(self) -> None:
         """Fetch-thread loop: accumulate requested meta_refs into a pending
-        set, fetch the ones that are locally available, and publish them.
-
-        ``ray.get`` is only issued on refs that ``ray.wait(fetch_local=True)``
-        reports ready, so a ref stuck on a bad/dead node never blocks the
-        thread — it just stays pending until Ray resolves or fails it. The
-        wait itself blocks up to ``_FETCH_WAIT_TIMEOUT_S`` (also serving to
-        avoid busy-spin); a straggler can delay a batch by up to that timeout,
-        but only here on the background thread, never on the scheduling loop.
+        set and hand them to ``_fetch``, which fetches the locally-available
+        ones and returns those still in flight.
         """
         pending: List["ray.ObjectRef"] = []
         while True:
             # Block on the queue only when idle; while refs are in flight,
-            # don't block here — get back to ``ray.wait`` to keep them moving.
+            # don't block here — get back to ``_fetch`` to keep them moving.
             try:
                 item = self._request_q.get(block=not pending)
             except queue_module.Empty:
                 item = None
-            # Drain whatever else is already queued into a single wait batch.
+            # Drain whatever else is already queued into a single fetch batch.
             while item is not None:
                 if item is self._STOP:
                     # Fast teardown: drop any in-flight refs and exit. ``stop``
@@ -233,44 +227,46 @@ class MetadataPrefetcher:
                 except queue_module.Empty:
                     item = None
 
-            if not pending:
-                continue
+            if pending:
+                pending = self._fetch(pending)
 
-            ready, pending = ray.wait(
-                pending,
-                num_returns=len(pending),
-                timeout=_FETCH_WAIT_TIMEOUT_S,
-                fetch_local=True,
-            )
-            if ready:
-                # Anything not actually gettable yet is returned and re-queued
-                # so the next wait/fetch pass retries it.
-                pending.extend(self._fetch(ready))
+    def _fetch(self, pending: List["ray.ObjectRef"]) -> List["ray.ObjectRef"]:
+        """Fetch the locally-available refs in ``pending`` and publish them;
+        return the refs still awaiting fetch (to be retried next pass).
 
-    def _fetch(self, batch: List["ray.ObjectRef"]) -> List["ray.ObjectRef"]:
-        """Fetch refs that ``ray.wait`` reported ready and publish them.
+        ``ray.get`` is only issued on refs that ``ray.wait(fetch_local=True)``
+        reports ready, so a ref stuck on a bad/dead node never blocks the
+        thread — it just stays pending. The wait blocks up to
+        ``_FETCH_WAIT_TIMEOUT_S`` (also avoiding busy-spin); a straggler can
+        delay a batch by up to that timeout, but only on this background
+        thread, never on the scheduling loop.
 
-        ``ray.wait(fetch_local=True)`` already pulled these refs local, so
-        every ``ray.get`` uses ``timeout=0``: the fetch thread must never block
-        on data transfer. A ref that resolved to a task error is still
+        Ready refs are local, so every ``ray.get`` uses ``timeout=0`` and never
+        blocks on transfer. A ref that resolved to a task error is still
         available and raises that error immediately (not ``GetTimeoutError``),
         so it's captured per-ref for ``drain`` to surface rather than silently
-        dropping the block.
-
-        Returns the refs that raised ``GetTimeoutError`` — i.e. ``ray.wait``
-        reported them ready but they're no longer local (e.g. a raced
-        eviction). Those are neither published nor counted as block errors;
-        the caller re-queues them for a later pass.
+        dropping the block. A ref that raced out of the local store raises
+        ``GetTimeoutError`` and is returned for retry — neither published nor
+        counted as a block error.
         """
+        ready, not_ready = ray.wait(
+            pending,
+            num_returns=len(pending),
+            timeout=_FETCH_WAIT_TIMEOUT_S,
+            fetch_local=True,
+        )
+        if not ready:
+            return not_ready
+
         retry: List["ray.ObjectRef"] = []
         try:
-            values = ray.get(batch, timeout=0)
-            results: Dict["ray.ObjectRef", Any] = dict(zip(batch, values))
+            values = ray.get(ready, timeout=0)
+            results: Dict["ray.ObjectRef", Any] = dict(zip(ready, values))
         except Exception:
             # A batched get raises on the first error and hides which ref
             # failed; retry per-ref to isolate it and keep the rest.
             results = {}
-            for ref in batch:
+            for ref in ready:
                 try:
                     results[ref] = ray.get(ref, timeout=0)
                 except ray.exceptions.GetTimeoutError:
@@ -284,4 +280,4 @@ class MetadataPrefetcher:
                 self._results.update(results)
             # Wake a scheduling thread blocked in ``drain(block_timeout_s>0)``.
             self._published.set()
-        return retry
+        return not_ready + retry
