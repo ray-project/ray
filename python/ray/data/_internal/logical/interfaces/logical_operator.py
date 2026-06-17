@@ -30,7 +30,6 @@ class LogicalOperator(Operator, ABC):
         return self._name or self.__class__.__name__
 
     @property
-    @abstractmethod
     def num_outputs(self) -> Optional[int]:
         """Expected number of output blocks, if known."""
         return None
