@@ -394,6 +394,13 @@ class DataOpTask(OpTask):
                     meta_ref=self._pending_meta_ref,
                 )
             )
+            # Charge the per-iteration output budget at pull time, not at emit
+            # time: the block already exists in the object store and counts
+            # toward memory backpressure regardless of whether its metadata
+            # fetch later succeeds. Not refunded if the prefetcher drops the
+            # pair on a fetch error — the budget is recomputed fresh each
+            # scheduling iteration (see ``remaining_output_budget`` in
+            # ``process_completed_tasks``), so there is no balance to restore.
             bytes_read += object_size
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
