@@ -747,6 +747,38 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
 
   gcs_client_->Workers().AsyncAdd(worker_data, nullptr);
+
+  if (options_.worker_type == WorkerType::WORKER) {
+    // Watch for owner-worker death so finished streaming-generator tasks with
+    // unconsumed objects don't leak their actor-wide BP slot
+    gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        [this](const rpc::WorkerDeltaData &worker_failure_data) {
+          HandleOwnerDied(WorkerID::FromBinary(worker_failure_data.worker_id()));
+        },
+        nullptr);
+  }
+}
+
+void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
+  std::vector<std::shared_ptr<ActorTaskBackpressureMetadata>> to_teardown;
+  {
+    absl::MutexLock lock(&mutex_);
+    std::vector<ObjectID> to_erase;
+    for (auto &[generator_id, state] : generator_backpressure_states_) {
+      if (state.owner_worker_id == dead_owner) {
+        if (state.actor_metadata) {
+          to_teardown.push_back(state.actor_metadata);
+        }
+        to_erase.push_back(generator_id);
+      }
+    }
+    for (const auto &generator_id : to_erase) {
+      generator_backpressure_states_.erase(generator_id);
+    }
+  }
+  for (auto &actor_metadata : to_teardown) {
+    actor_metadata->Teardown();
+  }
 }
 
 void CoreWorker::SubscribeToNodeChanges() {
@@ -3193,6 +3225,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     auto &state = generator_backpressure_states_[generator_id];
     state.waiter = waiter;
     state.actor_metadata = actor_metadata;
+    state.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   }
 
   client->ReportGeneratorItemReturns(

@@ -805,6 +805,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
   bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
 
+  /// Tear down any generator_backpressure_states_ entries owned by ``dead_owner``
+  /// so the actor-wide BP budget gets reclaimed when an owner worker dies without
+  /// running TryDelObjectRefStream (the path that normally sends the teardown
+  /// sentinel via UpdateGeneratorBackpressureConsumed).
+  void HandleOwnerDied(const WorkerID &dead_owner);
+
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
   /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
@@ -1900,6 +1906,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
     std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
     bool task_finished = false;
+    // Owner that submitted the streaming generator task. When this worker dies
+    // we tear down the entry so the actor-wide BP budget gets reclaimed even
+    // when the task has already finished (and so the owner can no longer drive
+    // consumption updates).
+    WorkerID owner_worker_id;
   };
 
   absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_

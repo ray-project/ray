@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray.util.state import list_tasks
 
 
@@ -806,6 +806,74 @@ def test_actor_generator_backpressure_zero_value_rejected(shutdown_only):
         class A:
             def f(self):
                 yield 0
+
+
+def test_actor_generator_backpressure_reclaim_on_owner_death(shutdown_only):
+    namespace = "actor_generator_backpressure_owner_death"
+    actor_name = f"actor_generator_backpressure_owner_death_actor_{os.getpid()}"
+    reporter_name = f"actor_generator_backpressure_owner_death_reporter_{os.getpid()}"
+    address = ray.init(num_cpus=2, namespace=namespace).address_info["address"]
+
+    driver = f"""
+import os
+
+import ray
+from ray._common.test_utils import wait_for_condition
+
+ray.init(address="{address}", namespace="{namespace}")
+
+
+@ray.remote(name="{reporter_name}", lifetime="detached")
+class Reporter:
+    def __init__(self):
+        self.counts = {{}}
+
+    def report(self, tag):
+        self.counts[tag] = self.counts.get(tag, 0) + 1
+
+    def count(self, tag):
+        return self.counts.get(tag, 0)
+
+
+@ray.remote(
+    name="{actor_name}",
+    lifetime="detached",
+    max_concurrency=1,
+    _actor_generator_backpressure_num_objects=2,
+)
+class A:
+    def gen(self, reporter, tag, count):
+        for i in range(count):
+            ray.get(reporter.report.remote(tag))
+            yield i
+
+    def ping(self):
+        return "ok"
+
+
+reporter = Reporter.remote()
+a = A.remote()
+g = a.gen.remote(reporter, "first", 1)
+wait_for_condition(lambda: ray.get(reporter.count.remote("first")) == 1, timeout=10)
+assert ray.get(a.ping.remote(), timeout=10) == "ok"
+
+# Exit
+os._exit(0)
+"""
+
+    run_string_as_driver(driver)
+    a = ray.get_actor(actor_name, namespace=namespace)
+    reporter = ray.get_actor(reporter_name, namespace=namespace)
+    try:
+        g = a.gen.remote(reporter, "second", 2)
+        wait_for_condition(
+            lambda: ray.get(reporter.count.remote("second")) == 2,
+            timeout=_ACTOR_GEN_BP_WAIT_S,
+        )
+        _drain_all([g])
+    finally:
+        ray.kill(a)
+        ray.kill(reporter)
 
 
 if __name__ == "__main__":
