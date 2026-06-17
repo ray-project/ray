@@ -224,6 +224,15 @@ class UnityCatalog(Catalog):
                 return ReaderFormat(ext)
         return None
 
+    def infer_format(self, table: str) -> Optional[ReaderFormat]:
+        """Best-effort format hint from table metadata or file extension.
+
+        Calling this function will query UnityCatalog to get the relevant
+        information."""
+        info = self._get_table_info(table)
+        _, table_url = self._get_creds(info["table_id"])
+        return self._infer_format(info, table_url)
+
     def _creds_to_env(self, creds: dict) -> Dict[str, str]:
         """Translate vended credentials into environment variables."""
         if "aws_temp_credentials" in creds:

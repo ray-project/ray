@@ -4595,11 +4595,7 @@ def read_unity_catalog(
 
     fmt = ReaderFormat(data_format.lower()) if data_format else None
     if fmt is None:
-        # Infer the format from table metadata, falling back to the vended
-        # credential URL's extension.
-        info = catalog._get_table_info(table)
-        _, table_url = catalog._get_creds(info["table_id"])
-        fmt = catalog._infer_format(info, table_url)
+        fmt = catalog.infer_format(table)
 
     if fmt is ReaderFormat.DELTA:
         return read_delta(table, catalog=catalog, **reader_kwargs)
