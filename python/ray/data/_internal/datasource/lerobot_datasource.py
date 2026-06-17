@@ -45,10 +45,6 @@ from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.data.extensions import (
-    ArrowVariableShapedTensorArray,
-    ArrowVariableShapedTensorType,
-)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -195,6 +191,8 @@ def _build_schema(
     """Read the Arrow schema of the first data parquet file and append the
     variable-shape-tensor video columns plus ``task``, ``dataset_index`` and
     ``stats``."""
+    from ray.data.extensions import ArrowVariableShapedTensorType
+
     ep = episodes_table.slice(0, 1).to_pylist()[0]
     path = (
         f"{fs_root}/"
@@ -656,6 +654,8 @@ class _LeRobotReadTask(ReadTask):
     ) -> pa.Table:
         """Assemble one Arrow batch from buffered parquet rows, decoded frames,
         tasks, and per-dataset stats."""
+        from ray.data.extensions import ArrowVariableShapedTensorArray
+
         table = pa.concat_tables(pq_buffer)
         columns: dict = {
             table.schema.field(i).name: table.column(i)
