@@ -61,3 +61,10 @@ Unit tests must not
 2. **Test added to a top-level file under `tests/` that qualifies as a unit test**: If a new test function makes no runtime `ray.*` calls, uses no cluster-starting fixture, and does not use `time.sleep()`, post:
 
 > 💡 This test appears to only test pure Python logic. Consider moving it to `tests/unit/`.
+
+## Rule: Doxygen Documentation for C++ Functions and Classes
+- Look at C++ changes in files ending in `.h` or `.cc`.
+- For any newly added or modified function or class declaration, check that it is documented with a Doxygen `/** ... */` block comment using `@` tags (`@brief`, and `@param`/`@return` where applicable).
+- If a new or modified function or class is missing a Doxygen comment, or has a comment that omits `@param`/`@return` for its parameters and return value, post:
+
+> ⚠️ Document functions and classes with Doxygen `/** ... */` block comments using `@` tags (`@brief`, `@param`, `@return`).
