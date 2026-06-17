@@ -1,8 +1,8 @@
 """Unit tests for get_haproxy_binary() resolution logic.
 
 get_haproxy_binary() resolves an HAProxy binary path with this priority:
-  1. Bundled binary from the ``ray-haproxy`` PyPI package.
-  2. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override → validate and return.
+  1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override → validate and return.
+  2. Bundled binary from the ``ray-haproxy`` PyPI package.
   3. System ``haproxy`` on PATH.
   4. FileNotFoundError with an actionable message.
 """
@@ -20,12 +20,26 @@ BINARY_PATH_PATCH = f"{HAPROXY_MODULE}.RAY_SERVE_HAPROXY_BINARY_PATH"
 WHICH_PATCH = f"{HAPROXY_MODULE}.shutil.which"
 
 
-@patch.dict("sys.modules", {"ray_haproxy": None})
+def test_explicit_path_takes_precedence_over_bundled(tmp_path):
+    """An explicit RAY_SERVE_HAPROXY_BINARY_PATH wins over the bundled
+    ray-haproxy package, so an operator's custom binary is not silently
+    overridden."""
+    binary = tmp_path / "haproxy"
+    binary.write_bytes(b"")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+
+    mock_module = MagicMock()
+    mock_module.get_haproxy_binary.return_value = "/bundled/haproxy"
+    with patch.dict("sys.modules", {"ray_haproxy": mock_module}), patch(
+        BINARY_PATH_PATCH, str(binary)
+    ):
+        assert get_haproxy_binary() == str(binary)
+        mock_module.get_haproxy_binary.assert_not_called()
+
+
 def test_explicit_path_validates_executable(tmp_path):
-    """When the bundled ray-haproxy package is unavailable, RAY_SERVE_HAPROXY_BINARY_PATH
-    is used as an override: we check that the file exists and is executable
-    before returning it. (ray_haproxy is patched absent so resolution reaches
-    this branch rather than the higher-priority bundled binary.)"""
+    """An explicit RAY_SERVE_HAPROXY_BINARY_PATH is validated before use: it must
+    exist and be executable, otherwise resolution raises."""
     binary = tmp_path / "haproxy"
     binary.write_bytes(b"")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)

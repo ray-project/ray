@@ -184,8 +184,8 @@ def get_haproxy_binary() -> str:
     """Return the path to the HAProxy binary.
 
     Resolution order:
-      1. The binary bundled in the ``ray-haproxy`` package.
-      2. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
+      1. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
+      2. The binary bundled in the ``ray-haproxy`` package.
       3. ``haproxy`` on the system PATH (fallback).
 
     Raises ``FileNotFoundError`` if no usable binary is found.
@@ -196,20 +196,9 @@ def get_haproxy_binary() -> str:
 
 
 def _resolve_haproxy_binary() -> str:
-    # 1. Bundled binary from the ray-haproxy package. Tried first so ray[serve]
-    # installs work without extra configuration. Falls through if the package is
-    # missing or its binary is unusable.
-    try:
-        from ray_haproxy import get_haproxy_binary as _pip_binary
-
-        return _pip_binary()
-    except ImportError:
-        pass
-    except OSError:
-        pass
-
-    # 2. If RAY_SERVE_HAPROXY_BINARY_PATH was explicitly set (not the default),
-    # use it as an override.
+    # 1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override. An operator who sets
+    # this wants that specific binary, so it takes precedence over the bundled
+    # package.
     if RAY_SERVE_HAPROXY_BINARY_PATH != "haproxy":
         if os.path.isfile(RAY_SERVE_HAPROXY_BINARY_PATH) and os.access(
             RAY_SERVE_HAPROXY_BINARY_PATH, os.X_OK
@@ -220,6 +209,18 @@ def _resolve_haproxy_binary() -> str:
             "does not point to an executable file."
         )
 
+    # 2. Bundled binary from the ray-haproxy package, so ray[serve] installs work
+    # without extra configuration. Falls through if the package is missing or its
+    # binary is unusable.
+    try:
+        from ray_haproxy import get_haproxy_binary as _pip_binary
+
+        return _pip_binary()
+    except ImportError:
+        pass
+    except OSError:
+        pass
+
     # 3. System PATH fallback.
     system_haproxy = shutil.which("haproxy")
     if system_haproxy:
@@ -227,8 +228,8 @@ def _resolve_haproxy_binary() -> str:
 
     raise FileNotFoundError(
         "Could not find an HAProxy binary. "
-        "Install 'ray[serve]' for the bundled binary, "
-        "set RAY_SERVE_HAPROXY_BINARY_PATH, "
+        "Install 'ray[serve]' on Linux for the bundled binary, "
+        "set RAY_SERVE_HAPROXY_BINARY_PATH to an executable, "
         "or ensure 'haproxy' is on PATH."
     )
 
