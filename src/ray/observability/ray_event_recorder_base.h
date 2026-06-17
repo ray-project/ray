@@ -15,6 +15,7 @@
 #pragma once
 
 #include <atomic>
+#include <list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -55,6 +56,18 @@ class RayEventRecorderBase : public RayEventRecorderInterface {
   // Export events to the event aggregator. This is called periodically by the
   // PeriodicalRunner.
   virtual void ExportEvents() = 0;
+
+  // Group mergeable events by (entity_id, event_type), merge each group,
+  // serialize all events, and append the results to `data`.
+  // Non-mergeable events are serialized individually; events that fail to serialize
+  // are skipped. Shared by the ExportEvents implementations of all subclasses.
+  void GroupAndSerializeEvents(std::list<std::unique_ptr<RayEventInterface>> &&events,
+                               rpc::events::RayEventsData *data) const;
+
+  // Send a populated request to the event aggregator, tracking the in-flight
+  // gRPC so shutdown can drain. Sets grpc_in_progress_; the completion callback resets
+  // it. Call while holding mutex_.
+  void SendRequest(rpc::events::AddEventsRequest &&request);
 
   rpc::EventAggregatorClient &event_aggregator_client_;
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
