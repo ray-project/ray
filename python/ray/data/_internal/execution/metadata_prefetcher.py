@@ -248,18 +248,28 @@ class MetadataPrefetcher:
                 fetch_local=True,
             )
             if ready:
-                self._fetch(ready)
+                # Anything not actually gettable yet is returned and re-queued
+                # so the next wait/fetch pass retries it.
+                pending.extend(self._fetch(ready))
 
-    def _fetch(self, batch: List["ray.ObjectRef"]) -> None:
+    def _fetch(self, batch: List["ray.ObjectRef"]) -> List["ray.ObjectRef"]:
         """Fetch refs that ``ray.wait`` reported ready and publish them.
 
-        The refs are locally available, so ``ray.get`` returns without
-        blocking on data transfer; it can still raise if a ref resolved to a
-        task error. Capture that exception per-ref so ``drain`` can surface it
-        on the executor thread rather than silently dropping the block.
+        ``ray.wait(fetch_local=True)`` already pulled these refs local, so
+        every ``ray.get`` uses ``timeout=0``: the fetch thread must never block
+        on data transfer. A ref that resolved to a task error is still
+        available and raises that error immediately (not ``GetTimeoutError``),
+        so it's captured per-ref for ``drain`` to surface rather than silently
+        dropping the block.
+
+        Returns the refs that raised ``GetTimeoutError`` — i.e. ``ray.wait``
+        reported them ready but they're no longer local (e.g. a raced
+        eviction). Those are neither published nor counted as block errors;
+        the caller re-queues them for a later pass.
         """
+        retry: List["ray.ObjectRef"] = []
         try:
-            values = ray.get(batch)
+            values = ray.get(batch, timeout=0)
             results: Dict["ray.ObjectRef", Any] = dict(zip(batch, values))
         except Exception:
             # A batched get raises on the first error and hides which ref
@@ -267,10 +277,16 @@ class MetadataPrefetcher:
             results = {}
             for ref in batch:
                 try:
-                    results[ref] = ray.get(ref)
+                    results[ref] = ray.get(ref, timeout=0)
+                except ray.exceptions.GetTimeoutError:
+                    # Not local anymore despite ray.wait — re-queue, don't
+                    # treat as a block-level error.
+                    retry.append(ref)
                 except Exception as e:
                     results[ref] = e
-        with self._results_lock:
-            self._results.update(results)
-        # Wake a scheduling thread blocked in ``drain(block_timeout_s>0)``.
-        self._published.set()
+        if results:
+            with self._results_lock:
+                self._results.update(results)
+            # Wake a scheduling thread blocked in ``drain(block_timeout_s>0)``.
+            self._published.set()
+        return retry
