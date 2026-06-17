@@ -805,7 +805,9 @@ class TestGPUAggregationPlanReal:
     ):
         import cudf
 
-        unknown_schema_plan = build_gpu_aggregation_plan(("A",), (Sum("B"),))
+        unknown_schema_plan = build_gpu_aggregation_plan(
+            ("A",), (Sum("B"),), input_schema=pa.schema([("A", pa.int64())])
+        )
         assert isinstance(unknown_schema_plan, GPUAggregationPlan), unknown_schema_plan
         unknown_schema_acc_col = unknown_schema_plan.accumulator_columns[0]
         int_input = cudf.DataFrame({"A": [0], "B": np.array([1], dtype=np.int64)})
@@ -835,7 +837,7 @@ class TestGPUAggregationPlanReal:
 
         monkeypatch.setattr(hash_aggregate.DataType, "to_cudf_type", raise_type_error)
 
-        hash_aggregate._cast_column_to_dtype(
+        hash_aggregate._cast_cudf_column_dtype(
             df, "value", hash_aggregate.DataType.from_numpy("int64")
         )
 

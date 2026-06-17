@@ -275,47 +275,6 @@ def _fill_missing_reduction(
     _cast_cudf_column_dtype(result, reduction_column, dtype)
 
 
-def _reduction_dtype(
-    source_dtype: Optional[DataType],
-    target_column: str,
-    aggregation_name: str,
-    df: cudf.DataFrame,
-    input_schema: Optional[Schema],
-) -> Optional[DataType]:
-    """Return the dtype to use for a GPU accumulator column for supported built-in
-    aggregations.
-
-    This includes type promotion for boolean and integer types."""
-    dtype = source_dtype
-    if dtype is None:
-        dtype = _schema_column_dtype(input_schema, target_column)
-    if dtype is None:
-        dtype = _cudf_column_dtype(df, target_column)
-    if dtype is None:
-        return None
-
-    if dtype.is_null_type():
-        return DataType.from_numpy("float64" if aggregation_name == "mean" else "int64")
-
-    if aggregation_name in ("sum", "mean"):
-        if dtype.is_boolean_type():
-            return DataType.from_numpy("int64")
-        if dtype.is_integer_type():
-            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
-        if dtype.is_floating_type():
-            return DataType.from_numpy("float64")
-
-    if aggregation_name in ("min", "max"):
-        if dtype.is_boolean_type():
-            return DataType.from_numpy("bool")
-        if dtype.is_integer_type():
-            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
-        if dtype.is_floating_type():
-            return DataType.from_numpy("float64")
-
-    return dtype
-
-
 class GPUCount(GPUAggregateFn):
     """GPU implementation for :class:`ray.data.aggregate.Count`."""
 
@@ -418,13 +377,7 @@ class GPUSum(GPUAggregateFn):
     ) -> cudf.DataFrame:
         assert self.target_column is not None
         acc_col = accumulator_columns[0]
-        output_dtype = _reduction_dtype(
-            self.source_dtype,
-            self.target_column,
-            "sum",
-            df,
-            input_schema,
-        )
+        output_dtype = self._reduction_dtype(df, input_schema)
         size_col = f"{acc_col}_size"
         count_col = f"{acc_col}_count"
         grouped = df.groupby(list(key_columns), dropna=False)
@@ -510,16 +463,29 @@ class GPUSum(GPUAggregateFn):
     ) -> Dict[str, Optional[DataType]]:
         assert self.target_column is not None
         return {
-            self._accumulator_columns(accumulator_prefix)[0]: (
-                _reduction_dtype(
-                    self.source_dtype,
-                    self.target_column,
-                    "sum",
-                    df,
-                    input_schema,
-                )
+            self._accumulator_columns(accumulator_prefix)[0]: self._reduction_dtype(
+                df, input_schema
             )
         }
+
+    def _reduction_dtype(
+        self, df: cudf.DataFrame, input_schema: Optional[Schema]
+    ) -> Optional[DataType]:
+        assert self.target_column is not None
+        dtype = self.source_dtype
+        if dtype is None:
+            dtype = _schema_column_dtype(input_schema, self.target_column)
+        if dtype is None:
+            dtype = _cudf_column_dtype(df, self.target_column)
+        if dtype is None:
+            return None
+        if dtype.is_null_type() or dtype.is_boolean_type():
+            return DataType.from_numpy("int64")
+        if dtype.is_integer_type():
+            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
+        if dtype.is_floating_type():
+            return DataType.from_numpy("float64")
+        return dtype
 
     def _final_cudf_dtypes(
         self,
@@ -573,13 +539,7 @@ class GPUMin(GPUAggregateFn):
     ) -> cudf.DataFrame:
         assert self.target_column is not None
         acc_col = accumulator_columns[0]
-        output_dtype = _reduction_dtype(
-            self.source_dtype,
-            self.target_column,
-            "min",
-            df,
-            input_schema,
-        )
+        output_dtype = self._reduction_dtype(df, input_schema)
         size_col = f"{acc_col}_size"
         count_col = f"{acc_col}_count"
         grouped = df.groupby(list(key_columns), dropna=False)
@@ -665,16 +625,31 @@ class GPUMin(GPUAggregateFn):
     ) -> Dict[str, Optional[DataType]]:
         assert self.target_column is not None
         return {
-            self._accumulator_columns(accumulator_prefix)[0]: (
-                _reduction_dtype(
-                    self.source_dtype,
-                    self.target_column,
-                    "min",
-                    df,
-                    input_schema,
-                )
+            self._accumulator_columns(accumulator_prefix)[0]: self._reduction_dtype(
+                df, input_schema
             )
         }
+
+    def _reduction_dtype(
+        self, df: cudf.DataFrame, input_schema: Optional[Schema]
+    ) -> Optional[DataType]:
+        assert self.target_column is not None
+        dtype = self.source_dtype
+        if dtype is None:
+            dtype = _schema_column_dtype(input_schema, self.target_column)
+        if dtype is None:
+            dtype = _cudf_column_dtype(df, self.target_column)
+        if dtype is None:
+            return None
+        if dtype.is_null_type():
+            return DataType.from_numpy("int64")
+        if dtype.is_boolean_type():
+            return DataType.from_numpy("bool")
+        if dtype.is_integer_type():
+            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
+        if dtype.is_floating_type():
+            return DataType.from_numpy("float64")
+        return dtype
 
     def _final_cudf_dtypes(
         self,
@@ -728,13 +703,7 @@ class GPUMax(GPUAggregateFn):
     ) -> cudf.DataFrame:
         assert self.target_column is not None
         acc_col = accumulator_columns[0]
-        output_dtype = _reduction_dtype(
-            self.source_dtype,
-            self.target_column,
-            "max",
-            df,
-            input_schema,
-        )
+        output_dtype = self._reduction_dtype(df, input_schema)
         size_col = f"{acc_col}_size"
         count_col = f"{acc_col}_count"
         grouped = df.groupby(list(key_columns), dropna=False)
@@ -820,16 +789,31 @@ class GPUMax(GPUAggregateFn):
     ) -> Dict[str, Optional[DataType]]:
         assert self.target_column is not None
         return {
-            self._accumulator_columns(accumulator_prefix)[0]: (
-                _reduction_dtype(
-                    self.source_dtype,
-                    self.target_column,
-                    "max",
-                    df,
-                    input_schema,
-                )
+            self._accumulator_columns(accumulator_prefix)[0]: self._reduction_dtype(
+                df, input_schema
             )
         }
+
+    def _reduction_dtype(
+        self, df: cudf.DataFrame, input_schema: Optional[Schema]
+    ) -> Optional[DataType]:
+        assert self.target_column is not None
+        dtype = self.source_dtype
+        if dtype is None:
+            dtype = _schema_column_dtype(input_schema, self.target_column)
+        if dtype is None:
+            dtype = _cudf_column_dtype(df, self.target_column)
+        if dtype is None:
+            return None
+        if dtype.is_null_type():
+            return DataType.from_numpy("int64")
+        if dtype.is_boolean_type():
+            return DataType.from_numpy("bool")
+        if dtype.is_integer_type():
+            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
+        if dtype.is_floating_type():
+            return DataType.from_numpy("float64")
+        return dtype
 
     def _final_cudf_dtypes(
         self,
@@ -885,13 +869,7 @@ class GPUMean(GPUAggregateFn):
 
         sum_col, count_col, null_count_col = accumulator_columns
         size_col = f"{sum_col}_size"
-        output_dtype = _reduction_dtype(
-            self.source_dtype,
-            self.target_column,
-            "mean",
-            df,
-            input_schema,
-        )
+        output_dtype = self._reduction_dtype(df, input_schema)
         grouped = df.groupby(list(key_columns), dropna=False)
 
         sizes = grouped.size().reset_index()
@@ -978,16 +956,31 @@ class GPUMean(GPUAggregateFn):
         )
         assert self.target_column is not None
         return {
-            sum_col: _reduction_dtype(
-                self.source_dtype,
-                self.target_column,
-                "mean",
-                df,
-                input_schema,
-            ),
+            sum_col: self._reduction_dtype(df, input_schema),
             count_col: DataType.from_numpy("int64"),
             null_count_col: DataType.from_numpy("int64"),
         }
+
+    def _reduction_dtype(
+        self, df: cudf.DataFrame, input_schema: Optional[Schema]
+    ) -> Optional[DataType]:
+        assert self.target_column is not None
+        dtype = self.source_dtype
+        if dtype is None:
+            dtype = _schema_column_dtype(input_schema, self.target_column)
+        if dtype is None:
+            dtype = _cudf_column_dtype(df, self.target_column)
+        if dtype is None:
+            return None
+        if dtype.is_null_type():
+            return DataType.from_numpy("float64")
+        if dtype.is_boolean_type():
+            return DataType.from_numpy("int64")
+        if dtype.is_integer_type():
+            return DataType.from_numpy("uint64" if dtype.is_uint64_type() else "int64")
+        if dtype.is_floating_type():
+            return DataType.from_numpy("float64")
+        return dtype
 
     def _final_cudf_dtypes(
         self,
