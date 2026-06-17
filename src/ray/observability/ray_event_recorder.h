@@ -17,7 +17,6 @@
 #include <boost/circular_buffer.hpp>
 #include <memory>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "ray/observability/ray_event_recorder_base.h"
@@ -46,8 +45,6 @@ class RayEventRecorder : public RayEventRecorderBase {
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
 
  private:
-  using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
-
   void ExportEvents() override;
 
   // Bounded queue to store events before sending to the event aggregator.
