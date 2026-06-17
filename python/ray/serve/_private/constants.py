@@ -704,9 +704,9 @@ RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
-# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
-# Used when the bundled ray-haproxy package is unavailable.
-RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
+# Absolute path to an HAProxy binary. Empty by default.
+# When set, it takes precedence over the bundled ray-haproxy package.
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections

@@ -60,7 +60,7 @@ def test_explicit_path_validates_executable(tmp_path):
 
 
 @patch(WHICH_PATCH, return_value="/usr/sbin/haproxy")
-@patch(BINARY_PATH_PATCH, "haproxy")
+@patch(BINARY_PATH_PATCH, "")
 def test_pip_package_oserror_falls_through(_mock_which):
     """If ray-haproxy is installed but its binary is broken (e.g. missing file,
     bad permissions), the function should fall through to the system haproxy
@@ -74,7 +74,7 @@ def test_pip_package_oserror_falls_through(_mock_which):
 
 
 @patch(WHICH_PATCH, return_value=None)
-@patch(BINARY_PATH_PATCH, "haproxy")
+@patch(BINARY_PATH_PATCH, "")
 def test_nothing_available_raises_with_instructions(_mock_which):
     """When no binary is available from any source, the error message must
     tell the user how to fix it (install ray[serve], set the env var, or

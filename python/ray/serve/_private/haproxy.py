@@ -199,7 +199,7 @@ def _resolve_haproxy_binary() -> str:
     # 1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override. An operator who sets
     # this wants that specific binary, so it takes precedence over the bundled
     # package.
-    if RAY_SERVE_HAPROXY_BINARY_PATH != "haproxy":
+    if RAY_SERVE_HAPROXY_BINARY_PATH:
         if os.path.isfile(RAY_SERVE_HAPROXY_BINARY_PATH) and os.access(
             RAY_SERVE_HAPROXY_BINARY_PATH, os.X_OK
         ):
