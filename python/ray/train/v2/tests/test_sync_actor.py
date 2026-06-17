@@ -1,9 +1,12 @@
 import pytest
 
 import ray
+from ray.exceptions import RayTaskError
 from ray.train.v2._internal.constants import DEFAULT_COLLECTIVE_TIMEOUT_S
 from ray.train.v2._internal.exceptions import BroadcastCollectiveTimeoutError
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.checkpoint.sync_actor import (
+    SynchronizationActor,
+)
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -34,7 +37,7 @@ def test_broadcast_from_rank_0(world_size):
         )
     # Ensure that all workers have the same consensus data same as rank 0
     assert all([each == "data-0" for each in ray.get(remote_tasks)])
-    # Ensure al the states are cleared after the broadcast function returns
+    # Ensure all the states are cleared after the broadcast function returns
     assert ray.get(sync_actor.get_counter.remote()) == 0
     assert ray.get(sync_actor.get_world_size.remote()) == 0
     assert ray.get(sync_actor.get_reduced_data.remote()) is None
@@ -128,6 +131,56 @@ def test_world_size_mismatch():
     )
     with pytest.raises(ValueError, match="same world size"):
         ray.get(mismatch_task)
+
+
+def test_reset():
+    """Test that calling reset() unblocks all waiting workers with
+    SynchronizationBarrierResetError and leaves the actor usable for
+    subsequent barriers.
+    """
+    sync_actor = SynchronizationActor.remote()
+
+    # 9 out of 10 workers enter the barrier — they should all block.
+    remote_tasks = []
+    for rank in range(9):
+        remote_tasks.append(
+            sync_actor.broadcast_from_rank_zero.remote(
+                world_rank=rank,
+                world_size=10,
+                data=f"data-{rank}",
+                caller_method_name="broadcast_from_rank_zero",
+            )
+        )
+
+    # Verify all tasks are blocking.
+    done, _ = ray.wait(remote_tasks, num_returns=len(remote_tasks), timeout=2)
+    assert not done, "All tasks should be hanging, but some are done."
+
+    # Reset the actor — this should unblock all 9 workers.
+    ray.get(sync_actor.reset.remote())
+
+    # All 9 tasks should raise SynchronizationBarrierResetError.
+    with pytest.raises(RayTaskError) as excinfo:
+        ray.get(remote_tasks)
+    assert "SynchronizationBarrierResetError" in str(excinfo.value)
+
+    # Actor state should be fully cleaned up.
+    assert ray.get(sync_actor.get_counter.remote()) == 0
+    assert ray.get(sync_actor.get_world_size.remote()) == 0
+    assert ray.get(sync_actor.get_reduced_data.remote()) is None
+
+    # The actor should still be usable for a subsequent barrier.
+    remote_tasks = []
+    for rank in range(10):
+        remote_tasks.append(
+            sync_actor.broadcast_from_rank_zero.remote(
+                world_rank=rank,
+                world_size=10,
+                data=f"data-{rank}",
+                caller_method_name="broadcast_from_rank_zero",
+            )
+        )
+    assert all([each == "data-0" for each in ray.get(remote_tasks)])
 
 
 if __name__ == "__main__":

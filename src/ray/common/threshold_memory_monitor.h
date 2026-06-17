@@ -16,9 +16,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <thread>
 
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
@@ -40,13 +41,25 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
    *        kill callback if exceeded.
    * @param monitor_interval_ms the frequency to update the usage. 0 disables the monitor
    *        and callbacks won't fire.
+   * @param resource_isolation_enabled flag to determine if resource isolation is enabled.
+   *        Used to determine the mode of monitoring. If resource isolation is enabled,
+   *        the threshold monitor will only monitor user application memory usage.
    * @param root_cgroup_path the path to the root cgroup that the threshold monitor will
    *        use to calculate the system memory usage.
+   * @param user_cgroup_path the path to the user cgroup that the threshold monitor will
+   *        use to calculate the user application memory usage. Not used if
+   *        resource isolation is disabled.
+   * @param system_cgroup_path the path to the system cgroup that the threshold monitor
+   *        will use to calculate the aggregate object store memory usage. Not used if
+   *        resource isolation is disabled.
    */
   ThresholdMemoryMonitor(KillWorkersCallback kill_workers_callback,
                          int64_t memory_usage_threshold_bytes,
                          uint64_t monitor_interval_ms,
-                         const std::string root_cgroup_path = kDefaultCgroupPath);
+                         bool resource_isolation_enabled,
+                         const std::string &root_cgroup_path = kDefaultCgroupPath,
+                         const std::string &user_cgroup_path = kDefaultCgroupPath,
+                         const std::string &system_cgroup_path = kDefaultCgroupPath);
 
   ~ThresholdMemoryMonitor() override;
 
@@ -67,13 +80,22 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
 
  private:
   /**
-   * @brief Checks if the memory usage is above the threshold.
+   * @brief Checks if the memory usage on the host exceeds the threshold.
    *
-   * @param system_memory The snapshot of system memory usage.
    * @return True if the memory usage is above the threshold.
    */
-  bool IsUsageAboveThreshold(const SystemMemorySnapshot &system_memory,
-                             int64_t threshold_bytes);
+  /// Returns the memory snapshot if the host memory usage exceeds the threshold,
+  /// or std::nullopt otherwise.
+  std::optional<MemoryUsageSnapshot> IsHostMemoryThresholdExceeded();
+
+  /**
+   * @brief Checks if the memory usage across all user slice processes,
+   *        including their object store usage, exceeds their allowed
+   *        threshold under resource isolation mode on this node.
+   *
+   * @return The memory snapshot if above threshold, std::nullopt otherwise.
+   */
+  std::optional<MemoryUsageSnapshot> IsResourceIsolationThresholdExceeded();
 
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
@@ -85,9 +107,20 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   /// The threshold in bytes that triggers the callback.
   int64_t memory_usage_threshold_bytes_;
 
+  /// Flag to indicate if resource isolation is enabled.
+  bool resource_isolation_enabled_;
+
   /// The path to the root cgroup that the threshold monitor will
   /// use to monitor the system memory usage.
   std::string root_cgroup_path_;
+
+  /// The path to the user cgroup that the threshold monitor will
+  /// use to monitor the user application memory usage.
+  std::string user_cgroup_path_;
+
+  /// The path to the system cgroup that the threshold monitor will
+  /// use to monitor the aggregate object store memory usage.
+  std::string system_cgroup_path_;
 
   /// IO service for running the memory monitoring event loop.
   instrumented_io_context io_service_;

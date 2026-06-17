@@ -3,6 +3,14 @@ from ray.data.context import DataContext
 
 
 class DummyLogicalOperator(LogicalOperator):
+    def __init__(self, input_dependencies, name=None, num_outputs=None):
+        super().__init__(
+            _num_outputs=num_outputs,
+        )
+        object.__setattr__(self, "_input_dependencies", input_dependencies)
+        if name is not None:
+            object.__setattr__(self, "_name", name)
+
     @property
     def num_outputs(self):
         return self._num_outputs
@@ -50,6 +58,19 @@ def test_logical_operator_does_not_track_output_dependencies():
     assert transformed is sink
     assert not hasattr(source, "_output_dependencies")
     assert not hasattr(sink, "_output_dependencies")
+
+
+def test_logical_operator_transform_supports_custom_subclasses():
+    source = DummyLogicalOperator([], name="source")
+    replacement = DummyLogicalOperator([], name="replacement")
+    sink = DummyLogicalOperator([source], name="sink")
+
+    transformed = sink._apply_transform(lambda op: replacement if op is source else op)
+
+    assert transformed is not sink
+    assert transformed.name == "sink"
+    assert transformed.input_dependencies == [replacement]
+    assert sink.input_dependencies == [source]
 
 
 if __name__ == "__main__":

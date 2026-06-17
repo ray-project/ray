@@ -1,5 +1,6 @@
 import functools
 import logging
+import pickle
 import time
 import typing
 from typing import (
@@ -17,6 +18,7 @@ from ray.actor import ActorHandle
 from ray.data import ExecutionOptions
 from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -198,9 +200,10 @@ class GPUShuffleActor:
             block_meta = BlockMetadataWithSchema.from_block(
                 block, block_exec_stats=exec_stats
             )
-            yield BlockMetadataWithSchema.from_metadata(
+            bm = BlockMetadataWithSchema.from_metadata(
                 block_meta.metadata, schema=tagged_schema
             )
+            yield pickle.dumps(bm)
 
 
 def _wait_for_refs_with_timeout(
@@ -260,6 +263,7 @@ class GPURankPool:
         spill_memory_limit: Union[int, str, None],
         setup_timeout_s: float,
         should_sort: bool = False,
+        label_selector: Optional[Dict[str, str]] = None,
     ):
         self._nranks = nranks
         self._total_nparts = total_nparts
@@ -269,6 +273,7 @@ class GPURankPool:
         self._spill_memory_limit = spill_memory_limit
         self._setup_timeout_s = setup_timeout_s
         self._should_sort = should_sort
+        self._label_selector = label_selector
         self._actors: List[ActorHandle] = []
         self._shutdown: bool = False
 
@@ -305,8 +310,14 @@ class GPURankPool:
             self._total_nparts,
             self._key_columns,
         )
+        actor_options: Dict[str, typing.Any] = {
+            "num_gpus": 1,
+            "scheduling_strategy": "SPREAD",
+        }
+        if self._label_selector:
+            actor_options["label_selector"] = self._label_selector
         self._actors = [
-            GPUShuffleActor.options(num_gpus=1, scheduling_strategy="SPREAD",).remote(
+            GPUShuffleActor.options(**actor_options).remote(
                 nranks=self._nranks,
                 total_nparts=self._total_nparts,
                 key_columns=self._key_columns,
@@ -457,6 +468,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             spill_memory_limit=data_context.gpu_shuffle_spill_memory_limit,
             setup_timeout_s=data_context.gpu_shuffle_setup_timeout_s,
             should_sort=should_sort,
+            label_selector=data_context.execution_options.label_selector,
         )
 
         self._next_block_idx: int = 0
@@ -505,7 +517,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._insert_tasks[task_idx] = task
             self._shuffle_metrics.on_task_submitted(
                 task_idx,
-                RefBundle([(block_ref, metadata)], schema=None, owns_blocks=False),
+                RefBundle(
+                    [BlockEntry(block_ref, metadata)],
+                    schema=None,
+                    owns_blocks=False,
+                ),
                 task_id=task.get_task_id(),
             )
 

@@ -25,7 +25,7 @@ def test_normalizer():
     processed_col_c = [2 / np.sqrt(5), 0.8, -0.8]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -40,7 +40,7 @@ def test_normalizer():
     processed_col_c = [2 / 3, 4 / 7, -4 / 7]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -55,7 +55,7 @@ def test_normalizer():
     processed_col_c = [1.0, 1.0, -1.0]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -78,7 +78,7 @@ def test_normalizer():
             "B_normalized": processed_col_b,
             "C_normalized": processed_col_c,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 

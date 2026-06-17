@@ -18,6 +18,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.dev_ingress import DEV_ENDPOINTS, DevIngress
 from ray.llm._internal.serve.core.ingress.ingress import make_fastapi_ingress
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
@@ -54,7 +55,8 @@ def single_model_dev_ingress(ray_instance, disable_placement_bundles):
     ingress_cls = make_fastapi_ingress(DevIngress, endpoint_map=DEV_ENDPOINTS)
     ingress_options = DevIngress.get_deployment_options([llm_config])
     ingress_app = serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[llm_deployment],
+        llm_deployments={model_id: llm_deployment},
+        model_cards={model_id: to_model_metadata(model_id, llm_config)},
     )
 
     serve.run(ingress_app, name="single-model-app")
@@ -91,7 +93,14 @@ def two_model_dev_ingress(ray_instance, disable_placement_bundles):
     ingress_cls = make_fastapi_ingress(DevIngress, endpoint_map=DEV_ENDPOINTS)
     ingress_options = DevIngress.get_deployment_options([llm_config_1, llm_config_2])
     ingress_app = serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[llm_deployment_1, llm_deployment_2],
+        llm_deployments={
+            model_id_1: llm_deployment_1,
+            model_id_2: llm_deployment_2,
+        },
+        model_cards={
+            model_id_1: to_model_metadata(model_id_1, llm_config_1),
+            model_id_2: to_model_metadata(model_id_2, llm_config_2),
+        },
     )
 
     serve.run(ingress_app, name="two-model-app")

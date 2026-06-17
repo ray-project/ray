@@ -18,7 +18,13 @@ from ray.autoscaler._private.resource_demand_scheduler import (
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import NodeTypeConfig
-from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.schema import (
+    AutoscalerInstance,
+    IPPRGroupSpec,
+    IPPRSpecs,
+    IPPRStatus,
+    NodeType,
+)
 from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
@@ -68,14 +74,29 @@ class SchedulingRequest:
     # The cloud resource availability score. A low score indicates that resource
     # allocation for this node type has recently failed.
     cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
+    # The recoverable cloud resource availability score.
+    # Similar to cloud_resource_availabilities, but it will recover from 0.0 to 1.0
+    # linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+    recoverable_resource_availabilities: Dict[NodeType, float] = field(
+        default_factory=dict
+    )
+
+    # IPPR (In-Place Pod Resize) typed specs (limits/timeouts).
+    ippr_specs: Optional[IPPRSpecs] = None
+    # Latest per-pod IPPR statuses keyed by cloud_instance_id (pod name).
+    ippr_statuses: Dict[str, IPPRStatus] = field(default_factory=dict)
 
 
 @dataclass
 class SchedulingReply:
     # Instances to launch.
     to_launch: List[LaunchRequest] = field(default_factory=list)
+    # IPPR resize actions to perform on existing pods.
+    to_ippr: List[IPPRStatus] = field(default_factory=list)
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
+    # The aggregate cluster resources after scheduling.
+    cluster_resources: Dict[str, float] = field(default_factory=dict)
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequest] = field(default_factory=list)
     # The infeasible gang resource bundles.
@@ -233,6 +254,12 @@ class SchedulingNode:
     ] = field(default_factory=dict)
     # The node's current resource capacity.
     total_resources: Dict[str, float] = field(default_factory=dict)
+
+    # IPPR state for this node's pod. None if IPPR doesn't apply.
+    ippr_status: Optional[IPPRStatus] = None
+    # IPPR group spec (min/max resources and timeout) for this node type.
+    ippr_spec: Optional[IPPRGroupSpec] = None
+
     # Node's labels, including static or dynamic labels.
     # Note that dynamic labels are a deprecated feature. And it is only used for the
     # autoscaler’s strict-spread placement group scheduling (antiaffinity)
@@ -257,6 +284,8 @@ class SchedulingNode:
     launch_config_hash: Optional[str] = None
     # node kind.
     node_kind: NodeKind = NodeKind.WORKER
+    # The priority of the node type.
+    priority: int = 0
 
     def __init__(
         self,
@@ -272,6 +301,7 @@ class SchedulingNode:
         launch_config_hash: str = "",
         node_kind: NodeKind = NodeKind.WORKER,
         termination_request: Optional[TerminationRequest] = None,
+        priority: int = 0,
     ):
         self.node_type = node_type
         self.total_resources = total_resources
@@ -292,6 +322,7 @@ class SchedulingNode:
         self.launch_config_hash = launch_config_hash
         self.node_kind = node_kind
         self.termination_request = termination_request
+        self.priority = priority
 
     def get_available_resources(self, resource_request_source: ResourceRequestSource):
         """Get the available resources for the given resource request source."""
@@ -300,6 +331,25 @@ class SchedulingNode:
     def get_sched_requests(self, resource_request_source: ResourceRequestSource):
         """Get the resource requests for the given resource request source."""
         return self.sched_requests[resource_request_source]
+
+    def update_total_resources(self, new_total_resources: Dict[str, float]) -> None:
+        """Update the node's total capacity and adjust available resources.
+
+        Applies per-resource deltas between the provided new totals and the
+        current totals, and adds those deltas to the available resources for
+        all scheduling sources.
+
+        Args:
+            new_total_resources: Mapping from resource name (e.g., "CPU",
+                "memory") to the new total capacity to expose for scheduling.
+        """
+        for resource_name, new_total in new_total_resources.items():
+            delta = new_total - self.total_resources.get(resource_name, 0.0)
+            self.total_resources[resource_name] = max(0.0, new_total)
+            for available in self.available_resources_for_sched.values():
+                available[resource_name] = max(
+                    0.0, available.get(resource_name, 0.0) + delta
+                )
 
     def add_sched_request(
         self,
@@ -335,15 +385,33 @@ class SchedulingNode:
             disable_launch_config_check: If outdated node check through launch config is
                 disabled.
 
+        Returns:
+            A scheduling node for the instance, or None if the instance is not
+            schedulable.
         """
         if not SchedulingNode.is_schedulable(instance):
             return None
 
+        node_config = node_type_configs.get(instance.im_instance.instance_type, None)
+
         if instance.im_instance.status == Instance.RAY_RUNNING:
-            assert instance.ray_node is not None, (
-                "ray node should not be None "
-                f"when the instance is running ray: instance={instance}"
-            )
+            if instance.ray_node is None:
+                # Defensive: a RAY_RUNNING instance whose ray_node we cannot
+                # find in GCS indicates a transient inconsistency between the
+                # instance manager and GCS (e.g. the worker pod restarted
+                # during the drain window and the stuck-instance handler
+                # reverted the instance back to RAY_RUNNING with a stale
+                # node_id). Skip rather than asserting, so that a single bad
+                # row does not crash the entire reconcile loop and block all
+                # autoscaling decisions.
+                logger.warning(
+                    "Skipping RAY_RUNNING instance with ray_node=None (stale "
+                    f"state): instance_id={instance.im_instance.instance_id}, "
+                    f"node_id={instance.im_instance.node_id}. This usually "
+                    "indicates a transient inconsistency between the instance "
+                    "manager and GCS."
+                )
+                return None
             # An running ray node
             return SchedulingNode(
                 node_type=instance.im_instance.instance_type,
@@ -365,11 +433,11 @@ class SchedulingNode:
                 idle_duration_ms=instance.ray_node.idle_duration_ms,
                 launch_config_hash=instance.im_instance.launch_config_hash,
                 node_kind=instance.im_instance.node_kind,
+                priority=node_config.priority if node_config else 0,
             )
 
         # This is an instance pending to run ray. Initialize a schedulable node
         # from the node type config.
-        node_config = node_type_configs.get(instance.im_instance.instance_type, None)
         if node_config is None:
             if disable_launch_config_check:
                 # We are not terminating outdated nodes.
@@ -457,7 +525,9 @@ class SchedulingNode:
             node_kind: The node kind.
             im_instance_id: The instance id of the im instance.
             im_instance_status: The instance status of the im instance.
-            node_kind: The node kind.
+
+        Returns:
+            A scheduling node for the given node config.
         """
         return SchedulingNode(
             node_type=node_config.name,
@@ -468,6 +538,7 @@ class SchedulingNode:
             im_instance_id=im_instance_id,
             im_instance_status=im_instance_status,
             node_kind=node_kind,
+            priority=node_config.priority,
         )
 
     def __post_init__(self):
@@ -561,6 +632,10 @@ class SchedulingNode:
             label of the resource request, we should give it a higher score.
 
         TODO(rickyx): add pluggable scoring functions here.
+
+        Args:
+            resource_request_source: The resource request source to score
+                against.
 
         Returns:
             A utilization score for this node.
@@ -815,10 +890,18 @@ class ResourceDemandScheduler(IResourceScheduler):
         # number of workers in the config. This takes into account any pending/running
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
+        # The IPPR specs for the scheduling request.
+        _ippr_specs: Optional[IPPRSpecs] = None
         # The availability scores of cloud resource. A low score suggests that
         # this type of resource has historically experienced allocation failures,
         # and the weight of this type should be reduced during scheduling.
         _cloud_resource_availabilities: Dict[NodeType, float] = field(
+            default_factory=dict
+        )
+        # The recoverable cloud resource availability score.
+        # Similar to _cloud_resource_availabilities, but it will recover from 0.0 to 1.0
+        # linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+        _recoverable_resource_availabilities: Dict[NodeType, float] = field(
             default_factory=dict
         )
 
@@ -827,9 +910,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
             cloud_resource_availabilities: Dict[NodeType, float],
+            recoverable_resource_availabilities: Dict[NodeType, float],
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
+            ippr_specs: Optional[IPPRSpecs] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -839,7 +924,11 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
             self._disable_launch_config_check = disable_launch_config_check
+            self._ippr_specs = ippr_specs
             self._cloud_resource_availabilities = cloud_resource_availabilities
+            self._recoverable_resource_availabilities = (
+                recoverable_resource_availabilities
+            )
 
         @classmethod
         def from_schedule_request(
@@ -853,6 +942,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             Args:
                 req: The scheduling request. The caller should make sure the
                     request is valid.
+
+            Returns:
+                A schedule context populated from the scheduling request.
             """
 
             nodes = []
@@ -861,18 +953,34 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Initialize the scheduling nodes.
             for instance in req.current_instances:
                 node = SchedulingNode.new(
-                    instance, node_type_configs, req.disable_launch_config_check
+                    instance,
+                    node_type_configs,
+                    req.disable_launch_config_check,
                 )
                 if node:
                     nodes.append(node)
+                    if (
+                        req.ippr_statuses
+                        and req.ippr_specs
+                        and instance.cloud_instance_id in req.ippr_statuses
+                        and node.node_type in req.ippr_specs.groups
+                    ):
+                        # Attach the current IPPR state of the node and its IPPR spec for
+                        # later resizing.
+                        node.ippr_spec = req.ippr_specs.groups[node.node_type]
+                        node.ippr_status = req.ippr_statuses[instance.cloud_instance_id]
+                        if node.ray_node_id:
+                            node.ippr_status.raylet_id = node.ray_node_id
 
             return cls(
                 nodes=nodes,
                 node_type_configs=node_type_configs,
                 cloud_resource_availabilities=req.cloud_resource_availabilities,
+                recoverable_resource_availabilities=req.recoverable_resource_availabilities,
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
+                ippr_specs=req.ippr_specs,
             )
 
         @staticmethod
@@ -955,6 +1063,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         def get_cloud_resource_availabilities(self) -> Dict[NodeType, float]:
             return copy.deepcopy(self._cloud_resource_availabilities)
 
+        def get_recoverable_resource_availabilities(self) -> Dict[NodeType, float]:
+            return copy.deepcopy(self._recoverable_resource_availabilities)
+
         def update(self, new_nodes: List[SchedulingNode]) -> None:
             """
             Update the context with the new nodes.
@@ -979,6 +1090,28 @@ class ResourceDemandScheduler(IResourceScheduler):
             return "ScheduleContext({} nodes, node_type_available={})".format(
                 len(self._nodes), dict(self._node_type_available)
             )
+
+        def get_ippr_specs(self) -> Optional[IPPRSpecs]:
+            """Return typed IPPR specs if present on the scheduling request."""
+            return self._ippr_specs
+
+        def get_ippr_requests(self) -> List[IPPRStatus]:
+            """Return IPPR actions to perform this iteration.
+
+            Collects all nodes with an ``IPPRStatus`` that are ready to resize,
+            i.e. have a raylet id, have a newly queued status, and a desired
+            different from current resources.
+
+            Returns:
+                A list of ``IPPRStatus`` to send to the cloud provider for
+                in-place pod resize.
+            """
+            return [
+                node.ippr_status
+                for node in self._nodes
+                if node.ippr_status is not None
+                and node.ippr_status.has_resize_request_to_send()
+            ]
 
         def get_launch_requests(self) -> List[LaunchRequest]:
             """
@@ -1014,14 +1147,15 @@ class ResourceDemandScheduler(IResourceScheduler):
             ]
 
     def schedule(self, request: SchedulingRequest) -> SchedulingReply:
-        logger.debug(
-            "Scheduling for request: resource_request={}, gang_resource_request={}, "
-            "cluster_constraint={}".format(
-                ResourceRequestUtil.to_dict_list(request.resource_requests),
-                ProtobufUtil.to_dict_list(request.gang_resource_requests),
-                ProtobufUtil.to_dict_list(request.cluster_resource_constraints),
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Scheduling for request: resource_request={}, gang_resource_request={}, "
+                "cluster_constraint={}".format(
+                    ResourceRequestUtil.to_dict_list(request.resource_requests),
+                    ProtobufUtil.to_dict_list(request.gang_resource_requests),
+                    ProtobufUtil.to_dict_list(request.cluster_resource_constraints),
+                )
             )
-        )
 
         ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(request)
 
@@ -1059,13 +1193,17 @@ class ResourceDemandScheduler(IResourceScheduler):
         # not needed by min_worker count, etc.)
         ResourceDemandScheduler._enforce_idle_termination(ctx)
 
+        cluster_resources = ctx.get_cluster_resources()
+
         # Compute the number of nodes to launch.
         reply = SchedulingReply(
             infeasible_resource_requests=infeasible_requests,
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
             to_launch=ctx.get_launch_requests(),
+            to_ippr=ctx.get_ippr_requests(),
             to_terminate=ctx.get_terminate_requests(),
+            cluster_resources=cluster_resources,
         )
 
         if self._event_logger is not None:
@@ -1076,7 +1214,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     infeasible_requests=infeasible_requests,
                     infeasible_gang_requests=infeasible_gang_requests,
                     infeasible_cluster_resource_constraints=infeasible_constraints,
-                    cluster_resources=ctx.get_cluster_resources(),
+                    cluster_resources=cluster_resources,
                 )
             except Exception:
                 logger.exception("Failed to emit event logs.")
@@ -1411,7 +1549,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         Args:
             ctx: The schedule context.
-            requests_by_count: The resource requests.
+            requests: The resource requests.
 
         Returns:
             A list of infeasible resource requests.
@@ -1513,8 +1651,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         then try to schedule the requests on new nodes if possible.
 
         Args:
-            requests_to_sched: The resource requests to be scheduled.
             ctx: The current scheduling context.
+            requests_to_sched: The resource requests to be scheduled.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource
                 constraints.
@@ -1563,6 +1701,18 @@ class ResourceDemandScheduler(IResourceScheduler):
         #   2. new nodes that are launched to satisfy the resource requests.
         target_nodes = []
 
+        for node in existing_nodes:
+            if node.ippr_status is not None:
+                if node.ippr_status.is_in_progress():
+                    # While a resize is ongoing or just completed, use desired values
+                    # as the node's capacity so binpacking can consider the change.
+                    node.update_total_resources(
+                        {
+                            "CPU": node.ippr_status.desired_cpu,
+                            "memory": node.ippr_status.desired_memory,
+                        }
+                    )
+
         # Try scheduling resource requests with existing nodes first.
         while len(requests_to_sched) > 0 and len(existing_nodes) > 0:
             (
@@ -1574,6 +1724,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 existing_nodes,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
+                ctx.get_recoverable_resource_availabilities(),
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1584,16 +1735,89 @@ class ResourceDemandScheduler(IResourceScheduler):
         # If there's any existing nodes left, we will add to the target nodes
         target_nodes.extend(existing_nodes)
 
-        # Try scheduling resource requests with new nodes.
-        node_pools = [
-            SchedulingNode.from_node_config(
+        # Try scheduling remaining requests with IPPR after filling up existing nodes with their current capacity.
+        existing_nodes = target_nodes
+        target_nodes = []
+        ippr_candidates = []
+
+        for node in existing_nodes:
+            if node.ippr_status is not None and node.ippr_status.can_resize_up():
+                ippr_candidates.append(node)
+            else:
+                target_nodes.append(node)
+
+        original_ippr_candidates = {
+            node.ippr_status.cloud_instance_id: copy.deepcopy(node)
+            for node in ippr_candidates
+        }
+        for node in ippr_candidates:
+            # Expose per-node maximums so binpacking can evaluate placing more work
+            # by upsizing in-place rather than launching new nodes.
+            node.update_total_resources(
+                {
+                    "CPU": node.ippr_status.max_cpu(),
+                    "memory": node.ippr_status.max_memory(),
+                }
+            )
+
+        while len(requests_to_sched) > 0 and len(ippr_candidates) > 0:
+            (
+                best_node,
+                requests_to_sched,
+                ippr_candidates,
+            ) = ResourceDemandScheduler._sched_best_node(
+                requests_to_sched,
+                ippr_candidates,
+                resource_request_source,
+                ctx.get_cloud_resource_availabilities(),
+                ctx.get_recoverable_resource_availabilities(),
+            )
+            if best_node is None:
+                # No ippr nodes can schedule any more requests.
+                break
+
+            # Commit an IPPR action on the selected node to its max effective caps.
+            best_node.ippr_status.queue_resize_request(
+                desired_cpu=best_node.ippr_status.max_cpu(),
+                desired_memory=best_node.ippr_status.max_memory(),
+            )
+            target_nodes.append(best_node)
+            original_ippr_candidates.pop(best_node.ippr_status.cloud_instance_id, None)
+
+        # Keep unselected IPPR candidates at their original resources because no
+        # resize request was issued for them in this scheduling pass.
+        target_nodes.extend(original_ippr_candidates.values())
+
+        ippr_specs = ctx.get_ippr_specs()
+
+        def _to_launch_node_with_ippr_caps(node_type: NodeType) -> SchedulingNode:
+            node = SchedulingNode.from_node_config(
                 ctx.get_node_type_configs()[node_type],
                 status=SchedulingNodeStatus.TO_LAUNCH,
                 node_kind=NodeKind.WORKER,
             )
+            # If the new node can be resized, consider its maximum IPPR capacity.
+            if ippr_specs and node_type in ippr_specs.groups:
+                group = ippr_specs.groups[node_type]
+                node.update_total_resources(
+                    {
+                        "CPU": float(
+                            max(group.max_cpu, node.total_resources.get("CPU", 0))
+                        ),
+                        "memory": float(
+                            max(group.max_memory, node.total_resources.get("memory", 0))
+                        ),
+                    }
+                )
+            return node
+
+        # Try scheduling resource requests with new nodes.
+        node_pools = [
+            _to_launch_node_with_ippr_caps(node_type)
             for node_type, num_available in node_type_available.items()
             if num_available > 0
         ]
+
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
             max_num_nodes = ctx.get_max_num_nodes()
@@ -1613,6 +1837,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node_pools,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
+                ctx.get_recoverable_resource_availabilities(),
             )
             if best_node is None:
                 break
@@ -1622,13 +1847,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             # added node can be launched.
             node_type_available[best_node.node_type] -= 1
             if node_type_available[best_node.node_type] > 0:
-                node_pools.append(
-                    SchedulingNode.from_node_config(
-                        ctx.get_node_type_configs()[best_node.node_type],
-                        status=SchedulingNodeStatus.TO_LAUNCH,
-                        node_kind=NodeKind.WORKER,
-                    )
-                )
+                node_pools.append(_to_launch_node_with_ippr_caps(best_node.node_type))
 
         return target_nodes, requests_to_sched
 
@@ -1638,14 +1857,19 @@ class ResourceDemandScheduler(IResourceScheduler):
         nodes: List[SchedulingNode],
         resource_request_source: ResourceRequestSource,
         cloud_resource_availabilities: Dict[NodeType, float],
+        recoverable_resource_availabilities: Dict[NodeType, float],
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
         A simple greedy algorithm is used to schedule the requests:
             1. Try to schedule the requests on each node.
-            2. Sort the nodes by a score. The sorting includes:
+            2. Sort the nodes by a multi-level score:
                 2.1. UtilizationScore: to maximize resource utilization.
-                2.2. Cloud resource availabilities: prioritize node types with
+                2.2. Recoverable Availability: prioritize node types that have
+                never failed or have recovered from failures.
+                2.3. Priority: prioritize node types with higher user-defined
+                priority.
+                2.4. Cloud resource availabilities: prioritize node types with
                 the most available cloud resources, in order to minimize allocation
                 failures.
             3. Return the node with the highest score.
@@ -1662,6 +1886,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 pending demands from ray actors/tasks or cluster resource constraints.
             cloud_resource_availabilities: The cloud resource availability score. A low
                 score indicates that allocation for this node type has recently failed.
+            recoverable_resource_availabilities: The recoverable cloud resource availability
+                score. Similar to cloud_resource_availabilities, but it will recover from
+                0.0 to 1.0 linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
 
         Returns:
             best_node: The best node to schedule the requests.
@@ -1707,11 +1934,12 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # No nodes can schedule any of the requests.
         if len(results) == 0:
-            logger.debug(
-                "No nodes can schedule the requests: {}, for nodes: {}".format(
-                    ResourceRequestUtil.to_dict_list(requests), nodes
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "No nodes can schedule the requests: {}, for nodes: {}".format(
+                        ResourceRequestUtil.to_dict_list(requests), nodes
+                    )
                 )
-            )
             return None, requests, nodes
 
         # Sort the results by score.
@@ -1719,7 +1947,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             results,
             key=lambda r: (
                 r.score,
-                cloud_resource_availabilities.get(r.node.node_type, 1),
+                recoverable_resource_availabilities.get(r.node.node_type, 1.0),
+                r.node.priority,
+                cloud_resource_availabilities.get(r.node.node_type, 1.0),
             ),
             reverse=True,
         )
@@ -1727,13 +1957,14 @@ class ResourceDemandScheduler(IResourceScheduler):
         best_result = results[0]
         # Remove the best node from the nodes.
         nodes.pop(best_result.idx)
-        logger.debug(
-            "Best node: {}, score: {}, remaining requests: {}".format(
-                best_result.node,
-                best_result.score,
-                ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Best node: {}, score: {}, remaining requests: {}".format(
+                    best_result.node,
+                    best_result.score,
+                    ResourceRequestUtil.to_dict_list(best_result.infeasible_requests),
+                )
             )
-        )
         return best_result.node, best_result.infeasible_requests, nodes
 
     @staticmethod

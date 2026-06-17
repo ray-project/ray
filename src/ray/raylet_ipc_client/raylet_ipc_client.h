@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"

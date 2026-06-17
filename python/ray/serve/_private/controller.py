@@ -15,7 +15,7 @@ from typing import (
 )
 
 import ray
-from ray._common.network_utils import build_address
+from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
@@ -55,7 +55,6 @@ from ray.serve._private.controller_health_metrics_tracker import (
 )
 from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
-    get_proxy_actor_class,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -64,6 +63,7 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
@@ -74,6 +74,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -84,7 +85,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     is_grpc_enabled,
 )
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
     ActorNameList,
     ApplicationArgs,
@@ -202,13 +203,21 @@ class ServeController:
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
                 "with HAProxy."
             )
+            all_interfaces = get_all_interfaces_ip()
+            if http_options.host != all_interfaces:
+                logger.warning(
+                    f"HTTPOptions.host={http_options.host!r} won't accept "
+                    "connections from HAProxy on other nodes; cross-node "
+                    "routing will fail with connection refused. Set host to "
+                    f"{all_interfaces!r} or omit it to use the HAProxy-mode "
+                    "default."
+                )
         elif self._direct_ingress_enabled:
             logger.info(
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
             )
-
-            http_options.location = DeploymentMode.HeadOnly
+            http_options.location = ProxyLocation.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
@@ -217,7 +226,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
-            proxy_actor_class=get_proxy_actor_class(),
+            proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
             running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
@@ -432,9 +441,13 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids (Dict[str, int]): Snapshot IDs are used to
-              determine whether or not the host should immediately return the
-              data or wait for the value to be changed.
+            keys_to_snapshot_ids: Snapshot IDs are used to determine whether or
+                not the host should immediately return the data or wait for the
+                value to be changed.
+
+        Returns:
+            The result of the underlying long-poll host's listen call (an
+            ``UpdatedObject`` map for changed keys, returned to the client).
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
@@ -445,8 +458,12 @@ class ServeController:
         """Proxy long pull client's listen request.
 
         Args:
-            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
-              keys_to_snapshot_ids (Dict[str, int]).
+            keys_to_snapshot_ids_bytes: the protobuf-serialized bytes of the
+                ``keys_to_snapshot_ids`` (``Dict[str, int]``) mapping.
+
+        Returns:
+            The protobuf-serialized response of the underlying long-poll host's
+            Java listen call, suitable for return to a Java client.
         """
         if not self.done_recovering_event.is_set():
             await self.done_recovering_event.wait()
@@ -454,6 +471,10 @@ class ServeController:
         return await self.long_poll_host.listen_for_change_java(
             keys_to_snapshot_ids_bytes
         )
+
+    def notify_long_poll_client_disabled(self, client_id: str, reason: str) -> None:
+        """Surfaces the disabled reason from LongPollClient in the logs."""
+        self.long_poll_host.notify_client_disabled(client_id, reason)
 
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
@@ -533,6 +554,7 @@ class ServeController:
             num_loops += 1
             self.num_control_loops_gauge.set(num_loops)
             self._health_metrics_tracker.num_control_loops = num_loops
+            self._health_metrics_tracker.last_control_loop_time = time.time()
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
@@ -652,7 +674,7 @@ class ServeController:
         # Direct ingress port management
         if self._direct_ingress_enabled:
             # Update port values for ingress replicas.
-            # Non-ingress replicas are not expected to have ports allocated.
+            # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
@@ -1039,16 +1061,22 @@ class ServeController:
         If same app name deployed, old application will be overwritten.
 
         Args:
-            name: Application name.
-            deployment_args_list: List of serialized deployment information,
-                where each item in the list is bytes representing the serialized
-                protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
-                information for the single deployment.
+            name_to_deployment_args_list: Dictionary mapping application names
+                to a list of serialized deployment information. Each item in
+                the list is bytes representing the serialized protobuf
+                ``DeploymentArgs`` object, which contains all the information
+                for a single deployment.
             name_to_application_args: Dictionary mapping application names to serialized
                 application arguments, where each item is bytes representing the serialized
                 protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
                 for the application.
         """
+        if self._shutting_down:
+            logger.warning(
+                "Ignoring deploy_applications request because Serve controller is shutting down."
+            )
+            return
+
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
             deployment_args_deserialized = []
@@ -1061,6 +1089,7 @@ class ServeController:
                         "replica_config_proto_bytes": args.replica_config,
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
+                        "ingress_request_router": args.ingress_request_router,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1111,6 +1140,12 @@ class ServeController:
 
         If `deployment_time` is not provided, `time.time()` is used.
         """
+        if self._shutting_down:
+            logger.warning(
+                "Ignoring apply_config request because Serve controller is shutting down."
+            )
+            return
+
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
@@ -1169,6 +1204,9 @@ class ServeController:
 
         Args:
             name: the name of the deployment.
+            app_name: the name of the application that owns the deployment. The
+                empty string targets deployments that are not scoped to an
+                application (1.x-style deployments).
 
         Returns:
             DeploymentRoute's protobuf serialized bytes
@@ -1321,7 +1359,7 @@ class ServeController:
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
             controller_info=self._actor_details,
-            proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
+            proxy_location=http_config.location,
             http_options=http_options,
             grpc_options=grpc_options,
             proxies=(
@@ -1331,6 +1369,7 @@ class ServeController:
             ),
             applications=applications,
             target_groups=self.get_target_groups(),
+            controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1347,6 +1386,7 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
+                    ingress_request_router_targets=[],
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1358,6 +1398,7 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
+                        ingress_request_router_targets=[],
                     )
                 )
         return target_groups
@@ -1439,14 +1480,11 @@ class ServeController:
 
         return target_groups
 
-    def _get_running_replica_details_for_ingress_deployment(
-        self, app_name: str
+    def _get_running_replica_details_for_deployment(
+        self, app_name: str, deployment_name: str
     ) -> List[ReplicaDetails]:
-        """Get running replica details for a specific application."""
-        ingress_deployment_name = (
-            self.application_state_manager.get_ingress_deployment_name(app_name)
-        )
-        deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
+        """Get running replica details for a specific deployment in an app."""
+        deployment_id = DeploymentID(app_name=app_name, name=deployment_name)
         details = self.deployment_state_manager.get_deployment_details(deployment_id)
         if not details:
             return []
@@ -1463,6 +1501,17 @@ class ServeController:
             if replica_detail.replica_id in running_replica_ids
         ]
 
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for the ingress deployment."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        return self._get_running_replica_details_for_deployment(
+            app_name, ingress_deployment_name
+        )
+
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
@@ -1472,13 +1521,35 @@ class ServeController:
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
         allocated yet.
+
+        When an ingress request router deployment is configured (ingress
+        bypass), its replicas go into ``ingress_request_router_targets`` for Lua
+        routing decisions and the app's ingress replicas remain the main
+        targets for data plane traffic.
         """
+        ingress_request_router_deployment_name = (
+            self.application_state_manager.get_ingress_request_router_deployment_name(
+                app_name
+            )
+        )
+
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
+        # Without ingress replicas, HAProxy has no data-plane targets to route to,
+        # so suppress router targets too — the app is effectively unreachable.
         if not replica_details:
             return []
+
+        ingress_request_router_targets = []
+        if ingress_request_router_deployment_name is not None:
+            ingress_request_router_targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, ingress_request_router_deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
 
         target_groups = []
 
@@ -1493,6 +1564,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=ingress_request_router_targets,
                 )
             )
 
@@ -1508,6 +1580,7 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
+                        ingress_request_router_targets=[],
                     )
                 )
 
@@ -1540,6 +1613,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
         if include_grpc:
@@ -1549,6 +1623,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=grpc_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
 
@@ -1606,10 +1681,15 @@ class ServeController:
         return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
-        """Return application status
+        """Return application status.
+
         Args:
             name: application name. If application name doesn't exist, app_status
                   is NOT_STARTED.
+
+        Returns:
+            Protobuf-serialized bytes of the ``StatusOverview`` for the named
+            application (including app status and per-deployment statuses).
         """
 
         app_status = self.application_state_manager.get_app_status_info(name)
@@ -1674,6 +1754,10 @@ class ServeController:
             name: Deployment name.
             app_name: Application name. Default is "" because 1.x
                 deployments go through this API.
+
+        Returns:
+            Protobuf-serialized bytes of the deployment's status, or ``None``
+            if no deployment exists for ``(name, app_name)``.
         """
 
         id = DeploymentID(name=name, app_name=app_name)
@@ -1690,6 +1774,9 @@ class ServeController:
 
     def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
         """Name of the ingress deployment in an application.
+
+        Args:
+            app_name: the application to look up.
 
         Returns:
             Ingress deployment name (str): if the application exists.
@@ -1727,13 +1814,18 @@ class ServeController:
         """
         return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 
-    async def graceful_shutdown(self, wait: bool = True):
+    async def graceful_shutdown(self, wait: bool = True) -> None:
         """Set the shutting down flag on controller to signal shutdown in
         run_control_loop().
 
         This is used to signal to the controller that it should proceed with shutdown
         process, so it can shut down gracefully. It also waits until the shutdown
         event is triggered if wait is true.
+
+        Args:
+            wait: if True, block until the controller's shutdown event fires
+                (the caller is expected to handle the resulting
+                ``RayActorError`` raised when the controller actor exits).
 
         Raises:
             RayActorError: if wait is True, the caller waits until the controller

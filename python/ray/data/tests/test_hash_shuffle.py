@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
 
+import pyarrow as pa
 import pytest
 
 from ray.data import DataContext, ExecutionResources
@@ -11,9 +12,10 @@ from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOpera
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import JoinType
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import GiB, MiB
-from ray.data.aggregate import Count, Sum
-from ray.data.block import BlockMetadata
+from ray.data.aggregate import AggregateFnV2, Count, Sum
+from ray.data.block import BlockAccessor, BlockMetadata
 
 
 @dataclass
@@ -566,6 +568,42 @@ def test_hash_shuffle_operator_remote_args(
             )
 
 
+def test_aggregator_ray_remote_args_includes_context_label_selector(
+    ray_start_regular, restore_data_context
+):
+    """ExecutionOptions.label_selector should appear on aggregator actor args."""
+    DataContext.get_current().execution_options.label_selector = {"subcluster": "train"}
+
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=2 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = HashAggregateOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            aggregation_fns=[Count()],
+            key_columns=("id",),
+        )
+
+    assert op._aggregator_pool._aggregator_ray_remote_args["label_selector"] == {
+        "subcluster": "train"
+    }
+
+
 def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
     """Test that partial override of aggregator_ray_remote_args retains default values.
 
@@ -623,6 +661,56 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
 
         # Verify that memory is still present
         assert "memory" in op._aggregator_pool._aggregator_ray_remote_args
+
+
+def test_partial_aggregate_preserves_sort_after_builder_compaction(
+    ray_start_regular,
+    monkeypatch,
+):
+    """Regression test for HashAggregate producing duplicate group rows when
+    `TableBlockBuilder.build()` reorders rows across an internal compaction.
+
+    For an `AggregateFnV2` whose accumulator can vary in size between groups
+    (here, an empty list vs. a non-empty list), the per-block partial-aggregate
+    output is built by `_aggregate` row-by-row via the table builder. If
+    `_compact_if_needed` triggered mid-loop, the legacy `build()` placed the
+    still-uncompacted (newest) rows in front of the compacted (older) tables,
+    breaking the "blocks reaching `_combine_aggregated_blocks` are sorted by
+    key" precondition that `heapq.merge` relies on. That precondition violation
+    surfaced as duplicate group rows whose count varied with the parallelism
+    arg (since parallelism changes per-block row count, and therefore whether
+    compaction triggers inside the partial-aggregate loop).
+
+    We force compaction on every row via `MAX_UNCOMPACTED_SIZE_BYTES=1` and
+    assert that the partial-aggregate output is still sorted by the group key.
+    """
+    import ray.data._internal.table_block as table_block
+
+    class EmptyAccumulatorForOddKeys(AggregateFnV2):
+        def __init__(self):
+            super().__init__(
+                name="items",
+                on=None,
+                ignore_nulls=False,
+                zero_factory=lambda: [],
+            )
+
+        def aggregate_block(self, block):
+            table = BlockAccessor.for_block(block).to_arrow()
+            group_key = table.column("A")[0].as_py()
+            return [] if group_key % 2 else ["value"]
+
+        def combine(self, current, new):
+            return current + new
+
+    monkeypatch.setattr(table_block, "MAX_UNCOMPACTED_SIZE_BYTES", 1)
+
+    source = pa.table({"A": [1, 2, 3, 4], "B": [0, 0, 0, 0]})
+    partial = BlockAccessor.for_block(source)._aggregate(
+        SortKey("A"), (EmptyAccumulatorForOddKeys(),)
+    )
+
+    assert partial.column("A").to_pylist() == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":

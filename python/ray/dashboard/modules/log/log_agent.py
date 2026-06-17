@@ -4,7 +4,7 @@ import io
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 import grpc
 
@@ -187,7 +187,7 @@ async def _stream_log_in_chunk(
     end_offset: int = -1,
     keep_alive_interval_sec: int = -1,
     block_size: int = BLOCK_SIZE,
-):
+) -> AsyncIterator[reporter_pb2.StreamLogReply]:
     """Streaming log in chunk from start to end offset.
 
     Stream binary file content in chunks from start offset to an end
@@ -202,8 +202,9 @@ async def _stream_log_in_chunk(
             retried when reaching the file end, -1 means no retry.
         block_size: Number of bytes per chunk, exposed for testing
 
-    Return:
-        Async generator of StreamReply
+    Yields:
+        reporter_pb2.StreamLogReply: Successive chunks of the file contents,
+        one per block.
     """
     assert "b" in file.mode, "Only binary file is supported."
     assert not (

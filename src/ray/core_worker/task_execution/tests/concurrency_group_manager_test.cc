@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_execution/fiber.h"
 #include "ray/core_worker/task_execution/thread_pool.h"

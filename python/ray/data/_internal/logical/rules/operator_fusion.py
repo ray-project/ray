@@ -384,7 +384,7 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
-        input_op = up_logical_op.input_dependency
+        input_op = up_logical_op.input_dependencies[0]
         logical_op = AbstractUDFMap(
             name,
             input_op,
@@ -522,6 +522,10 @@ class FuseOperators(Rule):
         ):
             ref_bundler = down_op._block_ref_bundler
 
+        isolate_workers = (
+            isinstance(up_op, TaskPoolMapOperator) and up_op.isolate_workers
+        ) or (isinstance(down_op, TaskPoolMapOperator) and down_op.isolate_workers)
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -539,6 +543,7 @@ class FuseOperators(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
+            isolate_workers=isolate_workers,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -550,7 +555,7 @@ class FuseOperators(Rule):
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependency
+            input_op = up_logical_op.input_dependencies[0]
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
@@ -666,14 +671,14 @@ class FuseOperators(Rule):
 
         if isinstance(down_logical_op, RandomShuffle):
             logical_op = RandomShuffle(
-                input_op,
                 name=name,
+                input_dependencies=[input_op],
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(down_logical_op, Repartition):
             logical_op = Repartition(
-                input_op,
                 num_outputs=down_logical_op.num_outputs,
+                input_dependencies=[input_op],
                 shuffle=down_logical_op.shuffle,
             )
         self._op_map[op] = logical_op

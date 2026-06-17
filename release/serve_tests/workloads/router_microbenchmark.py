@@ -5,7 +5,9 @@ and xlarge (512) replica scales.
 
 Measures per configuration:
 - p50 throughput (req/s)
-- p50 latency (ms)
+- p50 client end-to-end latency (ms)
+- p50 app latency (ms)
+- p50 actual child processing latency (ms)
 - Per-replica utilization (p25, p50, p75)
 
 Methodology:
@@ -15,6 +17,8 @@ Methodology:
   requests through DeploymentHandle, distributed across remote actors.
 - Load level: 100% of theoretical max throughput, which equals to
   num_replicas * max_ongoing_requests.
+- Serve access logs are disabled so logging throughput does not dominate
+  low-latency microbenchmark results.
 
 Usage (CI):
     python workloads/router_microbenchmark.py
@@ -58,6 +62,7 @@ WARMUP_S = 10.0
 DURATION_S = 60.0
 THROUGHPUT_WINDOW_S = 5.0  # window size for per-window throughput
 MAX_USERS_PER_TASK = 48  # max concurrent users per load-gen task
+LOAD_GEN_START_DELAY_S = 5.0
 
 # ---------------------------------------------------------------------------
 # Scales and router types
@@ -67,6 +72,7 @@ NUM_REPLICAS = [512, 128, 32, 8]
 ROUTER_TYPES = ["pow2", "capacity_queue"]
 
 APP_NAME = "router-benchmark"
+LOGGING_CONFIG = {"enable_access_log": False}
 
 
 # ===================================================================
@@ -93,12 +99,18 @@ class BenchmarkChild:
         self._cap_s = simulated_latency_cap_s
 
     async def __call__(self) -> dict:
-        latency_s = min(
+        simulated_latency_s = min(
             random.expovariate(1 / self._mean_s),
             self._cap_s,
         )
-        await asyncio.sleep(latency_s)
-        return {"replica_id": self._replica_id, "processing_s": latency_s}
+        processing_start = time.perf_counter()
+        await asyncio.sleep(simulated_latency_s)
+        processing_s = time.perf_counter() - processing_start
+        return {
+            "replica_id": self._replica_id,
+            "processing_s": processing_s,
+            "simulated_processing_s": simulated_latency_s,
+        }
 
 
 @serve.deployment(
@@ -114,7 +126,10 @@ class BenchmarkParent:
         self._child = child
 
     async def __call__(self) -> dict:
-        return await self._child.remote()
+        app_start = time.perf_counter()
+        resp = await self._child.remote()
+        resp["app_latency_s"] = time.perf_counter() - app_start
+        return resp
 
 
 # ===================================================================
@@ -203,8 +218,10 @@ class RequestResult:
     start_time: float
     end_time: float
     latency_ms: float
+    app_latency_ms: float  # parent replica -> child replica -> parent replica
     child_replica_id: str
-    processing_s: float  # actual asyncio.sleep duration at child
+    processing_s: float  # actual child wall-clock time spent in simulated work
+    simulated_processing_s: float  # sampled sleep duration requested by the child
     success: bool
 
 
@@ -215,10 +232,17 @@ class LoadGenTask:
     def __init__(self, app_name: str):
         self._handle = serve.get_deployment_handle("BenchmarkParent", app_name=app_name)
 
+    def ready(self) -> bool:
+        return True
+
     async def run(
-        self, num_users: int, warmup_s: float, duration_s: float
+        self, num_users: int, warmup_s: float, duration_s: float, start_at: float
     ) -> List[Dict]:
-        start = time.time()
+        sleep_s = start_at - time.time()
+        if sleep_s > 0:
+            await asyncio.sleep(sleep_s)
+
+        start = start_at
         warmup_end = start + warmup_s
         test_end = start + warmup_s + duration_s
 
@@ -235,8 +259,12 @@ class LoadGenTask:
                                 "start_time": req_start,
                                 "end_time": req_end,
                                 "latency_ms": (req_end - req_start) * 1000,
+                                "app_latency_ms": resp["app_latency_s"] * 1000,
                                 "child_replica_id": resp["replica_id"],
                                 "processing_s": resp["processing_s"],
+                                "simulated_processing_s": resp[
+                                    "simulated_processing_s"
+                                ],
                                 "success": True,
                             }
                         )
@@ -248,8 +276,10 @@ class LoadGenTask:
                                 "start_time": req_start,
                                 "end_time": req_end,
                                 "latency_ms": (req_end - req_start) * 1000,
+                                "app_latency_ms": 0.0,
                                 "child_replica_id": "error",
                                 "processing_s": 0.0,
+                                "simulated_processing_s": 0.0,
                                 "success": False,
                             }
                         )
@@ -263,14 +293,18 @@ async def _run_load_test(
     num_concurrent: int,
     warmup_s: float,
     duration_s: float,
+    max_users_per_task: int = MAX_USERS_PER_TASK,
 ) -> List[RequestResult]:
     """Run a closed-loop load test and return per-request results.
 
     Distributes *num_concurrent* users across multiple remote
-    LoadGenTask actors (up to MAX_USERS_PER_TASK users each) to
+    LoadGenTask actors (up to max_users_per_task users each) to
     avoid bottlenecking the driver's event loop at large scales.
     """
-    num_tasks = max(1, math.ceil(num_concurrent / MAX_USERS_PER_TASK))
+    if max_users_per_task <= 0:
+        raise ValueError("max_users_per_task must be positive.")
+
+    num_tasks = max(1, math.ceil(num_concurrent / max_users_per_task))
     base_users = num_concurrent // num_tasks
     remainder = num_concurrent % num_tasks
     users_per_task = [
@@ -279,12 +313,20 @@ async def _run_load_test(
 
     logger.info(
         f"Load test: {num_concurrent} users across {num_tasks} tasks, "
-        f"{warmup_s}s warmup + {duration_s}s measurement"
+        f"{warmup_s}s warmup + {duration_s}s measurement, "
+        f"max_users_per_task={max_users_per_task}"
     )
 
     tasks = [LoadGenTask.remote(APP_NAME) for _ in range(num_tasks)]
+    await asyncio.gather(
+        *[asyncio.wrap_future(t.ready.remote().future()) for t in tasks]
+    )
+    # Use a shared clock edge so autoscaling or actor placement delays do not
+    # give each load-gen actor a different measurement window.
+    start_at = time.time() + LOAD_GEN_START_DELAY_S
     futures = [
-        t.run.remote(n, warmup_s, duration_s) for t, n in zip(tasks, users_per_task)
+        t.run.remote(n, warmup_s, duration_s, start_at)
+        for t, n in zip(tasks, users_per_task)
     ]
     all_dicts = await asyncio.gather(
         *[asyncio.wrap_future(f.future()) for f in futures]
@@ -298,8 +340,10 @@ async def _run_load_test(
                     start_time=d["start_time"],
                     end_time=d["end_time"],
                     latency_ms=d["latency_ms"],
+                    app_latency_ms=d["app_latency_ms"],
                     child_replica_id=d["child_replica_id"],
                     processing_s=d["processing_s"],
+                    simulated_processing_s=d["simulated_processing_s"],
                     success=d["success"],
                 )
             )
@@ -420,6 +464,7 @@ async def run_router_benchmark(
     duration_s: float = DURATION_S,
     num_replicas_list: Optional[List[int]] = None,
     router_types: Optional[List[str]] = None,
+    max_users_per_task: int = MAX_USERS_PER_TASK,
 ) -> Dict:
     """Run the router benchmark and return results dict.
 
@@ -448,7 +493,9 @@ async def run_router_benchmark(
             )
 
             handle = serve.run(
-                _build_app(router_type, num_replicas, workload), name=APP_NAME
+                _build_app(router_type, num_replicas, workload),
+                name=APP_NAME,
+                logging_config=LOGGING_CONFIG,
             )
 
             try:
@@ -464,6 +511,7 @@ async def run_router_benchmark(
                     num_concurrent=num_concurrent,
                     warmup_s=scaled_warmup,
                     duration_s=duration_s,
+                    max_users_per_task=max_users_per_task,
                 )
 
                 successful = [r for r in results if r.success]
@@ -487,11 +535,33 @@ async def run_router_benchmark(
 
                 # -- latency --
                 if successful:
-                    latencies = [r.latency_ms for r in successful]
+                    app_latencies = [r.app_latency_ms for r in successful]
+                    e2e_latencies = [r.latency_ms for r in successful]
+                    processing_latencies = [r.processing_s * 1000 for r in successful]
                     perf_metrics.append(
                         {
                             "perf_metric_name": f"{prefix}_p50_latency_ms",
-                            "perf_metric_value": round(float(np.median(latencies)), 2),
+                            "perf_metric_value": round(
+                                float(np.median(e2e_latencies)), 2
+                            ),
+                            "perf_metric_type": "LATENCY",
+                        }
+                    )
+                    perf_metrics.append(
+                        {
+                            "perf_metric_name": f"{prefix}_p50_app_latency_ms",
+                            "perf_metric_value": round(
+                                float(np.median(app_latencies)), 2
+                            ),
+                            "perf_metric_type": "LATENCY",
+                        }
+                    )
+                    perf_metrics.append(
+                        {
+                            "perf_metric_name": (f"{prefix}_p50_processing_latency_ms"),
+                            "perf_metric_value": round(
+                                float(np.median(processing_latencies)), 2
+                            ),
                             "perf_metric_type": "LATENCY",
                         }
                     )
@@ -574,6 +644,13 @@ async def run_router_benchmark(
     required=True,
     help="max_ongoing_requests for the parent deployment.",
 )
+@click.option(
+    "--max-users-per-task",
+    type=int,
+    default=MAX_USERS_PER_TASK,
+    show_default=True,
+    help="Max closed-loop users assigned to each load-generator actor.",
+)
 def main(
     output_path: Optional[str],
     num_replicas: List[int],
@@ -582,6 +659,7 @@ def main(
     simulated_latency_cap_s: float,
     max_ongoing_requests_child: int,
     max_ongoing_requests_parent: int,
+    max_users_per_task: int,
 ):
     workload = WorkloadConfig(
         simulated_latency_mean_s=simulated_latency_mean_s,
@@ -591,7 +669,8 @@ def main(
     )
     logger.info(
         f"Running router benchmark: replicas={list(num_replicas)} "
-        f"routers={list(router_type)} workload={workload}"
+        f"routers={list(router_type)} workload={workload} "
+        f"max_users_per_task={max_users_per_task}"
     )
 
     results = asyncio.run(
@@ -601,6 +680,7 @@ def main(
             duration_s=DURATION_S,
             num_replicas_list=list(num_replicas),
             router_types=list(router_type),
+            max_users_per_task=max_users_per_task,
         )
     )
 

@@ -1,18 +1,15 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-head_node_type:
-    name: head_node
+head_node:
     instance_type: g5.16xlarge
 
-worker_node_types:
-    - name: worker_node
-      instance_type: g5.4xlarge
-      min_workers: 15
-      max_workers: 15
-      use_spot: false
+worker_nodes:
+    - instance_type: g5.4xlarge
+      min_nodes: 15
+      max_nodes: 15
+      market_type: ON_DEMAND
 
-advanced_configurations_json:
+advanced_instance_config:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:

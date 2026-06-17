@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/server_call.h"

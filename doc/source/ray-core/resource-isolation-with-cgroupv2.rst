@@ -8,7 +8,13 @@ This page describes how to use Ray's native cgroup v2 based resource isolation t
 
 .. note::
 
-   This feature is only available in Ray version 2.51.0 and above on Linux.
+   This feature is only available in Ray version 2.51.0 and above on Linux. The complete memory monitoring system that uses cgroup v2 to
+   improve system stability is available in Ray version 2.56.0 and above. See :ref:`Out-Of-Memory Prevention <ray-oom-prevention>` for
+   more details.
+
+.. note::
+
+   See :ref:`Debugging Out of Memory <troubleshooting-out-of-memory>` for more details on using resource isolation to debug out-of-memory issues.
 
 Background
 ==========

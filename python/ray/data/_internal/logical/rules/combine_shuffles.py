@@ -47,8 +47,8 @@ class CombineShuffles(Rule):
         if isinstance(input_op, Repartition) and isinstance(op, Repartition):
             shuffle = input_op.shuffle or op.shuffle
             return Repartition(
-                input_op.input_dependencies[0],
                 num_outputs=op.num_outputs,
+                input_dependencies=[input_op.input_dependencies[0]],
                 shuffle=shuffle,
                 keys=op.keys,
                 sort=op.sort,
@@ -58,30 +58,30 @@ class CombineShuffles(Rule):
         ):
             strict = input_op.strict or op.strict
             return StreamingRepartition(
-                input_op.input_dependencies[0],
                 target_num_rows_per_block=op.target_num_rows_per_block,
+                input_dependencies=[input_op.input_dependencies[0]],
                 strict=strict,
             )
         elif isinstance(input_op, Repartition) and isinstance(op, Aggregate):
             return Aggregate(
-                input_op=input_op.input_dependencies[0],
                 key=op.key,
                 aggs=op.aggs,
+                input_dependencies=[input_op.input_dependencies[0]],
                 num_partitions=op.num_partitions,
                 batch_format=op.batch_format,
             )
         elif isinstance(input_op, StreamingRepartition) and isinstance(op, Repartition):
             return Repartition(
-                input_op.input_dependencies[0],
                 num_outputs=op.num_outputs,
+                input_dependencies=[input_op.input_dependencies[0]],
                 shuffle=op.shuffle,
                 keys=op.keys,
                 sort=op.sort,
             )
         elif isinstance(input_op, Sort) and isinstance(op, Sort):
             return Sort(
-                input_op.input_dependencies[0],
                 sort_key=op.sort_key,
+                input_dependencies=[input_op.input_dependencies[0]],
                 batch_format=op.batch_format,
             )
 

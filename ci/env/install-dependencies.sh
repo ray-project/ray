@@ -163,8 +163,15 @@ install_node() {
 
     (
       set +x # suppress set -x since it'll get very noisy here.
+      # nvm's error-recovery path in nvm.sh references $TMPDIR. The caller
+      # runs with `set -u`, so an unset TMPDIR (launchd-spawned shells don't
+      # inherit one) crashes nvm with "TMPDIR: unbound variable" whenever a
+      # binary download fails and nvm falls back to source.
+      export TMPDIR="${TMPDIR:-/tmp}"
       . "${HOME}/.nvm/nvm.sh"
-      NODE_VERSION="14"
+      # Node 14 EOL'd April 2023; nodejs.org removed the darwin-arm64
+      # prebuilt and the URL now 404s. 20 is the current LTS line.
+      NODE_VERSION="20"
       nvm install $NODE_VERSION
       nvm use --silent $NODE_VERSION
       npm config set loglevel warn  # make NPM quieter
@@ -270,6 +277,7 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
 
     # Install MuJoCo.
+    sudo apt-get update
     sudo apt-get install -y libosmesa6-dev libgl1 libglfw3 patchelf
     wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     mkdir -p /root/.mujoco

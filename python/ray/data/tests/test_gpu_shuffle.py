@@ -12,6 +12,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -55,7 +56,10 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
 def _make_bundle(num_blocks: int = 1) -> RefBundle:
     """Return a RefBundle with *num_blocks* placeholder block refs."""
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
+    blocks = [
+        BlockEntry(ray.ObjectRef(bytes([i % 256]) * 28), meta)
+        for i in range(num_blocks)
+    ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
@@ -518,7 +522,7 @@ class TestGPUShuffleOperatorFinalization:
                 num_rows=1, size_bytes=8, exec_stats=None, input_files=None
             )
             bundle = RefBundle(
-                [(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+                [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
                 schema=None,
                 owns_blocks=False,
             )
@@ -574,8 +578,8 @@ class TestPlanAllToAllOpRouting:
 
     def _make_repartition_op(self, keys=("user_id",), num_outputs=8):
         return Repartition(
-            input_op=MagicMock(LogicalOperator),
             num_outputs=num_outputs,
+            input_dependencies=[MagicMock(LogicalOperator)],
             shuffle=True,
             keys=list(keys),
         )

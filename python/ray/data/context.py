@@ -77,6 +77,12 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
+DEFAULT_USE_DATASOURCE_V2 = False
+
+# Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
+# uses its built-in default (currently 1 GiB).
+DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -227,6 +233,10 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
+DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
+
+DEFAULT_MAX_MAP_RETRIES = 3
+
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
@@ -270,6 +280,12 @@ DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
+)
+
+DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
+
+DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED = env_bool(
+    "RAY_DATA_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED", False
 )
 
 DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
@@ -504,6 +520,15 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
+            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
+            driver-side first-file sampling for schema inference,
+            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
+            remains the production path while V2 bakes.
+        parquet_chunker_target_chunk_size: Target chunk size in bytes used by
+            ``ParquetFileChunker`` when splitting large Parquet files into
+            multiple read tasks. When ``None``, the chunker's built-in default
+            (currently 1 GiB) is used.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -553,6 +578,14 @@ class DataContext:
         actor_init_max_retries: Maximum number of consecutive retries for actor
             initialization failures. The counter resets when an actor successfully
             initializes. Default is 3. Set to -1 for infinite retries.
+        retried_map_errors: Controls which user exceptions are retried in map
+            tasks. ``False`` (default) disables retries. ``True`` retries any user
+            exception. A list of patterns retries only when the exception message
+            matches one of them (checked as substring first, then as regex).
+            Bounded by ``max_map_retries``.
+        max_map_retries: Maximum number of retry attempts per map task for user
+            exceptions. Default is 3. Ignored if ``retried_map_errors`` is
+            empty.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
@@ -581,8 +614,9 @@ class DataContext:
             tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
-        retried_io_errors: A list of substrings of error messages that should
-            trigger a retry when reading or writing files. This is useful for handling
+        retried_io_errors: A list of patterns to match against error messages that should
+            trigger a retry when reading or writing files. Each pattern is first checked
+            as a substring, then as a regex. This is useful for handling
             transient errors when reading from remote storage systems.
         lance_config: Configuration for Lance datasource and datasink operations
             including retry settings for read and write operations. See
@@ -637,6 +671,17 @@ class DataContext:
         gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
             communicator setup (actor creation + root/worker init) before raising
             a ``TimeoutError``. Defaults to 120 seconds.
+        isolate_read_workers: If ``True``, other operators' tasks don't get scheduled on
+            the same worker processes as the read operators'. This prevents large
+            PyArrow memory allocation during reads from inflating the resident memory of
+            workers that are later reused by downstream operators. Enabling this flag
+            can reduce OOMs but also cause performance regressions. Defaults to
+            ``False``.
+        default_map_logical_memory_enabled: If ``True``, the system sets logical
+            ``memory`` for map tasks and actors even if you haven't specified a value;
+            otherwise, the system launches map tasks and actors with no logical
+            ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
+            for some APIs but not others. Defaults to ``False``.
     """
 
     # `None` means the block size is infinite.
@@ -726,6 +771,12 @@ class DataContext:
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
+    # chunker uses its built-in default (currently 1 GiB).
+    parquet_chunker_target_chunk_size: Optional[
+        int
+    ] = DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format
@@ -756,6 +807,8 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
+    max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -788,6 +841,8 @@ class DataContext:
         default_factory=_issue_detectors_config_factory
     )
 
+    isolate_read_workers: bool = DEFAULT_ISOLATE_READ_WORKERS
+
     downstream_capacity_backpressure_ratio: Optional[
         float
     ] = DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO
@@ -806,6 +861,10 @@ class DataContext:
 
     custom_execution_callback_classes: List[Type["ExecutionCallback"]] = field(
         default_factory=list
+    )
+
+    default_map_logical_memory_enabled: bool = (
+        DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
 
     def __post_init__(self):
@@ -844,6 +903,13 @@ class DataContext:
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+
+        elif name == "retried_io_errors" and tuple(value) != DEFAULT_RETRIED_IO_ERRORS:
+            warnings.warn(
+                "`retried_io_errors` using substring matching will be deprecated in December 2026. "
+                "Please ensure that you use valid regex patterns for `retried_io_errors`",
                 DeprecationWarning,
             )
 
@@ -913,6 +979,9 @@ class DataContext:
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the
         Dataset and pass it around as arguments.
+
+        Returns:
+            The current :class:`DataContext` instance.
         """
 
         global _default_context
@@ -978,9 +1047,10 @@ class DataContext:
         2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
         3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
 
-        Note: `LoadCheckpointCallback` is NOT included here because it requires
-        a `CheckpointConfig` argument to be instantiated. It is conditionally added
-        later directly by the execution planner.
+        Note: `LoadCheckpointCallback` and `UsageCallback` are NOT included here
+        because they require constructor arguments (a `CheckpointConfig` and a
+        `LogicalPlan`, respectively). They are added directly by the execution
+        planner.
 
         Returns:
             A list of ExecutionCallback class types (not instances).
@@ -1041,7 +1111,9 @@ class DataContext:
         Args:
             key: The key of the config.
             default: The default value to return if the key is not found.
-        Returns: The value for the key, or the default value if the key is not found.
+
+        Returns:
+            The value for the key, or the default value if the key is not found.
         """
         return self._kv_configs.get(key, default)
 

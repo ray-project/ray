@@ -198,7 +198,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
 def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
     """Test that replica reconfigure latency metrics are recorded when user_config changes."""
 
-    @serve.deployment(version="1")
+    @serve.deployment
     class Configurable:
         def __init__(self):
             self.config = None
@@ -210,7 +210,8 @@ def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
         def __call__(self):
             return self.config
 
-    # Initial deployment with version specified to enable in-place reconfigure
+    # Use an internal code version to exercise in-place reconfigure.
+    Configurable = Configurable.options(_internal=True, version="1")
     serve.run(
         Configurable.options(user_config={"version": 1}).bind(),
         name="app",
@@ -965,6 +966,7 @@ def test_long_poll_latency_metric(metrics_start_shutdown):
         host_actor=host,
         key_listeners={"test_key": on_update},
         call_in_event_loop=loop,
+        client_id="test_metrics_client",
     )
 
     # Wait for initial update (client starts with snapshot_id -1)

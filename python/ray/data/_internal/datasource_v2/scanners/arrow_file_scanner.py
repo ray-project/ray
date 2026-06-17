@@ -3,7 +3,6 @@ from dataclasses import dataclass, replace
 from typing import List, Optional, Set, Tuple
 
 import pyarrow as pa
-from pyarrow import compute as pc
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
@@ -15,7 +14,6 @@ from ray.data._internal.datasource_v2.logical_optimizers import (
     SupportsPartitionPruning,
 )
 from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
-from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -47,7 +45,7 @@ class ArrowFileScanner(
     schema: pa.Schema
     batch_size: Optional[int] = None
     columns: Optional[Tuple[str, ...]] = None
-    predicate: Optional[pc.Expression] = None
+    predicate: Optional[Expr] = None
     partition_predicate: Optional[Expr] = None
     limit: Optional[int] = None
     filesystem: Optional[FileSystem] = None
@@ -62,8 +60,18 @@ class ArrowFileScanner(
         return set(self.partitioning.field_names or [])
 
     def read_schema(self) -> pa.Schema:
-        """Return schema after column pruning."""
-        if not self.columns:
+        """Return the logical schema after column pruning.
+
+        ``columns is None`` → no projection applied, return the full schema.
+        ``columns = ()`` → empty projection (``ds.select_columns([])``),
+        return an empty schema.
+
+        The physical read may still inject a stub column (see
+        ``_BATCH_SIZE_PRESERVING_STUB_COL_NAME``) so that row counts
+        survive a zero-column scan; that stub is an execution-layer detail
+        and is deliberately not reflected in this logical schema.
+        """
+        if self.columns is None:
             return self.schema
         fields = []
         for name in self.columns:
@@ -78,9 +86,10 @@ class ArrowFileScanner(
     ) -> Tuple["ArrowFileScanner", Optional["Expr"]]:
         """Push filter predicate down to the scanner.
 
-        Converts the Ray Data expression to a PyArrow expression and ANDs it
-        with any existing predicate. PyArrow applies the filter at scan time
-        for all supported formats.
+        ANDs the predicate with any existing predicate. The Ray ``Expr`` is
+        retained as the source of truth so the reader can introspect filter
+        columns; conversion to a PyArrow expression happens at the
+        scanner-kwargs boundary in :class:`FileReader`.
 
         This method handles data-column predicates only. Partition predicates
         should be pushed via :meth:`prune_partitions` instead; the optimizer
@@ -94,12 +103,10 @@ class ArrowFileScanner(
             merged into its PyArrow filter. ``residual`` is ``None`` because
             PyArrow handles the full filter at scan time.
         """
-        pa_predicate = predicate.to_pyarrow()
-
         if self.predicate is not None:
-            combined = self.predicate & pa_predicate
+            combined = self.predicate & predicate
         else:
-            combined = pa_predicate
+            combined = predicate
 
         return replace(self, predicate=combined), None
 
@@ -118,6 +125,10 @@ class ArrowFileScanner(
             columns = [c for c in columns if c in existing]
 
         return replace(self, columns=tuple(columns))
+
+    @override
+    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
+        return self.columns
 
     @override
     def push_limit(self, limit: int) -> "ArrowFileScanner":
@@ -156,45 +167,18 @@ class ArrowFileScanner(
         return replace(self, partition_predicate=combined)
 
     @override
-    def plan(
-        self,
-        manifest: FileManifest,
-        parallelism: int,
-        data_context: Optional["DataContext"] = None,
-    ) -> List[FileManifest]:
-        """Plan parallel work units, pruning files by partition predicate first.
+    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
+        """Filter manifest to only files matching ``self.partition_predicate``.
 
-        If a partition predicate is set, files whose partition values do not
-        satisfy the predicate are removed from the manifest. The pruned
-        manifest is then handed to ``FileScanner.plan``, which applies the
-        shuffle (if configured) before splitting.
-
-        Args:
-            manifest: FileManifest to partition.
-            parallelism: Target number of parallel tasks.
-            data_context: Optional data context.
-
-        Returns:
-            List of FileManifest objects for parallel execution.
+        Called by :func:`plan_read_files_op.do_read` for every incoming
+        manifest block. No-op when either the predicate or the
+        partitioning spec is absent. Uses
+        :class:`PathPartitionParser` to parse partition values from
+        each file path and evaluate the predicate.
         """
-        if self.partition_predicate is not None and self.partitioning is not None:
-            manifest = self._prune_manifest(manifest)
-        return super().plan(manifest, parallelism, data_context)
+        if self.partition_predicate is None or self.partitioning is None:
+            return manifest
 
-    def _prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Filter manifest to only files matching the partition predicate.
-
-        Uses :class:`PathPartitionParser` to parse partition values from each
-        file path and evaluate the partition predicate against them.
-
-        Args:
-            manifest: The full file manifest.
-
-        Returns:
-            A new FileManifest containing only matching files.
-        """
-        assert self.partitioning is not None
-        assert self.partition_predicate is not None
         parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 

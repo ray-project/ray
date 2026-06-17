@@ -57,7 +57,7 @@ LocalLeaseManager::LocalLeaseManager(
         get_lease_arguments,
     size_t max_pinned_lease_arguments_bytes,
     SchedulerMetrics &scheduler_metrics,
-    std::function<int64_t(void)> get_time_ms,
+    ClockInterface &clock,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       self_scheduling_node_id_(self_node_id.Binary()),
@@ -71,7 +71,7 @@ LocalLeaseManager::LocalLeaseManager(
       get_lease_arguments_(get_lease_arguments),
       max_pinned_lease_arguments_bytes_(max_pinned_lease_arguments_bytes),
       scheduler_metrics_(scheduler_metrics),
-      get_time_ms_(get_time_ms),
+      clock_(clock),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
@@ -281,9 +281,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       if (sched_cls_cap_enabled_ &&
           sched_cls_info.granted_leases.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
+        RAY_LOG(DEBUG) << "Hit cap! time=" << clock_.SteadyNowMillis()
                        << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_ms_() < sched_cls_info.next_update_time) {
+        if (clock_.SteadyNowMillis() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to grant a new lease yet.
           // Calculate the next time we should grant a new lease.
           int64_t current_capacity = sched_cls_info.granted_leases.size();
@@ -300,7 +300,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                    "RAY_worker_cap_enabled=false for faster worker startup.";
           }
 
-          int64_t target_time = get_time_ms_() + wait_time;
+          int64_t target_time = clock_.SteadyNowMillis() + wait_time;
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
 
@@ -665,7 +665,13 @@ bool LocalLeaseManager::PoppedWorkerHandler(
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
             absl::StrCat("Failed to startup worker after retrying ",
                          RayConfig::instance().pop_worker_max_retries(),
-                         " times."));
+                         " times. This is most often caused by errors in the worker's "
+                         "Python environment setup. For example, pip / uv install "
+                         "failures, a broken py_executable, or a dependency conflict in "
+                         "the cluster image. For additional context, please look at the "
+                         "raylet.err on node ",
+                         self_node_id_.Hex(),
+                         "."));
       } else {
         work->SetStateWaiting(cause);
       }

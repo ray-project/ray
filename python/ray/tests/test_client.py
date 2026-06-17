@@ -6,13 +6,11 @@ import re
 import sys
 import threading
 import time
-from typing import Type
 from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
-from pydantic import BaseModel as BaseModelV2
-from pydantic.v1 import BaseModel as BaseModelV1
+from pydantic import BaseModel
 
 import ray
 import ray.cloudpickle as cloudpickle
@@ -473,7 +471,7 @@ def test_basic_log_stream(call_ray_start_shared):
 
         ray.worker.log_client.log = test_log
         ray.worker.log_client.set_logstream_level(logging.DEBUG)
-        # Allow some time to propogate
+        # Allow some time to propagate
         time.sleep(1)
         x = ray.put("Foo")
         assert ray.get(x) == "Foo"
@@ -706,8 +704,7 @@ def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
             assert ray.get_gpu_ids() == []
 
 
-@pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])
-def test_client_serialize_addon(call_ray_start_shared, BaseModel: Type):
+def test_client_serialize_addon(call_ray_start_shared):
     class User(BaseModel):
         name: str
 

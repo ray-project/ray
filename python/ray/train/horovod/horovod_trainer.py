@@ -69,11 +69,6 @@ class HorovodTrainer(DataParallelTrainer):
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    You could use ``TensorflowPredictor`` or ``TorchPredictor`` in conjunction with
-    HorovodTrainer. You must save the model under the "model" kwarg in the
-    ``Checkpoint`` passed to ``train.report()``, so that it can be used by
-    corresponding predictors.
-
     Example:
 
 
@@ -170,10 +165,10 @@ class HorovodTrainer(DataParallelTrainer):
         datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset.
-        resume_from_checkpoint: A checkpoint to resume training from.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: A checkpoint to resume training from.
     """
 
     def __init__(

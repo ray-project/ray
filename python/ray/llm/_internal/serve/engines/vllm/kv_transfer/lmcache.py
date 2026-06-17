@@ -1,5 +1,6 @@
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
+    DefaultPDProtocolMixin,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 
@@ -15,7 +16,7 @@ def _check_lmcache_installed():
         )
 
 
-class LMCacheConnectorV1Backend(BaseConnectorBackend):
+class LMCacheConnectorV1Backend(DefaultPDProtocolMixin, BaseConnectorBackend):
 
     KV_CONNECTOR_EXTRA_CONFIG_FIELD_NAME = "kv_connector_extra_config"
     LMCACHE_RPC_PORT_FIELD_NAME = "lmcache_rpc_port"

@@ -23,6 +23,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
@@ -30,6 +31,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/pubsub/posting_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
@@ -230,7 +232,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_unique<gcs::GcsClient>(options.gcs_options, options.node_ip_address),
       std::move(event_aggregator_client),
       options.session_name,
-      local_node_id);
+      local_node_id,
+      clock_);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -248,7 +251,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
-                                        options.node_ip_address == "127.0.0.1");
+                                        IsLocalhost(options.node_ip_address));
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -303,16 +306,19 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                 addr));
       });
 
-  auto object_info_publisher = std::make_unique<pubsub::Publisher>(
-      /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-      /*periodical_runner=*/*periodical_runner,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
-      worker_context->GetWorkerID());
+  auto object_info_publisher = std::make_unique<pubsub::PostingPublisher>(
+      std::make_shared<pubsub::Publisher>(
+          /*channels=*/
+          std::vector<rpc::ChannelType>{
+              rpc::ChannelType::WORKER_OBJECT_EVICTION,
+              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+          /*periodical_runner=*/*periodical_runner,
+          /*clock=*/clock_,
+          /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+          /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+          worker_context->GetWorkerID()),
+      io_service_);
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
@@ -334,6 +340,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       /*is_node_dead=*/
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
+      },
+      /*free_object_on_nodes_async=*/
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
@@ -367,12 +377,14 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
        options.worker_type != WorkerType::RESTORE_WORKER),
       /*store_client=*/std::move(plasma_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
+      /*clock=*/clock_,
       /*get_current_call_site=*/[this]() {
         auto core_worker = GetCoreWorker();
         return core_worker->CurrentCallSite();
       });
   auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
+      clock_,
       /*reference_counting_enabled=*/reference_counter != nullptr,
       raylet_ipc_client,
       options.check_signals,
@@ -494,14 +506,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
               set_direct_transport_metadata(object_id, direct_transport_metadata);
             },
             "CoreWorker.SetDirectTransportMetadata");
-      });
+      },
+      /*clock=*/clock_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id,
                                    const std::string &actor_name,
                                    int64_t num_queued) {
-    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
+    auto timestamp = clock_.NowUnixMillis() / 1000;
     auto core_worker = GetCoreWorker();
     auto message = absl::StrFormat(
         "Warning: More than %d tasks are pending submission to actor %s with actor_id "
@@ -529,7 +540,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       on_excess_queueing,
       io_service_,
-      reference_counter);
+      reference_counter,
+      /*clock=*/clock_);
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     auto core_worker = GetCoreWorker();
@@ -573,7 +585,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_placement_time_percentile_ms_);
+      *scheduler_placement_time_percentile_ms_,
+      /*clock=*/clock_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -704,7 +717,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(task_event_buffer),
                                    pid,
                                    *task_by_state_gauge_,
-                                   *actor_by_state_gauge_);
+                                   *actor_by_state_gauge_,
+                                   clock_);
 
   core_worker->InitializeShutdownExecutor();
 

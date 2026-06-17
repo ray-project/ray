@@ -29,7 +29,7 @@ def _check_valid_plan_and_result(
         assert actual_result == expected_result
     else:
         assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
-    assert ds._plan._logical_plan.dag.dag_str == expected_plan
+    assert ds._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
     for op in expected_physical_plan_ops:
@@ -37,6 +37,14 @@ def _check_valid_plan_and_result(
 
 
 class _DummyLogicalOperator(LogicalOperator):
+    def __init__(self, input_dependencies, name=None, num_outputs=None):
+        super().__init__(
+            _num_outputs=num_outputs,
+        )
+        object.__setattr__(self, "_input_dependencies", input_dependencies)
+        if name is not None:
+            object.__setattr__(self, "_name", name)
+
     @property
     def num_outputs(self):
         return self._num_outputs
@@ -45,18 +53,18 @@ class _DummyLogicalOperator(LogicalOperator):
 def test_limit_pushdown_recreates_frozen_download():
     input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
     download_op = Download(
-        input_op=input_op,
         uri_column_names=["uri"],
         output_bytes_column_names=["bytes"],
+        input_dependencies=[input_op],
     )
-    limit_op = Limit(download_op, 1)
+    limit_op = Limit(1, input_dependencies=[download_op])
 
     result = LimitPushdownRule()._push_limit_down(limit_op)
 
     assert isinstance(result, Download)
-    assert isinstance(result.input_dependency, Limit)
-    assert result.input_dependency.limit == 1
-    assert result.input_dependency.input_dependency is input_op
+    assert isinstance(result.input_dependencies[0], Limit)
+    assert result.input_dependencies[0].limit == 1
+    assert result.input_dependencies[0].input_dependencies[0] is input_op
 
 
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
@@ -257,7 +265,7 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     assert result == expected
 
     # The plan should show all operations after the limit
-    plan_str = ds._plan._logical_plan.dag.dag_str
+    plan_str = ds._logical_plan.dag.dag_str
     assert (
         "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
         == plan_str
@@ -440,7 +448,7 @@ def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
     # Result should contain 5 distinct ids with count == 1.
     res = ds.take_all()
     # Plan suffix check (no branch limits past Aggregate).
-    assert ds._plan._logical_plan.dag.dag_str.endswith(
+    assert ds._logical_plan.dag.dag_str.endswith(
         "Union[Union] -> Aggregate[Aggregate] -> Limit[limit=5]"
     )
     assert len(res) == 5 and all(r["count()"] == 1 for r in res)

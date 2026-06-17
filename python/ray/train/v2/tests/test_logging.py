@@ -1,6 +1,9 @@
 import builtins
+import contextlib
+import io
 import logging
 import os
+import sys
 
 import pytest
 
@@ -344,6 +347,27 @@ def test_worker_print_redirect(worker_logging):
     log_contents = get_file_contents(f"ray-train-app-worker-{worker_id}.log")
     assert "ham" in log_contents, log_contents
     assert "ham\\n" not in log_contents, log_contents
+
+
+def test_worker_app_print_redirect_stdout(worker_logging):
+    """Test that redirect_stdout works with the print patch.
+
+    Libraries like smart_open use contextlib.redirect_stdout() to capture
+    output at import time. The patched print should not intercept calls when
+    stdout has been redirected to a different target.
+    """
+    LoggingManager.configure_worker_logger(create_dummy_train_context())
+    patch_print_function()
+
+    stdout_buf = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf):
+        print("captured text")
+    assert "captured text" in stdout_buf.getvalue()
+
+    stderr_buf = io.StringIO()
+    with contextlib.redirect_stderr(stderr_buf):
+        print("captured error", file=sys.stderr)
+    assert "captured error" in stderr_buf.getvalue()
 
 
 # ============================================================

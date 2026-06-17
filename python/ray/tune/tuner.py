@@ -43,15 +43,6 @@ _SELF = "self"
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
-    Args:
-        trainable: The trainable to be tuned.
-        param_space: Search space of the tuning job. See :ref:`tune-search-space-tutorial`.
-        tune_config: Tuning specific configs, such as setting custom
-            :ref:`search algorithms <tune-search-alg>` and
-            :ref:`trial scheduling algorithms <tune-schedulers>`.
-        run_config: Job-level run configuration, which includes configs for
-            persistent storage, checkpointing, fault tolerance, etc.
-
     Usage pattern:
 
     .. code-block:: python
@@ -103,7 +94,23 @@ class Tuner:
         _tuner_internal: Optional[TunerInternal] = None,
         _entrypoint: AirEntrypoint = AirEntrypoint.TUNER,
     ):
-        """Configure and construct a tune run."""
+        """Configure and construct a tune run.
+
+        Args:
+            trainable: The trainable to be tuned.
+            param_space: Search space of the tuning job.
+                See :ref:`tune-search-space-tutorial`.
+            tune_config: Tuning specific configs, such as setting custom
+                :ref:`search algorithms <tune-search-alg>` and
+                :ref:`trial scheduling algorithms <tune-schedulers>`.
+            run_config: Job-level run configuration, which includes configs for
+                persistent storage, checkpointing, fault tolerance, etc.
+            _tuner_kwargs: Internal. Optional kwargs forwarded to ``TunerInternal``.
+            _tuner_internal: Internal. Pre-built ``TunerInternal`` instance used
+                when restoring from an existing experiment.
+            _entrypoint: Internal. Marks which user-facing entrypoint constructed
+                the ``Tuner`` so that error messages can be tailored.
+        """
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
         if self._is_ray_client:
@@ -192,6 +199,11 @@ class Tuner:
             trainable: The trainable to use upon resuming the experiment.
                 This should be the same trainable that was used to initialize
                 the original Tuner.
+            resume_unfinished: If True, will continue to run unfinished trials.
+            resume_errored: If True, will re-schedule errored trials and try to
+                restore from their latest checkpoints.
+            restart_errored: If True, will re-schedule errored trials but force
+                restarting them from scratch (no checkpoint will be loaded).
             param_space: The same `param_space` that was passed to
                 the original Tuner. This can be optionally re-specified due
                 to the `param_space` potentially containing Ray object
@@ -201,17 +213,15 @@ class Tuner:
                 will be used during restore are the updated object references.
                 Changing the hyperparameter search space then resuming is NOT
                 supported by this API.
-            resume_unfinished: If True, will continue to run unfinished trials.
-            resume_errored: If True, will re-schedule errored trials and try to
-                restore from their latest checkpoints.
-            restart_errored: If True, will re-schedule errored trials but force
-                restarting them from scratch (no checkpoint will be loaded).
             storage_filesystem: Custom ``pyarrow.fs.FileSystem``
                 corresponding to the ``path``. This may be necessary if the original
                 experiment passed in a custom filesystem.
             _resume_config: [Experimental] Config object that controls how to resume
                 trials of different statuses. Can be used as a substitute to
                 `resume_*` and `restart_*` flags above.
+
+        Returns:
+            A ``Tuner`` instance restored from the given path.
         """
         unfinished = (
             ResumeConfig.ResumeType.RESUME
@@ -295,6 +305,9 @@ class Tuner:
             path: The path to the experiment directory of the Tune experiment.
                 This can be either a local directory or a remote URI
                 (e.g. s3://bucket/exp_name).
+            storage_filesystem: Custom ``pyarrow.fs.FileSystem`` corresponding
+                to ``path``. This may be necessary if the original experiment
+                passed in a custom filesystem.
 
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
@@ -343,6 +356,9 @@ class Tuner:
                 trainable=trainable
             )
             tuner.fit()
+
+        Returns:
+            The ``ResultGrid`` produced by the completed tuning run.
 
         Raises:
             RayTaskError: If user-provided trainable raises an exception
