@@ -205,7 +205,6 @@ class Sort(
     """Logical operator for sort."""
 
     sort_key: SortKey
-    batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
@@ -241,7 +240,6 @@ class Aggregate(AbstractAllToAll):
     key: Optional[str | List[str]]
     aggs: List[AggregateFn]
     num_partitions: Optional[int] = None
-    batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
