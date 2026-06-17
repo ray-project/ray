@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
@@ -33,7 +34,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-        io_context_,
+        PeriodicalRunner::Create(io_context_),
         scheduling::NodeID(NodeID::FromRandom().Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

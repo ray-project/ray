@@ -22,6 +22,7 @@ Utility
    ray.util.tpu.get_tpu_num_slices_for_workers
    ray.util.tpu.get_tpu_version_from_type
    ray.util.tpu.get_tpu_worker_resources
+   ray.util.tpu.init_jax_profiler
 
    ray.util.tpu.SlicePlacementGroup
    ray.util.tpu.slice_placement_group
