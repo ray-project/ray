@@ -4217,7 +4217,8 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                 c_object_id)
 
-    def add_object_out_of_scope_callback(self, ObjectRef object_ref, callback):
+    def add_object_out_of_scope_callback(
+            self, ObjectRef object_ref, callback: Callable[[bytes], None]):
         """Register a Python callable to fire when object_ref goes out of scope.
 
         .. warning::
@@ -4226,10 +4227,17 @@ cdef class CoreWorker:
         Can only be called on the worker that owns object_ref. Raises
         ValueError if object_ref is not owned by this worker.
 
+        The callback runs on a dedicated background thread concurrent with the
+        main Python thread. It must be thread-safe; use a lock if it ever accesses
+        state shared with the main thread.
+
+        If the callback raises, the exception is logged and swallowed so that
+        subsequent callbacks are not affected.
+
         Args:
             object_ref: The owned object to watch.
             callback: Called with the object ID as ``bytes`` when the last
-                reference is released. Must be callable.
+                reference is released.
 
         Returns:
             True if registered; False if the object is already out of scope
