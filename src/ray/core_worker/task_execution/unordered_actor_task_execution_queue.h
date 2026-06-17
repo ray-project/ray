@@ -47,7 +47,9 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio,
       int fiber_max_concurrency,
-      const std::vector<ConcurrencyGroup> &concurrency_groups);
+      const std::vector<ConcurrencyGroup> &concurrency_groups,
+      ExecuteTaskCallback execute_task,
+      CancelTaskCallback cancel_task);
 
   void Stop() override;
 
@@ -82,6 +84,9 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   /// Manage the running fiber states of actors in this worker. It works with
   /// python asyncio if this is an asyncio actor.
   std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
+  /// Callbacks used to execute / reply-cancel a queued task.
+  ExecuteTaskCallback execute_task_;
+  CancelTaskCallback cancel_task_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;

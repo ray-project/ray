@@ -16,6 +16,7 @@
 
 #include <deque>
 #include <string>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -31,7 +32,9 @@ namespace core {
 /// constraints.
 class NormalTaskExecutionQueue {
  public:
-  NormalTaskExecutionQueue();
+  NormalTaskExecutionQueue(ExecuteTaskCallback execute_task,
+                           CancelTaskCallback cancel_task)
+      : execute_task_(std::move(execute_task)), cancel_task_(std::move(cancel_task)) {}
 
   void Stop();
 
@@ -51,6 +54,10 @@ class NormalTaskExecutionQueue {
 
   // Get the next queued task to execute if available.
   std::optional<TaskToExecute> TryPopQueuedTask();
+
+  /// Callbacks used to execute / reply-cancel a queued task.
+  ExecuteTaskCallback execute_task_;
+  CancelTaskCallback cancel_task_;
 
   /// Protects access to the dequeue below.
   mutable absl::Mutex mu_;

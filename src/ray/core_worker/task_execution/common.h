@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,43 +23,69 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
 
-/// Wraps the state and callbacks associated with a task queued for execution on this
-/// worker.
+/// Container holding a task queued for execution on this worker, along with the
+/// per-request state needed to execute it or reply that it was canceled. This is a
+/// pure data class; the actual execute/cancel logic lives in the execution queues
+/// (see ExecuteTaskCallback / CancelTaskCallback), which are given the queue-level
+/// callbacks at construction time.
 class TaskToExecute {
  public:
-  TaskToExecute(
-      std::function<void(const TaskSpecification &)> execute_callback,
-      std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
-      TaskSpecification task_spec);
+  TaskToExecute(TaskSpecification task_spec,
+                std::optional<ResourceMappingType> resource_ids,
+                rpc::PushTaskReply *reply,
+                rpc::SendReplyCallback send_reply_callback)
+      : task_spec_(std::move(task_spec)),
+        pending_dependencies_(task_spec_.GetDependencies()),
+        resource_ids_(std::move(resource_ids)),
+        reply_(reply),
+        send_reply_callback_(std::move(send_reply_callback)) {}
 
-  void Execute();
-  void Cancel(const Status &status);
-  ray::TaskID TaskID() const;
-  uint64_t AttemptNumber() const;
-  bool IsRetry() const;
-  const std::string &ConcurrencyGroupName() const;
-  ray::FunctionDescriptor FunctionDescriptor() const;
-  bool DependenciesResolved() const;
-  void MarkDependenciesResolved();
-  const std::vector<rpc::ObjectReference> &PendingDependencies() const;
-  const TaskSpecification &TaskSpec() const;
+  ray::TaskID TaskID() const { return task_spec_.TaskId(); }
+  uint64_t AttemptNumber() const { return task_spec_.AttemptNumber(); }
+  bool IsRetry() const { return task_spec_.IsRetry(); }
+  const std::string &ConcurrencyGroupName() const {
+    return task_spec_.ConcurrencyGroupName();
+  }
+  ray::FunctionDescriptor FunctionDescriptor() const {
+    return task_spec_.FunctionDescriptor();
+  }
+  bool DependenciesResolved() const { return pending_dependencies_.empty(); }
+  void MarkDependenciesResolved() { pending_dependencies_.clear(); }
+  const std::vector<rpc::ObjectReference> &PendingDependencies() const {
+    return pending_dependencies_;
+  }
+  const TaskSpecification &TaskSpec() const { return task_spec_; }
+
+  // Per-request state used by the queue's execute / cancel callbacks. `resource_ids`
+  // is mutable because the execute path moves it into the task handler.
+  std::optional<ResourceMappingType> &resource_ids() { return resource_ids_; }
+  rpc::PushTaskReply *reply() const { return reply_; }
+  const rpc::SendReplyCallback &send_reply_callback() const {
+    return send_reply_callback_;
+  }
 
  private:
-  // Callbacks to execute the task or reply that it has been canceled and will not be
-  // executed.
-  // Only one invocation of these callbacks should ever be called.
-  std::function<void(const TaskSpecification &)> execute_callback_;
-  std::function<void(const TaskSpecification &, const Status &)> cancel_callback_;
-
   TaskSpecification task_spec_;
   std::vector<rpc::ObjectReference> pending_dependencies_;
+  std::optional<ResourceMappingType> resource_ids_;
+  rpc::PushTaskReply *reply_;
+  rpc::SendReplyCallback send_reply_callback_;
 };
+
+// Queue-level callbacks invoked by the execution queues to run or reply-cancel a
+// queued task. These are set once when a queue is constructed (they are not per-task);
+// all per-task state travels with the TaskToExecute argument. `ExecuteTaskCallback`
+// takes a mutable reference because executing a task moves its resource_ids out.
+using ExecuteTaskCallback = std::function<void(TaskToExecute &)>;
+using CancelTaskCallback = std::function<void(const TaskToExecute &, const Status &)>;
 
 // Container for metadata and outputs corresponding to a completed task execution.
 struct TaskExecutionResult {

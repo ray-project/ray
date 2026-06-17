@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
@@ -25,18 +26,20 @@ namespace ray {
 namespace core {
 
 TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
-  std::unique_ptr<NormalTaskExecutionQueue> queue =
-      std::make_unique<NormalTaskExecutionQueue>();
-
   int n_ok = 0;
   int n_rej = 0;
 
+  std::unique_ptr<NormalTaskExecutionQueue> queue =
+      std::make_unique<NormalTaskExecutionQueue>(
+          [&n_ok](TaskToExecute &task) { n_ok++; },
+          [&n_rej](const TaskToExecute &task, const Status &status) { n_rej++; });
+
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = TaskToExecute(
-      [&n_ok](const TaskSpecification &task_spec) { n_ok++; },
-      [&n_rej](const TaskSpecification &task_spec, const Status &status) { n_rej++; },
-      task_spec);
+  TaskToExecute task = TaskToExecute(task_spec,
+                                     /*resource_ids=*/std::nullopt,
+                                     /*reply=*/nullptr,
+                                     /*send_reply_callback=*/nullptr);
 
   queue->EnqueueTask(task);
   queue->EnqueueTask(task);
@@ -52,21 +55,23 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
 }
 
 TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
-  std::unique_ptr<NormalTaskExecutionQueue> queue =
-      std::make_unique<NormalTaskExecutionQueue>();
-
   int n_ok = 0;
   std::atomic<int> n_rej{0};
 
+  std::unique_ptr<NormalTaskExecutionQueue> queue =
+      std::make_unique<NormalTaskExecutionQueue>(
+          [&n_ok](TaskToExecute &task) { n_ok++; },
+          [&n_rej](const TaskToExecute &task, const Status &status) {
+            ASSERT_TRUE(status.IsSchedulingCancelled());
+            n_rej.fetch_add(1);
+          });
+
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task =
-      TaskToExecute([&n_ok](const TaskSpecification &task_spec) { n_ok++; },
-                    [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-                      ASSERT_TRUE(status.IsSchedulingCancelled());
-                      n_rej.fetch_add(1);
-                    },
-                    task_spec);
+  TaskToExecute task = TaskToExecute(task_spec,
+                                     /*resource_ids=*/std::nullopt,
+                                     /*reply=*/nullptr,
+                                     /*send_reply_callback=*/nullptr);
 
   // Enqueue several normal tasks but do not schedule them.
   queue->EnqueueTask(task);
