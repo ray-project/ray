@@ -167,6 +167,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/feast.svg
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/feast-dev/feast?style=social
+                :target: https://github.com/feast-dev/feast
+
+            Feast is an open-source feature store for machine learning. Feast uses Ray as its distributed compute backend through a Ray offline store for data I/O and a Ray compute engine for feature processing, enabling scalable point-in-time joins, batch materialization, and feature transformations.
+
+        +++
+        .. button-link:: https://docs.feast.dev/reference/offline-stores/ray
+            :color: primary
+            :outline:
+            :expand:
+
+            Feast Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/flambe.png
             :class: card-figure
 
