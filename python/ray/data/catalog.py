@@ -68,12 +68,7 @@ class ResolvedSource:
 
 @PublicAPI(stability="alpha")
 class Catalog(ABC):
-    """A directory service that resolves a table name to a readable source.
-
-    Readers depend on this small interface; the catalog knows nothing about
-    readers (the dependency is inverted relative to the old
-    ``read_unity_catalog``).
-    """
+    """A directory service that resolves a table name to a readable source."""
 
     @abstractmethod
     def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
