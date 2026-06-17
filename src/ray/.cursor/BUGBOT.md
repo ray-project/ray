@@ -67,4 +67,4 @@ Unit tests must not
 - For any newly added or modified function or class declaration, check that it is documented with a Doxygen `/** ... */` block comment using `@` tags (`@brief`, and `@param`/`@return` where applicable).
 - If a new or modified function or class is missing a Doxygen comment, or has a comment that omits `@param`/`@return` for its parameters and return value, post:
 
-> ⚠️ Document functions and classes with Doxygen `/** ... */` block comments using `@` tags (`@brief`, `@param`, `@return`).
+> ⚠️ Document functions and classes with Doxygen `/** ... */` block comments using `@` tags (`@brief`, and `@param`/`@return` where applicable).
