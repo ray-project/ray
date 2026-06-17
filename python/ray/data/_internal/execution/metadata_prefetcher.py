@@ -56,9 +56,12 @@ class MetadataPrefetcher:
     # is either the metadata bytes or an ``Exception`` captured during fetch.
     _NOT_READY = object()
 
+    # Sentinel enqueued on ``_request_q`` to tell the fetch thread to exit.
+    _STOP = object()
+
     def __init__(self):
-        # executor -> fetch thread: each item is a list[ObjectRef] (or None
-        # sentinel to stop). thread-safe.
+        # executor -> fetch thread: each item is a list[ObjectRef] (or the
+        # ``_STOP`` sentinel to exit). thread-safe.
         self._request_q: "queue_module.Queue" = queue_module.Queue()
         # fetch thread -> executor: meta_ref -> bytes (or captured Exception).
         self._results: Dict["ray.ObjectRef", Any] = {}
@@ -95,7 +98,7 @@ class MetadataPrefetcher:
         if self._stopped:
             return
         self._stopped = True
-        self._request_q.put(None)  # sentinel
+        self._request_q.put(self._STOP)
         if self._started:
             self._thread.join(timeout=_FETCH_THREAD_JOIN_TIMEOUT_S)
 
@@ -225,7 +228,7 @@ class MetadataPrefetcher:
                     item = ()
             else:
                 item = self._request_q.get()
-            if item is None:
+            if item is self._STOP:
                 return
             pending.extend(item)
             # Coalesce any other already-queued batches.
@@ -234,7 +237,7 @@ class MetadataPrefetcher:
                     nxt = self._request_q.get_nowait()
                 except queue_module.Empty:
                     break
-                if nxt is None:
+                if nxt is self._STOP:
                     return
                 pending.extend(nxt)
 
