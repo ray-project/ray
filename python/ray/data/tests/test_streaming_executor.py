@@ -1603,14 +1603,15 @@ class TestDataOpTask:
         finally:
             prefetcher.stop()
 
-        # Per-op append order preserved; ops emitted in submit (FIFO) order.
-        # Sizes carry a small block-format overhead over the raw payload.
-        assert outputs == [
-            (0, pytest.approx(100, abs=64)),
-            (0, pytest.approx(200, abs=64)),
-            (1, pytest.approx(300, abs=64)),
-            (1, pytest.approx(400, abs=64)),
-        ]
+        # Per-op append order is preserved. Cross-op interleaving is NOT
+        # asserted: each op emits into its own downstream queue, so the order
+        # ops emit relative to each other doesn't matter (and depends on which
+        # op's metadata lands first). Sizes carry a small block-format
+        # overhead over the raw payload.
+        op0 = [b for t, b in outputs if t == 0]
+        op1 = [b for t, b in outputs if t == 1]
+        assert op0 == [pytest.approx(100, abs=64), pytest.approx(200, abs=64)]
+        assert op1 == [pytest.approx(300, abs=64), pytest.approx(400, abs=64)]
         # Done callbacks fire only after each task's pairs are fully emitted.
         assert sorted(done) == [0, 1]
 
