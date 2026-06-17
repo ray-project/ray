@@ -1,5 +1,8 @@
+import fnmatch
 import logging
+import os
 import pathlib
+import re
 import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
@@ -143,6 +146,231 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     # Keep `#` untouched because it can be part of object keys.
     parsed_path = path.split("?", 1)[0]
     return any(parsed_path.lower().endswith(ext) for ext in extensions)
+
+
+def _has_glob_chars(path: str) -> bool:
+    """Check if ``path`` contains glob metacharacters.
+
+    For URI paths with a scheme (e.g. ``s3://``), both the netloc
+    (bucket/host) and path component are checked, but the query string
+    is not — ``?`` in a query parameter is not treated as a glob char.
+
+    ``[`` is treated as a glob char only when a matching ``]`` follows
+    (forming a bracket expression ``[...]``) AND the ``[`` is not
+    preceded by a space.  This avoids false positives on literal
+    filenames like ``file [1].parquet``.
+    """
+    parsed = urlparse(path)
+    # For URIs, check both the netloc (e.g. bucket-*) and the path component.
+    check_target = (parsed.netloc + parsed.path) if parsed.scheme else path
+    if "*" in check_target or "?" in check_target:
+        return True
+    # Bracket expression: [ followed by ], not preceded by a space.
+    return bool(re.search(r"(?<! )\[[^\]]*\]", check_target))
+
+
+def _split_glob_base(pattern: str) -> Tuple[str, str]:
+    """Split a glob pattern into ``(base_dir, glob_pattern)``.
+
+    Finds the last path separator before the first glob character and
+    splits there, so glob characters inside directory names (e.g.
+    ``sub[12]``) belong to the pattern, not the base.
+
+    For URI paths with a scheme (e.g. ``s3://``), only the path component
+    is split — the scheme and authority are preserved in the base.
+
+    Examples::
+
+        _split_glob_base("s3://b/prefix/*.parquet")
+        # -> ("s3://b/prefix", "*.parquet")
+
+        _split_glob_base("s3://bucket/sub[12]/file.parquet")
+        # -> ("s3://bucket", "sub[12]/file.parquet")
+
+        _split_glob_base("*.parquet")
+        # -> ("", "*.parquet")
+    """
+    # Only split on path component for URIs with scheme.
+    parsed = urlparse(pattern)
+    if parsed.scheme:
+        # For URIs, split on the path component only.
+        path = parsed.path
+        glob_chars = ("*", "?", "[")
+        first_glob = min(
+            (path.index(c) for c in glob_chars if c in path),
+            default=len(path),
+        )
+        prefix = path[:first_glob]
+        # URI path components use "/" only — "\" is a literal key character.
+        last_sep = prefix.rfind("/")
+        if last_sep >= 0:
+            base_path = path[:last_sep]
+            glob_part = path[last_sep + 1 :]
+            # Reconstruct full URI base.
+            base = f"{parsed.scheme}://{parsed.netloc}{base_path}"
+            return base, glob_part
+        # Bucket-level glob (e.g. s3://bucket-*/file) — defensive fallback.
+        # Note: _has_glob_chars currently checks netloc, but this branch
+        # handles the case where a glob char appears only in the netloc.
+        return f"{parsed.scheme}://{parsed.netloc}", path
+
+    # Local path: split on last separator before first glob char.
+    glob_chars = ("*", "?", "[")
+    first_glob = min(
+        (pattern.index(c) for c in glob_chars if c in pattern),
+        default=len(pattern),
+    )
+    prefix = pattern[:first_glob]
+    last_sep = prefix.rfind("/")
+    # On Windows, backslash is also a path separator.
+    if sys.platform == "win32":
+        last_sep = max(last_sep, prefix.rfind("\\"))
+    if last_sep >= 0:
+        return prefix[:last_sep], pattern[last_sep + 1 :]
+    return "", pattern
+
+
+def _glob_match_path(pattern: str, relative: str) -> bool:
+    """Segment-aware glob matching for cloud paths.
+
+    Unlike :func:`fnmatch.fnmatch`, this function treats ``/`` as a path
+    separator, so ``*`` matches only within a single path segment while
+    ``**`` matches zero or more segments.
+
+    Args:
+        pattern: Glob pattern (e.g. ``*.parquet``, ``**/*.parquet``,
+            ``sub[12]/file.parquet``).
+        relative: Relative path to test (e.g. ``data-0.parquet``,
+            ``sub-a/data-0.parquet``).
+
+    Returns:
+        ``True`` if *relative* matches *pattern*.
+    """
+    pat_segs = pattern.split("/")
+    rel_segs = relative.split("/")
+    return _glob_match_segs(pat_segs, rel_segs)
+
+
+def _glob_match_segs(pat_segs: List[str], rel_segs: List[str]) -> bool:
+    """Match pattern segments against path segments using dynamic programming.
+
+    ``*`` matches one segment (no ``/``).  ``**`` matches zero or more
+    segments.  Other glob chars (``?``, ``[...]``) work within a segment
+    via :mod:`fnmatch`.
+
+    Args:
+        pat_segs: Pattern split by ``/`` into segments.
+        rel_segs: Relative path split by ``/`` into segments.
+
+    Returns:
+        ``True`` if *rel_segs* matches *pat_segs*.
+    """
+    n_pat, n_rel = len(pat_segs), len(rel_segs)
+    # dp[i][j] == True  <=>  pat_segs[:i] matches rel_segs[:j]
+    dp = [[False] * (n_rel + 1) for _ in range(n_pat + 1)]
+    dp[0][0] = True
+
+    for i in range(1, n_pat + 1):
+        seg = pat_segs[i - 1]
+        if seg == "**":
+            # ** matches zero or more segments: propagate from the same row.
+            dp[i][0] = dp[i - 1][0]
+            for j in range(1, n_rel + 1):
+                dp[i][j] = dp[i - 1][j] or dp[i][j - 1]
+        else:
+            for j in range(1, n_rel + 1):
+                if fnmatch.fnmatch(rel_segs[j - 1], seg):
+                    dp[i][j] = dp[i - 1][j - 1]
+
+    return dp[n_pat][n_rel]
+
+
+def _expand_glob(
+    path: str,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ignore_missing_paths: bool = False,
+) -> List[str]:
+    """Expand a glob pattern to concrete file paths.
+
+    For local paths uses :func:`pathlib.Path.glob`.  For cloud paths
+    (S3, GCS, etc.) uses ``FileSelector`` listing + segment-aware glob
+    matching (``*`` stays within one path segment, ``**`` spans multiple).
+
+    Args:
+        path: Glob pattern to expand.
+        filesystem: Optional filesystem for cloud paths. If ``None``, uses
+            the local filesystem.
+        ignore_missing_paths: If ``True``, returns an empty list when no
+            files match the pattern. If ``False``, raises ``ValueError``
+            when no files match. Defaults to ``False``.
+
+    Returns:
+        Sorted list of matched file paths, or empty list if
+        *ignore_missing_paths* is ``True`` and no files matched.
+
+    Raises:
+        ValueError: If no files match and *ignore_missing_paths* is
+            ``False``.
+    """
+    import pyarrow.fs
+    from pyarrow.fs import FileType
+
+    base, pattern = _split_glob_base(path)
+    is_local = filesystem is None or isinstance(
+        filesystem, pyarrow.fs.LocalFileSystem
+    )
+
+    if is_local:
+        # Strip scheme (e.g. local://, file://) so pathlib can parse the path.
+        local_base = _unwrap_protocol(base) if base else ""
+        base_path = (
+            pathlib.Path(local_base) if local_base else pathlib.Path(os.getcwd())
+        )
+        matched = [str(p) for p in base_path.glob(pattern) if p.is_file()]
+        if not matched:
+            if ignore_missing_paths:
+                return []
+            raise ValueError(
+                f"Glob pattern '{path}' matched no files."
+            )
+        return sorted(matched)
+
+    # Cloud: list base directory, filter with segment-aware glob matching.
+    if not base:
+        raise ValueError(
+            f"Glob pattern {path!r} expands to a bucket-level glob, "
+            "which is not supported. Provide a concrete bucket path."
+        )
+    # Strip scheme so FileSelector and relative-path calculation use the
+    # bare bucket/key form that PyArrow returns internally (e.g.
+    # "bucket/prefix" instead of "s3://bucket/prefix").
+    base_stripped = _unwrap_protocol(base)
+    if _has_glob_chars(base_stripped):
+        raise ValueError(
+            f"Glob pattern {path!r} contains wildcards in the bucket/host "
+            "name, which is not supported. Use wildcards in the path only."
+        )
+    # Use recursive listing when pattern needs to traverse subdirectories:
+    # - "**" explicitly requests recursive matching
+    # - "/" in pattern means the match target is in a subdirectory
+    needs_recursive = "**" in pattern or "/" in pattern
+    selector = pyarrow.fs.FileSelector(base_stripped, recursive=needs_recursive)
+    file_infos = filesystem.get_file_info(selector)
+
+    matched = []
+    for fi in file_infos:
+        if fi.type == FileType.File:
+            # S3, GCS, HDFS, and ABFS all use "/" as path separator.
+            relative = fi.path[len(base_stripped) :].lstrip("/")
+            if _glob_match_path(pattern, relative):
+                matched.append(fi.path)
+    if not matched:
+        if ignore_missing_paths:
+            return []
+        raise ValueError(
+            f"Glob pattern '{path}' matched no files."
+        )
+    return sorted(matched)
 
 
 # Mapping from URI schemes to compatible filesystem type_name values.
@@ -328,6 +556,8 @@ def _resolve_single_path_with_fallback(
 def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ignore_missing_paths: bool = False,
+    expand_globs: bool = False,
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
     """
     Resolves and normalizes all provided paths, infers a filesystem from the
@@ -341,6 +571,14 @@ def _resolve_paths_and_filesystem(
             None, the provided filesystem will still be validated against all
             filesystems inferred from the provided paths to ensure
             compatibility.
+        ignore_missing_paths: If True, ignores any glob patterns that match no
+            files instead of raising ValueError. Defaults to False.
+        expand_globs: If True, detects glob metacharacters (``*``, ``?``,
+            ``[...]``) in paths and expands them to concrete file paths
+            before resolution. Only callers that intend to read files should
+            enable this; write, download, and partition callers must leave
+            this as ``False`` to avoid unintended expansion. Defaults to
+            False.
 
     Returns:
         A pair ``(resolved_paths, filesystem)``. *resolved_paths* lists the
@@ -365,8 +603,42 @@ def _resolve_paths_and_filesystem(
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)
 
+    from pyarrow.fs import LocalFileSystem
+
     resolved_paths = []
     for path in paths:
+        # Expand glob patterns before resolving individual paths.
+        # Only enabled when callers explicitly opt in (expand_globs=True),
+        # since this function is also used by write, download, and
+        # partition paths where glob expansion is undesirable.
+        if expand_globs and _has_glob_chars(path):
+            # Resolve relative paths to absolute before glob expansion
+            # to ensure consistency across processes (e.g., Ray workers).
+            # Only for local paths — cloud URIs (s3://, gs://, etc.) are
+            # already absolute; os.path.isabs misidentifies them as relative.
+            parsed = urlparse(path)
+            is_cloud_fs = (
+                filesystem is not None
+                and not isinstance(filesystem, LocalFileSystem)
+            )
+            if not parsed.scheme and not os.path.isabs(path) and not is_cloud_fs:
+                path = os.path.abspath(path)
+
+            if filesystem is None:
+                try:
+                    filesystem, _ = _resolve_single_path_with_fallback(
+                        path, filesystem
+                    )
+                except (ValueError, ImportError) as e:
+                    logger.warning(
+                        f"Failed to resolve filesystem for glob "
+                        f"'{path}': {e}, skipping"
+                    )
+                    continue
+            expanded = _expand_glob(path, filesystem, ignore_missing_paths)
+            resolved_paths.extend(expanded)
+            continue
+
         try:
             resolved_filesystem, resolved_path = _resolve_single_path_with_fallback(
                 path, filesystem
