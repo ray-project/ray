@@ -4736,6 +4736,11 @@ def read_delta(
 
     from deltalake import DeltaTable
 
+    # This seems reasonable to keep it at one table, even Spark doesn't really support
+    # multi-table reads, it's usually up to the developer to keep it in one table.
+    if not isinstance(path, str):
+        raise ValueError("Only a single Delta Lake table path is supported.")
+
     if catalog is not None:
         from ray.data.catalog import ReaderFormat
 
@@ -4751,11 +4756,6 @@ def read_delta(
                     "credentials."
                 )
             filesystem = resolved.filesystem
-
-    # This seems reasonable to keep it at one table, even Spark doesn't really support
-    # multi-table reads, it's usually up to the developer to keep it in one table.
-    if not isinstance(path, str):
-        raise ValueError("Only a single Delta Lake table path is supported.")
 
     dt = DeltaTable(path, version=version, storage_options=storage_options)
     pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
