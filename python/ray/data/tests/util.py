@@ -14,8 +14,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     PhysicalOperator,
     RefBundle,
-    _emit_deferred_entry,
-    _fire_task_done,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -133,9 +131,9 @@ def drain_and_emit(
         # Emit the longest ready prefix, preserving emission order.
         while deferred and deferred[0].meta_ref in ready_set:
             d = deferred.pop(0)
-            _emit_deferred_entry(d, ray.get(d.meta_ref))
-    if task.is_done_pending() and not any(d.task is task for d in deferred):
-        _fire_task_done(task)
+            d.task.emit_block(d.block_ref, ray.get(d.meta_ref))
+    if task.is_drained() and not any(d.task is task for d in deferred):
+        task.mark_done()
     return bytes_read
 
 

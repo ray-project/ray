@@ -58,6 +58,12 @@ Topology = Dict[PhysicalOperator, "OpState"]
 # Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
 WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
 
+# Maximum time the final `metadata_prefetcher.drain()` will block waiting for
+# the prefetcher's first result when there's pending work but nothing ready —
+# paces the scheduling loop to metadata availability instead of spinning.
+# Independent of the task-completion timeout so it can be tuned separately.
+DRAIN_BLOCK_TIMEOUT_S = 0.1
+
 
 class IdleDetector:
     """Utility class for detecting idle operators.
@@ -716,8 +722,8 @@ def process_completed_tasks(
         #    ``ray.get``).
         # 4. Emit in per-op append order — preserving today's per-op,
         #    per-task, per-pair emission order exactly.
-        # 5. Fire ``task_done_callback`` for any task whose
-        #    ``_task_done_pending`` flag is set, once all its pairs are emitted.
+        # 5. Fire ``task_done_callback`` for any DRAINED task, once all its
+        #    pairs are emitted.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
@@ -756,7 +762,7 @@ def process_completed_tasks(
     # so the loop is paced by metadata availability instead of spinning
     # (re-running per-iteration scheduling work) while fetches are in flight.
     for failed_op_name, fetch_exc in metadata_prefetcher.drain(
-        block_timeout_s=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
+        block_timeout_s=DRAIN_BLOCK_TIMEOUT_S
     ):
         _record_errored_block(fetch_exc, failed_op_name)
 

@@ -35,8 +35,6 @@ import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     DeferredEmit,
-    _emit_deferred_entry,
-    _fire_task_done,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,7 +116,7 @@ class MetadataPrefetcher:
                 fifo.append(d)
             self._request_q.put([d.meta_ref for d in deferred])
         for task in ready_tasks:
-            if task.is_done_pending():
+            if task.is_drained():
                 # ``set`` dedupes: a still-pending task re-seen next iteration
                 # must not be registered (or later fired) twice.
                 self._done_pending.add(task)
@@ -171,7 +169,7 @@ class MetadataPrefetcher:
                     failures.append((d.task.operator_name, result))
                     continue
                 try:
-                    _emit_deferred_entry(d, result)
+                    d.task.emit_block(d.block_ref, result)
                 except Exception as e:
                     # Deserializing/emitting the fetched metadata can also fail
                     # (e.g. ``pickle.loads`` raising on a corrupt object). Treat
@@ -187,7 +185,7 @@ class MetadataPrefetcher:
                 # ``max_errored_blocks``, like the inline failure path did.
                 if task.task_error is not None:
                     failures.append((task.operator_name, task.task_error))
-                _fire_task_done(task)
+                task.mark_done()
             self._done_pending.difference_update(fired)
 
         return failures

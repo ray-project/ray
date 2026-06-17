@@ -33,7 +33,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     DeferredEmit,
     MetadataOpTask,
-    _emit_deferred_entry,
 )
 from ray.data._internal.execution.metadata_prefetcher import MetadataPrefetcher
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -1502,7 +1501,7 @@ class TestDataOpTask:
 
         # Emitting the fetched metadata fires the callback in deferred order.
         for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
-            _emit_deferred_entry(d, meta_bytes)
+            d.task.emit_block(d.block_ref, meta_bytes)
         assert len(outputs) == len(deferred)
         assert task._last_block_meta is not None
 
@@ -1537,12 +1536,12 @@ class TestDataOpTask:
         # a single on_data_ready call would pull nothing from it.
         deadline = time.time() + 30
         for task in (task_a, task_b):
-            while not task.is_done_pending() and time.time() < deadline:
+            while not task.is_drained() and time.time() < deadline:
                 task.on_data_ready(None, deferred)
                 time.sleep(0.01)
-        assert task_a.is_done_pending() and task_b.is_done_pending()
+        assert task_a.is_drained() and task_b.is_drained()
         for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
-            _emit_deferred_entry(d, meta_bytes)
+            d.task.emit_block(d.block_ref, meta_bytes)
 
         # Expect: task_a's two bundles in size order, then task_b's two.
         # Sizes carry a small block-format overhead over the raw payload.
@@ -1582,17 +1581,17 @@ class TestDataOpTask:
         prefetcher.start()
         try:
             # Drain each task until end-of-stream (the trailing StopIteration
-            # sets ``_task_done_pending`` for the postponed done callback).
+            # moves the task to DRAINED for the postponed done callback).
             # Loop because on a small cluster the second generator may not
             # have started when the first is ready.
             deferred_a: list = []
             deferred_b: list = []
             deadline = time.time() + 30
             for task, deferred in ((task_a, deferred_a), (task_b, deferred_b)):
-                while not task.is_done_pending() and time.time() < deadline:
+                while not task.is_drained() and time.time() < deadline:
                     task.on_data_ready(None, deferred)
                     time.sleep(0.01)
-            assert task_a.is_done_pending() and task_b.is_done_pending()
+            assert task_a.is_drained() and task_b.is_drained()
 
             prefetcher.submit("a", deferred_a, [task_a])
             prefetcher.submit("b", deferred_b, [task_b])
@@ -1632,7 +1631,7 @@ class TestDataOpTask:
         ray.wait([gen], fetch_local=False)
         deferred: list[DeferredEmit] = []
         deadline = time.time() + 30
-        while not task.is_done_pending() and time.time() < deadline:
+        while not task.is_drained() and time.time() < deadline:
             task.on_data_ready(None, deferred)
             time.sleep(0.01)
         assert len(deferred) == 2
@@ -1685,7 +1684,7 @@ class TestDataOpTask:
         ray.wait([gen], fetch_local=False)
         deferred: list[DeferredEmit] = []
         deadline = time.time() + 30
-        while not task.is_done_pending() and time.time() < deadline:
+        while not task.is_drained() and time.time() < deadline:
             task.on_data_ready(None, deferred)
             time.sleep(0.01)
         assert len(deferred) == 2
