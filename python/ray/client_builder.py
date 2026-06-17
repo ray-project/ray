@@ -260,8 +260,7 @@ class ClientBuilder:
             self._remote_init_kwargs = kwargs
             unknown = ", ".join(kwargs)
             logger.info(
-                "Passing the following kwargs to ray.init() "
-                f"on the server: {unknown}"
+                f"Passing the following kwargs to ray.init() on the server: {unknown}"
             )
         return self
 
@@ -349,7 +348,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address is None:
         address = ray._private.services.canonicalize_bootstrap_address(address)
         return _LocalClientBuilder(address)
-    
+
     # Check for HTTP/HTTPS address before attempting module import
     if address and address.startswith(("http://", "https://")):
         raise ValueError(
@@ -361,7 +360,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             f"  2. Set RAY_ADDRESS to the GCS address instead "
             f"(e.g. <head_node_ip>:6379)."
         )
-    
+
     module_string, inner_address = _split_address(address)
     try:
         module = importlib.import_module(module_string)
@@ -371,9 +370,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             f"This module was parsed from Address: {address}"
         ) from e
     if "ClientBuilder" not in dir(module):
-        raise RuntimeError(
-            f"Module: {module_string} does not have ClientBuilder."
-        )
+        raise RuntimeError(f"Module: {module_string} does not have ClientBuilder.")
     return module.ClientBuilder(inner_address)
 
 

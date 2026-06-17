@@ -243,9 +243,9 @@ def test_module_lacks_client_builder():
             ray.client("othermodule://")
         except RuntimeError as e:
             exception = e
-        assert (
-            exception is not None
-        ), "Module without ClientBuilder did not raise RuntimeError"
+        assert exception is not None, (
+            "Module without ClientBuilder did not raise RuntimeError"
+        )
         assert "does not have ClientBuilder" in str(exception)
 
 
@@ -368,11 +368,10 @@ def test_client_deprecation_warn():
 
     with warnings.catch_warnings(record=True) as w:
         ray.client().namespace("nmspc").env({"pip": ["requests"]}).connect()
-    expected = (
-        'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
-    )
+    expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
     assert any(
-        has_client_deprecation_warn(warning, expected) for warning in w  # noqa E501
+        has_client_deprecation_warn(warning, expected)
+        for warning in w  # noqa E501
     )
     ray.shutdown()
 
@@ -400,8 +399,9 @@ def test_client_deprecation_warn():
 
     # Test that passing namespace through env doesn't add namespace to the
     # replacement
-    with warnings.catch_warnings(record=True) as w, patch.dict(
-        os.environ, {"RAY_NAMESPACE": "aksdj"}
+    with (
+        warnings.catch_warnings(record=True) as w,
+        patch.dict(os.environ, {"RAY_NAMESPACE": "aksdj"}),
     ):
         with ray.client("localhost:50055").connect():
             pass
@@ -435,8 +435,9 @@ def test_client_deprecation_warn():
 
         # We don't expect namespace to appear in the warning message, since
         # it was configured through an env var
-        with warnings.catch_warnings(record=True) as w, patch.dict(
-            os.environ, {"RAY_NAMESPACE": "abcdef"}
+        with (
+            warnings.catch_warnings(record=True) as w,
+            patch.dict(os.environ, {"RAY_NAMESPACE": "abcdef"}),
         ):
             try:
                 ray.client("localhost:50055").env({"pip": ["requests"]}).connect()
