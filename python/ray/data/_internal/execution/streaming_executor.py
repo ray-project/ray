@@ -206,9 +206,6 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         self._progress_manager.start()
 
-        self._backpressure_policies = get_backpressure_policies(
-            self._data_context, self._topology, self._resource_manager
-        )
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
@@ -222,6 +219,18 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         if self._data_context.use_budget_scheduler:
             self._budget_scheduler = self._create_budget_scheduler()
+            # Disable backpressure policies when using the budget scheduler.
+            # The budget scheduler replaces backpressure policies as the sole
+            # mechanism for memory management. Having both active causes a
+            # deadlock: backpressure policies can block output reading, which
+            # prevents the budget scheduler's task_output/task_finished
+            # callbacks from firing, which prevents it from releasing CPUs,
+            # which prevents all dispatching.
+            self._backpressure_policies = []
+        else:
+            self._backpressure_policies = get_backpressure_policies(
+                self._data_context, self._topology, self._resource_manager
+            )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
