@@ -2,8 +2,8 @@
 
 get_haproxy_binary() resolves an HAProxy binary path with this priority:
   0. Flag off  → return RAY_SERVE_HAPROXY_BINARY_PATH verbatim (no resolution).
-  1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override → validate and return.
-  2. Bundled binary from the ``ray-haproxy`` PyPI package.
+  1. Bundled binary from the ``ray-haproxy`` PyPI package.
+  2. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override → validate and return.
   3. System ``haproxy`` on PATH.
   4. FileNotFoundError with an actionable message.
 """
@@ -32,10 +32,13 @@ def test_flag_off_is_noop():
     assert get_haproxy_binary() == "haproxy"
 
 
+@patch.dict("sys.modules", {"ray_haproxy": None})
 @patch(FLAG_PATCH, True)
 def test_explicit_path_validates_executable(tmp_path):
-    """When a user sets RAY_SERVE_HAPROXY_BINARY_PATH, we check that the file
-    exists and is executable before returning it."""
+    """When the bundled ray-haproxy package is unavailable, RAY_SERVE_HAPROXY_BINARY_PATH
+    is used as an override: we check that the file exists and is executable
+    before returning it. (ray_haproxy is patched absent so resolution reaches
+    this branch rather than the now-higher-priority bundled binary.)"""
     binary = tmp_path / "haproxy"
     binary.write_bytes(b"")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)

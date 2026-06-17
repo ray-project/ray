@@ -184,7 +184,7 @@ class TestActorManager(unittest.TestCase):
             ).ignore_errors()
         ]
 
-        # Results from blocking calls show the # of calls happend on
+        # Results from blocking calls show the # of calls happened on
         # each remote actor. 11 calls to each actor in total.
         self.assertEqual(results2, [11, 11, 11, 11])
 

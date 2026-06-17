@@ -144,6 +144,7 @@ ray_cc_library(
     visibility = [
         ":__subpackages__",
         "//src/ray/common:__pkg__",
+        "//src/ray/common/monitors/tests:__pkg__",
         "//src/ray/common/tests:__pkg__",
     ],
     deps = [

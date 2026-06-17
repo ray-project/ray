@@ -2,18 +2,36 @@ import functools
 import inspect
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Iterable, Literal, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Literal,
+    Optional,
+    Union,
+)
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr
+from ray.data.expressions import (
+    Expr,
+    StarExpr,
+    expand_star_exprs,
+    exprlist_to_fields,
+)
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    from ray.data.block import Schema
 
 __all__ = [
     "AbstractMap",
@@ -267,7 +285,7 @@ class MapRows(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Filter(AbstractUDFMap):
+class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     """Logical operator for filter."""
 
     predicate_expr: Optional[Expr] = None
@@ -342,6 +360,19 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        # Eagerly expand ``StarExpr`` when the input schema is known. By the time
+        # optimizer rules see this op, the projection list contains only
+        # explicit ``col()`` and computed expressions, no ``StarExpr``.
+        # When the input schema is opaque (e.g., upstream UDF map), the
+        # ``StarExpr`` is preserved and runtime ``eval_projection``
+        # expands it on a per-block basis.
+        import pyarrow as pa
+
+        input_schema = self.input_dependencies[0].infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            object.__setattr__(
+                self, "exprs", expand_star_exprs(self.exprs, input_schema)
+            )
         if self.compute is None:
             object.__setattr__(
                 self, "compute", self._detect_and_get_compute_strategy(self.exprs)
@@ -407,6 +438,20 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
 
+    def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
+
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        input_schema = self.input_dependencies[0].infer_schema()
+        # Only Arrow schemas are supported for static expression resolution.
+        # (``PandasBlockSchema`` chains fall back to ``limit(1)`` execution.)
+        if not isinstance(input_schema, pa.Schema):
+            return None
+        fields = exprlist_to_fields(self.exprs, input_schema)
+        if fields is None:
+            return None
+        return pa.schema(fields)
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class FlatMap(AbstractUDFMap):
@@ -439,7 +484,11 @@ class FlatMap(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
+class StreamingRepartition(
+    AbstractMap,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for streaming repartition operation.
 
     Args:

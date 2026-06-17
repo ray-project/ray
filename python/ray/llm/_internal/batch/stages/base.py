@@ -105,24 +105,26 @@ class StatefulStageUDF:
 
     async def __call__(self, batch: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """A stage UDF wrapper that processes the input and output columns
-        before and after the UDF. The expected schema of "batch" is:
-        {data_column: {
-            dataset columns,
-            other intermediate columns
-         },
-         ...other metadata columns...,
-        }.
+        before and after the UDF.
+
+        The expected schema of "batch" is:
+            {data_column: {
+                dataset columns,
+                other intermediate columns
+             },
+             ...other metadata columns...,
+            }.
 
         The input of the UDF will then [dataset columns and other intermediate columns].
         In addition, while the output of the UDF depends on the UDF implementation,
         the output schema is expected to be
-        {data_column: {
-            dataset columns,
-            other intermediate columns,
-            UDF output columns (will override above columns if they have the same name)
-         },
-         ...other metadata columns...,
-        }.
+            {data_column: {
+                dataset columns,
+                other intermediate columns,
+                UDF output columns (will override above columns if they have the same name)
+             },
+             ...other metadata columns...,
+            }.
         And this will become the input of the next stage.
 
         Examples:
@@ -151,8 +153,10 @@ class StatefulStageUDF:
         Args:
             batch: The input batch.
 
-        Returns:
-            An async iterator of the outputs.
+        Yields:
+            (str, Any): An async iterator of the outputs.
+
+        TODO(MARK): The yield type should be `Dict[str, Any]`, pydoclint is bugged in 0.8.4 (https://github.com/jsh9/pydoclint/issues/288)
         """
         # Handle the case where the batch is empty.
         # FIXME: This should not happen.

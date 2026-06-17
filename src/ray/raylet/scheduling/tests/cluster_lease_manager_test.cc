@@ -26,6 +26,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -68,7 +69,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     return {};
   }
 
-  bool IsWorkerAvailableForScheduling() const override {
+  bool AllAliveWorkersAreActors() const override {
     RAY_CHECK(false) << "Not used.";
     return false;
   }
@@ -270,7 +271,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       {kLabelKeyNodeID, NodeID::FromBinary(id).Hex()}};
   static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      io_context,
+      PeriodicalRunner::Create(io_context),
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/
@@ -438,7 +439,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             /*max_pinned_lease_args_bytes=*/1000,
             /*scheduler_metrics=*/
             scheduler_metrics_,
-            /*get_time=*/[this]() { return current_time_ms_; })),
+            /*clock=*/fake_clock_)),
         lease_manager_(
             id_,
             *scheduler_,
@@ -453,8 +454,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
             },
             /* announce_infeasible_lease= */
             [this](const RayLease &lease) { announce_infeasible_lease_calls_++; },
-            *local_lease_manager_,
-            /*get_time=*/[this]() { return current_time_ms_; }) {
+            *local_lease_manager_) {
     RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
   }
 
@@ -536,6 +536,9 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   NodeID id_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
   ray::Clock clock_;
+  // Controllable clock used to drive the LocalLeaseManager's scheduling-class cap
+  // backoff timing in tests. Declared before local_lease_manager_ so it outlives it.
+  ray::FakeClock fake_clock_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -546,7 +549,6 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   int node_info_calls_ = 0;
   int announce_infeasible_lease_calls_ = 0;
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
-  int64_t current_time_ms_ = 0;
   ray::observability::FakeGauge fake_scheduler_tasks_gauge_;
   ray::observability::FakeGauge fake_scheduler_unscheduleable_tasks_gauge_;
   ray::observability::FakeGauge fake_scheduler_failed_worker_startup_total_gauge_;
@@ -604,7 +606,7 @@ TEST_F(ClusterLeaseManagerTest, BasicTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.TriggerCallbacks();
 
@@ -647,7 +649,7 @@ TEST_F(ClusterLeaseManagerTest, IdempotencyTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.TriggerCallbacks();
 
@@ -738,8 +740,11 @@ TEST_F(ClusterLeaseManagerTest, GrantQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  std::shared_ptr<MockWorker> worker_A = std::make_shared<MockWorker>(
-      WorkerID::FromRandom(), 1234, CalculateRuntimeEnvHash(serialized_runtime_env_A));
+  std::shared_ptr<MockWorker> worker_A =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(),
+                                   1234,
+                                   clock_,
+                                   CalculateRuntimeEnvHash(serialized_runtime_env_A));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
   pool_.TriggerCallbacks();
 
@@ -806,8 +811,10 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 0);
 
-  std::shared_ptr<MockWorker> worker1 = std::make_shared<MockWorker>(worker_id1, 1234);
-  std::shared_ptr<MockWorker> worker2 = std::make_shared<MockWorker>(worker_id2, 5678);
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(worker_id1, 1234, clock_);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(worker_id2, 5678, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
 
   lease_manager_.ScheduleAndGrantLeases();
@@ -870,7 +877,7 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDies2Test) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   lease_manager_.ScheduleAndGrantLeases();
@@ -894,7 +901,7 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDies2Test) {
 
 TEST_F(ClusterLeaseManagerTest, NoFeasibleNodeTest) {
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 999}});
@@ -941,9 +948,9 @@ TEST_F(ClusterLeaseManagerTest, DrainingWhileResolving) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.TriggerCallbacks();
@@ -988,9 +995,9 @@ TEST_F(ClusterLeaseManagerTest, ResourceTakenWhileResolving) {
     resolved, the node no longer has available resources.
   */
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
@@ -1073,9 +1080,9 @@ TEST_F(ClusterLeaseManagerTest, ResourceTakenWhileResolving) {
 
 TEST_F(ClusterLeaseManagerTest, TestIsSelectedBasedOnLocality) {
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235, clock_);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker1));
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
 
@@ -1138,9 +1145,9 @@ TEST_F(ClusterLeaseManagerTest, TestIsSelectedBasedOnLocality) {
 
 TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235, clock_);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker1));
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
 
@@ -1209,7 +1216,7 @@ TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
     node.
   */
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   auto remote_node_id = NodeID::FromRandom();
   AddNode(remote_node_id, 5);
 
@@ -1305,7 +1312,7 @@ TEST_F(ClusterLeaseManagerTest, TestIdleNode) {
   ASSERT_EQ(leased_workers_.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.TriggerCallbacks();
 
@@ -1475,7 +1482,7 @@ TEST_F(ClusterLeaseManagerTest, TaskUnschedulableTest) {
 
 TEST_F(ClusterLeaseManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   RayLease lease1 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply reply;
 
@@ -1560,7 +1567,7 @@ TEST_F(ClusterLeaseManagerTest, TaskCancellationTest) {
 TEST_F(ClusterLeaseManagerTest, TaskCancelInfeasibleTask) {
   /* Make sure cancelLease works for infeasible leases */
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 12}});
@@ -1607,7 +1614,7 @@ TEST_F(ClusterLeaseManagerTest, TaskCancelWithResourceShape) {
   // lease1 doesn't match the resource shape so shouldn't be cancelled
   // lease2 matches the resource shape and should be cancelled
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   RayLease lease1 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
   RayLease lease2 = CreateLease({{ray::kCPU_ResourceLabel, 10}});
   absl::flat_hash_map<std::string, double> resource_shape_1 = {
@@ -1671,7 +1678,7 @@ TEST_F(ClusterLeaseManagerTest, TaskCancelWithResourceShape) {
 
 TEST_F(ClusterLeaseManagerTest, HeartbeatTest) {
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   {
@@ -2018,7 +2025,7 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
 
   // Push a worker so the first lease can be granted.
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(worker);
   lease_manager_.ScheduleAndGrantLeases();
   local_lease_manager_->ClearWorkerBacklog(worker_ids[0]);
@@ -2122,7 +2129,7 @@ TEST_F(ClusterLeaseManagerTest, TestInfeasibleLeaseWarning) {
   // after adding a new node.
   AddNode(NodeID::FromRandom(), 8);
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -2191,7 +2198,7 @@ TEST_F(ClusterLeaseManagerTest, TestAnyPendingLeasesForResourceAcquisition) {
     Check if the manager can correctly identify pending leases.
    */
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   // lease1: running.
@@ -2250,7 +2257,7 @@ TEST_F(ClusterLeaseManagerTest, ArgumentEvicted) {
     evicted. The lease should go from waiting -> dispatch -> waiting.
   */
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   rpc::RequestWorkerLeaseReply reply;
@@ -2305,7 +2312,7 @@ TEST_F(ClusterLeaseManagerTest, FeasibleToNonFeasible) {
   // Test the case, when resources changes in local node, the feasible lease should
   // able to transfer to infeasible lease
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   RayLease lease1 = CreateLease({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply1;
@@ -2372,7 +2379,7 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
       scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(id_.Binary()));
 
-  auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   auto allocated_instances = std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
       {{"CPU_group_aaa", 1.}, {"CPU_group_0_aaa", 1.}}, allocated_instances));
@@ -2381,7 +2388,7 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
 
   // the released CPU resource is acquired by worker2
-  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678);
+  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678, clock_);
   allocated_instances = std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
       {{"CPU_group_aaa", 1.}, {"CPU_group_0_aaa", 1.}}, allocated_instances));
@@ -2393,7 +2400,7 @@ TEST_F(ClusterLeaseManagerTest, NegativePlacementGroupCpuResources) {
   ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
   ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 1);
 
-  auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 7678);
+  auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 7678, clock_);
   allocated_instances = std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
       {{"CPU_group_aaa", 1.}, {"CPU_group_1_aaa", 1.}}, allocated_instances));
@@ -2420,8 +2427,8 @@ TEST_F(ClusterLeaseManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
   ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 4);
 
-  auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678);
+  auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
+  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678, clock_);
 
   // Check failed as the worker has no allocated resource instances.
   ASSERT_FALSE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
@@ -2565,7 +2572,7 @@ TEST_F(ClusterLeaseManagerTest, TestSpillWaitingLeases) {
   AddNode(remote_node_id, 8);
   // Dispatch the ready lease.
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -2607,8 +2614,10 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
   */
   auto worker_id1 = WorkerID::FromRandom();
   auto worker_id2 = WorkerID::FromRandom();
-  std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(worker_id1, 1234);
-  std::shared_ptr<MockWorker> worker2 = std::make_shared<MockWorker>(worker_id2, 12345);
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(worker_id1, 1234, clock_);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(worker_id2, 12345, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
@@ -2679,9 +2688,9 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
    * Two leases that depend on the same object can run concurrently.
    */
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
@@ -2729,7 +2738,7 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
 
 TEST_F(ClusterLeaseManagerTest, LargeArgsNoStarvationTest) {
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   rpc::RequestWorkerLeaseReply reply;
@@ -2792,8 +2801,8 @@ TEST_F(ClusterLeaseManagerTest, PopWorkerExactlyOnce) {
   // Popworker has been called once, don't call it repeatedly.
   ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
   // Push a worker and try to call back.
-  std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.TriggerCallbacks();
   // Make sure callback has occurred.
@@ -2830,8 +2839,8 @@ TEST_F(ClusterLeaseManagerTest, CapRunningOnDispatchQueue) {
   auto runtime_env_hash = lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -2890,8 +2899,8 @@ TEST_F(ClusterLeaseManagerTest, ZeroCPULeases) {
   auto runtime_env_hash = lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -2936,8 +2945,8 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
   auto runtime_env_hash = lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -2978,7 +2987,7 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
 /// while hitting the scheduling class cap.
 TEST_F(ClusterLeaseManagerTest, SchedulingClassCapSpillback) {
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   std::vector<RayLease> leases;
@@ -3052,8 +3061,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -3062,7 +3071,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
 
   ASSERT_EQ(num_callbacks, 1);
 
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
   ASSERT_FALSE(workers.back()->IsBlocked());
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(
       get_unblocked_worker(workers)));
@@ -3072,7 +3081,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(num_callbacks, 2);
 
   // Since we're increasing exponentially, increasing by a unit show no longer be enough.
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(
       get_unblocked_worker(workers)));
   lease_manager_.ScheduleAndGrantLeases();
@@ -3081,7 +3090,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(num_callbacks, 2);
 
   // Now it should run
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   lease_manager_.ScheduleAndGrantLeases();
@@ -3096,7 +3105,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
     }
   }
 
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
 
   // Now schedule another lease of the same scheduling class.
   RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
@@ -3108,8 +3117,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
 
-  std::shared_ptr<MockWorker> new_worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  std::shared_ptr<MockWorker> new_worker = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(new_worker));
   pool_.TriggerCallbacks();
   workers.push_back(new_worker);
@@ -3118,7 +3127,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   // the leases finished).
   ASSERT_EQ(num_callbacks, 3);
 
-  current_time_ms_ += 2 * UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(2 * UNIT));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
@@ -3156,17 +3165,17 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
 
   auto runtime_env_hash = leases[0].GetLeaseSpecification().GetRuntimeEnvHash();
 
-  std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker1 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.TriggerCallbacks();
   lease_manager_.ScheduleAndGrantLeases();
 
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
 
-  std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker2 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -3189,18 +3198,18 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   }
 
-  std::shared_ptr<MockWorker> worker3 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker3 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
   pool_.TriggerCallbacks();
   lease_manager_.ScheduleAndGrantLeases();
   ASSERT_EQ(num_callbacks, 3);
 
   ASSERT_TRUE(local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker3));
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
 
-  std::shared_ptr<MockWorker> worker4 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  std::shared_ptr<MockWorker> worker4 = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker4));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
@@ -3217,8 +3226,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
         false,
         false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
-    std::shared_ptr<MockWorker> worker5 =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker5 = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
     lease_manager_.ScheduleAndGrantLeases();
     pool_.TriggerCallbacks();
@@ -3254,8 +3263,8 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   auto runtime_env_hash = first_lease.GetLeaseSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
-    std::shared_ptr<MockWorker> worker =
-        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    std::shared_ptr<MockWorker> worker = std::make_shared<MockWorker>(
+        WorkerID::FromRandom(), 1234, clock_, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -3282,7 +3291,7 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
     }
   }
 
-  current_time_ms_ += UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(UNIT));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
@@ -3294,7 +3303,7 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   }
 
   /// A lot of time passes, definitely more than the timeout.
-  current_time_ms_ += 100000 * UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(100000 * UNIT));
 
   RayLease third_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}},
                                      /*num_args=*/0,
@@ -3310,7 +3319,7 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   /// until after the lease is queued.
   ASSERT_EQ(num_callbacks, 2);
 
-  current_time_ms_ += 2 * UNIT;
+  fake_clock_.AdvanceTime(absl::Milliseconds(2 * UNIT));
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
 
@@ -3348,7 +3357,7 @@ TEST_F(ClusterLeaseManagerTest, PopWorkerBeforeDraining) {
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.TriggerCallbacks();
   ASSERT_TRUE(callback_occurred);
@@ -3373,9 +3382,9 @@ TEST_F(ClusterLeaseManagerTest, UnscheduleableWhileDraining) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.TriggerCallbacks();
