@@ -35,7 +35,7 @@ class AbstractAllToAll(LogicalOperator):
 
     def __init__(
         self,
-        input_op: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
         num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -45,8 +45,8 @@ class AbstractAllToAll(LogicalOperator):
         """Initialize an ``AbstractAllToAll`` logical operator.
 
         Args:
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
+            input_dependencies: The operators preceding this operator in the plan DAG.
+                The outputs of these operators will be the inputs to this operator.
             num_outputs: The number of expected output bundles outputted by this
                 operator.
             sub_progress_bar_names: Optional sub-stage progress bar names for this
@@ -58,7 +58,7 @@ class AbstractAllToAll(LogicalOperator):
         super().__init__(
             _num_outputs=num_outputs,
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
