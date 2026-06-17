@@ -66,8 +66,8 @@
       row_group_size: [64MiB]
       compression_ratio: [5.0]
       read_memory: [8589934592]
-      max_bucket_size: [1GiB]
-      batch_target_bytes: [64MiB, 128MiB, 256MiB, 512MiB]
+      max_bucket_size: [2GiB, 4GiB]
+      batch_target_bytes: [128MiB, 256MiB]
       use_version: [v1, v3]
       trial: [1, 2, 3]
   run:
@@ -78,7 +78,7 @@
       --num-files {{num_files}}
       --row-group-size {{row_group_size}}
       --compression-ratio {{compression_ratio}}
-      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}
+      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}
       --read-back
       --read-memory {{read_memory}}
       --use-version {{use_version}}
