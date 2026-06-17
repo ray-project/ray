@@ -1141,6 +1141,7 @@ def read_parquet(
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     include_row_hash: bool = False,
+    ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1171,6 +1172,14 @@ def read_parquet(
 
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
+
+        Read files matching a glob pattern.
+
+        >>> ray.data.read_parquet("/data/*.parquet")  # doctest: +SKIP
+
+        Read files matching a recursive glob pattern.
+
+        >>> ray.data.read_parquet("/data/**/*.parquet")  # doctest: +SKIP
 
         Specify a schema for the parquet file.
 
@@ -1272,6 +1281,9 @@ def read_parquet(
             columns, use :meth:`~ray.data.Dataset.select_columns` on the
             returned dataset and include ``'row_hash'`` explicitly in the list
             to retain it.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Also suppresses errors when a glob pattern matches
+            no files. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1402,6 +1414,7 @@ def read_parquet(
             file_extensions=file_extensions,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
+            ignore_missing_paths=ignore_missing_paths,
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
@@ -1436,6 +1449,7 @@ def read_parquet(
         include_paths=include_paths,
         include_row_hash=include_row_hash,
         file_extensions=file_extensions,
+        ignore_missing_paths=ignore_missing_paths,
     )
     return read_datasource(
         datasource,
