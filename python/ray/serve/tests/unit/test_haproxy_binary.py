@@ -20,13 +20,19 @@ BINARY_PATH_PATCH = f"{HAPROXY_MODULE}.RAY_SERVE_HAPROXY_BINARY_PATH"
 WHICH_PATCH = f"{HAPROXY_MODULE}.shutil.which"
 
 
+def _make_executable_binary(tmp_path):
+    """Create an empty executable file under tmp_path and return its path."""
+    binary = tmp_path / "haproxy"
+    binary.write_bytes(b"")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    return binary
+
+
 def test_explicit_path_takes_precedence_over_bundled(tmp_path):
     """An explicit RAY_SERVE_HAPROXY_BINARY_PATH wins over the bundled
     ray-haproxy package, so an operator's custom binary is not silently
     overridden."""
-    binary = tmp_path / "haproxy"
-    binary.write_bytes(b"")
-    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    binary = _make_executable_binary(tmp_path)
 
     mock_module = MagicMock()
     mock_module.get_haproxy_binary.return_value = "/bundled/haproxy"
@@ -40,9 +46,7 @@ def test_explicit_path_takes_precedence_over_bundled(tmp_path):
 def test_explicit_path_validates_executable(tmp_path):
     """An explicit RAY_SERVE_HAPROXY_BINARY_PATH is validated before use: it must
     exist and be executable, otherwise resolution raises."""
-    binary = tmp_path / "haproxy"
-    binary.write_bytes(b"")
-    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    binary = _make_executable_binary(tmp_path)
 
     with patch(BINARY_PATH_PATCH, str(binary)):
         assert get_haproxy_binary() == str(binary)
@@ -57,6 +61,15 @@ def test_explicit_path_validates_executable(tmp_path):
     with patch(BINARY_PATH_PATCH, str(tmp_path / "no_such_file")):
         with pytest.raises(FileNotFoundError, match="HAPROXY_BINARY_PATH"):
             get_haproxy_binary()
+
+
+@patch(BINARY_PATH_PATCH, "")
+def test_bundled_package_used_when_no_explicit_path():
+    """With no explicit path set, the bundled ray-haproxy binary is used."""
+    mock_module = MagicMock()
+    mock_module.get_haproxy_binary.return_value = "/bundled/haproxy"
+    with patch.dict("sys.modules", {"ray_haproxy": mock_module}):
+        assert get_haproxy_binary() == "/bundled/haproxy"
 
 
 @patch(WHICH_PATCH, return_value="/usr/sbin/haproxy")
