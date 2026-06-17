@@ -128,12 +128,85 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
+def _plan_join_shuffle_v2(
+    logical_op: Join,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    """Build the V2 task-based join DAG.
+
+    Two ``ShuffleMapOp``s hash-partition the left and right inputs into the same
+    key space, and a single binary ``ShuffleReduceOp`` pairs each partition's
+    shards across both inputs and joins them.  Returns the reduce op; the
+    executor crawls upstream via input_dependencies to find the map ops.
+    """
+    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+        _SHUFFLE_MAP_RUNTIME_ENV,
+        _make_hash_partition_fn,
+    )
+    from ray.data._internal.execution.operators.join import _make_join_reduce_fn
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+        ShuffleMapOp,
+    )
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+        ShuffleReduceOp,
+    )
+
+    left_keys = list(logical_op.left_key_columns)
+    right_keys = list(logical_op.right_key_columns)
+
+    num_partitions = (
+        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
+    )
+
+    left_map = ShuffleMapOp(
+        physical_children[0],
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=(
+            f"JoinShuffleMapLeft(keys={tuple(left_keys)}, "
+            f"partitions={num_partitions})"
+        ),
+    )
+    right_map = ShuffleMapOp(
+        physical_children[1],
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=(
+            f"JoinShuffleMapRight(keys={tuple(right_keys)}, "
+            f"partitions={num_partitions})"
+        ),
+    )
+    reduce_fn = _make_join_reduce_fn(
+        join_type=logical_op.join_type,
+        left_key_col_names=tuple(left_keys),
+        right_key_col_names=tuple(right_keys),
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+    )
+    return ShuffleReduceOp(
+        [left_map, right_map],
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=reduce_fn,
+        streaming_reduce=False,
+        disallow_block_splitting=True,
+        name=f"Join(num_partitions={num_partitions})",
+    )
+
+
 def plan_join_op(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
+    if data_context.join_use_shuffle_v2:
+        return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
         data_context=data_context,
         left_input_op=physical_children[0],
@@ -282,13 +355,19 @@ class Planner:
 
         # Traverse up the DAG, and set the mapping from physical to logical operators.
         # At this point, all physical operators without logical operators set
-        # must have been created by the current logical operator.
+        # must have been created by the current logical operator.  A single
+        # logical op may expand into a branching sub-DAG of new physical ops
+        # (e.g. a join becomes two ShuffleMapOps feeding one ShuffleReduceOp), so
+        # we skip already-mapped boundary ops with `continue` rather than `break`
+        # -- a `break` would stop after the first branch and leave the others
+        # unregistered.
         queue = [physical_op]
         while queue:
             curr_physical_op = queue.pop()
-            # Once we find an operator with a logical operator set, we can stop.
+            # An operator with a logical operator already set marks the boundary
+            # to a previously-planned child; skip it but keep draining the queue.
             if curr_physical_op._logical_operators:
-                break
+                continue
 
             curr_physical_op.set_logical_operators(logical_op)
             # Add this operator to the op_map so optimizer can find it

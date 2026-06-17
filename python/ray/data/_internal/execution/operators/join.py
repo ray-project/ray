@@ -24,6 +24,10 @@ from ray.data.context import DataContext
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E501
+        ReduceFn,
+    )
+
 
 @dataclass(frozen=True)
 class _DatasetPreprocessingResult:
@@ -181,6 +185,53 @@ def join_tables(
         preprocess_result_l.unsupported_projection,
         preprocess_result_r.unsupported_projection,
     )
+
+
+def _make_join_reduce_fn(
+    *,
+    join_type: JoinType,
+    left_key_col_names: Tuple[str, ...],
+    right_key_col_names: Tuple[str, ...],
+    left_columns_suffix: Optional[str] = None,
+    right_columns_suffix: Optional[str] = None,
+) -> "ReduceFn":
+    """Build a V2-shuffle reduce fn that joins two co-partitioned inputs.
+
+    The returned fn is the binary counterpart of ``JoiningAggregation.finalize``:
+    given one partition's shards from both the left (input 0) and right
+    (input 1) ``ShuffleMapOp``s, it concatenates each side and applies
+    ``join_tables``.  Runs in blocking mode -- the whole partition of both
+    inputs must be present before joining.
+    """
+
+    def _reduce(
+        partition_id: int, tables_by_input: List[List["pa.Table"]]
+    ) -> Iterator[Block]:
+        assert (
+            len(tables_by_input) == 2
+        ), f"Join reduce expects exactly two inputs (got {len(tables_by_input)})"
+        left_tables, right_tables = tables_by_input[0], tables_by_input[1]
+        # Each non-empty map task emits a schema-only shard for partitions it has
+        # no rows for, so in the common case both sides carry at least one
+        # (possibly empty) typed table and join_tables handles outer joins.  An
+        # empty shard list only happens when a whole input is block-less; we
+        # then lack the schema to build that side's empty table, so skip the
+        # partition rather than crash. (Block-less join inputs are pathological.)
+        if not left_tables or not right_tables:
+            return
+        left_table = _combine(left_tables)
+        right_table = _combine(right_tables)
+        yield join_tables(
+            left_table,
+            right_table,
+            join_type=join_type,
+            left_key_col_names=left_key_col_names,
+            right_key_col_names=right_key_col_names,
+            left_columns_suffix=left_columns_suffix,
+            right_columns_suffix=right_columns_suffix,
+        )
+
+    return _reduce
 
 
 def _preprocess(

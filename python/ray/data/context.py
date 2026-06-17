@@ -105,6 +105,11 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
 )
 
+# Route joins through the actorless V2 shuffle (two ShuffleMapOps → one binary
+# ShuffleReduceOp) instead of the actor-pool JoinOperator.  Off by default while
+# V2 bakes; the actor-pool path remains the production default.
+DEFAULT_JOIN_USE_SHUFFLE_V2 = env_bool("RAY_DATA_JOIN_USE_SHUFFLE_V2", False)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -638,6 +643,9 @@ class DataContext:
             intermediate shards: "none", "lz4", or "zstd" (default "zstd").
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
+        join_use_shuffle_v2: Route joins through the actorless V2 shuffle (two
+            ``ShuffleMapOp``s feeding a binary ``ShuffleReduceOp``) instead of
+            the actor-pool ``JoinOperator``. Defaults to False.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -728,6 +736,9 @@ class DataContext:
 
     # Shard refs each reduce task dereferences per ray.get() call.
     hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
+
+    # Route joins through the V2 task-based shuffle instead of the actor pool.
+    join_use_shuffle_v2: bool = DEFAULT_JOIN_USE_SHUFFLE_V2
 
     # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
