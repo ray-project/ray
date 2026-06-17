@@ -14,11 +14,6 @@
 
 #include "ray/common/threshold_memory_monitor.h"
 
-#include <algorithm>
-#include <cctype>
-#include <cerrno>
-#include <cstdlib>
-#include <limits>
 #include <string>
 
 #include "absl/strings/str_format.h"
@@ -113,76 +108,11 @@ int64_t ThresholdMemoryMonitor::ComputeMemoryThresholdBytes(
   // mode, memory.high is the authoritative user-slice threshold; if it cannot
   // be read or parsed, skip this poll instead of falling back to the host total
   // from /proc/meminfo, which can be much larger than the user-slice cap.
-  if (total_memory_bytes == MemoryMonitorInterface::kNull) {
-    return MemoryMonitorInterface::kNull;
-  }
-
-  int64_t threshold_fraction =
-      static_cast<int64_t>(total_memory_bytes * usage_threshold_);
-  int64_t resolved_threshold_bytes = threshold_fraction;
-  if (min_memory_free_bytes_ > MemoryMonitorInterface::kNull) {
-    int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes_;
-    if (threshold_absolute < 0) {
-      // Cgroup downsized below the configured min-free reservation. Don't
-      // crash; just ignore the absolute floor for this poll.
-      RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
-          << "Cgroup memory total " << total_memory_bytes
-          << " is smaller than min_memory_free_bytes " << min_memory_free_bytes_
-          << "; ignoring the absolute threshold for this poll and using the "
-             "fractional threshold "
-          << threshold_fraction << ".";
-    } else {
-      resolved_threshold_bytes = std::max(threshold_fraction, threshold_absolute);
-    }
-  }
-
-  if (!resource_isolation_enabled_) {
-    return resolved_threshold_bytes;
-  }
-
-  StatusOr<std::string> user_slice_upper_bound_or =
-      cgroup_manager_.GetUserCgroupConstraintValue(
-          MemoryMonitorUtils::kCgroupsV2MemoryHighPath);
-  if (!user_slice_upper_bound_or.ok()) {
-    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
-        << "Failed to read user cgroup memory limit ("
-        << MemoryMonitorUtils::kCgroupsV2MemoryHighPath << ") from "
-        << cgroup_manager_.GetUserCgroupPath() << ": "
-        << user_slice_upper_bound_or.ToString()
-        << ". Skipping this resource-isolation memory monitor poll instead of "
-           "falling back to host-based threshold "
-        << resolved_threshold_bytes << ".";
-    return MemoryMonitorInterface::kNull;
-  }
-  const std::string &user_slice_upper_bound_str = user_slice_upper_bound_or.value();
-  if (user_slice_upper_bound_str.empty() ||
-      !std::all_of(user_slice_upper_bound_str.begin(),
-                   user_slice_upper_bound_str.end(),
-                   [](unsigned char c) { return std::isdigit(c); })) {
-    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
-        << "User cgroup memory limit is not a valid non-negative integer: \""
-        << user_slice_upper_bound_str << "\" from " << cgroup_manager_.GetUserCgroupPath()
-        << ". Skipping this resource-isolation memory monitor poll instead of "
-           "falling back to host-based threshold "
-        << resolved_threshold_bytes << ".";
-    return MemoryMonitorInterface::kNull;
-  }
-
-  errno = 0;
-  char *parse_end = nullptr;
-  const long long user_slice_upper_bound =
-      std::strtoll(user_slice_upper_bound_str.c_str(), &parse_end, 10);
-  if (errno == ERANGE || parse_end == nullptr || *parse_end != '\0' ||
-      user_slice_upper_bound > std::numeric_limits<int64_t>::max()) {
-    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
-        << "User cgroup memory limit is outside int64 range: \""
-        << user_slice_upper_bound_str << "\" from " << cgroup_manager_.GetUserCgroupPath()
-        << ". Skipping this resource-isolation memory monitor poll instead of "
-           "falling back to host-based threshold "
-        << resolved_threshold_bytes << ".";
-    return MemoryMonitorInterface::kNull;
-  }
-  return static_cast<int64_t>(user_slice_upper_bound);
+  return MemoryMonitorUtils::GetMemoryThresholdOrNull(total_memory_bytes,
+                                                      usage_threshold_,
+                                                      min_memory_free_bytes_,
+                                                      resource_isolation_enabled_,
+                                                      cgroup_manager_);
 }
 
 ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
