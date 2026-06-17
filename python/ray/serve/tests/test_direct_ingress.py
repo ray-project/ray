@@ -2660,11 +2660,14 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
         serve.delete("stuck-requests-deployment", _blocking=False)
 
         # Verify the application is eventually deleted (replica was force-killed).
-        # In direct ingress mode, graceful_shutdown_timeout_s is bumped to at least
-        # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S (default 30s).
+        # For an ingress deployment in direct ingress mode, graceful_shutdown_timeout_s
+        # is floored to RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S +
+        # RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S (about 35s by default), so the
+        # controller force-kills after that floor rather than the configured 1s. Wait
+        # well past it.
         wait_for_condition(
             lambda: "stuck-requests-deployment" not in serve.status().applications,
-            timeout=10,
+            timeout=60,
         )
 
         # The stuck requests should fail (connection closed or similar)
