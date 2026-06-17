@@ -572,6 +572,7 @@ doctest(
         exclude = [
             "source/ray-contribute/getting-involved.rst",
             "source/ray-contribute/testing-tips.md",
+            "source/ray-contribute/writing-code-snippets.md",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
