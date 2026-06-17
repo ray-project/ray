@@ -39,9 +39,7 @@ def test_ray_dist_jar_uses_fixed_log4j_version():
         )
     )
 
-    assert {
-        artifact: log4j_versions[artifact] for artifact in LOG4J_ARTIFACTS
-    } == {
+    assert {artifact: log4j_versions[artifact] for artifact in LOG4J_ARTIFACTS} == {
         "log4j-api": "2.25.4",
         "log4j-core": "2.25.4",
         "log4j-slf4j-impl": "2.25.4",
