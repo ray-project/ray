@@ -167,6 +167,7 @@ ray_cc_library(
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_prod",
     ],
 )
 

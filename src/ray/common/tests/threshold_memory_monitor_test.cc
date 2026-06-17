@@ -35,28 +35,41 @@
 
 namespace ray {
 
-// A fake CgroupManagerInterface that reports a fixed numeric upper bound for
-// the user-slice memory, so resource-isolation tests can exercise the
-// threshold computation without needing real cgroup files.
+// A fake CgroupManagerInterface that reports a configurable upper bound for
+// the user-slice memory, so resource-isolation tests can exercise the threshold
+// computation without needing real cgroup manager plumbing.
 class FakeBoundedCgroupManager : public CgroupManagerInterface {
  public:
   explicit FakeBoundedCgroupManager(int64_t user_upper_bound_bytes)
-      : user_upper_bound_bytes_(user_upper_bound_bytes) {}
+      : user_upper_bound_value_(std::to_string(user_upper_bound_bytes)) {}
+
+  explicit FakeBoundedCgroupManager(std::string user_upper_bound_value)
+      : user_upper_bound_value_(std::move(user_upper_bound_value)) {}
+
+  static std::unique_ptr<FakeBoundedCgroupManager> CreateFailing() {
+    std::unique_ptr<FakeBoundedCgroupManager> manager(new FakeBoundedCgroupManager(""));
+    manager->fail_user_upper_bound_read_ = true;
+    return manager;
+  }
 
   Status AddProcessToWorkersCgroup(const std::string &) override { return Status::OK(); }
   Status AddProcessToSystemCgroup(const std::string &) override { return Status::OK(); }
   std::string GetSystemCgroupPath() const override { return ""; }
-  std::string GetUserCgroupPath() const override { return ""; }
+  std::string GetUserCgroupPath() const override { return "fake-user-cgroup"; }
   StatusOr<std::string> GetSystemCgroupConstraintValue(
       const std::string &) const override {
     return std::string{};
   }
   StatusOr<std::string> GetUserCgroupConstraintValue(const std::string &) const override {
-    return std::to_string(user_upper_bound_bytes_);
+    if (fail_user_upper_bound_read_) {
+      return Status::IOError("failed to read memory.high");
+    }
+    return user_upper_bound_value_;
   }
 
  private:
-  int64_t user_upper_bound_bytes_;
+  std::string user_upper_bound_value_;
+  bool fail_user_upper_bound_read_ = false;
 };
 
 class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
@@ -324,6 +337,76 @@ TEST_F(ThresholdMemoryMonitorTest, TestThresholdTracksRuntimeCgroupLimitChanges)
       << "Threshold monitor did not trigger within 15s after the cgroup "
          "memory.max was rewritten to "
       << shrunk_total_bytes << " bytes.";
+}
+
+TEST_F(ThresholdMemoryMonitorTest, TestResourceIsolationThresholdReadFailureSkipsPoll) {
+  const int64_t total_memory_bytes = 16LL * 1024 * 1024 * 1024;  // Host total.
+  const int64_t intended_user_slice_threshold_bytes = 700 * 1024 * 1024;
+
+  // The monitored user-slice usage is 800 MB: above the intended user-slice
+  // threshold, but far below 70% of the host total. If cgroup memory.high cannot
+  // be read, falling back to host total would silently miss the OOM condition.
+  std::string user_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                        800 * 1024 * 1024,
+                                                        800 * 1024 * 1024 /*anon*/,
+                                                        0 /*shmem*/,
+                                                        0 /*inactive_file*/,
+                                                        0 /*active_file*/);
+  std::string system_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                          0,
+                                                          0 /*anon*/,
+                                                          0 /*shmem*/,
+                                                          0 /*inactive_file*/,
+                                                          0 /*active_file*/);
+
+  MakeResourceIsolatedThresholdMemoryMonitor(
+      0.7f /*usage_threshold*/,
+      100000 /*refresh_interval_ms*/,
+      [](std::string) { FAIL() << "Callback should not run in this test."; },
+      "" /*root_cgroup_path*/,
+      user_cgroup_dir,
+      system_cgroup_dir,
+      FakeBoundedCgroupManager::CreateFailing());
+
+  ASSERT_EQ(instance->ComputeMemoryThresholdBytes(total_memory_bytes),
+            MemoryMonitorInterface::kNull);
+  ASSERT_FALSE(instance->IsResourceIsolationThresholdExceeded().has_value())
+      << "Do not fall back to host total when the authoritative user-slice "
+         "threshold read fails. The intended user-slice threshold is "
+      << intended_user_slice_threshold_bytes << " bytes, while 70% of host total is "
+      << static_cast<int64_t>(total_memory_bytes * 0.7f) << " bytes.";
+}
+
+TEST_F(ThresholdMemoryMonitorTest, TestResourceIsolationInvalidThresholdSkipsPoll) {
+  const int64_t total_memory_bytes = 16LL * 1024 * 1024 * 1024;  // Host total.
+
+  std::string user_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                        800 * 1024 * 1024,
+                                                        800 * 1024 * 1024 /*anon*/,
+                                                        0 /*shmem*/,
+                                                        0 /*inactive_file*/,
+                                                        0 /*active_file*/);
+  std::string system_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                          0,
+                                                          0 /*anon*/,
+                                                          0 /*shmem*/,
+                                                          0 /*inactive_file*/,
+                                                          0 /*active_file*/);
+
+  MakeResourceIsolatedThresholdMemoryMonitor(
+      0.7f /*usage_threshold*/,
+      100000 /*refresh_interval_ms*/,
+      [](std::string) { FAIL() << "Callback should not run in this test."; },
+      "" /*root_cgroup_path*/,
+      user_cgroup_dir,
+      system_cgroup_dir,
+      std::make_unique<FakeBoundedCgroupManager>("not-a-number"));
+
+  ASSERT_EQ(instance->ComputeMemoryThresholdBytes(total_memory_bytes),
+            MemoryMonitorInterface::kNull);
+  ASSERT_FALSE(instance->IsResourceIsolationThresholdExceeded().has_value())
+      << "An invalid memory.high value should skip the poll instead of applying "
+         "the host-based threshold to resource-isolated usage.";
 }
 
 TEST_F(ThresholdMemoryMonitorTest,
