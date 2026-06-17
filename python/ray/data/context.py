@@ -104,6 +104,26 @@ DEFAULT_PARQUET_USE_FOOTER_SIZE_ESTIMATE = True
 # columns). Conservative constant; tune up if string-heavy reads under-size.
 DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR = 2.0
 
+# V2 read partitioning strategy. ``"file_affinity"`` (default) keeps each file's
+# chunks in that file's own size-bounded partitions -- one file per read task
+# (locality: one open + footer + sequential I/O) with sub-file parallelism for
+# large files. ``"round_robin"`` spreads chunks across ``num_buckets`` buckets
+# (may mix files in a partition). Env-overridable for experiments.
+DEFAULT_PARQUET_PARTITIONER_STRATEGY = os.environ.get(
+    "RAY_DATA_PARQUET_PARTITIONER_STRATEGY", "file_affinity"
+)
+
+# Max in-memory bytes per V2 read partition (the partitioner's
+# ``max_bucket_size``). ``None`` falls back to ``target_max_block_size``. Raise
+# it to bundle more consecutive row groups per read task (fewer tasks) WITHOUT
+# changing the output-block size.
+DEFAULT_PARQUET_PARTITIONER_MAX_BUCKET_SIZE_BYTES: Optional[int] = None
+
+# Target in-memory bytes per decode batch in the V2 Parquet reader. ``None``
+# falls back to ``target_max_block_size``. Lower it to decode in finer batches
+# (smaller per-task transient memory) independent of the output-block size.
+DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES: Optional[int] = None
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -815,6 +835,16 @@ class DataContext:
     parquet_in_memory_var_width_factor: float = (
         DEFAULT_PARQUET_IN_MEMORY_VAR_WIDTH_FACTOR
     )
+    # V2 read partitioning strategy: "file_affinity" (default) or "round_robin".
+    parquet_partitioner_strategy: str = DEFAULT_PARQUET_PARTITIONER_STRATEGY
+    # Max in-memory bytes per read partition; None -> target_max_block_size.
+    parquet_partitioner_max_bucket_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_PARTITIONER_MAX_BUCKET_SIZE_BYTES
+    # Target in-memory bytes per decode batch; None -> target_max_block_size.
+    parquet_reader_target_batch_size_bytes: Optional[
+        int
+    ] = DEFAULT_PARQUET_READER_TARGET_BATCH_SIZE_BYTES
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

@@ -10,9 +10,13 @@ toggled at runtime (``DataContext.parquet_chunker_row_group_aware``):
   ``total_num_chunks`` byte estimate that is reconciled to a real row-group
   range here, at read time.
 
-``_fragments_from_chunk_metadata`` dispatches on which schema is present.
+``fragments_to_read_for_manifest`` coalesces a partition's chunks **per file
+into contiguous row-group runs**, so sister chunks of the same file (e.g. from
+``FileAffinityPartitioner``) are read in a single scan — one file open, one
+(already-cached) footer, sequential I/O — instead of one scan per row group.
 """
-from typing import List, Optional, Tuple, Union
+from collections import defaultdict
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import pyarrow.dataset as pds
 
@@ -20,6 +24,8 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     ByteEstimateParquetFileChunkMetadata,
     ParquetFileChunkMetadata,
 )
+
+_ChunkMetadata = Union[ParquetFileChunkMetadata, ByteEstimateParquetFileChunkMetadata]
 
 
 def _calculate_row_group_range(
@@ -40,9 +46,9 @@ def _calculate_row_group_range(
         total_row_groups: Total number of row groups to distribute.
 
     Returns:
-        Tuple ``(start_row_group, end_row_group)`` where ``end`` is exclusive,
-        or ``None`` if ``chunk_idx`` falls beyond the actual number of row
-        groups (i.e. the byte-estimate chunker over-estimated the chunk count).
+        ``(start, end)`` (``end`` exclusive), or ``None`` if ``chunk_idx``
+        falls beyond the actual number of row groups (the byte-estimate
+        chunker over-estimated the chunk count).
     """
     assert (
         total_row_groups >= 0
@@ -55,16 +61,12 @@ def _calculate_row_group_range(
     ), f"chunk_idx must be less than total_num_chunks, got {chunk_idx} and {total_num_chunks}"
     assert chunk_idx >= 0, f"chunk_idx must be non-negative, got {chunk_idx}"
 
-    # Handle the case where ``chunk_idx`` exceeds the actual number of chunks
-    # needed. This happens when the chunker overestimated the number of chunks
-    # (it doesn't fetch metadata).
     if chunk_idx >= total_row_groups:
         return None
 
     base_row_groups_per_chunk = total_row_groups // total_num_chunks
     remainder = total_row_groups % total_num_chunks
 
-    # Chunks 0 through (remainder-1) get one extra row group.
     if chunk_idx < remainder:
         row_groups_in_this_chunk = base_row_groups_per_chunk + 1
         start = chunk_idx * row_groups_in_this_chunk
@@ -84,63 +86,101 @@ def _calculate_row_group_range(
     return start, end
 
 
-def _sub_fragments_for_range(
+def _row_group_range_for_chunk(
     fragment: pds.ParquetFileFragment,
-    start: int,
-    end: int,
-) -> List[Tuple[pds.ParquetFileFragment, int]]:
-    """Slice ``fragment`` into one sub-fragment per row group in ``[start, end)``.
+    chunk_metadata: _ChunkMetadata,
+) -> Optional[Tuple[int, int]]:
+    """Resolve a chunk's half-open row-group range, or ``None`` if empty.
 
-    Returns ``(ParquetFileFragment, file_row_offset)`` pairs, where
-    ``file_row_offset`` is the sum of ``num_rows`` across all row groups that
-    precede the sub-fragment in the underlying file. Callers seed per-fragment
-    hashing offsets with this value so sub-fragments of the same file don't
-    collide on ``(path, 0, n)``.
+    Dispatches on the metadata schema: explicit range (row-group-aware chunker,
+    defensively clamped to the file's actual row-group count) or reconciled
+    chunk index (legacy byte-estimate chunker).
     """
-    metadata = fragment.metadata
-    file_row_offset = sum(metadata.row_group(i).num_rows for i in range(start))
-    sub_fragments: List[Tuple[pds.ParquetFileFragment, int]] = []
-    for row_group_index in range(start, end):
-        sub_fragments.append(
-            (fragment.subset(row_group_ids=[row_group_index]), file_row_offset)
-        )
-        file_row_offset += metadata.row_group(row_group_index).num_rows
-    return sub_fragments
-
-
-def _fragments_from_chunk_metadata(
-    fragment: pds.ParquetFileFragment,
-    chunk_metadata: Union[
-        ParquetFileChunkMetadata, ByteEstimateParquetFileChunkMetadata
-    ],
-) -> List[Tuple[pds.ParquetFileFragment, int]]:
-    """Slice ``fragment`` into per-row-group sub-fragments for a chunk.
-
-    Dispatches on the chunk-metadata schema:
-
-    * Row-group-aware (``row_group_start`` / ``row_group_end``): use the
-      explicit range directly, defensively clamped to the file's actual
-      row-group count (a no-op in practice, since the range came from the same
-      footer the reader sees).
-    * Byte-estimate (``chunk_idx`` / ``total_num_chunks``): reconcile the chunk
-      index to a row-group range; returns an empty list when the index falls
-      beyond the file's actual row groups (the chunker over-estimated).
-    """
-    metadata = fragment.metadata
-    total_row_groups = metadata.num_row_groups
-
+    total_row_groups = fragment.metadata.num_row_groups
     if "row_group_start" in chunk_metadata:
         start = min(chunk_metadata["row_group_start"], total_row_groups)
         end = min(chunk_metadata["row_group_end"], total_row_groups)
-        return _sub_fragments_for_range(fragment, start, end)
-
-    # Legacy byte-estimate metadata: reconcile chunk index -> row-group range.
-    row_group_range = _calculate_row_group_range(
+        return (start, end) if start < end else None
+    return _calculate_row_group_range(
         chunk_metadata["chunk_idx"],
         chunk_metadata["total_num_chunks"],
         total_row_groups,
     )
-    if row_group_range is None:
+
+
+def _row_offset_before(metadata, start: int) -> int:
+    """Sum of ``num_rows`` for all row groups preceding ``start`` in the file.
+
+    Seeds the per-fragment row-hash offset so sub-fragments of the same file
+    don't collide on ``(path, 0, n)``.
+    """
+    return sum(metadata.row_group(i).num_rows for i in range(start))
+
+
+def _contiguous_runs(sorted_ids: List[int]) -> List[List[int]]:
+    """Split a sorted list of row-group ids into maximal contiguous runs.
+
+    e.g. ``[0, 1, 2, 5, 6] -> [[0, 1, 2], [5, 6]]``. Each run becomes one scan.
+    """
+    runs: List[List[int]] = []
+    for rg in sorted_ids:
+        if runs and rg == runs[-1][-1] + 1:
+            runs[-1].append(rg)
+        else:
+            runs.append([rg])
+    return runs
+
+
+def _fragments_from_chunk_metadata(
+    fragment: pds.ParquetFileFragment,
+    chunk_metadata: _ChunkMetadata,
+) -> List[Tuple[pds.ParquetFileFragment, int]]:
+    """One coalesced sub-fragment for a single chunk's row-group range.
+
+    Returns ``[(sub_fragment, file_row_offset)]`` covering the chunk's whole
+    range in one scan (empty list if the range is empty). Cross-chunk
+    coalescing across sister chunks is done by
+    :func:`fragments_to_read_for_manifest`.
+    """
+    rng = _row_group_range_for_chunk(fragment, chunk_metadata)
+    if rng is None:
         return []
-    start, end = row_group_range
-    return _sub_fragments_for_range(fragment, start, end)
+    start, end = rng
+    offset = _row_offset_before(fragment.metadata, start)
+    return [(fragment.subset(row_group_ids=list(range(start, end))), offset)]
+
+
+def fragments_to_read_for_manifest(
+    path_to_fragment: Dict[str, pds.ParquetFileFragment],
+    paths,
+    chunk_metadatas,
+) -> List[Tuple[pds.ParquetFileFragment, int]]:
+    """Map a partition's chunks to ``(sub_fragment, file_row_offset)`` scans,
+    coalescing each file's row groups into **contiguous runs**.
+
+    Sister chunks of the same file (consecutive row-group ranges, e.g. from
+    ``FileAffinityPartitioner``) collapse into a single sub-fragment per run, so
+    the reader opens the file once and streams those row groups sequentially
+    (the fragment — and thus the footer — is shared per path by the caller).
+    Whole-file chunks (``None`` metadata) pass through as the full fragment.
+    """
+    whole_file_paths: List[str] = []
+    path_to_row_groups: Dict[str, Set[int]] = defaultdict(set)
+    for path, chunk_metadata in zip(paths, chunk_metadatas):
+        if chunk_metadata is None:
+            whole_file_paths.append(path)
+            continue
+        rng = _row_group_range_for_chunk(path_to_fragment[path], chunk_metadata)
+        if rng is not None:
+            path_to_row_groups[path].update(range(rng[0], rng[1]))
+
+    fragments: List[Tuple[pds.ParquetFileFragment, int]] = []
+    for path in whole_file_paths:
+        fragments.append((path_to_fragment[path], 0))
+    for path, row_groups in path_to_row_groups.items():
+        fragment = path_to_fragment[path]
+        metadata = fragment.metadata
+        for run in _contiguous_runs(sorted(row_groups)):
+            offset = _row_offset_before(metadata, run[0])
+            fragments.append((fragment.subset(row_group_ids=run), offset))
+    return fragments

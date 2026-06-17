@@ -826,6 +826,41 @@ def _verify_mixed(backend: _Backend, num_files: int) -> None:
         )
 
 
+def _apply_read_knobs(args) -> None:
+    """Apply benchmark-supplied sizing / partitioning knobs to the DataContext.
+
+    No-op for any flag left unset (None) -> the build default stands. Skips
+    silently if Ray isn't installed, and warns if a flag isn't present on this
+    build (so a stale binary doesn't appear to honor a knob it ignores). These
+    are process-global ``DataContext`` fields, so setting them here (once)
+    applies to the read-back in ``_read_back``.
+    """
+    knobs = {
+        "parquet_partitioner_strategy": args.partitioner_strategy,
+        "parquet_partitioner_max_bucket_size_bytes": args.max_bucket_size,
+        "parquet_reader_target_batch_size_bytes": args.batch_target_bytes,
+        "parquet_chunker_target_chunk_size": args.chunker_target_chunk_size,
+    }
+    if all(value is None for value in knobs.values()):
+        return
+    try:
+        import ray
+    except ImportError:
+        return
+    ctx = ray.data.DataContext.get_current()
+    for flag, value in knobs.items():
+        if value is None:
+            continue
+        if hasattr(ctx, flag):
+            setattr(ctx, flag, value)
+            print(f"[read] ctx.{flag} = {value}", flush=True)
+        else:
+            print(
+                f"[read][warn] this Ray build has no DataContext.{flag}; ignoring.",
+                flush=True,
+            )
+
+
 def main():
     p = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -947,7 +982,38 @@ def main():
         "read-back (uncompressed->Arrow multiplier for variable-width columns "
         "in the footer estimator). Default: leave the build default.",
     )
+    p.add_argument(
+        "--partitioner-strategy",
+        choices=["file_affinity", "round_robin"],
+        default=None,
+        help="Override DataContext.parquet_partitioner_strategy during read-"
+        "back. Default: leave the build default (file_affinity).",
+    )
+    p.add_argument(
+        "--max-bucket-size",
+        type=parse_size,
+        default=None,
+        help="Override DataContext.parquet_partitioner_max_bucket_size_bytes "
+        "(max in-memory bytes per read partition, e.g. 2GiB). Bundles more "
+        "row groups per read task. Default: target_max_block_size.",
+    )
+    p.add_argument(
+        "--batch-target-bytes",
+        type=parse_size,
+        default=None,
+        help="Override DataContext.parquet_reader_target_batch_size_bytes "
+        "(per-decode-batch target, e.g. 8MiB). Default: target_max_block_size.",
+    )
+    p.add_argument(
+        "--chunker-target-chunk-size",
+        type=parse_size,
+        default=None,
+        help="Override DataContext.parquet_chunker_target_chunk_size (on-disk "
+        "bytes per chunk, e.g. 256MiB). Default: target_min_block_size.",
+    )
     args = p.parse_args()
+
+    _apply_read_knobs(args)
 
     if args.mode == "mixed":
         if args.row_group_size is not None:

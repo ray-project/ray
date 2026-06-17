@@ -21,6 +21,7 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _calculate_row_group_range,
     _fragments_from_chunk_metadata,
+    fragments_to_read_for_manifest,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
@@ -335,12 +336,12 @@ def test_fragments_from_chunk_metadata_subsets_by_row_group(tmp_path):
         ParquetFileChunkMetadata, row_group_start=25, row_group_end=50, in_memory_size=0
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
-    assert len(sub_fragments) == 25
-    expected_offset = 250  # 25 row groups × 10 rows each precede the range.
-    for sub, offset in sub_fragments:
-        assert len(sub.row_groups) == 1
-        assert offset == expected_offset
-        expected_offset += sub.metadata.row_group(sub.row_groups[0].id).num_rows
+    # Coalesced: one sub-fragment spanning the whole [25, 50) range in a single
+    # scan, seeded with the range's starting row offset.
+    assert len(sub_fragments) == 1
+    sub, offset = sub_fragments[0]
+    assert offset == 250  # 25 row groups × 10 rows each precede the range.
+    assert len(sub.row_groups) == 25
 
 
 def test_fragments_from_chunk_metadata_clamps_range_beyond_row_groups(tmp_path):
@@ -391,14 +392,16 @@ def test_fragments_from_chunk_metadata_reconciles_byte_estimate(tmp_path):
     (fragment,) = dataset.get_fragments()
     assert fragment.metadata.num_row_groups == 10
 
-    # chunk 1 of 3 over 10 row groups -> range [4, 7) -> 3 sub-fragments,
-    # starting at row offset 40.
+    # chunk 1 of 3 over 10 row groups -> range [4, 7) -> one coalesced
+    # sub-fragment (3 row groups), starting at row offset 40.
     chunk_md = create_chunk_metadata(
         ByteEstimateParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=3
     )
     sub_fragments = _fragments_from_chunk_metadata(fragment, chunk_md)
-    assert len(sub_fragments) == 3
-    assert sub_fragments[0][1] == 40
+    assert len(sub_fragments) == 1
+    sub, offset = sub_fragments[0]
+    assert offset == 40
+    assert len(sub.row_groups) == 3
 
 
 def test_fragments_from_chunk_metadata_byte_estimate_over_count_drops_chunk(tmp_path):
@@ -416,6 +419,71 @@ def test_fragments_from_chunk_metadata_byte_estimate_over_count_drops_chunk(tmp_
         ByteEstimateParquetFileChunkMetadata, chunk_idx=3, total_num_chunks=5
     )
     assert _fragments_from_chunk_metadata(fragment, chunk_md) == []
+
+
+def test_fragments_to_read_coalesces_sister_chunks(tmp_path):
+    """Sister chunks of one file collapse into a single contiguous-run scan."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "multi.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=100, row_group_size=10)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+
+    # Two adjacent row-group chunks of the same file: [0, 2) and [2, 4).
+    chunk_a = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=0, row_group_end=2, in_memory_size=0
+    )
+    chunk_b = create_chunk_metadata(
+        ParquetFileChunkMetadata, row_group_start=2, row_group_end=4, in_memory_size=0
+    )
+    frags = fragments_to_read_for_manifest(
+        {fragment.path: fragment},
+        [fragment.path, fragment.path],
+        [chunk_a, chunk_b],
+    )
+    # One coalesced scan over [0, 4): a single open instead of one per chunk.
+    assert len(frags) == 1
+    sub, offset = frags[0]
+    assert offset == 0
+    assert len(sub.row_groups) == 4
+
+
+def test_fragments_to_read_groups_by_file(tmp_path):
+    """Chunks of different files map to one scan per file (no cross-file scan)."""
+    import pyarrow.dataset as pds
+
+    path_to_fragment, paths, metas = {}, [], []
+    for name in ("a", "b"):
+        p = str(tmp_path / f"{name}.parquet")
+        _write_multi_row_group_parquet(p, num_rows=40, row_group_size=10)  # 4 rgs
+        (fragment,) = pds.dataset(p, format="parquet").get_fragments()
+        path_to_fragment[fragment.path] = fragment
+        paths.append(fragment.path)
+        metas.append(
+            create_chunk_metadata(
+                ParquetFileChunkMetadata,
+                row_group_start=0,
+                row_group_end=4,
+                in_memory_size=0,
+            )
+        )
+    frags = fragments_to_read_for_manifest(path_to_fragment, paths, metas)
+    assert len(frags) == 2  # one sub-fragment per file
+    assert {sub.path for sub, _ in frags} == set(paths)
+
+
+def test_fragments_to_read_whole_file_chunk_passes_through(tmp_path):
+    """A ``None`` (whole-file) chunk yields the full fragment at offset 0."""
+    import pyarrow.dataset as pds
+
+    file_path = str(tmp_path / "whole.parquet")
+    _write_multi_row_group_parquet(file_path, num_rows=20, row_group_size=10)
+    (fragment,) = pds.dataset(file_path, format="parquet").get_fragments()
+    frags = fragments_to_read_for_manifest(
+        {fragment.path: fragment}, [fragment.path], [None]
+    )
+    assert len(frags) == 1
+    assert frags[0][1] == 0
 
 
 def _read_via_reader(reader, manifest):

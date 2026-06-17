@@ -322,6 +322,13 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             include_row_hash=self._include_row_hash,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
-            target_block_size=DataContext.get_current().target_max_block_size,
+            # Per-batch decode target. Defaults to ``target_max_block_size`` but
+            # can be set independently via ``parquet_reader_target_batch_size_bytes``
+            # to decode in finer batches (lower transient memory) without
+            # changing the output-block size.
+            target_block_size=(
+                DataContext.get_current().parquet_reader_target_batch_size_bytes
+                or DataContext.get_current().target_max_block_size
+            ),
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
         )

@@ -50,6 +50,17 @@ def test_parquet_chunker_row_group_aware_default_and_mutable():
         ctx.parquet_chunker_row_group_aware = original
 
 
+def test_parquet_partitioner_and_sizing_knob_defaults():
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    # file_affinity is the default partitioning strategy.
+    assert ctx.parquet_partitioner_strategy == "file_affinity"
+    # The dedicated sizing knobs default to None (fall back to block sizes).
+    assert ctx.parquet_partitioner_max_bucket_size_bytes is None
+    assert ctx.parquet_reader_target_batch_size_bytes is None
+
+
 if __name__ == "__main__":
     import sys
 

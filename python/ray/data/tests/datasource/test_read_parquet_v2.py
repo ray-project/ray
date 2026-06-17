@@ -129,6 +129,10 @@ def test_read_parquet_v2_override_num_blocks_drives_partitioner(tmp_path, restor
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
+    # ``override_num_blocks`` drives ``num_buckets``, which is a round-robin
+    # concept (the default ``file_affinity`` strategy is data-driven and ignores
+    # it), so select round-robin explicitly for this assertion.
+    restore_ctx.parquet_partitioner_strategy = "round_robin"
     original = restore_ctx.read_op_min_num_blocks
     ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=7)
 
