@@ -75,7 +75,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 "the path taken: 'cq' for normal token based routing, "
                 "'pow2_fallback' when falling back to power-of-two-choices."
             ),
-            tag_keys=("deployment", "application", "route"),
+            tag_keys=("deployment", "application", "routing_strategy"),
         ).set_default_tags(_default_tags)
 
         self._cq_acquire_duration_histogram = metrics.Histogram(
@@ -197,7 +197,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 # Too many consecutive faults — fall back to Pow2.
                 if fault_attempt >= self._max_fault_retries:
                     self._cq_routing_requests_counter.inc(
-                        tags={"route": "pow2_fallback"}
+                        tags={"routing_strategy": "pow2_fallback"}
                     )
                     return await super()._choose_replica_for_request(
                         pending_request, is_retry=is_retry
@@ -262,7 +262,9 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     # acceptance. If the replica rejects, the token is
                     # intentionally NOT released.
                     self._pending_tokens[internal_request_id] = acquired_replica_id
-                    self._cq_routing_requests_counter.inc(tags={"route": "cq"})
+                    self._cq_routing_requests_counter.inc(
+                        tags={"routing_strategy": "cq"}
+                    )
                     self._record_queue_wait_time(pending_request)
                     acquired_replica_id = None
                     fault_attempt = 0

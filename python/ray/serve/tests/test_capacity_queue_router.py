@@ -880,7 +880,7 @@ class TestCapacityQueueRouterMetrics:
     """Tests that CQ specific metrics are emitted correctly."""
 
     def test_cq_route_metric_on_success(self, serve_instance):
-        """Successful CQ routing should emit serve_cq_routing_requests_total{route=cq}."""
+        """Successful CQ routing should emit serve_cq_routing_requests_total{routing_strategy=cq}."""
         handle = _deploy_capacity_queue_app(num_replicas=2)
         wait_for_condition(check_running, timeout=30)
 
@@ -892,7 +892,7 @@ class TestCapacityQueueRouterMetrics:
                 "ray_serve_cq_routing_requests_total", wait=False
             )
             for m in metrics:
-                if m.get("route") == "cq":
+                if m.get("routing_strategy") == "cq":
                     return True
             return False
 
@@ -938,7 +938,7 @@ class TestCapacityQueueRouterMetrics:
                 "ray_serve_cq_routing_requests_total", wait=False
             )
             for m in metrics:
-                if m.get("route") == "pow2_fallback":
+                if m.get("routing_strategy") == "pow2_fallback":
                     return True
             return False
 
