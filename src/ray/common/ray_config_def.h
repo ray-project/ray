@@ -359,6 +359,9 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 120)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 
+/// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
+RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
@@ -629,6 +632,11 @@ RAY_CONFIG(int64_t, io_context_monitor_probe_interval_ms, 1000)
 /// If a probe has been outstanding longer than this, the io_context is marked
 /// unhealthy.
 RAY_CONFIG(int64_t, io_context_monitor_healthy_deadline_ms, 5000)
+
+/// Sliding window over which the max probe latency is tracked and exported. The
+/// Prometheus metrics scrape interval is usually 15s; we exceed it so that the
+/// windowed max is not missed between scrapes.
+RAY_CONFIG(int64_t, io_context_monitor_latency_window_ms, 20000)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)

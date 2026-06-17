@@ -13,12 +13,6 @@ adal==1.2.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   msrestazure
-aiofiles==24.1.0 ; sys_platform != 'win32' \
-    --hash=sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c \
-    --hash=sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   gradio
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
@@ -166,12 +160,6 @@ aiosignal==1.4.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
-alabaster==0.7.16 \
-    --hash=sha256:75a8b99c28a5dad50dd7f8ccdd447a121ddb3892da9e53d1ca5cca3106d58d65 \
-    --hash=sha256:b46733c07dce03ae4e150330b975c75737fa60f0a7c591b6c8bf4928a28e2c92
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
 alembic==1.18.4 \
     --hash=sha256:a5ed4adcf6d8a4cb575f3d759f071b03cd6e5c7618eb796cb52497be25bfe19a \
     --hash=sha256:cb6e1fd84b6174ab8dbb2329f86d631ba9559dd78df550b57804d607672cedbc
@@ -222,9 +210,7 @@ applicationinsights==0.11.10 \
 appnope==0.1.4 ; sys_platform == 'darwin' \
     --hash=sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee \
     --hash=sha256:502575ee11cd7a28c0205f379b525beefebab9d161b7c964670864014ed7213c
-    # via
-    #   ipykernel
-    #   ipython
+    # via ipython
 argcomplete==3.3.0 \
     --hash=sha256:c168c3723482c031df3c207d4ba8fa702717ccb9fc0bfe4117166c1f537b4a54 \
     --hash=sha256:fd03ff4a5b9e6580569d34b273f741e85cd9e072f3feeeee3eba4891c70eda62
@@ -274,7 +260,6 @@ attrs==26.1.0 \
     #   aiohttp
     #   dm-tree
     #   jsonschema
-    #   jupyter-cache
     #   referencing
 aws-sam-translator==1.98.0 \
     --hash=sha256:65e7afffdda2e6f715debc251ddae5deba079af41db5dd9ecd370d658b9d728e \
@@ -349,12 +334,6 @@ azure-mgmt-resource==23.1.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-babel==2.18.0 \
-    --hash=sha256:b80b99a14bd085fcacfa15c9165f651fbb3406e66cc603abf11c5750937c992d \
-    --hash=sha256:e2b422b277c2b9a9630c1d7903c2a00d0830c409c59ac8cae9081c92f1aeba35
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
 backcall==0.2.0 \
     --hash=sha256:5cbdbf27be5e7cfadb448baf0aa95508f91f2bbc6c6437cd9cd06e2a4c215e1e \
     --hash=sha256:fbbce6a29f263178a1f7915c1940bde0ec2b2a967566fe1c65c1dfb7422bd255
@@ -815,7 +794,6 @@ click==8.3.2 \
     #   click-plugins
     #   click-repl
     #   flask
-    #   jupyter-cache
     #   mlflow-skinny
     #   ray
     #   typer
@@ -863,7 +841,6 @@ comm==0.2.3 \
     --hash=sha256:c615d91d75f7f04f095b30d1c1711babd43bdc6419c1be9886a85f2f4e489417
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
     #   ipywidgets
 contourpy==1.3.2 \
     --hash=sha256:0475b1f6604896bc7c53bb070e355e9321e1bc0d381735421a2d2068ec56531f \
@@ -1037,40 +1014,6 @@ databricks-sdk==0.103.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
     #   mlflow-tracing
-debugpy==1.8.20 \
-    --hash=sha256:077a7447589ee9bc1ff0cdf443566d0ecf540ac8aa7333b775ebcb8ce9f4ecad \
-    --hash=sha256:0dfd9adb4b3c7005e9c33df430bcdd4e4ebba70be533e0066e3a34d210041b66 \
-    --hash=sha256:157e96ffb7f80b3ad36d808646198c90acb46fdcfd8bb1999838f0b6f2b59c64 \
-    --hash=sha256:1f7650546e0eded1902d0f6af28f787fa1f1dbdbc97ddabaf1cd963a405930cb \
-    --hash=sha256:20d6e64ea177ab6732bffd3ce8fc6fb8879c60484ce14c3b3fe183b1761459ca \
-    --hash=sha256:352036a99dd35053b37b7803f748efc456076f929c6a895556932eaf2d23b07f \
-    --hash=sha256:3ca85463f63b5dd0aa7aaa933d97cbc47c174896dcae8431695872969f981893 \
-    --hash=sha256:4057ac68f892064e5f98209ab582abfee3b543fb55d2e87610ddc133a954d390 \
-    --hash=sha256:4ae3135e2089905a916909ef31922b2d733d756f66d87345b3e5e52b7a55f13d \
-    --hash=sha256:55bc8701714969f1ab89a6d5f2f3d40c36f91b2cbe2f65d98bf8196f6a6a2c33 \
-    --hash=sha256:5be9bed9ae3be00665a06acaa48f8329d2b9632f15fd09f6a9a8c8d9907e54d7 \
-    --hash=sha256:5dff4bb27027821fdfcc9e8f87309a28988231165147c31730128b1c983e282a \
-    --hash=sha256:60f89411a6c6afb89f18e72e9091c3dfbcfe3edc1066b2043a1f80a3bbb3e11f \
-    --hash=sha256:70ad9ae09b98ac307b82c16c151d27ee9d68ae007a2e7843ba621b5ce65333b5 \
-    --hash=sha256:760813b4fff517c75bfe7923033c107104e76acfef7bda011ffea8736e9a66f8 \
-    --hash=sha256:773e839380cf459caf73cc533ea45ec2737a5cc184cf1b3b796cd4fd98504fec \
-    --hash=sha256:7de0b7dfeedc504421032afba845ae2a7bcc32ddfb07dae2c3ca5442f821c344 \
-    --hash=sha256:84562982dd7cf5ebebfdea667ca20a064e096099997b175fe204e86817f64eaf \
-    --hash=sha256:88f47850a4284b88bd2bfee1f26132147d5d504e4e86c22485dfa44b97e19b4b \
-    --hash=sha256:9c74df62fc064cd5e5eaca1353a3ef5a5d50da5eb8058fcef63106f7bebe6173 \
-    --hash=sha256:9eeed9f953f9a23850c85d440bf51e3c56ed5d25f8560eeb29add815bd32f7ee \
-    --hash=sha256:a1a8f851e7cf171330679ef6997e9c579ef6dd33c9098458bd9986a0f4ca52e3 \
-    --hash=sha256:a98eec61135465b062846112e5ecf2eebb855305acc1dfbae43b72903b8ab5be \
-    --hash=sha256:b773eb026a043e4d9c76265742bc846f2f347da7e27edf7fe97716ea19d6bfc5 \
-    --hash=sha256:bff8990f040dacb4c314864da95f7168c5a58a30a66e0eea0fb85e2586a92cd6 \
-    --hash=sha256:c1178ae571aff42e61801a38b007af504ec8e05fde1c5c12e5a7efef21009642 \
-    --hash=sha256:c29dd9d656c0fbd77906a6e6a82ae4881514aa3294b94c903ff99303e789b4a2 \
-    --hash=sha256:da11dea6447b2cadbf8ce2bec59ecea87cc18d2c574980f643f2d2dfe4862393 \
-    --hash=sha256:eada6042ad88fa1571b74bd5402ee8b86eded7a8f7b827849761700aff171f1b \
-    --hash=sha256:eb506e45943cab2efb7c6eafdd65b842f3ae779f020c82221f55aca9de135ed7
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
 decorator==5.2.1 \
     --hash=sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360 \
     --hash=sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a
@@ -1129,13 +1072,6 @@ docker==7.1.0 \
     #   mlflow
     #   moto
     #   pytest-docker-tools
-docutils==0.19 \
-    --hash=sha256:33995a6753c30b7f577febfc2c50411fec6aac7f7ffeb7c4cfe5991072dcf9e6 \
-    --hash=sha256:5e1de4d849fee02c63b040a4a3fd567f4ab104defd8a5511fbbc24a8a017efbc
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   myst-parser
-    #   sphinx
 et-xmlfile==2.0.0 \
     --hash=sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa \
     --hash=sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54
@@ -1167,9 +1103,9 @@ farama-notifications==0.0.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gymnasium
-fastapi==0.121.0 \
-    --hash=sha256:06663356a0b1ee93e875bbf05a31fb22314f5bed455afaaad2b2dad7f26e98fa \
-    --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
+fastapi==0.133.0 \
+    --hash=sha256:0a78878483d60702a1dde864c24ab349a1a53ef4db6b6f74f8cd4a2b2bc67d2f \
+    --hash=sha256:b900a2bf5685cdb0647a41d5900bdeafc3a9e8a28ac08c6246b76699e164d60d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -1187,12 +1123,6 @@ feather-format==0.4.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-ffmpy==1.0.0 ; sys_platform != 'win32' \
-    --hash=sha256:5640e5f0fd03fb6236d0e119b16ccf6522db1c826fdf35dcb87087b60fd7504f \
-    --hash=sha256:b12932e95435c8820f1cd041024402765f821971e4bae753b327fc02a6e12f8b
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   gradio
 filelock==3.29.0 \
     --hash=sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90 \
     --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
@@ -1533,16 +1463,19 @@ googleapis-common-protos==1.74.0 \
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-gradio==5.50.0 ; sys_platform != 'win32' \
-    --hash=sha256:d06770d57cdda9b703ef9cf767ac93a890a0e12d82679a310eef74203a3673f4
+gradio==6.15.2 ; sys_platform != 'win32' \
+    --hash=sha256:3492eee59cbe4afd21e8f458fc229f0d92c17bdaacaefaf9580dd63a6406c82d \
+    --hash=sha256:67433b1889dc8526658196277ca9e34109f73aa65656635c0dc6afb542571f55
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-gradio-client==1.14.0 ; sys_platform != 'win32' \
-    --hash=sha256:9a2f5151978411e0f8b55a2d38cddd0a94491851149d14db4af96f5a09774825
+gradio-client==2.5.0 ; sys_platform != 'win32' \
+    --hash=sha256:4cde99bad62149595c30c90876ca2e405e3a13687ecf895474f3412cb476673d \
+    --hash=sha256:d43e2179c29076292a76485ad7ed2e6eaa19d14ac58283bd7f5beabfe4ca958c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
+    #   hf-gradio
 graphene==3.4.3 \
     --hash=sha256:2a3786948ce75fe7e078443d37f609cbe5bb36ad8d6b828740ad3b95ed1a0aaa \
     --hash=sha256:820db6289754c181007a150db1f7fff544b94142b556d12e3ebc777a7bf36c71
@@ -1736,6 +1669,12 @@ h11==0.16.0 \
     #   -r python/requirements/py313/test-requirements.txt
     #   httpcore
     #   uvicorn
+hf-gradio==0.4.1 ; sys_platform != 'win32' \
+    --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
+    --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   gradio
 hf-xet==1.4.3 ; (platform_machine == 'aarch64' and sys_platform != 'win32') or (platform_machine == 'amd64' and sys_platform != 'win32') or (platform_machine == 'arm64' and sys_platform != 'win32') or (platform_machine == 'x86_64' and sys_platform != 'win32') \
     --hash=sha256:0392c79b7cf48418cd61478c1a925246cf10639f4cd9d94368d8ca1e8df9ea07 \
     --hash=sha256:1feb0f3abeacee143367c326a128a2e2b60868ec12a36c225afb1d6c5a05e6d2 \
@@ -1862,21 +1801,13 @@ idna==3.12 \
     #   requests
     #   trustme
     #   yarl
-imagesize==2.0.0 \
-    --hash=sha256:5667c5bbb57ab3f1fa4bc366f4fbc971db3d5ed011fd2715fd8001f782718d96 \
-    --hash=sha256:8e8358c4a05c304f1fccf7ff96f036e7243a189e9e42e90851993c558cfe9ee3
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
 importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-    #   jupyter-cache
     #   mlflow-skinny
-    #   myst-nb
     #   opentelemetry-api
     #   pytest-virtualenv
 iniconfig==2.3.0 \
@@ -1885,20 +1816,12 @@ iniconfig==2.3.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pytest
-ipykernel==7.2.0 \
-    --hash=sha256:18ed160b6dee2cbb16e5f3575858bc19d8f1fe6046a9a680c708494ce31d909e \
-    --hash=sha256:3bbd4420d2b3cc105cbdf3756bfc04500b1e52f090a90716851f3916c62e1661
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   myst-nb
 ipython==8.12.3 \
     --hash=sha256:3910c4b54543c2ad73d06579aa771041b7d5707b033bd488669b4cf544e3b363 \
     --hash=sha256:b0340d46a933d27c657b211a329d0be23793c36595acf9e6ef4164bc01a1804c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
     #   ipywidgets
-    #   myst-nb
 ipywidgets==8.1.3 \
     --hash=sha256:efafd18f7a142248f7cb0ba890a68b96abd4d6e88ddbda483c9130d12667eaf2 \
     --hash=sha256:f5f9eeaae082b1823ce9eac2575272952f40d748893972956dc09700a6392d9c
@@ -1936,8 +1859,6 @@ jinja2==3.1.6 \
     #   gradio
     #   memray
     #   moto
-    #   myst-parser
-    #   sphinx
     #   torch
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \
@@ -2004,27 +1925,11 @@ jsonschema-specifications==2025.9.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jsonschema
     #   openapi-schema-validator
-jupyter-cache==1.0.1 \
-    --hash=sha256:16e808eb19e3fb67a223db906e131ea6e01f03aa27f49a7214ce6a5fec186fb9 \
-    --hash=sha256:9c3cafd825ba7da8b5830485343091143dff903e4d8c69db9349b728b140abf6
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   myst-nb
-jupyter-client==8.8.0 \
-    --hash=sha256:d556811419a4f2d96c869af34e854e3f059b7cc2d6d01a9cd9c85c267691be3e \
-    --hash=sha256:f93a5b99c5e23a507b773d3a1136bd6e16c67883ccdbd9a829b0bbdb98cd7d7a
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
-    #   nbclient
 jupyter-core==5.9.1 \
     --hash=sha256:4d09aaff303b9566c3ce657f580bd089ff5c91f5f89cf7d8846c3cdf465b5508 \
     --hash=sha256:ebf87fdc6073d142e114c72c9e29a9d7ca03fad818c5d300ce2adc1fb0743407
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
-    #   jupyter-client
-    #   nbclient
     #   nbformat
 jupyterlab-widgets==3.0.16 \
     --hash=sha256:423da05071d55cf27a9e602216d35a3a65a3e41cdf9c5d3b643b814ce38c19e0 \
@@ -2032,9 +1937,9 @@ jupyterlab-widgets==3.0.16 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipywidgets
-jupytext==1.19.1 \
-    --hash=sha256:82587c07e299173c70ed5e8ec7e75183edf1be289ed518bab49ad0d4e3d5f433 \
-    --hash=sha256:d8975035155d034bdfde5c0c37891425314b7ea8d3a6c4b5d18c294348714cd9
+jupytext==1.19.3 \
+    --hash=sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766 \
+    --hash=sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2477,7 +2382,6 @@ markdown-it-py==2.2.0 \
     #   -r python/requirements/py313/test-requirements.txt
     #   jupytext
     #   mdit-py-plugins
-    #   myst-parser
     #   rich
     #   textual
 markupsafe==3.0.3 \
@@ -2640,7 +2544,6 @@ matplotlib-inline==0.2.1 \
     --hash=sha256:e1ee949c340d771fc39e241ea75683deb94762c8fa5f2927ec57c83c4dffa9fe
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
     #   ipython
 mdit-py-plugins==0.3.5 \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
@@ -2649,7 +2552,6 @@ mdit-py-plugins==0.3.5 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jupytext
     #   markdown-it-py
-    #   myst-parser
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
@@ -3137,41 +3039,12 @@ mypy-extensions==1.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mypy
-myst-nb==1.1.0 \
-    --hash=sha256:0ac29b2a346f9a1257edbfb5d6c47d528728a37e6b9438903c2821f69fda9235 \
-    --hash=sha256:9278840e844f5d780b5acc5400cbf63d97caaccf8eb442a55ebd9a03e2522d5e
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/py313/test-requirements.txt
-myst-parser==1.0.0 \
-    --hash=sha256:502845659313099542bd38a2ae62f01360e7dd4b1310f025dd014dfc0439cdae \
-    --hash=sha256:69fb40a586c6fa68995e6521ac0a525793935db7e724ca9bac1d33be51be9a4c
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/py313/test-requirements.txt
-    #   myst-nb
-nbclient==0.10.4 \
-    --hash=sha256:1e54091b16e6da39e297b0ece3e10f6f29f4ac4e8ee515d29f8a7099bd6553c9 \
-    --hash=sha256:9162df5a7373d70d606527300a95a975a47c137776cd942e52d9c7e29ff83440
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   jupyter-cache
-    #   myst-nb
 nbformat==5.10.4 \
     --hash=sha256:322168b14f937a5d11362988ecac2a4952d3d8e3a2cbeb2319584631226d5b3a \
     --hash=sha256:3b48d6c8fbca4b299bf3982ea7db1af21580e4fec269ad087b9e81588891200b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   jupyter-cache
     #   jupytext
-    #   myst-nb
-    #   nbclient
-nest-asyncio==1.6.0 \
-    --hash=sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe \
-    --hash=sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
 networkx==3.4.2 \
     --hash=sha256:307c3669428c5362aab27c8a1260aa8f47c4e91d3891f48be0141738d8d053e1 \
     --hash=sha256:df5d4365b724cf81b8c6a7312509d0c22386097011ad1abe274afd5e9d3bbc5f
@@ -3615,7 +3488,6 @@ packaging==26.1 \
     #   gradio-client
     #   gunicorn
     #   huggingface-hub
-    #   ipykernel
     #   jupytext
     #   knack
     #   kombu
@@ -3628,7 +3500,6 @@ packaging==26.1 \
     #   pytest-sugar
     #   ray
     #   skops
-    #   sphinx
     #   taskiq
     #   tensorboard
     #   tensorboardx
@@ -4068,7 +3939,7 @@ proxy-py==2.4.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-psutil==5.9.8 \
+psutil==5.9.8 ; sys_platform != 'cygwin' \
     --hash=sha256:02615ed8c5ea222323408ceba16c60e99c3f91639b07da6373fb7e6539abc56d \
     --hash=sha256:05806de88103b25903dff19bb6692bd2e714ccf9e668d050d144012055cbca73 \
     --hash=sha256:26bd09967ae00920df88e0352a91cff1a78f8d69b3ecabbfe733610c0af486c8 \
@@ -4088,7 +3959,6 @@ psutil==5.9.8 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-core
-    #   ipykernel
 ptyprocess==0.7.0 \
     --hash=sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35 \
     --hash=sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220
@@ -4428,7 +4298,6 @@ pygments==2.18.0 \
     #   ipython
     #   knack
     #   rich
-    #   sphinx
 pyjwt==2.12.1 \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
     --hash=sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b
@@ -4693,7 +4562,6 @@ python-dateutil==2.9.0.post0 \
     #   celery
     #   freezegun
     #   graphene
-    #   jupyter-client
     #   kubernetes
     #   matplotlib
     #   moto
@@ -4724,6 +4592,7 @@ pytz==2022.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
+    #   gradio
     #   pandas
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
@@ -4806,14 +4675,11 @@ pyyaml==6.0.3 \
     #   gradio
     #   huggingface-hub
     #   jsonschema-path
-    #   jupyter-cache
     #   jupytext
     #   knack
     #   kubernetes
     #   mlflow-skinny
     #   moto
-    #   myst-nb
-    #   myst-parser
     #   ray
     #   responses
     #   uvicorn
@@ -4914,8 +4780,6 @@ pyzmq==27.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-    #   ipykernel
-    #   jupyter-client
 redis==4.5.4 \
     --hash=sha256:2c19e6767c474f2e85167909061d525ed65bea9301c0770bb151e041b7ac89a2 \
     --hash=sha256:73ec35da4da267d6847e47f68730fdd5f62e2ca69e3ef5885c6a78a9374c3893
@@ -5072,7 +4936,6 @@ requests==2.33.1 \
     #   requests-oauthlib
     #   responses
     #   segment-analytics-python
-    #   sphinx
 requests-oauthlib==2.0.0 \
     --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
     --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
@@ -5226,28 +5089,6 @@ rsa==4.7.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-auth
-ruff==0.15.11 ; sys_platform != 'win32' \
-    --hash=sha256:030d921a836d7d4a12cf6e8d984a88b66094ccb0e0f17ddd55067c331191bf19 \
-    --hash=sha256:063fed18cc1bbe0ee7393957284a6fe8b588c6a406a285af3ee3f46da2391ee4 \
-    --hash=sha256:06f483d6646f59eaffba9ae30956370d3a886625f511a3108994000480621d1c \
-    --hash=sha256:0e783b599b4577788dbbb66b9addcef87e9a8832f4ce0c19e34bf55543a2f890 \
-    --hash=sha256:195072c0c8e1fc8f940652073df082e37a5d9cb43b4ab1e4d0566ab8977a13b7 \
-    --hash=sha256:1bef2cb556d509259f1fe440bb9cd33c756222cf0a7afe90d15edf0866702431 \
-    --hash=sha256:1f111d62e3c983ed20e0ca2e800f8d77433a5b1161947df99a5c2a3fb60514f0 \
-    --hash=sha256:3b17c886fb88203ced3afe7f14e8d5ae96e9d2f4ccc0ee66aa19f2c2675a27e4 \
-    --hash=sha256:476a2aa56b7da0b73a3ee80b6b2f0e19cce544245479adde7baa65466664d5f3 \
-    --hash=sha256:49fafa220220afe7758a487b048de4c8f9f767f37dfefad46b9dd06759d003eb \
-    --hash=sha256:7a1b5b2938d8f890b76084d4fa843604d787a912541eae85fd7e233398bbb73e \
-    --hash=sha256:8b6756d88d7e234fb0c98c91511aae3cd519d5e3ed271cae31b20f39cb2a12a3 \
-    --hash=sha256:a3a0996d486af3920dec930a2e7daed4847dfc12649b537a9335585ada163e9e \
-    --hash=sha256:ae90592246625ba4a34349d68ec28d4400d75182b71baa196ddb9f82db025ef5 \
-    --hash=sha256:d4176f3d194afbdaee6e41b9ccb1a2c287dba8700047df474abfbe773825d1cb \
-    --hash=sha256:e927cfff503135c558eb581a0c9792264aae9507904eb27809cdcff2f2c847b7 \
-    --hash=sha256:f092b21708bf0e7437ce9ada249dfe688ff9a0954fc94abab05dcea7dcd29c33 \
-    --hash=sha256:f2ab8427e74a00d93b8bda1307b1e60970d40f304af38bccb218e056c220120d
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   gradio
 s3transfer==0.8.0 \
     --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
     --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
@@ -5406,62 +5247,12 @@ smmap==5.0.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gitdb
-snowballstemmer==3.0.1 \
-    --hash=sha256:6cd7b3897da8d6c9ffb968a6781fa6532dce9c3618a4b127d920dab764a19064 \
-    --hash=sha256:6d5eeeec8e9f84d4d56b847692bacf79bc2c8e90c7f80ca4444ff8b6f2e52895
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
 soupsieve==2.8.3 \
     --hash=sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349 \
     --hash=sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   beautifulsoup4
-sphinx==6.2.1 \
-    --hash=sha256:6d56a34697bb749ffa0152feafc4b19836c755d90a7c59b72bc7dfd371b9cc6b \
-    --hash=sha256:97787ff1fa3256a3eef9eda523a63dbf299f7b47e053cfcf684a1c2a8380c912
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/py313/test-requirements.txt
-    #   myst-nb
-    #   myst-parser
-sphinxcontrib-applehelp==2.0.0 \
-    --hash=sha256:2f29ef331735ce958efa4734873f084941970894c6090408b079c61b2e1c06d1 \
-    --hash=sha256:4cd3f0ec4ac5dd9c17ec65e9ab272c9b867ea77425228e68ecf08d6b28ddbdb5
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
-sphinxcontrib-devhelp==2.0.0 \
-    --hash=sha256:411f5d96d445d1d73bb5d52133377b4248ec79db5c793ce7dbe59e074b4dd1ad \
-    --hash=sha256:aefb8b83854e4b0998877524d1029fd3e6879210422ee3780459e28a1f03a8a2
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
-sphinxcontrib-htmlhelp==2.1.0 \
-    --hash=sha256:166759820b47002d22914d64a075ce08f4c46818e17cfc9470a9786b759b19f8 \
-    --hash=sha256:c9e2916ace8aad64cc13a0d233ee22317f2b9025b9cf3295249fa985cc7082e9
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
-sphinxcontrib-jsmath==1.0.1 \
-    --hash=sha256:2ec2eaebfb78f3f2078e73666b1415417a116cc848b72e5172e596c871103178 \
-    --hash=sha256:a9925e4a4587247ed2191a22df5f6970656cb8ca2bd6284309578f2153e0c4b8
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
-sphinxcontrib-qthelp==2.0.0 \
-    --hash=sha256:4fe7d0ac8fc171045be623aba3e2a8f613f8682731f9153bb2e40ece16b9bbab \
-    --hash=sha256:b18a828cdba941ccd6ee8445dbe72ffa3ef8cbe7505d8cd1fa0d42d3f2d5f3eb
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
-sphinxcontrib-serializinghtml==2.0.0 \
-    --hash=sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331 \
-    --hash=sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   sphinx
 sqlalchemy==2.0.49 \
     --hash=sha256:01146546d84185f12721a1d2ce0c6673451a7894d1460b592d378ca4871a0c72 \
     --hash=sha256:059d7151fff513c53a4638da8778be7fce81a0c4854c7348ebd0c4078ddf28fe \
@@ -5529,7 +5320,6 @@ sqlalchemy==2.0.49 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   alembic
-    #   jupyter-cache
     #   mlflow
 sqlparse==0.5.5 \
     --hash=sha256:12a08b3bf3eec877c519589833aed092e2444e68240a3577e8e26148acc7b1ba \
@@ -5543,9 +5333,9 @@ stack-data==0.6.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
-starlette==0.49.3 \
-    --hash=sha256:1c14546f299b5901a1ea0e34410575bc33bbd741377a10484a54445588d00284 \
-    --hash=sha256:b579b99715fdc2980cf88c8ec96d3bf1ce16f5a8051a7c2b84ef9b1cdecaea2f
+starlette==1.0.1 \
+    --hash=sha256:512399c5f1de7fac99c88572212ded9ddeddef2fb32afa82d724000e88b38f4f \
+    --hash=sha256:7c0e69b2ee1c848bd54669d908500117a3ee13de603a21427e5c6fc1adf98dcd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -5564,7 +5354,6 @@ tabulate==0.10.0 \
     --hash=sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   jupyter-cache
     #   knack
 taskiq==0.12.2 \
     --hash=sha256:491491ad255fb88bf4d3e04e356dd1e6507ca7d8197b68a2f89ce7c5b5c7cc51 \
@@ -5686,8 +5475,6 @@ tornado==6.5.5 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-    #   ipykernel
-    #   jupyter-client
 tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
@@ -5700,13 +5487,10 @@ traitlets==5.14.3 \
     --hash=sha256:b74e89e397b1ed28cc831db7aea759ba6640cb3de13090ca145426688ff1ac4f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   ipykernel
     #   ipython
     #   ipywidgets
-    #   jupyter-client
     #   jupyter-core
     #   matplotlib-inline
-    #   nbclient
     #   nbformat
 trustme==0.9.0 \
     --hash=sha256:5e07b23d70ceed64f3bb36ae4b9abc52354c16c98d45ab037bee2b5fbffe586c \
@@ -5720,6 +5504,7 @@ typer==0.24.1 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
+    #   hf-gradio
 typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
@@ -5745,7 +5530,6 @@ typing-extensions==4.15.0 \
     #   mlflow-skinny
     #   multidict
     #   mypy
-    #   myst-nb
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
@@ -5768,6 +5552,7 @@ typing-inspection==0.4.2 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   fastapi
     #   pydantic
 tzdata==2026.1 \
     --hash=sha256:4b1d2be7ac37ceafd7327b961aa3a54e467efbdb563a23655fbfe0d39cfc42a9 \
@@ -6019,7 +5804,6 @@ websockets==15.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
-    #   gradio-client
     #   uvicorn
 werkzeug==2.3.8 \
     --hash=sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03 \

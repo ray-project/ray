@@ -1,4 +1,4 @@
-import { GPUStats } from "./node";
+import { GPUStats, TPUStats } from "./node";
 
 export enum ActorEnum {
   DEPENDENCIES_UNREADY = "DEPENDENCIES_UNREADY",
@@ -45,6 +45,7 @@ export type ActorDetail = {
   numLocalObjects: number;
   numObjectRefsInScope: number;
   gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  tpus?: TPUStats[]; // TPU stats fetched from node, 1 entry per TPU
   processStats: {
     cmdline: string[];
     cpuPercent: number;

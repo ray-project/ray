@@ -71,11 +71,18 @@ def invoke_state_api(
     """Invoke a State API
 
     Args:
-        - verify_cb: Callback that takes in the response from `state_api_fn` and
+        verify_cb: Callback that takes in the response from `state_api_fn` and
             returns a boolean, indicating the correctness of the results.
-        - state_api_fn: Function of the state API
-        - state_stats: Stats
-        - kwargs: Keyword arguments to be forwarded to the `state_api_fn`
+        state_api_fn: Function of the state API.
+        state_stats: Stats container that tracks latency and call counts.
+        key_suffix: Optional suffix appended to the stats key for this call.
+        print_result: If True, pretty-print the API result.
+        err_msg: Optional message included in the assertion error if the
+            verify callback fails.
+        **kwargs: Keyword arguments to be forwarded to the `state_api_fn`.
+
+    Returns:
+        The response from ``state_api_fn``.
     """
     if "timeout" not in kwargs:
         kwargs["timeout"] = STATE_LIST_TIMEOUT
@@ -198,14 +205,14 @@ class StateAPIGeneratorActor:
         """An actor that periodically issues state API
 
         Args:
-            - apis: List of StateAPICallSpec
-            - call_interval_s: State apis in the `apis` will be issued
+            apis: List of StateAPICallSpec.
+            call_interval_s: State apis in the `apis` will be issued
                 every `call_interval_s` seconds.
-            - print_interval_s: How frequent state api stats will be dumped.
-            - wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
+            print_interval_s: How frequent state api stats will be dumped.
+            wait_after_stop: When true, call to `ray.get(actor.stop.remote())`
                 will wait for all pending state APIs to return.
                 Setting it to `False` might miss some long-running state apis calls.
-            - print_result: True if result of each API call is printed. Default False.
+            print_result: True if result of each API call is printed. Default False.
         """
         # Configs
         self._apis = apis

@@ -5,7 +5,7 @@ import collections
 from typing import TYPE_CHECKING, Deque, Iterator, Optional
 
 import ray
-from ray.exceptions import ObjectRefStreamEndOfStreamError
+from ray.exceptions import GetTimeoutError, ObjectRefStreamEndOfStreamError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -227,7 +227,21 @@ class ObjectRefGenerator:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
                 # In that case, it should raise StopIteration.
-                ray.get(self._generator_ref)
+                #
+                # Bound this get by the caller's timeout: the return object
+                # can be remote — or lost to a failed node and pending
+                # reconstruction — and an unbounded get would block the
+                # caller until it is restored (e.g. the Ray Data scheduling
+                # thread; a saturated cluster can then deadlock, since the
+                # blocked consumer is what releases backpressured CPUs).
+                # Per this method's contract, a timeout is reported as "no
+                # object ready yet" (nil ref) so the caller retries.
+                ray.get(
+                    self._generator_ref,
+                    timeout=(None if timeout_s is None or timeout_s < 0 else timeout_s),
+                )
+            except GetTimeoutError:
+                return ray.ObjectRef.nil()
             except Exception:
                 self._generator_task_raised = True
                 return self._generator_ref
@@ -270,8 +284,20 @@ class ObjectRefGenerator:
             try:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
-                # In that case, it should raise StopSyncIteration.
-                await self._generator_ref
+                # In that case, it should raise StopAsyncIteration.
+                #
+                # Bound this await by the caller's timeout, mirroring
+                # _next_sync: the return object can be remote — or lost to a
+                # failed node and pending reconstruction — and an unbounded
+                # await would block the caller until it is restored. Per this
+                # method's contract, a timeout is reported as "no object
+                # ready yet" (nil ref) so the caller retries.
+                if timeout_s is None or timeout_s < 0:
+                    await self._generator_ref
+                else:
+                    await asyncio.wait_for(self._generator_ref, timeout=timeout_s)
+            except asyncio.TimeoutError:
+                return ray.ObjectRef.nil()
             except Exception:
                 self._generator_task_raised = True
                 return self._generator_ref

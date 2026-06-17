@@ -230,3 +230,11 @@ class TrainContextCallback(RayTrainCallback):
     @contextmanager
     def on_report(self):
         yield
+
+    @contextmanager
+    def on_checkpoint_sync(self):
+        yield
+
+    @contextmanager
+    def on_checkpoint_transfer(self):
+        yield

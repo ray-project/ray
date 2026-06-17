@@ -53,7 +53,7 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
         self._terminate_instances(new_terminations)
         self._count_stopped_instances(terminated_instances)
 
-    def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]):
+    def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]) -> None:
         """
         Terminate cloud instances through cloud provider.
 
@@ -87,7 +87,7 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
 
         self._metrics_reporter.inc_stopped_nodes(len(terminated_instances))
 
-    def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]):
+    def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]) -> None:
         """
         Launches new instances by requesting the cloud provider.
 

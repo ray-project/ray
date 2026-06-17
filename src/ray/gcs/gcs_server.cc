@@ -140,7 +140,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
-          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          PeriodicalRunner::Create(
+              io_context_provider_.GetIOContext<observability::RayEventRecorder>()),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
           metrics_.event_recorder_dropped_events_counter,
@@ -204,7 +205,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
-      /*get_time_ms=*/[this]() { return clock_.NowUnixNanos() / 1e6; },
+      /*clock=*/clock_,
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
@@ -217,7 +218,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                                     rpc::ChannelType::RAY_LOG_CHANNEL,
                                     rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
       /*periodical_runner=*/*observability_pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*clock=*/clock_,
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
@@ -466,7 +467,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      io_context_provider_.GetDefaultIOContext(),
+      PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -631,6 +632,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
+      PeriodicalRunner::Create(io_context_provider_.GetIOContext<syncer::RaySyncer>()),
       kGCSNodeID.Binary(),
       /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
       /* batch_delay_ms */
@@ -836,10 +838,12 @@ void GcsServer::InitGcsTaskManager(
     ray::observability::MetricInterface &task_events_dropped_gauge,
     ray::observability::MetricInterface &task_events_stored_gauge) {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context,
-                                                       task_events_reported_gauge,
-                                                       task_events_dropped_gauge,
-                                                       task_events_stored_gauge);
+  gcs_task_manager_ =
+      std::make_unique<GcsTaskManager>(io_context,
+                                       PeriodicalRunner::Create(io_context),
+                                       task_events_reported_gauge,
+                                       task_events_dropped_gauge,
+                                       task_events_stored_gauge);
   // Register service.
   rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
       io_context,
@@ -930,7 +934,6 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_type(),
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
-        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         observability_pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
