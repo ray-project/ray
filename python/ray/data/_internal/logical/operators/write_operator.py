@@ -44,7 +44,3 @@ class Write(AbstractMap, LogicalOperatorPreservesSchema):
         object.__setattr__(
             self, "min_rows_per_bundled_input", min_rows_per_bundled_input
         )
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None

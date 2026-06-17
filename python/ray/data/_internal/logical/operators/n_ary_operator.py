@@ -97,10 +97,6 @@ class Zip(NAry):
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def estimated_num_outputs(self):
         total_num_outputs = 0
         for input in self.input_dependencies:
@@ -163,10 +159,6 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "stopping_condition", stopping_condition)
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def estimated_num_outputs(self) -> Optional[int]:
         if self.stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
             return None
@@ -204,10 +196,6 @@ class Union(
         for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_input_dependencies", list(input_dependencies))
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

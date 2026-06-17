@@ -33,7 +33,7 @@ class LogicalOperator(Operator, ABC):
     @abstractmethod
     def num_outputs(self) -> Optional[int]:
         """Expected number of output blocks, if known."""
-        ...
+        return None
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that

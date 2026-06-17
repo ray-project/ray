@@ -27,10 +27,6 @@ class Count(LogicalOperator):
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def infer_schema(self) -> Optional["Schema"]:
         # Fixed output: one row per partial count with a single ``__num_rows``
         # int64 column.

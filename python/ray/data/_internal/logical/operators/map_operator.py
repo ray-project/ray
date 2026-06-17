@@ -197,10 +197,6 @@ class AbstractUDFMap(AbstractMap):
         object.__setattr__(self, "fn_constructor_kwargs", fn_constructor_kwargs)
         object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
         # If the input `fn` is a Preprocessor, the

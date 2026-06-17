@@ -50,7 +50,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     join_type: Union[JoinType, str]
     left_key_columns: Tuple[str]
     right_key_columns: Tuple[str]
-    num_partitions: InitVar[int]
+    num_partitions: int
     left_columns_suffix: Optional[str] = None
     right_columns_suffix: Optional[str] = None
     partition_size_hint: Optional[int] = None
@@ -61,7 +61,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         self,
         left_input_op: LogicalOperator,
         right_input_op: LogicalOperator,
-        num_partitions: int,
     ):
         try:
             join_type_enum = JoinType(self.join_type)

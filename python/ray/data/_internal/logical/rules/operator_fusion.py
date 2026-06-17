@@ -660,7 +660,7 @@ class FuseOperators(Rule):
             input_op,
             up_op.data_context,
             target_max_block_size_override=target_max_block_size,
-            num_outputs=down_op.num_outputs,
+            num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from
             # the AllToAllOperator (if any) into the fused operator.
             sub_progress_bar_names=down_op._sub_progress_bar_names,

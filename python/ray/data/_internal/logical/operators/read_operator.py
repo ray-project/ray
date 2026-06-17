@@ -459,10 +459,6 @@ class ListFiles(LogicalOperator, SourceOperator):
     def output_data(self) -> Optional[list]:
         return None
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def infer_schema(self) -> "pa.Schema":
         # ``FileManifest`` columns are fixed: __path, __file_size.
         import pyarrow as pa

@@ -78,10 +78,6 @@ class RandomizeBlocks(
             object.__setattr__(self, "seed_config", RandomSeedConfig())
         object.__setattr__(self, "_name", "RandomizeBlockOrder")
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
@@ -120,10 +116,6 @@ class RandomShuffle(
                 ],
             )
         object.__setattr__(self, "_name", name)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
 
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
@@ -214,10 +206,6 @@ class Sort(
             ],
         )
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
@@ -251,10 +239,6 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = key field(s) from input schema + one field per aggregator.

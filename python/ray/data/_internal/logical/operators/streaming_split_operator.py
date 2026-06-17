@@ -25,7 +25,3 @@ class StreamingSplit(LogicalOperatorPreservesSchema):
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
