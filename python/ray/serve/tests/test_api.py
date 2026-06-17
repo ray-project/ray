@@ -117,6 +117,75 @@ def test_ingress_async_init(serve_instance):
     assert resp.json() == "initialized"
 
 
+def test_ingress_sync_init_subclass_raises():
+    """Subclassing a @serve.ingress class with a sync __init__ must fail loudly.
+
+    The parent __init__ is async, so a sync `super().__init__(...)` call from
+    a subclass would silently drop the returned coroutine and leave the
+    replica uninitialized (e.g. `_serve_asgi_lifespan` never set), surfacing
+    later as a cryptic AttributeError at runtime. We reject the bad pattern
+    at class-definition time with a clear migration message instead.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(WrappedIngress):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+
+def test_ingress_sync_init_via_mixin_subclass_raises():
+    """A sync __init__ inherited from a mixin earlier in the MRO must also raise.
+
+    `class Sub(SyncMixin, WrappedIngress)` doesn't define `__init__` on
+    `Sub` itself, but the resolved `Sub.__init__` is the sync mixin's, which
+    would still silently drop the wrapper's async coroutine. The check must
+    use MRO resolution, not just the subclass `__dict__`.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class SyncMixin:
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(SyncMixin, WrappedIngress):
+            pass
+
+
+def test_ingress_async_init_subclass_allowed():
+    """Subclassing a @serve.ingress class with an async __init__ is allowed."""
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class ExtendedIngress(WrappedIngress):
+        async def __init__(self, *args, **kwargs):
+            await super().__init__(*args, **kwargs)
+
+    # No __init__ defined on subclass is also allowed (inherits parent's async).
+    class InheritingIngress(WrappedIngress):
+        pass
+
+    assert ExtendedIngress is not None
+    assert InheritingIngress is not None
+
+
 class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,

@@ -406,11 +406,17 @@ class DashboardHead:
         # memory_full_info is None on Mac due to the permission issue
         # (https://github.com/giampaolo/psutil/issues/883)
         if proc_attrs.get("memory_full_info") is not None:
-            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+            self.metrics.metrics_dashboard_mem_uss_mb.labels(**labels).set(
                 float(proc_attrs.get("memory_full_info").uss) / 1.0e6
             )
-            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+            self.metrics.metrics_dashboard_mem_uss_bytes.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").uss)
+            )
+            self.metrics.metrics_dashboard_mem_rss_mb.labels(**labels).set(
                 float(proc_attrs.get("memory_full_info").rss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss_bytes.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").rss)
             )
 
     async def run(self):

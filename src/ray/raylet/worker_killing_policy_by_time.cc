@@ -257,7 +257,7 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
         used_memory_gb));
   }
 
-  result << absl::StrJoin(worker_debug_strings, ", ");
+  result << absl::StrJoin(worker_debug_strings, "\n");
   return result.str();
 }
 

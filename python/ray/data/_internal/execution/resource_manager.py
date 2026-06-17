@@ -180,34 +180,9 @@ class ResourceManager:
                 return self._external_consumer_bytes
             return 0
 
-        # Operator's internal Object Store usage
-        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
-
-        # Operator's outputs' Object Store usage
-        op_outputs_bytes = (
-            # Internal output queue
-            op.metrics.obj_store_mem_internal_outqueue
-            +
-            # External output queue
-            state.output_queue_bytes()
-        )
-
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
-        #
-        # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(op)
-                )
-                + downstream_op.metrics.obj_store_mem_pending_task_inputs
-            )
-            for downstream_op in op.output_dependencies
-        )
-
-        self._mem_op_internal[op] = mem_op_internal
-        self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
+        usage = op.estimate_object_store_usage(state)
+        self._mem_op_internal[op] = usage.internal
+        self._mem_op_outputs[op] = usage.outputs
 
         # Attribute iterator / streaming_split prefetch to the executor sink only.
         if op is self._output_operator:
@@ -462,9 +437,6 @@ class ResourceManager:
             and not op.has_execution_finished()
         )
 
-    def get_eligible_ops(self) -> List[PhysicalOperator]:
-        return [op for op in self._topology if self.is_op_eligible(op)]
-
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
@@ -717,7 +689,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_starved_since: Dict[PhysicalOperator, Optional[float]] = {}
 
     def _update_reservation(self, limits: ExecutionResources):
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self._get_eligible_ops()
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
@@ -869,7 +841,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._update_reservation(limits)
 
         self._op_budgets.clear()
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 

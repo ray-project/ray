@@ -162,6 +162,7 @@ const std::vector<std::string> node_manager_message_enum =
 
 NodeManager::NodeManager(
     instrumented_io_context &io_service,
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     const NodeID &self_node_id,
     std::string self_node_name,
     const NodeManagerConfig &config,
@@ -207,7 +208,7 @@ NodeManager::NodeManager(
       object_manager_(object_manager),
       store_client_(std::move(store_client)),
       mutable_object_provider_(std::move(mutable_object_provider)),
-      periodical_runner_(PeriodicalRunner::Create(io_service)),
+      periodical_runner_(periodical_runner),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
       lease_dependency_manager_(lease_dependency_manager),
@@ -241,7 +242,7 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
+      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
@@ -1488,7 +1489,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    self_node_id_,
                                    initial_config_.node_manager_address,
-                                   time(nullptr),
+                                   absl::ToUnixSeconds(clock_.Now()),
                                    disconnect_type,
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
@@ -3140,13 +3141,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
           RAY_LOG(INFO) << absl::StrFormat(
-              "Killing %d worker(s), kill details: %s; suggestions: %s",
+              "Killing %d worker(s), kill details: %s\n suggestions: %s",
               workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
 
           std::string worker_exit_message = absl::StrFormat(
-              "%d worker(s) were killed due to the node running low on memory. %s; %s",
+              "%d worker(s) were killed due to the node running low on memory. %s\n%s",
               workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
@@ -3300,15 +3301,15 @@ std::string NodeManager::CreateOomKillMessageDetails(
   }
 
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f); "
-      "OOM kill reason: %s; "
-      "Object store memory usage: [%s]; "
-      "Ray killed %d worker(s) based on the killing policy; "
-      "Considered workers: [; %s]; "
-      "Total non-selected idle workers: %d; "
-      "Total non-selected idle workers USS bytes: %sGB; "
+      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f)\n"
+      "OOM kill reason: %s\n"
+      "Object store memory usage: [%s]\n"
+      "Ray killed %d worker(s) based on the killing policy\n"
+      "Considered workers: [\n%s\n]\n"
+      "Total non-selected idle workers: %d\n"
+      "Total non-selected idle workers USS bytes: %sGB\n"
       "To see more information about memory usage on this node, "
-      "use `ray logs raylet.out -ip %s`; "
+      "use `ray logs raylet.out -ip %s`\n"
       "Top 10 memory users: %s",
       node_ip,
       node_id.Hex(),
@@ -3316,9 +3317,9 @@ std::string NodeManager::CreateOomKillMessageDetails(
       total_bytes_gb,
       usage_fraction,
       trigger_reason,
-      absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
+      object_store_memory_usage,
       workers_to_kill.size(),
-      absl::StrJoin(worker_details, "; "),
+      absl::StrJoin(worker_details, "\n"),
       total_non_selected_idle_workers,
       absl::StrFormat("%.2f",
                       static_cast<float>(total_non_selected_idle_workers_uss_bytes) /
@@ -3364,7 +3365,8 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
 
   return absl::StrFormat(
       "Refer to the documentation on how to address the out of memory issue: "
-      "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
+      "https://docs.ray.io/en/latest/ray-observability/user-guides/debug-apps/"
+      "debug-memory.html. "
       "Consider provisioning more memory on this node or reducing task "
       "parallelism by requesting more CPUs per task. %s"
       "To adjust the kill "
