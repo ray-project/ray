@@ -3488,6 +3488,7 @@ packaging==26.1 \
     #   numba-cuda
     #   onnxruntime
     #   onnxscript
+    #   plotly
     #   pytest
     #   ray
     #   skops
@@ -3701,7 +3702,6 @@ plotly==6.7.0 \
     --hash=sha256:ac8aca1c25c663a59b5b9140a549264a5badde2e057d79b8c772ae2920e32ff0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/core-requirements.txt
     #   trackio
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
