@@ -3657,9 +3657,7 @@ class TestSchedulerPerformanceOptimizations:
         # With truncation to 1000 demands: needs ceil(1000/4) = 250 nodes.
         assert to_launch == {"type_1": 250}
 
-    @patch.dict(
-        os.environ, {"AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE": "100"}
-    )
+    @patch.dict(os.environ, {"AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE": "100"})
     def test_demand_truncation_with_env_override(self):
         """Truncation limit can be configured via environment variable."""
         from ray.autoscaler._private.constants import env_integer

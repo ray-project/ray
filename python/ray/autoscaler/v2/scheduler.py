@@ -1946,6 +1946,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             recoverable_resource_availabilities: The recoverable cloud resource availability
                 score. Similar to cloud_resource_availabilities, but it will recover from
                 0.0 to 1.0 linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+            min_resource_demand: Pre-computed minimum resource demand per dimension
+                across all requests. Used for quick feasibility pre-checks to skip
+                nodes that cannot fit any request.
 
         Returns:
             best_node: The best node to schedule the requests.
