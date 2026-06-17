@@ -59,6 +59,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     RAY_SERVE_HAPROXY_STATS_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
@@ -791,6 +792,20 @@ class HAProxyApi(ProxyApi):
             self._retire_log_files(p)
         self._old_procs = still_alive
 
+    def _is_our_haproxy(self, pid: int) -> bool:
+        """Whether `pid` is currently one of our haproxy workers.
+
+        Reads /proc to guard against signaling a recycled pid: a reaped or
+        recycled pid won't have our config_file_path in its cmdline and drops
+        out. Returns False on any non-Linux / no-/proc platform (fail-safe:
+        skips re-signaling rather than risk hitting the wrong process).
+        """
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                return self.config_file_path.encode() in f.read().split(b"\0")
+        except OSError:
+            return False
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
@@ -808,7 +823,9 @@ class HAProxyApi(ProxyApi):
         return self._proc is not None and self._proc.returncode is None
 
     async def _start_and_wait_for_haproxy(
-        self, *extra_args: str, timeout_s: int = 5
+        self,
+        *extra_args: str,
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> asyncio.subprocess.Process:
         # Build command args
         haproxy_bin = get_haproxy_binary()
@@ -872,17 +889,26 @@ class HAProxyApi(ProxyApi):
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
-            reload_args = ["-sf", str(old_proc.pid)]
+            # Also re-signal still-alive displaced workers: heals any worker
+            # whose earlier -sf signal was lost (re-signaling a draining one is
+            # a no-op). The new process delivers SIGUSR1 only after startup, so
+            # filter to pids whose /proc cmdline is still one of our haproxy
+            # workers: a worker that exited and had its pid recycled in the
+            # meantime drops out, so the signal can't land on an unrelated
+            # process.
+            self._prune_old_procs()
+            live_old_pids = [
+                str(p.pid) for p in self._old_procs if self._is_our_haproxy(p.pid)
+            ]
+            reload_args = ["-sf", str(old_proc.pid), *live_old_pids]
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
 
-            # Track old process for shutdown cleanup, then prune exited ones so
-            # the list and the log files on disk stay bounded across reloads.
+            # Track for shutdown cleanup; pruned at the next reload.
             if old_proc is not None:
                 self._old_procs.append(old_proc)
-            self._prune_old_procs()
 
             logger.info(
                 "Successfully performed graceful HAProxy reload with process restart."
@@ -892,7 +918,9 @@ class HAProxyApi(ProxyApi):
             raise
 
     async def _wait_for_hap_availability(
-        self, proc: asyncio.subprocess.Process, timeout_s: int = 5
+        self,
+        proc: asyncio.subprocess.Process,
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> None:
         start_time = time.time()
 
@@ -908,13 +936,18 @@ class HAProxyApi(ProxyApi):
                     f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
                 )
 
-            if await self.is_running():
+            # The socket path answers through its previous owner until the
+            # new process rebinds it, so require the answer to come from
+            # `proc` itself. Otherwise a spawn that dies before taking over is
+            # declared ready and its -sf target is stranded forever.
+            if await self._get_running_pid() == proc.pid:
                 return
 
             await asyncio.sleep(0.5)
 
         raise RuntimeError(
-            f"HAProxy did not enter running state within {timeout_s} seconds."
+            f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
+            f"{timeout_s} seconds. stderr: {_tail_file(proc._stderr_path)}"
         )
 
     def _write_ingress_request_router_lua(
@@ -1274,6 +1307,22 @@ class HAProxyApi(ProxyApi):
         self.cfg.has_received_servers = self.cfg.has_received_servers or any(
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
+
+    async def _get_running_pid(self) -> Optional[int]:
+        """Pid of the HAProxy process currently answering the admin socket,
+        or None if the socket is unavailable or the response is unparseable.
+        """
+        try:
+            info = await self._send_socket_command("show info")
+        except Exception:
+            return None
+        for line in info.splitlines():
+            if line.startswith("Pid:"):
+                try:
+                    return int(line.split(":", 1)[1])
+                except ValueError:
+                    return None
+        return None
 
     async def is_running(self) -> bool:
         try:
