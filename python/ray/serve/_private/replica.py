@@ -2027,14 +2027,10 @@ class Replica:
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
-        # Budget for the whole graceful shutdown, mirroring the controller's
-        # force-kill deadline (see `DeploymentReplica.stop`). Each step below
-        # consumes from it; once exhausted, steps degrade to an abrupt close.
+        # Shutdown budget, mirroring the controller's force-kill deadline (see
+        # `DeploymentReplica.stop`). Each step below consumes from it; once
+        # exhausted, steps degrade to an abrupt close.
         shutdown_budget_s = self._deployment_config.graceful_shutdown_timeout_s
-        if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress:
-            shutdown_budget_s = max(
-                shutdown_budget_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
-            )
         shutdown_deadline = time.monotonic() + shutdown_budget_s
 
         def remaining_grace_s() -> float:
