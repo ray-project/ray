@@ -159,7 +159,6 @@ def plan_all_to_all_op(
         )
         fn = generate_sort_fn(
             op.sort_key,
-            op.batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
@@ -177,7 +176,6 @@ def plan_all_to_all_op(
         fn = generate_aggregate_fn(
             op.key,
             op.aggs,
-            op.batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )

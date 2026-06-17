@@ -1961,8 +1961,10 @@ pyzmq==27.1.0
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-ray-haproxy==2.8.20
-    # via -r python/requirements/serve/serve-test-requirements.txt
+ray-haproxy==2.8.20 ; sys_platform == "linux"
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/serve/serve-test-requirements.txt
 raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 redis==4.5.4
