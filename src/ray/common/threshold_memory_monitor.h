@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -97,6 +99,10 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   bool IsEnabled() const override;
 
  private:
+  FRIEND_TEST(ThresholdMemoryMonitorTest,
+              TestResourceIsolationThresholdReadFailureSkipsPoll);
+  FRIEND_TEST(ThresholdMemoryMonitorTest, TestResourceIsolationInvalidThresholdSkipsPoll);
+
   /**
    * @brief Checks if the memory usage on the host exceeds the threshold.
    *
