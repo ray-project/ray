@@ -59,12 +59,12 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
 
-    def start(self, options: ExecutionOptions):
+    def start(self, options: ExecutionOptions, block_ref_counter=None):
         # Whether to preserve deterministic ordering of output blocks.
         # When True, blocks are emitted in round-robin order across inputs,
         # ensuring the same input always produces the same output order.
         self._preserve_order = options.preserve_order
-        super().start(options)
+        super().start(options, block_ref_counter)
 
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = 0

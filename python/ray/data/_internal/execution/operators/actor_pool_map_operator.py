@@ -265,9 +265,9 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def start(self, options: ExecutionOptions):
+    def start(self, options: ExecutionOptions, block_ref_counter=None):
         self._actor_locality_enabled = options.actor_locality_enabled
-        super().start(options)
+        super().start(options, block_ref_counter)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
         self._actor_pool.scale(

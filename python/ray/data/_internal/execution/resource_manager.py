@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -140,6 +141,8 @@ class ResourceManager:
         # operator's output usage.
         self._output_operator = terminal_operator_from_topology(topology)
 
+        self._block_ref_counter = BlockRefCounter()
+
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
         ] = create_resource_allocator(self, data_context)
@@ -170,6 +173,11 @@ class ResourceManager:
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
         return self._external_consumer_bytes
+
+    @property
+    def block_ref_counter(self) -> BlockRefCounter:
+        """The centralized block reference counter for this executor."""
+        return self._block_ref_counter
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"

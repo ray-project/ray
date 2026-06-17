@@ -182,6 +182,8 @@ def test_all_to_all_estimated_num_output_bundles():
         DataContext.get_current().target_max_block_size,
     )
 
+    op1.start(ExecutionOptions())
+    op2.start(ExecutionOptions())
     while input_op.has_next():
         op1.add_input(input_op.get_next(), 0)
     op1.all_inputs_done()

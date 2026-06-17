@@ -228,6 +228,10 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
+        counter = self._resource_manager.block_ref_counter
+        for op in self._topology:
+            op.start(self._options, counter)
+
         # Constructed once per executor (not per scheduling iteration) so the
         # guard's idle-detection state accumulates across scheduling iterations.
         self._output_backpressure_guard = OutputBackpressureGuard(
@@ -343,6 +347,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
+            # Queues have been drained; any remaining Ray Core callbacks that fire
+            # after this point should be no-ops.
+            self._resource_manager.block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)

@@ -485,8 +485,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
-    def start(self, options: "ExecutionOptions"):
-        super().start(options)
+    def start(self, options: "ExecutionOptions", block_ref_counter=None):
+        super().start(options, block_ref_counter)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()
@@ -659,8 +659,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         data_task = DataOpTask(
             task_index,
             gen,
-            lambda output: _output_ready_callback(task_index, output),
-            functools.partial(_task_done_callback, task_index),
+            self._block_ref_counter,
+            self.id,
+            output_ready_callback=lambda output: _output_ready_callback(
+                task_index, output
+            ),
+            task_done_callback=functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
         )
         self._metrics.on_task_submitted(

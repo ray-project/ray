@@ -575,7 +575,6 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options)
         return op_state
 
     setup_state(dag)
