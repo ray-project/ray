@@ -214,27 +214,24 @@ class MetadataPrefetcher:
         """
         pending: List["ray.ObjectRef"] = []
         while True:
-            # Pull new requests. Block only when nothing is in flight;
-            # otherwise poll so pending refs keep making progress.
-            if pending:
+            # Block on the queue only when idle; while refs are in flight,
+            # don't block here — get back to ``ray.wait`` to keep them moving.
+            try:
+                item = self._request_q.get(block=not pending)
+            except queue_module.Empty:
+                item = None
+            # Drain whatever else is already queued into a single wait batch.
+            while item is not None:
+                if item is self._STOP:
+                    # Fast teardown: drop any in-flight refs and exit. ``stop``
+                    # runs after the scheduling loop (which feeds us) is joined,
+                    # so there's nothing left to emit.
+                    return
+                pending.extend(item)
                 try:
                     item = self._request_q.get_nowait()
                 except queue_module.Empty:
-                    item = ()
-            else:
-                item = self._request_q.get()
-            if item is self._STOP:
-                return
-            pending.extend(item)
-            # Coalesce any other already-queued batches.
-            while True:
-                try:
-                    nxt = self._request_q.get_nowait()
-                except queue_module.Empty:
-                    break
-                if nxt is self._STOP:
-                    return
-                pending.extend(nxt)
+                    item = None
 
             if not pending:
                 continue
