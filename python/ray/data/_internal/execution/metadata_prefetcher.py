@@ -74,9 +74,7 @@ class MetadataPrefetcher:
         # Executor-thread-only state below.
         # Per-operator (keyed by the caller's op key) FIFO of pairs awaiting
         # metadata, in append (= emission) order. Each op's deque is drained
-        # front-first so that op's RefBundle emission order is preserved; the
-        # order we iterate ops in doesn't matter, since each op's bundles go to
-        # its own downstream queue independently.
+        # front-first so that op's RefBundle emission order is preserved.
         self._fifos: "defaultdict[Hashable, deque[DeferredEmit]]" = defaultdict(deque)
         # Tasks whose end-of-stream callback is postponed until all of their
         # deferred pairs have been emitted. A set so a task that is re-seen on
