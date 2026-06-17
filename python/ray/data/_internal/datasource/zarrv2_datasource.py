@@ -76,28 +76,11 @@ class ZarrArrayMeta:
     ) -> tuple[int, ...]:
         """Resolve the user's ``chunk_shapes`` override(s) against this array's chunks.
 
-        When ``user_chunk_shape`` is a single sequence, it is treated as a
-        prefix that overrides the leading axes; trailing axes keep the
-        array's native chunk values. This lets a single
-        ``chunk_shapes=[16]`` apply meaningfully across arrays of different
-        ranks (e.g., 4-D images alongside 2-D poses).
-
-        When ``user_chunk_shape`` is a dict, it is interpreted as a
-        per-array mapping from array path to that array's override prefix.
-        Arrays omitted from the mapping keep their native chunks.
-
-        - ``None`` → use native chunks unchanged.
-        - shorter than rank → override leading axes, keep native for the rest.
-        - same length as rank → use as-is.
-        - longer than rank → ``ValueError``.
-
-        Example with array shape ``(200, 28, 28)``, native chunks ``(50, 28, 28)``:
-
-            user=None              → (50, 28, 28)
-            user=(16,)             → (16, 28, 28)
-            user=(16, 14)          → (16, 14, 28)
-            user=(16, 14, 14)      → (16, 14, 14)
-            user=(16, 14, 14, 1)   → ValueError
+        A single sequence overrides the leading axes (trailing axes keep the
+        native chunks), so one ``chunk_shapes=[16]`` applies across arrays of
+        different ranks. A dict maps array path → that array's override prefix;
+        arrays absent from it keep native chunks. ``None`` keeps native chunks;
+        an override longer than the array's rank raises ``ValueError``.
         """
         if user_chunk_shape is None:
             return self.chunks
@@ -173,14 +156,10 @@ class _ChunkDescriptor:
 
 @dataclass(frozen=True)
 class _AlignedChunkDescriptor:
-    """One wide-row's worth of read work: a global axis-0 range across N aligned arrays.
-
-    The row "owns" the range ``[t_start, t_stop)`` and reports those as
-    columns. When ``overlap > 0``, the row's actual data extends to
-    ``t_stop_data`` (which is ``min(t_stop + overlap, shape[0])``); the
-    trailing slice is the lookahead from the next row's owned range so
-    sliding windows that start in this row's owned range can reach their
-    full tail without crossing a Ray Data row boundary.
+    """One wide row: a global axis-0 range ``[t_start, t_stop)`` across the
+    aligned arrays. With ``overlap > 0`` the row's data extends to
+    ``t_stop_data = min(t_stop + overlap, shape[0])`` (lookahead so windows
+    starting in this row reach their tail without crossing a row boundary).
     """
 
     chunk_index: int
@@ -262,15 +241,14 @@ def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]
                 f"got key {k!r} of type {type(k).__name__}"
             )
 
-        if not isinstance(v, (tuple, list)) or not v:
+        if (
+            not isinstance(v, (tuple, list))
+            or not v
+            or any(isinstance(x, bool) or not isinstance(x, int) or x <= 0 for x in v)
+        ):
             raise ValueError(
-                f"chunk_shapes[{k!r}] must be non-empty sequence of "
-                f"positive integers (list or tuple), got {v!r}"
-            )
-        if any(isinstance(x, bool) or not isinstance(x, int) or x <= 0 for x in v):
-            raise ValueError(
-                f"chunk_shapes[{k!r}] must be a non-empty sequence of "
-                f"positive integers (list or tuple), got {v!r}"
+                f"chunk_shapes[{k!r}] must be a non-empty sequence of positive "
+                f"integers (list or tuple), got {v!r}"
             )
 
         normalized_key = normalize_storage_path(k)
@@ -295,37 +273,9 @@ def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]
 class ZarrV2Datasource(Datasource):
     """Reads one or more Zarr v2 arrays into a Ray Data ``Dataset``.
 
-    Two output schemas, selected at the call site via ``align_axis_0``:
-
-    Long-form (default, ``align_axis_0=False``) — one row per chunk per
-    array. Columns:
-
-    * ``array``: the source array's path within the store
-      (e.g., ``"data/camera0_rgb"``, or ``""`` for a root-level array).
-    * ``chunk_index``: the N-D position of this chunk in the array's chunk
-      grid, as a tuple of ints.
-    * ``chunk_slices``: per-axis ``(start, stop)`` of this chunk in the
-      source array's coordinate space.
-    * ``chunk``: the chunk's data as an ``ndarray`` at its natural shape
-      (possibly shorter at trailing boundaries — no padding).
-
-    Arrays in the same call need not share any dimension; they coexist as
-    separate rows distinguished by ``array``.
-
-    Wide-form (opt-in, ``align_axis_0=True``) — one row per axis-0
-    chunk, with one column per selected array. Columns:
-
-    * ``t_start`` / ``t_stop``: global axis-0 range of this row.
-    * ``<array_name>``: that array's ``[t_start:t_stop, ...]`` slice
-      (one column per selected array).
-
-    All selected arrays must share ``shape[0]`` and must end up with the
-    same axis-0 chunk size after :paramref:`chunk_shapes` resolution; if
-    they don't, ``__init__`` raises ``ValueError`` with a hint pointing at
-    the largest aligned subset. Use :paramref:`array_paths` to pick which
-    arrays to read — ``align_axis_0`` itself does not filter.
-
-    See :func:`ray.data.read_zarr` for the public API.
+    Emits long-form rows (one per chunk per array) or, with
+    ``align_axis_0=True``, wide rows (one per axis-0 chunk, one column per
+    array). See :func:`ray.data.read_zarr` for the row schemas and full API.
     """
 
     def __init__(

@@ -258,18 +258,34 @@ def test_array_paths_missing_zarray_file_raises_value_error(
 
 
 @pytest.mark.parametrize(
-    "chunk_shapes",
-    ["invalid", 42, b"bytes", {1, 2}],
+    "chunk_shapes, match",
+    [
+        # Wrong container type (not list/tuple/dict).
+        ("invalid", "chunk_shapes must be a non-empty sequence of positive integers"),
+        (42, "chunk_shapes must be a non-empty sequence of positive integers"),
+        (b"bytes", "chunk_shapes must be a non-empty sequence of positive integers"),
+        ({1, 2}, "chunk_shapes must be a non-empty sequence of positive integers"),
+        # Bad dict values.
+        ({"images": 1}, r"chunk_shapes\['images'\] must be .*positive integers"),
+        ({"images": None}, r"chunk_shapes\['images'\] must be .*positive integers"),
+        ({"images": []}, r"chunk_shapes\['images'\] must be .*positive integers"),
+        ({"images": [0]}, r"chunk_shapes\['images'\] must be .*positive integers"),
+        ({"images": [1.5]}, r"chunk_shapes\['images'\] must be .*positive integers"),
+        # Bad dict keys.
+        (cast(Any, {1: [2]}), "chunk_shapes dict keys must be array-path strings"),
+        # Duplicate keys after normalization.
+        (
+            {"images": [2], "/images/": [3]},
+            "duplicate array paths after normalization",
+        ),
+        # Unknown array path.
+        ({"does_not_exist": [2]}, r"Unknown array path\(s\) in chunk_shapes"),
+    ],
 )
-def test_rejects_invalid_chunk_shapes(zarrv2_group_store, chunk_shapes):
-    """Non-list/non-tuple/non-dict inputs are rejected at construction time."""
-    with pytest.raises(
-        ValueError,
-        match="chunk_shapes must be a non-empty sequence of positive integers",
-    ):
+def test_rejects_invalid_chunk_shapes(zarrv2_group_store, chunk_shapes, match):
+    with pytest.raises(ValueError, match=match):
         zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_group_store),
-            chunk_shapes=chunk_shapes,
+            str(zarrv2_group_store), chunk_shapes=chunk_shapes
         )
 
 
@@ -333,60 +349,6 @@ def test_chunk_shapes_resolution_across_mixed_rank(
         array_paths=array_paths,
     )
     assert datasource._array_chunks == expected
-
-
-@pytest.mark.parametrize(
-    "chunk_shapes",
-    [
-        {"images": 1},
-        {"images": None},
-        {"images": []},
-        {"images": [0]},
-        {"images": [1.5]},
-    ],
-)
-def test_rejects_invalid_chunk_shapes_dict_values(zarrv2_group_store, chunk_shapes):
-    with pytest.raises(
-        ValueError,
-        match=r"chunk_shapes\['images'\] must be .*positive integers",
-    ):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_group_store),
-            chunk_shapes=chunk_shapes,
-        )
-
-
-def test_rejects_invalid_chunk_shapes_dict_keys(zarrv2_group_store):
-    with pytest.raises(
-        ValueError,
-        match="chunk_shapes dict keys must be array-path strings",
-    ):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_group_store),
-            chunk_shapes=cast(Any, {1: [2]}),
-        )
-
-
-def test_rejects_duplicate_normalized_chunk_shapes_keys(zarrv2_group_store):
-    with pytest.raises(
-        ValueError,
-        match="duplicate array paths after normalization",
-    ):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_group_store),
-            chunk_shapes={"images": [2], "/images/": [3]},
-        )
-
-
-def test_rejects_unknown_chunk_shapes_keys(zarrv2_group_store):
-    with pytest.raises(
-        ValueError,
-        match="Unknown array path\\(s\\) in chunk_shapes",
-    ):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(zarrv2_group_store),
-            chunk_shapes={"does_not_exist": [2]},
-        )
 
 
 # ---------------------------------------------------------------------------
