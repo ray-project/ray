@@ -410,47 +410,29 @@ class DataOpTask(OpTask):
 
     @property
     def has_finished(self) -> bool:
-        """Whether the task is truly done — generator drained and all its
-        pairs emitted (``task_done_callback`` fired)."""
         return self._state is TaskGeneratorState.FINISHED
 
     @property
     def operator_name(self) -> str:
-        """Name of the physical operator that created this task."""
         return self._operator_name
 
     @property
     def task_error(self) -> Optional[Exception]:
-        """The task's failure exception if it failed, else None. Set when the
-        task becomes DRAINED; surfaced by the prefetcher for
-        ``max_errored_blocks`` accounting when it transitions to FINISHED."""
         return self._task_error
 
     def is_drained(self) -> bool:
-        """Whether the generator is exhausted/failed and all pairs pulled, but
-        not all of their metadata has been emitted yet (DRAINED). The pair
-        emits and the eventual ``mark_done`` happen in the prefetcher."""
         return self._state is TaskGeneratorState.DRAINED
 
     def has_pending_emits(self) -> bool:
-        """Whether this task still has pulled pairs not yet emitted."""
         return self._pending_emit_count > 0
 
     def mark_pending(self) -> None:
-        """Account a pulled pair as awaiting emission. Called by the
-        prefetcher when a pair is queued for its background fetch."""
         self._pending_emit_count += 1
 
     def mark_emitted(self) -> None:
-        """Account a pulled pair as emitted (or dropped). Called by the
-        prefetcher once a pair's metadata is fetched and handled."""
         self._pending_emit_count -= 1
 
     def emit_block(self, block_ref: "ray.ObjectRef[Block]", meta_bytes: bytes) -> None:
-        """Build and emit one pulled block's ``RefBundle`` from its fetched
-        metadata bytes, and record it as this task's last block. Called by the
-        ``MetadataPrefetcher`` once the metadata is available, on the executor
-        thread."""
         meta_with_schema: BlockMetadataWithSchema = pickle.loads(meta_bytes)
         meta = meta_with_schema.metadata
         self._output_ready_callback(
@@ -464,10 +446,8 @@ class DataOpTask(OpTask):
 
     def mark_done(self) -> None:
         """Transition DRAINED -> FINISHED and fire ``task_done_callback``.
-        For a failed task, pass the error with no stats (matching the
-        pre-deferred failure path); otherwise pass the final block's stats.
-        Called by the ``MetadataPrefetcher`` once all this task's pairs have
-        emitted, on the executor thread."""
+        A failed task reports the error with no stats; a successful one
+        reports the final block's stats."""
         if self._task_error is not None:
             self._task_done_callback(
                 self._task_error,
