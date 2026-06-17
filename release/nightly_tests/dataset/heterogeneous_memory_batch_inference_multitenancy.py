@@ -66,6 +66,7 @@ def run_pipeline(subcluster: str, args: argparse.Namespace) -> None:
         cpu_batch_size=args.cpu_batch_size,
         gpu_batch_size=args.gpu_batch_size,
         gpu_concurrency=args.gpu_concurrency,
+        set_memory=args.set_memory,
         subcluster=subcluster,
         # TODO: all to all shuffle causes 1 concurrent dataset to execute much more slowly
         # than the other e.g. 8 minutes vs 4 minutes. Without all to all shuffle, both
@@ -254,6 +255,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cpu-batch-size", type=int, default=1024)
     p.add_argument("--gpu-batch-size", type=int, default=256)
     p.add_argument("--gpu-concurrency", type=int, default=8)
+    p.add_argument(
+        "--set-memory",
+        action="store_true",
+        help=(
+            "Set per-operator memory requirements and enable logical memory "
+            "accounting. Otherwise, leave memory unset (None)."
+        ),
+    )
     return p.parse_args()
 
 

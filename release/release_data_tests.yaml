@@ -902,7 +902,7 @@
 
   run:
     timeout: 7200
-    script: python heterogeneous_memory_batch_inference_multitenancy.py
+    script: python heterogeneous_memory_batch_inference_multitenancy.py --set-memory
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
