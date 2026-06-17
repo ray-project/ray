@@ -6,6 +6,7 @@ conda
 Dask
 [Dd]ata('s)?
 [Dd]atasource(s)?
+[Dd]eserializable
 [Dd]iscretizer(s)?
 docstrings
 dtype
