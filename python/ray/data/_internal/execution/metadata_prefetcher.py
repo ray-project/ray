@@ -5,12 +5,11 @@
 ``meta_ref``s on a dedicated thread so the executor thread never blocks on
 ``ray.get(meta_refs)``.
 
-Flow (executor thread): each scheduling iteration calls
-:meth:`submit_or_register_done` (enqueue the new pairs' meta_refs for fetching
-and append them to per-operator FIFOs) then :meth:`drain` (emit the pairs whose
-metadata is now available, in per-op append order). The two threads communicate
-through one thread-safe queue (``_request_q``); fetched bytes come back via
-``_results``.
+Flow (executor thread): each scheduling iteration calls :meth:`submit` (enqueue
+the new pairs' meta_refs for fetching and append them to per-operator FIFOs)
+then :meth:`drain` (emit the pairs whose metadata is now available, in per-op
+append order). The two threads communicate through one thread-safe queue
+(``_request_q``); fetched bytes come back via ``_results``.
 
 The background thread fetches the refs ``ray.wait(fetch_local=True)`` reports
 ready; a ref stuck on a bad node merely stays pending instead of wedging the
@@ -98,7 +97,7 @@ class MetadataPrefetcher:
         if self._started:
             self._thread.join(timeout=_FETCH_THREAD_JOIN_TIMEOUT_S)
 
-    def submit_or_register_done(
+    def submit(
         self,
         op_key: Hashable,
         deferred: List[DeferredEmit],

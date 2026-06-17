@@ -397,7 +397,6 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the output node's outqueue.
         """
         exc: Optional[Exception] = None
-        # Start the background metadata-fetch thread before the loop uses it.
         self._metadata_prefetcher.start()
         try:
             # Run scheduling loop until complete.
