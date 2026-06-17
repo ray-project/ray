@@ -6,7 +6,6 @@ from .configure_map_task_memory import (
     ConfigureMapTaskMemoryRule,
     ConfigureMapTaskMemoryUsingOutputSize,
 )
-from .inherit_batch_format import InheritBatchFormatRule
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
 from .operator_fusion import FuseOperators, are_remote_args_compatible
@@ -23,7 +22,6 @@ __all__ = [
     "ConfigureMapTaskMemoryRule",
     "ConfigureMapTaskMemoryUsingOutputSize",
     "FuseOperators",
-    "InheritBatchFormatRule",
     "InheritTargetMaxBlockSizeRule",
     "LimitPushdownRule",
     "PredicatePushdown",
