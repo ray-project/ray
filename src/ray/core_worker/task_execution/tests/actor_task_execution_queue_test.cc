@@ -97,9 +97,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 namespace {
 
-// Construct a TaskToExecute container for tests. The per-task execute/cancel behavior is
-// supplied to the queue at construction time (not per task), so the container only needs
-// to carry the task spec. The reply and send_reply_callback are dummy implementations
+// Construct a TaskToExecute container for tests. The reply and
+// send_reply_callback are dummy implementations
 // that are never inspected by the tests' queue-level callbacks.
 TaskToExecute MakeTaskToExecute(const TaskSpecification &task_spec) {
   static rpc::PushTaskReply dummy_reply;
