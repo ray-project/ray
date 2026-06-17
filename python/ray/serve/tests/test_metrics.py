@@ -27,6 +27,7 @@ from ray._common.test_utils import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
@@ -230,12 +231,23 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
                 return False
         return True
 
+    # Create a dummy app so that there is a replica to hit for direct ingress tests.
+    @serve.deployment()
+    def f(*args):
+        return "Hi"
+
+    app_name = "app"
+    serve.run(f.bind(), name=app_name, route_prefix="/app")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
     # Trigger HTTP 404 error
-    httpx.get("http://127.0.0.1:8000/B/")
-    httpx.get("http://127.0.0.1:8000/B/")
+    http_url = get_application_url("HTTP", app_name=app_name, exclude_route_prefix=True)
+    httpx.get(f"{http_url}/B/")
+    httpx.get(f"{http_url}/B/")
 
     # Ping gPRC proxy
-    channel = grpc.insecure_channel("127.0.0.1:9000")
+    grpc_url = get_application_url("gRPC", app_name=app_name)
+    channel = grpc.insecure_channel(grpc_url)
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
     # Ensure all expected metrics are present.
@@ -295,6 +307,10 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
 
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
+    # This test kills the replica process so metrics are not emitted.
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip()
+
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -395,12 +411,14 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
+    # Create dummy apps so that there is a replica to hit for direct ingress tests.
     @serve.deployment()
     def f(*args):
         return "Hi"
 
     app_name = "app"
     serve.run(f.bind(), name=app_name, route_prefix="/app")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
 
     # Should generate 404 responses
     app_url = get_application_url("HTTP", app_name=app_name, exclude_route_prefix=True)
@@ -648,7 +666,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
 def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     """Verify that 2xx and 3xx status codes aren't errors, others are."""
     # TODO(eicherseiji): Remove skip when HAProxy is open-sourced.
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+    if RAY_SERVE_ENABLE_HA_PROXY:
         pytest.skip()
 
     def check_request_count_metrics(
