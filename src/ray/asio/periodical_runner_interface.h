@@ -20,8 +20,6 @@
 
 namespace ray {
 
-/// \class PeriodicalRunnerInterface
-/// Interface for periodical runner functionality.
 class PeriodicalRunnerInterface {
  public:
   virtual ~PeriodicalRunnerInterface() = default;

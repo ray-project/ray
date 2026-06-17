@@ -98,8 +98,10 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   bool IsEnabled() const override;
 
  private:
-  /// Registers the periodic memory check on `runner_`. Shared by both
-  /// constructors.
+  /**
+   * Registers the periodic memory check on `runner_`. Shared by both
+   * constructors.
+   */
   void RegisterPeriodicCheck(uint64_t monitor_interval_ms);
 
   /**
@@ -145,27 +147,37 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   /// use to monitor the aggregate object store memory usage.
   std::string system_cgroup_path_;
 
-  /// IO service for running the memory monitoring event loop. Only created by the
-  /// production constructor; null when an external runner is injected.
+  /**
+   * IO service for running the memory monitoring event loop. Only created by the
+   * production constructor; null when an external runner is injected.
+   */
   std::unique_ptr<instrumented_io_context> io_service_;
 
-  /// Work guard to prevent the io service from exiting when no work. Only created
-  /// by the production constructor.
+  /**
+   * Work guard to prevent the io service from exiting when no work. Only created
+   * by the production constructor.
+   */
   std::unique_ptr<
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
       work_guard_;
 
-  /// Thread executing the io service. Started before the runner so the io_service
-  /// is ready to process work. Explicitly joined in the destructor. Only created
-  /// by the production constructor.
+  /**
+   * Thread executing the io service. Started before the runner so the io_service
+   * is ready to process work. Explicitly joined in the destructor. Only created
+   * by the production constructor.
+   */
   std::unique_ptr<std::thread> thread_;
 
-  /// Periodical runner owned by the production constructor (backed by io_service_).
-  /// Null when an external runner is injected.
+  /**
+   * Periodical runner owned by the production constructor (backed by io_service_).
+   * Null when an external runner is injected.
+   */
   std::shared_ptr<PeriodicalRunner> owned_runner_;
 
-  /// The runner used to schedule the periodic memory check. References either
-  /// owned_runner_ (production) or an externally-provided runner (tests).
+  /**
+   * The runner used to schedule the periodic memory check. References either
+   * owned_runner_ (production) or an externally-provided runner (tests).
+   */
   PeriodicalRunnerInterface &runner_;
 };
 

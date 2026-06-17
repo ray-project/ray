@@ -81,18 +81,22 @@ class FakeClock final : public ClockInterface {
 
   void SetTime(absl::Time time);
 
-  /// Register a callback that is invoked whenever the clock's time changes (via
-  /// AdvanceTime or SetTime). The callback is passed the new current time.
-  /// Returns a handle that can be passed to UnregisterOnAdvanceCallback to
-  /// remove the callback.
-  ///
-  /// This is intentionally generic: the clock has no knowledge of who registers
-  /// callbacks, which keeps it loosely coupled from its observers (e.g. a fake
-  /// periodical runner).
+  /**
+   * Register a callback that is invoked whenever the clock's time changes (via
+   * AdvanceTime or SetTime). The callback is passed the new current time.
+   * Returns a handle that can be passed to UnregisterOnAdvanceCallback to
+   * remove the callback.
+   *
+   * This is intentionally generic: the clock has no knowledge of who registers
+   * callbacks, which keeps it loosely coupled from its observers (e.g. a fake
+   * periodical runner).
+   */
   uint64_t RegisterOnAdvanceCallback(std::function<void(absl::Time)> callback);
 
-  /// Remove a callback previously registered with RegisterOnAdvanceCallback.
-  /// No-op if the handle is not registered.
+  /**
+   * Remove a callback previously registered with RegisterOnAdvanceCallback.
+   * No-op if the handle is not registered.
+   */
   void UnregisterOnAdvanceCallback(uint64_t handle);
 
  private:
