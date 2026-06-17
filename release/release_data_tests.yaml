@@ -821,6 +821,51 @@
     timeout: 3600
     script: python image_embedding_from_jsonl/main.py {{args}}
 
+- name: image_embedding_from_jsonl_{{case}}_budget_scheduler
+  python: "3.10"
+  frequency: "{{frequency}}"
+  group: data-batch-inference
+
+  matrix:
+    setup:
+      case: []
+      cluster_type: []
+      args: []
+      frequency: []
+      fail_on_dead_nodes: []
+    adjustments:
+      - with:
+          case: fixed_size
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40 --use-budget-scheduler
+          frequency: weekly
+          fail_on_dead_nodes: 0
+      - with:
+          case: autoscaling
+          cluster_type: autoscaling
+          args: --inference-concurrency 1 40 --use-budget-scheduler
+          frequency: weekly
+          fail_on_dead_nodes: 1
+      - with:
+          case: fixed_size_chaos
+          cluster_type: fixed_size
+          args: --inference-concurrency 40 40 --chaos --use-budget-scheduler
+          frequency: manual
+          fail_on_dead_nodes: 0
+
+  cluster:
+    cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
+      post_build_script: byod_install_pybase64.sh
+
+  run:
+    timeout: 3600
+    script: python image_embedding_from_jsonl/main.py {{args}}
+
 - name: text_embedding_{{case}}
   python: "3.10"
   frequency: weekly
