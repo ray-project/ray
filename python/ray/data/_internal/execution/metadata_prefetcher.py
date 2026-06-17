@@ -29,7 +29,7 @@ import queue as queue_module
 import threading
 from collections import defaultdict, deque
 from collections.abc import Hashable
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import (
@@ -120,14 +120,16 @@ class MetadataPrefetcher:
                 # must not be registered (or later fired) twice.
                 self._done_pending.add(task)
 
-    def drain(self, block_timeout_s: float = 0.0) -> List[Tuple[str, BaseException]]:
+    def drain(
+        self, block_timeout_s: Optional[float] = None
+    ) -> List[Tuple[str, BaseException]]:
         """Emit every pair whose metadata is now available, in per-op append
         order, then fire postponed done callbacks for fully-drained tasks.
 
-        If ``block_timeout_s > 0`` and there are pending pairs but the fetch
-        thread hasn't published anything new, block up to that long for the
-        first result before emitting. This paces the scheduling loop to
-        metadata availability — without it the loop spins (re-running
+        If ``block_timeout_s`` is set (must be > 0) and there are pending pairs
+        but the fetch thread hasn't published anything new, block up to that
+        long for the first result before emitting. This paces the scheduling
+        loop to metadata availability — without it the loop spins (re-running
         per-iteration work like resource accounting and actor-state refresh)
         while metadata is in flight. It only blocks when the iteration would
         otherwise emit nothing; if results are already ready it returns at
@@ -143,8 +145,9 @@ class MetadataPrefetcher:
 
         Must be called on the executor thread.
         """
+        assert block_timeout_s is None or block_timeout_s > 0, block_timeout_s
         if (
-            block_timeout_s > 0
+            block_timeout_s is not None
             and not self._published.is_set()
             and any(self._fifos.values())
         ):
