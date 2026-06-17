@@ -792,6 +792,20 @@ class HAProxyApi(ProxyApi):
             self._retire_log_files(p)
         self._old_procs = still_alive
 
+    def _is_our_haproxy(self, pid: int) -> bool:
+        """Whether `pid` is currently one of our haproxy workers.
+
+        Reads /proc to guard against signaling a recycled pid: a reaped or
+        recycled pid won't have our config_file_path in its cmdline and drops
+        out. Returns False on any non-Linux / no-/proc platform (fail-safe:
+        skips re-signaling rather than risk hitting the wrong process).
+        """
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                return self.config_file_path.encode() in f.read().split(b"\0")
+        except OSError:
+            return False
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
@@ -876,10 +890,16 @@ class HAProxyApi(ProxyApi):
             # Start new HAProxy process with -sf flag to gracefully take over from old process
             # Use -x socket transfer for seamless reloads if optimization is enabled
             # Also re-signal still-alive displaced workers: heals any worker
-            # whose earlier -sf signal was lost (re-signaling a draining one
-            # is a no-op). Prune first so only live pids are passed.
+            # whose earlier -sf signal was lost (re-signaling a draining one is
+            # a no-op). The new process delivers SIGUSR1 only after startup, so
+            # filter to pids whose /proc cmdline is still one of our haproxy
+            # workers: a worker that exited and had its pid recycled in the
+            # meantime drops out, so the signal can't land on an unrelated
+            # process.
             self._prune_old_procs()
-            live_old_pids = [str(p.pid) for p in self._old_procs]
+            live_old_pids = [
+                str(p.pid) for p in self._old_procs if self._is_our_haproxy(p.pid)
+            ]
             reload_args = ["-sf", str(old_proc.pid), *live_old_pids]
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
@@ -918,7 +938,7 @@ class HAProxyApi(ProxyApi):
 
             # The socket path answers through its previous owner until the
             # new process rebinds it, so require the answer to come from
-            # `proc` itself — else a spawn that dies before taking over is
+            # `proc` itself. Otherwise a spawn that dies before taking over is
             # declared ready and its -sf target is stranded forever.
             if await self._get_running_pid() == proc.pid:
                 return

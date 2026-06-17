@@ -3,9 +3,10 @@
 Regression coverage for the orphaned-worker incident: during a reload the
 admin socket answers through its previous owner, so a socket-only readiness
 check declares a dead spawn ready and strands the worker it was meant to
-stop — which keeps serving its stale config indefinitely.
+stop, which keeps serving its stale config indefinitely.
 """
 import asyncio
+import os
 import sys
 from typing import Optional
 
@@ -107,6 +108,33 @@ class TestGetRunningPid:
 
         api._send_socket_command = fake_send
         assert asyncio.run(api._get_running_pid()) is None
+
+
+class TestIsOurHaproxy:
+    """`_is_our_haproxy` keeps a recycled `-sf` signal from hitting an unrelated
+    process: only pids whose /proc cmdline still carries our config path pass."""
+
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
+    )
+    def test_true_when_cmdline_matches(self, api):
+        # Point config_file_path at a real token in this process's cmdline.
+        with open(f"/proc/{os.getpid()}/cmdline", "rb") as f:
+            argv = [t for t in f.read().split(b"\0") if t]
+        api.config_file_path = argv[0].decode()
+        assert api._is_our_haproxy(os.getpid()) is True
+
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="/proc is Linux-only"
+    )
+    def test_false_when_cmdline_does_not_match(self, api):
+        api.config_file_path = "/tmp/not-in-any-cmdline/haproxy.cfg"
+        assert api._is_our_haproxy(os.getpid()) is False
+
+    def test_false_for_nonexistent_pid(self, api):
+        # Missing /proc entry (or any non-Linux platform) -> OSError -> False.
+        api.config_file_path = "/tmp/whatever/haproxy.cfg"
+        assert api._is_our_haproxy(2_000_000_000) is False
 
 
 if __name__ == "__main__":
