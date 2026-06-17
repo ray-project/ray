@@ -579,18 +579,20 @@ def check_checkpoint_in_band(
     """
     if storage_context.storage_filesystem != checkpoint.filesystem:
         raise ValueError(
-            f"The saved checkpoint ({checkpoint}) must be saved to the same filesystem as the experiment storage ({storage_context.storage_filesystem})."
+            f"The saved checkpoint's filesystem ({checkpoint}) differs from the RunConfig.storage_filesystem ({storage_context.storage_filesystem})."
         )
 
     # resolve paths for symlinks and `..`
-    checkpoint_path = Path(os.path.normpath(checkpoint.path))
-    experiment_path = Path(os.path.normpath(storage_context.experiment_fs_path))
-    if checkpoint_path.is_absolute():
-        checkpoint_path = checkpoint_path.resolve()
-    if experiment_path.is_absolute():
-        experiment_path = experiment_path.resolve()
+    if Path(checkpoint.path).is_absolute():
+        checkpoint_path = Path(checkpoint.path).resolve()
+    else:
+        checkpoint_path = Path(os.path.normpath(checkpoint.path))
+    if Path(storage_context.experiment_fs_path).is_absolute():
+        experiment_path = Path(storage_context.experiment_fs_path).resolve()
+    else:
+        experiment_path = Path(os.path.normpath(storage_context.experiment_fs_path))
 
     if not checkpoint_path.is_relative_to(experiment_path):
         raise ValueError(
-            f"The saved checkpoint ({checkpoint}) must be saved within the experiment storage path ({storage_context.experiment_fs_path})."
+            f"The saved checkpoint's path ({checkpoint}) is not saved within the RunConfig.storage_path ({storage_context.experiment_fs_path})."
         )

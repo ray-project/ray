@@ -1238,7 +1238,7 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
 
         ray.train.report(
             metrics={"in-band": True},
-            checkpoint=Checkpoint.from_directory(in_band_ckpt),
+            checkpoint=Checkpoint.from_directory(in_band_ckpt.parent),
             checkpoint_upload_mode=checkpoint_upload_mode,
             checkpoint_upload_fn=upload_fn,
             delete_local_checkpoint_after_upload=False,
@@ -1250,18 +1250,20 @@ def test_out_of_band_checkpoints_local(checkpoint_upload_mode, tmp_path):
             write_file(out_of_band_ckpt, "out-of-band")
             upload_fn = None
         else:
-            upload_fn = upload(lambda: write_file(out_of_band_ckpt, "out-of-band"))
+            upload_fn = upload(
+                lambda: write_file(out_of_band_ckpt.parent, "out-of-band")
+            )
 
         ray.train.report(
             metrics={"out-of-band": True},
-            checkpoint=Checkpoint.from_directory(out_of_band_ckpt),
+            checkpoint=Checkpoint.from_directory(out_of_band_ckpt.parent),
             checkpoint_upload_mode=checkpoint_upload_mode,
             checkpoint_upload_fn=upload_fn,
             delete_local_checkpoint_after_upload=False,
         )
 
     with pytest.raises(
-        WorkerGroupError, match="must be saved within the experiment storage path"
+        WorkerGroupError, match="is not saved within the RunConfig\\.storage_path"
     ) as exc_info:
         DataParallelTrainer(
             train_fn,
@@ -1328,10 +1330,10 @@ def test_out_of_band_checkpoints_s3(
 
         if out_of_band_filesystem == "s3":
             out_of_band_ckpt = str(oob_uri / "out_of_band_ckpt")
-            error_msg = "must be saved within the experiment storage path"
+            error_msg = "is not saved within the RunConfig\\.storage_path"
         else:
             out_of_band_ckpt = str(out_of_band_local_path / "out_of_band_ckpt")
-            error_msg = "must be saved to the same filesystem"
+            error_msg = "differs from the RunConfig\\.storage_filesystem"
 
         def train_fn():
             s3 = boto3.client(
