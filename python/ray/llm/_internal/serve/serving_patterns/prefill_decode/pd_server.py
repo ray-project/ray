@@ -15,6 +15,10 @@ from fastapi.routing import APIRoute
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ray.llm._internal.common.patches.vllm.tokenize_once import (
+    install as _install_tokenize_once,
+    reuse_prompt_token_ids as _reuse_prompt_token_ids,
+)
 from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -35,10 +39,6 @@ from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestI
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
-from ray.llm._internal.serve.serving_patterns.prefill_decode._tokenize_once import (
-    install as _install_tokenize_once,
-    reuse_prompt_token_ids as _reuse_prompt_token_ids,
-)
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,

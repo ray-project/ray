@@ -8,6 +8,12 @@ when ``prompt_token_ids`` is present, so the rest of the pipeline runs unchanged
 
 Decode tokenization must run within the reuse block, on the same async task or one
 spawned from it, so the contextvar reaches it.
+
+Temporary patch. The intended end state is native pre-tokenized input on the
+chat-completions path (a ``prompt_token_ids`` field on ``ChatCompletionRequest``),
+at which point decode passes the ids through a request field and this wrap is
+deleted. See vllm-project/vllm#22817 (token-in/token-out) for the upstream
+direction.
 """
 
 import contextlib

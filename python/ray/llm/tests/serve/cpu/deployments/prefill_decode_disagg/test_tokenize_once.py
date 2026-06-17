@@ -10,7 +10,7 @@ import types
 
 import pytest
 
-from ray.llm._internal.serve.serving_patterns.prefill_decode._tokenize_once import (
+from ray.llm._internal.common.patches.vllm.tokenize_once import (
     _reused_token_ids,
     install,
     reuse_prompt_token_ids,
