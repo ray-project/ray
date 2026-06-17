@@ -70,7 +70,7 @@ void OrderedActorTaskExecutionQueue::Stop() {
 
 void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                                  int64_t client_processed_up_to,
-                                                 TaskToExecute task) {
+                                                 TaskExecutionMetadata task) {
   // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed
   // in order.
   RAY_CHECK(seq_no != -1);
@@ -96,7 +96,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
 
   const auto dependencies = task_spec.GetDependencies();
   const bool is_retry = task_spec.IsRetry();
-  TaskToExecute *retry_task = nullptr;
+  TaskExecutionMetadata *retry_task = nullptr;
   if (is_retry) {
     retry_task = &group_state.pending_retry_tasks.emplace_back(std::move(task));
   } else {
@@ -120,7 +120,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
     waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task, group]() {
-      TaskToExecute *ready_task = nullptr;
+      TaskExecutionMetadata *ready_task = nullptr;
       if (is_retry) {
         // retry_task is guaranteed to be a valid pointer for retries
         // because it won't be erased from the retry list until its
@@ -291,7 +291,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
   }
 }
 
-void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
+void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskExecutionMetadata &&request) {
   auto task_id = request.TaskID();
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
@@ -305,7 +305,7 @@ void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
 }
 
 void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    TaskID task_id, TaskExecutionMetadata &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);

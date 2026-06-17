@@ -32,14 +32,17 @@
 namespace ray {
 namespace core {
 
-/// Container holding a task queued for execution on this worker, along with the
-/// per-request state needed to execute it or reply that it was canceled.
-class TaskToExecute {
+/// Holds all state associated with a single task execution on this worker: the
+/// per-request input needed to execute it or reply that it was canceled (task spec,
+/// resource ids, reply, send_reply_callback), and the outputs produced once it runs
+/// (return objects, errors, etc.). A single instance travels with the task through the
+/// execution queues; the queue's execute callback fills in the output fields.
+class TaskExecutionMetadata {
  public:
-  TaskToExecute(TaskSpecification task_spec,
-                std::optional<ResourceMappingType> resource_ids,
-                rpc::PushTaskReply *reply,
-                rpc::SendReplyCallback send_reply_callback)
+  TaskExecutionMetadata(TaskSpecification task_spec,
+                        std::optional<ResourceMappingType> resource_ids,
+                        rpc::PushTaskReply *reply,
+                        rpc::SendReplyCallback send_reply_callback)
       : task_spec_(std::move(task_spec)),
         pending_dependencies_(task_spec_.GetDependencies()),
         resource_ids_(std::move(resource_ids)),
@@ -73,29 +76,7 @@ class TaskToExecute {
     return send_reply_callback_;
   }
 
- private:
-  TaskSpecification task_spec_;
-  std::vector<rpc::ObjectReference> pending_dependencies_;
-  std::optional<ResourceMappingType> resource_ids_;
-  rpc::PushTaskReply *reply_;
-  rpc::SendReplyCallback send_reply_callback_;
-};
-
-// Queue-level callbacks invoked to run a task or reply that it has been canceled.
-using ExecuteTaskCallback = std::function<void(TaskToExecute &)>;
-using CancelTaskCallback = std::function<void(const TaskToExecute &, const Status &)>;
-
-// Container for metadata and outputs corresponding to a completed task execution.
-struct TaskExecutionResult {
-  TaskExecutionResult() = default;
-
-  // Disable copy and move constructors defensively. This struct is only currently
-  // used as an output parameter that's passed by reference.
-  TaskExecutionResult(const TaskExecutionResult &) = delete;
-  TaskExecutionResult &operator=(const TaskExecutionResult &) = delete;
-
-  TaskExecutionResult(TaskExecutionResult &&) = delete;
-  TaskExecutionResult &operator=(TaskExecutionResult &&) = delete;
+  // Outputs populated by the execute callback once the task runs.
 
   // Human-readable name for the actor in this process.
   // This is only expected to be populated for actor creation tasks.
@@ -115,7 +96,19 @@ struct TaskExecutionResult {
   // Map of metadata associated with streaming generator outputs.
   // The value is set to `true` if the object was written to plasma (not inlined).
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
+
+ private:
+  TaskSpecification task_spec_;
+  std::vector<rpc::ObjectReference> pending_dependencies_;
+  std::optional<ResourceMappingType> resource_ids_;
+  rpc::PushTaskReply *reply_;
+  rpc::SendReplyCallback send_reply_callback_;
 };
+
+// Queue-level callbacks invoked to run a task or reply that it has been canceled.
+using ExecuteTaskCallback = std::function<void(TaskExecutionMetadata &)>;
+using CancelTaskCallback =
+    std::function<void(const TaskExecutionMetadata &, const Status &)>;
 
 class ActorTaskExecutionArgWaiterInterface {
  public:

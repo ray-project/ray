@@ -38,11 +38,11 @@ class NormalTaskExecutionQueue {
 
   void Stop();
 
-  void EnqueueTask(TaskToExecute task);
+  void EnqueueTask(TaskExecutionMetadata task);
 
-  /// Search for a TaskToExecute associated with the task that we are trying to cancel.
-  /// If found, remove the TaskToExecute from the queue and return true. Else,
-  /// return false.
+  /// Search for a TaskExecutionMetadata associated with the task that we are trying to
+  /// cancel. If found, remove the TaskExecutionMetadata from the queue and return true.
+  /// Else, return false.
   bool CancelTaskIfFound(TaskID task_id);
 
   /// Execute as many queued tasks as possible.
@@ -53,7 +53,7 @@ class NormalTaskExecutionQueue {
   void CancelAllQueuedTasks(const std::string &msg);
 
   // Get the next queued task to execute if available.
-  std::optional<TaskToExecute> TryPopQueuedTask();
+  std::optional<TaskExecutionMetadata> TryPopQueuedTask();
 
   /// Callbacks used to execute a queued task or reply that it's canceled.
   ExecuteTaskCallback execute_task_;
@@ -63,7 +63,7 @@ class NormalTaskExecutionQueue {
   mutable absl::Mutex mu_;
 
   /// Queue of tasks to execute.
-  std::deque<TaskToExecute> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
+  std::deque<TaskExecutionMetadata> pending_normal_tasks_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace core

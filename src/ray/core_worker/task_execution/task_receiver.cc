@@ -27,12 +27,13 @@
 namespace ray {
 namespace core {
 
-void TaskReceiver::HandleTaskExecutionResult(
-    Status status,
-    const TaskSpecification &task_spec,
-    const TaskExecutionResult &result,
-    const rpc::SendReplyCallback &send_reply_callback,
-    rpc::PushTaskReply *reply) {
+void TaskReceiver::HandleTaskExecutionResult(Status status,
+                                             const TaskExecutionMetadata &task) {
+  const TaskSpecification &task_spec = task.TaskSpec();
+  const TaskExecutionMetadata &result = task;
+  const rpc::SendReplyCallback &send_reply_callback = task.send_reply_callback();
+  rpc::PushTaskReply *reply = task.reply();
+
   reply->set_is_retryable_error(result.is_retryable_error);
   reply->set_is_application_error(!result.application_error.empty());
   std::string task_execution_error;
@@ -175,10 +176,10 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                task_spec.MaxActorConcurrency(),
                task_spec.AllowOutOfOrderExecution());
     normal_task_execution_queue_->EnqueueTask(
-        TaskToExecute(std::move(task_spec),
-                      std::move(resource_ids),
-                      reply,
-                      std::move(send_reply_callback)));
+        TaskExecutionMetadata(std::move(task_spec),
+                              std::move(resource_ids),
+                              reply,
+                              std::move(send_reply_callback)));
   } else if (task_spec.IsActorTask()) {
     auto it = actor_task_execution_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_task_execution_queues_.end()) {
@@ -212,36 +213,34 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     }
     it->second->EnqueueTask(request.sequence_number(),
                             request.client_processed_up_to(),
-                            TaskToExecute(std::move(task_spec),
-                                          std::move(resource_ids),
-                                          reply,
-                                          std::move(send_reply_callback)));
+                            TaskExecutionMetadata(std::move(task_spec),
+                                                  std::move(resource_ids),
+                                                  reply,
+                                                  std::move(send_reply_callback)));
   } else {
     normal_task_execution_queue_->EnqueueTask(
-        TaskToExecute(std::move(task_spec),
-                      std::move(resource_ids),
-                      reply,
-                      std::move(send_reply_callback)));
+        TaskExecutionMetadata(std::move(task_spec),
+                              std::move(resource_ids),
+                              reply,
+                              std::move(send_reply_callback)));
   }
 }
 
-void TaskReceiver::ExecuteTask(TaskToExecute &task) {
-  TaskExecutionResult result;
+void TaskReceiver::ExecuteTask(TaskExecutionMetadata &task) {
   auto status = task_handler_(task.TaskSpec(),
                               std::move(task.resource_ids()),
-                              &result.return_objects,
-                              &result.dynamic_return_objects,
-                              &result.streaming_generator_returns,
+                              &task.return_objects,
+                              &task.dynamic_return_objects,
+                              &task.streaming_generator_returns,
                               task.reply()->mutable_borrowed_refs(),
-                              &result.is_retryable_error,
-                              &result.actor_repr_name,
-                              &result.application_error);
+                              &task.is_retryable_error,
+                              &task.actor_repr_name,
+                              &task.application_error);
 
-  HandleTaskExecutionResult(
-      status, task.TaskSpec(), result, task.send_reply_callback(), task.reply());
+  HandleTaskExecutionResult(status, task);
 }
 
-void TaskReceiver::CancelTask(const TaskToExecute &task, const Status &status) {
+void TaskReceiver::CancelTask(const TaskExecutionMetadata &task, const Status &status) {
   const TaskSpecification &task_spec = task.TaskSpec();
   if (task_spec.IsActorTask()) {
     // If task cancelation is due to worker shutdown, propagate that information

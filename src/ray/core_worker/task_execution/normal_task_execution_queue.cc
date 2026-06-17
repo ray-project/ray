@@ -37,14 +37,15 @@ void NormalTaskExecutionQueue::Stop() {
       "Normal task execution queue stopped; canceling all queued tasks.");
 }
 
-void NormalTaskExecutionQueue::EnqueueTask(TaskToExecute task) {
+void NormalTaskExecutionQueue::EnqueueTask(TaskExecutionMetadata task) {
   absl::MutexLock lock(&mu_);
   pending_normal_tasks_.push_back(std::move(task));
 }
 
 bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  for (std::deque<TaskToExecute>::reverse_iterator it = pending_normal_tasks_.rbegin();
+  for (std::deque<TaskExecutionMetadata>::reverse_iterator it =
+           pending_normal_tasks_.rbegin();
        it != pending_normal_tasks_.rend();
        ++it) {
     if (it->TaskID() == task_id) {
@@ -56,13 +57,13 @@ bool NormalTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   return false;
 }
 
-std::optional<TaskToExecute> NormalTaskExecutionQueue::TryPopQueuedTask() {
+std::optional<TaskExecutionMetadata> NormalTaskExecutionQueue::TryPopQueuedTask() {
   absl::MutexLock lock(&mu_);
   if (pending_normal_tasks_.empty()) {
     return std::nullopt;
   }
 
-  TaskToExecute task = std::move(pending_normal_tasks_.front());
+  TaskExecutionMetadata task = std::move(pending_normal_tasks_.front());
   pending_normal_tasks_.pop_front();
   return task;
 }

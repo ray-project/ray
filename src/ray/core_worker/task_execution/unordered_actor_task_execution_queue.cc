@@ -83,7 +83,7 @@ void UnorderedActorTaskExecutionQueue::Stop() {
 
 void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                                    int64_t client_processed_up_to,
-                                                   TaskToExecute task) {
+                                                   TaskExecutionMetadata task) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -94,7 +94,7 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
   TaskID task_id = task.TaskID();
   bool run_task = true;
-  std::optional<TaskToExecute> task_to_cancel;
+  std::optional<TaskExecutionMetadata> task_to_cancel;
   {
     absl::MutexLock lock(&mu_);
     if (pending_task_id_to_is_canceled.contains(task_id)) {
@@ -147,7 +147,7 @@ bool UnorderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
-    TaskToExecute request) {
+    TaskExecutionMetadata request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
@@ -172,7 +172,7 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
   }
 }
 
-void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
+void UnorderedActorTaskExecutionQueue::RunRequest(TaskExecutionMetadata request) {
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -213,7 +213,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
 }
 
 void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    TaskID task_id, TaskExecutionMetadata &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -231,7 +231,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     execute_task_(request);
   }
 
-  std::optional<TaskToExecute> request_to_run;
+  std::optional<TaskExecutionMetadata> request_to_run;
   {
     absl::MutexLock lock(&mu_);
     auto it = queued_actor_tasks_.find(task_id);

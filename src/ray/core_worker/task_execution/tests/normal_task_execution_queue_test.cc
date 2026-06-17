@@ -27,12 +27,12 @@ namespace core {
 
 namespace {
 
-// Construct a TaskToExecute container for tests. The reply and
+// Construct a TaskExecutionMetadata container for tests. The reply and
 // send_reply_callback are dummy implementations
 // that are never inspected by the tests' queue-level callbacks.
-TaskToExecute MakeTaskToExecute(const TaskSpecification &task_spec) {
+TaskExecutionMetadata MakeTaskExecutionMetadata(const TaskSpecification &task_spec) {
   static rpc::PushTaskReply dummy_reply;
-  return TaskToExecute(
+  return TaskExecutionMetadata(
       task_spec,
       /*resource_ids=*/std::nullopt,
       &dummy_reply,
@@ -47,14 +47,14 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
 
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>(
-          [&n_executed](TaskToExecute &task) { n_executed++; },
-          [&n_canceled](const TaskToExecute &task, const Status &status) {
+          [&n_executed](TaskExecutionMetadata &task) { n_executed++; },
+          [&n_canceled](const TaskExecutionMetadata &task, const Status &status) {
             n_canceled++;
           });
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = MakeTaskToExecute(task_spec);
+  TaskExecutionMetadata task = MakeTaskExecutionMetadata(task_spec);
 
   queue->EnqueueTask(task);
   queue->EnqueueTask(task);
@@ -75,15 +75,15 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
 
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>(
-          [&n_executed](TaskToExecute &task) { n_executed++; },
-          [&n_canceled](const TaskToExecute &task, const Status &status) {
+          [&n_executed](TaskExecutionMetadata &task) { n_executed++; },
+          [&n_canceled](const TaskExecutionMetadata &task, const Status &status) {
             ASSERT_TRUE(status.IsSchedulingCancelled());
             n_canceled.fetch_add(1);
           });
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = MakeTaskToExecute(task_spec);
+  TaskExecutionMetadata task = MakeTaskExecutionMetadata(task_spec);
 
   // Enqueue several normal tasks but do not schedule them.
   queue->EnqueueTask(task);

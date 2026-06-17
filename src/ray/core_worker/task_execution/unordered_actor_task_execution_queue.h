@@ -55,7 +55,7 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void EnqueueTask(int64_t seq_no,
                    int64_t client_processed_up_to,
-                   TaskToExecute task) override;
+                   TaskExecutionMetadata task) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.
@@ -66,13 +66,13 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
  private:
   void CancelAllQueuedTasks(const std::string &msg);
 
-  void RunRequest(TaskToExecute request);
+  void RunRequest(TaskExecutionMetadata request);
 
-  void RunRequestWithResolvedDependencies(TaskToExecute request);
+  void RunRequestWithResolvedDependencies(TaskExecutionMetadata request);
 
-  /// Accept the given TaskToExecute or reject it if a task id is canceled via
+  /// Accept the given TaskExecutionMetadata or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskExecutionMetadata &request);
 
   instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
@@ -97,7 +97,8 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   /// This can happen if transient network error happens after an actor
   /// task is submitted and received by the actor and the caller retries
   /// the same task.
-  absl::flat_hash_map<TaskID, TaskToExecute> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, TaskExecutionMetadata> queued_actor_tasks_
+      ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);

@@ -64,10 +64,10 @@ class TaskReceiver {
         task_event_buffer_(task_event_buffer),
         waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
-        execute_task_callback_([this](TaskToExecute &task) { ExecuteTask(task); }),
-        cancel_task_callback_([this](const TaskToExecute &task, const Status &status) {
-          CancelTask(task, status);
-        }),
+        execute_task_callback_(
+            [this](TaskExecutionMetadata &task) { ExecuteTask(task); }),
+        cancel_task_callback_([this](const TaskExecutionMetadata &task,
+                                     const Status &status) { CancelTask(task, status); }),
         normal_task_execution_queue_(std::make_unique<NormalTaskExecutionQueue>(
             execute_task_callback_, cancel_task_callback_)),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
@@ -110,19 +110,17 @@ class TaskReceiver {
                   int fiber_max_concurrency,
                   bool allow_out_of_order_execution);
 
-  void HandleTaskExecutionResult(Status status,
-                                 const TaskSpecification &task_spec,
-                                 const TaskExecutionResult &result,
-                                 const rpc::SendReplyCallback &send_reply_callback,
-                                 rpc::PushTaskReply *reply);
+  /// Populate the reply and trigger send_reply_callback based on the outputs of a
+  /// completed task execution held in `task`.
+  void HandleTaskExecutionResult(Status status, const TaskExecutionMetadata &task);
 
   /// Execute a task that was queued for execution. Invoked by the execution queues via
   /// `execute_task_callback_`. Reads all per-request state from `task`.
-  void ExecuteTask(TaskToExecute &task);
+  void ExecuteTask(TaskExecutionMetadata &task);
 
   /// Reply that a queued task was canceled before it started executing. Invoked by the
   /// execution queues via `cancel_task_callback_`. Reads per-request state from `task`.
-  void CancelTask(const TaskToExecute &task, const Status &status);
+  void CancelTask(const TaskExecutionMetadata &task, const Status &status);
 
   // True once shutdown begins. Requests to execute new tasks will be rejected.
   std::atomic<bool> stopping_ = false;
@@ -142,8 +140,8 @@ class TaskReceiver {
   std::function<std::function<void()>()> initialize_thread_callback_;
 
   /// Queue-level callbacks passed to each execution queue at construction time. They
-  /// capture only `this` and read all per-request state from the TaskToExecute argument.
-  /// Declared before the queues so they are constructed first and outlive them.
+  /// capture only `this` and read all per-request state from the TaskExecutionMetadata
+  /// argument. Declared before the queues so they are constructed first and outlive them.
   ExecuteTaskCallback execute_task_callback_;
   CancelTaskCallback cancel_task_callback_;
 

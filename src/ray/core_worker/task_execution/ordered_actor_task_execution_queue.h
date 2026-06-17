@@ -51,7 +51,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
 
   void EnqueueTask(int64_t seq_no,
                    int64_t client_processed_up_to,
-                   TaskToExecute task) override;
+                   TaskExecutionMetadata task) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.
@@ -66,11 +66,11 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Executes as many queued tasks as are ready to execute.
   void ExecuteQueuedTasks();
 
-  /// Accept the given TaskToExecute or reject it if a task id is canceled via
+  /// Accept the given TaskExecutionMetadata or reject it if a task id is canceled via
   /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskExecutionMetadata &request);
 
-  void ExecuteRequest(TaskToExecute &&request);
+  void ExecuteRequest(TaskExecutionMetadata &&request);
 
   /// Per-concurrency-group ordering state.
   struct ConcurrencyGroupOrderingState {
@@ -78,9 +78,9 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
         : wait_timer_(io_context) {}
 
     /// Sorted map of task callbacks keyed by their per-group sequence number.
-    absl::btree_map<int64_t, TaskToExecute> pending_tasks;
+    absl::btree_map<int64_t, TaskExecutionMetadata> pending_tasks;
     /// List of task retry requests (unordered within the group).
-    std::list<TaskToExecute> pending_retry_tasks;
+    std::list<TaskExecutionMetadata> pending_retry_tasks;
     /// Set of sequence numbers that can be skipped because they were retry seq no's.
     absl::flat_hash_set<int64_t> seq_no_to_skip;
     /// The next sequence number we are waiting for to arrive in this group.
