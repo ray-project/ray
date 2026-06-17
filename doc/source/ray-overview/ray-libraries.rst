@@ -20,7 +20,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/aibrix.png
+        .. figure:: ../images/aibrix.jpeg
             :class: card-figure
 
         .. div::
@@ -167,7 +167,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/nemo_curator.png
+        .. figure:: ../images/nemo.png
             :class: card-figure
 
         .. div::
@@ -188,7 +188,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/nemo_rl.png
+        .. figure:: ../images/nemo.png
             :class: card-figure
 
         .. div::
@@ -293,7 +293,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/slime.png
+        .. figure:: ../images/slime.jpg
             :class: card-figure
 
         .. div::
@@ -335,7 +335,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/verl.png
+        .. figure:: ../images/verl.jpg
             :class: card-figure
 
         .. div::
