@@ -125,9 +125,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         self._map_resource_usage = ExecutionResources.zero()
 
         # -- Per-partition staging queues ------------------------------------
-        self._partition_staging: Dict[int, FIFOBundleQueue] = {
-            partition_id: FIFOBundleQueue() for partition_id in range(num_partitions)
-        }
+        self._partition_staging: List[FIFOBundleQueue] = [
+            FIFOBundleQueue() for _ in range(num_partitions)
+        ]
 
         # -- Per-partition total bytes ---------------------------------------
         self._partition_bytes: Dict[int, int] = defaultdict(int)
@@ -150,16 +150,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     @property
     def _output_queues(self) -> List[BaseBundleQueue]:
-        queues: List[BaseBundleQueue] = list(self._partition_staging.values())
-        queues.append(self._output_queue)
-        return queues
+        return [*self._partition_staging, self._output_queue]
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
-
-        if not refs.block_refs:
-            refs.destroy_if_owned()
-            return
 
         if self._pre_map_merge_threshold > 0:
             preferred_locs = refs.get_preferred_object_locations()
@@ -411,7 +405,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 bundle.destroy_if_owned()
         self._merge_buffer_bundles_by_node.clear()
         self._merge_buffer_bytes_by_node.clear()
-        for queue in self._partition_staging.values():
+        for queue in self._partition_staging:
             queue.clear()
         self._output_queue.clear()
 
