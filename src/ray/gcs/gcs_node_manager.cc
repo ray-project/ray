@@ -14,12 +14,16 @@
 
 #include "ray/gcs/gcs_node_manager.h"
 
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/post.hpp>
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/protobuf_utils.h"
@@ -702,16 +706,84 @@ void GcsNodeManager::InternalOnNodeFailure(
     node_info_delta.set_end_time_ms(node->end_time_ms());
     node_info_delta.mutable_death_info()->CopyFrom(node->death_info());
 
+    // TEST-ONLY harness knobs (env vars, GCS-only, read directly via std::getenv
+    // so the raylet/core_worker config validation never sees them). Used to
+    // deterministically reproduce/isolate AND fix the publish-after-persist
+    // node-death lost-wakeup without relying on real RocksDB fsync latency:
+    //   RAY_TESTING_GCS_NODE_PUBLISH_DELAY_MS        delay only the node-death publish
+    //                                                (harness 1: prove the channel)
+    //   RAY_TESTING_GCS_NODE_PERSIST_DELAY_MS        delay the persist on_done, i.e.
+    //                                                model a slow durable write / fsync
+    //                                                (harness 2: reproduce the real bug)
+    //   RAY_TESTING_GCS_NODE_PUBLISH_BEFORE_PERSIST  F3 fix: publish node death on the
+    //                                                in-memory transition, decoupled from
+    //                                                the durable write completing
+    auto publish_node_death = [this, node_id, node_info_delta]() {
+      PublishNodeInfoToPubsub(node_id, node_info_delta);
+    };
+    const bool node_publish_before_persist =
+        std::getenv("RAY_TESTING_GCS_NODE_PUBLISH_BEFORE_PERSIST") != nullptr;
+    if (node_publish_before_persist) {
+      // F3 (decouple publish-from-persist): node death is a terminal, restart-
+      // re-derivable transition, so publish it as soon as the in-memory state
+      // flips rather than gating it on the durable write. Posted onto the GCS
+      // io_context so it runs outside this mutex, but independent of the
+      // (possibly slow) persist.
+      boost::asio::post(io_context_, publish_node_death);
+    }
+
     auto on_done = [this,
                     node_id,
                     node_table_updated_callback,
-                    node_info_delta = std::move(node_info_delta),
-                    node](const Status &status) mutable {
-      WriteNodeExportEvent(*node, /*is_register_event*/ false);
-      if (node_table_updated_callback != nullptr) {
-        node_table_updated_callback();
+                    node,
+                    node_publish_before_persist,
+                    publish_node_death](const Status &status) mutable {
+      auto complete = [this,
+                       node_id,
+                       node_table_updated_callback,
+                       node,
+                       node_publish_before_persist,
+                       publish_node_death]() {
+        WriteNodeExportEvent(*node, /*is_register_event*/ false);
+        if (node_table_updated_callback != nullptr) {
+          node_table_updated_callback();
+        }
+        if (node_publish_before_persist) {
+          return;  // F3: already published on the in-memory transition.
+        }
+        const char *node_pub_delay_env =
+            std::getenv("RAY_TESTING_GCS_NODE_PUBLISH_DELAY_MS");
+        const int64_t node_pub_delay_ms =
+            node_pub_delay_env != nullptr ? std::atoll(node_pub_delay_env) : 0;
+        if (node_pub_delay_ms > 0) {
+          auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
+          timer->expires_from_now(boost::posix_time::milliseconds(node_pub_delay_ms));
+          timer->async_wait(
+              [timer, publish_node_death](const boost::system::error_code &ec) {
+                if (!ec) {
+                  publish_node_death();
+                }
+              });
+        } else {
+          publish_node_death();  // product default: publish-after-persist.
+        }
+      };
+      const char *persist_delay_env =
+          std::getenv("RAY_TESTING_GCS_NODE_PERSIST_DELAY_MS");
+      const int64_t persist_delay_ms =
+          persist_delay_env != nullptr ? std::atoll(persist_delay_env) : 0;
+      if (persist_delay_ms > 0) {
+        auto timer = std::make_shared<boost::asio::deadline_timer>(io_context_);
+        timer->expires_from_now(boost::posix_time::milliseconds(persist_delay_ms));
+        timer->async_wait([timer, complete = std::move(complete)](
+                              const boost::system::error_code &ec) mutable {
+          if (!ec) {
+            complete();
+          }
+        });
+      } else {
+        complete();
       }
-      PublishNodeInfoToPubsub(node_id, node_info_delta);
     };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
