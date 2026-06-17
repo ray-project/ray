@@ -39,8 +39,9 @@ namespace raylet {
  * Workers with lease Policy:
  * 1. For workers with lease, retriable tasks are first prioritized
  *    (to maximize retry opportunities)
- * 2. Among workers with lease with the same retriability, most recent workers are
- *    selected next (newest granted lease time)
+ * 2. Among workers with the same retriability, tasks are prioritized over actors.
+ * 3. Finally, most recent workers (newest granted lease time) are selected over
+ *    older workers.
  *
  * The policy will select enough workers to kill to put the system back
  * under the memory usage threshold - kill_buffer_bytes.
