@@ -1227,8 +1227,8 @@ def read_parquet(
         pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
     Args:
-        paths: A single file path or directory, or a list of file paths. Multiple
-            directories are not supported.
+        paths: A single file path, directory, a list of file paths, or a table name
+            (when used with ``catalog``). Multiple directories/tables are not supported.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -1319,6 +1319,9 @@ def read_parquet(
     _validate_shuffle_arg(shuffle)
 
     if catalog is not None:
+        if not isinstance(paths, str):
+            raise ValueError("Specifying multiple table identifiers is not supported.")
+
         from ray.data.catalog import ReaderFormat
 
         resolved = catalog.resolve(paths, reader=ReaderFormat.PARQUET)
