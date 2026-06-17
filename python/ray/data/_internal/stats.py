@@ -1,6 +1,7 @@
 import collections
 import copy
 import logging
+import re
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -58,6 +59,19 @@ UNKNOWN_UUID = "unknown_uuid"
 
 
 StatsDict = Dict[str, List[BlockStats]]
+
+
+def _create_iteration_tags(dataset_tag: Optional[str]):
+    dataset_tag = dataset_tag or "unknown_dataset"
+    tags = {"dataset": dataset_tag, "rank": "unknown"}
+    # Use findall + last match: the streaming-split index is always the
+    # trailing ``split_<N>`` in the tag.  The user-defined dataset name may
+    # itself contain ``split_<digits>`` so re.search (first match) could
+    # pick up the wrong one.
+    matches = re.findall(r"split_(\d+)", dataset_tag)
+    if matches:
+        tags["rank"] = matches[-1]
+    return tags
 
 
 def fmt(seconds: float) -> str:
@@ -448,7 +462,7 @@ class _StatsActor:
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
-        iter_tag_keys = ("dataset",)
+        iter_tag_keys = ("dataset", "rank")
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -486,6 +500,51 @@ class _StatsActor:
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
             description="Seconds user thread is blocked by iter_batches()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_total_s = Gauge(
+            "data_iter_total_seconds",
+            description="Total wall-clock seconds spent in the dataset iterator",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_fetch_s = Gauge(
+            "data_iter_blocked_fetch_seconds",
+            description="Seconds user thread is blocked on block fetching",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_batching_s = Gauge(
+            "data_iter_blocked_batching_seconds",
+            description="Seconds user thread is blocked on batch creation",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_format_s = Gauge(
+            "data_iter_blocked_format_seconds",
+            description="Seconds user thread is blocked on batch formatting",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_collate_s = Gauge(
+            "data_iter_blocked_collate_seconds",
+            description="Seconds user thread is blocked on batch collation",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_finalize_s = Gauge(
+            "data_iter_blocked_finalize_seconds",
+            description="Seconds user thread is blocked on batch finalization",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocked_restore_order_s = Gauge(
+            "data_iter_blocked_restore_order_seconds",
+            description="Seconds user thread is blocked on restoring batch order",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_batches_total = Gauge(
+            "data_iter_batches_total",
+            description="Total batches delivered to the user thread",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_rows_total = Gauge(
+            "data_iter_rows_total",
+            description="Total rows delivered to the user thread",
             tag_keys=iter_tag_keys,
         )
         self.iter_user_s = Gauge(
@@ -725,9 +784,10 @@ class _StatsActor:
         stats: "DatasetStats",
         dataset_tag,
     ):
-        tags = self._create_tags(dataset_tag)
+        tags = self._create_iteration_tags(dataset_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_total_s.set(stats.iter_total_s.get(), tags)
         self.iter_get_ref_bundles_s.set(stats.iter_get_ref_bundles_s.get(), tags)
         self.iter_get_s.set(stats.iter_get_s.get(), tags)
         self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
@@ -748,6 +808,16 @@ class _StatsActor:
         self.time_to_first_batch_s.set(stats.iter_time_to_first_batch_s.get(), tags)
 
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
+        self.iter_blocked_fetch_s.set(stats.iter_blocked_fetch_s.get(), tags)
+        self.iter_blocked_batching_s.set(stats.iter_blocked_batching_s.get(), tags)
+        self.iter_blocked_format_s.set(stats.iter_blocked_format_s.get(), tags)
+        self.iter_blocked_collate_s.set(stats.iter_blocked_collate_s.get(), tags)
+        self.iter_blocked_finalize_s.set(stats.iter_blocked_finalize_s.get(), tags)
+        self.iter_blocked_restore_order_s.set(
+            stats.iter_blocked_restore_order_s.get(), tags
+        )
+        self.iter_batches_total.set(stats.iter_batches_total, tags)
+        self.iter_rows_total.set(stats.iter_rows_total, tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
 
     def register_dataset(
@@ -940,6 +1010,9 @@ class _StatsActor:
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
         return tags
+
+    def _create_iteration_tags(self, dataset_tag: Optional[str]):
+        return _create_iteration_tags(dataset_tag)
 
 
 def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
@@ -1138,9 +1211,17 @@ class DatasetStats:
         self.iter_finalize_batch_s: Timer = Timer()
         self.iter_time_to_first_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
+        self.iter_blocked_fetch_s: Timer = Timer()
+        self.iter_blocked_batching_s: Timer = Timer()
+        self.iter_blocked_format_s: Timer = Timer()
+        self.iter_blocked_collate_s: Timer = Timer()
+        self.iter_blocked_finalize_s: Timer = Timer()
+        self.iter_blocked_restore_order_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_initialize_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+        self.iter_batches_total: int = 0
+        self.iter_rows_total: int = 0
         self.extra_metrics = {}
 
         # Block fetch stats during iteration.
@@ -1196,6 +1277,14 @@ class DatasetStats:
             self.iter_blocks_remote,
             self.iter_unknown_location,
             self.iter_prefetched_bytes,
+            self.iter_blocked_fetch_s,
+            self.iter_blocked_batching_s,
+            self.iter_blocked_format_s,
+            self.iter_blocked_collate_s,
+            self.iter_blocked_finalize_s,
+            self.iter_blocked_restore_order_s,
+            self.iter_batches_total,
+            self.iter_rows_total,
         )
 
         stats_summary_parents = []
@@ -1878,6 +1967,16 @@ class IterStatsSummary:
     iter_unknown_location: int
     # Current bytes of prefetched blocks in the iterator
     iter_prefetched_bytes: int
+    # Per-stage training-thread blocked attribution timers.
+    blocked_fetch_time: Timer
+    blocked_batching_time: Timer
+    blocked_format_time: Timer
+    blocked_collate_time: Timer
+    blocked_finalize_time: Timer
+    blocked_restore_order_time: Timer
+    # Cumulative batch and row counters.
+    batches_total: int
+    rows_total: int
 
     def __str__(self) -> str:
         return self.to_string()
@@ -1983,6 +2082,25 @@ class IterStatsSummary:
             if self.streaming_split_coord_time.get() != 0:
                 out += "Streaming split coordinator overhead time: "
                 out += f"{fmt(self.streaming_split_coord_time.get())}\n"
+
+        # Per-stage training-thread blocked attribution.
+        stage_totals = [
+            ("block fetch (ray.get)", self.blocked_fetch_time),
+            ("batching", self.blocked_batching_time),
+            ("format", self.blocked_format_time),
+            ("collate", self.blocked_collate_time),
+            ("finalize (host->device)", self.blocked_finalize_time),
+            ("restore order", self.blocked_restore_order_time),
+        ]
+        active_stages = [(name, t) for name, t in stage_totals if t.get() > 0]
+        if active_stages:
+            out += "\nPer-stage training-thread blocked time breakdown:\n"
+            for stage_name, timer in active_stages:
+                out += "    * {}: {}\n".format(stage_name, fmt(timer.get()))
+        if self.batches_total:
+            out += "Total batches consumed: {}\n".format(self.batches_total)
+        if self.rows_total:
+            out += "Total rows consumed: {}\n".format(self.rows_total)
 
         return out
 

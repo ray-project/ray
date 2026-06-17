@@ -36,6 +36,7 @@ from ray.data._internal.stats import (
     OperatorStatsSummary,
     StatsSummary,
     Timer,
+    _create_iteration_tags,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -1876,6 +1877,164 @@ def test_stats_actor_iter_metrics():
 
     assert final_stats == ds_stats
     assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
+
+
+def test_create_iteration_tags_extracts_rank():
+    assert _create_iteration_tags("train_abc_split_2") == {
+        "dataset": "train_abc_split_2",
+        "rank": "2",
+    }
+    assert _create_iteration_tags("dataset_without_split") == {
+        "dataset": "dataset_without_split",
+        "rank": "unknown",
+    }
+    # User-defined dataset name may contain split_<digits>; the trailing
+    # split index (from streaming split coordinator) should be used.
+    assert _create_iteration_tags("my_split_3_data_abc123_split_5") == {
+        "dataset": "my_split_3_data_abc123_split_5",
+        "rank": "5",
+    }
+
+
+def test_update_iteration_metrics_exports_new_iter_metrics():
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_total_s.add(11.0)
+    stats.iter_blocked_fetch_s.add(1.0)
+    stats.iter_blocked_batching_s.add(2.0)
+    stats.iter_blocked_format_s.add(3.0)
+    stats.iter_blocked_collate_s.add(4.0)
+    stats.iter_blocked_finalize_s.add(5.0)
+    stats.iter_blocked_restore_order_s.add(6.0)
+    stats.iter_batches_total = 7
+    stats.iter_rows_total = 8
+
+    actor = _StatsActor.__ray_metadata__.modified_class.__new__(
+        _StatsActor.__ray_metadata__.modified_class
+    )
+    recorded = {}
+
+    class FakeGauge:
+        def __init__(self, name):
+            self.name = name
+
+        def set(self, value, tags):
+            recorded[self.name] = (value, tags)
+
+    for attr in [
+        "iter_initialize_s",
+        "iter_total_s",
+        "iter_get_ref_bundles_s",
+        "iter_get_s",
+        "iter_next_batch_s",
+        "iter_format_batch_s",
+        "iter_collate_batch_s",
+        "iter_finalize_batch_s",
+        "iter_blocks_local",
+        "iter_blocks_remote",
+        "iter_unknown_location",
+        "iter_prefetched_bytes",
+        "iter_block_fetching_s",
+        "iter_batch_shaping_s",
+        "iter_batch_formatting_s",
+        "iter_batch_collating_s",
+        "iter_batch_finalizing_s",
+        "time_to_first_batch_s",
+        "iter_total_blocked_s",
+        "iter_blocked_fetch_s",
+        "iter_blocked_batching_s",
+        "iter_blocked_format_s",
+        "iter_blocked_collate_s",
+        "iter_blocked_finalize_s",
+        "iter_blocked_restore_order_s",
+        "iter_batches_total",
+        "iter_rows_total",
+        "iter_user_s",
+    ]:
+        setattr(actor, attr, FakeGauge(attr))
+
+    actor.update_iteration_metrics(stats, "train_dataset_split_3")
+
+    expected_tags = {"dataset": "train_dataset_split_3", "rank": "3"}
+    assert recorded["iter_total_s"] == (11.0, expected_tags)
+    assert recorded["iter_blocked_fetch_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_batching_s"] == (2.0, expected_tags)
+    assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
+    assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
+    assert recorded["iter_blocked_finalize_s"] == (5.0, expected_tags)
+    assert recorded["iter_blocked_restore_order_s"] == (6.0, expected_tags)
+    assert recorded["iter_batches_total"] == (7, expected_tags)
+    assert recorded["iter_rows_total"] == (8, expected_tags)
+
+
+def test_iter_stats_summary_has_new_fields():
+    """IterStatsSummary includes per-stage blocked timers and counters."""
+    stats = DatasetStats(metadata={}, parent=None)
+    summary = stats.to_summary()
+    iter_summary = summary.iter_stats
+
+    assert hasattr(iter_summary, "blocked_fetch_time")
+    assert hasattr(iter_summary, "blocked_batching_time")
+    assert hasattr(iter_summary, "blocked_format_time")
+    assert hasattr(iter_summary, "blocked_collate_time")
+    assert hasattr(iter_summary, "blocked_finalize_time")
+    assert hasattr(iter_summary, "blocked_restore_order_time")
+    assert hasattr(iter_summary, "batches_total")
+    assert hasattr(iter_summary, "rows_total")
+
+
+def test_iter_stats_summary_reflects_accumulated_values():
+    """IterStatsSummary carries the accumulated timer values."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_fetch_s.add(0.5)
+    stats.iter_blocked_batching_s.add(0.2)
+    stats.iter_batches_total = 10
+    stats.iter_rows_total = 320
+
+    summary = stats.to_summary().iter_stats
+    assert summary.blocked_fetch_time.get() == pytest.approx(0.5)
+    assert summary.blocked_batching_time.get() == pytest.approx(0.2)
+    assert summary.batches_total == 10
+    assert summary.rows_total == 320
+
+
+def test_iter_stats_to_string_shows_stage_breakdown():
+    """to_string() renders per-stage breakdown when values are non-zero."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_fetch_s.add(1.5)
+    stats.iter_blocked_format_s.add(0.8)
+    stats.iter_batches_total = 5
+    stats.iter_rows_total = 160
+    stats.iter_total_blocked_s.add(2.3)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "block fetch" in text
+    assert "format" in text
+    assert "Total batches consumed: 5" in text
+    assert "Total rows consumed: 160" in text
+    assert "Per-stage training-thread blocked time breakdown" in text
+
+
+def test_iter_stats_to_string_omits_zero_stages():
+    """to_string() omits stages with zero values from the breakdown."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_fetch_s.add(0.5)
+    stats.iter_total_blocked_s.add(0.5)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "block fetch" in text
+    # Zero stages should not appear
+    assert "batching" not in text
+    assert "collate" not in text
+    assert "restore order" not in text
+
+
+def test_iter_stats_to_string_no_breakdown_when_all_zero():
+    """When all blocked_* stages are zero, no breakdown section appears."""
+    stats = DatasetStats(metadata={}, parent=None)
+    text = str(stats.to_summary().iter_stats)
+    assert "Per-stage training-thread blocked time breakdown" not in text
+    assert "Total batches consumed" not in text
+    assert "Total rows consumed" not in text
 
 
 def test_dataset_name_and_id():

@@ -11,7 +11,9 @@ import ray
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
+    BatchTimings,
     BlockPrefetcher,
+    StageTiming,
 )
 from ray.data._internal.block_batching.iter_batches import (
     BatchIterator,
@@ -114,6 +116,415 @@ def test_restore_from_original_order():
     assert idx == [0, 1, 2, 3]
 
 
+def test_restore_original_order_stats():
+    stats = DatasetStats(metadata={}, parent=None)
+    base_iterator = [
+        Batch(BatchMetadata(batch_idx=2), None),
+        Batch(BatchMetadata(batch_idx=0), None),
+        Batch(BatchMetadata(batch_idx=1), None),
+    ]
+
+    ordered = list(restore_original_order(iter(base_iterator), stats=stats))
+
+    assert [batch.metadata.batch_idx for batch in ordered] == [0, 1, 2]
+    assert any(
+        batch.metadata.timings.restore_order.start_s > 0
+        and batch.metadata.timings.restore_order.end_s
+        >= batch.metadata.timings.restore_order.start_s
+        for batch in ordered
+    )
+
+
+def test_report_batch_timings_overlap_attribution():
+    stats = DatasetStats(metadata={}, parent=None)
+    batch_iterator = BatchIterator(iter([]), stats=stats)
+    timings = BatchTimings(num_rows=8)
+    timings.fetch = StageTiming(start_s=10.0, end_s=20.0)
+    timings.batching = StageTiming(start_s=20.0, end_s=30.0)
+    timings.format = StageTiming(start_s=30.0, end_s=40.0)
+    timings.finalize = StageTiming(start_s=50.0, end_s=60.0)
+    batch = Batch(BatchMetadata(batch_idx=0, timings=timings), None)
+
+    batch_iterator._report_batch_timings(
+        batch, blocked_start_s=15.0, blocked_end_s=35.0
+    )
+
+    assert stats.iter_blocked_fetch_s.get() == pytest.approx(5.0)
+    assert stats.iter_blocked_batching_s.get() == pytest.approx(10.0)
+    assert stats.iter_blocked_format_s.get() == pytest.approx(5.0)
+    assert stats.iter_blocked_collate_s.get() == 0
+    assert stats.iter_blocked_finalize_s.get() == 0
+    assert stats.iter_batches_total == 1
+    assert stats.iter_rows_total == 8
+
+
+def _make_batch_with_timings(
+    fetch_start=0.0,
+    fetch_end=0.0,
+    batching_start=0.0,
+    batching_end=0.0,
+    format_start=0.0,
+    format_end=0.0,
+    collate_start=0.0,
+    collate_end=0.0,
+    finalize_start=0.0,
+    finalize_end=0.0,
+    num_rows=0,
+):
+    """Helper to construct a Batch with specific stage timing windows."""
+    timings = BatchTimings(num_rows=num_rows)
+    timings.fetch = StageTiming(start_s=fetch_start, end_s=fetch_end)
+    timings.batching = StageTiming(start_s=batching_start, end_s=batching_end)
+    timings.format = StageTiming(start_s=format_start, end_s=format_end)
+    timings.collate = StageTiming(start_s=collate_start, end_s=collate_end)
+    timings.finalize = StageTiming(start_s=finalize_start, end_s=finalize_end)
+    return Batch(BatchMetadata(batch_idx=0, timings=timings), None)
+
+
+def _make_report_iterator(stats):
+    """Create a BatchIterator wired to the given stats without a real pipeline."""
+    it = BatchIterator.__new__(BatchIterator)
+    it._stats = stats
+    return it
+
+
+class TestReportBatchTimingsEdgeCases:
+    """Edge case tests for overlap-based blocked attribution."""
+
+    def test_zero_overlap_stage_finished_before_blocked(self):
+        """Fetch [0, 1.5] finished before training blocked at t=2 → 0 attribution."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(fetch_start=0.0, fetch_end=1.5)
+        it._report_batch_timings(batch, blocked_start_s=2.0, blocked_end_s=3.0)
+        assert stats.iter_blocked_fetch_s.get() == 0.0
+
+    def test_zero_overlap_blocked_before_stage(self):
+        """Training blocked [0, 1], stage ran [2, 3] → 0 attribution."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(format_start=2.0, format_end=3.0)
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=1.0)
+        assert stats.iter_blocked_format_s.get() == 0.0
+
+    def test_partial_overlap(self):
+        """Fetch [0, 2], blocked [1, 3] → overlap = min(2,3)-max(0,1) = 1.0."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(fetch_start=0.0, fetch_end=2.0)
+        it._report_batch_timings(batch, blocked_start_s=1.0, blocked_end_s=3.0)
+        assert stats.iter_blocked_fetch_s.get() == pytest.approx(1.0)
+
+    def test_full_overlap_stage_inside_blocked(self):
+        """Stage [1, 2] entirely inside blocked [0, 3] → full 1.0 credit."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(batching_start=1.0, batching_end=2.0)
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        assert stats.iter_blocked_batching_s.get() == pytest.approx(1.0)
+
+    def test_no_collate_fn_zero_attribution(self):
+        """collate stage has start_s=0 → skipped, 0 attribution."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(format_start=1.0, format_end=2.0)
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_collate_s.get() == 0.0
+
+    def test_no_finalize_fn_zero_attribution(self):
+        """finalize stage has start_s=0 → skipped, 0 attribution."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(collate_start=1.0, collate_end=2.0)
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        assert stats.iter_blocked_collate_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_finalize_s.get() == 0.0
+
+    def test_prefetch_hides_fetch_from_training(self):
+        """Effective prefetch: fetch done before training blocks → 0 fetch attribution."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(
+            fetch_start=0.0,
+            fetch_end=1.5,
+            collate_start=2.3,
+            collate_end=2.6,
+        )
+        # Training only starts blocking at t=2 (prefetch worked)
+        it._report_batch_timings(batch, blocked_start_s=2.0, blocked_end_s=2.6)
+        assert stats.iter_blocked_fetch_s.get() == 0.0
+        assert stats.iter_blocked_collate_s.get() == pytest.approx(0.3)
+
+    def test_accumulation_across_batches(self):
+        """Two batches each contribute to fetch — values accumulate."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        # Batch 1: fetch [0,1], blocked [0,2] → overlap 1.0
+        b1 = _make_batch_with_timings(fetch_start=0.0, fetch_end=1.0, num_rows=10)
+        it._report_batch_timings(b1, blocked_start_s=0.0, blocked_end_s=2.0)
+        # Batch 2: fetch [5,6], blocked [5,7] → overlap 1.0
+        b2 = _make_batch_with_timings(fetch_start=5.0, fetch_end=6.0, num_rows=20)
+        it._report_batch_timings(b2, blocked_start_s=5.0, blocked_end_s=7.0)
+
+        assert stats.iter_blocked_fetch_s.get() == pytest.approx(2.0)
+        assert stats.iter_batches_total == 2
+        assert stats.iter_rows_total == 30
+
+    def test_overlap_invariant_sum_leq_total(self):
+        """sum(iter_blocked_*) <= iter_total_blocked_s always holds."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        stats.iter_total_blocked_s.add(5.0)
+        batch = _make_batch_with_timings(
+            fetch_start=0.0,
+            fetch_end=1.0,
+            batching_start=1.0,
+            batching_end=2.0,
+            format_start=2.0,
+            format_end=3.0,
+            num_rows=5,
+        )
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
+
+        total = stats.iter_total_blocked_s.get()
+        sum_stages = (
+            stats.iter_blocked_fetch_s.get()
+            + stats.iter_blocked_batching_s.get()
+            + stats.iter_blocked_format_s.get()
+            + stats.iter_blocked_collate_s.get()
+            + stats.iter_blocked_finalize_s.get()
+            + stats.iter_blocked_restore_order_s.get()
+        )
+        assert sum_stages <= total + 1e-9
+
+    def test_restore_order_overlap(self):
+        """restore_order stage timing is correctly attributed."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(
+            fetch_start=0.0,
+            fetch_end=1.0,
+        )
+        batch.metadata.timings.restore_order = StageTiming(start_s=1.5, end_s=2.5)
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=3.0)
+        assert stats.iter_blocked_fetch_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_restore_order_s.get() == pytest.approx(1.0)
+
+    def test_blocked_inside_stage(self):
+        """Stage [0, 10] fully contains blocked [3, 5] → overlap = 2.0."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(fetch_start=0.0, fetch_end=10.0)
+        it._report_batch_timings(batch, blocked_start_s=3.0, blocked_end_s=5.0)
+        assert stats.iter_blocked_fetch_s.get() == pytest.approx(2.0)
+
+    def test_all_stages_simultaneous_overlap(self):
+        """Multiple stages overlap with blocked window simultaneously."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        batch = _make_batch_with_timings(
+            fetch_start=0.0,
+            fetch_end=1.0,
+            batching_start=1.0,
+            batching_end=2.0,
+            format_start=2.0,
+            format_end=3.0,
+            collate_start=3.0,
+            collate_end=4.0,
+            finalize_start=4.0,
+            finalize_end=5.0,
+            num_rows=100,
+        )
+        # Blocked window covers all stages
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
+        assert stats.iter_blocked_fetch_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_batching_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_collate_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_finalize_s.get() == pytest.approx(1.0)
+        assert stats.iter_batches_total == 1
+        assert stats.iter_rows_total == 100
+
+
+class TestStageTimingRecord:
+    """Tests for StageTiming.record() behavior."""
+
+    def test_record_sets_start_and_end(self):
+        """First record() sets both start_s and end_s."""
+        t = StageTiming()
+        t.record(1.0, 2.0)
+        assert t.start_s == 1.0
+        assert t.end_s == 2.0
+
+    def test_record_keeps_first_start(self):
+        """Subsequent record() calls keep the first start_s."""
+        t = StageTiming()
+        t.record(1.0, 2.0)
+        t.record(3.0, 4.0)
+        assert t.start_s == 1.0  # kept first start
+        assert t.end_s == 4.0  # updated to latest end
+
+    def test_record_multiple_expands_window(self):
+        """Multiple record() calls expand the end_s window."""
+        t = StageTiming()
+        t.record(5.0, 6.0)
+        t.record(7.0, 8.0)
+        t.record(9.0, 10.0)
+        assert t.start_s == 5.0
+        assert t.end_s == 10.0
+
+    def test_record_default_values(self):
+        """Unrecorded StageTiming has start_s=0 and end_s=0."""
+        t = StageTiming()
+        assert t.start_s == 0.0
+        assert t.end_s == 0.0
+
+
+class TestMergeFetch:
+    """Tests for BatchTimings.merge_fetch() with multiple blocks per batch."""
+
+    def test_merge_single_block(self):
+        """Merging a single block preserves its fetch window."""
+        dst = BatchTimings()
+        src = BatchTimings()
+        src.fetch = StageTiming(start_s=1.0, end_s=2.0)
+        dst.merge_fetch(src)
+        assert dst.fetch.start_s == 1.0
+        assert dst.fetch.end_s == 2.0
+
+    def test_merge_multiple_blocks_expands_window(self):
+        """Merging multiple blocks produces the union window."""
+        dst = BatchTimings()
+
+        # Block 1: fetched [1.0, 2.0]
+        src1 = BatchTimings()
+        src1.fetch = StageTiming(start_s=1.0, end_s=2.0)
+        dst.merge_fetch(src1)
+
+        # Block 2: fetched [3.0, 4.0]
+        src2 = BatchTimings()
+        src2.fetch = StageTiming(start_s=3.0, end_s=4.0)
+        dst.merge_fetch(src2)
+
+        # Block 3: fetched [5.0, 6.0]
+        src3 = BatchTimings()
+        src3.fetch = StageTiming(start_s=5.0, end_s=6.0)
+        dst.merge_fetch(src3)
+
+        # Union: [1.0, 6.0]
+        assert dst.fetch.start_s == 1.0
+        assert dst.fetch.end_s == 6.0
+
+    def test_merge_unrecorded_block_ignored(self):
+        """Merging a block with no fetch timing (start_s=0) is a no-op."""
+        dst = BatchTimings()
+        dst.fetch = StageTiming(start_s=2.0, end_s=3.0)
+
+        src = BatchTimings()  # fetch defaults to (0.0, 0.0)
+        dst.merge_fetch(src)
+
+        assert dst.fetch.start_s == 2.0
+        assert dst.fetch.end_s == 3.0
+
+    def test_merge_overlapping_blocks(self):
+        """Overlapping fetch windows are correctly merged."""
+        dst = BatchTimings()
+
+        src1 = BatchTimings()
+        src1.fetch = StageTiming(start_s=1.0, end_s=5.0)
+        dst.merge_fetch(src1)
+
+        src2 = BatchTimings()
+        src2.fetch = StageTiming(start_s=3.0, end_s=7.0)
+        dst.merge_fetch(src2)
+
+        assert dst.fetch.start_s == 1.0
+        assert dst.fetch.end_s == 7.0
+
+    def test_merge_into_empty_destination(self):
+        """Merging into an empty BatchTimings takes the source window."""
+        dst = BatchTimings()  # fetch = (0.0, 0.0)
+        src = BatchTimings()
+        src.fetch = StageTiming(start_s=10.0, end_s=20.0)
+        dst.merge_fetch(src)
+        assert dst.fetch.start_s == 10.0
+        assert dst.fetch.end_s == 20.0
+
+
+class TestEndToEndTimingPropagation:
+    """Tests that stage timings propagate correctly through the full pipeline."""
+
+    def test_batch_carries_timings_through_pipeline(self):
+        """A Batch's metadata.timings carries all stage windows."""
+        timings = BatchTimings(num_rows=50)
+        timings.fetch = StageTiming(start_s=1.0, end_s=2.0)
+        timings.batching = StageTiming(start_s=2.0, end_s=3.0)
+        timings.format = StageTiming(start_s=3.0, end_s=4.0)
+        timings.collate = StageTiming(start_s=4.0, end_s=5.0)
+        timings.finalize = StageTiming(start_s=5.0, end_s=6.0)
+
+        batch = Batch(BatchMetadata(batch_idx=0, timings=timings), None)
+
+        # Verify all stages are accessible via stages() iterator
+        stage_dict = dict(batch.metadata.timings.stages())
+        assert len(stage_dict) == 6
+        assert stage_dict["fetch"].start_s == 1.0
+        assert stage_dict["batching"].end_s == 3.0
+        assert stage_dict["format"].start_s == 3.0
+        assert stage_dict["collate"].end_s == 5.0
+        assert stage_dict["finalize"].start_s == 5.0
+        assert stage_dict["restore_order"].start_s == 0.0  # not recorded
+        assert batch.metadata.timings.num_rows == 50
+
+    def test_full_pipeline_attribution(self):
+        """End-to-end: all 6 stages with realistic timing, full overlap."""
+        stats = DatasetStats(metadata={}, parent=None)
+        it = _make_report_iterator(stats)
+        stats.iter_total_blocked_s.add(5.0)
+
+        batch = _make_batch_with_timings(
+            fetch_start=0.0,
+            fetch_end=0.5,
+            batching_start=0.5,
+            batching_end=1.0,
+            format_start=1.0,
+            format_end=2.0,
+            collate_start=2.0,
+            collate_end=2.5,
+            finalize_start=2.5,
+            finalize_end=3.0,
+            num_rows=256,
+        )
+        # Also set restore_order
+        batch.metadata.timings.restore_order = StageTiming(start_s=3.0, end_s=3.5)
+
+        # Blocked window covers all stages
+        it._report_batch_timings(batch, blocked_start_s=0.0, blocked_end_s=5.0)
+
+        # Each stage gets its full duration
+        assert stats.iter_blocked_fetch_s.get() == pytest.approx(0.5)
+        assert stats.iter_blocked_batching_s.get() == pytest.approx(0.5)
+        assert stats.iter_blocked_format_s.get() == pytest.approx(1.0)
+        assert stats.iter_blocked_collate_s.get() == pytest.approx(0.5)
+        assert stats.iter_blocked_finalize_s.get() == pytest.approx(0.5)
+        assert stats.iter_blocked_restore_order_s.get() == pytest.approx(0.5)
+        assert stats.iter_batches_total == 1
+        assert stats.iter_rows_total == 256
+
+        # Invariant: sum = 3.5 <= total_blocked = 5.0
+        sum_stages = (
+            stats.iter_blocked_fetch_s.get()
+            + stats.iter_blocked_batching_s.get()
+            + stats.iter_blocked_format_s.get()
+            + stats.iter_blocked_collate_s.get()
+            + stats.iter_blocked_finalize_s.get()
+            + stats.iter_blocked_restore_order_s.get()
+        )
+        assert sum_stages == pytest.approx(3.5)
+        assert sum_stages <= stats.iter_total_blocked_s.get() + 1e-9
+
+
 def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
     """Tests that finalize_fn is not run with multiple threads."""
     ref_bundles_iter = ref_bundle_generator(num_blocks=20, num_rows=2)
@@ -192,6 +603,27 @@ def test_iter_batches_e2e(
     # Make sure order is preserved.
     for i in range(len(concat_df) - 1):
         assert concat_df["foo"].iloc[i + 1] >= concat_df["foo"].iloc[i]
+
+
+def test_iter_batches_counts_rows_at_pipeline_exit(ray_start_regular_shared):
+    stats = DatasetStats(metadata={}, parent=None)
+    ref_bundles_iter = ref_bundle_generator(num_blocks=4, num_rows=2)
+
+    output_batches = list(
+        BatchIterator(
+            ref_bundles_iter,
+            stats=stats,
+            batch_size=3,
+            prefetch_batches=0,
+            batch_format="pandas",
+            drop_last=True,
+        )
+    )
+
+    assert len(output_batches) == 2
+    assert [len(batch) for batch in output_batches] == [3, 3]
+    assert stats.iter_batches_total == 2
+    assert stats.iter_rows_total == 6
 
 
 def test_iter_batches_e2e_async(ray_start_regular_shared):

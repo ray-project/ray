@@ -175,8 +175,10 @@ class BatchIterator:
 
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
-    ) -> Iterator[Block]:
-        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
+    ) -> Iterator[Any]:
+        return resolve_block_refs(
+            block_ref_iter=block_refs, stats=self._stats, record_timings=True
+        )
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(
@@ -216,7 +218,7 @@ class BatchIterator:
     def _restore_original_batch_order(
         self, batches: Iterator[Batch]
     ) -> Iterator[Batch]:
-        return restore_original_order(batches)
+        return restore_original_order(batches, stats=self._stats)
 
     def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Batch]:
         # Step 1: Prefetch logical batches locally.
@@ -248,15 +250,35 @@ class BatchIterator:
         self.before_epoch_start()
 
         while True:
+            blocked_start_s = time.perf_counter()
             with self.get_next_batch_context():
                 try:
                     batch = next(batch_iter)
                 except StopIteration:
                     break
+            blocked_end_s = time.perf_counter()
+            self._report_batch_timings(batch, blocked_start_s, blocked_end_s)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
+
+    def _report_batch_timings(
+        self, batch: Batch, blocked_start_s: float, blocked_end_s: float
+    ) -> None:
+        if self._stats is None:
+            return
+        timings = batch.metadata.timings
+        for name, stage in timings.stages():
+            if stage.start_s == 0.0 and stage.end_s == 0.0:
+                continue
+            overlap_s = min(stage.end_s, blocked_end_s) - max(
+                stage.start_s, blocked_start_s
+            )
+            if overlap_s > 0:
+                getattr(self._stats, f"iter_blocked_{name}_s").add(overlap_s)
+        self._stats.iter_batches_total += 1
+        self._stats.iter_rows_total += timings.num_rows
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()
@@ -452,7 +474,9 @@ def prefetch_batches_locally(
     prefetcher.stop()
 
 
-def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
+def restore_original_order(
+    batch_iter: Iterator[Batch], stats: Optional[DatasetStats] = None
+) -> Iterator[Batch]:
     """Restores the original order of the provided `batch_iter`
 
     This function will yield items from `base_iterator` in the correct order based on
@@ -463,13 +487,31 @@ def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
     """
     next_index_required = 0
     buffer: Dict[int, Batch] = {}
-    for batch in batch_iter:
-        assert batch.metadata.batch_idx not in buffer
-        buffer[batch.metadata.batch_idx] = batch
+    restore_wait_start_s: Optional[float] = None
+    source_exhausted = False
+
+    while True:
         while next_index_required in buffer:
-            yield buffer.pop(next_index_required)
+            next_batch = buffer.pop(next_index_required)
+            if restore_wait_start_s is not None:
+                next_batch.metadata.timings.restore_order.record(
+                    restore_wait_start_s, time.perf_counter()
+                )
+                restore_wait_start_s = None
+            yield next_batch
             next_index_required += 1
 
-    while next_index_required in buffer:
-        yield buffer.pop(next_index_required)
-        next_index_required += 1
+        if source_exhausted:
+            break
+
+        if buffer and restore_wait_start_s is None:
+            restore_wait_start_s = time.perf_counter()
+
+        try:
+            batch = next(batch_iter)
+        except StopIteration:
+            source_exhausted = True
+            continue
+
+        assert batch.metadata.batch_idx not in buffer
+        buffer[batch.metadata.batch_idx] = batch

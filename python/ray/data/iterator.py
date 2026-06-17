@@ -22,7 +22,7 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, _StatsManager
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
     ArrowBatchCollateFn,
@@ -297,6 +297,7 @@ class DataIterator(abc.ABC):
                 yield from batch_iterator
                 if stats:
                     stats.iter_total_s.add(time.perf_counter() - time_start)
+                    _StatsManager.update_iteration_metrics(stats, dataset_tag)
             finally:
                 # On early exit (e.g. ``break`` in the for-loop), the inner
                 # ``_ClosingIterator`` would only shut down the executor via
