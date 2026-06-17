@@ -810,8 +810,8 @@ py_test_module_list(
     ],
 )
 
-# HAProxy tests (require RAY_SERVE_ENABLE_HA_PROXY=1). The HAProxy binary comes
-# from the ray-haproxy package in the serve test dependencies.
+# HAProxy tests need RAY_SERVE_ENABLE_HA_PROXY=1. The HAProxy binary comes from
+# the ray-haproxy package in the serve test dependencies.
 py_test_module_list_with_env_variants(
     size = "large",
     env_variants = {

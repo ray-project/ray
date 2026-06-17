@@ -1,7 +1,7 @@
 """Unit tests for get_haproxy_binary() resolution logic.
 
 get_haproxy_binary() resolves an HAProxy binary path with this priority:
-  1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override → validate and return.
+  1. Explicit RAY_SERVE_HAPROXY_BINARY_PATH override, validated and returned.
   2. Bundled binary from the ``ray-haproxy`` PyPI package.
   3. System ``haproxy`` on PATH.
   4. FileNotFoundError with an actionable message.
@@ -14,7 +14,7 @@ import pytest
 
 from ray.serve._private.haproxy import get_haproxy_binary
 
-# Patch targets — module-level constants imported at the top of haproxy.py.
+# Patch targets: module-level constants imported at the top of haproxy.py.
 HAPROXY_MODULE = "ray.serve._private.haproxy"
 BINARY_PATH_PATCH = f"{HAPROXY_MODULE}.RAY_SERVE_HAPROXY_BINARY_PATH"
 WHICH_PATCH = f"{HAPROXY_MODULE}.shutil.which"
@@ -47,13 +47,13 @@ def test_explicit_path_validates_executable(tmp_path):
     with patch(BINARY_PATH_PATCH, str(binary)):
         assert get_haproxy_binary() == str(binary)
 
-    # Same file without execute bit → should reject it.
+    # Same file without the execute bit is rejected.
     binary.chmod(0o644)
     with patch(BINARY_PATH_PATCH, str(binary)):
         with pytest.raises(FileNotFoundError, match="HAPROXY_BINARY_PATH"):
             get_haproxy_binary()
 
-    # Nonexistent path → should reject it.
+    # A nonexistent path is rejected.
     with patch(BINARY_PATH_PATCH, str(tmp_path / "no_such_file")):
         with pytest.raises(FileNotFoundError, match="HAPROXY_BINARY_PATH"):
             get_haproxy_binary()

@@ -704,8 +704,8 @@ RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
-# Absolute path to an HAProxy binary. Empty by default.
-# When set, it takes precedence over the bundled ray-haproxy package.
+# Absolute path to an HAProxy binary. When set, it takes precedence over the
+# bundled ray-haproxy package.
 RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
