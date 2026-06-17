@@ -2,7 +2,7 @@ import asyncio
 import pickle
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import grpc
 import pytest
@@ -756,6 +756,84 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
+
+    @pytest.mark.asyncio
+    async def test_websocket_client_disconnect_records_proxy_metrics(self):
+        """A dropped ASGI sender should still count the WebSocket request."""
+        expected_messages = [
+            {"type": "websocket.accept"},
+            {"type": "websocket.send"},
+        ]
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.route = "/ws"
+        http_proxy.proxy_router.handle = FakeHTTPHandle(messages=expected_messages)
+        http_proxy.proxy_router.app_is_cross_language = False
+        http_proxy._proxy_metrics.record_request = Mock()
+
+        proxy_request = ASGIProxyRequest(
+            scope={
+                "type": "websocket",
+                "path": "/ws",
+                "root_path": "",
+                "headers": [(b"x-request-id", b"fake_request_id")],
+                "client": ("127.0.0.1", 12345),
+            },
+            receive=FakeHttpReceive(),
+            send=FakeHttpSend(),
+        )
+
+        response_generator = http_proxy.proxy_request(proxy_request)
+        assert await response_generator.__anext__() == {"type": "websocket.accept"}
+        await response_generator.aclose()
+
+        http_proxy._proxy_metrics.record_request.assert_called_once()
+        call_kwargs = http_proxy._proxy_metrics.record_request.call_args.kwargs
+        assert call_kwargs["route"] == "/ws"
+        assert call_kwargs["method"] == "WS"
+        assert call_kwargs["application"] == "fake_app_name"
+        assert call_kwargs["deployment_name"] == "fake_deployment_name"
+        assert call_kwargs["status_code"] == "1006"
+        assert call_kwargs["is_error"] is True
+
+    @pytest.mark.asyncio
+    async def test_http_client_disconnect_before_response_records_proxy_metrics(self):
+        """An HTTP client close before the first message should still be counted."""
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.route = "/stream"
+        http_proxy.proxy_router.handle = FakeHTTPHandle(
+            messages=[
+                {"type": "http.response.start", "status": "200"},
+                {"type": "http.response.body"},
+            ]
+        )
+        http_proxy.proxy_router.app_is_cross_language = False
+        http_proxy._proxy_metrics.record_request = Mock()
+
+        proxy_request = ASGIProxyRequest(
+            scope={
+                "type": "http",
+                "method": "GET",
+                "path": "/stream",
+                "root_path": "",
+                "headers": [(b"x-request-id", b"fake_request_id")],
+                "client": ("127.0.0.1", 12345),
+            },
+            receive=FakeHttpReceive(),
+            send=FakeHttpSend(),
+        )
+
+        response_generator = http_proxy.proxy_request(proxy_request)
+        await response_generator.aclose()
+
+        http_proxy._proxy_metrics.record_request.assert_called_once()
+        call_kwargs = http_proxy._proxy_metrics.record_request.call_args.kwargs
+        assert call_kwargs["route"] == "/stream"
+        assert call_kwargs["method"] == "GET"
+        assert call_kwargs["application"] == "fake_app_name"
+        assert call_kwargs["deployment_name"] == "fake_deployment_name"
+        assert call_kwargs["status_code"] == "499"
+        assert call_kwargs["is_error"] is True
 
     @pytest.mark.parametrize(
         "header_key",

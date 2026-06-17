@@ -442,9 +442,9 @@ class GenericProxy(ABC):
         if response_handler_info.should_increment_ongoing_requests:
             self._ongoing_requests_start()
 
+        # The final message yielded must always be the `ResponseStatus`.
+        status: Optional[ResponseStatus] = None
         try:
-            # The final message yielded must always be the `ResponseStatus`.
-            status: Optional[ResponseStatus] = None
             async for message in response_handler_info.response_generator:
                 if isinstance(message, ResponseStatus):
                     status = message
@@ -453,36 +453,55 @@ class GenericProxy(ABC):
 
             assert status is not None and isinstance(status, ResponseStatus)
         finally:
+            if status is None:
+                if proxy_request.request_type == "websocket":
+                    status = ResponseStatus(code="1006", is_error=True)
+                elif proxy_request.request_type == "http":
+                    status = ResponseStatus(code="499", is_error=True)
+
             # If anything during the request failed, we still want to ensure the ongoing
             # request counter is decremented.
             if response_handler_info.should_increment_ongoing_requests:
                 self._ongoing_requests_end()
 
-        latency_ms = (time.time() - start_time) * 1000.0
-        if response_handler_info.should_record_access_log:
-            request_context = ray.serve.context._get_serve_request_context()
-            self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
-            self._access_log_context[SERVE_LOG_REQUEST_ID] = request_context.request_id
-            logger.info(
-                access_log_msg(
-                    method=proxy_request.method,
-                    route=request_context.route,
-                    status=str(status.code),
-                    latency_ms=latency_ms,
-                    client=format_client_address(proxy_request.client),
-                ),
-                extra=self._access_log_context,
-            )
+            if status is not None:
+                latency_ms = (time.time() - start_time) * 1000.0
+                if response_handler_info.should_record_access_log:
+                    request_context = ray.serve.context._get_serve_request_context()
+                    self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
+                    self._access_log_context[SERVE_LOG_REQUEST_ID] = (
+                        request_context.request_id
+                    )
+                    logger.info(
+                        access_log_msg(
+                            method=proxy_request.method,
+                            route=request_context.route,
+                            status=str(status.code),
+                            latency_ms=latency_ms,
+                            client=format_client_address(proxy_request.client),
+                        ),
+                        extra=self._access_log_context,
+                    )
 
-        self._proxy_metrics.record_request(
-            route=response_handler_info.metadata.route,
-            method=proxy_request.method,
-            application=response_handler_info.metadata.application_name,
-            status_code=str(status.code),
-            latency_ms=latency_ms,
-            is_error=status.is_error,
-            deployment_name=response_handler_info.metadata.deployment_name,
-        )
+                self._proxy_metrics.record_request(
+                    route=response_handler_info.metadata.route,
+                    method=proxy_request.method,
+                    application=response_handler_info.metadata.application_name,
+                    status_code=str(status.code),
+                    latency_ms=latency_ms,
+                    is_error=status.is_error,
+                    deployment_name=response_handler_info.metadata.deployment_name,
+                )
+
+            if status is None:
+                logger.warning(
+                    "Proxy request ended before a response status was available.",
+                    extra={
+                        "route": response_handler_info.metadata.route,
+                        "method": proxy_request.method,
+                        "request_type": proxy_request.request_type,
+                    },
+                )
 
     @abstractmethod
     def setup_request_context_and_handle(
@@ -663,6 +682,7 @@ class gRPCProxy(GenericProxy):
             is received. It wraps the request iterator and calls proxy_request.
             The return value is serialized user defined protobuf bytes.
             """
+
             # Create async iterator wrapper for the request stream
             async def async_request_iterator():
                 async for request in request_iterator:
@@ -701,6 +721,7 @@ class gRPCProxy(GenericProxy):
             request is received. It wraps the request iterator and calls proxy_request.
             The return value is a generator of serialized user defined protobuf bytes.
             """
+
             # Create async iterator wrapper for the request stream
             async def async_request_iterator():
                 async for request in request_iterator:
@@ -1345,6 +1366,13 @@ class HTTPProxy(GenericProxy):
 
                     yield asgi_message
                     response_started = True
+        except GeneratorExit:
+            if status is None:
+                if proxy_request.request_type == "websocket":
+                    status = ResponseStatus(code="1006", is_error=True)
+                else:
+                    status = ResponseStatus(code="499", is_error=True)
+            raise
         except BaseException as e:
             error_status = get_http_response_status(e, request_timeout_s, request_id)
             if status is None:
