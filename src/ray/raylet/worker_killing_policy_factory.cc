@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "ray/common/memory_monitor_utils.h"
 #include "ray/common/ray_config.h"
@@ -33,23 +34,26 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
     return std::make_unique<GroupByOwnerIdWorkerKillingPolicy>();
   }
 
-  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                                   MemoryMonitorInterface::kDefaultCgroupPath)
-                                   .total_bytes;
-  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      total_memory_bytes,
-      RayConfig::instance().memory_usage_threshold(),
-      RayConfig::instance().min_memory_free_bytes(),
-      resource_isolation_enabled,
-      cgroup_manager);
+  int64_t startup_total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+                                           MemoryMonitorInterface::kDefaultCgroupPath)
+                                           .total_bytes;
+  auto memory_threshold_bytes_getter = [resource_isolation_enabled,
+                                        &cgroup_manager](int64_t total_memory_bytes) {
+    return MemoryMonitorUtils::GetMemoryThresholdOrNull(
+        total_memory_bytes,
+        RayConfig::instance().memory_usage_threshold(),
+        RayConfig::instance().min_memory_free_bytes(),
+        resource_isolation_enabled,
+        cgroup_manager);
+  };
 
   int64_t kill_memory_buffer_bytes =
       std::min(static_cast<int64_t>(
-                   total_memory_bytes *
+                   startup_total_memory_bytes *
                    WorkerKillingPolicyInterface::kDefaultKillMemoryBufferProportion),
                RayConfig::instance().max_kill_memory_buffer_bytes());
-  return std::make_unique<TimeBasedWorkerKillingPolicy>(memory_usage_threshold_bytes,
-                                                        kill_memory_buffer_bytes);
+  return std::make_unique<TimeBasedWorkerKillingPolicy>(
+      std::move(memory_threshold_bytes_getter), kill_memory_buffer_bytes);
 }
 
 }  // namespace raylet

@@ -26,6 +26,7 @@
 #include "absl/time/time.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/memory_monitor_utils.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/compat.h"
 
 namespace ray {
@@ -34,7 +35,12 @@ namespace raylet {
 
 TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(int64_t threshold_bytes,
                                                            int64_t kill_buffer_bytes)
-    : threshold_bytes_(threshold_bytes),
+    : TimeBasedWorkerKillingPolicy([threshold_bytes](int64_t) { return threshold_bytes; },
+                                   kill_buffer_bytes) {}
+
+TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(
+    MemoryThresholdBytesGetter memory_threshold_bytes_getter, int64_t kill_buffer_bytes)
+    : memory_threshold_bytes_getter_(std::move(memory_threshold_bytes_getter)),
       kill_buffer_bytes_(kill_buffer_bytes),
       idle_worker_killing_memory_threshold_bytes_(
           RayConfig::instance().idle_worker_killing_memory_threshold_bytes()) {}
@@ -83,6 +89,15 @@ TimeBasedWorkerKillingPolicy::Policy(
     const ProcessesMemorySnapshot &process_memory_snapshot,
     const MemoryUsageSnapshot &memory_usage_snapshot) const {
   if (workers.empty()) {
+    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
+  }
+
+  int64_t threshold_bytes =
+      memory_threshold_bytes_getter_(memory_usage_snapshot.total_bytes);
+  if (threshold_bytes == MemoryMonitorInterface::kNull) {
+    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
+        << "Worker killer could not resolve the current memory usage threshold. "
+           "Skipping this worker killing decision.";
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
@@ -163,7 +178,7 @@ TimeBasedWorkerKillingPolicy::Policy(
   // continue to select workers until the memory to free is reached
   auto sorted_worker_it = sorted_workers.begin();
   int64_t memory_to_free_bytes =
-      memory_usage_snapshot.used_bytes - threshold_bytes_ + kill_buffer_bytes_;
+      memory_usage_snapshot.used_bytes - threshold_bytes + kill_buffer_bytes_;
   int64_t memory_left_to_free = memory_to_free_bytes;
 
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
@@ -207,7 +222,7 @@ TimeBasedWorkerKillingPolicy::Policy(
       "Currently used memory: %d bytes, threshold: %d bytes, kill buffer: %d bytes. "
       "Needed to free %d bytes. Selected %d workers to kill: %s.",
       memory_usage_snapshot.used_bytes,
-      threshold_bytes_,
+      threshold_bytes,
       kill_buffer_bytes_,
       memory_to_free_bytes,
       workers_to_kill.size(),
