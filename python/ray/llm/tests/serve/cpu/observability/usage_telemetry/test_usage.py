@@ -488,6 +488,60 @@ def test_deploy_failure_detail_is_recorded(disable_placement_bundles):
     }
 
 
+def test_deploy_failure_records_outcome_when_engine_config_unavailable(
+    disable_placement_bundles, monkeypatch
+):
+    """The failure record must survive when engine-config enrichment raises,
+    e.g. a construct-phase ImportError when vLLM isn't importable on the replica
+    (get_engine_config re-imports vLLM). The outcome is the whole point of the
+    failure path, so it must not be dropped with the unavailable engine facts."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="broken_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+    )
+    config._set_model_architecture(model_architecture="broken_arch")
+
+    def boom(*args, **kwargs):
+        raise ImportError("vLLM is not installed")
+
+    monkeypatch.setattr(type(config), "get_engine_config", boom)
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+        deploy_outcome="import_error",
+        deploy_failure={
+            "exc_type": "builtins.ImportError",
+            "root_type": "builtins.ImportError",
+            "phase": "construct",
+        },
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_DEPLOY_OUTCOME] == "import_error"
+    (failure,) = json.loads(telemetry[TagKey.LLM_SERVE_DEPLOY_FAILURE])
+    assert failure == {
+        "exc_type": "builtins.ImportError",
+        "root_type": "builtins.ImportError",
+        "phase": "construct",
+    }
+    # Engine facts fall back to "unknown" rather than aborting the record.
+    assert telemetry[TagKey.LLM_SERVE_TENSOR_PARALLEL_DEGREE] == "0"
+    assert telemetry[TagKey.LLM_SERVE_NUM_GPUS] == "0"
+    # accelerator_type is read straight off the config, so it still records.
+    assert telemetry[TagKey.LLM_SERVE_GPU_TYPE] == "L4"
+
+
 def test_curated_engine_keys_still_exist_in_vllm():
     """Guard against engine drift: the engine_kwargs we decode must stay real
     vLLM EngineArgs fields, so a rename breaks CI instead of silently recording

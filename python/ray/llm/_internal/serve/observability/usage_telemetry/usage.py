@@ -4,7 +4,7 @@ import json
 import random
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Tuple
 
 import ray
 from ray import serve
@@ -367,7 +367,7 @@ def _flag(value: Optional[bool]) -> str:
     return "on" if value else "off"
 
 
-def serving_pattern(server: "LLMServerProtocol") -> str:
+def infer_serving_pattern(server: "LLMServerProtocol") -> str:
     """Classify the serving pattern from the server class hierarchy.
 
     Uses MRO class names to avoid importing the DP/PD subclasses (which import
@@ -421,6 +421,54 @@ def root_exception_type(exc: BaseException) -> str:
         exc = nxt
 
 
+def report_deploy_failure(
+    llm_config: "LLMConfig",
+    server: "LLMServerProtocol",
+    exc: BaseException,
+    phase: str,
+) -> None:
+    """Classify a failed engine start and push its telemetry. Never raises."""
+    push_telemetry_report_for_all_models(
+        all_models=[llm_config],
+        deploy_outcome=classify_start_failure(exc),
+        serving_pattern=infer_serving_pattern(server),
+        deploy_failure={
+            "exc_type": exception_type(exc),
+            "root_type": root_exception_type(exc),
+            "phase": phase,
+        },
+    )
+
+
+def _engine_facts(
+    model: "LLMConfig", get_hardware_fn: Callable
+) -> Tuple[int, int, int, str]:
+    """Engine-config and hardware facts, best-effort.
+
+    Returns (tensor_parallel_degree, pipeline_parallel_degree, num_gpus,
+    gpu_type). These lookups can raise. A construct-phase failure re-fires here
+    because get_engine_config imports vLLM. Degrade to "unknown" so a failed
+    deploy still records its outcome and failure detail. 0 marks an unknown value.
+    """
+    gpu_type = model.accelerator_type or DEFAULT_GPU_TYPE
+    try:
+        engine_config = model.get_engine_config()
+        if not model.accelerator_type:
+            gpu_type = HardwareUsage(get_hardware_fn).infer_gpu_from_hardware()
+        return (
+            engine_config.tensor_parallel_degree,
+            engine_config.pipeline_parallel_degree,
+            engine_config.num_devices,
+            gpu_type,
+        )
+    except Exception:
+        logger.exception(
+            "telemetry: engine-config enrichment failed; recording deploy "
+            "outcome without engine facts"
+        )
+        return 0, 0, 0, gpu_type
+
+
 def _push_model_telemetry(
     model: "LLMConfig",
     get_lora_model_func: Callable,
@@ -472,8 +520,12 @@ def _push_model_telemetry(
             num_replicas = 1
         min_replicas = max_replicas = num_replicas
 
-    engine_config = model.get_engine_config()
-    hardware_usage = HardwareUsage(get_hardware_fn)
+    (
+        tensor_parallel_degree,
+        pipeline_parallel_degree,
+        num_gpus,
+        gpu_type,
+    ) = _engine_facts(model, get_hardware_fn)
 
     telemetry_model = TelemetryModel(
         # Hash so the cleartext model name (possibly proprietary) never reaches
@@ -486,9 +538,9 @@ def _push_model_telemetry(
         use_autoscaling=use_autoscaling,
         min_replicas=min_replicas,
         max_replicas=max_replicas,
-        tensor_parallel_degree=engine_config.tensor_parallel_degree,
-        gpu_type=model.accelerator_type or hardware_usage.infer_gpu_from_hardware(),
-        num_gpus=engine_config.num_devices,
+        tensor_parallel_degree=tensor_parallel_degree,
+        gpu_type=gpu_type,
+        num_gpus=num_gpus,
         deploy_outcome=deploy_outcome,
         serving_pattern=serving_pattern,
         # Non-identifying engine facts.
@@ -503,7 +555,7 @@ def _push_model_telemetry(
         or model.engine_kwargs.get("speculative_model")
         else "off",
         enforce_eager=_flag(model.engine_kwargs.get("enforce_eager")),
-        pipeline_parallel_degree=engine_config.pipeline_parallel_degree,
+        pipeline_parallel_degree=pipeline_parallel_degree,
         accelerator_kind=getattr(model.accelerator_config, "kind", None)
         or "unspecified",
         log_engine_metrics=_flag(model.log_engine_metrics),

@@ -32,11 +32,9 @@ from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
-    classify_start_failure,
-    exception_type,
+    infer_serving_pattern,
     push_telemetry_report_for_all_models,
-    root_exception_type,
-    serving_pattern,
+    report_deploy_failure,
 )
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import (
@@ -208,19 +206,11 @@ class LLMServer(LLMServerProtocol):
             phase = "engine_start"
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
         except Exception as e:
-            # Record the failure so deploy health is visible, then re-raise
-            # (telemetry is best-effort and must not mask the error). Offload to
-            # a thread: the push does blocking ray.get + retry sleeps.
+            # Record the failure so deploy health is visible, then re-raise.
+            # Telemetry is best-effort and must not mask the error. Offload to a
+            # thread: the push does blocking ray.get + retry sleeps.
             await asyncio.to_thread(
-                push_telemetry_report_for_all_models,
-                all_models=[self._llm_config],
-                deploy_outcome=classify_start_failure(e),
-                serving_pattern=serving_pattern(self),
-                deploy_failure={
-                    "exc_type": exception_type(e),
-                    "root_type": root_exception_type(e),
-                    "phase": phase,
-                },
+                report_deploy_failure, self._llm_config, self, e, phase
             )
             raise
 
@@ -305,7 +295,7 @@ class LLMServer(LLMServerProtocol):
             push_telemetry_report_for_all_models,
             all_models=[self._llm_config],
             deploy_outcome="success",
-            serving_pattern=serving_pattern(self),
+            serving_pattern=infer_serving_pattern(self),
         )
         if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
             # Cluster-wide adoption signal: written from each replica on engine
