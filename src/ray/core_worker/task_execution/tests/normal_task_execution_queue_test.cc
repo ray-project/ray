@@ -26,13 +26,15 @@ namespace ray {
 namespace core {
 
 TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
-  int n_ok = 0;
-  int n_rej = 0;
+  int n_executed = 0;
+  int n_canceled = 0;
 
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>(
-          [&n_ok](TaskToExecute &task) { n_ok++; },
-          [&n_rej](const TaskToExecute &task, const Status &status) { n_rej++; });
+          [&n_executed](TaskToExecute &task) { n_executed++; },
+          [&n_canceled](const TaskToExecute &task, const Status &status) {
+            n_canceled++;
+          });
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
@@ -48,22 +50,22 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   queue->EnqueueTask(task);
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
   queue->ExecuteQueuedTasks();
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 1);
+  ASSERT_EQ(n_executed, 4);
+  ASSERT_EQ(n_canceled, 1);
 
   queue->Stop();
 }
 
 TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
-  int n_ok = 0;
-  std::atomic<int> n_rej{0};
+  int n_executed = 0;
+  std::atomic<int> n_canceled{0};
 
   std::unique_ptr<NormalTaskExecutionQueue> queue =
       std::make_unique<NormalTaskExecutionQueue>(
-          [&n_ok](TaskToExecute &task) { n_ok++; },
-          [&n_rej](const TaskToExecute &task, const Status &status) {
+          [&n_executed](TaskToExecute &task) { n_executed++; },
+          [&n_canceled](const TaskToExecute &task, const Status &status) {
             ASSERT_TRUE(status.IsSchedulingCancelled());
-            n_rej.fetch_add(1);
+            n_canceled.fetch_add(1);
           });
 
   TaskSpecification task_spec;
@@ -81,8 +83,8 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
   // Stopping should cancel all queued tasks without running them.
   queue->Stop();
 
-  ASSERT_EQ(n_ok, 0);
-  ASSERT_EQ(n_rej.load(), 3);
+  ASSERT_EQ(n_executed, 0);
+  ASSERT_EQ(n_canceled.load(), 3);
 }
 
 }  // namespace core
