@@ -248,57 +248,82 @@ class BatchIterator:
         self.before_epoch_start()
 
         while True:
+            # Record the wall-clock window during which the training thread was
+            # blocked waiting for the next batch.  These timestamps are used by
+            # _report_batch_timings to compute per-stage overlap attribution.
+            _blocked_start = time.perf_counter()
             with self.get_next_batch_context():
                 try:
                     batch = next(batch_iter)
                 except StopIteration:
                     break
-            # Attribute per-stage latency now that the batch has arrived.
+            _blocked_end = time.perf_counter()
+            # Attribute how much of each pipeline stage overlapped with the
+            # training thread's wait window.
             if self._stats:
-                self._report_batch_timings(batch)
+                self._report_batch_timings(batch, _blocked_start, _blocked_end)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
 
-    def _report_batch_timings(self, batch: "Batch") -> None:
-        """Accumulate per-stage background pipeline latencies into DatasetStats.
+    def _report_batch_timings(
+        self,
+        batch: "Batch",
+        blocked_start: float,
+        blocked_end: float,
+    ) -> None:
+        """Attribute per-stage blocked time into DatasetStats using overlap math.
 
-        Called by the training thread after each batch is received.
+        For each pipeline stage we know when it ran ``[stage_start, stage_end]``
+        (recorded by background threads onto ``batch.metadata.timings``).  We
+        also know when the training thread was blocked ``[blocked_start,
+        blocked_end]`` (captured in ``_iter_batches`` around ``next()``).
 
-        fetch and batching use pre-computed durations (always non-negative, no
-        clock-skew risk). format/collate/finalize use consecutive timestamp
-        deltas — a max(0, ...) guard handles the rare case of clock skew.
+        The attribution for a stage is the length of the intersection:
 
-        This runs in the training thread — no locks are needed because the
-        background thread has already finished writing to ``batch.metadata.timings``
-        before enqueuing the batch.
+            overlap = max(0, min(stage_end, blocked_end)
+                            - max(stage_start, blocked_start))
+
+        This is correct regardless of ``prefetch_batches``:
+        - If the stage finished before training blocked → overlap = 0 (hid).
+        - If the stage ran entirely within the blocked window → full credit.
+        - Partial overlap → partial credit.
+
+        Runs in the training thread; no locks needed because the background
+        thread finished writing ``batch.metadata.timings`` before enqueuing.
         """
         if self._stats is None:
             return
         t = batch.metadata.timings
 
-        # Accumulated durations — directly safe, no delta arithmetic needed.
-        if t.fetch_duration_s:
-            self._stats.iter_pipeline_fetch_s.add(t.fetch_duration_s)
-        if t.batching_duration_s:
-            self._stats.iter_pipeline_batching_s.add(t.batching_duration_s)
+        def _overlap(stage_start: float, stage_end: float) -> float:
+            # stage_end <= stage_start means the stage didn't run (both default
+            # to 0.0) or timestamps are invalid — either way, no attribution.
+            if stage_end <= stage_start:
+                return 0.0
+            return max(
+                0.0,
+                min(stage_end, blocked_end) - max(stage_start, blocked_start),
+            )
 
-        # Timestamp deltas for single-event stages.
-        if t.batching_done_s and t.format_done_s:
-            self._stats.iter_pipeline_format_s.add(
-                max(0.0, t.format_done_s - t.batching_done_s)
-            )
-        if t.format_done_s and t.collate_done_s:
-            self._stats.iter_pipeline_collate_s.add(
-                max(0.0, t.collate_done_s - t.format_done_s)
-            )
-        # Finalize follows collate (if present) or format.
+        self._stats.iter_blocked_fetch_s.add(_overlap(t.fetch_start_s, t.fetch_end_s))
+        self._stats.iter_blocked_batching_s.add(
+            _overlap(t.batching_start_s, t.batching_done_s)
+        )
+        # Format start = batching_done_s (sequential in background thread).
+        self._stats.iter_blocked_format_s.add(
+            _overlap(t.batching_done_s, t.format_done_s)
+        )
+        # Collate start = format_done_s.
+        self._stats.iter_blocked_collate_s.add(
+            _overlap(t.format_done_s, t.collate_done_s)
+        )
+        # Finalize start = collate_done_s if collate ran, else format_done_s.
         last_pre_finalize = t.collate_done_s or t.format_done_s
-        if last_pre_finalize and t.finalize_done_s:
-            self._stats.iter_pipeline_finalize_s.add(
-                max(0.0, t.finalize_done_s - last_pre_finalize)
-            )
+        self._stats.iter_blocked_finalize_s.add(
+            _overlap(last_pre_finalize, t.finalize_done_s)
+        )
 
         self._stats.iter_batches_total += 1
         self._stats.iter_rows_total += t.num_rows

@@ -1,4 +1,4 @@
-"""Unit tests for BatchTimings — the per-stage pipeline duration dataclass (issue #64132)."""
+"""Unit tests for BatchTimings — the per-stage pipeline timing dataclass (issue #64132)."""
 
 import time
 
@@ -6,8 +6,9 @@ from ray.data._internal.block_batching.interfaces import BatchMetadata, BatchTim
 
 
 def _make_timings(
-    fetch=0.5,
-    batching=0.1,
+    fetch_start=0.0,
+    fetch_end=1.5,
+    batching_start=1.5,
     batching_done=2.0,
     fmt_done=2.3,
     collate_done=2.6,
@@ -15,8 +16,9 @@ def _make_timings(
     num_rows=32,
 ):
     t = BatchTimings()
-    t.fetch_duration_s = fetch
-    t.batching_duration_s = batching
+    t.fetch_start_s = fetch_start
+    t.fetch_end_s = fetch_end
+    t.batching_start_s = batching_start
     t.batching_done_s = batching_done
     t.format_done_s = fmt_done
     t.collate_done_s = collate_done
@@ -28,27 +30,28 @@ def _make_timings(
 class TestBatchTimingsDefaults:
     def test_all_fields_zero_by_default(self):
         t = BatchTimings()
-        assert t.fetch_duration_s == 0.0
-        assert t.batching_duration_s == 0.0
+        assert t.fetch_start_s == 0.0
+        assert t.fetch_end_s == 0.0
+        assert t.batching_start_s == 0.0
         assert t.batching_done_s == 0.0
         assert t.format_done_s == 0.0
         assert t.collate_done_s == 0.0
         assert t.finalize_done_s == 0.0
         assert t.num_rows == 0
 
-    def test_fetch_duration_is_a_duration_not_timestamp(self):
-        """fetch_duration_s must be non-negative elapsed time, not an absolute clock."""
+    def test_old_duration_fields_do_not_exist(self):
+        """fetch_duration_s and batching_duration_s were removed in favour of windows."""
         t = BatchTimings()
-        t.fetch_duration_s = 0.5
-        assert t.fetch_duration_s == 0.5
+        assert not hasattr(t, "fetch_duration_s")
+        assert not hasattr(t, "batching_duration_s")
 
-    def test_accumulated_fetch_sums_two_blocks(self):
-        """Simulates two blocks summed into one batch's fetch_duration_s."""
-        accumulated = 0.0
-        accumulated += 0.3  # block 1 ray.get duration
-        accumulated += 0.2  # block 2 ray.get duration
-        t = BatchTimings(fetch_duration_s=accumulated)
-        assert abs(t.fetch_duration_s - 0.5) < 1e-9
+    def test_fetch_window_duration(self):
+        t = _make_timings(fetch_start=0.0, fetch_end=1.5)
+        assert abs((t.fetch_end_s - t.fetch_start_s) - 1.5) < 1e-9
+
+    def test_batching_window_duration(self):
+        t = _make_timings(batching_start=1.5, batching_done=2.0)
+        assert abs((t.batching_done_s - t.batching_start_s) - 0.5) < 1e-9
 
     def test_format_latency_from_timestamps(self):
         t = _make_timings(batching_done=2.0, fmt_done=2.3)
@@ -80,6 +83,13 @@ class TestBatchTimingsDefaults:
         after = time.perf_counter()
         assert before <= t.batching_done_s <= after
 
+    def test_multi_block_fetch_window_spans_all_blocks(self):
+        """fetch_start_s = first block start, fetch_end_s = last block end."""
+        t = BatchTimings()
+        t.fetch_start_s = 0.0  # first block ray.get() start
+        t.fetch_end_s = 1.5  # second block ray.get() end
+        assert t.fetch_end_s - t.fetch_start_s == 1.5
+
 
 class TestBatchMetadataTimings:
     def test_default_timings_created(self):
@@ -94,7 +104,8 @@ class TestBatchMetadataTimings:
         assert m2.timings.num_rows == 0, "timings must not be shared across instances"
 
     def test_custom_timings(self):
-        t = _make_timings(num_rows=16, fetch=0.9)
+        t = _make_timings(num_rows=16, fetch_start=0.1, fetch_end=1.0)
         m = BatchMetadata(batch_idx=5, timings=t)
         assert m.timings.num_rows == 16
-        assert m.timings.fetch_duration_s == 0.9
+        assert m.timings.fetch_start_s == 0.1
+        assert m.timings.fetch_end_s == 1.0

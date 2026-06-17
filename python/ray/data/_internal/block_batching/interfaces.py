@@ -8,34 +8,40 @@ from ray.types import ObjectRef
 
 @dataclass
 class BatchTimings:
-    """Per-stage pipeline duration measurements for one batch.
+    """Per-stage pipeline timing windows for one batch (issue #64132).
 
-    Stages that can touch multiple blocks (fetch) use **accumulated durations**
-    so that multi-block batches are counted correctly and single-block batches
-    that yield multiple downstream batches are not double-counted.
+    Each stage records absolute ``(start_s, end_s)`` timestamps using
+    ``time.perf_counter()``.  The training thread captures its own
+    ``(blocked_start, blocked_end)`` window around ``next(batch_iter)``.
+    Attribution for each stage is then:
 
-    Stages that happen exactly once per batch (format, collate, finalize) use
-    **absolute timestamps** so consecutive deltas give their durations.
+        overlap = max(0, min(stage_end, blocked_end) - max(stage_start, blocked_start))
 
-    All durations/timestamps use ``time.perf_counter()`` for high resolution.
-    A value of ``0.0`` means the stage was skipped (e.g. no collate_fn).
+    This correctly handles prefetch_batches > 1: a stage that finished before
+    the training thread started waiting gets zero credit, even if it took a
+    long time — it ran in parallel and did not delay training.
+
+    Thread-local storage in util.py carries ``fetch_start_s`` / ``fetch_end_s``
+    from ``resolve_block_refs`` (background thread) to ``_BatchingIterator``
+    (same thread).  After ``_BatchingIterator`` reads the values it resets them
+    to 0.0, so a large block that feeds multiple batches is credited only to
+    the first batch and not double-counted.
+
+    A value of ``0.0`` means the stage was skipped (e.g. no ``collate_fn``).
     """
 
-    # --- Accumulated durations (safe across multi-block batches) ---
-    # Sum of ray.get() elapsed times for every block that fed this batch.
-    # Accumulated by resolve_block_refs; reset to 0.0 when a batch is yielded.
-    fetch_duration_s: float = 0.0
+    # Block fetch window: ray.get() across all blocks that fed this batch.
+    # fetch_start_s is set on the FIRST block only; fetch_end_s is updated on
+    # every block so it ends up as the last block's ray.get() finish time.
+    fetch_start_s: float = 0.0
+    fetch_end_s: float = 0.0
 
-    # Time spent inside _batcher.next_batch() for this batch.
-    batching_duration_s: float = 0.0
-
-    # --- Absolute timestamps (each stage fires exactly once per batch) ---
-    # Recorded when the batch leaves _BatchingIterator; used as the reference
-    # point for computing format/collate/finalize deltas downstream.
+    # Batching window: time inside _batcher.next_batch().
+    batching_start_s: float = 0.0
     batching_done_s: float = 0.0
 
     # Set in the format/collate thread-pool worker.
-    format_done_s: float = 0.0   # batch_format conversion finished
+    format_done_s: float = 0.0  # batch_format conversion finished
     collate_done_s: float = 0.0  # collate_fn finished (0.0 if no collate_fn)
 
     # Set in the iteration background thread after the thread-pool rejoins.
