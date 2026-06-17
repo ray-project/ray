@@ -4,7 +4,6 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
-COPY python/requirements/llm/patches/vllm-cuda-visible-devices-patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
@@ -36,33 +35,43 @@ uv pip install --system --no-cache-dir --no-deps \
     --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
-# Fix RayExecutorV2 GPU collision when multiple engines share a node.
-# Remove this patch once https://github.com/vllm-project/vllm/pull/44466 is merged.
-VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/vllm-cuda-visible-devices-patch"
-VLLM_SITE_PACKAGES="$(python - <<'PY'
-import site
-import sysconfig
-from pathlib import Path
-
-candidate_dirs = [
-    Path(sysconfig.get_paths()["purelib"]),
-    Path(sysconfig.get_paths()["platlib"]),
-    *(Path(path) for path in site.getsitepackages()),
-]
-
-for base_dir in dict.fromkeys(candidate_dirs):
-    import_utils = base_dir / "vllm" / "utils" / "import_utils.py"
-    if import_utils.exists():
-        print(base_dir)
-        break
-else:
-    raise SystemExit("vLLM import_utils.py not found")
-PY
-)"
-(
-    cd "${VLLM_SITE_PACKAGES}"
-    git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
-)
+# Overlay the Python files changed by vLLM PR #45026 ("Stop setting
+# CUDA_VISIBLE_DEVICES internally in vLLM, add device_ids arg") on top of the
+# installed vllm 0.23.0 wheel, so the Ray LLM release tests validate the CVD
+# rework. The cvd-fix branch is the PR's net diff cherry-picked onto
+# releases/v0.23.0 (== the v0.23.0 tag the wheel is built from), so every file
+# below is "0.23.0 + the PR's changes" and overlays the wheel cleanly.
+# This supersedes the old vllm-cuda-visible-devices-patch (vLLM PR #44466),
+# which took the opposite approach (kept setting CVD per worker); the two
+# cannot coexist. The PR's sm100_cutlass_mla_kernel.cu change is omitted: it
+# requires recompiling the wheel and only affects SM100/MLA.
+VLLM_SITE="$(python -c 'import vllm, os; print(os.path.dirname(vllm.__file__))')"
+git clone --depth 1 -b cvd-fix https://github.com/jeffreywang88/vllm.git /tmp/vllm-cvd-overlay
+for f in \
+    config/parallel.py \
+    distributed/device_communicators/all2all.py \
+    distributed/device_communicators/all_reduce_utils.py \
+    distributed/device_communicators/custom_all_reduce.py \
+    distributed/device_communicators/quick_all_reduce.py \
+    distributed/device_communicators/shm_broadcast.py \
+    distributed/kv_transfer/kv_connector/v1/lmcache_integration/vllm_v1_adapter.py \
+    distributed/parallel_state.py \
+    distributed/stateless_coordinator.py \
+    engine/arg_utils.py \
+    entrypoints/openai/dp_supervisor.py \
+    platforms/cuda.py \
+    platforms/interface.py \
+    v1/engine/core.py \
+    v1/engine/utils.py \
+    v1/executor/multiproc_executor.py \
+    v1/executor/ray_executor.py \
+    v1/executor/ray_executor_v2.py \
+    v1/executor/ray_utils.py \
+    v1/worker/gpu_worker.py \
+    v1/worker/worker_base.py; do
+    cp "/tmp/vllm-cvd-overlay/vllm/${f}" "${VLLM_SITE}/${f}"
+done
+rm -rf /tmp/vllm-cvd-overlay
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
