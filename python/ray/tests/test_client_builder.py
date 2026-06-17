@@ -249,19 +249,20 @@ def test_module_lacks_client_builder():
         assert "does not have ClientBuilder" in str(exception)
 
 
-def test_http_address_error_message():
-    """Test that a helpful error is raised when RAY_ADDRESS is set to HTTP."""
+@pytest.mark.parametrize("address", ["http://127.0.0.1:8265", "https://127.0.0.1:8265"])
+def test_http_address_error_message(address):
+    """Test that a helpful error is raised when RAY_ADDRESS is set to HTTP/HTTPS."""
     exception = None
     try:
-        ray.client("http://127.0.0.1:8265")
+        ray.client(address)
     except ValueError as e:
         exception = e
 
-    assert exception is not None, "HTTP address did not raise ValueError"
+    assert exception is not None, f"Address {address} did not raise ValueError"
     assert "RAY_ADDRESS" in str(exception)
     assert "GCS address" in str(exception)
 
-    
+
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     subprocess.check_output(
