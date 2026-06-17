@@ -87,6 +87,50 @@ from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
+SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
+    4
+    * GiB
+    * (
+        1
+        - DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
+        - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+    )
+)
+"""A safe default logical memory to request for map tasks and actors per logical CPU.
+
+Ray Data aims to guarantee that if you set each UDF's logical memory to at least
+the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
+
+The problem is that if you set logical memory for some UDFs but not others, the
+unspecified ones fall back to 0 and the system oversubscribes anyway.
+
+To avoid that, we can default to ~2.57 GiB per CPU core. Here's where that magic number
+comes from: We want to pick the largest logical memory (so it's safe) that won't
+decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
+have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
+30% for the object store and 10% for system-reserved memory. So, in the typical
+case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
+that's the highest you can go before you start decreasing concurrency.
+
+We use this heuristic over more sophisticated alternatives because a constant
+default is easy to reason about.
+"""
+
+
+def get_safe_default_logical_memory(ray_remote_args: Dict[str, Any]) -> int:
+    """Return a safe default logical memory (in bytes) for the given remote args."""
+    num_cpus = ray_remote_args.get("num_cpus")
+    if not num_cpus:
+        # If the map tasks or actors don't require logical CPUs, just assume it
+        # requires one logical CPU for the purpose of computing a default value.
+        default_memory = math.ceil(SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU)
+    else:
+        default_memory = math.ceil(SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
+
+    assert isinstance(default_memory, int), default_memory
+    assert default_memory > 0, default_memory
+    return default_memory
+
 
 @ray.remote(num_cpus=0)
 def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
@@ -161,35 +205,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     Warn if the size of the map UDF exceeds this threshold.
     """
 
-    DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
-        4
-        * GiB
-        * (
-            1
-            - DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
-            - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-        )
-    )
-    """Default logical memory to request for map tasks and actors per logical CPU.
-
-    Ray Data aims to guarantee that if you set each UDF's logical memory to at least
-    the heap memory that UDF needs, the system won't oversubscribe tasks and actors.
-
-    The problem is that if you set logical memory for some UDFs but not others, the
-    unspecified ones fall back to 0 and the system oversubscribes anyway.
-
-    To avoid that, we default to ~2.57 GiB per CPU core. Here's where that magic number
-    comes from: We want to pick the largest logical memory (so it's safe) that won't
-    decrease concurrency (so we don't regress performance). Hyperscaler nodes usually
-    have 4 GiB per CPU core, and Ray Core sets logical memory to physical memory minus
-    30% for the object store and 10% for system-reserved memory. So, in the typical
-    case, you end up with 4 GiB * 60% = ~2.57 GiB GiB of logical memory per core, and
-    that's the highest you can go before you start decreasing concurrency.
-
-    We use this heuristic over more sophisticated alternatives because a constant
-    default is easy to reason about.
-    """
-
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -220,10 +235,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Configure a default logical memory to improve memory safety when the user has
         # specified memory for some UDFs but not others.
         if default_logical_memory_enabled:
-            self._set_default_logical_memory(ray_remote_args)
+            default_memory = get_safe_default_logical_memory(ray_remote_args)
+            ray_remote_args.setdefault("memory", default_memory)
             logger.debug(
-                f"Operator {name!r} set default logical memory to "
-                f"{ray_remote_args.get('memory')}"
+                f"Operator {name!r} set default logical memory to {default_memory}"
             )
 
         self._map_transformer = map_transformer
@@ -264,19 +279,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
-
-    def _set_default_logical_memory(self, ray_remote_args: Dict[str, Any]) -> None:
-        num_cpus = ray_remote_args.get("num_cpus")
-        if not num_cpus:
-            # If the map tasks or actors don't require logical CPUs, just assume it
-            # requires one logical CPU for the purpose of computing a default value.
-            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU)
-        else:
-            default_memory = math.ceil(self.DEFAULT_LOGICAL_MEMORY_PER_CPU * num_cpus)
-
-        assert isinstance(default_memory, int), default_memory
-        assert default_memory > 0, default_memory
-        ray_remote_args.setdefault("memory", default_memory)
 
     @functools.cached_property
     def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:

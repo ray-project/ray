@@ -852,7 +852,7 @@ void CoreWorker::RecordMetrics() {
   task_counter_.RecordMetrics();
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
-  reference_counter_->RecordMetrics();
+  reference_counter_->RecordOwnerMetrics();
   // Flush percentile metrics: swap histogram buffers and update exported gauges.
   normal_task_submitter_->FlushMetrics();
 }
