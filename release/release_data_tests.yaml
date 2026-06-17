@@ -52,7 +52,7 @@
 #       --footer-size-estimate on
 #       --var-width-factor 1.0
 
-- name: "read_chunked_parquet_{{scaling}}_{{file_size}}_{{num_files}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}"
+- name: "read_chunked_parquet_{{trial}}_{{scaling}}_{{file_size}}_{{num_files}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -61,13 +61,13 @@
   matrix:
     setup:
       scaling: [fixed_size]
-      file_size: [512MiB, 1GiB, 5GiB]
+      file_size: [5GiB]
       num_files: [50]
       row_group_size: [64MiB]
       compression_ratio: [5.0]
       read_memory: [8589934592]
       max_bucket_size: [1GiB]
-      batch_target_bytes: [4MiB, 16MiB, 64MiB]
+      batch_target_bytes: [64MiB, 128MiB, 256MiB, 512MiB]
       use_version: [v1, v3]
       trial: [1, 2, 3]
   run:
@@ -78,7 +78,7 @@
       --num-files {{num_files}}
       --row-group-size {{row_group_size}}
       --compression-ratio {{compression_ratio}}
-      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{scaling}}_{{file_size}}_{{num_files}}_{{max_bucket_size}}_{{batch_target_bytes}}_{{use_version}}_{{trial}}
+      --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}
       --read-back
       --read-memory {{read_memory}}
       --use-version {{use_version}}
