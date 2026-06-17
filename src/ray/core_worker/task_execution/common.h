@@ -33,10 +33,7 @@ namespace ray {
 namespace core {
 
 /// Container holding a task queued for execution on this worker, along with the
-/// per-request state needed to execute it or reply that it was canceled. This is a
-/// pure data class; the actual execute/cancel logic lives in the execution queues
-/// (see ExecuteTaskCallback / CancelTaskCallback), which are given the queue-level
-/// callbacks at construction time.
+/// per-request state needed to execute it or reply that it was canceled.
 class TaskToExecute {
  public:
   TaskToExecute(TaskSpecification task_spec,
@@ -84,10 +81,7 @@ class TaskToExecute {
   rpc::SendReplyCallback send_reply_callback_;
 };
 
-// Queue-level callbacks invoked by the execution queues to run or reply-cancel a
-// queued task. These are set once when a queue is constructed (they are not per-task);
-// all per-task state travels with the TaskToExecute argument. `ExecuteTaskCallback`
-// takes a mutable reference because executing a task moves its resource_ids out.
+// Queue-level callbacks invoked to run a task or reply that it has been canceled.
 using ExecuteTaskCallback = std::function<void(TaskToExecute &)>;
 using CancelTaskCallback = std::function<void(const TaskToExecute &, const Status &)>;
 
