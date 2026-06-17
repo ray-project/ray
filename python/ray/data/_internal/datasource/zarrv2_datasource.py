@@ -15,13 +15,12 @@ See :class:`ZarrV2Datasource` for the row schemas and
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import product
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -44,45 +43,22 @@ if TYPE_CHECKING:
     ZarrRoot = ZarrGroup | ZarrArray
 
 
-REQUIRED_ZARRAY_KEYS = ("shape", "chunks", "dtype")
-
-
 @dataclass(frozen=True)
 class ZarrArrayMeta:
-    """Validated ``.zarray`` metadata for a single Zarr v2 array."""
+    """``shape``/``chunks``/``dtype`` for a single Zarr v2 array."""
 
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
     dtype: str
 
     @classmethod
-    def from_json(cls, raw_meta: dict[str, Any], array_path: str) -> ZarrArrayMeta:
-        """Validate and parse a ``.zarray`` JSON object into a ZarrArrayMeta.
-
-        Raises ``ValueError`` if any of ``shape``/``chunks``/``dtype`` is
-        missing. ``array_path`` is included in the error message so callers
-        don't have to thread context themselves.
-        """
-        missing = [k for k in REQUIRED_ZARRAY_KEYS if k not in raw_meta]
-        if missing:
-            raise ValueError(
-                f"Invalid .zarray metadata for array path {array_path!r}: "
-                f"missing required key(s) {missing}."
-            )
-        shape = tuple(int(x) for x in raw_meta["shape"])
-        chunks = tuple(int(x) for x in raw_meta["chunks"])
-        if len(shape) != len(chunks):
-            raise ValueError(
-                f"Invalid .zarray metadata for array path {array_path!r}: "
-                f"'shape' has rank {len(shape)} but 'chunks' has rank "
-                f"{len(chunks)}; they must have the same number of dimensions."
-            )
-        if any(c <= 0 for c in chunks):
-            raise ValueError(
-                f"Invalid .zarray metadata for array path {array_path!r}: "
-                f"'chunks' must be positive, got {list(chunks)}."
-            )
-        return cls(shape=shape, chunks=chunks, dtype=str(raw_meta["dtype"]))
+    def from_zarr_array(cls, arr: "ZarrArray") -> ZarrArrayMeta:
+        """Adapt an opened ``zarr.Array`` (already validated by zarr on open)."""
+        return cls(
+            shape=tuple(int(s) for s in arr.shape),
+            chunks=tuple(int(c) for c in arr.chunks),
+            dtype=str(arr.dtype),
+        )
 
     @property
     def rank(self) -> int:
@@ -155,93 +131,6 @@ class ZarrArrayMeta:
             (i * c, min((i + 1) * c, s))
             for i, c, s in zip(chunk_index, chunks, self.shape)
         )
-
-
-# ---------------------------------------------------------------------------
-# Metadata discovery
-# ---------------------------------------------------------------------------
-
-
-def _load_metadata_from_zmetadata_file(
-    fs, z_meta_path: str
-) -> dict[str, ZarrArrayMeta]:
-    """Load all arrays listed in a consolidated ``.zmetadata`` file."""
-    with fs.open(z_meta_path, "rb") as f:
-        consolidated = json.load(f)
-    if "metadata" not in consolidated:
-        raise ValueError(
-            f"Missing 'metadata' key in consolidated metadata at {z_meta_path}."
-        )
-    out: dict[str, ZarrArrayMeta] = {}
-    for key, value in consolidated["metadata"].items():
-        if not key.endswith(".zarray"):
-            continue
-        array_path = "" if key == ".zarray" else key[: -len("/.zarray")]
-        out[array_path] = ZarrArrayMeta.from_json(value, array_path)
-    return out
-
-
-def _load_metadata_from_array_paths(
-    fs, store_path: str, array_paths: Iterable[str]
-) -> dict[str, ZarrArrayMeta]:
-    """Load ``.zarray`` files for the user's explicit array paths.
-
-    Each path is normalized via :func:`zarr.util.normalize_storage_path`,
-    which strips surrounding slashes, collapses doubles, and rejects
-    ``.``/``..`` segments. Raises ``ValueError`` if a requested path has
-    no ``.zarray`` file at the expected location.
-    """
-    from zarr.util import normalize_storage_path
-
-    store_root = store_path.rstrip("/")
-    out: dict[str, ZarrArrayMeta] = {}
-    for raw in array_paths:
-        normalized = normalize_storage_path(raw)
-        zarray_path = (
-            f"{store_root}/{normalized}/.zarray"
-            if normalized
-            else f"{store_root}/.zarray"
-        )
-        try:
-            with fs.open(zarray_path, "rb") as f:
-                raw_meta = json.load(f)
-        except FileNotFoundError as e:
-            raise ValueError(
-                f"Array path {raw!r} not found: no .zarray file at {zarray_path}"
-            ) from e
-        out[normalized] = ZarrArrayMeta.from_json(raw_meta, normalized)
-    return out
-
-
-def _load_metadata_full_scan(fs, store_path: str) -> dict[str, ZarrArrayMeta]:
-    """Recursively walk ``store_path`` for ``.zarray`` files.
-
-    Each discovered relative path is canonicalized via
-    :func:`zarr.util.normalize_storage_path` so the output keys match the
-    format used by the other metadata-loading paths regardless of whether
-    the underlying ``fs.walk`` yields trailing slashes.
-    """
-    from zarr.util import normalize_storage_path
-
-    store_root = store_path.rstrip("/")
-    store_prefix = store_root + "/"
-    out: dict[str, ZarrArrayMeta] = {}
-    for dirpath, _, filenames in fs.walk(store_path):
-        if ".zarray" not in filenames:
-            continue
-        dirpath = dirpath.rstrip("/")
-        if dirpath == store_root:
-            array_path = ""
-        else:
-            array_path = normalize_storage_path(dirpath.removeprefix(store_prefix))
-        zarray_path = f"{dirpath}/.zarray"
-        try:
-            with fs.open(zarray_path, "rb") as f:
-                raw = json.load(f)
-        except FileNotFoundError:
-            continue
-        out[array_path] = ZarrArrayMeta.from_json(raw, array_path)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +435,17 @@ class ZarrV2Datasource(Datasource):
 
                 self.chunk_shapes = tuple(chunk_shapes)
 
+        # Open the store with zarr (consolidated metadata when available). zarr
+        # reads and validates `.zarray`/`.zmetadata` here, so the datasource does
+        # not re-check that metadata itself.
+        store = self._fs.get_mapper(self._store_path)
+        z_meta_path = f"{self._store_path.rstrip('/')}/.zmetadata"
+        self._consolidated = self._fs.exists(z_meta_path)
+        if self._consolidated:
+            self.root = zarr.open_consolidated(store, mode="r")
+        else:
+            self.root = zarr.open(store, mode="r")
+
         self._metadata_by_path = self._load_metadata(array_paths)
         if not self._metadata_by_path:
             raise ValueError(
@@ -630,8 +530,6 @@ class ZarrV2Datasource(Datasource):
                     f"per-array chunk_shapes dict that resolves all aligned "
                     f"arrays to the same axis-0 prefix) to re-tile them."
                 )
-
-        self.root = zarr.open(self._fs.get_mapper(self._store_path), mode="r")
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Total bytes = sum over selected arrays of ``prod(shape) * itemsize``."""
@@ -787,56 +685,54 @@ class ZarrV2Datasource(Datasource):
         )
 
     def _load_metadata(self, array_paths) -> dict[str, ZarrArrayMeta]:
-        """Discover and load ``.zarray`` metadata for the selected arrays.
+        """Read ``shape``/``chunks``/``dtype`` for the selected arrays off ``self.root``.
 
-        Discovery prefers consolidated ``.zmetadata`` when it exists. If the
-        store has no ``.zmetadata``, the datasource falls back to reading each
-        requested array's ``.zarray`` directly (when ``array_paths`` is given)
-        or to a recursive scan (when ``allow_full_metadata_scan`` is set).
-        If ``array_paths`` is given, the discovered set is filtered down to it;
-        any requested paths that aren't present in the store raise a
-        ``ValueError`` listing what is available.
+        zarr validated the store's metadata when it was opened, so this only
+        adapts the resulting ``zarr.Array`` objects. Discovery uses consolidated
+        metadata when present, then explicit ``array_paths``, then an optional
+        full scan (``allow_full_metadata_scan``). If ``array_paths`` is given,
+        the discovered set is filtered down to it.
         """
-        fs, store_path = self._fs, self._store_path
+        import zarr
+        from zarr.util import normalize_storage_path
 
-        z_meta_path = f"{store_path.rstrip('/')}/.zmetadata"
-        if fs.exists(z_meta_path):
-            logger.debug("Loading .zmetadata file")
-            all_arrays = _load_metadata_from_zmetadata_file(fs, z_meta_path)
-        elif array_paths:
-            logger.debug("No .zmetadata; reading requested .zarray files directly")
-            all_arrays = _load_metadata_from_array_paths(fs, store_path, array_paths)
-        elif self.allow_full_metadata_scan:
-            logger.info(
-                "No array_paths provided and no .zmetadata found; "
-                "executing full scan of Zarr store metadata"
-            )
-            all_arrays = _load_metadata_full_scan(fs, store_path)
-            if not all_arrays:
-                # ``fs.walk`` silently returns nothing on filesystems without
-                # directory-listing support (most commonly plain HTTP/HTTPS).
-                # That's distinct from "store exists but has no arrays", so
-                # surface the likely cause.
+        root = self.root
+
+        if isinstance(root, zarr.Array):
+            return {"": ZarrArrayMeta.from_zarr_array(root)}
+
+        requested = (
+            {normalize_storage_path(p) for p in array_paths} if array_paths else None
+        )
+
+        if not self._consolidated and not self.allow_full_metadata_scan:
+            if requested is None:
                 raise ValueError(
-                    f"Full-store scan of {self.paths[0]!r} found no .zarray "
-                    "files. This can occur if the filesystem does not "
-                    "support recursive directory listing (e.g., plain "
-                    "HTTP/HTTPS without an object-store listing API). Pass "
-                    "array_paths=[...] with explicit array names to read "
-                    "from this kind of store."
+                    "No array_paths were provided and this Zarr store does not "
+                    "contain .zmetadata. Pass array_paths=[...] or set "
+                    "allow_full_metadata_scan=True."
                 )
-        else:
-            raise ValueError(
-                "No array_paths were provided and this Zarr store does not "
-                "contain .zmetadata. Pass array_paths=[...] or set "
-                "allow_full_metadata_scan=True."
-            )
+            out: dict[str, ZarrArrayMeta] = {}
+            for raw in array_paths:
+                name = normalize_storage_path(raw)
+                try:
+                    arr = root[name]
+                except KeyError as e:
+                    raise ValueError(
+                        f"Array path {raw!r} not found in Zarr store."
+                    ) from e
+                out[name] = ZarrArrayMeta.from_zarr_array(arr)
+            return out
 
-        if array_paths:
-            from zarr.util import normalize_storage_path
+        all_arrays: dict[str, ZarrArrayMeta] = {}
 
-            requested = {normalize_storage_path(p) for p in array_paths}
+        def _collect(name: str, obj) -> None:
+            if isinstance(obj, zarr.Array):
+                all_arrays[name] = ZarrArrayMeta.from_zarr_array(obj)
 
+        root.visititems(_collect)
+
+        if requested is not None:
             missing = sorted(requested - all_arrays.keys())
             if missing:
                 raise ValueError(

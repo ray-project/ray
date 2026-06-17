@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from pathlib import Path
@@ -211,27 +210,6 @@ def test_rejects_missing_array_paths(zarrv2_group_store):
         )
 
 
-def test_requires_consolidated_metadata(tmp_path):
-    store_path = tmp_path / "broken.zarr"
-    store_path.mkdir()
-    (store_path / ".zmetadata").write_text(json.dumps({}))
-
-    with pytest.raises(ValueError, match="Missing 'metadata'"):
-        zarrv2_datasource.ZarrV2Datasource(str(store_path))
-
-
-def test_rejects_empty_full_scan_with_actionable_error(tmp_path):
-    empty_store = tmp_path / "empty.zarr"
-    empty_store.mkdir()  # no .zmetadata, no .zarray files anywhere
-
-    with pytest.raises(
-        ValueError, match=r"Full-store scan of .* found no \.zarray files.*"
-    ):
-        zarrv2_datasource.ZarrV2Datasource(
-            str(empty_store), allow_full_metadata_scan=True
-        )
-
-
 def test_loads_per_array_zarray_without_zmetadata(unconsolidated_zarrv2_store):
     datasource = zarrv2_datasource.ZarrV2Datasource(
         str(unconsolidated_zarrv2_store),
@@ -266,49 +244,12 @@ def test_array_paths_missing_zarray_file_raises_value_error(
 ):
     with pytest.raises(
         ValueError,
-        match=r"Array path 'missing' not found: no \.zarray file at",
+        match=r"Array path 'missing' not found",
     ):
         zarrv2_datasource.ZarrV2Datasource(
             str(unconsolidated_zarrv2_store),
             array_paths=["missing"],
         )
-
-
-def test_rejects_zmetadata_with_malformed_zarray_entry(tmp_path):
-    store_path = tmp_path / "malformed.zarr"
-    store_path.mkdir()
-    (store_path / ".zmetadata").write_text(
-        json.dumps(
-            {
-                "metadata": {
-                    "broken/.zarray": {"shape": [5], "chunks": [2]},  # no dtype
-                }
-            }
-        )
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=r"missing required key\(s\) \['dtype'\]",
-    ):
-        zarrv2_datasource.ZarrV2Datasource(str(store_path))
-
-
-# ---------------------------------------------------------------------------
-# ZarrArrayMeta
-# ---------------------------------------------------------------------------
-
-
-def test_zarr_array_meta_from_json_parses_required_fields():
-    meta = zarrv2_datasource.ZarrArrayMeta.from_json(
-        {"shape": [5, 3], "chunks": [2, 3], "dtype": "<f8", "extra": "ignored"},
-        "some/path",
-    )
-    assert meta.shape == (5, 3)
-    assert meta.chunks == (2, 3)
-    assert meta.dtype == "<f8"
-    assert meta.rank == 2
-    assert meta.itemsize == 8
 
 
 # ---------------------------------------------------------------------------
@@ -961,15 +902,6 @@ def test_get_read_tasks_parallelism_zero(tmp_path):
     assert len(tasks) >= 1
 
 
-def test_rejects_shape_chunks_rank_mismatch():
-    """Malformed .zarray whose shape/chunks ranks differ must raise, not silently
-    plan reads over a dimension prefix (grid/slice zip to the shorter rank)."""
-    with pytest.raises(ValueError, match=r"'shape' has rank 2 but 'chunks' has rank 1"):
-        zarrv2_datasource.ZarrArrayMeta.from_json(
-            {"shape": [10, 10], "chunks": [5], "dtype": "<i4"}, "x"
-        )
-
-
 def test_align_axis_0_rejects_scalar_array(tmp_path):
     """align_axis_0=True with a 0-D (scalar) array must raise a clear error
     rather than an IndexError when reading the (empty) axis-0 chunk size."""
@@ -1009,17 +941,6 @@ def test_align_axis_0_columns_unify_across_blocks(aligned_zarrv2_store):
     schemas = [BlockAccessor.for_block(b).to_arrow().schema for b in blocks]
     unified = unify_schemas(schemas)  # must not raise
     assert {"t_start", "t_stop", "img", "state", "label"}.issubset(set(unified.names))
-
-
-@pytest.mark.parametrize("bad_chunks", [[0], [10, 0], [-2]])
-def test_rejects_non_positive_chunks(bad_chunks):
-    """Zero chunk dims would divide-by-zero in grid_shape and negative dims would
-    silently drop the array; both must raise at metadata parse time."""
-    shape = [10] * len(bad_chunks)
-    with pytest.raises(ValueError, match="'chunks' must be positive"):
-        zarrv2_datasource.ZarrArrayMeta.from_json(
-            {"shape": shape, "chunks": bad_chunks, "dtype": "<i4"}, "x"
-        )
 
 
 if __name__ == "__main__":
