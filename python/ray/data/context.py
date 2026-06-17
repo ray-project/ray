@@ -106,9 +106,8 @@ DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
 )
 
 # Route joins through the actorless V2 shuffle (two ShuffleMapOps → one binary
-# ShuffleReduceOp) instead of the actor-pool JoinOperator.  Off by default while
-# V2 bakes; the actor-pool path remains the production default.
-DEFAULT_JOIN_USE_SHUFFLE_V2 = env_bool("RAY_DATA_JOIN_USE_SHUFFLE_V2", False)
+# ShuffleReduceOp) instead of the actor-pool JoinOperator.
+DEFAULT_JOIN_USE_SHUFFLE_V2 = env_bool("RAY_DATA_JOIN_USE_SHUFFLE_V2", True)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
