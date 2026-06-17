@@ -241,14 +241,27 @@ def test_module_lacks_client_builder():
         exception = None
         try:
             ray.client("othermodule://")
-        except AssertionError as e:
+        except RuntimeError as e:
             exception = e
         assert (
             exception is not None
-        ), "Module without ClientBuilder did not raise AssertionError"
+        ), "Module without ClientBuilder did not raise RuntimeError"
         assert "does not have ClientBuilder" in str(exception)
 
 
+def test_http_address_error_message():
+    """Test that a helpful error is raised when RAY_ADDRESS is set to HTTP."""
+    exception = None
+    try:
+        ray.client("http://127.0.0.1:8265")
+    except ValueError as e:
+        exception = e
+
+    assert exception is not None, "HTTP address did not raise ValueError"
+    assert "RAY_ADDRESS" in str(exception)
+    assert "GCS address" in str(exception)
+
+    
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     subprocess.check_output(

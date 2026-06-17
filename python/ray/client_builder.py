@@ -359,10 +359,21 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             f"Module: {module_string} does not exist.\n"
             f"This module was parsed from Address: {address}"
         ) from e
-    assert "ClientBuilder" in dir(
-        module
-    ), f"Module: {module_string} does not have ClientBuilder."
-    return module.ClientBuilder(inner_address)
+    if "ClientBuilder" not in dir(module):
+        if module_string.startswith("http"):
+            raise ValueError(
+                f"Invalid Ray address: {address!r}. "
+                f"It looks like you set RAY_ADDRESS to an HTTP address "
+                f"(e.g. the API server address). "
+                f"To fix this, either:\n"
+                f"  1. Unset RAY_ADDRESS if you are running from a Ray node, or\n"
+                f"  2. Set RAY_ADDRESS to the GCS address instead "
+                f"(e.g. <head_node_ip>:6379)."
+            )
+        raise RuntimeError(
+            f"Module: {module_string} does not have ClientBuilder."
+        )
+    return module.ClientBuilder(inner_address) 
 
 
 @Deprecated
