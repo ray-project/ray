@@ -61,9 +61,9 @@
   matrix:
     setup:
       scaling: [fixed_size]
-      file_size: [512MiB, 1GiB]
-      num_files: [10, 50]
-      row_group_size: [64 MiB]
+      file_size: [512MiB, 1GiB, 5GiB, 10GiB]
+      num_files: [50]
+      row_group_size: [64MiB]
       compression_ratio: [5.0]
       use_version: [v1, v3]
       trial: [1, 2, 3]
@@ -77,7 +77,7 @@
       --compression-ratio {{compression_ratio}}
       --output s3://runtime-release-test-artifacts/read_path_optimisation/chunked_parquet/{{scaling}}_{{file_size}}_{{num_files}}_{{row_group_size}}_{{compression_ratio}}
       --read-back
-      --read-memory 4294967296
+      --read-memory 8589934592
       --use-version {{use_version}}
 
 - name: "read_parquet_{{scaling}}"
