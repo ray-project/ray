@@ -9,7 +9,10 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
-from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+)
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
     _fits,
@@ -124,6 +127,44 @@ class IResourceScheduler(ABC):
         nodes.
         """
         pass
+
+
+def _compute_min_resource_demand(
+    requests: List["ResourceRequest"],
+) -> Dict[str, float]:
+    """Compute the minimum demand for each resource key across all requests.
+
+    For each resource dimension, this returns the smallest non-zero value
+    requested by any single request. Used for quick feasibility pre-checks.
+    """
+    min_demand = {}
+    for r in requests:
+        for k, v in r.resources_bundle.items():
+            if v > 0:
+                if k not in min_demand or v < min_demand[k]:
+                    min_demand[k] = v
+    return min_demand
+
+
+def _can_fit_any_request(
+    available: Dict[str, float],
+    min_resource_demand: Dict[str, float],
+) -> bool:
+    """Quick pre-check: can this node possibly fit any pending request?
+
+    Returns False only when the node definitely cannot schedule any request,
+    i.e., every resource dimension is below the minimum demand. This is a
+    conservative check (no false negatives): if it returns True, the node
+    may or may not actually fit a request (try_schedule decides precisely).
+
+    Runs in O(D) where D is the number of resource dimensions (typically 2-4).
+    """
+    if not min_resource_demand:
+        return True
+    for k, min_v in min_resource_demand.items():
+        if available.get(k, 0.0) >= min_v:
+            return True
+    return False
 
 
 class NodeStateCache:
@@ -1184,9 +1225,17 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
         # Schedule the tasks/actor resource requests
+        all_requests = ResourceRequestUtil.ungroup_by_count(request.resource_requests)
+        if len(all_requests) > AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE:
+            logger.info(
+                "Truncating %d resource demands to %d for scheduling.",
+                len(all_requests),
+                AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+            )
+            all_requests = all_requests[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
         infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
             ctx,
-            ResourceRequestUtil.ungroup_by_count(request.resource_requests),
+            all_requests,
         )
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
@@ -1693,6 +1742,10 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests_to_sched, key=_sort_resource_request, reverse=True
         )
 
+        # Precompute the minimum resource demand across all requests for quick
+        # feasibility pre-checks inside _sched_best_node.
+        min_resource_demand = _compute_min_resource_demand(requests_to_sched)
+
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
 
@@ -1725,6 +1778,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
+                min_resource_demand,
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1771,6 +1825,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
+                min_resource_demand,
             )
             if best_node is None:
                 # No ippr nodes can schedule any more requests.
@@ -1838,6 +1893,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
+                min_resource_demand,
             )
             if best_node is None:
                 break
@@ -1858,6 +1914,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         resource_request_source: ResourceRequestSource,
         cloud_resource_availabilities: Dict[NodeType, float],
         recoverable_resource_availabilities: Dict[NodeType, float],
+        min_resource_demand: Optional[Dict[str, float]] = None,
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
@@ -1921,6 +1978,13 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Skip this node if we've already evaluated its exact state.
             if node_cache.was_seen_or_mark(node):
                 continue
+
+            # Quick feasibility pre-check: skip nodes that definitely cannot
+            # fit any request, avoiding expensive deepcopy + try_schedule.
+            if min_resource_demand:
+                avail = node.get_available_resources(resource_request_source)
+                if not _can_fit_any_request(avail, min_resource_demand):
+                    continue
 
             node_copy = copy.deepcopy(node)
 
