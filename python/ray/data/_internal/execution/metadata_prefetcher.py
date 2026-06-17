@@ -20,9 +20,8 @@ metadata lands in ``_results`` — never the scheduling loop itself.
 Ordering: per-operator FIFOs are emitted front-first and stop at the first pair
 whose metadata isn't back yet — so each operator's ``RefBundle`` emission order
 is preserved exactly, and an operator whose next pair is still in flight is
-simply skipped this round and retried next (matching the synchronous
-break-and-retry behavior). Operators are independent, so one operator waiting
-on metadata never blocks another.
+simply skipped this round and retried next. Operators are independent, so one
+operator waiting on metadata never blocks another.
 """
 
 import logging
@@ -49,9 +48,6 @@ _FETCH_WAIT_TIMEOUT_S = 0.1
 
 
 class MetadataPrefetcher:
-    """Fetches deferred ``meta_ref``s on a background thread; emits in per-op
-    order on the executor thread. See module docstring."""
-
     # Sentinel for "ref not yet fetched" in the result store. A fetched result
     # is either the metadata bytes or an ``Exception`` captured during fetch.
     _NOT_READY = object()
@@ -60,9 +56,9 @@ class MetadataPrefetcher:
     _STOP = object()
 
     def __init__(self):
-        # executor -> fetch thread: each item is a list[ObjectRef] (or the
-        # ``_STOP`` sentinel to exit). thread-safe.
-        self._request_q: "queue_module.Queue" = queue_module.Queue()
+        self._request_q: "queue_module.Queue[List[ray.ObjectRef]]" = (
+            queue_module.Queue()
+        )
         # fetch thread -> executor: meta_ref -> bytes (or captured Exception).
         self._results: Dict["ray.ObjectRef", Any] = {}
         self._results_lock = threading.Lock()
