@@ -41,13 +41,18 @@ from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
+from ray.llm._internal.serve.engines.sglang.metrics import (
+    configure_sglang_engine_metrics,
+)
 
 
 class SGLangServer:
     def __init__(self, llm_config: LLMConfig):
 
         self._llm_config = llm_config
-        self.engine_kwargs = llm_config.engine_kwargs
+        self.engine_kwargs = copy.deepcopy(llm_config.engine_kwargs)
+        if llm_config.log_engine_metrics:
+            configure_sglang_engine_metrics(self.engine_kwargs)
 
         try:
             import sglang
