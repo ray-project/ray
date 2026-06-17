@@ -51,13 +51,22 @@ def uc_catalog():
     )
 
 
+@pytest.fixture
+def isolated_env(monkeypatch):
+    # resolve() exports vended creds to os.environ and may call ray.init.
+    # Isolate the env mutation and skip the real ray.init for unit tests.
+    monkeypatch.setattr("ray.is_initialized", lambda: True)
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    return os.environ
+
+
 # ---------------------------------------------------------------------------
 # UnityCatalog.resolve
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("reader", [ReaderFormat.DELTA, ReaderFormat.PARQUET])
-def test_resolve_storage_aws(uc_catalog, reader):
+def test_resolve_storage_aws(uc_catalog, isolated_env, reader):
     patcher = _mock_uc_rest()
     try:
         resolved = uc_catalog.resolve("main.sales.txns", reader=reader)
@@ -65,12 +74,19 @@ def test_resolve_storage_aws(uc_catalog, reader):
         patcher.stop()
 
     assert resolved.path == "s3://bucket/path"
-    assert isinstance(resolved.filesystem, pafs.S3FileSystem)
-    assert resolved.storage_options is None
+    # AWS creds are exported to the environment for both readers.
+    assert isolated_env["AWS_ACCESS_KEY_ID"] == "AKIA"
+    assert isolated_env["AWS_SESSION_TOKEN"] == "token"
+    # Delta additionally gets an explicit S3FileSystem for the data scan;
+    # Parquet reads via the environment-configured filesystem.
+    if reader is ReaderFormat.DELTA:
+        assert isinstance(resolved.filesystem, pafs.S3FileSystem)
+    else:
+        assert resolved.filesystem is None
     assert resolved.data_format is ReaderFormat.DELTA
 
 
-def test_resolve_aws_requires_region():
+def test_resolve_aws_requires_region(isolated_env):
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")  # no region
     patcher = _mock_uc_rest()
     try:
@@ -78,6 +94,24 @@ def test_resolve_aws_requires_region():
             catalog.resolve("main.sales.txns", reader=ReaderFormat.DELTA)
     finally:
         patcher.stop()
+
+
+def test_resolve_initializes_ray_with_runtime_env(uc_catalog, monkeypatch):
+    # When Ray isn't running, vended creds are propagated via runtime_env.
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    monkeypatch.setattr("ray.is_initialized", lambda: False)
+    init_kwargs = {}
+    monkeypatch.setattr("ray.init", lambda **kw: init_kwargs.update(kw))
+
+    patcher = _mock_uc_rest()
+    try:
+        uc_catalog.resolve("main.sales.txns", reader=ReaderFormat.PARQUET)
+    finally:
+        patcher.stop()
+
+    env_vars = init_kwargs["runtime_env"]["env_vars"]
+    assert env_vars["AWS_ACCESS_KEY_ID"] == "AKIA"
+    assert env_vars["AWS_SESSION_TOKEN"] == "token"
 
 
 def test_resolve_iceberg(uc_catalog):
@@ -101,7 +135,7 @@ def test_resolve_unsupported_reader(uc_catalog):
         uc_catalog.resolve("main.sales.txns", reader="bogus")
 
 
-def test_resolve_azure_returns_storage_options():
+def test_resolve_azure_sets_env(isolated_env):
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")
     azure_creds = {
         "url": "abfss://c@acct.dfs.core.windows.net/path",
@@ -113,17 +147,19 @@ def test_resolve_azure_returns_storage_options():
     finally:
         patcher.stop()
 
+    # Azure creds flow via the environment (read by both pyarrow and the
+    # deltalake object_store log reader); no filesystem/storage_options.
     assert resolved.filesystem is None
-    assert resolved.storage_options == {"AZURE_STORAGE_SAS_TOKEN": "sv=2021&sig=abc"}
+    assert resolved.storage_options is None
+    assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
 
 
-def test_gcp_creds_written_and_env_set(monkeypatch):
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+def test_gcp_creds_to_env_writes_file(monkeypatch):
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")
 
-    catalog._write_gcp_creds('{"sa": 1}')
+    env = catalog._creds_to_env({"gcp_service_account": '{"sa": 1}'})
 
-    path = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    path = env["GOOGLE_APPLICATION_CREDENTIALS"]
     assert os.path.exists(path)
     with open(path) as f:
         assert f.read() == '{"sa": 1}'

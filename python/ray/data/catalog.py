@@ -148,11 +148,28 @@ class UnityCatalog(Catalog):
     def _resolve_storage(self, table: str, reader: ReaderFormat) -> ResolvedSource:
         table_info = self._get_table_info(table)
         creds, table_url = self._get_creds(table_info["table_id"])
-        filesystem, storage_options = self._creds_to_reader_args(creds, reader)
+
+        # Deliver vended credentials via environment variables. This is the
+        # mechanism the underlying libraries read uniformly: pyarrow (Parquet
+        # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
+        # (the Delta transaction *log* read in `DeltaTable(...)`, which neither
+        # a pyarrow `filesystem` nor `storage_options` keyed for pyarrow would
+        # satisfy). See `_apply_env` for the worker-propagation note.
+        #
+        # TODO: remove the env-var + ray.init mechanism once credential vending
+        # is performed inside the read tasks themselves (worker-side).
+        self._apply_env(self._creds_to_env(creds))
+
+        # For AWS Delta, also hand the data scan an explicit S3FileSystem: the
+        # vended session token isn't reliably propagated through
+        # `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
+        filesystem = None
+        if "aws_temp_credentials" in creds and reader is ReaderFormat.DELTA:
+            filesystem = self._build_s3_filesystem(creds["aws_temp_credentials"])
+
         return ResolvedSource(
             path=table_url,
             filesystem=filesystem,
-            storage_options=storage_options,
             data_format=self._infer_format(table_info, table_url),
         )
 
@@ -206,56 +223,29 @@ class UnityCatalog(Catalog):
                 return ReaderFormat(ext)
         return None
 
-    def _creds_to_reader_args(
-        self, creds: dict, reader: ReaderFormat
-    ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[Dict[str, Any]]]:
-        """Translate vended credentials into reader-shaped arguments.
-
-        AWS is delivered as a serializable ``S3FileSystem`` (worker-safe, no
-        global env mutation). Azure/GCP retain the env-var / ``storage_options``
-        delivery used historically; eliminating that residual env mutation and
-        making it worker-safe is tracked as follow-up work alongside credential
-        refresh.
-        """
-        import pyarrow.fs as pafs
-
+    def _creds_to_env(self, creds: dict) -> Dict[str, str]:
+        """Translate vended credentials into environment variables."""
         if "aws_temp_credentials" in creds:
-            if not self._region:
-                raise ValueError(
-                    "The 'region' parameter is required for AWS S3 access. "
-                    "Please specify the AWS region (e.g., region='us-west-2')."
-                )
             aws = creds["aws_temp_credentials"]
-            filesystem = pafs.S3FileSystem(
-                access_key=aws["access_key_id"],
-                secret_key=aws["secret_access_key"],
-                session_token=aws["session_token"],
-                region=self._region,
-            )
-            return filesystem, None
+            env = {
+                "AWS_ACCESS_KEY_ID": aws["access_key_id"],
+                "AWS_SECRET_ACCESS_KEY": aws["secret_access_key"],
+                "AWS_SESSION_TOKEN": aws["session_token"],
+            }
+            if self._region:
+                env["AWS_REGION"] = self._region
+                env["AWS_DEFAULT_REGION"] = self._region
+            return env
 
         if "azuresasuri" in creds or "azure_user_delegation_sas" in creds:
-            storage_options = self._parse_azure_creds(creds)
-            if reader is ReaderFormat.PARQUET:
-                # read_parquet has no storage_options; pyarrow's default Azure
-                # filesystem reads these from the process environment.
-                for k, v in storage_options.items():
-                    os.environ[k] = v
-                logger.warning(
-                    "UnityCatalog: Azure credentials for read_parquet are "
-                    "delivered via process environment variables, which is "
-                    "driver-local. Worker propagation is a known limitation."
-                )
-            return None, storage_options
+            return self._parse_azure_creds(creds)
 
         if "gcp_service_account" in creds:
-            self._write_gcp_creds(creds["gcp_service_account"])
-            logger.warning(
-                "UnityCatalog: GCP credentials are delivered via the "
-                "GOOGLE_APPLICATION_CREDENTIALS environment variable, which is "
-                "driver-local. Worker propagation is a known limitation."
-            )
-            return None, None
+            return {
+                "GOOGLE_APPLICATION_CREDENTIALS": self._write_gcp_creds(
+                    creds["gcp_service_account"]
+                )
+            }
 
         raise ValueError(
             "No known credential type found in Databricks UC response. "
@@ -263,7 +253,41 @@ class UnityCatalog(Catalog):
         )
 
     @staticmethod
-    def _parse_azure_creds(creds: dict) -> Dict[str, Any]:
+    def _apply_env(env_vars: Dict[str, str]) -> None:
+        """Set vended credentials in the environment and propagate to workers.
+
+        Credentials are set on the driver's ``os.environ`` and, if Ray has not
+        been initialized yet, into the cluster ``runtime_env`` so read tasks on
+        workers inherit them. If Ray is already running we cannot retroactively
+        amend its ``runtime_env``; driver-side env still covers driver reads
+        (e.g. the Delta log) and single-node execution.
+
+        TODO: remove once credential vending happens inside the read tasks.
+        """
+        import ray
+
+        for k, v in env_vars.items():
+            os.environ[k] = v
+        if not ray.is_initialized():
+            ray.init(runtime_env={"env_vars": dict(env_vars)})
+
+    def _build_s3_filesystem(self, aws: dict) -> "pyarrow.fs.FileSystem":
+        if not self._region:
+            raise ValueError(
+                "The 'region' parameter is required for AWS S3 access. "
+                "Please specify the AWS region (e.g., region='us-west-2')."
+            )
+        import pyarrow.fs as pafs
+
+        return pafs.S3FileSystem(
+            access_key=aws["access_key_id"],
+            secret_key=aws["secret_access_key"],
+            session_token=aws["session_token"],
+            region=self._region,
+        )
+
+    @staticmethod
+    def _parse_azure_creds(creds: dict) -> Dict[str, str]:
         if "azuresasuri" in creds:
             return {"AZURE_STORAGE_SAS_TOKEN": creds["azuresasuri"]}
 
@@ -284,23 +308,25 @@ class UnityCatalog(Catalog):
                 "azure_user_delegation_sas. "
                 f"Available keys: {', '.join(azure.keys())}"
             )
-        storage_options: Dict[str, Any] = {"AZURE_STORAGE_SAS_TOKEN": sas_token}
+        env: Dict[str, str] = {"AZURE_STORAGE_SAS_TOKEN": sas_token}
         storage_account = azure.get("storage_account")
         if storage_account:
-            storage_options["AZURE_STORAGE_ACCOUNT"] = storage_account
-            storage_options["AZURE_STORAGE_ACCOUNT_NAME"] = storage_account
-        return storage_options
+            env["AZURE_STORAGE_ACCOUNT"] = storage_account
+            env["AZURE_STORAGE_ACCOUNT_NAME"] = storage_account
+        return env
 
     @staticmethod
-    def _write_gcp_creds(gcp_json: str) -> None:
-        # The file is intentionally not deleted. The Ray driver may be
-        # long-lived there may still be references to the old file via
-        # GOOGLE_APPLICATION_CREDENTIALS, so removing it could break in-flight
-        # reads. The OS reclaims the temp directory in due course and file
-        # size is expected to be trivial.
+    def _write_gcp_creds(gcp_json: str) -> str:
+        """Write the GCP service-account JSON to a temp file; return its path.
+
+        The file is intentionally not deleted. The Ray driver may be long-lived
+        and workers may still reference it via GOOGLE_APPLICATION_CREDENTIALS,
+        so removing it could break in-flight reads. The OS reclaims the temp
+        directory in due course and the file is trivially small.
+        """
         temp_file = tempfile.NamedTemporaryFile(
             mode="w", prefix="gcp_sa_", suffix=".json", delete=False
         )
         temp_file.write(gcp_json)
         temp_file.close()
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
+        return temp_file.name
