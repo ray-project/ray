@@ -883,9 +883,11 @@ class gRPCProxy(GenericProxy):
             set_rpc_span_attributes(
                 system=proxy_request.request_type,
                 method=proxy_request.method,
-                status_code=status.code.name
-                if isinstance(status.code, grpc.StatusCode)
-                else grpc.StatusCode.UNKNOWN.name,
+                status_code=(
+                    status.code.name
+                    if isinstance(status.code, grpc.StatusCode)
+                    else grpc.StatusCode.UNKNOWN.name
+                ),
             )
         self._finalize_proxy_tracing(status=status, exc=exc)
 
