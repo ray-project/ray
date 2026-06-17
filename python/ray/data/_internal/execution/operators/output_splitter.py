@@ -124,13 +124,13 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(self, options: ExecutionOptions, block_ref_counter=None) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
             self._max_buffer_size = 0
 
-        super().start(options)
+        super().start(options, block_ref_counter)
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.

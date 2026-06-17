@@ -673,8 +673,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._reduce_bar = None
         self._reduce_metrics = OpRuntimeMetrics(self)
 
-    def start(self, options: ExecutionOptions) -> None:
-        super().start(options)
+    def start(self, options: ExecutionOptions, block_ref_counter=None) -> None:
+        super().start(options, block_ref_counter)
 
     @property
     def shuffle_name(self) -> str:
@@ -1196,6 +1196,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
                 operator_name=self.name,
+                block_ref_counter=self._block_ref_counter,
+                producer_id=self.id,
             )
             self._finalizing_tasks[partition_id] = data_task
 
