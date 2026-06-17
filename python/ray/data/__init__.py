@@ -83,6 +83,12 @@ from ray.data.read_api import (  # noqa: F401
     read_videos,
     read_webdataset,
 )
+from ray.data.catalog import (
+    Catalog,
+    ReaderFormat,
+    ResolvedSource,
+    UnityCatalog,
+)
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
@@ -192,6 +198,10 @@ __all__ = [
     "read_unity_catalog",
     "read_videos",
     "read_webdataset",
+    "Catalog",
+    "ReaderFormat",
+    "ResolvedSource",
+    "UnityCatalog",
     "KafkaAuthConfig",
     "Preprocessor",
 ]
