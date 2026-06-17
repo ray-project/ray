@@ -154,16 +154,21 @@ def test_resolve_azure_sets_env(isolated_env):
     assert isolated_env["AZURE_STORAGE_SAS_TOKEN"] == "sv=2021&sig=abc"
 
 
-def test_gcp_creds_to_env_writes_file(monkeypatch):
+def test_gcp_creds_to_env_writes_file_and_registers_cleanup():
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")
 
-    env = catalog._creds_to_env({"gcp_service_account": '{"sa": 1}'})
+    with mock.patch("ray.data.catalog.atexit.register") as register:
+        env = catalog._creds_to_env({"gcp_service_account": '{"sa": 1}'})
 
     path = env["GOOGLE_APPLICATION_CREDENTIALS"]
     assert os.path.exists(path)
     with open(path) as f:
         assert f.read() == '{"sa": 1}'
-    os.unlink(path)  # test housekeeping; production intentionally leaves it
+    # An atexit handler is registered to remove the file on exit.
+    register.assert_called_once_with(UnityCatalog._cleanup_gcp_temp_file, path)
+    # The cleanup handler removes the file.
+    UnityCatalog._cleanup_gcp_temp_file(path)
+    assert not os.path.exists(path)
 
 
 # ---------------------------------------------------------------------------

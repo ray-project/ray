@@ -9,6 +9,7 @@ authentication layer owned the readers. Now the reader is primary and a catalog
 is passed in only when authentication is required.
 """
 
+import atexit
 import logging
 import os
 import tempfile
@@ -319,14 +320,21 @@ class UnityCatalog(Catalog):
     def _write_gcp_creds(gcp_json: str) -> str:
         """Write the GCP service-account JSON to a temp file; return its path.
 
-        The file is intentionally not deleted. The Ray driver may be long-lived
-        and workers may still reference it via GOOGLE_APPLICATION_CREDENTIALS,
-        so removing it could break in-flight reads. The OS reclaims the temp
-        directory in due course and the file is trivially small.
+        Registers an ``atexit`` handler to remove the file on interpreter exit.
         """
         temp_file = tempfile.NamedTemporaryFile(
             mode="w", prefix="gcp_sa_", suffix=".json", delete=False
         )
         temp_file.write(gcp_json)
         temp_file.close()
+        atexit.register(UnityCatalog._cleanup_gcp_temp_file, temp_file.name)
         return temp_file.name
+
+    @staticmethod
+    def _cleanup_gcp_temp_file(temp_file_path: str) -> None:
+        """Clean up temporary GCP service account file."""
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                pass
