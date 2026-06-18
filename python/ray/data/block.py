@@ -191,6 +191,16 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
+class CustomOpStats:
+    """Base for operator-specific, worker-reported per-task stats.
+
+    A generic extension slot carried by :class:`TaskExecWorkerStats`. Operators
+    that want to report extra per-task stats to the driver.
+    """
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 
@@ -200,6 +210,10 @@ class TaskExecWorkerStats:
     # Peak USS (Unique Set Size) memory in bytes observed during the task,
     # or None if USS measurement is unavailable (e.g., non-Linux platforms).
     max_uss_bytes: Optional[int] = None
+
+    # Operator-specific worker-reported stats (a CustomOpStats subclass), or None
+    # for operators that do not report any extra stats
+    custom_op_stats: Optional[CustomOpStats] = None
 
 
 @DeveloperAPI

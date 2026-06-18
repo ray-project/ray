@@ -50,6 +50,11 @@ class TaskContext:
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
 
+    # Custom operator stats, set by a producing
+    # map transform on the worker. None if operator does not report
+    # any custom stats.
+    custom_op_stats: Optional[Any] = None
+
     @classmethod
     def get_current(cls) -> Optional["TaskContext"]:
         """Get the TaskContext for the current thread.

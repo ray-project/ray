@@ -865,6 +865,9 @@ def _map_task(
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s,
                             max_uss_bytes=profiler.estimate_max_uss(),
+                            # Set by a producing transform via the TaskContext;
+                            # or set to None if operator does not report any custom stats.
+                            custom_op_stats=ctx.custom_op_stats,
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,
