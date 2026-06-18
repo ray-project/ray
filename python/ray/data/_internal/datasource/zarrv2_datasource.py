@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import numbers
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import product
@@ -199,6 +200,11 @@ def _create_aligned_read_fn(
     return read_fn
 
 
+def _is_positive_int(x) -> bool:
+    """True for a positive integer, including NumPy integers; False for bool."""
+    return not isinstance(x, bool) and isinstance(x, numbers.Integral) and x > 0
+
+
 def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]]:
     """Normalize chunk_shapes keys to store paths and validate their values."""
     from zarr.util import normalize_storage_path
@@ -208,13 +214,13 @@ def _validate_chunk_shapes_dict(chunk_shapes: dict) -> dict[str, tuple[int, ...]
         if (
             not isinstance(v, (tuple, list))
             or not v
-            or any(isinstance(x, bool) or not isinstance(x, int) or x <= 0 for x in v)
+            or not all(_is_positive_int(x) for x in v)
         ):
             raise ValueError(
                 f"chunk_shapes[{k!r}] must be a non-empty sequence of positive "
                 f"integers (list or tuple), got {v!r}"
             )
-        normalized[normalize_storage_path(k)] = tuple(v)
+        normalized[normalize_storage_path(k)] = tuple(int(x) for x in v)
     return normalized
 
 
@@ -319,16 +325,15 @@ class ZarrV2Datasource(Datasource):
             if isinstance(chunk_shapes, dict):
                 self.chunk_shapes = _validate_chunk_shapes_dict(chunk_shapes)
             else:
-                if not chunk_shapes or any(
-                    isinstance(x, bool) or not isinstance(x, int) or x <= 0
-                    for x in chunk_shapes
+                if not chunk_shapes or not all(
+                    _is_positive_int(x) for x in chunk_shapes
                 ):
                     raise ValueError(
                         "chunk_shapes must be a non-empty sequence of positive integers "
                         f"(list or tuple), got {chunk_shapes!r}"
                     )
 
-                self.chunk_shapes = tuple(chunk_shapes)
+                self.chunk_shapes = tuple(int(x) for x in chunk_shapes)
 
         # Open the store with zarr (consolidated metadata when available). zarr
         # reads and validates `.zarray`/`.zmetadata` here, so the datasource does
