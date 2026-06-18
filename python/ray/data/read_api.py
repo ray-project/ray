@@ -964,6 +964,30 @@ def read_zarr(
         row-aligned (share ``shape[0]``), use ``align_axis_0=True`` so each
         array is its own column -- which is batch-safe.
 
+    Examples:
+        Read every array at its native chunking (long-form, one row per chunk):
+
+        >>> import ray
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ... )
+
+        Aligned read -- paired ``(images, labels)`` per row; ``align_axis_0``
+        requires all selected arrays to share ``shape[0]``:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     align_axis_0=True,
+        ...     chunk_shapes=[50],
+        ... )
+
+        Per-array chunk overrides -- re-tile only the selected arrays:
+
+        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
+        ...     chunk_shapes={"images": [50], "labels": [50]},
+        ... )
+
     Args:
         path: Path to the Zarr v2 store.
         filesystem: The filesystem
