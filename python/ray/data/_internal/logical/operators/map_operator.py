@@ -59,7 +59,6 @@ class AbstractMap(AbstractOneToOne):
         self,
         name: Optional[str] = None,
         input_dependencies: Optional[List[LogicalOperator]] = None,
-        num_outputs: Optional[int] = None,
         *,
         can_modify_num_rows: bool,
         min_rows_per_bundled_input: Optional[int] = None,
@@ -76,7 +75,6 @@ class AbstractMap(AbstractOneToOne):
             input_dependencies: The operators preceding this operator in the plan
                 DAG. The outputs of these operators will be the inputs to this
                 operator.
-            num_outputs: Number of outputs for this operator.
             can_modify_num_rows: Whether the operator can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             min_rows_per_bundled_input: Minimum number of rows a single bundle of
@@ -96,7 +94,6 @@ class AbstractMap(AbstractOneToOne):
         super().__init__(
             input_dependencies=input_dependencies,
             can_modify_num_rows=can_modify_num_rows,
-            num_outputs=num_outputs,
             name=name,
         )
         object.__setattr__(

@@ -31,7 +31,6 @@ class AbstractOneToOne(LogicalOperator):
         self,
         input_dependencies: Optional[List[LogicalOperator]],
         can_modify_num_rows: bool,
-        num_outputs: Optional[int] = None,
         *,
         name: Optional[str] = None,
     ):
@@ -42,7 +41,6 @@ class AbstractOneToOne(LogicalOperator):
                 The outputs of these operators will be the inputs to this operator.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
-            num_outputs: If known, the number of blocks produced by this operator.
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
         """
@@ -50,11 +48,6 @@ class AbstractOneToOne(LogicalOperator):
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
-        object.__setattr__(self, "_num_outputs", num_outputs)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
     def infer_metadata(self) -> BlockMetadata:
         """Best-effort output metadata derived from the single input dependency.
