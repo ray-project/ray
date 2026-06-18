@@ -46,63 +46,54 @@ def iter_threaded(
     output_buffer_size: int = 1,
 ) -> Generator[U, None, None]:
     """Apply ``fn`` to ``base_iterator`` across ``num_workers`` background
-    threads, yielding results through a credit-gated bounded queue.
+    threads, yielding results through a bounded queue.
 
     Workers share ``base_iterator`` under a lock (so it may be a stateful,
     non-thread-safe generator) and run ``fn`` concurrently. With
     ``num_workers > 1`` the output order is not preserved and must be restored
-    downstream if needed.
+    downstream by the consumer.
 
-    **In-flight bound**: total in-flight items (queue + workers mid-processing)
-    is capped at ``output_buffer_size`` via a credit semaphore. Each worker
-    must acquire one credit *before* pulling the next item from ``fn``; the
-    credit is released by the consumer when it pulls the result. This
-    prevents the "next finalize runs while queue is full" pathology — workers
-    don't incur ``fn``'s cost (which may include H2D, allocation, etc.) only
-    to block while holding the result.
+    Invariant: the number of output-queue items + items in-flight in workers is
+    bounded by ``output_buffer_size``.
+    Workers reserve an output buffer slot before pulling from ``fn``, ensuring
+    they don't run ``fn`` (and hold the result) while waiting for queue space.
 
     When the consumer stops early (``break``, ``.close()``, or GC), workers
-    are signaled via a stop event so they don't leak.
+    are signaled via a stop event so they don't leak. Note: a hanging
+    ``fn`` cannot be interrupted, so ``fn`` must terminate or raise within
+    bounded time per element. For example, the user function should have
+    timeouts if doing blocking I/O.
 
     Args:
         base_iterator: Iterator consumed (under a lock) by the workers.
         fn: Transform applied by each worker to its view of ``base_iterator``.
         num_workers: Number of background worker threads.
-        output_buffer_size: Max number of items in flight (queue +
-            mid-processing in workers).
-
-    Yields:
-        U: Items produced by ``fn``.
+        output_buffer_size: Max number of items held by the output-queue
+            + in-flight in the workers.
     """
     if num_workers < 1:
         raise ValueError("num_workers must be at least 1.")
 
     stopped = threading.Event()
-    # The internal queue is unbounded. Boundedness is enforced by the
-    # `credits` semaphore: each normal item in flight (whether in the queue
-    # or being processed by a worker) holds one credit. Control items
-    # (SENTINEL, exceptions) bypass the credit accounting since they aren't
-    # produced by `fn`.
     result_queue: queue.Queue = queue.Queue()
-    credits = threading.Semaphore(output_buffer_size)
+    slots = threading.Semaphore(output_buffer_size)
     iter_lock = threading.Lock()
 
-    def _locked_next():
-        # Pull the next item under a lock so workers can safely share a
-        # stateful iterator. Returns _SENTINEL once exhausted or once the
-        # consumer has stopped.
-        with iter_lock:
-            if stopped.is_set():
-                return _SENTINEL
-            try:
-                return next(base_iterator)
-            except StopIteration:
-                return _SENTINEL
+    def _locked_iter() -> Iterator[T]:
+        while True:
+            with iter_lock:
+                if stopped.is_set():
+                    return
+                try:
+                    item = next(base_iterator)
+                except StopIteration:
+                    return
+            yield item
 
-    def _acquire_credit() -> bool:
-        """Acquire one queue-slot credit. Returns False if stopped."""
+    def _acquire_slot() -> bool:
+        # Block until a slot is acquired or the consumer has stopped.
         while not stopped.is_set():
-            if credits.acquire(timeout=0.1):
+            if slots.acquire(timeout=0.1):
                 return True
         return False
 
@@ -111,40 +102,26 @@ def iter_threaded(
 
     def _worker():
         nonlocal remaining_workers
+        fn_iter = fn(_locked_iter())
         try:
-            fn_iter = iter(fn(iter(_locked_next, _SENTINEL)))
-            while True:
-                # Acquire a credit BEFORE running `fn` so that the queue has
-                # a reserved slot for the output. If the queue is full
-                # (i.e., output_buffer_size items in flight already), this
-                # blocks until the consumer drains one — and we don't pay
-                # `fn`'s cost in the meantime.
-                if not _acquire_credit():
-                    return
+            while _acquire_slot():
                 try:
                     item = next(fn_iter)
                 except StopIteration:
-                    credits.release()  # didn't use this credit
-                    break
-                except Exception:
-                    credits.release()  # didn't use this credit
-                    raise
-                if stopped.is_set():
-                    credits.release()
+                    slots.release()
                     return
-                # Never blocks: the queue is unbounded; the credit we hold
-                # is the resource that gets released downstream.
                 result_queue.put(item)
         except Exception as e:
+            # Handle errors in `fn` by propagating them to the consumer.
+            slots.release()
             if not stopped.is_set():
-                # Control item — bypasses the credit accounting.
                 result_queue.put(e)
         finally:
             with remaining_lock:
                 remaining_workers -= 1
                 is_last = remaining_workers == 0
+            # Signal the consumer that all thread workers have exhausted their input.
             if is_last and not stopped.is_set():
-                # Control item — bypasses the credit accounting.
                 result_queue.put(_SENTINEL)
 
     worker_threads = [
@@ -161,8 +138,8 @@ def iter_threaded(
                 break
             if isinstance(item, Exception):
                 raise item
-            # Release one credit so a worker can run `fn` for the next item.
-            credits.release()
+            # Release one slot at yield time so a worker can run `fn` for the next item.
+            slots.release()
             yield item
     finally:
         stopped.set()

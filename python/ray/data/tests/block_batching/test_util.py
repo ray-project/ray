@@ -553,14 +553,14 @@ class TestIterThreaded:
         assert output == []
 
     @pytest.mark.parametrize("num_workers,output_buffer_size", [(1, 1), (4, 4)])
-    def test_credit_gate_bounds_in_flight_items(
+    def test_in_flight_items_bounded_by_output_buffer_size(
         self, num_workers: int, output_buffer_size: int
     ):
-        """The credit-gated design caps total in-flight items (queue +
-        workers mid-processing) at ``output_buffer_size``. Verify by
-        instrumenting ``fn`` with a counter incremented on entry and
-        decremented after the queue takes ownership, then sampling it
-        while a slow consumer holds the queue near full."""
+        """Total in-flight items (queue + workers mid-processing) is
+        bounded by ``output_buffer_size``. Verify by instrumenting ``fn``
+        with a counter incremented on entry and decremented after the
+        queue takes ownership, then sampling it while a slow consumer
+        holds the queue near full."""
 
         in_flight = 0
         in_flight_lock = threading.Lock()
@@ -572,7 +572,7 @@ class TestIterThreaded:
                 with in_flight_lock:
                     in_flight += 1
                     max_observed = max(max_observed, in_flight)
-                # Hold the credit for a beat so the queue accumulates.
+                # Hold the slot for a beat so the queue accumulates.
                 time.sleep(0.01)
                 yield item
 
@@ -589,7 +589,6 @@ class TestIterThreaded:
             consumed.append(item)
 
         assert sorted(consumed) == list(range(100))
-        # The credit gate caps in-flight at output_buffer_size strictly.
         assert max_observed <= output_buffer_size, (
             f"Observed {max_observed} in-flight items, "
             f"expected ≤ {output_buffer_size}"
