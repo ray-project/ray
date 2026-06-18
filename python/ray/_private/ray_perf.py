@@ -3,10 +3,12 @@
 import asyncio
 import logging
 import multiprocessing
+import threading
 
 import numpy as np
 
 import ray
+import ray._private.worker
 from ray._private.ray_client_microbenchmark import main as client_microbenchmark_main
 from ray._private.ray_microbenchmark_helpers import timeit
 
@@ -154,6 +156,57 @@ def main(results=None):
 
     results += timeit(
         "single client get object containing 10k refs", get_containing_object_ref
+    )
+
+    # Object out-of-scope callbacks (used by Ray Data's BlockRefCounter for
+    # per-operator memory accounting). These exercise the
+    # ``CoreWorker.add_object_out_of_scope_callback`` path, which registers a
+    # Python callable that fires on a dedicated background thread once the
+    # object's last reference is dropped. We measure two things:
+    #   1. registration overhead, and
+    #   2. end-to-end throughput at scale from dropping the refs to every
+    #      callback firing on the background thread.
+    core_worker = ray._private.worker.global_worker.core_worker
+
+    def register_oos_callback():
+        ref = ray.put(0)
+        core_worker.add_object_out_of_scope_callback(ref, lambda _: None)
+        del ref
+
+    results += timeit(
+        "single client object out-of-scope callback registration",
+        register_oos_callback,
+    )
+
+    def oos_callback_fire_batch():
+        # Batch size is sized for a stable timeit signal (enough work per call to
+        # amortize fixed overhead, small enough that timeit runs it many times),
+        # not to model peak production concurrency.
+        n = 1000
+        remaining = [n]
+        lock = threading.Lock()
+        done = threading.Event()
+
+        def on_freed(_):
+            with lock:
+                remaining[0] -= 1
+                if remaining[0] == 0:
+                    done.set()
+
+        refs = [ray.put(0) for _ in range(n)]
+        for ref in refs:
+            core_worker.add_object_out_of_scope_callback(ref, on_freed)
+        # Drop the last references; every callback must then fire on the
+        # dedicated background thread.
+        del refs
+        if not done.wait(timeout=30):
+            raise TimeoutError(
+                f"Only {n - remaining[0]}/{n} out-of-scope callbacks fired "
+                "within 30s"
+            )
+
+    results += timeit(
+        "object out-of-scope callback fire 1k batch", oos_callback_fire_batch, 1000
     )
 
     def wait_multiple_refs():

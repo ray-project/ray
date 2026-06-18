@@ -1,6 +1,3 @@
-# These tests require a live Ray cluster because the callback path goes through
-# the C++ ReferenceCounter and the dedicated object_freed_callback_service_ thread.
-
 import threading
 import time
 
@@ -89,6 +86,36 @@ class TestAddObjectOutOfScopeCallback:
 
         ray.internal.free([ref])
         assert fired.wait(timeout=5), "Callback did not fire after ray.internal.free"
+
+    def test_many_callbacks_all_fire(self, ray_instance):
+        """At scale, every registered callback fires exactly once after its ref is
+        dropped. Guards the dedicated callback thread against dropped or
+        duplicated notifications under load."""
+        n = 2000
+        remaining = [n]
+        lock = threading.Lock()
+        all_fired = threading.Event()
+        fire_counts = {}
+
+        def on_freed(id_bytes):
+            with lock:
+                fire_counts[id_bytes] = fire_counts.get(id_bytes, 0) + 1
+                remaining[0] -= 1
+                if remaining[0] == 0:
+                    all_fired.set()
+
+        refs = [ray.put(i) for i in range(n)]
+        expected = {r.binary() for r in refs}
+        for ref in refs:
+            assert _core_worker().add_object_out_of_scope_callback(ref, on_freed)
+
+        del refs  # drop every last reference at once
+        assert all_fired.wait(
+            timeout=30
+        ), f"Only {n - remaining[0]}/{n} callbacks fired within 30s"
+        with lock:
+            assert set(fire_counts) == expected, "Unexpected or missing object IDs"
+            assert all(c == 1 for c in fire_counts.values()), "A callback fired twice"
 
     def test_callback_exception_does_not_crash(self, ray_instance):
         """A Python exception inside the callback must not propagate to C++."""
