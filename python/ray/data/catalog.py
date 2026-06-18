@@ -41,11 +41,7 @@ def _normalize_host(host: str) -> str:
 
 @PublicAPI(stability="alpha")
 class ReaderFormat(str, Enum):
-    """Which reader is asking the catalog to resolve a table.
-
-    ``str``-based so it stays ergonomic (``ReaderFormat.DELTA == "delta"``) and
-    serializes cleanly.
-    """
+    """Which reader is asking the catalog to resolve a table."""
 
     DELTA = "delta"
     PARQUET = "parquet"
@@ -139,10 +135,12 @@ class UnityCatalog(Catalog):
 
     # ---- Catalog interface -------------------------------------------------
     def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
+        assert isinstance(reader, ReaderFormat)
         if reader is ReaderFormat.ICEBERG:
             return self._resolve_iceberg(table)
         if reader in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
             return self._resolve_storage(table, reader)
+        # Reached only if a new ReaderFormat is added without handling here.
         raise ValueError(f"UnityCatalog does not support reader={reader!r}")
 
     # ---- storage-credential vending (delta / parquet) ----------------------

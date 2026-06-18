@@ -130,9 +130,10 @@ def test_resolve_iceberg(uc_catalog):
     assert ckw["header.X-Iceberg-Access-Delegation"] == "vended-credentials"
 
 
-def test_resolve_unsupported_reader(uc_catalog):
-    with pytest.raises(ValueError, match="does not support"):
-        uc_catalog.resolve("main.sales.txns", reader="bogus")
+def test_resolve_requires_readerformat(uc_catalog):
+    # reader must be a ReaderFormat enum, not its raw string value.
+    with pytest.raises(AssertionError, match="must be a ReaderFormat"):
+        uc_catalog.resolve("main.sales.txns", reader="delta")
 
 
 def test_resolve_azure_sets_env(isolated_env):
