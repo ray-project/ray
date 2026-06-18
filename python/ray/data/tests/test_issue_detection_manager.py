@@ -14,6 +14,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     MapOperator,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.issue_detection import issue_detector_manager as idm
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueType,
@@ -95,6 +96,42 @@ def test_report_issues():
         IssueType.HIGH_MEMORY
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
+
+    # These operators have no logical operators (built directly), so "Unknown".
+    expected_issues = {
+        (IssueType.HANGING, "Unknown"),
+        (IssueType.HIGH_MEMORY, "Unknown"),
+    }
+    assert detector.get_detected_issues() == expected_issues
+
+    # Reporting the same issues again must not grow the deduplicated set.
+    detector._report_issues(
+        [
+            Issue(
+                dataset_name="dataset",
+                operator_id=input_operator.id,
+                issue_type=IssueType.HANGING,
+                message="Hanging detected",
+            ),
+        ]
+    )
+    assert detector.get_detected_issues() == expected_issues
+
+
+def test_anonymized_operator_name_joins_fused_logical_ops(monkeypatch):
+    """A fused physical op maps to multiple logical ops; their anonymized names
+    are joined with "->", matching operator fusion's naming."""
+    monkeypatch.setattr(idm, "anonymize_op_name", lambda op: op)
+    operator = MagicMock()
+    operator._logical_operators = ["ReadParquet", "MapBatches", "Filter"]
+    assert idm._anonymized_operator_name(operator) == "ReadParquet->MapBatches->Filter"
+
+
+def test_anonymized_operator_name_without_logical_ops():
+    """An operator with no logical source collapses to "Unknown"."""
+    operator = MagicMock()
+    operator._logical_operators = []
+    assert idm._anonymized_operator_name(operator) == "Unknown"
 
 
 if __name__ == "__main__":
