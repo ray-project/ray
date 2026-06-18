@@ -946,131 +946,23 @@ def read_zarr(
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
-    Two output schemas, selected by ``align_axis_0``:
+    By default each row is one chunk of one array (long-form), with columns
+    ``array``, ``chunk_index``, ``chunk_slices``, and ``chunk``. With
+    ``align_axis_0=True``, each row is one axis-0 chunk with ``t_start``,
+    ``t_stop``, and one column per selected array (wide-form), for arrays that
+    share ``shape[0]``.
 
-    Default (long-form, ``align_axis_0=False``) — one row per chunk of
-    one array. Columns:
-
-    * ``array``: the source array's path (e.g., ``"data/camera0_rgb"``, or
-      ``""`` for a root-level array).
-    * ``chunk_index``: the N-D index of this chunk in its array's chunk grid.
-    * ``chunk_slices``: per-axis ``(start, stop)`` of this chunk in the
-      source array's coordinate space — useful for mapping a chunk back
-      to its global position without recomputing from the chunk shape.
-    * ``chunk``: the chunk's data at its natural shape
-      (possibly shorter at trailing boundaries — no padding is applied).
-
-    Arrays read in the same call need not share any dimension. Different
-    ranks, shapes, dtypes, and native chunk sizes coexist as separate rows.
+    For the output schemas, chunk re-tiling, aligned and sliding-window reads,
+    metadata discovery, custom codecs, and cloud-storage setup, see
+    :ref:`Working with Zarr <working_with_zarr>`.
 
     .. note::
 
-        The ``chunk`` column is a tensor, and tensors of different rank or
-        dtype can't be combined into one batch.
-        Consume long-form per array (filter on the ``array`` column first),
-        or, when the arrays are row-aligned (share ``shape[0]``), use
-        ``align_axis_0=True`` so each array is its own column -- which is
-        batch-safe.
-
-    Aligned (wide-form, ``align_axis_0=True``) — one row per axis-0
-    chunk, with one column per selected array. Columns:
-
-    * ``t_start``, ``t_stop``: global axis-0 range of this row.
-    * ``<array_name>``: that array's ``[t_start:t_stop, ...]`` slice as
-      one column per selected array.
-
-    All selected arrays must share ``shape[0]`` and must end up with the
-    same axis-0 chunk size after ``chunk_shapes`` resolution; if they
-    don't, ``read_zarr`` raises ``ValueError`` with a hint pointing at the
-    largest aligned subset. Use ``array_paths`` to pick which arrays to
-    read — ``align_axis_0`` itself does not filter.
-
-    Metadata discovery follows these rules:
-
-    * If the store contains ``.zmetadata``, the datasource reads it and treats
-      it as the canonical list of arrays. If ``array_paths`` is provided, the
-      discovered set is filtered down to those paths.
-    * Otherwise, if ``array_paths`` is provided, the datasource reads each
-      requested array's ``.zarray`` file directly. The store doesn't need a
-      ``.zmetadata`` in this case.
-    * Otherwise, if ``allow_full_metadata_scan=True``, the datasource
-      recursively scans the store for ``.zarray`` files. This can be slow or
-      expensive for large remote stores, so it's disabled by default.
-      Before setting ``allow_full_metadata_scan=True``, consider consolidating
-      metdata with ``zarr.consolidate_metadata``.
-    * Otherwise, the datasource raises a :class:`ValueError`.
-
-    Each array's ``.zarray`` metadata must include the keys ``"shape"``,
-    ``"chunks"``, and ``"dtype"``. Reads fail if any discovered array metadata
-    is missing one or more of these required fields.
-
-    ``filesystem`` accepts either a :class:`pyarrow.fs.FileSystem` (as the rest
-    of Ray Data does) or an :class:`fsspec.spec.AbstractFileSystem` (as Zarr's
-    own ecosystem does). pyarrow filesystems are wrapped internally into fsspec
-    via :class:`fsspec.implementations.arrow.ArrowFSWrapper` because Zarr's
-    storage layer requires fsspec. For non-local stores, passing an explicit
-    filesystem is recommended so authentication and backend settings are
-    explicit. If ``filesystem`` is omitted, the datasource infers it from
-    ``path``.
-
-    Examples:
-        Read every array in a store with each array's native chunking
-        (long-form, 4 ``images`` chunks + 1 ``labels`` chunk).
-
-        >>> import ray
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
-        ... )
-        >>> ds.count()  # doctest: +SKIP
-        5
-
-        Aligned read: paired ``(images, labels)`` per row. ``align_axis_0``
-        validates that all selected arrays share ``shape[0]``.
-
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
-        ...     align_axis_0=True,
-        ...     chunk_shapes=[50],
-        ... )
-        >>> ds.count()  # doctest: +SKIP
-        4
-
-        Per-array overrides: retile only selected arrays while leaving
-        others at their native chunking.
-
-        >>> ds = ray.data.read_zarr(  # doctest: +SKIP
-        ...     "s3://anonymous@ray-example-data/mnist-tiny.zarr",
-        ...     chunk_shapes={"images": [50], "labels": [50]},
-        ... )
-
-    Custom codecs:
-        Zarr stores compressed with non-stdlib codecs (e.g.,
-        ``imagecodecs_jpegxl`` for UMI camera arrays) require the codec
-        package to be imported and registered in every Ray worker, not
-        just the driver. Register them with a ``worker_process_setup_hook``
-        -- pass an importable callable or its dotted path (a string of code
-        is *not* accepted; a string is interpreted as an import path)::
-
-            ray.init(runtime_env={
-                "worker_process_setup_hook": "imagecodecs.numcodecs.register_codecs"
-            })
-
-        Driver-side ``.zmetadata`` parsing succeeds without this, but chunk
-        decode in workers will fail with a ``numcodecs`` registry lookup
-        error.
-
-    Anonymous cloud buckets:
-        S3 anonymous reads use the standard URL convention
-        ``s3://anonymous@<bucket>/<key>``. GCS does not have this idiom;
-        instead, pass ``filesystem=pyarrow.fs.GcsFileSystem(anonymous=True)``
-        explicitly.
-
-    Array attributes (``.zattrs``):
-        ``read_zarr`` does not surface each array's ``.zattrs`` (the
-        user-attribute store from the Zarr v2 spec) in the row schema —
-        attrs are invariant per array, so duplicating them on every row
-        would just bloat the output. Read them once (for example with the
-        ``zarr`` python package) if you require them in your job.
+        In long-form the ``chunk`` column is a tensor, and tensors of different
+        rank or dtype can't be combined into one batch. Consume long-form per
+        array (filter on the ``array`` column first), or, when arrays are
+        row-aligned (share ``shape[0]``), use ``align_axis_0=True`` so each
+        array is its own column -- which is batch-safe.
 
     Args:
         path: Path to the Zarr v2 store.
@@ -1099,13 +991,6 @@ def read_zarr(
               for cases where only some arrays should be re-tiled or
               different arrays should use different leading-axis chunks.
               Arrays omitted from the dict keep their native chunks.
-
-            ``chunk_shapes=[16]`` re-tiles a 4-D array with native chunks
-            ``(1, 224, 224, 3)`` into ``(16, 224, 224, 3)`` and a 1-D
-            array with native chunks ``(50,)`` into ``(16,)``.
-            ``chunk_shapes={"images": [16], "labels": [64]}`` applies
-            different axis-0 overrides to different arrays in the same
-            read.
 
             A shared list/tuple override may not be longer than the
             smallest selected array's rank. Each per-array dict override
