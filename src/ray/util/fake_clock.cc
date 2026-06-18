@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/clock.h"
-
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -22,6 +20,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 

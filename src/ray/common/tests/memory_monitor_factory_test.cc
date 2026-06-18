@@ -42,10 +42,11 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create(runner_,
-                                   [](std::string) {},
-                                   /*resource_isolation_enabled=*/false,
-                                   cgroup_manager);
+      MemoryMonitorFactory::Create(
+          runner_,
+          [](std::string) {},
+          /*resource_isolation_enabled=*/false,
+          cgroup_manager);
 
   ASSERT_EQ(monitors.size(), 1u) << "Expected exactly one monitor";
   EXPECT_NE(dynamic_cast<ThresholdMemoryMonitor *>(monitors[0].get()), nullptr)
@@ -57,10 +58,11 @@ TEST_F(MemoryMonitorFactoryTest,
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create(runner_,
-                                   [](std::string) {},
-                                   /*resource_isolation_enabled=*/true,
-                                   cgroup_manager);
+      MemoryMonitorFactory::Create(
+          runner_,
+          [](std::string) {},
+          /*resource_isolation_enabled=*/true,
+          cgroup_manager);
 
   ASSERT_EQ(monitors.size(), 2u) << "Expected exactly two monitors";
   EXPECT_NE(dynamic_cast<EventMemoryMonitor *>(monitors[0].get()), nullptr)
