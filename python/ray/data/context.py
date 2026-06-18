@@ -103,6 +103,10 @@ DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 # transfer is a bottleneck.
 DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
 
+# Default strategy for the per-actor placement groups created by map operators
+# when `placement_group_bundles` is specified (see `Dataset.map_batches`).
+DEFAULT_PLACEMENT_GROUP_STRATEGY = "PACK"
+
 DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 DEFAULT_USE_POLARS = False

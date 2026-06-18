@@ -367,6 +367,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -407,6 +409,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            placement_group_bundles: If specified, the bundles of the placement
+                group created for each map worker actor. Only valid with
+                ``ActorPoolStrategy``.
+            placement_group_strategy: The strategy of the placement group
+                created for each map worker actor. Only valid together with
+                ``placement_group_bundles``.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -428,6 +436,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_transformer, per_block_limit
             )
         if isinstance(compute_strategy, TaskPoolStrategy):
+            if (
+                placement_group_bundles is not None
+                or placement_group_strategy is not None
+            ):
+                raise ValueError(
+                    "`placement_group_bundles` and `placement_group_strategy` "
+                    "are only supported with `ActorPoolStrategy`."
+                )
+
             from ray.data._internal.execution.operators import (
                 get_task_pool_map_operator_cls,
             )
@@ -477,6 +494,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                placement_group_bundles=placement_group_bundles,
+                placement_group_strategy=placement_group_strategy,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")

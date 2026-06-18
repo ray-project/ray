@@ -66,6 +66,8 @@ from ray.data.tests.util import (
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @ray.remote
@@ -110,6 +112,35 @@ def _schedule_bundles(
     return results
 
 
+def _make_actor_pool(
+    create_actor_fn,
+    *,
+    min_size=1,
+    max_size=4,
+    initial_size=1,
+    max_tasks_in_flight=4,
+    max_actor_concurrency=1,
+    map_worker_cls_name="MapWorker",
+    placement_group_bundles=None,
+    placement_group_strategy=None,
+) -> _ActorPool:
+    config = AutoscalingActorConfig(
+        min_size=min_size,
+        max_size=max_size,
+        initial_size=initial_size,
+        max_tasks_in_flight_per_actor=max_tasks_in_flight,
+        max_actor_concurrency=max_actor_concurrency,
+        per_actor_resource_usage=ExecutionResources(cpu=1),
+    )
+    return _ActorPool(
+        create_actor_fn=create_actor_fn,
+        config=config,
+        map_worker_cls_name=map_worker_cls_name,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
+    )
+
+
 class TestActorPool(unittest.TestCase):
     def setup_class(self):
         self._last_created_actor_and_ready_ref: Optional[
@@ -144,6 +175,7 @@ class TestActorPool(unittest.TestCase):
         self,
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
+        placement_group: Optional[PlacementGroup] = None,
     ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
@@ -158,20 +190,14 @@ class TestActorPool(unittest.TestCase):
         max_tasks_in_flight=4,
         map_worker_cls_name="MapWorker",
     ):
-        config = AutoscalingActorConfig(
+        return _make_actor_pool(
+            self._create_actor_fn,
             min_size=min_size,
             max_size=max_size,
             initial_size=initial_size,
-            max_tasks_in_flight_per_actor=max_tasks_in_flight,
-            max_actor_concurrency=1,
-            per_actor_resource_usage=ExecutionResources(cpu=1),
-        )
-        pool = _ActorPool(
-            create_actor_fn=self._create_actor_fn,
+            max_tasks_in_flight=max_tasks_in_flight,
             map_worker_cls_name=map_worker_cls_name,
-            config=config,
         )
-        return pool
 
     def _add_pending_actor(
         self, pool: _ActorPool, node_id="node1"
@@ -914,6 +940,7 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
     def create_actor_fn(
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
+        placement_group: Optional[PlacementGroup] = None,
     ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote("node1")
         return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
@@ -1702,6 +1729,398 @@ def test_merge_ray_remote_args_op_wins_on_collision(restore_data_context):
     )
     merged = op._merge_ray_remote_args()
     assert merged["label_selector"] == {"subcluster": "val", "node": "X"}
+
+
+def get_pg_states() -> Dict[str, str]:
+    return {
+        pg_id: info["state"] for pg_id, info in ray.util.placement_group_table().items()
+    }
+
+
+def _create_actor_in_pg_fn(
+    labels: Dict[str, Any],
+    logical_actor_id: str,
+    placement_group: Optional[PlacementGroup] = None,
+) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
+    assert placement_group is not None
+    actor = PoolWorker.options(
+        _labels=labels,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group,
+            placement_group_bundle_index=0,
+            placement_group_capture_child_tasks=True,
+        ),
+    ).remote("node1")
+    return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
+
+
+class TestPlacementGroup:
+    """Per-actor placement groups: Ray Data owns the placement group lifecycle,
+    attributes the bundle resources to each actor, and validates the config."""
+
+    def test_resource_accounting(self, restore_data_context):
+        """With per-actor placement groups, the operator attributes the sum of
+        all PG bundles to each actor."""
+        data_context = ray.data.DataContext.get_current()
+        op = MapOperator.create(
+            map_transformer=MagicMock(),
+            input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+            data_context=data_context,
+            compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
+            ray_remote_args={"num_cpus": 1, "num_gpus": 0},
+            placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+        )
+        op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=0)
+
+        # Per-actor usage is the sum of all bundles (2 CPU, 2 GPU)
+        bundle_sum = ExecutionResources(cpu=2, gpu=2)
+        assert op._placement_group_resource_usage() == bundle_sum
+        assert op._actor_pool.per_actor_resource_usage() == bundle_sum
+        assert op.min_scheduling_resources() == bundle_sum
+        assert op.per_task_resource_allocation() == bundle_sum
+
+        # min/max requirements scale the bundle sum by the pool's min/max size.
+        min_bound, max_bound = op.min_max_resource_requirements()
+        assert min_bound == ExecutionResources(cpu=2, gpu=2, object_store_memory=0)
+        assert max_bound == ExecutionResources(
+            cpu=4, gpu=4, object_store_memory=float("inf")
+        )
+
+    def test_pool_owns_lifecycle(self, shutdown_only):
+        """The pool creates one placement group per actor and removes it when
+        the actor is released, both on downscaling and on shutdown."""
+        num_actors = 2
+        ray.shutdown()
+        ray.init(num_cpus=num_actors)
+
+        pool = _make_actor_pool(
+            _create_actor_in_pg_fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        pool.scale(ActorPoolScalingRequest(delta=num_actors, reason="test"))
+        for ready_ref in pool.get_pending_actor_refs():
+            ray.get(ready_ref)
+            pool.pending_to_running(ready_ref)
+        assert pool.num_running_actors() == num_actors
+
+        pg_states = get_pg_states()
+        assert len(pg_states) == num_actors
+        assert all(state == "CREATED" for state in pg_states.values())
+
+        # Downscaling releases an idle actor along with its placement group.
+        assert (
+            pool.scale(
+                ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
+            )
+            == -1
+        )
+        wait_for_condition(
+            lambda: sorted(get_pg_states().values()) == ["CREATED", "REMOVED"]
+        )
+
+        # Shutdown releases the remaining actor and its placement group.
+        pool.shutdown()
+        wait_for_condition(
+            lambda: sorted(get_pg_states().values()) == ["REMOVED", "REMOVED"]
+        )
+
+    def test_pending_actor_removed(self, shutdown_only):
+        """Releasing an actor that's still pending removes its placement group."""
+        ray.shutdown()
+        # A single actor occupying a single `{"CPU": 1}` bundle.
+        ray.init(num_cpus=1)
+
+        pool = _make_actor_pool(
+            _create_actor_in_pg_fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+        assert pool.num_pending_actors() == 1
+        assert len(get_pg_states()) == 1
+
+        assert (
+            pool.scale(
+                ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
+            )
+            == -1
+        )
+        assert pool.num_pending_actors() == 0
+        wait_for_condition(lambda: list(get_pg_states().values()) == ["REMOVED"])
+
+    def test_restart_keeps_placement_group(self, shutdown_only):
+        """A transient actor restart must NOT remove its placement group; only
+        release does."""
+        ray.shutdown()
+        ray.init(num_cpus=1)
+
+        pool = _make_actor_pool(
+            _create_actor_in_pg_fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+        ready_ref = pool.get_pending_actor_refs()[0]
+        ray.get(ready_ref)
+        actor = pool.pending_to_running(ready_ref)
+        [pg_id] = list(get_pg_states())
+
+        # Simulate a transient restart of the running actor.
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
+        ):
+            pool.refresh_actor_state()
+        assert pool.num_restarting_actors() == 1
+
+        # The placement group is retained across the restart (not removed).
+        assert get_pg_states()[pg_id] == "CREATED"
+
+    def test_idle_downscale_skips_restarting_actor(self, shutdown_only):
+        """Idle downscale must skip a restarting actor: it has 0 in-flight tasks
+        but Ray is recovering it, and releasing it would remove its PG and kill
+        it mid-restart."""
+        ray.shutdown()
+        ray.init(num_cpus=1)
+
+        pool = _make_actor_pool(
+            _create_actor_in_pg_fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+        ready_ref = pool.get_pending_actor_refs()[0]
+        ray.get(ready_ref)
+        actor = pool.pending_to_running(ready_ref)
+        [pg_id] = list(get_pg_states())
+
+        # Mark the idle actor as restarting
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
+        ):
+            pool.refresh_actor_state()
+            assert pool.num_restarting_actors() == 1
+            # Nothing is released: the only idle actor is restarting, so it's skipped.
+            released = pool.scale(
+                ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
+            )
+            assert released == 0
+
+        assert pool.num_running_actors() == 1
+        assert get_pg_states()[pg_id] == "CREATED"
+
+    def test_removed_when_creation_fails(self, shutdown_only):
+        """If the actor factory raises, the PG created for it is removed, not
+        leaked, and the error propagates."""
+        ray.shutdown()
+        ray.init(num_cpus=1)
+
+        def failing_fn(labels, logical_actor_id, placement_group=None):
+            raise RuntimeError("actor creation boom")
+
+        pool = _make_actor_pool(
+            failing_fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        with pytest.raises(RuntimeError, match="actor creation boom"):
+            pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+
+        assert pool.num_pending_actors() == 0
+        wait_for_condition(
+            lambda: all(state == "REMOVED" for state in get_pg_states().values())
+        )
+
+    def test_removed_when_init_fails(self, shutdown_only):
+        """If actor init fails (ready future errors), `pending_to_running`
+        removes the PG instead of leaking it."""
+        ray.shutdown()
+        ray.init(num_cpus=1)
+
+        @ray.remote
+        class FailingWorker:
+            def get_location(self):
+                raise RuntimeError("actor init boom")
+
+        def fn(labels, logical_actor_id, placement_group=None):
+            actor = FailingWorker.options(
+                _labels=labels,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group,
+                    placement_group_bundle_index=0,
+                ),
+            ).remote()
+            return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
+
+        pool = _make_actor_pool(
+            fn,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
+        ready_ref = pool.get_pending_actor_refs()[0]
+        with pytest.raises(Exception):
+            pool.pending_to_running(ready_ref)
+
+        wait_for_condition(
+            lambda: all(state == "REMOVED" for state in get_pg_states().values())
+        )
+
+    def test_requires_actor_pool(self, ray_start_regular_shared):
+        # A function UDF resolves to a task pool, which can't carry a PG.
+        with pytest.raises(ValueError, match="only supported for actor-based"):
+            ray.data.range(10).map_batches_internal(
+                lambda batch: batch, placement_group_bundles=[{"CPU": 1}]
+            )
+
+    def test_strategy_requires_bundles(self, ray_start_regular_shared):
+        with pytest.raises(
+            ValueError, match="`placement_group_bundles` must also be provided"
+        ):
+            ray.data.range(10).map_batches_internal(
+                lambda batch: batch, placement_group_strategy="PACK"
+            )
+
+    def test_rejects_scheduling_strategy(self, ray_start_regular_shared):
+        class UDFClass:
+            def __call__(self, batch):
+                return batch
+
+        with pytest.raises(ValueError, match="Manually setting `scheduling_strategy`"):
+            ray.data.range(10).map_batches_internal(
+                UDFClass,
+                compute=ray.data.ActorPoolStrategy(size=1),
+                placement_group_bundles=[{"CPU": 1}],
+                scheduling_strategy="SPREAD",
+            )
+
+    def test_rejects_invalid_strategy(self, ray_start_regular_shared):
+        class UDFClass:
+            def __call__(self, batch):
+                return batch
+
+        with pytest.raises(ValueError, match="Invalid placement group strategy"):
+            ray.data.range(10).map_batches_internal(
+                UDFClass,
+                compute=ray.data.ActorPoolStrategy(size=1),
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy="INVALID",
+            )
+
+    def test_default_cpus_exceed_bundle(self, ray_start_regular_shared):
+        class UDFClass:
+            def __call__(self, batch):
+                return batch
+
+        # Map workers default to 1 CPU when no resources are specified.
+        with pytest.raises(ValueError, match="subset of the first bundle"):
+            ray.data.range(10).map_batches_internal(
+                UDFClass,
+                compute=ray.data.ActorPoolStrategy(size=1),
+                placement_group_bundles=[{"CPU": 0.5}],
+            )
+
+    def test_actor_exceeds_bundle(self, ray_start_regular_shared):
+        class UDFClass:
+            def __call__(self, batch):
+                return batch
+
+        with pytest.raises(ValueError, match="subset of the first bundle"):
+            ray.data.range(10).map_batches_internal(
+                UDFClass,
+                compute=ray.data.ActorPoolStrategy(size=1),
+                placement_group_bundles=[{"CPU": 1}],
+                num_gpus=1,
+                batch_size=2,
+            )
+
+    def test_config_survives_fusion(self, ray_start_regular_shared):
+        """Fusing an upstream task-based map into a downstream actor-based map
+        preserves the downstream op's placement group config."""
+        from ray.data._internal.logical.optimizers import get_execution_plan
+
+        class UDFClass:
+            def __call__(self, batch):
+                return batch
+
+        ds = (
+            ray.data.range(10)
+            .map_batches(lambda batch: batch)
+            .map_batches_internal(
+                UDFClass,
+                compute=ray.data.ActorPoolStrategy(size=1),
+                placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+                placement_group_strategy="SPREAD",
+            )
+        )
+        physical_plan, _ = get_execution_plan(ds._logical_plan)
+        op = physical_plan.dag
+
+        assert op._placement_group_bundles == [{"CPU": 1}, {"CPU": 1}]
+        assert op._placement_group_strategy == "SPREAD"
+        # The fused operator's resource accounting also reflects the bundle sum,
+        # so the config survives fusion down to budgeting/autoscaling.
+        assert op._actor_pool.per_actor_resource_usage() == ExecutionResources(cpu=2)
+
+    def test_removed_after_execution(self, shutdown_only):
+        """End-to-end: Ray Data spawns the map worker actor into its placement
+        group, captures the actor's child tasks into it, and removes the group
+        once execution finishes."""
+        num_actors = 1
+        ray.shutdown()
+        # One CPU per actor (its placement group's single bundle) plus one for
+        # the upstream read tasks, which run outside the placement groups.
+        ray.init(num_cpus=num_actors + 1)
+
+        class PlacementGroupProbe:
+            """Records the placement group of the map worker actor and of a child
+            task it spawns which should be captured into the same group."""
+
+            def __init__(self):
+                pg = ray.util.get_current_placement_group()
+                assert pg is not None, "Map worker should run inside its PG"
+                self._pg_id = pg.id.hex()
+
+                # `num_cpus=0` so the captured child fits in the same single
+                # bundle as the actor (keeps the test within `num_actors` CPUs).
+                @ray.remote(num_cpus=0)
+                def child_pg_id() -> Optional[str]:
+                    child_pg = ray.util.get_current_placement_group()
+                    return child_pg.id.hex() if child_pg is not None else None
+
+                self._child_pg_id = ray.get(child_pg_id.remote())
+
+            def __call__(self, batch):
+                batch["pg_id"] = [self._pg_id] * len(batch["id"])
+                batch["child_pg_id"] = [self._child_pg_id] * len(batch["id"])
+                return batch
+
+        ds = ray.data.range(8, override_num_blocks=4).map_batches_internal(
+            PlacementGroupProbe,
+            batch_size=2,
+            compute=ray.data.ActorPoolStrategy(size=num_actors),
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        )
+        rows = ds.take_all()
+        assert len(rows) == 8
+
+        # The map worker (and the child task it spawned) ran inside a placement
+        # group, one per actor.
+        pg_ids = {row["pg_id"] for row in rows}
+        assert len(pg_ids) == num_actors
+        assert all(row["child_pg_id"] == row["pg_id"] for row in rows)
+
+        # The placement group is removed once execution finishes.
+        assert pg_ids <= set(get_pg_states())
+        wait_for_condition(
+            lambda: all(state == "REMOVED" for state in get_pg_states().values())
+        )
 
 
 if __name__ == "__main__":

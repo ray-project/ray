@@ -104,6 +104,7 @@ from ray.data._internal.util import (
     explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
+    validate_actor_placement_group_config,
 )
 from ray.data.aggregate import (
     AggregateFn,
@@ -771,6 +772,112 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
+        return self.map_batches_internal(
+            fn,
+            batch_size=batch_size,
+            compute=compute,
+            batch_format=batch_format,
+            zero_copy_batch=zero_copy_batch,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            concurrency=concurrency,
+            udf_modifying_row_count=udf_modifying_row_count,
+            ray_remote_args_fn=ray_remote_args_fn,
+            **ray_remote_args,
+        )
+
+    @DeveloperAPI
+    def map_batches_internal(
+        self,
+        fn: UserDefinedFunction[DataBatch, DataBatch],
+        *,
+        batch_size: Union[int, None, Literal["auto"]] = None,
+        compute: Optional[ComputeStrategy] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = True,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = True,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """:meth:`~Dataset.map_batches` with additional low-level options, namely placement group
+        bundles and strategy.
+
+        Args:
+            fn: The function or generator to apply to a record batch, or a class type
+                that can be instantiated to create such a callable. Note ``fn`` must be
+                pickle-able.
+            batch_size: The desired number of rows in each batch. Use ``"auto"`` to
+                dynamically determine batch size based on the per-row size of the data.
+                Use ``None`` to pass entire blocks as batches (blocks may contain
+                different numbers of rows). When ``num_gpus`` is set, ``batch_size``
+                must be an explicit integer value, not ``"auto"`` or ``None``.
+            compute: The compute strategy to use for the map operation, either
+                ``ray.data.TaskPoolStrategy`` (default) to use Ray tasks, or
+                ``ray.data.ActorPoolStrategy`` to use an autoscaling actor pool.
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are ``pyarrow.Table``.
+                If ``None``, the input block format is used.
+            zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
+                batches. If ``True`` and no copy is required for the ``batch_format``
+                conversion, the batch is a zero-copy, read-only view on data in Ray's
+                object store. If ``False``, a copy of the *whole* batch is made,
+                allowing ``fn`` to modify the underlying data buffers in place.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify ``num_gpus=1`` to request 1 GPU for each parallel map
+                worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
+            concurrency: This argument is deprecated. Use ``compute`` argument.
+            udf_modifying_row_count: If your UDF produces the same number of output rows
+                as it receives, set this parameter to False. It allows Ray Data to
+                perform more optimizations like limit pushdown.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
+            placement_group_bundles: If specified, Ray Data creates one placement group
+                per map worker actor from these bundles and schedules the actor into
+                the first bundle. Child tasks and actors spawned by the worker are
+                captured into the same placement group. Only supported for actor-based
+                transforms (``compute=ray.data.ActorPoolStrategy(...)``). This option overrides
+                any ``scheduling_strategy`` returned by ``ray_remote_args_fn``.
+            placement_group_strategy: The placement strategy for the placement groups
+                created from ``placement_group_bundles``. Requires ``placement_group_bundles``.
+                Defaults to ``"PACK"``.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray for each map worker. See :func:`ray.remote` for details.
+
+        Returns:
+            A new :class:`Dataset` with the transformation applied to each batch.
+        """
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
@@ -800,6 +907,8 @@ class Dataset:
             concurrency=concurrency,
             udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
             **ray_remote_args,
         )
 
@@ -821,6 +930,8 @@ class Dataset:
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
         udf_modifying_row_count: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         **ray_remote_args,
     ):
         # NOTE: The `map_groups` implementation calls `map_batches` with
@@ -849,6 +960,13 @@ class Dataset:
         if memory is not None:
             ray_remote_args["memory"] = memory
 
+        validate_actor_placement_group_config(
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+
         batch_format = _apply_batch_format(batch_format)
 
         map_batches_op = MapBatches(
@@ -866,6 +984,8 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset._from_parent(self, logical_plan)
