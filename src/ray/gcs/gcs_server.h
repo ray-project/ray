@@ -152,8 +152,7 @@ class GcsServer {
   /// Initialize gcs health check manager.
   void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
 
-  /// Start the IOContextMonitor that probes the GCS io_contexts and drives
-  /// io_contexts_healthy_.
+  /// Start the IOContextMonitor that probes the GCS io_contexts and determines the gRPC health check status.
   void InitIOContextMonitor();
 
   /// Initialize gcs resource manager.
@@ -308,10 +307,10 @@ class GcsServer {
   std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
-  /// Monitors the GCS io_contexts on a dedicated thread; its LastHealthStatus()
-  /// drives the gRPC health check. Declared last so it is stopped/destroyed
-  /// before the io_contexts (owned by io_context_provider_) and metrics it
-  /// references.
+  /// Monitors the GCS io_contexts on a dedicated thread. The health_callback
+  /// passed into it is used to set the gRPC health check as SERVING/NOT_SERVING.
+  /// Declared last so it is stopped/destroyed before the io_contexts
+  /// (owned by io_context_provider_) and metrics it references.
   std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
 };
 

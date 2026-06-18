@@ -349,6 +349,16 @@ void GcsServer::Stop() {
     // Stop the io_context monitor before tearing down the io_contexts it probes.
     if (io_context_monitor_thread_) {
       io_context_monitor_thread_->Stop();
+      // The monitor is the only thing that drives the gRPC health serving
+      // status. With it stopped, the last reported status (typically SERVING)
+      // would stay cached and be returned to clients on the gRPC threads for
+      // the rest of teardown. Explicitly mark the server NOT_SERVING so health
+      // checks reflect that GCS is shutting down. This must come after the
+      // monitor is stopped so it cannot overwrite the status back to SERVING,
+      // and before the RPC server is shut down below (the health check service
+      // is only valid while the server is running).
+      rpc_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+          /*service_name=*/"", false);
     }
 
     // Flush any remaining events before stopping.
@@ -357,18 +367,13 @@ void GcsServer::Stop() {
     }
 
     io_context_provider_.StopAllDedicatedIOContexts();
-
     ray_syncer_.reset();
     observability_pubsub_handler_.reset();
     pubsub_handler_.reset();
-
-    // Shutdown the rpc server
     rpc_server_.Shutdown();
-
     kv_manager_.reset();
 
     is_stopped_ = true;
-
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
