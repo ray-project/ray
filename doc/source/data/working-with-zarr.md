@@ -4,7 +4,7 @@
 
 Ray Data reads [Zarr v2](https://zarr.readthedocs.io/) stores — chunked, compressed,
 N-dimensional arrays on local disk or cloud object storage — with
-{func}`ray.data.read_zarr` (zarr-python 2.x / Zarr v2 stores).
+{func}`ray.data.read_zarr` (`zarr-python` 2.x / Zarr v2 stores).
 
 This guide covers:
 
@@ -87,10 +87,10 @@ Discovery follows these rules:
 
 ## Controlling chunk size
 
-Zarr stores are often chunked finely (for example one image per chunk). 
+Zarr stores are often chunked finely (for example one image per chunk).
 You can use `chunk_shapes` to chunk the leading axes **at read
 time** to coarsen (or refine) the granularity at which reading happens.
-Note that this does not affect downstream batchsizes and is internal to the reading operation.
+Note that this doesn't affect downstream batch sizes and is internal to the reading operation.
 Finely chunked reading can hurt performance.
 
 - A **sequence** applies as a shared prefix across all selected arrays, overriding the
@@ -109,7 +109,7 @@ ds = ray.data.read_zarr(store_uri, chunk_shapes={"images": [16], "labels": [64]}
 ## Reading row-aligned arrays
 
 When arrays share an axis-0 (for example a timestep axis), `align_axis_0=True`
-co-iterates them as the [wide-form schema](#output-schemas) above — one row per axis-0
+co-iterates them as the [wide-form schema](#output-schemas) — one row per axis-0
 chunk, one column per array.
 
 For sliding-window pipelines, `overlap` extends each row's per-array data forward by `N`
@@ -128,7 +128,7 @@ ds = ray.data.read_zarr(
 
 ## Custom codecs
 
-Stores compressed with non-stdlib codecs (for example `imagecodecs` JPEG-XL) need the
+Stores compressed with non-stdlib codecs (for example `imagecodecs` `JPEG-XL`) need the
 codec package imported and registered **in every Ray worker**, not just the driver.
 Register it with a `worker_process_setup_hook` — pass an importable callable or its
 dotted path (a string of code isn't accepted; a string is interpreted as an import
