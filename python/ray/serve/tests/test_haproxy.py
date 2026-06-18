@@ -312,6 +312,9 @@ def test_drain_and_undrain_haproxy_manager(
     """
     # head -> 8000, worker -> 8001 so the two frontends don't collide.
     monkeypatch.setenv("TEST_WORKER_NODE_HTTP_PORT", "8001")
+    # Drain quickly so the drain-completion wait below stays well under its
+    # timeout (the default draining period is 30s).
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
 
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
