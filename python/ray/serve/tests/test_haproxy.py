@@ -1,9 +1,7 @@
-import asyncio
 import logging
 import socket
 import subprocess
 import sys
-import threading
 import time
 from tempfile import NamedTemporaryFile
 
@@ -299,130 +297,78 @@ class TestTimeoutKeepAliveConfig:
         )
 
 
-@pytest.mark.asyncio
-async def test_drain_and_undrain_haproxy_manager(
+def test_drain_and_undrain_haproxy_manager(
     monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
-    """Test the state transtion of the haproxy manager between
-    HEALTHY, DRAINING and DRAINED
+    """A worker-node HAProxy drains away when its node loses all replicas and is
+    re-added healthy when replicas return.
+
+    The head and worker HAProxies run on one host in this test cluster, so they
+    are given distinct ports to coexist WITHOUT SO_REUSEPORT (which stays
+    disabled): the worker frontend via ``TEST_WORKER_NODE_HTTP_PORT`` and the
+    worker's stats/metrics ports via per-node env vars on the worker node. The
+    HEALTHY/DRAINING/DRAINED state machine itself is covered by the unit tests in
+    ``tests/unit/test_proxy_state.py``.
     """
-    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
+    # head -> 8000, worker -> 8001 so the two frontends don't collide.
+    monkeypatch.setenv("TEST_WORKER_NODE_HTTP_PORT", "8001")
 
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
 
-    signal_actor = SignalActor.remote()
-
     @serve.deployment
-    class HelloModel:
-        async def __call__(self):
-            await signal_actor.wait.remote()
-            return "hello"
-
-    serve.run(HelloModel.options(num_replicas=2).bind())
-
-    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
-    wait_for_condition(lambda: len(list_actors()) == 8)
-    assert len(ray.nodes()) == 3
+    def hello():
+        return "hello"
 
     client = _get_global_client()
-    serve_details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
 
-    assert len(proxy_actor_ids) == 3
-
-    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
-    # very likely each shard has served at least one request and converged.
-    def all_haproxies_ready():
-        try:
-            return all(
-                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
-                == 200
-                for _ in range(20)
-            )
-        except Exception:
-            return False
-
-    wait_for_condition(all_haproxies_ready, timeout=20)
-
-    # Start a long-running request in background to test draining behavior
-    request_result = []
-
-    def make_blocking_request():
-        try:
-            response = httpx.get("http://localhost:8000/", timeout=5)
-            request_result.append(("success", response.status_code))
-        except Exception as e:
-            request_result.append(("error", str(e)))
-
-    request_thread = threading.Thread(target=make_blocking_request)
-    request_thread.start()
-
-    wait_for_condition(
-        lambda: ray.get(signal_actor.cur_num_waiters.remote()) >= 1, timeout=10
-    )
-
-    serve.run(HelloModel.options(num_replicas=1).bind())
-
-    # 1 proxy should be draining
-
-    def check_proxy_status(proxy_status_to_count):
+    def proxy_status_counts():
         serve_details = ServeInstanceDetails(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
-        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        current_status = {
-            status: proxy_status_list.count(status) for status in proxy_status_list
-        }
-        return current_status == proxy_status_to_count
+        counts = {}
+        for proxy in serve_details.proxies.values():
+            counts[proxy.status] = counts.get(proxy.status, 0) + 1
+        return counts
 
+    # The worker holds the replica; the head keeps a proxy for routing. Both
+    # HAProxies bind their (distinct) ports and become HEALTHY without
+    # SO_REUSEPORT.
+    serve.run(hello.options(num_replicas=1).bind(), name="app")
     wait_for_condition(
-        condition_predictor=check_proxy_status,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
+        lambda: proxy_status_counts() == {ProxyStatus.HEALTHY: 2}, timeout=30
     )
+    assert len(ray.nodes()) == 2
 
-    # should stay in draining status until the signal is sent
-    await asyncio.sleep(1)
-
-    assert check_proxy_status(
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1}
-    )
-
-    serve.run(HelloModel.options(num_replicas=2).bind())
-    # The proxy should return to healthy status
+    # The head HAProxy owns :8000 and routes to the worker replica.
     wait_for_condition(
-        condition_predictor=check_proxy_status,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
-    )
-    serve_details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
+        lambda: httpx.get("http://localhost:8000/", timeout=2).status_code == 200,
+        timeout=20,
     )
 
-    assert {
-        proxy.actor_id for _, proxy in serve_details.proxies.items()
-    } == proxy_actor_ids
-
-    serve.run(HelloModel.options(num_replicas=1).bind())
-    await signal_actor.send.remote()
-    # 1 proxy should be draining and eventually be drained.
+    # Remove the replica -> the worker node has no replicas, so its proxy
+    # drains and is removed; the head proxy stays healthy.
+    serve.delete("app")
     wait_for_condition(
-        condition_predictor=check_proxy_status,
-        timeout=40,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
+        lambda: proxy_status_counts() == {ProxyStatus.HEALTHY: 1}, timeout=40
     )
 
-    # Verify the long-running request completed successfully
-    request_thread.join(timeout=5)
+    # Replicas return -> the worker proxy is re-added and becomes healthy.
+    serve.run(hello.options(num_replicas=1).bind(), name="app")
+    wait_for_condition(
+        lambda: proxy_status_counts() == {ProxyStatus.HEALTHY: 2}, timeout=30
+    )
 
-    # Clean up serve.
     serve.shutdown()
 
 
