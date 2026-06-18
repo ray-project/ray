@@ -30,7 +30,7 @@ class KVRouterActor:
     independent of any replica's lifetime. It exposes the KV-aware routing
     interfaces: ``select_worker`` and the request-lifecycle hooks.
 
-    TODO (jeffreywang): Implement these:
+    TODO (jeffreywang): Implement these
     1. Created once per deployment, attached to the LLMServer deployment via
        Serve's ``DeploymentActorConfig`` (independent of any replica's lifetime).
     2. Owns an in-process Dynamo ``SelectionService``.
