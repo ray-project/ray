@@ -68,10 +68,7 @@ def run_pipeline(subcluster: str, args: argparse.Namespace) -> None:
         gpu_concurrency=args.gpu_concurrency,
         set_memory=args.set_memory,
         subcluster=subcluster,
-        # TODO: all to all shuffle causes 1 concurrent dataset to execute much more slowly
-        # than the other e.g. 8 minutes vs 4 minutes. Without all to all shuffle, both
-        # concurrent datasets take within 5% of each other to finish.
-        all_to_all_shuffle=False,
+        all_to_all_shuffle=True,
     )
 
 
