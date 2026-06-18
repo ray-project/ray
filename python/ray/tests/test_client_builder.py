@@ -368,10 +368,11 @@ def test_client_deprecation_warn():
 
     with warnings.catch_warnings(record=True) as w:
         ray.client().namespace("nmspc").env({"pip": ["requests"]}).connect()
-    expected = 'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+    expected = (
+        'ray.init(namespace="nmspc", runtime_env=<your_runtime_env>)'  # noqa E501
+    )
     assert any(
-        has_client_deprecation_warn(warning, expected)
-        for warning in w  # noqa E501
+        has_client_deprecation_warn(warning, expected) for warning in w  # noqa E501
     )
     ray.shutdown()
 
