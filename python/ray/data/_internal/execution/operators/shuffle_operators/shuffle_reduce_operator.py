@@ -24,6 +24,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
     extract_partition_id,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     ReduceFn,
     _shuffle_reduce_task,
 )
@@ -136,7 +137,9 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             "num_cpus": self._shuffle_reduce_task_num_cpus,
         }
         if estimated_bytes > 0:
-            reduce_resources["memory"] = int(estimated_bytes * 2)
+            reduce_resources["memory"] = int(
+                estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+            )
         reduce_options = {
             **reduce_resources,
             "scheduling_strategy": "SPREAD",
@@ -314,7 +317,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         sizes = [b for b in partition_bytes.values() if b > 0]
         if sizes:
             avg_bytes = sum(sizes) / len(sizes)
-            memory = int(avg_bytes * 2)
+            memory = int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
         return ExecutionResources(
             cpu=self._shuffle_reduce_task_num_cpus,
             memory=memory,

@@ -18,6 +18,7 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
+    BlockMetadata,
     BlockMetadataWithSchema,
     BlockType,
     TaskExecWorkerStats,
@@ -25,6 +26,9 @@ from ray.data.block import (
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[pa.Table]], Iterable[Block]]
+
+# Peak working-set of a shuffle map/reduce task is ~2x the input bytes
+SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
 
 
 def _ipc_write_options(compression: Optional[str]) -> pa.ipc.IpcWriteOptions:
@@ -49,8 +53,10 @@ def _partition_blocks_to_shards(
 ) -> Dict[int, List[pa.Table]]:
     """Partition each block independently, grouping shards by partition id.
 
-    Blocks are partitioned one at a time rather than concatenated first, so we
-    never hold a single table spanning all inputs in memory.
+    The input blocks are already resident in worker memory.  Partitioning them
+    one at a time, rather than concatenating into a single table first, avoids
+    materializing an extra copy spanning all inputs -- keeping peak memory near
+    1x the inputs instead of 2x.
 
     We combine_chunks before partitioning because partition_fn's per-column
     take is much slower on chunked input -- enough to roughly halve map
@@ -83,10 +89,9 @@ def _encode_partition_ipc(
         table = table.combine_chunks()
 
     sink = pa.BufferOutputStream()
-    writer = pa.ipc.new_stream(sink, table.schema, options=ipc_write_options)
-    for batch in table.to_batches():
-        writer.write_batch(batch)
-    writer.close()
+    with pa.ipc.new_stream(sink, table.schema, options=ipc_write_options) as writer:
+        for batch in table.to_batches():
+            writer.write_batch(batch)
     return sink.getvalue()
 
 
@@ -96,7 +101,10 @@ def _shuffle_map_task(
     partition_fn: PartitionFn,
     num_partitions: int,
     compression: Optional[str],
-):
+) -> Tuple[
+    Union[Tuple[BlockMetadata, Dict[int, Tuple[int, int]], "pa.Schema"], pa.Buffer],
+    ...,
+]:
     """Map stage: partition the input blocks and return one shard per partition."""
     stats = BlockExecStats.builder()
 

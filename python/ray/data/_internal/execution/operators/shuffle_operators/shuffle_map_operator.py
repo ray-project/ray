@@ -26,6 +26,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     PartitionFn,
     _shuffle_map_task,
 )
@@ -215,7 +216,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * 2
+            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
         ray_options: Dict[str, Any] = {
             **resources,
@@ -426,7 +427,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
-        memory = int(avg_input * 2) if avg_input else 0
+        memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
         return ExecutionResources(
             cpu=self._shuffle_map_task_num_cpus,
             memory=memory,
