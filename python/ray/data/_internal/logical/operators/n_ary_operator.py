@@ -68,19 +68,19 @@ class NAry(LogicalOperator):
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
         num_outputs: Optional[int] = None,
     ):
         """Initialize the n-ary operator.
 
         Args:
-            *input_ops: The input operators.
+            input_dependencies: The input operators.
             num_outputs: The estimated number of output bundles, or ``None`` if unknown.
         """
         super().__init__(
             _num_outputs=num_outputs,
         )
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
 
     @property
     def num_outputs(self) -> Optional[int]:
@@ -89,7 +89,7 @@ class NAry(LogicalOperator):
     def _with_new_input_dependencies(
         self, input_dependencies: List[LogicalOperator]
     ) -> LogicalOperator:
-        return self.__class__(*input_dependencies)
+        return self.__class__(input_dependencies)
 
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
@@ -101,11 +101,11 @@ class Zip(NAry):
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
     ):
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         object.__setattr__(self, "_num_outputs", None)
 
     def estimated_num_outputs(self):
@@ -151,22 +151,23 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
+        *,
         weights: List[float],
         stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
     ):
-        if len(input_ops) != len(weights):
+        if len(input_dependencies) != len(weights):
             raise ValueError(
-                f"Number of input operators ({len(input_ops)}) must match "
+                f"Number of input operators ({len(input_dependencies)}) must match "
                 f"number of weights ({len(weights)})."
             )
         if any(weight <= 0 for weight in weights):
             raise ValueError(f"Weights must be positive. Got weights: {weights}")
 
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_name", self.__class__.__name__)
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         object.__setattr__(self, "_num_outputs", None)
         object.__setattr__(self, "weights", weights)
         object.__setattr__(self, "stopping_condition", stopping_condition)
@@ -185,7 +186,7 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
         self, input_dependencies: List[LogicalOperator]
     ) -> LogicalOperator:
         return self.__class__(
-            *input_dependencies,
+            input_dependencies,
             weights=self.weights,
             stopping_condition=self.stopping_condition,
         )
@@ -204,11 +205,11 @@ class Union(
 
     def __init__(
         self,
-        *input_ops: LogicalOperator,
+        input_dependencies: List[LogicalOperator],
     ):
-        for input_op in input_ops:
+        for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_input_dependencies", list(input_dependencies))
         object.__setattr__(self, "_num_outputs", None)
 
     def estimated_num_outputs(self):

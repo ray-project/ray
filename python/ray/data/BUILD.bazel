@@ -379,7 +379,7 @@ py_test(
 
 py_test(
     name = "test_context_propagation",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_context_propagation.py"],
     tags = [
         "exclusive",

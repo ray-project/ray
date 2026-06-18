@@ -8,7 +8,7 @@ xgboost==2.1.0
 lightgbm==4.6.0
 
 # Huggingface
-transformers>=5.0,<6.0
+transformers>=5.0
 accelerate>=1.0
 
 # Cloud storage tools
