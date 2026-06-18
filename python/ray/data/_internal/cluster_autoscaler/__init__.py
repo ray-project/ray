@@ -40,6 +40,7 @@ def create_cluster_autoscaler(
     execution_id: str,
 ) -> ClusterAutoscaler:
     resource_limits = data_context.execution_options.resource_limits
+    label_selector = data_context.execution_options.label_selector
     cluster_autoscaler_version = os.environ.get(
         CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
     )
@@ -50,6 +51,7 @@ def create_cluster_autoscaler(
             resource_manager,
             execution_id=execution_id,
             resource_limits=resource_limits,
+            label_selector=label_selector,
         )
 
     elif cluster_autoscaler_version == ClusterAutoscalerVersion.V1:

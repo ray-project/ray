@@ -2615,9 +2615,9 @@ jupyterlab-widgets==3.0.11 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipywidgets
-jupytext==1.16.3 \
-    --hash=sha256:1ebac990461dd9f477ff7feec9e3003fa1acc89f3c16ba01b73f79fd76f01a98 \
-    --hash=sha256:870e0d7a716dcb1303df6ad1cec65e3315a20daedd808a55cb3dae2d56e4ed20
+jupytext==1.19.3 \
+    --hash=sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766 \
+    --hash=sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -5050,6 +5050,13 @@ qpd==0.4.4 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   fugue
+ray-haproxy==2.8.20 ; sys_platform == 'linux' \
+    --hash=sha256:a955cbb370c9b9a4dadecd265ddff3ac6d007ad70eae293f05ef753a22b5e1f2 \
+    --hash=sha256:da23d7d28c39247826466ddfe3c166db7cef5dcd44d8a64b8f9eb91e7089076c
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   ray
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
