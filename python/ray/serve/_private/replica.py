@@ -2002,7 +2002,7 @@ class Replica:
                 )
             else:
                 logger.info(
-                    "Graceful shutdown complete; replica exiting.",
+                    "Drained ongoing requests; shutting down servers.",
                     extra={"log_to_stderr": False},
                 )
                 break
@@ -2100,6 +2100,10 @@ class Replica:
                 )
 
         await self.shutdown()
+        logger.info(
+            "Graceful shutdown complete; replica exiting.",
+            extra={"log_to_stderr": False},
+        )
 
     async def check_health(self):
         try:
