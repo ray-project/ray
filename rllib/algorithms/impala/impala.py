@@ -912,7 +912,7 @@ class IMPALA(Algorithm):
         restored = super().restore_env_runners(env_runner_group)
         # Re-share the EnvRunnerStateServer handle with restored (training) EnvRunners:
         # a fresh actor incarnation lost the attribute set post-construction. A restored
-        # runner starts at weights_seq_no=-1, so its first pull force-applies the latest.
+        # runner starts at weights_seq_no=0, so its first pull force-applies the latest.
         if (
             restored
             and self._env_runner_state_server is not None

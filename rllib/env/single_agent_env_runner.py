@@ -135,9 +135,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._ongoing_episodes_for_metrics: DefaultDict[
             EpisodeID, List[SingleAgentEpisode]
         ] = defaultdict(list)
-        # -1 (not 0): `pull_if_newer` is strict, so starting at 0 would skip a first
-        # state carrying WEIGHTS_SEQ_NO=0. -1 makes the first pull/apply always take.
-        self._weights_seq_no: int = -1
+        self._weights_seq_no: int = 0
         # Set by the Algorithm when `config.use_env_runner_state_server=True`.
         self._env_runner_state_server = None
 
