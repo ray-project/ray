@@ -3390,13 +3390,27 @@ void CoreWorker::HandleUpdateGeneratorBackpressureConsumed(
       }
     }
 
+    // Snapshot the waiter's counters BEFORE re-acquiring mutex_ below.
+    // TotalObjectConsumed()/TotalObjectGenerated() each lock the waiter's own
+    // internal mutex, so calling them while holding mutex_ acquires locks in
+    // the order (mutex_ -> waiter mutex). The generator-execution path takes
+    // them in the opposite order (waiter mutex held while a callback re-enters
+    // mutex_), so the two orderings form a cycle: absl's deadlock detector
+    // aborts on it, and it is a real latent deadlock under multithreaded
+    // (max_concurrency > 1) actors. This erase branch is the only place the
+    // waiter mutex was taken under mutex_, and only when actor_metadata !=
+    // nullptr (actor-wide backpressure enabled) -- which is why the deadlock
+    // surfaced only with actor-wide BP. Reading the monotonic counters a moment
+    // earlier is benign for this GC decision (the state is re-created on the
+    // next generated object if erased prematurely).
+    const bool all_objects_consumed =
+        waiter->TotalObjectConsumed() >= waiter->TotalObjectGenerated();
+
     absl::MutexLock lock(&mutex_);
     auto it = generator_backpressure_states_.find(generator_id);
     if (it != generator_backpressure_states_.end() &&
-        (teardown ||
-         (it->second.task_finished && (it->second.actor_metadata == nullptr ||
-                                       it->second.waiter->TotalObjectConsumed() >=
-                                           it->second.waiter->TotalObjectGenerated())))) {
+        (teardown || (it->second.task_finished &&
+                      (it->second.actor_metadata == nullptr || all_objects_consumed)))) {
       generator_backpressure_states_.erase(it);
     }
   }
