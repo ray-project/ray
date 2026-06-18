@@ -23,6 +23,8 @@ from typing_extensions import override
 
 if TYPE_CHECKING:
     import pyarrow as pa
+
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -265,7 +267,11 @@ class ActorPoolMapOperator(MapOperator):
 
         return ray_actor_task_remote_args
 
-    def start(self, options: ExecutionOptions, block_ref_counter=None):
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: Optional["BlockRefCounter"] = None,
+    ):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options, block_ref_counter)
 

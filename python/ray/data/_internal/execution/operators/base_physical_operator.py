@@ -193,12 +193,13 @@ class AllToAllOperator(
         output_buffer, self._stats = self._bulk_fn(input_bundles, ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
-        for bundle in output_buffer:
-            for entry in bundle.blocks:
-                if entry.ref not in input_refs:
-                    self._block_ref_counter.on_block_produced(
-                        entry.ref, entry.metadata.size_bytes or 0, self.id
-                    )
+        if self._block_ref_counter is not None:
+            for bundle in output_buffer:
+                for entry in bundle.blocks:
+                    if entry.ref not in input_refs:
+                        self._block_ref_counter.on_block_produced(
+                            entry.ref, entry.metadata.size_bytes or 0, self.id
+                        )
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()
