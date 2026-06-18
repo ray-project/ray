@@ -28,6 +28,7 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
@@ -42,7 +43,7 @@ from ray.data._internal.stats import (
 from ray.data._internal.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats
 from ray.data.context import DataContext
-from ray.data.tests.util import column_udf
+from ray.data.tests.util import _RowCountStats, column_udf
 from ray.tests.conftest import *  # noqa
 
 
@@ -177,6 +178,34 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
 
         assert profiler.estimate_max_uss() > array_nbytes
+
+
+def test_custom_op_stats_are_carried_to_driver(ray_start_regular_shared):
+    def record_custom_stats(batch):
+        ctx = TaskContext.get_current()
+        assert ctx is not None
+
+        ctx.custom_op_stats = _RowCountStats(num_rows=batch.num_rows)
+        return batch
+
+    ds = (
+        ray.data.range(4, override_num_blocks=1)
+        .map_batches(
+            record_custom_stats,
+            batch_format="pyarrow",
+            batch_size=None,
+        )
+        .materialize()
+    )
+
+    custom_stats = []
+    for block_stats in ds._raw_stats().metadata.values():
+        for block_stat in block_stats:
+            task_exec_stats = block_stat.task_exec_stats
+            if task_exec_stats is not None and task_exec_stats.custom_op_stats:
+                custom_stats.append(task_exec_stats.custom_op_stats)
+
+    assert custom_stats == [_RowCountStats(num_rows=4)]
 
 
 def gen_expected_metrics(

@@ -2,6 +2,7 @@ import functools
 import os
 import tempfile
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Callable, Iterable, List, Optional
 
 import pandas as pd
@@ -19,8 +20,13 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data.block import Block
+from ray.data.block import Block, CustomOpStats
 from ray.data.expressions import Expr
+
+
+@dataclass(frozen=True)
+class _RowCountStats(CustomOpStats):
+    num_rows: int
 
 
 @ray.remote
