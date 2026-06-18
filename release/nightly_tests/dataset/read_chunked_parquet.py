@@ -356,6 +356,7 @@ def _read_back(
     use_version: str,
     footer_size_estimate: str = "default",
     var_width_factor: Optional[float] = None,
+    write_output: Optional[str] = None,
 ) -> None:
     """Post-generation read benchmark. Reads the just-written parquet with Ray
     Data and drains it through internal ref bundles -- the iter_bundles consume
@@ -363,7 +364,12 @@ def _read_back(
     driver, so this measures read+decode throughput rather than transfer. Read
     config is fixed except for `memory` (logical bytes passed to read_parquet)
     and the orthogonal v2a/v2b sizing knobs (`footer_size_estimate`,
-    `var_width_factor`): format=parquet, iter_bundles."""
+    `var_width_factor`): format=parquet, iter_bundles.
+
+    When `write_output` is given, the read-back dataset is instead persisted as
+    parquet to that local dir or s3:// prefix via `write_parquet` -- a single
+    streamed read->write pass (the same ReadFiles pipeline the partitioner /
+    chunker knobs apply to, then a Write op), so the source is not read twice."""
     try:
         import ray
     except ImportError:
@@ -447,6 +453,25 @@ def _read_back(
     )
     ds = ray.data.read_parquet(path, memory=memory)
 
+    # Persist the read-back dataset instead of draining it: write_parquet streams
+    # the same ReadFiles pipeline (so the partitioner / chunker knobs above still
+    # apply) straight into a Write op -- one pass, no second read of the source.
+    # Ray Data routes local paths and s3:// prefixes automatically.
+    if write_output:
+        print(
+            f"[read+write] write_parquet {path} -> {write_output} "
+            f"(memory={human(memory)})",
+            flush=True,
+        )
+        t0 = time.time()
+        ds.write_parquet(write_output)
+        elapsed = time.time() - t0
+        msg = f"[write done] wrote dataset to {write_output} in {elapsed:.2f}s"
+        if total_disk_bytes and elapsed:
+            msg += f" ({human(total_disk_bytes / elapsed)}/s source on-disk)"
+        print(msg, flush=True)
+        return
+
     t0 = time.time()
     num_bundles = num_rows = 0
     for bundle in ds.iter_internal_ref_bundles():
@@ -484,6 +509,7 @@ def generate(
     seed: int = 0,
     footer_size_estimate: str = "default",
     var_width_factor: Optional[float] = None,
+    write_output: Optional[str] = None,
 ) -> None:
     backend = _make_backend(output)
 
@@ -498,6 +524,7 @@ def generate(
                 use_version,
                 footer_size_estimate,
                 var_width_factor,
+                write_output=write_output,
             )
         return
 
@@ -554,6 +581,7 @@ def generate(
             use_version,
             footer_size_estimate,
             var_width_factor,
+            write_output=write_output,
         )
 
 
@@ -644,6 +672,7 @@ def generate_mixed(
     seed: int,
     footer_size_estimate: str = "default",
     var_width_factor: Optional[float] = None,
+    write_output: Optional[str] = None,
 ) -> None:
     """Generate a heterogeneous mix: codec sampled PER FILE, and on-disk size +
     compression ratio sampled PER ROW GROUP from discrete buckets. Files differ
@@ -662,6 +691,7 @@ def generate_mixed(
                 use_version,
                 footer_size_estimate,
                 var_width_factor,
+                write_output=write_output,
             )
         return
 
@@ -754,6 +784,7 @@ def generate_mixed(
             use_version,
             footer_size_estimate,
             var_width_factor,
+            write_output=write_output,
         )
 
 
@@ -958,6 +989,13 @@ def main():
         "e.g. 4GiB, 512MiB.",
     )
     p.add_argument(
+        "--write-output",
+        default=None,
+        help="If set, the read-back dataset is written as parquet to this local "
+        "dir or s3:// prefix (a single read->write pass) instead of being drained "
+        "for read-only throughput. Takes effect only when read-back is enabled.",
+    )
+    p.add_argument(
         "--use-version",
         default="v2",
         choices=["v1", "v2", "v3"],
@@ -1013,6 +1051,13 @@ def main():
     )
     args = p.parse_args()
 
+    if args.write_output and not args.read_back:
+        print(
+            "[warn] --write-output is ignored because read-back is disabled "
+            "(--no-read-back); the write happens during the read-back step.",
+            flush=True,
+        )
+
     _apply_read_knobs(args)
 
     if args.mode == "mixed":
@@ -1055,6 +1100,7 @@ def main():
             seed=args.seed,
             footer_size_estimate=args.footer_size_estimate,
             var_width_factor=args.var_width_factor,
+            write_output=args.write_output,
         )
         return
 
@@ -1082,6 +1128,7 @@ def main():
         seed=args.seed,
         footer_size_estimate=args.footer_size_estimate,
         var_width_factor=args.var_width_factor,
+        write_output=args.write_output,
     )
 
 
