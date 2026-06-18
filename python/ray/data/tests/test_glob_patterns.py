@@ -4,10 +4,15 @@ These tests verify that glob patterns (*, **, ?, [...]) work correctly
 in the path argument of read_parquet, read_csv, read_json, etc.
 """
 
+import os
+
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -220,6 +225,73 @@ class TestMultiDatasource:
         """read_binary_files with glob."""
         ds = ray.data.read_binary_files(str(glob_test_dir / "mixed" / "*.csv"))
         assert ds.count() == 2
+
+
+# --- S3 (moto) tests ---
+
+
+class TestS3Glob:
+    """S3 glob tests using moto mock server.
+
+    Uses Ray's s3_fs / s3_path fixtures which spin up a moto_server
+    subprocess and connect via pa.fs.S3FileSystem(endpoint_override=...).
+    """
+
+    def test_s3_single_wildcard(self, ray_start_regular_shared, s3_fs, s3_path):
+        """s3://.../*.parquet matches all parquet files under a prefix."""
+        setup_path = _unwrap_protocol(s3_path)
+        for i in range(3):
+            table = pa.Table.from_pandas(pd.DataFrame({"val": [i]}))
+            pq.write_table(
+                table,
+                os.path.join(setup_path, f"part-{i}.parquet"),
+                filesystem=s3_fs,
+            )
+
+        ds = ray.data.read_parquet(
+            os.path.join(s3_path, "*.parquet"),
+            filesystem=s3_fs,
+        )
+        assert ds.count() == 3
+
+    def test_s3_recursive_glob(self, ray_start_regular_shared, s3_fs, s3_path):
+        """s3://.../**/*.parquet recursively matches across prefixes."""
+        setup_path = _unwrap_protocol(s3_path)
+        # Create nested structure: sub/a.parquet, sub/deep/b.parquet, top.parquet
+        s3_fs.create_dir(os.path.join(setup_path, "sub"))
+        s3_fs.create_dir(os.path.join(setup_path, "sub", "deep"))
+
+        table_a = pa.Table.from_pandas(pd.DataFrame({"val": [1]}))
+        pq.write_table(
+            table_a,
+            os.path.join(setup_path, "sub", "a.parquet"),
+            filesystem=s3_fs,
+        )
+
+        table_b = pa.Table.from_pandas(pd.DataFrame({"val": [2]}))
+        pq.write_table(
+            table_b,
+            os.path.join(setup_path, "sub", "deep", "b.parquet"),
+            filesystem=s3_fs,
+        )
+
+        table_top = pa.Table.from_pandas(pd.DataFrame({"val": [3]}))
+        pq.write_table(
+            table_top,
+            os.path.join(setup_path, "top.parquet"),
+            filesystem=s3_fs,
+        )
+
+        ds = ray.data.read_parquet(
+            os.path.join(s3_path, "**", "*.parquet"),
+            filesystem=s3_fs,
+        )
+        assert ds.count() == 3
+
+    def test_s3_bucket_glob_rejected(self, ray_start_regular_shared, s3_fs, s3_path):
+        """Glob in bucket/host name raises ValueError."""
+        with pytest.raises(ValueError, match="wildcards in the bucket/host name"):
+            ray.data.read_parquet("s3://bucket-*/*.parquet", filesystem=s3_fs)
 
 
 if __name__ == "__main__":

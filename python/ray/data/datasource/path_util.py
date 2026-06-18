@@ -350,10 +350,14 @@ def _expand_glob(
             f"Glob pattern {path!r} contains wildcards in the bucket/host "
             "name, which is not supported. Use wildcards in the path only."
         )
-    # Use recursive listing when pattern needs to traverse subdirectories:
-    # - "**" explicitly requests recursive matching
-    # - "/" in pattern means the match target is in a subdirectory
-    needs_recursive = "**" in pattern or "/" in pattern
+    # Use recursive listing when the pattern requires traversing subdirectories:
+    # - "**" explicitly requests recursive matching across directory boundaries
+    # - glob characters in a non-terminal directory segment (e.g. sub*/*.parquet)
+    #   require listing into matching subdirectories
+    pat_segs = pattern.split("/")
+    needs_recursive = "**" in pattern or any(
+        _has_glob_chars(seg) for seg in pat_segs[:-1]
+    )
     selector = pyarrow.fs.FileSelector(base_stripped, recursive=needs_recursive)
     file_infos = filesystem.get_file_info(selector)
 
