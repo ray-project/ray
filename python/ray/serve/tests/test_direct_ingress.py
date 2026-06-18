@@ -2395,7 +2395,12 @@ def test_get_serve_instance_details_json_serializable(
     if policy_name is None:
         autoscaling_config.pop("_policy")
 
-    @serve.deployment(autoscaling_config=autoscaling_config)
+    # Pin graceful_shutdown_timeout_s above any direct-ingress shutdown floor
+    # (MIN_DRAINING_PERIOD_S + buffer) so the asserted value is deterministic
+    # regardless of the MIN_DRAINING setting in this lane.
+    @serve.deployment(
+        autoscaling_config=autoscaling_config, graceful_shutdown_timeout_s=60
+    )
     def autoscaling_app():
         return "1"
 
@@ -2487,14 +2492,8 @@ def test_get_serve_instance_details_json_serializable(
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
-                                # Floored to MIN_DRAINING_PERIOD_S + buffer for
-                                # ingress direct-ingress deployments. The HA_PROXY
-                                # fixture sets MIN_DRAINING=6 (floor 11, below the
-                                # 20s default) so it stays 20; otherwise
-                                # MIN_DRAINING defaults to 30 (floor 35).
-                                "graceful_shutdown_timeout_s": (
-                                    20.0 if RAY_SERVE_ENABLE_HA_PROXY else 35.0
-                                ),
+                                # Set to 60 above (max(60, floor) == 60).
+                                "graceful_shutdown_timeout_s": 60.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
