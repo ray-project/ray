@@ -24,11 +24,14 @@ from ray.serve._private.test_utils import (
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
     send_signal_on_cancellation,
+    skip_if_haproxy,
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+
+pytestmark = skip_if_haproxy("gRPC ingress is not supported with HAProxy yet")
 
 
 def test_serving_grpc_requests(ray_cluster):

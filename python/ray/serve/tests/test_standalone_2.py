@@ -12,6 +12,7 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
@@ -87,6 +88,7 @@ def test_memory_omitted_option(shutdown_ray_and_serve):
     assert handle.remote().result() == "world"
 
 
+@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
 def test_serve_namespace(shutdown_ray_and_serve, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""

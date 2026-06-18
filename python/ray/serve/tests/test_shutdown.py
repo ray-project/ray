@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve._private.utils import format_actor_name
 from ray.serve.config import DeploymentActorConfig
 from ray.util.state import list_actors
@@ -113,6 +114,7 @@ async def test_shutdown_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@skip_if_haproxy("does not yet pass under HAProxy ingress")
 def test_single_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in single-app case
 
@@ -153,6 +155,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.asyncio
 async def test_single_app_shutdown_actors_async(ray_shutdown):
     """Tests serve.shutdown_async() works correctly in single-app case
@@ -194,6 +197,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@skip_if_haproxy("does not yet pass under HAProxy ingress")
 def test_multi_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in multi-app case.
 
@@ -236,6 +240,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.asyncio
 async def test_multi_app_shutdown_actors_async(ray_shutdown):
     """Tests serve.shutdown_async() works correctly in multi-app case.

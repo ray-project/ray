@@ -8,8 +8,10 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
+pytestmark = skip_if_haproxy("gRPC ingress is not supported with HAProxy yet")
 
 
 def test_grpc_backpressure(serve_instance):

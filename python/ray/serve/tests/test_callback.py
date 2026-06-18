@@ -13,7 +13,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client
@@ -229,6 +229,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         ray.get(handle.ready.remote())
 
 
+@skip_if_haproxy("exercises the native Serve HTTP proxy, which HAProxy replaces")
 @pytest.mark.parametrize(
     "ray_instance",
     [

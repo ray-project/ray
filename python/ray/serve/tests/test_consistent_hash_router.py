@@ -8,7 +8,11 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.test_utils import check_running, get_application_url
+from ray.serve._private.test_utils import (
+    check_running,
+    get_application_url,
+    skip_if_haproxy,
+)
 from ray.serve.config import RequestRouterConfig, gRPCOptions
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -267,6 +271,7 @@ class TestOverflowToFallback:
 
 
 class TestProtocolStickiness:
+    @skip_if_haproxy("request routing differs with HAProxy load balancing")
     def test_http_same_session_sticky(self, serve_instance):
         @serve.deployment(
             request_router_config=RequestRouterConfig(
@@ -298,6 +303,7 @@ class TestProtocolStickiness:
         assert len(session_replicas) == 1, f"sess_http_42 drifted: {session_replicas}"
         assert len(other_replicas) == 1, f"sess_http_99 drifted: {other_replicas}"
 
+    @skip_if_haproxy("gRPC ingress is not supported with HAProxy yet")
     def test_grpc_same_session_sticky(self, ray_cluster):
         cluster = ray_cluster
         cluster.add_node(num_cpus=2)

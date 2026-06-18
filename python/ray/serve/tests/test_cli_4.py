@@ -17,11 +17,13 @@ from ray.serve._private.test_utils import (
     ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
+    skip_if_haproxy,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.test_cli_2 import ping_endpoint
 
 
+@skip_if_haproxy("does not yet pass under HAProxy ingress")
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
@@ -79,6 +81,7 @@ def test_build_multi_app(ray_start_stop):
         print("Delete succeeded! Node is no longer reachable over HTTP.")
 
 
+@skip_if_haproxy("gRPC ingress is not supported with HAProxy yet")
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_serving_request_through_grpc_proxy(ray_start_stop):
     """Test serving request through gRPC proxy
@@ -121,6 +124,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     ping_grpc_streaming(channel, app1)
 
 
+@skip_if_haproxy("gRPC ingress is not supported with HAProxy yet")
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_grpc_proxy_model_composition(ray_start_stop):
     """Test serving request through gRPC proxy

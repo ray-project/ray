@@ -34,6 +34,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -61,6 +62,22 @@ from ray.util.state import list_actors
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+def skip_if_haproxy(reason: str):
+    """Skip a test when the HAProxy ingress is enabled.
+
+    The HAProxy ingress runs as a separate premerge step with
+    RAY_SERVE_ENABLE_HA_PROXY=1. Some tests exercise behavior HAProxy does not
+    support yet (e.g. gRPC ingress) or that probes the native Serve proxy
+    directly. Mark those with this decorator instead of maintaining a separate
+    test allowlist. The test still runs in the non-HAProxy steps.
+    """
+    import pytest
+
+    return pytest.mark.skipif(
+        RAY_SERVE_ENABLE_HA_PROXY, reason=f"HAProxy ingress: {reason}"
+    )
 
 
 # Global variable that is fetched during controller recovery that
