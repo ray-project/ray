@@ -1335,6 +1335,46 @@ async def test_start(haproxy_api_cleanup):
 
 
 @pytest.mark.asyncio
+async def test_get_running_pid_matches_live_proc(haproxy_api_cleanup):
+    """`_get_running_pid` parses real `show info` and returns the forked pid.
+
+    Guards the reload-takeover gate against a `show info` format change that the
+    hard-coded fakes in test_haproxy_process_manager.py can't catch.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            socket_path=socket_path,
+            has_received_routes=True,
+            has_received_servers=True,
+        )
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=config_file_path,
+        )
+        haproxy_api_cleanup(api)
+
+        await api.start()
+        # The socket's `show info` must report the pid we forked.
+        assert await api._get_running_pid() == api._proc.pid
+
+        await api.stop()
+        # Socket is gone once stopped, so the pid is unknown.
+        assert await api._get_running_pid() is None
+
+
+@pytest.mark.asyncio
 async def test_stop(haproxy_api_cleanup):
     """Test HAProxy stop functionality."""
     with tempfile.TemporaryDirectory() as temp_dir:
