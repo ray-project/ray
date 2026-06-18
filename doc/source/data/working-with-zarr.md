@@ -55,8 +55,7 @@ arrays**, with columns:
 - one column per selected array, holding that array's `[t_start:t_stop, ...]` slice.
 
 All selected arrays must share `shape[0]` and resolve to the same axis-0 chunk size
-(after any `chunk_shapes` override); otherwise `read_zarr` raises `ValueError` pointing
-at the largest aligned subset. Use `array_paths` to choose which arrays participate —
+(after any `chunk_shapes` override). Use `array_paths` to choose which arrays participate —
 `align_axis_0` itself doesn't filter.
 
 ```python
@@ -85,14 +84,14 @@ Discovery follows these rules:
 - Otherwise, if `allow_full_metadata_scan=True`, the store is recursively scanned for
   arrays. This can be slow or costly on large remote stores, so it's off by default;
   prefer consolidating metadata with `zarr.consolidate_metadata` ahead of time.
-- Otherwise, `read_zarr` raises `ValueError`.
 
 ## Controlling chunk size
 
-Zarr stores are often chunked finely (for example one image per chunk). Read at native
-chunking and you get one Ray Data block per chunk — potentially a very large number of
-tiny blocks, which hurts throughput. `chunk_shapes` re-tiles the leading axes **at read
-time** to coarsen (or refine) block granularity:
+Zarr stores are often chunked finely (for example one image per chunk). 
+You can use `chunk_shapes` to chunk the leading axes **at read
+time** to coarsen (or refine) the granularity at which reading happens.
+Note that this does not affect downstream batchsizes and is internal to the reading operation.
+Finely chunked reading can hurt performance.
 
 - A **sequence** applies as a shared prefix across all selected arrays, overriding the
   leading axes and keeping trailing axes native. `chunk_shapes=[16]` turns native chunks
@@ -107,9 +106,6 @@ ds = ray.data.read_zarr(store_uri, chunk_shapes=[16])
 ds = ray.data.read_zarr(store_uri, chunk_shapes={"images": [16], "labels": [64]})
 ```
 
-A shared override may not be longer than the smallest selected array's rank; a per-array
-override may not exceed its target array's rank.
-
 ## Reading row-aligned arrays
 
 When arrays share an axis-0 (for example a timestep axis), `align_axis_0=True`
@@ -119,9 +115,7 @@ chunk, one column per array.
 For sliding-window pipelines, `overlap` extends each row's per-array data forward by `N`
 timesteps from the next row's range (clipped at the end of the store). With
 `overlap=K-1`, any window of length `K` that starts in a row's owned `[t_start, t_stop)`
-fits entirely within that row's slice, so a downstream `flat_map` needs no cross-row
-state. Row ownership (the `t_start`/`t_stop` columns) is unchanged; only each per-array
-column's `shape[0]` grows by up to `overlap`. `overlap` requires `align_axis_0=True`.
+fits entirely within that row's slice.
 
 ```python
 ds = ray.data.read_zarr(
@@ -148,32 +142,13 @@ ray.init(runtime_env={
 })
 ```
 
-Driver-side `.zmetadata` parsing succeeds without this, but chunk decode in the workers
-fails with a `numcodecs` registry lookup error.
+This is a particularity of the underlying Zarr library.
 
-## Cloud storage and credentials
 
-For public S3 data, use the anonymous convention `s3://anonymous@<bucket>/<key>`. GCS
-has no such idiom — pass an explicit anonymous filesystem instead:
+## Zarr's .zattrs
 
-```python
-import pyarrow.fs
-
-ds = ray.data.read_zarr(
-    "gs://<bucket>/store.zarr",
-    filesystem=pyarrow.fs.GcsFileSystem(anonymous=True),
-)
-```
-
-For private buckets or custom credentials, pass a configured `filesystem` — either a
-`pyarrow.fs.FileSystem` or an `fsspec` `AbstractFileSystem`. Transient-error retries
-(throttling, 5xx, timeouts) are handled by that filesystem, so configure retry behavior
-there (for example the botocore `retries` config on an `s3fs.S3FileSystem`, or
-`retry_strategy` on a `pyarrow.fs.S3FileSystem`).
-
-```{note}
 `read_zarr` doesn't surface each array's `.zattrs` (Zarr user attributes) in the row
 schema — they're invariant per array, so repeating them on every row would just bloat
 the output. Read them separately (for example with the `zarr` package) if your job
 needs them.
-```
+
