@@ -112,7 +112,6 @@ chown -R ray:"$(id -gn ray)" /run/haproxy
 EOF
 
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
-ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
@@ -149,7 +148,7 @@ $HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> $HOME/.bashrc
 rm /tmp/miniforge.sh
 $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
-$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.6
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv

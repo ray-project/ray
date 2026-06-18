@@ -130,6 +130,9 @@ class FilenameProvider:
             write_uuid: The UUID of the write operation.
             task_index: The index of the write task.
             block_index: Deprecated, always 0. Do not depend on this value.
+
+        Returns:
+            The filename to use for the block.
         """
         raise NotImplementedError
 
@@ -161,5 +164,8 @@ class FilenameProvider:
             task_index: The index of the write task.
             block_index: The index of the block *within* the write task.
             row_index: The index of the row *within* the block.
+
+        Returns:
+            The filename to use for the row.
         """
         raise NotImplementedError

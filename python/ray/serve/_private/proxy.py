@@ -32,7 +32,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOG_COMPONENT,
@@ -52,6 +51,7 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    _matches_session_id_header,
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
@@ -69,6 +69,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve._private.proxy_metrics import ProxyMetrics
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     HandlerMetadata,
@@ -103,7 +104,6 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig
-from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -160,65 +160,12 @@ class GenericProxy(ABC):
         self._is_head = is_head
 
         self.proxy_router = proxy_router
-        self.request_counter = metrics.Counter(
-            f"serve_num_{self.protocol.lower()}_requests",
-            description=f"The number of {self.protocol} requests processed.",
-            tag_keys=("route", "method", "application", "status_code"),
-        )
 
-        self.request_error_counter = metrics.Counter(
-            f"serve_num_{self.protocol.lower()}_error_requests",
-            description=f"The number of errored {self.protocol} responses.",
-            tag_keys=(
-                "route",
-                "error_code",
-                "method",
-                "application",
-            ),
-        )
-
-        self.deployment_request_error_counter = metrics.Counter(
-            f"serve_num_deployment_{self.protocol.lower()}_error_requests",
-            description=(
-                f"The number of errored {self.protocol} "
-                "responses returned by each deployment."
-            ),
-            tag_keys=(
-                "deployment",
-                "error_code",
-                "method",
-                "route",
-                "application",
-            ),
-        )
-
-        # log REQUEST_LATENCY_BUCKET_MS
-        logger.debug(f"REQUEST_LATENCY_BUCKET_MS: {REQUEST_LATENCY_BUCKETS_MS}")
-        self.processing_latency_tracker = metrics.Histogram(
-            f"serve_{self.protocol.lower()}_request_latency_ms",
-            description=(
-                f"The end-to-end latency of {self.protocol} requests "
-                f"(measured from the Serve {self.protocol} proxy)."
-            ),
-            boundaries=REQUEST_LATENCY_BUCKETS_MS,
-            tag_keys=(
-                "method",
-                "route",
-                "application",
-                "status_code",
-            ),
-        )
-
-        self.num_ongoing_requests_gauge = metrics.Gauge(
-            name=f"serve_num_ongoing_{self.protocol.lower()}_requests",
-            description=f"The number of ongoing requests in this {self.protocol} "
-            "proxy.",
-            tag_keys=("node_id", "node_ip_address"),
-        ).set_default_tags(
-            {
-                "node_id": node_id,
-                "node_ip_address": node_ip_address,
-            }
+        self._proxy_metrics = ProxyMetrics(
+            self.protocol,
+            source="proxy",
+            node_id=node_id,
+            node_ip_address=node_ip_address,
         )
 
         # `self._ongoing_requests` is used to count the number of ongoing requests
@@ -305,7 +252,7 @@ class GenericProxy(ABC):
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
+        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -314,7 +261,7 @@ class GenericProxy(ABC):
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
+        self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _setup_proxy_tracing(
         self,
@@ -527,42 +474,15 @@ class GenericProxy(ABC):
                 extra=self._access_log_context,
             )
 
-        self.request_counter.inc(
-            tags={
-                "route": response_handler_info.metadata.route,
-                "method": proxy_request.method,
-                "application": response_handler_info.metadata.application_name,
-                "status_code": str(status.code),
-            }
+        self._proxy_metrics.record_request(
+            route=response_handler_info.metadata.route,
+            method=proxy_request.method,
+            application=response_handler_info.metadata.application_name,
+            status_code=str(status.code),
+            latency_ms=latency_ms,
+            is_error=status.is_error,
+            deployment_name=response_handler_info.metadata.deployment_name,
         )
-
-        self.processing_latency_tracker.observe(
-            latency_ms,
-            tags={
-                "route": response_handler_info.metadata.route,
-                "method": proxy_request.method,
-                "application": response_handler_info.metadata.application_name,
-                "status_code": str(status.code),
-            },
-        )
-        if status.is_error:
-            self.request_error_counter.inc(
-                tags={
-                    "route": response_handler_info.metadata.route,
-                    "method": proxy_request.method,
-                    "application": response_handler_info.metadata.application_name,
-                    "error_code": str(status.code),
-                }
-            )
-            self.deployment_request_error_counter.inc(
-                tags={
-                    "route": response_handler_info.metadata.route,
-                    "method": proxy_request.method,
-                    "application": response_handler_info.metadata.application_name,
-                    "error_code": str(status.code),
-                    "deployment": response_handler_info.metadata.deployment_name,
-                }
-            )
 
     @abstractmethod
     def setup_request_context_and_handle(
@@ -826,6 +746,7 @@ class gRPCProxy(GenericProxy):
         handle.
         """
         multiplexed_model_id = proxy_request.multiplexed_model_id
+        session_id = proxy_request.session_id
         request_id = proxy_request.request_id
         if not request_id:
             request_id = generate_request_id()
@@ -834,6 +755,7 @@ class gRPCProxy(GenericProxy):
         handle = handle.options(
             stream=proxy_request.stream,
             multiplexed_model_id=multiplexed_model_id,
+            session_id=session_id,
             method_name=proxy_request.method_name,
         )
 
@@ -843,6 +765,7 @@ class gRPCProxy(GenericProxy):
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "session_id": session_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
             "_client": proxy_request.client,
         }
@@ -1241,6 +1164,10 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            elif _matches_session_id_header(key.decode()):
+                session_id = value.decode()
+                handle = handle.options(session_id=session_id)
+                request_context_info["session_id"] = session_id
             if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(

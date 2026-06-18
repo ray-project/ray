@@ -52,9 +52,9 @@ if PYDANTIC_INSTALLED:
         name: str
         tpuType: str
         tpuTopology: str
-        tensorcoreUtilization: int  # percentage
-        hbmUtilization: int  # percentage
-        dutyCycle: int  # percentage
+        tensorcoreUtilization: float  # percentage
+        hbmUtilization: float  # percentage
+        dutyCycle: float  # percentage
         memoryUsed: int  # in bytes
         memoryTotal: int  # in bytes
 
@@ -163,6 +163,10 @@ if PYDANTIC_INSTALLED:
         cpu: float  # CPU usage percentage
         cpus: Tuple[int, int]  # (logicalCpuCount, physicalCpuCount)
         mem: MemoryUsage  # (total, available, percent, used) in bytes
+        hostMem: Tuple[int, int]  # host physical memory (used, totall) in bytes
+        cgroupMem: Optional[
+            Tuple[int, int]
+        ] = None  # (used, total) from cgroup, or None
         shm: Optional[int] = None  # shared memory in bytes, None if not available
         workers: List[ProcessInfo]
         raylet: Optional[ProcessInfo] = None

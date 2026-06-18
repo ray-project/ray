@@ -59,6 +59,7 @@ from ray.serve._private.test_utils import (
     MockPlacementGroup,
     dead_replicas_context,
     replica_rank_context,
+    uninitialized_replicas_context,
 )
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
@@ -951,6 +952,70 @@ def test_create_delete_single_replica(mock_deployment_state_manager):
     replica._actor.set_done_stopping()
     dsm.update()
     check_counts(ds, total=0)
+
+
+@pytest.mark.parametrize(
+    "allocate_logs, expected_dead",
+    [(True, 1), (False, 0)],
+    ids=["with_logs", "no_logs"],
+)
+def test_recent_dead_replicas_retention(
+    mock_deployment_state_manager, allocate_logs, expected_dead
+):
+    """A stopped replica is retained for the dashboard iff it allocated a log file."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    if allocate_logs:
+        # set_ready() allocates the replica's log file path.
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+    replica_id = ds._replicas.get()[0].replica_id.unique_id
+
+    ds.delete()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # Dead replicas are tracked separately, so the live list is unaffected.
+    assert ds.list_replica_details() == []
+    dead = ds.list_recent_dead_replicas()
+    assert len(dead) == expected_dead
+    if expected_dead:
+        assert dead[0].replica_id == replica_id
+        assert dead[0].state == ReplicaState.STOPPED
+        assert dead[0].log_file_path is not None
+
+
+@patch("ray.serve._private.deployment_state.RAY_SERVE_RETAINED_DEAD_REPLICAS", 2)
+def test_recent_dead_replicas_bounded(mock_deployment_state_manager):
+    """Only the most recent RAY_SERVE_RETAINED_DEAD_REPLICAS are retained."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=3)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert ds._recent_dead_replicas.maxlen == 2
+
+    # Bring up 3 replicas, then stop all of them at once.
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+
+    ds.delete()
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # Buffer is capped at 2 even though three replicas have stopped.
+    assert len(ds._recent_dead_replicas) == 2
 
 
 def test_force_kill(mock_deployment_state_manager):
@@ -3891,6 +3956,76 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     assert mocked_replica.replica_id != new_mocked_replica_version2.replica_id
 
 
+def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
+    """Test replica actor was found alive but never finished initialization.
+
+    Mirrors the production scenario where the previous controller crashed
+    between actor creation and the first
+    `initialize_and_get_metadata(rank=...)` call. `recover()` is non-
+    blocking: the new controller fires `was_initialized` asynchronously,
+    `check_ready()` observes the False response in the reconcile loop,
+    kills the actor, and the reconciler replaces it with a fresh replica.
+    The controller-side deploy-failure counter must NOT be bumped, since
+    the underlying cause is a previous controller crash, not user code.
+    """
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, v1 = deployment_info(version="1")
+    target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert target_state_changed
+    dsm.save_checkpoint()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    mocked_replica = ds._replicas.get()[0]
+    replica_id = mocked_replica.replica_id
+
+    mocked_replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # Mark this replica as not-yet-initialized so that the new controller's
+    # async `was_initialized` probe will return False.
+    uninitialized_replicas_context.add(replica_id)
+
+    new_dsm = create_dsm([replica_id.to_full_id_str()])
+    new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # `recover()` is non-blocking: the replica enters RECOVERING and the
+    # probe is observed in the reconcile loop.
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+    starting_failures_before = new_ds._replica_constructor_retry_counter
+
+    # Next update cycle: probe says False -> the replica is force-stopped
+    # (STOPPING) and a fresh replica is started in its place (STARTING) in
+    # the same reconcile pass.
+    new_dsm.update()
+    check_counts(
+        new_ds,
+        total=2,
+        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v1)],
+    )
+    # The drop must not bump the deploy-failure counter -- the underlying
+    # cause is a previous controller crash, not user code.
+    assert new_ds._replica_constructor_retry_counter == starting_failures_before
+    # The fresh replica should have a new replica id.
+    starting_replicas = new_ds._replicas.get(states=[ReplicaState.STARTING])
+    assert len(starting_replicas) == 1
+    assert starting_replicas[0].replica_id != replica_id
+
+    # Drain the STOPPING replica and confirm we're left with just the
+    # replacement.
+    stopping_replica = new_ds._replicas.get(states=[ReplicaState.STOPPING])[0]
+    stopping_replica._actor.set_done_stopping()
+    new_dsm.update()
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+
+    uninitialized_replicas_context.remove(replica_id)
+
+
 def test_actor_died_before_recover(mock_deployment_state_manager):
     """Test replica actor died before controller could recover it.
 
@@ -3996,6 +4131,58 @@ def test_shutdown(mock_deployment_state_manager):
 
     # After all deployments shutdown, `is_ready_for_shutdown()` should return True
     assert dsm.is_ready_for_shutdown()
+
+
+def test_shutdown_blocks_deploy(mock_deployment_state_manager):
+    """After shutdown, deploy() should be a no-op and not create new deployments."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    dsm.shutdown()
+
+    b_info_1, _ = deployment_info(num_replicas=3)
+    assert not dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+
+    dsm.update()
+    assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+    assert dsm.is_ready_for_shutdown()
+
+
+def test_shutdown_blocks_autoscale(mock_deployment_state_manager):
+    """After shutdown, autoscale() should be a no-op."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    b_info_1, _ = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.update()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+
+    dsm.shutdown()
+
+    assert not dsm.autoscale(TEST_DEPLOYMENT_ID, 5)
+    assert ds._target_state.target_num_replicas == 0
+
+
+def test_shutdown_blocks_set_target_num_replicas(mock_deployment_state_manager):
+    """After shutdown, set_target_num_replicas() should be a no-op."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    b_info_1, _ = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.update()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+
+    dsm.shutdown()
+
+    dsm.set_target_num_replicas(TEST_DEPLOYMENT_ID, 10)
+    assert ds._target_state.target_num_replicas == 0
 
 
 def test_shutdown_does_not_delete_checkpoint(mock_deployment_state_manager):

@@ -1,8 +1,4 @@
-import json
 import logging
-import math
-from collections.abc import Mapping
-from typing import Dict
 
 from google.protobuf.struct_pb2 import Struct
 
@@ -72,103 +68,12 @@ _TRAINING_FRAMEWORK_MAP = {
 
 logger = logging.getLogger(__name__)
 
-# Helper conversion functions
-def _dict_to_human_readable_struct(d: Dict, *, max_depth: int = 3) -> Struct:
-    """
-    Convert a dict into a human-readable protobuf Struct.
 
-    Use to convert dicts containing variable value types (custom objects,
-    complex nesting, etc.) to a protobuf Struct for export serialization.
-    Non-JSON-native values are converted to their string representation.
-
-    Args:
-        d: The dict to convert. Must be a dict; raises ValueError otherwise.
-        max_depth: Maximum recursion depth; deeper structures are replaced with ``"..."``.
-
-    Returns:
-        A protobuf Struct populated with the converted dict.
-
-    Raises:
-        ValueError: If ``d`` is not a dict or if ``max_depth`` is <= 0.
-
-    Example:
-
-    Depth counts only dict nesting — lists recurse at the same depth level as their
-    parent. This means a list of primitives at any dict depth is always shown in full,
-    while a dict nested beyond ``max_depth`` is replaced with ``"..."``.
-
-    ```python
-    class MyConfig:
-        def __init__(self, lr: float):
-            self.lr = lr
-
-        def __str__(self):
-            return f"MyConfig(lr={self.lr})"
-
-    # Input: dict with mixed value types (nested dict + custom object + list)
-    cfg = {"epochs": 3, "custom": MyConfig(lr=0.001), "steps": [1, 2, 3],
-           "nested": {"inner": {"deep": 99}}}
-
-    proto_cfg = _dict_to_human_readable_struct(cfg, max_depth=2)
-
-    # Output: `proto_cfg` is a `google.protobuf.struct_pb2.Struct`.
-    # When rendered to JSON/dict (e.g., via protobuf's json_format), it looks like:
-    # {
-    #   "custom": "MyConfig(lr=0.001)",
-    #   "epochs": 3,
-    #   "steps": [1, 2, 3],      # list shown in full — lists don't consume depth
-    #   "nested": {"inner": "..."}  # dict beyond max_depth is truncated
-    # }
-    ```
-    """
-
-    if max_depth <= 0:
-        raise ValueError(
-            "Error parsing object to JSON for export: max_depth must be greater than 0"
-        )
-
-    if not isinstance(d, dict):
-        raise ValueError(
-            "Error parsing object to JSON for export: argument must be a dictionary"
-        )
-
-    def to_human_readable(value, depth):
-        # JSON-native types — non-finite floats are not valid JSON, convert to str
-        if value is None or isinstance(value, (bool, int, str)):
-            return value
-        if isinstance(value, float):
-            return str(value) if not math.isfinite(value) else value
-
-        # Dict-like
-        if isinstance(value, Mapping):
-            if depth <= 0:
-                return "..."
-            return {str(k): to_human_readable(v, depth - 1) for k, v in value.items()}
-
-        # List / tuple / set
-        if isinstance(value, (list, tuple, set)):
-            return [to_human_readable(v, depth) for v in value]
-
-        # Fallback: string representation
-        return str(value)
-
-    try:
-        human_readable_json = to_human_readable(d, max_depth)
-
-        json_str = json.dumps(
-            human_readable_json,
-            sort_keys=True,
-            ensure_ascii=False,
-        )
-
-        human_readable_dict = json.loads(json_str)
-    except Exception as e:
-        logger.warning(f"Failed to convert value to protobuf Struct for export: {e}")
-        human_readable_dict = {}
-
-    proto_struct = Struct()
-    proto_struct.update(human_readable_dict)
-    return proto_struct
+def _dict_to_struct(d: dict) -> Struct:
+    """Returns a protobuf Struct from a dictionary."""
+    s = Struct()
+    s.update(d)
+    return s
 
 
 def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
@@ -234,9 +139,7 @@ def to_proto_backend_config(
         framework=_TRAINING_FRAMEWORK_MAP[backend_config.framework],
     )
 
-    proto_backend_config.config.CopyFrom(
-        _dict_to_human_readable_struct(backend_config.config)
-    )
+    proto_backend_config.config.CopyFrom(_dict_to_struct(backend_config.config))
 
     return proto_backend_config
 
@@ -288,12 +191,8 @@ def _to_proto_execution_options(
 ) -> ProtoTrainRun.ExecutionOptions:
     """Convert a single ExecutionOptions schema model to protobuf."""
     return ProtoTrainRun.ExecutionOptions(
-        resource_limits=_dict_to_human_readable_struct(
-            execution_options.resource_limits
-        ),
-        exclude_resources=_dict_to_human_readable_struct(
-            execution_options.exclude_resources
-        ),
+        resource_limits=_dict_to_struct(execution_options.resource_limits),
+        exclude_resources=_dict_to_struct(execution_options.exclude_resources),
         preserve_order=execution_options.preserve_order,
         actor_locality_enabled=execution_options.actor_locality_enabled,
         verbose_progress=execution_options.verbose_progress,
@@ -330,11 +229,6 @@ def _to_proto_failure_config(run_config: RunConfig) -> ProtoTrainRun.FailureConf
     )
 
 
-def _to_proto_worker_runtime_env(run_config: RunConfig) -> Struct:
-    """Convert RunConfig.worker_runtime_env to protobuf Struct."""
-    return _dict_to_human_readable_struct(run_config.worker_runtime_env)
-
-
 def _to_proto_checkpoint_config(
     run_config: RunConfig,
 ) -> ProtoTrainRun.CheckpointConfig:
@@ -360,7 +254,7 @@ def to_proto_run_config(run_config: RunConfig) -> ProtoTrainRun.RunConfig:
     proto_run_config = ProtoTrainRun.RunConfig(
         name=run_config.name,
         failure_config=_to_proto_failure_config(run_config),
-        worker_runtime_env=_to_proto_worker_runtime_env(run_config),
+        worker_runtime_env=_dict_to_struct(run_config.worker_runtime_env),
         checkpoint_config=_to_proto_checkpoint_config(run_config),
         storage_path=run_config.storage_path,
     )
@@ -384,7 +278,7 @@ def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettin
 
     if run_settings.train_loop_config is not None:
         proto_run_settings.train_loop_config.CopyFrom(
-            _dict_to_human_readable_struct(run_settings.train_loop_config)
+            _dict_to_struct(run_settings.train_loop_config)
         )
 
     return proto_run_settings

@@ -3,7 +3,7 @@
 
 Monitor your LLM deployments with built-in metrics, dashboards, and logging.
 
-Ray Serve LLM provides comprehensive observability with the following features:
+Ray Serve LLM includes the following observability features:
 
 - **Service-level metrics**: Request and token behavior across deployed models.
 - **Engine metrics**: vLLM-specific performance metrics such as TTFT and TPOT.

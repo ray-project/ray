@@ -28,6 +28,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -55,6 +56,7 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<instrumented_io_context> io_context_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+  Clock clock_;
 };
 
 TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
@@ -71,7 +73,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   auto node = GenNodeInfo();
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -88,8 +91,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 
   // Test the node definition event + alive node lifecycle event
   ASSERT_EQ(register_events.size(), 2);
-  auto ray_event_0 = std::move(*register_events[0]).Serialize();
-  auto ray_event_1 = std::move(*register_events[1]).Serialize();
+  auto ray_event_0 = std::move(*register_events[0]).Serialize().value();
+  auto ray_event_1 = std::move(*register_events[1]).Serialize().value();
   ASSERT_EQ(ray_event_0.event_type(), rpc::events::RayEvent::NODE_DEFINITION_EVENT);
   ASSERT_EQ(ray_event_0.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_0.severity(), rpc::events::RayEvent::INFO);
@@ -122,7 +125,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   node_manager.UpdateAliveNode(NodeID::FromBinary(node->node_id()), sync_message);
   auto drain_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(drain_events.size(), 1);
-  auto ray_event_02 = std::move(*drain_events[0]).Serialize();
+  auto ray_event_02 = std::move(*drain_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_02.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_02.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_02.severity(), rpc::events::RayEvent::INFO);
@@ -151,7 +154,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   // Test the dead node lifecycle event
   auto unregister_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(unregister_events.size(), 1);
-  auto ray_event_03 = std::move(*unregister_events[0]).Serialize();
+  auto ray_event_03 = std::move(*unregister_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_03.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_03.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_03.severity(), rpc::events::RayEvent::INFO);
@@ -177,7 +180,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -198,7 +202,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::atomic_int callbacks_remaining = node_count;
@@ -273,7 +278,8 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
   int node_count = 10;
   std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
@@ -305,7 +311,8 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Create a test node
   auto node = GenNodeInfo();
@@ -385,7 +392,8 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Create and add a test node
   auto node = GenNodeInfo();
@@ -425,7 +433,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Add multiple alive nodes with different properties
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -624,7 +633,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   observability_publisher_.get());
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Add multiple alive nodes
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;

@@ -85,10 +85,22 @@ class OpenTelemetryMetricRecorder:
                 agg_fn = MetricCardinality.get_aggregation_function(
                     metric_name, metric_type
                 )
-                return [
-                    Observation(agg_fn(values), attributes=dict(filtered))
-                    for filtered, values in values_by_filtered_tags.items()
-                ]
+                # Keep a single label schema for each metric before passing
+                # observations to the Prometheus exporter.
+                all_keys = sorted(
+                    {k for filtered in values_by_filtered_tags for k, _ in filtered}
+                )
+
+                observations = []
+                for filtered, values in values_by_filtered_tags.items():
+                    attrs = dict(filtered)
+                    observations.append(
+                        Observation(
+                            agg_fn(values),
+                            attributes={k: attrs.get(k, "") for k in all_keys},
+                        )
+                    )
+                return observations
 
         return callback
 
@@ -96,13 +108,13 @@ class OpenTelemetryMetricRecorder:
         # Initialize the global metrics provider and meter. We only do this once on
         # the first initialization of the class, because re-setting the meter provider
         # can result in loss of metrics.
-        with self._metrics_initialized_lock:
-            if self._metrics_initialized:
+        with OpenTelemetryMetricRecorder._metrics_initialized_lock:
+            if OpenTelemetryMetricRecorder._metrics_initialized:
                 return
             prometheus_reader = PrometheusMetricReader()
             provider = MeterProvider(metric_readers=[prometheus_reader])
             metrics.set_meter_provider(provider)
-            self._metrics_initialized = True
+            OpenTelemetryMetricRecorder._metrics_initialized = True
 
     def register_gauge_metric(self, name: str, description: str) -> None:
         with self._lock:

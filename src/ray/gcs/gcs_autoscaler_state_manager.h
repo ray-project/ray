@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
@@ -32,6 +32,7 @@
 #include "ray/gcs/state_util.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -48,7 +49,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
                             pubsub::GcsPublisher *gcs_publisher,
-                            pubsub::ObservabilityPublisher *observability_publisher);
+                            pubsub::ObservabilityPublisher *observability_publisher,
+                            ClockInterface &clock);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -235,6 +237,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
   absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       node_resource_info_;
 
+  ClockInterface &clock_;
   ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);

@@ -12,6 +12,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -55,7 +56,10 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
 def _make_bundle(num_blocks: int = 1) -> RefBundle:
     """Return a RefBundle with *num_blocks* placeholder block refs."""
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
+    blocks = [
+        BlockEntry(ray.ObjectRef(bytes([i % 256]) * 28), meta)
+        for i in range(num_blocks)
+    ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
@@ -518,7 +522,7 @@ class TestGPUShuffleOperatorFinalization:
                 num_rows=1, size_bytes=8, exec_stats=None, input_files=None
             )
             bundle = RefBundle(
-                [(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+                [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
                 schema=None,
                 owns_blocks=False,
             )
@@ -574,8 +578,8 @@ class TestPlanAllToAllOpRouting:
 
     def _make_repartition_op(self, keys=("user_id",), num_outputs=8):
         return Repartition(
-            input_op=MagicMock(LogicalOperator),
             num_outputs=num_outputs,
+            input_dependencies=[MagicMock(LogicalOperator)],
             shuffle=True,
             keys=list(keys),
         )
@@ -592,24 +596,25 @@ class TestPlanAllToAllOpRouting:
 
         assert isinstance(op, GPUShuffleOperator)
 
-    def test_hash_shuffle_still_routes_to_hash_operator(self):
-        from ray.data._internal.execution.operators.hash_shuffle import (
-            HashShuffleOperator,
+    def test_hash_shuffle_routes_to_shuffle_reduce_op(self):
+        """V2 hash shuffle is a two-op DAG; planner returns the ShuffleReduceOp
+        with the ShuffleMapOp as its upstream input dependency."""
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+            ShuffleMapOp,
+        )
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+            ShuffleReduceOp,
         )
 
         ctx = DataContext()
         ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
-        with patch(
-            "ray.data._internal.execution.operators.hash_shuffle"
-            "._get_total_cluster_resources",
-            return_value=ExecutionResources(cpu=4, gpu=0),
-        ):
-            logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
-            input_physical_op = _make_input_op_mock()
-            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+        logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
+        input_physical_op = _make_input_op_mock()
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
 
-        assert isinstance(op, HashShuffleOperator)
+        assert isinstance(op, ShuffleReduceOp)
+        assert isinstance(op.input_dependencies[0], ShuffleMapOp)
 
     def test_unsupported_strategy_with_keys_raises(self):
         ctx = DataContext()

@@ -568,6 +568,42 @@ def test_hash_shuffle_operator_remote_args(
             )
 
 
+def test_aggregator_ray_remote_args_includes_context_label_selector(
+    ray_start_regular, restore_data_context
+):
+    """ExecutionOptions.label_selector should appear on aggregator actor args."""
+    DataContext.get_current().execution_options.label_selector = {"subcluster": "train"}
+
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None,
+        size_bytes=2 * GiB,
+        exec_stats=None,
+        input_files=None,
+    )
+    logical_op_mock.estimated_num_outputs.return_value = 16
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 4.0, "memory": 32 * GiB},
+    ):
+        op = HashAggregateOperator(
+            input_op=op_mock,
+            data_context=DataContext.get_current(),
+            aggregation_fns=[Count()],
+            key_columns=("id",),
+        )
+
+    assert op._aggregator_pool._aggregator_ray_remote_args["label_selector"] == {
+        "subcluster": "train"
+    }
+
+
 def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
     """Test that partial override of aggregator_ray_remote_args retains default values.
 

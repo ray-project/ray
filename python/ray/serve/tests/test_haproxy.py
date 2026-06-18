@@ -13,6 +13,7 @@ import requests
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip
 from ray._common.test_utils import (
     SignalActor,
     wait_for_condition,
@@ -21,11 +22,15 @@ from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
+    RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import HTTPOptions
 from ray.serve.context import _get_global_client
 from ray.serve.schema import (
     ProxyStatus,
@@ -36,6 +41,8 @@ from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.test_cli_2 import ping_endpoint
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -332,6 +339,20 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
+    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
+    # very likely each shard has served at least one request and converged.
+    def all_haproxies_ready():
+        try:
+            return all(
+                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                == 200
+                for _ in range(20)
+            )
+        except Exception:
+            return False
+
+    wait_for_condition(all_haproxies_ready, timeout=20)
+
     # Start a long-running request in background to test draining behavior
     request_result = []
 
@@ -589,6 +610,34 @@ def test_haproxy_http_options(ray_shutdown):
     serve.shutdown()
 
 
+@pytest.mark.parametrize(
+    "header_key",
+    [
+        SERVE_SESSION_ID,  # underscore form
+        "x-session-id",  # hyphenated form
+        "X-Session-Id",  # title-cased hyphenated form
+    ],
+)
+def test_session_id_header_forwarded_through_haproxy(ray_shutdown, header_key):
+    """The session_id header must survive an HAProxy hop and reach the deployment."""
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment
+    class Model:
+        def __call__(self) -> str:
+            return ray.serve.context._get_serve_request_context().session_id
+
+    serve.run(Model.bind())
+
+    session_id = "sess_user_42"
+    resp = httpx.get("http://localhost:8000/", headers={header_key: session_id})
+    assert resp.status_code == 200
+    assert resp.text == session_id
+
+    serve.shutdown()
+
+
 def test_haproxy_metrics(ray_shutdown):
     """Test that the haproxy metrics are exported correctly."""
     ray.init(num_cpus=4)
@@ -793,7 +842,9 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return "hello"
 
     # Helpers
-    SOCKET_PATH = "/tmp/haproxy-serve/admin.sock"
+    SOCKET_PATH = (
+        f"/tmp/haproxy-serve/{ray.get_runtime_context().get_node_id()}/admin.sock"
+    )
 
     def app_to_backend(app: str) -> str:
         return f"http-{app}"
@@ -1051,6 +1102,39 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
     assert response.text == "hello from scale-to-zero"
 
     serve.shutdown()
+
+
+def test_default_host_is_all_interfaces(ray_shutdown):
+    """When HAProxy is enabled, the default HTTPOptions.host binds to all
+    interfaces so HAProxy on other nodes can reach the replica backend ports.
+    """
+    serve.start(http_options=HTTPOptions())
+
+    @serve.deployment
+    class App:
+        async def __call__(self):
+            return "ok"
+
+    serve.run(App.bind())
+
+    def _direct_ingress_listeners():
+        return [
+            c
+            for c in psutil.net_connections(kind="tcp")
+            if c.status == psutil.CONN_LISTEN
+            and RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+            <= c.laddr.port
+            <= RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
+        ]
+
+    wait_for_condition(lambda: len(_direct_ingress_listeners()) > 0, timeout=30)
+
+    expected = get_all_interfaces_ip()
+    for conn in _direct_ingress_listeners():
+        assert conn.laddr.ip == expected, (
+            f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
+            f"expected {expected!r}"
+        )
 
 
 if __name__ == "__main__":

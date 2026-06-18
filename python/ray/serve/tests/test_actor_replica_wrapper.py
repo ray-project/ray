@@ -1,15 +1,16 @@
 import asyncio
 import pickle
 import sys
+from types import SimpleNamespace
 from typing import Union
 
 import pytest
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
-from ray._common.test_utils import SignalActor
+from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray.exceptions import TaskCancelledError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, TaskCancelledError
 from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
@@ -21,6 +22,78 @@ from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
+from ray.serve._private.utils import Semaphore
+
+
+class _IntMetricsManager:
+    """Minimal metrics manager that tracks only the in-flight count."""
+
+    def __init__(self):
+        self._n = 0
+
+    def get_num_ongoing_requests(self):
+        return self._n
+
+    def inc_num_ongoing_requests(self, _):
+        self._n += 1
+
+    def dec_num_ongoing_requests(self, _):
+        self._n -= 1
+
+
+@ray.remote(num_cpus=0)
+class SlotReservationActor:
+    """Ray actor wrapping the real Replica.reserve_slot / release_slot.
+
+    Used by integration tests that need production slot-reservation logic
+    running under Ray's actor concurrency model — unit tests share one event
+    loop and can't observe sync/async ordering on a real ReplicaActor.
+    """
+
+    def __init__(self, max_ongoing_requests: int):
+        from ray.serve._private.replica import Replica
+
+        replica = Replica.__new__(Replica)
+        replica._deployment_config = SimpleNamespace(
+            max_ongoing_requests=max_ongoing_requests
+        )
+        replica._reserved_slots = set()
+        replica._semaphore = Semaphore(lambda: max_ongoing_requests)
+        replica._metrics_manager = _IntMetricsManager()
+        self._replica = replica
+
+    async def reserve_slot(self, request_metadata, slot_token: str):
+        return await self._replica.reserve_slot(request_metadata, slot_token)
+
+    def release_slot(self, slot_token: str):
+        return self._replica.release_slot(slot_token)
+
+    def get_num_ongoing_requests(self) -> int:
+        return self._replica.get_num_ongoing_requests()
+
+
+@ray.remote(num_cpus=0)
+class BlockingReserveActor:
+    """Actor whose reserve_slot blocks on a SignalActor.
+
+    Records every release_slot token it receives so a test can verify the
+    cancellation cleanup path in RunningReplica.reserve_slot.
+    """
+
+    def __init__(self, signal_actor):
+        self._signal = signal_actor
+        self._released_tokens = []
+
+    async def reserve_slot(self, request_metadata, slot_token: str):
+        await self._signal.wait.remote()
+        return True, 1
+
+    def release_slot(self, slot_token: str):
+        self._released_tokens.append(slot_token)
+        return True, 0
+
+    def get_released_tokens(self):
+        return list(self._released_tokens)
 
 
 @ray.remote(num_cpus=0)
@@ -289,6 +362,93 @@ async def test_send_request_with_rejection_task_cancelled_error(setup_fake_repli
     replica_result = replica.try_send_request(pr, with_rejection=True)
     with pytest.raises(asyncio.CancelledError):
         await replica_result.get_rejection_response()
+
+
+def _spawn_running_replica(actor_cls, replica_id_str: str, *actor_args, **actor_kwargs):
+    """Spawn a named actor and wrap it in a RunningReplica.
+
+    Returns ``(running_replica, actor_handle)``. The actor must be created
+    with the canonical replica-id name so RunningReplica can resolve it
+    through its normal GCS lookup.
+    """
+    replica_id = ReplicaID(
+        replica_id_str, deployment_id=DeploymentID(name="slot_reservation_test")
+    )
+    actor_name = replica_id.to_full_id_str()
+    actor_handle = actor_cls.options(
+        name=actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
+    ).remote(*actor_args, **actor_kwargs)
+    info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id=None,
+        node_ip=None,
+        availability_zone=None,
+        actor_name=actor_name,
+        max_ongoing_requests=10,
+        is_cross_language=False,
+    )
+    return RunningReplica(info), actor_handle
+
+
+def _dummy_request_metadata() -> RequestMetadata:
+    return RequestMetadata(request_id="abc", internal_request_id="def")
+
+
+@pytest.mark.asyncio
+async def test_reserve_slot_cancellation_releases_slot_on_actor(ray_instance):
+    """If the awaiting reserve_slot task is cancelled, the wrapper must fire a
+    follow-up release_slot.remote(token) so the actor doesn't leak the slot.
+    """
+    signal = SignalActor.remote()
+    replica, actor = _spawn_running_replica(
+        BlockingReserveActor, "blocking-replica", signal
+    )
+
+    task = get_or_create_event_loop().create_task(
+        replica.reserve_slot(_dummy_request_metadata())
+    )
+
+    # Let the actor enter reserve_slot and start awaiting the signal.
+    _, pending = await asyncio.wait([task], timeout=0.5)
+    assert len(pending) == 1
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # Unblock the actor so it can process the follow-up release_slot.remote().
+    await signal.send.remote()
+
+    # The wrapper's cancellation cleanup fires release_slot.remote(token)
+    # without awaiting it; wait until the actor records the call.
+    async def _release_received():
+        return bool(await actor.get_released_tokens.remote())
+
+    await async_wait_for_condition(_release_received, timeout=5)
+
+    released_tokens = await actor.get_released_tokens.remote()
+    assert len(released_tokens) == 1
+
+
+@pytest.mark.asyncio
+async def test_reserve_slot_propagates_actor_died_error(ray_instance):
+    """If the replica actor is dead, RunningReplica.reserve_slot must raise
+    ActorDiedError so AsyncioRouter.choose_replica can retry against another
+    replica. ActorUnavailableError is also acceptable on the brief window
+    before the actor failure has propagated.
+    """
+    replica, actor = _spawn_running_replica(
+        SlotReservationActor, "doomed-replica", max_ongoing_requests=1
+    )
+
+    # Confirm liveness via a successful reservation first.
+    _, info = await replica.reserve_slot(_dummy_request_metadata())
+    assert info.accepted
+
+    ray.kill(actor)
+
+    with pytest.raises((ActorDiedError, ActorUnavailableError)):
+        await replica.reserve_slot(_dummy_request_metadata())
 
 
 if __name__ == "__main__":

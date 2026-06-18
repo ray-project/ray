@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/client_call.h"

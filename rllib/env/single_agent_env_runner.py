@@ -28,9 +28,9 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
+    ENV_RUNNER_STATE_SERVER_PULL_TIMER,
     ENV_TO_MODULE_CONNECTOR,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -56,6 +56,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger("ray.rllib")
@@ -135,6 +136,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[SingleAgentEpisode]
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
+        # Set by the Algorithm when `config.use_env_runner_state_server=True`.
+        self._env_runner_state_server = None
 
         # Measures the time passed between returning from `sample()`
         # and receiving the next `sample()` request from the user.
@@ -203,6 +206,33 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 key=TIME_BETWEEN_SAMPLING,
                 value=time.perf_counter() - self._time_after_sampling,
             )
+
+        # Pull-based weight sync: if a global `EnvRunnerStateServer` is configured, ask
+        # it for the latest state, transferring it only if it is newer than ours.
+        if self._env_runner_state_server is not None:
+            try:
+                # Single round-trip: the server returns the full state only if it is
+                # newer than ours (else None). Fall back to current weights if the
+                # server is unavailable.
+                with self.metrics.log_time(ENV_RUNNER_STATE_SERVER_PULL_TIMER):
+                    _server_state = ray.get(
+                        self._env_runner_state_server.pull_if_newer.remote(
+                            self._weights_seq_no
+                        )
+                    )
+            except ray.exceptions.RayError as e:
+                _server_state = None
+                # Logged once per EnvRunner to avoid spamming this per-`sample()` path.
+                if log_once("env_runner_state_server_pull_failed"):
+                    logger.warning(
+                        "EnvRunner failed to pull state from the "
+                        f"`EnvRunnerStateServer` ({type(e).__name__}). Falling back to "
+                        "the current weights/connector states; sampling continues and "
+                        "this should self-heal once the server is reachable again. This "
+                        "warning is logged only once per EnvRunner."
+                    )
+            if _server_state is not None:
+                self.set_state(_server_state)
 
         # Log current weight seq no.
         self.metrics.log_value(
@@ -642,8 +672,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         `self.config.env_config`) and then call this method to create new environments
         with the updated configuration.
         """
-        # If an env already exists, try closing it first
-        # to allow it to properly clean up.
         if self.env is not None:
             try:
                 self.env.close()
@@ -700,19 +728,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             env_name = self.config.env
 
         vectorize_mode = gym.VectorizeMode(self.config.gym_env_vectorize_mode)
-        try:
-            self.env = DictInfoToList(
-                gym.make_vec(
-                    env_name,
-                    num_envs=self.config.num_envs_per_env_runner,
-                    vectorization_mode=vectorize_mode,
-                    **env_config,
-                )
+        self.env = DictInfoToList(
+            gym.make_vec(
+                env_name,
+                num_envs=self.config.num_envs_per_env_runner,
+                vectorization_mode=vectorize_mode,
+                **env_config,
             )
-        except gym.error.Error as e:
-            raise EnvError(
-                ERR_MSG_INVALID_ENV_DESCRIPTOR.format(self.config.env)
-            ) from e
+        )
 
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner

@@ -276,9 +276,11 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard]",
             "requests",
-            "starlette",
-            "fastapi",
+            "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
+            "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
+            "mmh3",
+            "ray-haproxy>=2.8.20,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
@@ -376,8 +378,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.19.0",
-                "nixl>=1.0.0",
+                "vllm[audio]==0.23.0",
+                "nixl==1.2.0",
+                "nixl-cu13==1.2.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -852,7 +855,7 @@ if __name__ == "__main__":
             "ray": [
                 "includes/*.pxd",
                 "*.pxd",
-                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+                "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },
         include_package_data=True,

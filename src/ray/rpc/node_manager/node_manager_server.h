@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -52,7 +52,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RemovePlacementGroupBundles)    \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ResizeLocalResourceInstances)   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)           \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)                \
@@ -66,7 +66,8 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)                  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetAgentPIDs)                   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(KillLocalActor)                 \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FreeLocalObjects)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -141,9 +142,9 @@ class NodeManagerServiceHandler {
       rpc::CommitBundleResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCancelResourceReserve(
-      rpc::CancelResourceReserveRequest request,
-      rpc::CancelResourceReserveReply *reply,
+  virtual void HandleRemovePlacementGroupBundles(
+      rpc::RemovePlacementGroupBundlesRequest request,
+      rpc::RemovePlacementGroupBundlesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleResizeLocalResourceInstances(
@@ -206,6 +207,10 @@ class NodeManagerServiceHandler {
   virtual void HandleCancelLocalTask(CancelLocalTaskRequest request,
                                      CancelLocalTaskReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleFreeLocalObjects(FreeLocalObjectsRequest request,
+                                      FreeLocalObjectsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

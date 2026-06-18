@@ -28,6 +28,7 @@
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor_test_fixture.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -36,14 +37,14 @@ class MemoryMonitorUtilsTest : public MemoryMonitorTestFixture {};
 
 TEST_F(MemoryMonitorUtilsTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
-    auto system_memory = MemoryMonitorUtils::TakeSystemMemorySnapshot("");
+    auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
     ASSERT_GT(system_memory.total_bytes, 0);
     ASSERT_GT(system_memory.total_bytes, system_memory.used_bytes);
   }
 }
 
 TEST_F(MemoryMonitorUtilsTest,
-       TestTakeSystemMemorySnapshotUsesCgroupWhenLowerThanSystem) {
+       TestTakeSystemMemoryUsageSnapshotUsesCgroupWhenLowerThanSystem) {
   int64_t cgroup_total_bytes = 1024 * 1024 * 1024;   // 1 GB
   int64_t cgroup_current_bytes = 500 * 1024 * 1024;  // 500 MB current usage
   int64_t inactive_file_bytes = 50 * 1024 * 1024;    // 50 MB inactive file cache
@@ -51,10 +52,14 @@ TEST_F(MemoryMonitorUtilsTest,
   int64_t expected_used_bytes =
       cgroup_current_bytes - inactive_file_bytes - active_file_bytes;
 
-  std::string cgroup_dir = MockCgroupMemoryUsage(
-      cgroup_total_bytes, cgroup_current_bytes, inactive_file_bytes, active_file_bytes);
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
+                                                   cgroup_current_bytes,
+                                                   /*anon_memory_bytes=*/0,
+                                                   /*shmem_memory_bytes=*/0,
+                                                   inactive_file_bytes,
+                                                   active_file_bytes);
 
-  auto system_memory = MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_dir);
+  auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(cgroup_dir);
 
   ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes);
   ASSERT_EQ(system_memory.used_bytes, expected_used_bytes);
@@ -62,7 +67,7 @@ TEST_F(MemoryMonitorUtilsTest,
 
 TEST_F(MemoryMonitorUtilsTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   {
-    auto system_memory = MemoryMonitorUtils::TakeSystemMemorySnapshot("");
+    auto system_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
     auto [cgroup_used_bytes, cgroup_total_bytes] =
         MemoryMonitorUtils::GetCGroupMemoryBytes("");
 
@@ -270,10 +275,12 @@ TEST_F(MemoryMonitorUtilsTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) 
 TEST_F(
     MemoryMonitorUtilsTest,
     TestGetMemoryThresholdWithResourceIsolationUsesUpperBoundConstraintToComputeThreshold) {
-  // Create a fake cgroup directory using MockCgroupMemoryUsage.
-  std::string cgroup_dir = MockCgroupMemoryUsage(
+  // Create a fake cgroup directory using MockCgroupv2MemoryUsage.
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(
       /*total_bytes=*/16LL * 1024 * 1024 * 1024,
       /*current_bytes=*/5LL * 1024 * 1024 * 1024,
+      /*anon_memory_bytes=*/0,
+      /*shmem_memory_bytes=*/0,
       /*inactive_file_bytes=*/100 * 1024 * 1024,
       /*active_file_bytes=*/50 * 1024 * 1024);
 
@@ -442,6 +449,136 @@ TEST_F(MemoryMonitorUtilsTest, TestTakePerProcessMemorySnapshotFiltersBadPids) {
 
   ASSERT_EQ(usage.size(), 1);
   ASSERT_TRUE(usage.contains(1));
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupSnapshotEmptyPathReturnsNotFound) {
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeCgroupMemorySnapshot("");
+  ASSERT_TRUE(result.has_error());
+  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupSnapshotNonexistentPathReturnsNotFound) {
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeCgroupMemorySnapshot("/nonexistent/cgroup/path");
+  ASSERT_TRUE(result.has_error());
+  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupv2SnapshotReturnsCorrectAnonAndShmem) {
+  int64_t total_bytes = 1LL * 1024 * 1024 * 1024;  // 1 GB
+  int64_t current_bytes = 500 * 1024 * 1024;       // 500 MB
+  int64_t anon_bytes = 200 * 1024 * 1024;          // 200 MB
+  int64_t shmem_bytes = 100 * 1024 * 1024;         // 100 MB
+  int64_t inactive_file_bytes = 50 * 1024 * 1024;  // 50 MB
+  int64_t active_file_bytes = 30 * 1024 * 1024;    // 30 MB
+
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(total_bytes,
+                                                   current_bytes,
+                                                   anon_bytes,
+                                                   shmem_bytes,
+                                                   inactive_file_bytes,
+                                                   active_file_bytes);
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeCgroupMemorySnapshot(cgroup_dir);
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.value().anon_memory_bytes, anon_bytes);
+  ASSERT_EQ(result.value().shmem_memory_bytes, shmem_bytes);
+}
+
+TEST_F(MemoryMonitorUtilsTest, TestTakeCgroupv1SnapshotReturnsNotFound) {
+  int64_t total_bytes = 1LL * 1024 * 1024 * 1024;  // 1 GB
+  int64_t current_bytes = 500 * 1024 * 1024;       // 500 MB
+  int64_t inactive_file_bytes = 50 * 1024 * 1024;  // 50 MB
+  int64_t active_file_bytes = 30 * 1024 * 1024;    // 30 MB
+
+  std::string cgroup_dir = MockCgroupv1MemoryUsage(
+      total_bytes, current_bytes, inactive_file_bytes, active_file_bytes);
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeCgroupMemorySnapshot(cgroup_dir);
+
+  ASSERT_TRUE(result.has_error());
+  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
+}
+
+TEST_F(MemoryMonitorUtilsTest,
+       TestTakeCgroupv2SnapshotMissingAnonOrShmemReturnsNotFound) {
+  std::string cgroup_dir_anon = MockCgroupv2MemoryUsage(
+      /*total_bytes=*/1LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/500 * 1024 * 1024,
+      /*anon_memory_bytes=*/std::nullopt,
+      /*shmem_memory_bytes=*/100 * 1024 * 1024,
+      /*inactive_file_bytes=*/50 * 1024 * 1024,
+      /*active_file_bytes=*/30 * 1024 * 1024);
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result_anon =
+      MemoryMonitorUtils::TakeCgroupMemorySnapshot(cgroup_dir_anon);
+
+  ASSERT_TRUE(result_anon.has_error());
+  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result_anon.error()));
+
+  std::string cgroup_dir_shmem = MockCgroupv2MemoryUsage(
+      /*total_bytes=*/1LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/500 * 1024 * 1024,
+      /*anon_memory_bytes=*/500 * 1024 * 1024,
+      /*shmem_memory_bytes=*/std::nullopt,
+      /*inactive_file_bytes=*/50 * 1024 * 1024,
+      /*active_file_bytes=*/30 * 1024 * 1024);
+  StatusSetOr<CgroupMemorySnapshot, StatusT::NotFound> result_shmem =
+      MemoryMonitorUtils::TakeCgroupMemorySnapshot(cgroup_dir_shmem);
+
+  ASSERT_TRUE(result_shmem.has_error());
+  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result_shmem.error()));
+}
+
+TEST_F(MemoryMonitorUtilsTest,
+       TestTakeUserSliceMemoryUsageSnapshotOnCgroupV1ReturnsNotFound) {
+  std::string user_cgroup_dir = MockCgroupv1MemoryUsage(
+      /*total_bytes=*/1LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/500 * 1024 * 1024,
+      /*inactive_file_bytes=*/30 * 1024 * 1024,
+      /*active_file_bytes=*/20 * 1024 * 1024);
+  std::string system_cgroup_dir = MockCgroupv1MemoryUsage(
+      /*total_bytes=*/1LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/500 * 1024 * 1024,
+      /*inactive_file_bytes=*/30 * 1024 * 1024,
+      /*active_file_bytes=*/20 * 1024 * 1024);
+  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_dir,
+                                                           system_cgroup_dir);
+  ASSERT_TRUE(result.has_error());
+  ASSERT_TRUE(std::holds_alternative<StatusT::NotFound>(result.error()));
+}
+
+TEST_F(MemoryMonitorUtilsTest,
+       TestTakeUserSliceMemoryUsageSnapshotValidPathsReturnsCorrectUsedBytes) {
+  int64_t user_anon_bytes = 200 * 1024 * 1024;    // 200 MB
+  int64_t user_shmem_bytes = 100 * 1024 * 1024;   // 100 MB
+  int64_t system_shmem_bytes = 50 * 1024 * 1024;  // 50 MB
+
+  std::string user_cgroup_dir = MockCgroupv2MemoryUsage(
+      /*total_bytes=*/1LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/500 * 1024 * 1024,
+      /*anon_memory_bytes=*/user_anon_bytes,
+      /*shmem_memory_bytes=*/user_shmem_bytes,
+      /*inactive_file_bytes=*/30 * 1024 * 1024,
+      /*active_file_bytes=*/20 * 1024 * 1024);
+  std::string system_cgroup_dir = MockCgroupv2MemoryUsage(
+      /*total_bytes=*/1LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/200 * 1024 * 1024,
+      /*anon_memory_bytes=*/0,
+      /*shmem_memory_bytes=*/system_shmem_bytes,
+      /*inactive_file_bytes=*/10 * 1024 * 1024,
+      /*active_file_bytes=*/10 * 1024 * 1024);
+
+  int64_t expected_used_bytes = user_anon_bytes + user_shmem_bytes + system_shmem_bytes;
+  StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound> result =
+      MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(user_cgroup_dir,
+                                                           system_cgroup_dir);
+  MemoryUsageSnapshot host_memory = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot("");
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.value().used_bytes, expected_used_bytes);
+  ASSERT_EQ(result.value().total_bytes, host_memory.total_bytes);
 }
 
 }  // namespace ray

@@ -15,13 +15,26 @@ ray_cc_library(
     srcs = ["publisher.cc"],
     hdrs = ["publisher.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:periodical_runner_interface",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/util:clock",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "posting_publisher",
+    hdrs = ["posting_publisher.h"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/pubsub:publisher_interface",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -42,7 +55,7 @@ ray_cc_library(
     srcs = ["subscriber.cc"],
     hdrs = ["subscriber.h"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:subscriber_interface",
         "//src/ray/rpc:rpc_callback_types",
@@ -68,7 +81,6 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":publisher_interface",
-        "//src/ray/common:asio",
     ],
 )
 

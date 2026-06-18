@@ -28,6 +28,8 @@
 /doc/source/cluster/ @ray-project/ray-core
 /doc/source/ray-core/ @ray-project/ray-core
 
+/doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core
+
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @dayshah @MengjinYan
 
@@ -82,6 +84,10 @@
 /doc/source/data/working-with-llms.rst @ray-project/ray-llm
 /doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm
 
+# LLM dependencies
+/python/requirements/llm/llm-requirements.txt @ray-project/ray-llm
+/python/deplocks/llm/ @ray-project/ray-llm
+
 # ML Docker Dependencies
 /python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
 /python/requirements/ml/dl-gpu-requirements.txt @richardliaw @matthewdeng
@@ -131,3 +137,9 @@
 /.github/workflows/ @ray-project/ray-ci
 
 /.gemini/ @edoakes @ray-project/ray-ci
+
+# TPU
+/python/ray/util/tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/tests/test_tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/tests/accelerators/test_tpu.py @andrewsykim @edoakes @ryanaoleary
+/python/ray/_private/accelerators/tpu.py @andrewsykim @edoakes @ryanaoleary

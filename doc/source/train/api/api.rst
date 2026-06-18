@@ -106,6 +106,7 @@ LightGBM
     ~train.lightgbm.LightGBMTrainer
     ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
+    ~train.lightgbm.normalize_pandas_for_lightgbm
 
 JAX
 ~~~

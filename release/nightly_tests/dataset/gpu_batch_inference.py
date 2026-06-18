@@ -112,7 +112,6 @@ def main(args):
         compute=compute,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
-        max_concurrency=2,
     )
 
     total_images = 0

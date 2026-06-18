@@ -2,7 +2,6 @@ package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.exception.RayTimeoutException;
-import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
@@ -42,12 +41,6 @@ public class LocalModeObjectStore extends ObjectStore {
     ObjectId objectId = ObjectId.fromRandom();
     putRaw(obj, objectId);
     return objectId;
-  }
-
-  @Override
-  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
-    throw new UnsupportedOperationException(
-        "Assigning owner in Ray:put is not implemented in local mode");
   }
 
   @Override
