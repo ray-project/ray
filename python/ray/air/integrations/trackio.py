@@ -84,6 +84,8 @@ def setup_trackio(
             dashboard remotely.
         rank_zero_only: If True, only the rank 0 worker in distributed training
             will initialize Trackio. If False, all workers will create runs.
+        **kwargs: Additional keyword arguments accepted for forward
+        compatibility.
 
     Returns:
         A Trackio run object returned by ``trackio.init()``.
