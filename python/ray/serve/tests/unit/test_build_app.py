@@ -5,10 +5,17 @@ import pytest
 from fastapi import FastAPI
 
 from ray import serve
-from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.build_app import (
+    CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    BuiltApplication,
+    build_app,
+)
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
+from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.handle import DeploymentHandle
 
 
@@ -669,6 +676,100 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
 
     client = object.__new__(ServeControllerClient)
     client._check_ingress_deployments([built_app])
+
+
+@pytest.mark.parametrize("custom_router", [True, False])
+def test_build_app_haproxy_rejects_only_custom_ingress_request_router(
+    monkeypatch, custom_router
+):
+    """Under HAProxy, a custom router on the ingress deployment is rejected.
+
+    HAProxy load-balances ingress traffic and bypasses the Serve request
+    router, so a custom router there would be silently ignored. The default
+    router builds without complaint.
+    """
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    options = {}
+    if custom_router:
+        options["request_router_config"] = RequestRouterConfig(
+            request_router_class=RoundRobinRouter
+        )
+
+    @serve.deployment
+    class Ingress:
+        pass
+
+    app = Ingress.options(**options).bind()
+
+    if custom_router:
+        with pytest.raises(
+            RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+        ):
+            build_app(
+                app,
+                name="default",
+                make_deployment_handle=FakeDeploymentHandle.from_deployment,
+            )
+    else:
+        built_app: BuiltApplication = build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+        assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
+
+
+def test_build_app_allows_custom_ingress_request_router_in_direct_streaming(
+    monkeypatch,
+):
+    """Direct streaming attaches an ingress_request_router that delegates replica
+    selection back to the ingress deployment's router, so a custom router is
+    allowed even under HAProxy."""
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(server=ingress_app)
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
+    assert built_app.ingress_request_router_deployment is not None
+
+
+def test_build_app_allows_custom_ingress_request_router_without_haproxy():
+    """Without HAProxy the Serve proxy routes through the ingress deployment's
+    request router, so a custom router is honored and must be allowed."""
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        pass
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
 
 
 if __name__ == "__main__":
