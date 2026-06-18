@@ -67,6 +67,31 @@ TRACKED_FILES = (
     .split("\n")
 )
 
+_LEGACY_COLLECTION_HREF_REWRITES = (
+    (
+        "serve/tutorials/deployment-serve-llm/content/",
+        "_collections/serve/tutorials/deployment-serve-llm/",
+    ),
+    (
+        "serve/tutorials/deployment-serve-llm/",
+        "_collections/serve/tutorials/deployment-serve-llm/",
+    ),
+)
+_DEPLOYMENT_SERVE_LLM_COLLECTION_PREFIX = (
+    "_collections/serve/tutorials/deployment-serve-llm/"
+)
+
+
+def canonicalize_collection_href(href: str) -> str:
+    """Map legacy in-tree template links to fetched _collections pages."""
+    for old_prefix, new_prefix in _LEGACY_COLLECTION_HREF_REWRITES:
+        if href.startswith(old_prefix):
+            href = new_prefix + href[len(old_prefix) :]
+            break
+    if href.startswith(_DEPLOYMENT_SERVE_LLM_COLLECTION_PREFIX):
+        href = href.replace("/content/README.html", "/README.html")
+    return href
+
 
 def feedback_form_url(project, page):
     """Create a URL for feedback on a particular page in a project."""
@@ -350,6 +375,7 @@ def preload_sidebar_nav(
 
     for a in soup.select("a"):
         absolute_href = re.sub(r"^(\.\.\/)*", "", a["href"])
+        absolute_href = canonicalize_collection_href(absolute_href)
         a["href"] = to_root_prefix + absolute_href
 
         if absolute_href == f"{pagename}.html":
