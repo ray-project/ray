@@ -30,6 +30,12 @@ class FakeProc:
         self._stdout_path = stdout_path
         self._stderr_path = stderr_path
 
+    async def wait(self) -> int:
+        """Resolve once the process has an exit code, mirroring Process.wait."""
+        while self.returncode is None:
+            await asyncio.sleep(0.01)
+        return self.returncode
+
 
 @pytest.fixture
 def api(tmp_path) -> HAProxyApi:
@@ -87,6 +93,29 @@ class TestWaitForHapAvailability:
 
         with pytest.raises(RuntimeError, match="crashed during startup"):
             asyncio.run(api._wait_for_hap_availability(proc, timeout_s=1))
+
+    def test_detects_crash_during_wait(self, api, tmp_path):
+        """A spawn that dies mid-wait is caught via proc.wait, so the crash is
+        reported instead of waiting out the full timeout."""
+        stdout, stderr = _make_stream_files(tmp_path, "died mid-startup")
+        proc = FakeProc(pid=222, stdout_path=stdout, stderr_path=stderr)
+
+        # The spawn is alive for the first probe then exits; the answering pid
+        # never matches, so only proc.wait can end the wait early.
+        probes = {"n": 0}
+
+        async def fake_send(cmd: str) -> str:
+            assert cmd == "show info"
+            probes["n"] += 1
+            if probes["n"] == 1:
+                proc.returncode = 1
+            return "Name: HAProxy\nPid: 111\n"
+
+        api._send_socket_command = fake_send
+
+        with pytest.raises(RuntimeError, match="crashed during startup") as exc_info:
+            asyncio.run(api._wait_for_hap_availability(proc, timeout_s=5))
+        assert "died mid-startup" in str(exc_info.value)
 
 
 class TestGetRunningPid:

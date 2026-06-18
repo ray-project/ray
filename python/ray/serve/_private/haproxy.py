@@ -915,28 +915,51 @@ class HAProxyApi(ProxyApi):
         proc: asyncio.subprocess.Process,
         timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
     ) -> None:
-        start_time = time.time()
+        """Block until ``proc`` is the HAProxy worker answering the admin socket.
 
-        # TODO: update this to use health checks
-        while time.time() - start_time < timeout_s:
-            if proc.returncode is not None:
-                # Both streams were redirected to files at spawn; tail them.
-                stderr_text = _tail_file(proc._stderr_path)
-                stdout_text = _tail_file(proc._stdout_path)
-                output = stderr_text or stdout_text
+        Readiness comes from HAProxy's built-in runtime status. ``show info``
+        reports the live worker pid and we wait for it to equal ``proc.pid``.
+        During a reload the socket answers through the displaced worker until
+        ``proc`` rebinds it, so a socket-only check could call a dead spawn
+        ready and strand its ``-sf`` target.
 
-                raise RuntimeError(
-                    f"HAProxy crashed during startup: {output or f'exit code {proc.returncode}'}"
-                )
+        A crash is surfaced the moment ``proc`` exits by awaiting
+        ``proc.wait()`` instead of busy-polling its exit code, so startup fails
+        fast with the spawn's stderr.
+        """
+        # Resolves as soon as the process exits. Cancelled after a successful
+        # takeover so no pending wait is left behind.
+        proc_exited = asyncio.ensure_future(proc.wait())
+        deadline = time.time() + timeout_s
+        try:
+            while True:
+                if proc_exited.done():
+                    # Both streams were redirected to files at spawn, so tail them.
+                    stderr_text = _tail_file(proc._stderr_path)
+                    stdout_text = _tail_file(proc._stdout_path)
+                    output = stderr_text or stdout_text
+                    raise RuntimeError(
+                        f"HAProxy crashed during startup: "
+                        f"{output or f'exit code {proc.returncode}'}"
+                    )
 
-            # The socket path answers through its previous owner until the
-            # new process rebinds it, so require the answer to come from
-            # `proc` itself. Otherwise a spawn that dies before taking over is
-            # declared ready and its -sf target is stranded forever.
-            if await self._get_running_pid() == proc.pid:
-                return
+                if await self._get_running_pid() == proc.pid:
+                    return
 
-            await asyncio.sleep(0.5)
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+
+                # Re-probe the runtime status after a bounded interval but wake
+                # immediately if the process dies in the meantime.
+                await asyncio.wait({proc_exited}, timeout=min(remaining, 0.5))
+        finally:
+            if not proc_exited.done():
+                proc_exited.cancel()
+                try:
+                    await proc_exited
+                except asyncio.CancelledError:
+                    pass
 
         raise RuntimeError(
             f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
