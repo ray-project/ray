@@ -803,7 +803,7 @@ label-domain scheduling. Ray:
 
   **Using with Kubernetes**
 
-  Many GB300 clusters use Kubernetes as their scheduler. The NVIDIA GPU Operator
+  Many GB200 and GB300 clusters use Kubernetes as their scheduler. The NVIDIA GPU Operator
   exposes an identifier for each NVLink domain with the node label
   ``nvidia.com/gpu.clique`` from GPU Feature Discovery.
 
