@@ -243,9 +243,9 @@ def test_module_lacks_client_builder():
             ray.client("othermodule://")
         except RuntimeError as e:
             exception = e
-        assert exception is not None, (
-            "Module without ClientBuilder did not raise RuntimeError"
-        )
+        assert (
+            exception is not None
+        ), "Module without ClientBuilder did not raise RuntimeError"
         assert "does not have ClientBuilder" in str(exception)
 
 
