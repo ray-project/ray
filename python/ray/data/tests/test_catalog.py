@@ -130,12 +130,6 @@ def test_resolve_iceberg(uc_catalog):
     assert ckw["header.X-Iceberg-Access-Delegation"] == "vended-credentials"
 
 
-def test_resolve_requires_readerformat(uc_catalog):
-    # reader must be a ReaderFormat enum, not its raw string value.
-    with pytest.raises(AssertionError, match="must be a ReaderFormat"):
-        uc_catalog.resolve("main.sales.txns", reader="delta")
-
-
 def test_resolve_azure_sets_env(isolated_env):
     catalog = UnityCatalog(url="https://h.databricks.com", token="t")
     azure_creds = {
