@@ -954,12 +954,7 @@ class HAProxyApi(ProxyApi):
                 # immediately if the process dies in the meantime.
                 await asyncio.wait({proc_exited}, timeout=min(remaining, 0.5))
         finally:
-            if not proc_exited.done():
-                proc_exited.cancel()
-                try:
-                    await proc_exited
-                except asyncio.CancelledError:
-                    pass
+            proc_exited.cancel()
 
         raise RuntimeError(
             f"HAProxy (pid={proc.pid}) did not take over the admin socket within "
