@@ -70,31 +70,7 @@ class CoreWorkerTest : public ::testing::Test {
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
     options.node_ip_address = "127.0.0.1";
-    options.task_execution_callback =
-        [](const rpc::Address &caller_address,
-           TaskType task_type,
-           const std::string task_name,
-           const RayFunction &ray_function,
-           const std::unordered_map<std::string, double> &required_resources,
-           const std::vector<std::shared_ptr<RayObject>> &args,
-           const std::vector<rpc::ObjectReference> &arg_refs,
-           const std::string &debugger_breakpoint,
-           const std::string &serialized_retry_exception_allowlist,
-           std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
-           std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
-           std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-           std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-           bool *is_retryable_error,
-           std::string *actor_repr_name,
-           std::string *application_error,
-           const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-           const std::string name_of_concurrency_group_to_execute,
-           bool is_reattempt,
-           bool is_streaming_generator,
-           bool retry_exception,
-           int64_t generator_backpressure_num_objects,
-           int64_t num_objects_per_yield,
-           const std::optional<std::string> &tensor_transport) -> Status {
+    options.task_execution_callback = [](TaskExecutionMetadata &task) -> Status {
       return Status::OK();
     };
 

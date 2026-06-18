@@ -17,12 +17,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/util/logging.h"
@@ -68,6 +71,52 @@ class TaskExecutionMetadata {
   }
   const TaskSpecification &TaskSpec() const { return task_spec_; }
 
+  // Convenience accessors exposing the task-spec-derived values that the language
+  // frontends need to execute a task. These let the execute callback take only this
+  // metadata object instead of a long argument list, without each frontend needing
+  // direct bindings to TaskSpecification.
+  const rpc::Address &CallerAddress() const { return task_spec_.CallerAddress(); }
+  rpc::TaskType GetTaskType() const {
+    if (task_spec_.IsActorCreationTask()) {
+      return rpc::TaskType::ACTOR_CREATION_TASK;
+    }
+    if (task_spec_.IsActorTask()) {
+      return rpc::TaskType::ACTOR_TASK;
+    }
+    return rpc::TaskType::NORMAL_TASK;
+  }
+  std::string TaskName() const { return task_spec_.GetName(); }
+  RayFunction GetRayFunction() const {
+    return RayFunction{task_spec_.GetLanguage(), task_spec_.FunctionDescriptor()};
+  }
+  std::unordered_map<std::string, double> RequiredResources() const {
+    return task_spec_.GetRequiredResources().GetResourceUnorderedMap();
+  }
+  std::string DebuggerBreakpoint() const { return task_spec_.GetDebuggerBreakpoint(); }
+  std::string SerializedRetryExceptionAllowlist() const {
+    return task_spec_.GetSerializedRetryExceptionAllowlist();
+  }
+  // Concurrency groups defined by an actor creation task (empty otherwise).
+  std::vector<ConcurrencyGroup> DefinedConcurrencyGroups() const {
+    return task_spec_.IsActorCreationTask() ? task_spec_.ConcurrencyGroups()
+                                            : std::vector<ConcurrencyGroup>{};
+  }
+  // Concurrency group an actor task should run in (empty otherwise).
+  std::string ConcurrencyGroupToExecute() const {
+    return task_spec_.IsActorTask() ? task_spec_.ConcurrencyGroupName() : std::string{};
+  }
+  bool IsReattempt() const { return task_spec_.AttemptNumber() > 0; }
+  bool ReturnsDynamic() const { return task_spec_.ReturnsDynamic(); }
+  bool IsStreamingGenerator() const { return task_spec_.IsStreamingGenerator(); }
+  bool ShouldRetryExceptions() const { return task_spec_.ShouldRetryExceptions(); }
+  int64_t GeneratorBackpressureNumObjects() const {
+    return task_spec_.GeneratorBackpressureNumObjects();
+  }
+  int64_t NumObjectsPerYield() const { return task_spec_.NumObjectsPerYield(); }
+  std::optional<std::string> TensorTransport() const {
+    return task_spec_.TensorTransport();
+  }
+
   // Per-request state used by the queue's execute / cancel callbacks. `resource_ids`
   // is mutable because the execute path moves it into the task handler.
   std::optional<ResourceMappingType> &resource_ids() { return resource_ids_; }
@@ -75,6 +124,15 @@ class TaskExecutionMetadata {
   const rpc::SendReplyCallback &send_reply_callback() const {
     return send_reply_callback_;
   }
+
+  // Task arguments, fetched and pinned before execution. `args` holds the argument
+  // values as RayObjects; `arg_refs` holds the ObjectID corresponding to each by-ref
+  // argument (Nil for by-value arguments), with the same length as `args`. `borrowed_ids`
+  // holds all IDs passed by reference plus any IDs inlined in the task spec; these are
+  // pinned for the duration of execution and unpinned once the task completes.
+  std::vector<std::shared_ptr<RayObject>> args;
+  std::vector<rpc::ObjectReference> arg_refs;
+  std::vector<ObjectID> borrowed_ids;
 
   // Outputs populated by the execute callback once the task runs.
 
@@ -96,6 +154,9 @@ class TaskExecutionMetadata {
   // Map of metadata associated with streaming generator outputs.
   // The value is set to `true` if the object was written to plasma (not inlined).
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
+  // Serialized exception raised by an actor creation task's initialization method, if
+  // any. Populated by the execute callback and used to surface the error on worker exit.
+  std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes;
 
  private:
   TaskSpecification task_spec_;

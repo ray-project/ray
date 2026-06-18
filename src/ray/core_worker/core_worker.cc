@@ -377,17 +377,7 @@ CoreWorker::CoreWorker(
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task = std::bind(&CoreWorker::ExecuteTask,
-                                  this,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2,
-                                  std::placeholders::_3,
-                                  std::placeholders::_4,
-                                  std::placeholders::_5,
-                                  std::placeholders::_6,
-                                  std::placeholders::_7,
-                                  std::placeholders::_8,
-                                  std::placeholders::_9);
+    auto execute_task = [this](TaskExecutionMetadata &task) { return ExecuteTask(task); };
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
         [this](const std::vector<rpc::ObjectReference> &args, int64_t tag) {
           RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
@@ -2716,17 +2706,8 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExecuteTask(
-    const TaskSpecification &task_spec,
-    std::optional<ResourceMappingType> resource_ids,
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
-    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-    ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
-    bool *is_retryable_error,
-    std::string *actor_repr_name,
-    std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+Status CoreWorker::ExecuteTask(TaskExecutionMetadata &task) {
+  RAY_LOG(DEBUG) << "Executing task, task info = " << task.TaskSpec().DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
@@ -2735,20 +2716,12 @@ Status CoreWorker::ExecuteTask(
         absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
   }
 
-  std::vector<std::shared_ptr<RayObject>> args;
-  std::vector<rpc::ObjectReference> arg_refs;
-  // This includes all IDs that were passed by reference and any IDs that were
-  // inlined in the task spec. These references will be pinned during the task
-  // execution and unpinned once the task completes. We will notify the caller
-  // about any IDs that we are still borrowing by the time the task completes.
-  std::vector<ObjectID> borrowed_ids;
-
   // Extract task name and retry status for metrics reporting.
   // Use GetName() which returns the custom task name if set via .options(name="..."),
   // otherwise falls back to the function descriptor's call string. This ensures
   // consistency with task events reported to the State API / Dashboard.
-  std::string func_name = task_spec.GetName();
-  bool is_retry = task_spec.IsRetry();
+  std::string func_name = task.TaskSpec().GetName();
+  bool is_retry = task.TaskSpec().IsRetry();
 
   // Modify the worker's per-function counters. This should be done before updating any
   // substates (running_in_ray_get, running_in_ray_wait, getting_and_pinning_args) since
@@ -2759,8 +2732,7 @@ Status CoreWorker::ExecuteTask(
   ++num_get_pin_args_in_flight_;
   task_counter_.SetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
-  Status pin_args_request_status =
-      GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
+  Status pin_args_request_status = GetAndPinArgsForExecutor(task);
   task_counter_.UnsetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
   --num_get_pin_args_in_flight_;
@@ -2769,7 +2741,7 @@ Status CoreWorker::ExecuteTask(
     // If this has happened, it's because we are unable to talk to our local raylet.
     // This very likely means that the raylet has shutdown before this worker
     // unexpectedly. In which case we'll mark the task finished and trigger shut down.
-    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
+    task_counter_.MoveRunningToFinished(func_name, task.TaskSpec().IsRetry());
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
                       pin_args_request_status.message()),
@@ -2783,64 +2755,63 @@ Status CoreWorker::ExecuteTask(
   worker::TaskStatusEvent::TaskStateUpdate update;
   {
     absl::MutexLock lock(&mutex_);
-    update = (task_spec.IsActorTask() && !actor_repr_name_.empty())
+    update = (task.TaskSpec().IsActorTask() && !actor_repr_name_.empty())
                  ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name_, pid_)
                  : worker::TaskStatusEvent::TaskStateUpdate(pid_);
   }
 
   RAY_UNUSED(
-      task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
-                                                        task_spec.JobId(),
-                                                        task_spec.AttemptNumber(),
-                                                        task_spec,
+      task_event_buffer_->RecordTaskStatusEventIfNeeded(task.TaskSpec().TaskId(),
+                                                        task.TaskSpec().JobId(),
+                                                        task.TaskSpec().AttemptNumber(),
+                                                        task.TaskSpec(),
                                                         rpc::TaskStatus::RUNNING,
                                                         /*include_task_info=*/false,
                                                         update));
 
-  worker_context_->SetCurrentTask(task_spec);
-  SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
+  worker_context_->SetCurrentTask(task.TaskSpec());
+  SetCurrentTaskId(task.TaskSpec().TaskId(),
+                   task.TaskSpec().AttemptNumber(),
+                   task.TaskSpec().GetName());
 
   {
     absl::MutexLock lock(&mutex_);
-    running_tasks_.emplace(task_spec.TaskId(), task_spec);
-    if (resource_ids.has_value()) {
-      resource_ids_ = std::move(*resource_ids);
+    running_tasks_.emplace(task.TaskSpec().TaskId(), task.TaskSpec());
+    if (task.resource_ids().has_value()) {
+      resource_ids_ = std::move(*task.resource_ids());
     }
   }
 
-  RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
-
-  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_objects->emplace_back(task_spec.ReturnId(i), nullptr);
+  for (size_t i = 0; i < task.TaskSpec().NumReturns(); i++) {
+    task.return_objects.emplace_back(task.TaskSpec().ReturnId(i), nullptr);
   }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
-  // the first execution.
-  if (!task_spec.ReturnsDynamic()) {
-    dynamic_return_objects = nullptr;
-  } else if (task_spec.AttemptNumber() > 0) {
-    for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+  // the first execution. A null pointer signals to the executor that this is not a
+  // dynamic task.
+  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects =
+      task.TaskSpec().ReturnsDynamic() ? &task.dynamic_return_objects : nullptr;
+  if (task.TaskSpec().ReturnsDynamic() && task.TaskSpec().AttemptNumber() > 0) {
+    for (const auto &dynamic_return_id : task.TaskSpec().DynamicReturnIds()) {
       // Increase the put index so that when the generator creates a new obj
       // the object id won't conflict.
       worker_context_->GetNextPutIndex();
       dynamic_return_objects->emplace_back(dynamic_return_id,
                                            std::shared_ptr<RayObject>());
-      RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
+      RAY_LOG(DEBUG) << "Re-executed task " << task.TaskSpec().TaskId()
                      << " should return dynamic object " << dynamic_return_id;
 
       AddLocalReference(dynamic_return_id, "<temporary (DynamicObjectRefGenerator)>");
       reference_counter_->AddBorrowedObject(
-          dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
+          dynamic_return_id, ObjectID::Nil(), task.TaskSpec().CallerAddress());
     }
   }
 
-  TaskType task_type = TaskType::NORMAL_TASK;
-  if (task_spec.IsActorCreationTask()) {
-    task_type = TaskType::ACTOR_CREATION_TASK;
-    SetActorId(task_spec.ActorCreationId());
-    task_counter_.BecomeActor(task_spec.FunctionDescriptor()->ClassName());
+  if (task.TaskSpec().IsActorCreationTask()) {
+    SetActorId(task.TaskSpec().ActorCreationId());
+    task_counter_.BecomeActor(task.TaskSpec().FunctionDescriptor()->ClassName());
     {
       auto self_actor_handle =
-          std::make_unique<ActorHandle>(task_spec.GetSerializedActorHandle());
+          std::make_unique<ActorHandle>(task.TaskSpec().GetSerializedActorHandle());
       // Register the handle to the current actor itself.
       actor_manager_->RegisterActorHandle(std::move(self_actor_handle),
                                           ObjectID::Nil(),
@@ -2849,47 +2820,10 @@ Status CoreWorker::ExecuteTask(
                                           /*add_local_ref=*/false,
                                           /*is_self=*/true);
     }
-    RAY_LOG(INFO).WithField(task_spec.ActorCreationId()) << "Creating actor";
-  } else if (task_spec.IsActorTask()) {
-    task_type = TaskType::ACTOR_TASK;
+    RAY_LOG(INFO).WithField(task.TaskSpec().ActorCreationId()) << "Creating actor";
   }
 
-  std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
-
-  std::vector<ConcurrencyGroup> defined_concurrency_groups = {};
-  std::string name_of_concurrency_group_to_execute;
-  if (task_spec.IsActorCreationTask()) {
-    defined_concurrency_groups = task_spec.ConcurrencyGroups();
-  } else if (task_spec.IsActorTask()) {
-    name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
-  }
-
-  Status status = options_.task_execution_callback(
-      task_spec.CallerAddress(),
-      task_type,
-      task_spec.GetName(),
-      func,
-      task_spec.GetRequiredResources().GetResourceUnorderedMap(),
-      args,
-      arg_refs,
-      task_spec.GetDebuggerBreakpoint(),
-      task_spec.GetSerializedRetryExceptionAllowlist(),
-      return_objects,
-      dynamic_return_objects,
-      streaming_generator_returns,
-      creation_task_exception_pb_bytes,
-      is_retryable_error,
-      actor_repr_name,
-      application_error,
-      defined_concurrency_groups,
-      name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
-      /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
-      /*retry_exception=*/task_spec.ShouldRetryExceptions(),
-      /*generator_backpressure_num_objects=*/
-      task_spec.GeneratorBackpressureNumObjects(),
-      /*num_objects_per_yield=*/task_spec.NumObjectsPerYield(),
-      /*tensor_transport=*/task_spec.TensorTransport());
+  Status status = options_.task_execution_callback(task);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2898,19 +2832,20 @@ Status CoreWorker::ExecuteTask(
   // that were contained in a borrowed ID that we (or a nested task) are now
   // borrowing.
   std::vector<ObjectID> deleted;
-  if (!borrowed_ids.empty()) {
-    reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
+  if (!task.borrowed_ids.empty()) {
+    reference_counter_->PopAndClearLocalBorrowers(
+        task.borrowed_ids, task.reply()->mutable_borrowed_refs(), &deleted);
   }
   if (dynamic_return_objects != nullptr) {
     for (const auto &dynamic_return : *dynamic_return_objects) {
       reference_counter_->PopAndClearLocalBorrowers(
-          {dynamic_return.first}, borrowed_refs, &deleted);
+          {dynamic_return.first}, task.reply()->mutable_borrowed_refs(), &deleted);
     }
   }
   memory_store_->Delete(deleted);
 
-  if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
-    RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+  if (task.TaskSpec().IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
+    RAY_LOG(DEBUG).WithField(task.TaskSpec().TaskId())
         << "There were " << reference_counter_->NumObjectIDsInScope()
         << " ObjectIDs left in scope after executing task. "
            "This is either caused by keeping references to ObjectIDs in Python "
@@ -2924,26 +2859,26 @@ Status CoreWorker::ExecuteTask(
 
   {
     absl::MutexLock lock(&mutex_);
-    size_t erased = running_tasks_.erase(task_spec.TaskId());
+    size_t erased = running_tasks_.erase(task.TaskSpec().TaskId());
     RAY_CHECK(erased == 1);
     // Clean up cancellation state for this task
-    canceled_tasks_.erase(task_spec.TaskId());
-    if (task_spec.IsNormalTask()) {
+    canceled_tasks_.erase(task.TaskSpec().TaskId());
+    if (task.TaskSpec().IsNormalTask()) {
       resource_ids_.clear();
     }
 
     // Cache the returned actor repr name as an instance variable.
     // This is currently only used for exporting task events from the actor.
-    if (!actor_repr_name->empty()) {
-      actor_repr_name_ = *actor_repr_name;
+    if (!task.actor_repr_name.empty()) {
+      actor_repr_name_ = task.actor_repr_name;
     }
   }
 
-  task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
+  task_counter_.MoveRunningToFinished(func_name, task.TaskSpec().IsRetry());
+  RAY_LOG(DEBUG).WithField(task.TaskSpec().TaskId())
       << "Finished executing task, status=" << status;
 
-  if (task_spec.IsActorCreationTask()) {
+  if (task.TaskSpec().IsActorCreationTask()) {
     RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
         << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
   }
@@ -2956,15 +2891,15 @@ Status CoreWorker::ExecuteTask(
              "(e.g., __init__). Fix the exceptions from the initialization to resolve "
              "the issue. ",
              status.message()),
-         creation_task_exception_pb_bytes);
+         task.creation_task_exception_pb_bytes);
   } else if (status.IsIntentionalSystemExit()) {
     Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
          absl::StrCat("Worker exits by an user request. ", status.message()),
-         creation_task_exception_pb_bytes);
+         task.creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
-         creation_task_exception_pb_bytes);
+         task.creation_task_exception_pb_bytes);
   } else {
     RAY_CHECK_OK(status) << "Unexpected task status type : " << status;
   }
@@ -3219,78 +3154,79 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       });
 }
 
-Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
-                                            std::vector<std::shared_ptr<RayObject>> *args,
-                                            std::vector<rpc::ObjectReference> *arg_refs,
-                                            std::vector<ObjectID> *borrowed_ids) {
-  auto num_args = task.NumArgs();
-  args->reserve(num_args);
-  arg_refs->reserve(num_args);
+Status CoreWorker::GetAndPinArgsForExecutor(TaskExecutionMetadata &task) {
+  auto num_args = task.TaskSpec().NumArgs();
+  task.args.reserve(num_args);
+  task.arg_refs.reserve(num_args);
 
   absl::flat_hash_set<ObjectID> by_ref_ids;
   absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
 
-  for (size_t i = 0; i < task.NumArgs(); ++i) {
-    if (task.ArgByRef(i)) {
-      const auto &arg_ref = task.ArgRef(i);
+  for (size_t i = 0; i < task.TaskSpec().NumArgs(); ++i) {
+    if (task.TaskSpec().ArgByRef(i)) {
+      const auto &arg_ref = task.TaskSpec().ArgRef(i);
       const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
       by_ref_ids.insert(arg_id);
       by_ref_indices[arg_id].push_back(i);
-      arg_refs->push_back(arg_ref);
-      args->emplace_back();
+      task.arg_refs.push_back(arg_ref);
+      task.args.emplace_back();
       // Pin all args passed by reference for the duration of the task.  This
       // ensures that when the task completes, we can retrieve metadata about
       // any borrowed ObjectIDs that were serialized in the argument's value.
       RAY_LOG(DEBUG).WithField(arg_id) << "Incrementing ref for argument ID";
-      reference_counter_->AddLocalReference(arg_id, task.CallSiteString());
+      reference_counter_->AddLocalReference(arg_id, task.TaskSpec().CallSiteString());
       // Attach the argument's owner's address. This is needed to retrieve the
       // value from plasma.
       reference_counter_->AddBorrowedObject(
-          arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
-      borrowed_ids->push_back(arg_id);
+          arg_id, ObjectID::Nil(), task.TaskSpec().ArgRef(i).owner_address());
+      task.borrowed_ids.push_back(arg_id);
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
       // NOTE: This needs to be done after adding reference to reference counter
       // otherwise, the put is a no-op.
-      memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                         task.ArgObjectId(i),
-                         reference_counter_->HasReference(task.ArgObjectId(i)));
+      memory_store_->Put(
+          RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+          task.TaskSpec().ArgObjectId(i),
+          reference_counter_->HasReference(task.TaskSpec().ArgObjectId(i)));
     } else {
       // A pass-by-value argument.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
-      if (task.ArgDataSize(i) != 0u) {
-        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
-                                                   task.ArgDataSize(i));
+      if (task.TaskSpec().ArgDataSize(i) != 0u) {
+        data = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t *>(task.TaskSpec().ArgData(i)),
+            task.TaskSpec().ArgDataSize(i));
       }
       std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
-      if (task.ArgMetadataSize(i) != 0u) {
+      if (task.TaskSpec().ArgMetadataSize(i) != 0u) {
         metadata = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+            const_cast<uint8_t *>(task.TaskSpec().ArgMetadata(i)),
+            task.TaskSpec().ArgMetadataSize(i));
       }
       // NOTE: this is a workaround to avoid an extra copy for Java workers.
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      auto tensor_transport = task.ArgTensorTransport(i);
-      args->push_back(std::make_shared<RayObject>(std::move(data),
-                                                  std::move(metadata),
-                                                  task.ArgInlinedRefs(i),
-                                                  copy_data,
-                                                  std::move(tensor_transport)));
-      auto &arg_ref = arg_refs->emplace_back();
-      arg_ref.set_object_id(task.ArgObjectIdBinary(i));
+      auto tensor_transport = task.TaskSpec().ArgTensorTransport(i);
+      task.args.push_back(std::make_shared<RayObject>(std::move(data),
+                                                      std::move(metadata),
+                                                      task.TaskSpec().ArgInlinedRefs(i),
+                                                      copy_data,
+                                                      std::move(tensor_transport)));
+      auto &arg_ref = task.arg_refs.emplace_back();
+      arg_ref.set_object_id(task.TaskSpec().ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the
       // time it finishes.
-      for (const auto &inlined_ref : task.ArgInlinedRefs(i)) {
+      for (const auto &inlined_ref : task.TaskSpec().ArgInlinedRefs(i)) {
         const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         RAY_LOG(DEBUG).WithField(inlined_id) << "Incrementing ref for borrowed ID";
         // We do not need to add the ownership information here because it will
         // get added once the language frontend deserializes the value, before
         // the ObjectID can be used.
-        reference_counter_->AddLocalReference(inlined_id, task.CallSiteString());
-        borrowed_ids->push_back(inlined_id);
+        reference_counter_->AddLocalReference(inlined_id,
+                                              task.TaskSpec().CallSiteString());
+        task.borrowed_ids.push_back(inlined_id);
       }
     }
   }
@@ -3305,7 +3241,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
-      args->at(idx) = it.second;
+      task.args.at(idx) = it.second;
     }
   }
 

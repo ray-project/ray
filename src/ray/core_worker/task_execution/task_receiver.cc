@@ -227,16 +227,7 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
 }
 
 void TaskReceiver::ExecuteTask(TaskExecutionMetadata &task) {
-  auto status = task_handler_(task.TaskSpec(),
-                              std::move(task.resource_ids()),
-                              &task.return_objects,
-                              &task.dynamic_return_objects,
-                              &task.streaming_generator_returns,
-                              task.reply()->mutable_borrowed_refs(),
-                              &task.is_retryable_error,
-                              &task.actor_repr_name,
-                              &task.application_error);
-
+  auto status = task_handler_(task);
   HandleTaskExecutionResult(status, task);
 }
 

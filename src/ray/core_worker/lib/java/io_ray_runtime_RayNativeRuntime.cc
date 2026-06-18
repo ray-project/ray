@@ -120,40 +120,19 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                                                       jbyteArray jobConfig,
                                                       jbyteArray workerId,
                                                       jint runtimeEnvHash) {
-  auto task_execution_callback =
-      [](const rpc::Address &owner_address,
-         TaskType task_type,
-         const std::string task_name,
-         const RayFunction &ray_function,
-         const std::unordered_map<std::string, double> &required_resources,
-         const std::vector<std::shared_ptr<RayObject>> &args,
-         const std::vector<rpc::ObjectReference> &arg_refs,
-         const std::string &debugger_breakpoint,
-         const std::string &serialized_retry_exception_allowlist,
-         std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
-         std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
-         std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-         std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
-         bool *is_retryable_error,
-         std::string *actor_repr_name,
-         std::string *application_error,
-         const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-         const std::string name_of_concurrency_group_to_execute,
-         bool is_reattempt,
-         bool is_streaming_generator,
-         bool should_retry_exceptions,
-         int64_t generator_backpressure_num_objects,
-         int64_t num_objects_per_yield,
-         const std::optional<std::string> &tensor_transport) {
-        // These 3 parameters are used for Python only, and Java worker
-        // will not use them.
-        RAY_UNUSED(defined_concurrency_groups);
-        RAY_UNUSED(name_of_concurrency_group_to_execute);
-        RAY_UNUSED(tensor_transport);
-        // TODO(jjyao): Support retrying application-level errors for Java
-        // TODO(Clark): Support exception allowlist for retrying application-level
-        // errors for Java.
-        *is_retryable_error = false;
+  auto task_execution_callback = [](ray::core::TaskExecutionMetadata &task) {
+    const rpc::Address &owner_address = task.CallerAddress();
+    RayFunction ray_function = task.GetRayFunction();
+    const std::vector<std::shared_ptr<RayObject>> &args = task.args;
+    auto *returns = &task.return_objects;
+    auto &creation_task_exception_pb = task.creation_task_exception_pb_bytes;
+    bool *is_retryable_error = &task.is_retryable_error;
+    std::string *application_error = &task.application_error;
+
+    // TODO(jjyao): Support retrying application-level errors for Java
+    // TODO(Clark): Support exception allowlist for retrying application-level
+    // errors for Java.
+    *is_retryable_error = false;
 
         JNIEnv *inner_env = GetJNIEnv();
         RAY_CHECK(java_task_executor);

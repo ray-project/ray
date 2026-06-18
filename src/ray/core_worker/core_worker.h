@@ -1495,33 +1495,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Execute a task.
   ///
-  /// \param task_spec[in] Task specification.
-  /// \param resource_ids[in] Resource IDs of resources assigned to this
-  /// worker. If nullopt, reuse the previously assigned resources.
-  /// \param return_objects[out] Result objects that should be returned
-  /// to the caller.
-  /// \param dynamic_return_objects[out]  Result objects whose ObjectRefs were dynamically
-  /// allocated during task execution by using a generator. The language-level ObjectRefs
-  /// should be returned inside the statically allocated return_objects.
-  /// \param borrowed_refs[out]  Refs that this task (or a nested task) was or is still
-  /// borrowing. This includes all objects whose IDs we passed to the task in its
-  /// arguments and recursively, any object IDs that were contained in those objects.
-  /// \param is_retryable_error[out] Whether the task failed with a retryable
-  /// error.
-  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
-  /// process if one has been set. \param application_error[out] The error message if the
-  /// task failed during execution or cancelled. \return Status.
-  Status ExecuteTask(
-      const TaskSpecification &task_spec,
-      std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
-      bool *is_retryable_error,
-      std::string *actor_repr_name,
-      std::string *application_error);
+  /// The inputs are read from `task` (its task spec, assigned resource ids, and reply),
+  /// and the outputs are written back into the same `task`: the return objects, any
+  /// dynamically-allocated return objects, streaming generator returns, borrowed refs
+  /// (via the reply), the retryable-error flag, the actor repr name, and any application
+  /// error message.
+  ///
+  /// \param task[in,out] Metadata for the task to execute. See TaskExecutionMetadata.
+  /// \return Status.
+  Status ExecuteTask(TaskExecutionMetadata &task);
 
   /// Put an object in the local plasma store.
   ///
@@ -1553,25 +1535,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// being borrowed by this process. The IDs should be unpinned once the task
   /// completes.
   ///
-  /// \param spec[in] task Task specification.
-  /// \param args[out] args Argument data as RayObjects.
-  /// \param args[out] arg_reference_ids ObjectIDs corresponding to each by
-  ///                  reference argument. The length of this vector will be
-  ///                  the same as args, and by value arguments will have
-  ///                  ObjectID::Nil().
-  ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
-  ///                  we have separate serialization paths for by-value and by-reference
-  ///                  arguments in Python. This should ideally be handled better there.
-  /// \param args[out] pinned_ids ObjectIDs that should be unpinned once the
-  ///                  task completes execution.  This vector will be populated
-  ///                  with all argument IDs that were passed by reference and
-  ///                  any ObjectIDs that were included in the task spec's
-  ///                  inlined arguments.
+  /// The fetched argument data, argument references, and pinned (borrowed) IDs are
+  /// written into the corresponding fields of `task` (`args`, `arg_refs`, and
+  /// `borrowed_ids`). See TaskExecutionMetadata for the semantics of each field.
+  ///
+  /// \param task[in,out] Metadata for the task whose arguments to fetch and pin.
   /// \return Error if the values could not be retrieved.
-  Status GetAndPinArgsForExecutor(const TaskSpecification &task,
-                                  std::vector<std::shared_ptr<RayObject>> *args,
-                                  std::vector<rpc::ObjectReference> *arg_refs,
-                                  std::vector<ObjectID> *pinned_ids);
+  Status GetAndPinArgsForExecutor(TaskExecutionMetadata &task);
 
   /// Process a subscribe message for wait for object eviction.
   /// The object eviction message will be published once the object

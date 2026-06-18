@@ -81,6 +81,37 @@ cdef extern from "ray/core_worker/task_execution/fiber.h" nogil:
         void Wait()
         void Notify()
 
+cdef extern from "ray/core_worker/task_execution/common.h" nogil:
+    cdef cppclass CTaskExecutionMetadata "ray::core::TaskExecutionMetadata":
+        # Task-spec-derived inputs needed to execute the task.
+        const CAddress &CallerAddress() const
+        CTaskType GetTaskType() const
+        c_string TaskName() const
+        CRayFunction GetRayFunction() const
+        unordered_map[c_string, double] RequiredResources() const
+        c_string DebuggerBreakpoint() const
+        c_string SerializedRetryExceptionAllowlist() const
+        c_vector[CConcurrencyGroup] DefinedConcurrencyGroups() const
+        c_string ConcurrencyGroupToExecute() const
+        c_bool IsReattempt() const
+        c_bool ReturnsDynamic() const
+        c_bool IsStreamingGenerator() const
+        c_bool ShouldRetryExceptions() const
+        int64_t GeneratorBackpressureNumObjects() const
+        int64_t NumObjectsPerYield() const
+        optional[c_string] TensorTransport() const
+        # Fetched arguments.
+        c_vector[shared_ptr[CRayObject]] args
+        c_vector[CObjectReference] arg_refs
+        # Outputs populated by the task executor.
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] return_objects
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] dynamic_return_objects
+        c_vector[c_pair[CObjectID, c_bool]] streaming_generator_returns
+        c_bool is_retryable_error
+        c_string actor_repr_name
+        c_string application_error
+        shared_ptr[LocalMemoryBuffer] creation_task_exception_pb_bytes
+
 cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
     cdef cppclass CReaderRefInfo "ray::experimental::ReaderRefInfo":
         CReaderRefInfo()
@@ -384,31 +415,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int node_manager_port
         c_string driver_name
         (CRayStatus(
-            const CAddress &caller_address,
-            CTaskType task_type,
-            const c_string name,
-            const CRayFunction &ray_function,
-            const unordered_map[c_string, double] &resources,
-            const c_vector[shared_ptr[CRayObject]] &args,
-            const c_vector[CObjectReference] &arg_refs,
-            const c_string debugger_breakpoint,
-            const c_string serialized_retry_exception_allowlist,
-            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
-            c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
-            shared_ptr[LocalMemoryBuffer]
-            &creation_task_exception_pb_bytes,
-            c_bool *is_retryable_error,
-            c_string *actor_repr_name,
-            c_string *application_error,
-            const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
-            const c_string name_of_concurrency_group_to_execute,
-            c_bool is_reattempt,
-            c_bool is_streaming_generator,
-            c_bool should_retry_exceptions,
-            int64_t generator_backpressure_num_objects,
-            int64_t num_objects_per_yield,
-            optional[c_string] tensor_transport
+            CTaskExecutionMetadata &task
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback
         (void(const CObjectID &, const c_string &) nogil) set_direct_transport_metadata

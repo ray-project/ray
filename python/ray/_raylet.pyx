@@ -160,6 +160,7 @@ from ray.includes.libcoreworker cimport (
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
+    CTaskExecutionMetadata,
     CTaskOptions,
     ResourceMappingType,
     CFiberEvent,
@@ -2315,35 +2316,24 @@ cdef function[void()] initialize_pygilstate_for_thread() nogil:
         callback = bind(pygilstate_release, ref(gstate))
     return callback
 
-cdef CRayStatus task_execution_handler(
-        const CAddress &caller_address,
-        CTaskType task_type,
-        const c_string task_name,
-        const CRayFunction &ray_function,
-        const unordered_map[c_string, double] &c_resources,
-        const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectReference] &c_arg_refs,
-        const c_string debugger_breakpoint,
-        const c_string serialized_retry_exception_allowlist,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
-        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
-        shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
-        c_bool *is_retryable_error,
-        c_string *actor_repr_name,
-        c_string *application_error,
-        const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
-        const c_string name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
-        c_bool is_streaming_generator,
-        c_bool should_retry_exceptions,
-        int64_t generator_backpressure_num_objects,
-        int64_t num_objects_per_yield,
-        optional[c_string] c_tensor_transport) nogil:
+cdef CRayStatus task_execution_handler(CTaskExecutionMetadata &metadata) nogil:
+    cdef:
+        CRayFunction ray_function
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
+
+        # The executor is given only the TaskExecutionMetadata; unpack the values it
+        # needs from the metadata (which derives them from the task spec) here.
+        ray_function = metadata.GetRayFunction()
+        # A NULL pointer signals that this is not a dynamic task, matching the previous
+        # behavior where the C++ side passed nullptr for non-dynamic tasks.
+        if metadata.ReturnsDynamic():
+            dynamic_returns = &metadata.dynamic_return_objects
+        else:
+            dynamic_returns = NULL
 
         try:
             try:
@@ -2351,26 +2341,26 @@ cdef CRayStatus task_execution_handler(
                 # internal to this call. If it does raise an exception, that
                 # indicates that there was an internal error.
                 execute_task_with_cancellation_handler(
-                        caller_address,
-                        task_type, task_name,
-                        ray_function, c_resources,
-                        c_args, c_arg_refs,
-                        debugger_breakpoint,
-                        serialized_retry_exception_allowlist,
-                        returns,
+                        metadata.CallerAddress(),
+                        metadata.GetTaskType(), metadata.TaskName(),
+                        ray_function, metadata.RequiredResources(),
+                        metadata.args, metadata.arg_refs,
+                        metadata.DebuggerBreakpoint(),
+                        metadata.SerializedRetryExceptionAllowlist(),
+                        &metadata.return_objects,
                         dynamic_returns,
-                        streaming_generator_returns,
-                        is_retryable_error,
-                        actor_repr_name,
-                        application_error,
-                        defined_concurrency_groups,
-                        name_of_concurrency_group_to_execute,
-                        is_reattempt,
-                        is_streaming_generator,
-                        should_retry_exceptions,
-                        generator_backpressure_num_objects,
-                        num_objects_per_yield,
-                        c_tensor_transport)
+                        &metadata.streaming_generator_returns,
+                        &metadata.is_retryable_error,
+                        &metadata.actor_repr_name,
+                        &metadata.application_error,
+                        metadata.DefinedConcurrencyGroups(),
+                        metadata.ConcurrencyGroupToExecute(),
+                        metadata.IsReattempt(),
+                        metadata.IsStreamingGenerator(),
+                        metadata.ShouldRetryExceptions(),
+                        metadata.GeneratorBackpressureNumObjects(),
+                        metadata.NumObjectsPerYield(),
+                        metadata.TensorTransport())
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -2378,7 +2368,8 @@ cdef CRayStatus task_execution_handler(
                     traceback_str = str(e)
                     logger.error("Exception raised "
                                  f"in creation task: {traceback_str}")
-                    creation_task_exception_pb_bytes = ray_error_to_memory_buf(e)
+                    metadata.creation_task_exception_pb_bytes = \
+                        ray_error_to_memory_buf(e)
                     sys_exit.is_creation_task_error = True
                     sys_exit.init_error_message = (
                         "Exception raised from an actor init method. "

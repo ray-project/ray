@@ -108,6 +108,7 @@ ray_cc_library(
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",
+        "//src/ray/core_worker/task_execution:common",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/util:process",
     ],

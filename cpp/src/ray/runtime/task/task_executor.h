@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/task_execution/common.h"
 
 namespace ray {
 
@@ -74,33 +75,7 @@ class TaskExecutor {
       std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
       absl::Mutex &actor_contexts_mutex);
 
-  static Status ExecuteTask(
-      const rpc::Address &caller_address,
-      ray::TaskType task_type,
-      const std::string task_name,
-      const RayFunction &ray_function,
-      const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<ray::RayObject>> &args,
-      const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_retryable_error,
-      std::string *actor_repr_name,
-      std::string *application_error,
-      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt,
-      bool is_streaming_generator,
-      bool retry_exception,
-      int64_t generator_backpressure_num_objects,
-      int64_t num_objects_per_yield,
-      /* This is used by the in-actor RDT object store. However, it is only supported in
-       * the Python frontend. */
-      const std::optional<std::string> &tensor_transport);
+  static Status ExecuteTask(ray::core::TaskExecutionMetadata &task);
 
   virtual ~TaskExecutor(){};
 

@@ -37,22 +37,12 @@
 namespace ray {
 namespace core {
 
-using RepeatedObjectRefCount =
-    ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
-
 class TaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec,
-      std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      RepeatedObjectRefCount *borrower_refs,
-      bool *is_retryable_error,
-      std::string *actor_repr_name,
-      std::string *application_error)>;
+  // Runs a single task. The handler reads its inputs (task spec, resource ids, reply)
+  // from the TaskExecutionMetadata and writes the task's outputs back into the same
+  // object's fields (return objects, errors, etc.).
+  using TaskHandler = std::function<Status(TaskExecutionMetadata &task)>;
 
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,

@@ -128,14 +128,9 @@ class TaskReceiverTest : public ::testing::Test {
   TaskReceiverTest()
       : actor_task_execution_arg_waiter_(std::make_unique<ActorTaskExecutionArgWaiter>(
             [](const std::vector<rpc::ObjectReference> &args, int64_t tag) {})) {
-    auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
-                                  this,
-                                  std::placeholders::_1,
-                                  std::placeholders::_2,
-                                  std::placeholders::_3,
-                                  std::placeholders::_4,
-                                  std::placeholders::_5,
-                                  std::placeholders::_6);
+    auto execute_task = [this](TaskExecutionMetadata &task) {
+      return MockExecuteTask(task);
+    };
     RayConfig::instance().initialize(
         R"({"actor_scheduling_queue_max_reorder_wait_seconds": 1})");
     receiver_ = std::make_unique<TaskReceiver>(
@@ -146,16 +141,7 @@ class TaskReceiverTest : public ::testing::Test {
         /* initialize_thread_callback= */ []() { return []() { return; }; });
   }
 
-  Status MockExecuteTask(
-      const TaskSpecification &task_spec,
-      std::optional<ResourceMappingType> resource_ids,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
-          *dynamic_return_objects,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      RepeatedObjectRefCount *borrowed_refs) {
-    return Status::OK();
-  }
+  Status MockExecuteTask(TaskExecutionMetadata &task) { return Status::OK(); }
 
   void StartIOService() { task_execution_service_.run(); }
 

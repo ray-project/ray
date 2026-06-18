@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/task_execution/common.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/process_interface.h"
 
@@ -40,47 +41,11 @@ using SetDirectTransportMetadata = std::function<void(
 // other files. Please take a global search and modify them !!!
 struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
-  // frontend to execute tasks and return their results.
-  using TaskExecutionCallback = std::function<Status(
-      const rpc::Address &caller_address,
-      TaskType task_type,
-      const std::string task_name,
-      const RayFunction &ray_function,
-      const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
-      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
-      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_retryable_error,
-      // Human-readable name for the actor class.
-      // Only expected to be populated by actor creation tasks.
-      std::string *actor_repr_name,
-      // Application error string, empty if no error.
-      std::string *application_error,
-      // The following 2 parameters `defined_concurrency_groups` and
-      // `name_of_concurrency_group_to_execute` are used for Python
-      // asyncio actor only.
-      //
-      // Defined concurrency groups of this actor. Note this is only
-      // used for actor creation task.
-      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt,
-      // True if the task is for streaming generator.
-      // TODO(sang): Remove it and combine it with dynamic returns.
-      bool is_streaming_generator,
-      // True if task can be retried upon exception.
-      bool retry_exception,
-      // The max number of unconsumed objects where a generator
-      // can run without a pause.
-      int64_t generator_backpressure_num_objects,
-      // The number of ObjectRefs produced by each streaming generator yield.
-      int64_t num_objects_per_yield,
-      const std::optional<std::string> &tensor_transport)>;
+  // frontend to execute tasks and return their results. All inputs and outputs travel
+  // through the TaskExecutionMetadata: the frontend reads the task spec (and the
+  // convenience accessors derived from it) and the fetched arguments, and writes the
+  // return objects, errors, and other outputs back into its fields.
+  using TaskExecutionCallback = std::function<Status(TaskExecutionMetadata &task)>;
 
   CoreWorkerOptions()
       : enable_logging(false),
