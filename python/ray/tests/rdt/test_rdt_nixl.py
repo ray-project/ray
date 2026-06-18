@@ -717,5 +717,82 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     assert not pool.has_block(base)
 
 
+def test_merge_xfer_descs():
+    """Test that contiguous memory regions are merged into a single xfer descriptor."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    merge_xfer_descs = NixlTensorTransport._merge_xfer_descs
+
+    # Adjacent views of one storage -> one merged descriptor.
+    base = torch.arange(12, dtype=torch.float32)
+    merged = merge_xfer_descs([base[0:4], base[4:8], base[8:12]])
+    assert len(merged) == 1
+    assert merged[0][1] == 12 * 4
+
+    # A gap between views of the same storage prevents merging.
+    merged = merge_xfer_descs([base[0:4], base[8:12]])
+    assert len(merged) == 2
+    assert [m[1] for m in merged] == [16, 16]
+
+    # Separate storages are never merged due to differing rkeys
+    seps = [torch.tensor([1.0, 2.0, 3.0]) for _ in range(3)]
+    merged = merge_xfer_descs(seps)
+    assert len(merged) == 3
+
+    # Two adjacent views then a separate tensor.
+    base2 = torch.arange(8, dtype=torch.float32)
+    merged = merge_xfer_descs([base2[0:4], base2[4:8], torch.tensor([9.0, 9.0])])
+    assert len(merged) == 2
+    assert merged[0][1] == 8 * 4
+    assert merged[1][1] == 2 * 4
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_get_into_buffers_mismatched_storage_blocks(ray_start_regular):
+    """Transfer when sender and receiver span a different number of torch storage blocks.
+
+    The sender's 3 tensors live in 2 registered regions (``base[0:4]`` and
+    ``base[4:8]`` share one storage and coalesce into a single region, while
+    ``[9, 9]`` is separate). The receiver provides 3 separate target buffers,
+    i.e. 3 regions.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0)
+    class GPUTestActor:
+        def get_ref(self):
+            # base[0:4] + base[4:8] coalesce into one region; [9, 9] is a second
+            # region -> 3 tensors across 2 registered regions on the sender.
+            self.base = torch.arange(8, dtype=torch.float32).to("cuda")
+            self.tensor_list = [
+                self.base[0:4],
+                self.base[4:8],
+                torch.tensor([9.0, 9.0]).to("cuda"),
+            ]
+            return ray.put(self.tensor_list, _tensor_transport="nixl")
+
+        def get_with_separate_buffers(self, refs):
+            # 3 independent allocations -> 3 registered regions on the receiver.
+            targets = [
+                torch.empty(4, dtype=torch.float32, device="cuda"),
+                torch.empty(4, dtype=torch.float32, device="cuda"),
+                torch.empty(2, dtype=torch.float32, device="cuda"),
+            ]
+            set_target_for_ref(refs[0], targets)
+            tensors = ray.get(refs[0])
+            # Make sure we ray.get-ted into the provided buffers.
+            for new_tensor, target in zip(tensors, targets):
+                assert id(new_tensor) == id(target)
+            assert torch.equal(targets[0].cpu(), torch.tensor([0.0, 1.0, 2.0, 3.0]))
+            assert torch.equal(targets[1].cpu(), torch.tensor([4.0, 5.0, 6.0, 7.0]))
+            assert torch.equal(targets[2].cpu(), torch.tensor([9.0, 9.0]))
+            return True
+
+    src_actor, dst_actor = GPUTestActor.remote(), GPUTestActor.remote()
+    ref = ray.get(src_actor.get_ref.remote())
+    assert ray.get(dst_actor.get_with_separate_buffers.remote([ref]))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -1,10 +1,11 @@
 import logging
+import math
 import threading
 import time
 import traceback
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import (
@@ -247,7 +248,10 @@ class NixlTensorTransport(TensorTransportManager):
                     xfer_descs = self._allocate_pool_xfer_descs(rdt_object)
                 else:
                     self._add_tensor_descs(rdt_object)
-                    xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
+                    merged_tuples = self._merge_xfer_descs(rdt_object)
+                    xfer_descs = nixl_agent.get_xfer_descs(
+                        merged_tuples, mem_type=device.type
+                    )
 
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
@@ -298,14 +302,6 @@ class NixlTensorTransport(TensorTransportManager):
         Returns:
             A NixlFetchRequest carrying the async transfer state.
         """
-        from ray.experimental.rdt.util import (
-            create_empty_tensors_from_metadata,
-        )
-
-        tensors = target_buffers or create_empty_tensors_from_metadata(
-            tensor_transport_metadata
-        )
-
         assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
         assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
 
@@ -317,19 +313,43 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.remove(obj_id)
                 raise RuntimeError(f"NIXL transfer aborted for object id: {obj_id}")
 
+        tensors = None
         remote_name = None
         xfer_handle = None
         added_tensor_descs = False
 
-        assert tensors
-
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+
+            if target_buffers is not None:
+                tensors = target_buffers
+            else:
+                (
+                    tensors,
+                    merged_memory_regions,
+                ) = self._allocate_tensors_from_merged_xfer_descs(
+                    remote_xfer_descs,
+                    tensor_transport_metadata.tensor_meta,
+                    tensor_transport_metadata.tensor_device,
+                )
+
             # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
             self._add_tensor_descs(tensors)
             added_tensor_descs = True
-            local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
+
+            if target_buffers is not None:
+                local_xfer_descs, remote_xfer_descs = self._find_common_xfer_descs(
+                    nixl_agent,
+                    tensors,
+                    remote_xfer_descs,
+                    tensor_transport_metadata.tensor_device,
+                )
+            else:
+                local_xfer_descs = nixl_agent.get_xfer_descs(
+                    merged_memory_regions,
+                    mem_type=tensor_transport_metadata.tensor_device,
+                )
 
             remote_name = tensor_transport_metadata.nixl_agent_name
             remote_agent_meta_version = (
@@ -653,7 +673,10 @@ class NixlTensorTransport(TensorTransportManager):
         }
         pool_tensor_views = pool.allocate_for_tensors(tensors)
         try:
-            xfer_descs = self._nixl_agent.get_xfer_descs(pool_tensor_views)
+            merged_memory_regions = self._merge_xfer_descs(pool_tensor_views)
+            xfer_descs = self._nixl_agent.get_xfer_descs(
+                merged_memory_regions, mem_type=pool_tensor_views[0].device.type
+            )
         except Exception:
             # Only free newly allocated blocks, not cache hits.
             new_tensors = [
@@ -664,3 +687,166 @@ class NixlTensorTransport(TensorTransportManager):
             raise
         self._add_pool_tensor_descs(tensors)
         return xfer_descs
+
+    @staticmethod
+    def _merge_xfer_descs(tensors: List["torch.Tensor"]):
+        """Merge consecutive tensors that are contiguous within one storage.
+
+        Two consecutive tensors are merged into one descriptor only when they
+        share the same underlying storage and the first ends exactly where the
+        next begins. Same-storage is required because each storage is registered
+        as a single NIXL memory region (one rkey) and a descriptor cannot span
+        two regions; merging adjacent runs lets us issue one RMA op per region
+        instead of one per tensor. The device id is not compared since sharing
+        one storage implies one device.
+
+        Args:
+            tensors: The tensors to potentially merge.
+
+        Returns:
+            A list of ``(addr, total_len, dev_id)`` tuples, one for each merged
+            memory region.
+        """
+        merged = []
+        last_storage = None
+        for t in tensors:
+            addr = t.data_ptr()
+            length = t.numel() * t.element_size()
+            storage = t.untyped_storage().data_ptr()
+            if (
+                merged
+                and storage == last_storage
+                and addr == merged[-1][0] + merged[-1][1]
+            ):
+                prev_addr, prev_len, prev_dev = merged[-1]
+                merged[-1] = (prev_addr, prev_len + length, prev_dev)
+            else:
+                merged.append((addr, length, max(t.get_device(), 0)))
+                last_storage = storage
+        return merged
+
+    def _allocate_tensors_from_merged_xfer_descs(
+        self,
+        remote_xfer_descs: Any,
+        tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+        device: str,
+    ):
+        """Allocate one contiguous buffer per merged remote descriptor.
+
+        Each descriptor only carries its region's total byte size, so the merged
+        region byte size comes from the descriptor while the per-tensor
+        shapes/dtypes come from ``tensor_meta``. Each merged region is divided
+        back into tensor views based on the dimensions provided in tensor_meta.
+
+        Args:
+            remote_xfer_descs: The sender's merged xfer descriptors.
+            tensor_meta: Per-tensor ``(shape, dtype)``.
+            device: The device on which to allocate the receiving buffers.
+
+        Returns:
+            A ``(views, merged_memory_regions)`` tuple, where ``views`` are the
+            per-tensor output tensors in ``tensor_meta`` order and
+            ``merged_memory_regions`` is one ``(addr, total_len, dev_id)`` per
+            merged memory region (used to build the local xfer descriptors).
+        """
+        import torch
+
+        views: List["torch.Tensor"] = []
+        merged_memory_regions = []
+        tensor_meta_index = 0
+        num_tensors = len(tensor_meta)
+        for xfer_desc_index in range(remote_xfer_descs.descCount()):
+            memory_region_bytes = remote_xfer_descs[xfer_desc_index][1]
+            buf = torch.empty(memory_region_bytes, dtype=torch.uint8, device=device)
+            offset = 0
+            while offset < memory_region_bytes and tensor_meta_index < num_tensors:
+                shape, dtype = tensor_meta[tensor_meta_index]
+                nbytes = math.prod(shape) * dtype.itemsize
+                views.append(buf[offset : offset + nbytes].view(dtype).reshape(shape))
+                offset += nbytes
+                tensor_meta_index += 1
+            if offset != memory_region_bytes:
+                raise RuntimeError(
+                    "Failed to map a NIXL xfer descriptor back to tensors: "
+                    f"descriptor {xfer_desc_index} length {memory_region_bytes} "
+                    "does not align with tensor metadata."
+                )
+            merged_memory_regions.append(
+                (buf.data_ptr(), memory_region_bytes, max(buf.get_device(), 0))
+            )
+        return views, merged_memory_regions
+
+    def _find_common_xfer_descs(
+        self,
+        nixl_agent: Any,
+        tensors: List["torch.Tensor"],
+        remote_xfer_descs: Any,
+        remote_device: str,
+    ):
+        """Find matching local/remote xfer descriptors for caller-provided buffers.
+
+        The sender provides a list of merged remote xfer descriptors, where each
+        descriptor is one contiguous region within a single registered memory
+        region (non-adjacent regions stay as separate descriptors). The caller,
+        however, may provide tensors with an arbitrary layout whose merged
+        regions have a different number of registered memory regions. To minimize
+        the number of xfer descs while keeping the local and remote lists aligned,
+        we walk both merged lists and, for the side whose current region is
+        larger, split it into n descriptors to match the other side. This works
+        because the local and remote tensors have equal dimensions, so their
+        total byte size and tensor count is the same.
+
+        Args:
+            nixl_agent: The NIXL agent to use.
+            tensors: The tensors to potentially merge.
+            remote_xfer_descs: The sender's merged xfer descriptors.
+            remote_device: The device on which the sender's tensors are allocated.
+
+        Returns:
+            A tuple of ``(local_xfer_descs, remote_xfer_descs)``, where
+            ``local_xfer_descs`` are the local xfer descriptors and
+            ``remote_xfer_descs`` are the remote xfer descriptors.
+        """
+        local_merged_memory_regions = self._merge_xfer_descs(tensors)
+        remote_merged_memory_regions = [
+            remote_xfer_descs[d] for d in range(remote_xfer_descs.descCount())
+        ]
+
+        new_local_memory_regions = []
+        new_remote_memory_regions = []
+        local_index = remote_index = 0
+        l_offset = r_offset = 0
+        while local_index < len(local_merged_memory_regions) and remote_index < len(
+            remote_merged_memory_regions
+        ):
+            l_addr, l_len, l_device = local_merged_memory_regions[local_index]
+            r_addr, r_len, r_device = remote_merged_memory_regions[remote_index]
+            chunk = min(l_len - l_offset, r_len - r_offset)
+            new_local_memory_regions.append((l_addr + l_offset, chunk, l_device))
+            new_remote_memory_regions.append((r_addr + r_offset, chunk, r_device))
+            l_offset += chunk
+            r_offset += chunk
+            if l_offset == l_len:
+                local_index += 1
+                l_offset = 0
+            if r_offset == r_len:
+                remote_index += 1
+                r_offset = 0
+
+        if local_index != len(local_merged_memory_regions) or remote_index != len(
+            remote_merged_memory_regions
+        ):
+            raise RuntimeError(
+                "Caller-provided buffers do not match the sender's total "
+                "transfer size: local and remote descriptors cover different "
+                "byte counts."
+            )
+
+        local_device = tensors[0].device.type
+        local_xfer_descs = nixl_agent.get_xfer_descs(
+            new_local_memory_regions, mem_type=local_device
+        )
+        remote_xfer_descs = nixl_agent.get_xfer_descs(
+            new_remote_memory_regions, mem_type=remote_device
+        )
+        return local_xfer_descs, remote_xfer_descs
