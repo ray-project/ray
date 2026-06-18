@@ -15,6 +15,8 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <functional>
 #include <future>
 #include <memory>
 #include <string_view>
@@ -102,6 +104,15 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   std::atomic<bool> shutdown_notified_{false};
 
   void NotifyComplete();
+
+  /// Wait, without blocking the task execution thread, for the worker's own
+  /// in-flight tasks to finish, then invoke `continuation`. This lets concurrent
+  /// (asyncio/threaded) actors drain currently-executing tasks gracefully before
+  /// teardown. The check re-posts itself to the task execution io_context (keeping
+  /// it alive so async awaits can resolve) until no tasks are running or `deadline`
+  /// is reached, after which it proceeds anyway.
+  void DrainRunningTasksThen(std::function<void()> continuation,
+                             std::chrono::steady_clock::time_point deadline);
 
   void DisconnectServices(
       std::string_view exit_type,

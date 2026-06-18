@@ -1710,6 +1710,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Convenience overload that fetches counters and evaluates idleness.
   bool IsIdle() const;
 
+  /// Number of tasks currently being executed by this worker. For concurrent
+  /// (asyncio/threaded) actors these run on separate threads from the task
+  /// execution io_context, so this can be non-zero while the worker is shutting
+  /// down. Used by the shutdown executor to drain in-flight tasks gracefully.
+  size_t NumRunningTasks() const ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
   /// \return The caller ID. For non-actor tasks, this is the current task ID.

@@ -14,11 +14,14 @@
 
 #include "ray/core_worker/core_worker_shutdown_executor.h"
 
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/util/process_utils.h"
 
@@ -243,7 +246,74 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
         "CoreWorker.DrainAndShutdown");
   };
 
-  core_worker->task_manager_->DrainAndShutdown(drain_references_callback);
+  // Before draining references and stopping the task receiver, wait for the
+  // worker's own currently-executing tasks to finish. For concurrent
+  // (asyncio/threaded) actors these run on separate threads, so a task may still
+  // be in flight when we begin shutting down (e.g. an async task awaiting a nested
+  // object ref). Draining them here lets such tasks complete and send their reply
+  // before teardown. For non-concurrent workers/actors there are no running tasks
+  // at this point, so this is a no-op.
+  auto continue_drain = [this,
+                         weak_core_worker,
+                         drain_references_callback =
+                             std::move(drain_references_callback)]() {
+    auto worker = weak_core_worker.lock();
+    if (!worker) {
+      RAY_LOG(WARNING) << "CoreWorker destroyed before draining in-flight tasks";
+      NotifyComplete();
+      return;
+    }
+    worker->task_manager_->DrainAndShutdown(drain_references_callback);
+  };
+
+  const int64_t graceful_timeout_ms =
+      RayConfig::instance().actor_graceful_shutdown_timeout_ms();
+  const auto deadline = graceful_timeout_ms < 0
+                            ? std::chrono::steady_clock::time_point::max()
+                            : std::chrono::steady_clock::now() +
+                                  std::chrono::milliseconds(graceful_timeout_ms);
+  DrainRunningTasksThen(std::move(continue_drain), deadline);
+}
+
+void CoreWorkerShutdownExecutor::DrainRunningTasksThen(
+    std::function<void()> continuation, std::chrono::steady_clock::time_point deadline) {
+  auto core_worker = core_worker_.lock();
+  if (!core_worker) {
+    RAY_LOG(WARNING) << "CoreWorker destroyed while draining in-flight tasks";
+    NotifyComplete();
+    return;
+  }
+
+  const size_t num_running_tasks = core_worker->NumRunningTasks();
+  if (num_running_tasks == 0) {
+    continuation();
+    return;
+  }
+
+  // If the task execution loop is no longer running we cannot re-post the check
+  // (it would never fire), and once the deadline is reached we give up waiting.
+  // In both cases proceed with shutdown; the downstream graceful-shutdown timeout
+  // remains the backstop against hangs.
+  if (!core_worker->event_loops_running_.load() ||
+      std::chrono::steady_clock::now() >= deadline) {
+    RAY_LOG(WARNING) << "Proceeding with shutdown while " << num_running_tasks
+                     << " task(s) are still executing (drain deadline reached or task "
+                        "execution loop stopped). In-flight tasks may not complete.";
+    continuation();
+    return;
+  }
+
+  RAY_LOG(INFO) << "Waiting for " << num_running_tasks
+                << " in-flight task(s) to finish before shutting down.";
+  // Re-post to the task execution io_context so it keeps running while we wait.
+  // This is required for async actors, whose `await` results are delivered via
+  // callbacks posted to this same io_context.
+  core_worker->task_execution_service_.post(
+      [this, continuation = std::move(continuation), deadline]() mutable {
+        DrainRunningTasksThen(std::move(continuation), deadline);
+      },
+      "CoreWorkerShutdownExecutor.DrainRunningTasks",
+      /*delay_us=*/1000);
 }
 
 void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,

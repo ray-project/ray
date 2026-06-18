@@ -4426,6 +4426,11 @@ bool CoreWorker::IsIdle() const {
   return IsIdle(num_objects_with_references, pins_in_flight, num_pending_tasks);
 }
 
+size_t CoreWorker::NumRunningTasks() const {
+  absl::MutexLock lock(&mutex_);
+  return running_tasks_.size();
+}
+
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;
   for (const auto &id : ids) {
