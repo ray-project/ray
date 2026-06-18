@@ -103,6 +103,8 @@ class LLMRouter:
                 body_truncated=body_truncated,
                 request_token_ids=request_token_ids,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
         return {"host": host, "port": port, "replica_id": replica_id}

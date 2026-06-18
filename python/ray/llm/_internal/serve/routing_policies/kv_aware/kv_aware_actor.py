@@ -75,6 +75,11 @@ class KVRouterActor:
         self._create_selection_service()
         self._start_replica_tracking()
 
+    async def ready(self) -> None:
+        """Readiness probe for KVAwareRouter to confirm KVRouterActor is initialized
+        before it starts routing requests to it.
+        """
+
     def _create_selection_service(self) -> None:
         """Create the in-process Dynamo selection service for this deployment."""
         # Imported here, not at module scope: Ray pickles this actor class by
@@ -222,7 +227,32 @@ class KVRouterActor:
         Returns:
             The selected worker (see ``WorkerSelection``).
         """
-        raise NotImplementedError("KVRouterActor.select_worker is not implemented")
+        if token_ids is None or len(token_ids) == 0:
+            raise ValueError("KV aware routing requires non-empty token_ids.")
+
+        if self._svc is None:
+            # ai-dynamo is not installed, so this deployment cannot score
+            # requests. Fail loudly rather than silently degrading; the ingress
+            # router surfaces RuntimeError to the client as a 503.
+            raise RuntimeError(
+                "KV-aware routing is unavailable because ai-dynamo is not "
+                "installed in the deployment's environment."
+            )
+        selection = await self._svc.select(
+            {
+                "model_name": _MODEL_NAME,
+                "tenant_id": _TENANT_ID,
+                "selection_id": request_id,
+                "token_ids": token_ids,
+                "allowed_worker_ids": allowed_worker_ids,
+            }
+        )
+        return {
+            "worker_id": selection["worker_id"],
+            "dp_rank": selection["dp_rank"],
+            "overlap_blocks": selection["overlap"]["longest_matched"],
+            "score": float(selection["effective_prefill_tokens"]),
+        }
 
     async def on_request_added(
         self,
